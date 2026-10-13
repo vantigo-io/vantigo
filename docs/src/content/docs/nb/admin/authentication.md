@@ -314,7 +314,7 @@ oppstarten feiler.
 | `APP_ENV` | `production` eller `development`; bare development lemper på noe | `production` |
 | `APP_URL` | Offentlig opprinnelse (skjema + vert [+ port]); ingen sti | **påkrevd** |
 | `APP_BASE_PATH` | Stiprefiks på et delt domene, f.eks. `/vantigo` | tom (domenets rot) |
-| `PUBLIC_BASE_URL` | `https`-URL-en betalingssiden i Faktura kan nås på fra internett: en opprinnelse og `APP_BASE_PATH`, ingenting annet, og aldri vertsnavnet til `APP_URL` på en annen port; på en egen vert serveres bare betalingssidens tillatelsesliste der. Uten den finnes det ingen betalingslenker ([Den offentlige verten](/nb/admin/payments/#den-offentlige-verten)) | ikke satt |
+| `PUBLIC_BASE_URL` | `https`-URL-en betalingssiden i Faktura kan nås på fra internett: en opprinnelse og `APP_BASE_PATH`, ingenting annet, med et ASCII-vertsnavn (punycode for et internasjonalisert navn) uten avsluttende punktum, og aldri vertsnavnet til `APP_URL` på en annen port; på en egen vert serveres bare betalingssidens tillatelsesliste der. Uten den finnes det ingen betalingslenker ([Den offentlige verten](/nb/admin/payments/#den-offentlige-verten)) | ikke satt |
 | `PORT` | Lytteport | `8080` |
 | `DATABASE_URL` | Kjøretidstilkoblingen, rollen med minst rettigheter | **påkrevd** |
 | `MIGRATIONS_DATABASE_URL` | Tilkoblingen `migrate` bruker (eierrollen) | `DATABASE_URL` |

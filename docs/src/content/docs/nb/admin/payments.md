@@ -200,6 +200,18 @@ offentlig vert: nettbrettet som viser QR-koden, er logget inn på `APP_URL`.
 ([Transportsikkerhet](/nb/admin/transport-security/)), og et vertsnavn for
 betalingssiden med sertifikat.
 
+**Sperren styres av `Host`.** Vantigo kan ikke se hvilken lytter eller hvilket navn en
+forespørsel kom inn på, bare `Host`-hodet. På den offentlige verten — en forespørsel der
+`Host`, uten port, er vertsnavnet i `PUBLIC_BASE_URL` — serveres bare
+tillatelseslisten nedenfor. En forespørsel med en annen `Host` som vertsfilteret slipper
+inn — vertsnavnet til `APP_URL`, eller loopback (`localhost`, `127.0.0.1`, `::1`), som
+fortsatt slippes inn for containerens egen helsesjekk — får alt. Derfor **må proxyen som
+publiserer den offentlige verten aldri sende videre noen annen `Host` enn den offentlige
+verten**: sendte den videre klientens egen `Host`, kunne hvem som helst på internett
+sende `Host: localhost` eller `Host: vantigo.example.com` til betalingssidens adresse og
+nå hele Vantigo, innloggingen medregnet. Den proxyregelen er det som gjør den offentlige
+verten trygg; stegene nedenfor setter den.
+
 1. **Velg verten.** Anbefalt: en egen vert, for eksempel `pay.example.com`, med **samme
    basissti** som `APP_URL` — `PUBLIC_BASE_URL=https://pay.example.com` når
    `APP_BASE_PATH` ikke er satt, `https://pay.example.com/vantigo` når den er `/vantigo`.
@@ -207,52 +219,75 @@ betalingssiden med sertifikat.
    annet. Alternativet er opprinnelsen til `APP_URL` selv: da finnes det ingen egen
    vert og ingenting filtreres, så å publisere betalingssiden betyr å publisere hele
    Vantigo — innloggingen, API-et og dokumentasjonen — på internett.
-   Konfigurasjonen avviser ved oppstart en `PUBLIC_BASE_URL` som ikke er `https`, som
-   bærer en bruker, en spørring eller et fragment, som har en annen sti enn
-   `APP_BASE_PATH`, eller som angir vertsnavnet til `APP_URL` på en annen port
-   (vertsfilteret og sperren for den offentlige verten sammenligner vertsnavn uten
+   Konfigurasjonen avviser ved oppstart en `PUBLIC_BASE_URL` som ikke er `https`; som
+   bærer en bruker, en spørring eller et fragment; som har en annen sti enn
+   `APP_BASE_PATH`; der vertsnavnet slutter på punktum eller ikke er ASCII (skriv et
+   internasjonalisert navn i punycode-form, `xn--…`); eller som angir vertsnavnet til
+   `APP_URL` på en annen port (vertsfilteret og sperren sammenligner vertsnavn uten
    port, så de to kunne ikke skilles fra hverandre).
-2. **Rut den til Vantigo med `Host` bevart.** Proxyen sender den offentlige verten videre
-   til den samme Vantigo-prosessen som `APP_URL`, og beholder `Host`-hodet:
+2. **Publiser den med en fast `Host`.** Proxyen sender den offentlige vertens
+   forespørsler til den samme Vantigo-prosessen som `APP_URL`, med **`Host` satt til
+   selve det offentlige vertsnavnet** — en konstant, aldri klientens hode (i nginx
+   `proxy_set_header Host pay.example.com;`, aldri `$host` eller `$http_host`).
    `X-Forwarded-Host` respekteres aldri, og betalingssidens forespørsler er fra samme
-   opprinnelse bare fordi `Host` er den offentlige verten. Vertsfilteret slipper inn den
-   offentlige verten ved siden av vertsnavnet til `APP_URL` og loopback, og ingenting
-   annet ([Filtrering av Host-hode](/nb/admin/transport-security/#filtrering-av-host-hode)).
+   opprinnelse bare fordi `Host` er den offentlige verten. Gi proxyen en oppsamler for
+   alle andre navn, så en forespørsel som ikke angir noen av vertene, stoppes der i
+   stedet for å sendes videre. Vertsfilteret slipper inn den offentlige verten ved siden
+   av vertsnavnet til `APP_URL` og loopback, og ingenting annet
+   ([Filtrering av Host-hode](/nb/admin/transport-security/#filtrering-av-host-hode)).
 3. **Stol på proxyen.** Sett `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` til proxyen
    foran ([Videresendte headere og HTTPS](/nb/admin/authentication/#videresendte-headere-og-https)).
    Betalingssidens operasjoner er anonyme og hastighetsbegrenset etter klientens adresse;
    uten de to innstillingene kommer hver betaler fra proxyens adresse og deler én bøtte,
    så en håndfull kunder som betaler samtidig, blir avvist.
-4. **Hold spørringen til `/pay` ute av proxyens tilgangslogg.** Betalingslenken er
+4. **Hold tokenet i betalingslenken ute av proxyens logger.** Betalingslenken er
    `PUBLIC_BASE_URL/pay?token=…`, og tokenet er det som lar hvem som helst som har det,
    betale fakturaen og se beløpet. Vantigos egen forespørselslogg skriver stien og aldri
    spørringen, og hvert svar har `Referrer-Policy: no-referrer`; betalingssiden leser så
    fakturaen med `POST /api/v1/invoices/pay/read`, med tokenet i innholdet, så det når
-   aldri en API-URL. Det som gjenstår, er proxyens tilgangslogg for selve
-   sideforespørselen. Med nginx logger du stien uten spørringen for akkurat den
-   plasseringen:
+   aldri en API-URL. Det som gjenstår, er proxyens egen logging av sideforespørselen.
+   Ingenting på den offentlige verten trenger spørringen sin logget, så logg bare stien
+   for hele verten.
+
+   Med nginx:
 
    ```nginx
    log_format vantigo_pay '$remote_addr [$time_local] "$request_method $uri $server_protocol" '
                           '$status $body_bytes_sent "$http_user_agent"';
 
+   # Alle andre navn enn de to publiserte vertene: lukkes uten svar.
    server {
+       listen 443 ssl default_server;
+       server_name _;
+       ssl_reject_handshake on;
+       return 444;
+   }
+
+   server {
+       listen 443 ssl;
        server_name pay.example.com;
-       # ...listen, ssl_certificate...
-       location = /pay {
-           access_log /var/log/nginx/vantigo-pay.log vantigo_pay;
-           proxy_set_header Host $host;
-           proxy_pass http://vantigo:8080;
-       }
+       # ...ssl_certificate...
+       access_log /var/log/nginx/vantigo-pay.log vantigo_pay;
+       error_log  /var/log/nginx/vantigo-pay.error.log crit;
        location / {
-           proxy_set_header Host $host;
+           proxy_set_header Host pay.example.com;   # en konstant, aldri $host
            proxy_pass http://vantigo:8080;
        }
    }
    ```
 
-   (`$uri` er stien alene; `$request` ville tatt med spørringen. Under en basissti er
-   plasseringen `= /vantigo/pay`.) Med Caddy sletter du tokenet fra den loggede URI-en:
+   `$uri` er stien alene; `$request` ville tatt med spørringen. nginx' **feillogg**
+   skriver også forespørselslinjen, med spørringen, når en oppstrøms feiler
+   ("connect() failed … request: "GET /pay?token=…""), på nivået `error`: `crit` ovenfor
+   holder de linjene ute, på bekostning av selve oppstrømsfeilene på denne verten — les
+   dem i feilloggen til verten for `APP_URL`, eller behold `error` og behandle den
+   loggen som en som inneholder betalingstokener (begrens hvem som leser den, hold den
+   kort). `server`-blokken til `APP_URL` er egen og uendret.
+
+   Med Caddy svarer en nettstedsblokk bare for navnene den lister opp — et annet navn
+   finner ikke noe nettsted og avvises — og `reverse_proxy` sender oppstrøms
+   nettstedets egen vert, så ingenting mer trengs for `Host`; slett tokenet fra den
+   loggede URI-en:
 
    ```text
    pay.example.com {
@@ -267,12 +302,15 @@ betalingssiden med sertifikat.
    }
    ```
 
+   Caddy skriver oppstrømsfeil til den samme filtrerte tilgangsloggen.
 5. **Start Vantigo på nytt** med `PUBLIC_BASE_URL` satt; den leses ved oppstart.
 
 **Tillatelseslisten.** På den offentlige verten svarer en forespørsel hvis metode og sti
 ikke står på denne listen, 404 — et problemdokument under `/api/`, et tomt innhold ellers
 — før noen ruting (`security.PublicHostGate`); den samme forespørselen på verten til
-`APP_URL` betjenes som før. Stiene er relative til basisstien.
+`APP_URL` betjenes som før. Stiene er relative til basisstien. En sti som ikke allerede er
+ren (`..`, `.`, et tomt segment), eller som er kodet på annen måte enn den kanoniske (en
+kodet `/`, `%2F`), står ikke på noen liste.
 
 | Metode | Sti |
 | --- | --- |
@@ -292,20 +330,31 @@ curl -i https://pay.example.com/sign-in            # 404
 curl -i https://pay.example.com/api/v1/identity/me # 404, et problemdokument
 curl -i 'https://pay.example.com/pay?token=x'      # 200, betalingssiden
 curl -i https://vantigo.example.com/sign-in        # 200 på verten til APP_URL
+# Proxyen må ikke sende videre en annen Host: ingen av disse kan svare 200.
+curl -i https://pay.example.com/sign-in -H 'Host: localhost'
+curl -i https://pay.example.com/sign-in -H 'Host: vantigo.example.com'
 ```
 
-Åpne deretter en betalingslenke og se i proxyens tilgangslogg: linjen for `/pay` har ikke
-noe `token`.
+De to siste må svare 404 (proxyen sendte den offentlige verten likevel) eller avvises av
+proxyen — aldri 200 og innloggingssiden. Åpne deretter en betalingslenke og se i proxyens
+tilgangslogg: linjen for `/pay` har ikke noe `token`.
 
 **Hva som kan gå galt:**
 
+- **`/sign-in` svarer 200 med `Host: localhost` eller verten til `APP_URL`** sendt til
+  den offentlige adressen: proxyen sender videre klientens `Host` (`$host`,
+  `$http_host`). Sett `Host` til det offentlige vertsnavnet som en konstant. Vantigo selv
+  avviser ikke loopback på den offentlige lytteren — den kan ikke skille lyttere fra
+  hverandre, og loopback må fortsatt slippes inn for containerens helsesjekk, som prober
+  `127.0.0.1` innenfra — så denne proxyregelen er det eneste som holder resten av
+  Vantigo borte fra den offentlige adressen.
 - **Hver forespørsel til den offentlige verten svarer 400** «The request host is not
   allowed»: `PUBLIC_BASE_URL` er ikke satt eller angir en annen vert enn den proxyen
-  sender videre — eller proxyen skriver om `Host`.
+  sender.
 - **Betalingssiden er tom eller forespørslene dens svarer 404**: proxyen serverer den
   offentlige verten under en annen sti enn `APP_BASE_PATH`, eller fjerner basisstien selv.
 - **Betalere avvises med 429 mens få betaler**: `TRUSTED_PROXY_HOPS` og
   `TRUSTED_PROXY_CIDRS` er ikke satt, så hver betaler deler proxyens bøtte.
-- **`/sign-in` svarer 200 på den offentlige verten**: `PUBLIC_BASE_URL` angir verten til
-  `APP_URL` selv, så det finnes ingen sperre — eller proxyen sender den offentlige vertens
-  forespørsler med `Host` fra `APP_URL`.
+- **`/sign-in` svarer 200 på den offentlige verten** uten noe `Host`-triks i det hele
+  tatt: `PUBLIC_BASE_URL` angir verten til `APP_URL` selv, så det finnes ingen sperre —
+  eller proxyen sender den offentlige vertens forespørsler med `Host` fra `APP_URL`.

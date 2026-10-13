@@ -603,13 +603,23 @@ func publicBaseURL(p *problems, env map[string]string, appOrigin, basePath strin
 		p.add("PUBLIC_BASE_URL", "must carry no user, query or fragment")
 		return "", "", ""
 	}
+	// The host filter and the gate compare the Host header's name exactly:
+	// a trailing dot or a Unicode name would match no browser's Host.
+	if strings.HasSuffix(u.Hostname(), ".") {
+		p.add("PUBLIC_BASE_URL", "its host name must not end in a dot")
+		return "", "", ""
+	}
+	if strings.IndexFunc(u.Hostname(), func(r rune) bool { return r > unicode.MaxASCII }) >= 0 {
+		p.add("PUBLIC_BASE_URL", "its host name must be ASCII; write an internationalised name in its punycode form (xn--…)")
+		return "", "", ""
+	}
 	if NormalizeBasePath(u.Path) != basePath {
 		p.add("PUBLIC_BASE_URL", "its path must equal APP_BASE_PATH (%q)", basePath)
 		return "", "", ""
 	}
 	origin, hostname = strings.ToLower(u.Scheme+"://"+u.Host), strings.ToLower(u.Hostname())
 	if app, err := url.Parse(appOrigin); err == nil && appOrigin != "" &&
-		strings.ToLower(app.Hostname()) == hostname && effectivePort(app) != effectivePort(u) {
+		strings.TrimSuffix(strings.ToLower(app.Hostname()), ".") == hostname && effectivePort(app) != effectivePort(u) {
 		p.add("PUBLIC_BASE_URL", "must not be APP_URL's host name on another port: the host filter compares host names without the port, so the two could not be told apart; use APP_URL's origin or another host name")
 		return "", "", ""
 	}

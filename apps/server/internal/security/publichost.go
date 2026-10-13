@@ -2,6 +2,7 @@ package security
 
 import (
 	"net/http"
+	"net/url"
 	"path"
 	"slices"
 	"strings"
@@ -67,13 +68,15 @@ func PayRoutes() []Route {
 // base-relative path match no route answers 404 — a problem under /api/, an
 // empty body elsewhere — before any routing. A path that is not already clean
 // ("..", ".", an empty segment) matches nothing, so no prefix can be climbed
-// out of. A request on any other host passes untouched. It must run after
+// out of, and so does a path escaped other than canonically (url.URL.RawPath
+// set), since the API router splits the escaped path and the two must agree.
+// A request on any other host passes untouched. It must run after
 // StripBasePath.
 func PublicHostGate(publicHost string, allow []Route) func(http.Handler) http.Handler {
 	publicHost = strings.ToLower(publicHost)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if requestHostname(r.Host) != publicHost || admitted(allow, r.Method, r.URL.Path) {
+			if requestHostname(r.Host) != publicHost || admitted(allow, r.Method, r.URL) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -86,7 +89,14 @@ func PublicHostGate(publicHost string, allow []Route) func(http.Handler) http.Ha
 	}
 }
 
-func admitted(allow []Route, method, p string) bool {
+func admitted(allow []Route, method string, u *url.URL) bool {
+	// A path escaped other than canonically — an encoded "/" above all — is
+	// matched here on its decoded form but split by the API router on its
+	// escaped one, so the two would disagree on which route it is: refused.
+	if u.RawPath != "" {
+		return false
+	}
+	p := u.Path
 	if clean := path.Clean(p); clean != p && clean+"/" != p {
 		return false
 	}

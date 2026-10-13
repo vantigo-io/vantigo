@@ -433,3 +433,34 @@ func TestServer_PublicHostEndToEnd(t *testing.T) {
 		}
 	})
 }
+
+// An encoded "/" joins two segments for the API router, which splits the
+// escaped path, while the decoded path reads as an allowlisted one:
+// "/api/v1/invoices/pay%2Fattempts/pdf" decodes to an attempt's status yet
+// would route as the document "pay/attempts"'s PDF. Sent without the base
+// path, StripBasePath leaves it as it came, so the gate itself must refuse a
+// non-canonical escape before the API ever sees it.
+func TestServer_PublicHostRefusesAnEncodedSlash(t *testing.T) {
+	var reached []string
+	f := newFixture(t, func(cfg *config.Config, o *Options) {
+		cfg.BasePath = "/vantigo"
+		cfg.PublicOrigin = "https://pay.example.com"
+		cfg.PublicHostname = "pay.example.com"
+		cfg.PublicBaseURL = cfg.PublicOrigin + cfg.BasePath
+		o.API = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reached = append(reached, r.URL.EscapedPath())
+			w.WriteHeader(http.StatusOK)
+		})
+	})
+
+	rec := f.do(request(http.MethodGet, "https://pay.example.com/api/v1/invoices/pay%2Fattempts/pdf"))
+	if rec.Code != http.StatusNotFound || rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Errorf("an encoded slash on the public host: %d %q, want the 404 problem", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if len(reached) != 0 {
+		t.Errorf("the API was reached with %q, want the gate to refuse first", reached)
+	}
+	if rec := f.do(request(http.MethodGet, "https://pay.example.com/vantigo/api/v1/invoices/pay/attempts/abc")); rec.Code != http.StatusOK {
+		t.Errorf("an attempt's status on the public host: %d, want it to reach the API", rec.Code)
+	}
+}

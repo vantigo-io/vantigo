@@ -200,6 +200,17 @@ the QR is signed in on `APP_URL`.
 ([Transport security](/en/admin/transport-security/)) and a host name for the pay page
 with its certificate.
 
+**The gate keys on `Host`.** Vantigo cannot see which listener or which name a request
+arrived on, only its `Host` header. On the public host — a request whose `Host`, port
+ignored, is `PUBLIC_BASE_URL`'s host name — it serves only the allowlist below. A
+request with any other `Host` that the host filter admits — `APP_URL`'s host name, or
+loopback (`localhost`, `127.0.0.1`, `::1`), which stays admitted for the container's own
+health check — is served everything. So **the proxy that publishes the public host must
+never forward any `Host` other than the public host**: if it passed on the client's own
+`Host`, anyone on the internet could send `Host: localhost` or `Host: vantigo.example.com`
+to the pay page's address and reach the whole of Vantigo, sign-in included. That proxy
+rule is what makes the public host safe; the steps below set it.
+
 1. **Choose the host.** Recommended: a host of its own, such as `pay.example.com`, with
    the **same base path** as `APP_URL` — `PUBLIC_BASE_URL=https://pay.example.com` when
    `APP_BASE_PATH` is unset, `https://pay.example.com/vantigo` when it is `/vantigo`.
@@ -207,50 +218,73 @@ with its certificate.
    everything else. The alternative is `APP_URL`'s own origin: then there is no second
    host and nothing is filtered, so publishing the pay page means publishing all of
    Vantigo — the sign-in, the API and the documentation — to the internet.
-   Configuration refuses, at start-up, a `PUBLIC_BASE_URL` that is not `https`, carries a
-   user, a query or a fragment, has a path other than `APP_BASE_PATH`, or names
-   `APP_URL`'s host name on another port (the host filter and the gate compare host names
-   without the port, so the two could not be told apart).
-2. **Route it to Vantigo with `Host` preserved.** The proxy forwards the public host to the
-   same Vantigo process as `APP_URL`, keeping the `Host` header: `X-Forwarded-Host` is
-   never honoured, and the pay page's requests are same-origin only because `Host` is
-   the public host. The host filter admits the public host beside `APP_URL`'s and
-   loopback, and nothing else
+   Configuration refuses, at start-up, a `PUBLIC_BASE_URL` that is not `https`; that
+   carries a user, a query or a fragment; whose path is not `APP_BASE_PATH`; whose host
+   name ends in a dot or is not ASCII (write an internationalised name in its punycode
+   form, `xn--…`); or that names `APP_URL`'s host name on another port (the host filter
+   and the gate compare host names without the port, so the two could not be told
+   apart).
+2. **Publish it with a fixed `Host`.** The proxy forwards the public host's requests to
+   the same Vantigo process as `APP_URL` with **`Host` set to the public host name itself**
+   — a constant, never the client's header (in nginx, `proxy_set_header Host
+   pay.example.com;`, never `$host` or `$http_host`). `X-Forwarded-Host` is never
+   honoured, and the pay page's requests are same-origin only because `Host` is the public
+   host. Give the proxy a catch-all for every other name, so a request naming neither
+   host is dropped there rather than forwarded. The host filter admits the public host
+   beside `APP_URL`'s and loopback, and nothing else
    ([Host header filtering](/en/admin/transport-security/#host-header-filtering)).
 3. **Trust the proxy.** Set `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` to the proxy in
    front ([Forwarded headers and HTTPS](/en/admin/authentication/#forwarded-headers-and-https)).
    The pay page's operations are anonymous and rate-limited by the client's address;
    without the two settings every payer arrives from the proxy's address and shares one
    bucket, so a handful of customers paying at once are refused.
-4. **Keep `/pay`'s query out of the proxy's access log.** The pay link is
+4. **Keep the pay link's token out of the proxy's logs.** The pay link is
    `PUBLIC_BASE_URL/pay?token=…`, and the token is what lets anyone holding it pay the
    invoice and see its amount. Vantigo's own request log writes the path and never the
    query, and every response carries `Referrer-Policy: no-referrer`; the pay page then
    reads the invoice with `POST /api/v1/invoices/pay/read`, the token in the body, so it
-   never reaches an API URL. What remains is the proxy's access log of the page request
-   itself. With nginx, log the path without the query for that one location:
+   never reaches an API URL. What remains is the proxy's own logging of the page request.
+   Nothing on the public host needs its query logged, so log the path alone for the whole
+   host.
+
+   With nginx:
 
    ```nginx
    log_format vantigo_pay '$remote_addr [$time_local] "$request_method $uri $server_protocol" '
                           '$status $body_bytes_sent "$http_user_agent"';
 
+   # Every name other than the two published hosts: closed without an answer.
    server {
+       listen 443 ssl default_server;
+       server_name _;
+       ssl_reject_handshake on;
+       return 444;
+   }
+
+   server {
+       listen 443 ssl;
        server_name pay.example.com;
-       # ...listen, ssl_certificate...
-       location = /pay {
-           access_log /var/log/nginx/vantigo-pay.log vantigo_pay;
-           proxy_set_header Host $host;
-           proxy_pass http://vantigo:8080;
-       }
+       # ...ssl_certificate...
+       access_log /var/log/nginx/vantigo-pay.log vantigo_pay;
+       error_log  /var/log/nginx/vantigo-pay.error.log crit;
        location / {
-           proxy_set_header Host $host;
+           proxy_set_header Host pay.example.com;   # a constant, never $host
            proxy_pass http://vantigo:8080;
        }
    }
    ```
 
-   (`$uri` is the path alone; `$request` would carry the query. Under a base path the
-   location is `= /vantigo/pay`.) With Caddy, delete the token from the logged URI:
+   `$uri` is the path alone; `$request` would carry the query. nginx's **error log** also
+   prints the request line, query included, when an upstream fails ("connect() failed …
+   request: "GET /pay?token=…""), at the `error` level: `crit` above keeps those lines out,
+   at the cost of the upstream errors themselves on this host — read them in the
+   `APP_URL` host's error log, or keep `error` and treat that log as holding pay tokens
+   (restrict who reads it, keep it short). `APP_URL`'s own `server` block is separate and
+   unchanged.
+
+   With Caddy, a site block answers only the names it lists — any other name finds no
+   site and is refused — and `reverse_proxy` sends the upstream the site's own host, so
+   nothing more is needed for `Host`; delete the token from the logged URI:
 
    ```text
    pay.example.com {
@@ -265,12 +299,15 @@ with its certificate.
    }
    ```
 
+   Caddy writes upstream errors to the same filtered access log.
 5. **Restart** Vantigo with `PUBLIC_BASE_URL` set; it is read at start-up.
 
 **The allowlist.** On the public host, a request whose method and path are not on this
 list answers 404 — a problem document under `/api/`, an empty body elsewhere — before
 any routing (`security.PublicHostGate`); the same request on `APP_URL`'s host is served as
-before. Paths are relative to the base path.
+before. Paths are relative to the base path. A path that is not already clean (`..`, `.`,
+an empty segment) or that is escaped other than canonically (an encoded `/`, `%2F`) is
+on no list.
 
 | Method | Path |
 | --- | --- |
@@ -290,20 +327,29 @@ curl -i https://pay.example.com/sign-in            # 404
 curl -i https://pay.example.com/api/v1/identity/me # 404, a problem document
 curl -i 'https://pay.example.com/pay?token=x'      # 200, the pay page
 curl -i https://vantigo.example.com/sign-in        # 200 on APP_URL's host
+# The proxy must not pass on another Host: neither of these may answer 200.
+curl -i https://pay.example.com/sign-in -H 'Host: localhost'
+curl -i https://pay.example.com/sign-in -H 'Host: vantigo.example.com'
 ```
 
-Then open a pay link and check the proxy's access log: the line for `/pay` carries no
-`token`.
+The last two must answer 404 (the proxy sent the public host regardless) or be refused
+by the proxy — never 200 and the sign-in page. Then open a pay link and check the proxy's
+access log: the line for `/pay` carries no `token`.
 
 **What can go wrong:**
 
+- **`/sign-in` answers 200 with `Host: localhost` or `APP_URL`'s host** sent to the public
+  address: the proxy forwards the client's `Host` (`$host`, `$http_host`). Set `Host` to
+  the public host name as a constant. Vantigo itself does not refuse loopback on the
+  public listener — it cannot tell listeners apart, and loopback must stay admitted for the
+  container's health check, which probes `127.0.0.1` from inside — so this proxy rule is
+  the only thing that keeps the rest of Vantigo off the public address.
 - **Every request to the public host answers 400** "The request host is not allowed":
-  `PUBLIC_BASE_URL` is unset or names another host than the one the proxy forwards — or
-  the proxy rewrites `Host`.
+  `PUBLIC_BASE_URL` is unset or names another host than the one the proxy sends.
 - **The pay page is a blank page or its requests answer 404**: the proxy serves the
   public host under another path than `APP_BASE_PATH`, or strips the base path itself.
 - **Payers are refused with 429 while few are paying**: `TRUSTED_PROXY_HOPS` and
   `TRUSTED_PROXY_CIDRS` are not set, so every payer shares the proxy's bucket.
-- **`/sign-in` answers 200 on the public host**: `PUBLIC_BASE_URL` names `APP_URL`'s own
-  host, so there is no gate — or the proxy sends the public host's requests with
-  `APP_URL`'s `Host`.
+- **`/sign-in` answers 200 on the public host** with no `Host` trick at all:
+  `PUBLIC_BASE_URL` names `APP_URL`'s own host, so there is no gate — or the proxy sends
+  the public host's requests with `APP_URL`'s `Host`.

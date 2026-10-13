@@ -1363,22 +1363,29 @@ func TestConfig_PublicBaseURL(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name, given, basePath, want string
+		name, given, basePath, appURL, want string
 	}{
-		{"http refused", "http://pay.example.com", "", "PUBLIC_BASE_URL: must be an absolute https URL"},
-		{"not a URL", "pay.example.com", "", "PUBLIC_BASE_URL: must be an absolute https URL"},
-		{"a user refused", "https://user@pay.example.com", "", "PUBLIC_BASE_URL: must carry no user, query or fragment"},
-		{"a query refused", "https://pay.example.com/?a=1", "", "PUBLIC_BASE_URL: must carry no user, query or fragment"},
-		{"a fragment refused", "https://pay.example.com/#x", "", "PUBLIC_BASE_URL: must carry no user, query or fragment"},
-		{"another path refused", "https://pay.example.com/pay", "", `PUBLIC_BASE_URL: its path must equal APP_BASE_PATH ("")`},
-		{"no path under a base path refused", "https://pay.example.com", "/vantigo", `PUBLIC_BASE_URL: its path must equal APP_BASE_PATH ("/vantigo")`},
-		{"another path under a base path refused", "https://pay.example.com/other", "/vantigo", `PUBLIC_BASE_URL: its path must equal APP_BASE_PATH ("/vantigo")`},
-		{"APP_URL's hostname on another port refused", "https://vantigo.example.com:8443", "", "PUBLIC_BASE_URL: must not be APP_URL's host name on another port"},
+		{"http refused", "http://pay.example.com", "", "", "PUBLIC_BASE_URL: must be an absolute https URL"},
+		{"not a URL", "pay.example.com", "", "", "PUBLIC_BASE_URL: must be an absolute https URL"},
+		{"a user refused", "https://user@pay.example.com", "", "", "PUBLIC_BASE_URL: must carry no user, query or fragment"},
+		{"a query refused", "https://pay.example.com/?a=1", "", "", "PUBLIC_BASE_URL: must carry no user, query or fragment"},
+		{"a fragment refused", "https://pay.example.com/#x", "", "", "PUBLIC_BASE_URL: must carry no user, query or fragment"},
+		{"another path refused", "https://pay.example.com/pay", "", "", `PUBLIC_BASE_URL: its path must equal APP_BASE_PATH ("")`},
+		{"no path under a base path refused", "https://pay.example.com", "/vantigo", "", `PUBLIC_BASE_URL: its path must equal APP_BASE_PATH ("/vantigo")`},
+		{"another path under a base path refused", "https://pay.example.com/other", "/vantigo", "", `PUBLIC_BASE_URL: its path must equal APP_BASE_PATH ("/vantigo")`},
+		{"APP_URL's hostname on another port refused", "https://vantigo.example.com:8443", "", "", "PUBLIC_BASE_URL: must not be APP_URL's host name on another port"},
+		{"a trailing dot refused", "https://pay.example.com.", "", "", "PUBLIC_BASE_URL: its host name must not end in a dot"},
+		{"APP_URL's hostname with a trailing dot refused", "https://vantigo.example.com.:8443", "", "", "PUBLIC_BASE_URL: its host name must not end in a dot"},
+		{"a non-ASCII host name refused", "https://betal.blåbær.no", "", "", "PUBLIC_BASE_URL: its host name must be ASCII; write an internationalised name in its punycode form (xn--…)"},
+		{"APP_URL's hostname written with a trailing dot, on another port, refused", "https://vantigo.example.com:8443", "", "https://vantigo.example.com.", "PUBLIC_BASE_URL: must not be APP_URL's host name on another port"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			env := with(validEnv(), "PUBLIC_BASE_URL", tc.given)
 			if tc.basePath != "" {
 				env = with(env, "APP_BASE_PATH", tc.basePath)
+			}
+			if tc.appURL != "" {
+				env = with(env, "APP_URL", tc.appURL)
 			}
 			if msg := loadError(t, env); !strings.Contains(msg, tc.want) {
 				t.Errorf("%q: error = %q, want it to contain %q", tc.given, msg, tc.want)
@@ -1390,6 +1397,7 @@ func TestConfig_PublicBaseURL(t *testing.T) {
 		name, given, basePath, appURL, wantBase, wantOrigin, wantHost string
 	}{
 		{"another host", "https://Pay.Example.com", "", "", "https://pay.example.com", "https://pay.example.com", "pay.example.com"},
+		{"a punycode host", "https://betal.xn--blbr-roa5c.no", "", "", "https://betal.xn--blbr-roa5c.no", "https://betal.xn--blbr-roa5c.no", "betal.xn--blbr-roa5c.no"},
 		{"another host with a trailing slash", "https://pay.example.com/", "", "", "https://pay.example.com", "https://pay.example.com", "pay.example.com"},
 		{"another host and port", "https://pay.example.com:8443", "", "", "https://pay.example.com:8443", "https://pay.example.com:8443", "pay.example.com"},
 		{"the same host", "https://vantigo.example.com", "", "", "https://vantigo.example.com", "https://vantigo.example.com", "vantigo.example.com"},

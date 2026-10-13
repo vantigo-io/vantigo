@@ -71,6 +71,20 @@ var publicHostRefused = []gateRequest{
 	{http.MethodGet, "/api"},
 }
 
+// publicHostRefusedEscaped are paths whose escaping is not the canonical one
+// — an encoded "/" above all — so the decoded path the gate would match and
+// the escaped path the API router splits disagree: "pay%2Fattempts/pdf"
+// decodes to an allowlisted attempt's status yet routes as the document
+// "pay/attempts"'s PDF. Each is refused whatever it decodes to. They are sent
+// without the base path, since StripBasePath re-derives a stripped path from
+// its decoded form, where gate and router agree again.
+var publicHostRefusedEscaped = []gateRequest{
+	{http.MethodGet, "/api/v1/invoices/pay%2Fattempts/pdf"},
+	{http.MethodPost, "/api/v1/invoices/vipps%2Fwebhooks"},
+	{http.MethodGet, "/api%2Fv1/identity/system/status"},
+	{http.MethodGet, "/p%61y"},
+}
+
 // TestPublicHostGate is D14's test: on the public host every allowlisted
 // method and path reaches the next handler and everything else answers 404 —
 // a problem under /api/, an empty body elsewhere — before any routing; on
@@ -91,11 +105,15 @@ func TestPublicHostGate(t *testing.T) {
 				httpx.StripBasePath(tc.base),
 				PublicHostGate("Pay.Example.com", PayRoutes()),
 			)
-			do := func(host string, r gateRequest) *httptest.ResponseRecorder {
-				req := httptest.NewRequest(r.method, "https://"+host+tc.base+r.target, nil)
+			doAt := func(host, base string, r gateRequest) *httptest.ResponseRecorder {
+				req := httptest.NewRequest(r.method, "https://"+host+base+r.target, nil)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
 				return rec
+			}
+
+			do := func(host string, r gateRequest) *httptest.ResponseRecorder {
+				return doAt(host, tc.base, r)
 			}
 
 			for _, r := range publicHostAllowed {
@@ -103,6 +121,14 @@ func TestPublicHostGate(t *testing.T) {
 					if rec := do(host, r); rec.Code != http.StatusTeapot {
 						t.Errorf("%s %s on %s: status %d, want it to reach the next handler", r.method, r.target, host, rec.Code)
 					}
+				}
+			}
+			for _, r := range publicHostRefusedEscaped {
+				if rec := doAt("pay.example.com", "", r); rec.Code != http.StatusNotFound {
+					t.Errorf("%s %s on the public host: status %d, want 404 — a non-canonical escape is refused", r.method, r.target, rec.Code)
+				}
+				if rec := doAt("vantigo.example.com", "", r); rec.Code != http.StatusTeapot {
+					t.Errorf("%s %s on APP_URL's host: status %d, want it untouched", r.method, r.target, rec.Code)
 				}
 			}
 			for _, r := range publicHostRefused {
