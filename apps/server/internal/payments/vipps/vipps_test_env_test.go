@@ -221,7 +221,8 @@ func TestVippsTestEnv_InsufficientFunds(t *testing.T) {
 	}
 }
 
-// A QR create answers Vipps' own SVG.
+// A QR create answers an SVG rendered here from the target URL Vipps
+// answers (TEXT/TARGETURL).
 func TestVippsTestEnv_QR(t *testing.T) {
 	c, _ := testEnv(t)
 	ref := reference("qr")

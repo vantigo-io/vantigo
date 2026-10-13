@@ -119,7 +119,10 @@ naming a code — no payment exists, the attempt may fail) and `IsCaptureFailure
 (`ErrInsufficientFunds` or `ErrCaptureFailed` and nothing else). A conflict is never a
 definitive refusal: "the reference already exists" may be this very request, made by
 an earlier try whose answer was lost — the Vipps adapter reads the payment back then
-(4150, 4020) and answers it as created when it is the one asked for. A 409, a 401 or a
+(4150, 4020) and answers it as created only when it is the one asked for (the same
+amount and currency) and still `CREATED` or `AUTHORIZED`. A QR is never read back —
+Vipps does not promise that a read's redirect URL is the QR's target — so the outcome
+is unknown and the caller polls the reference. A 409, a 401 or a
 404 on a capture is **not** a failed capture: its money may have moved; and Vipps'
 capture codes count only on the 400 it documents them with.
 

@@ -601,11 +601,14 @@ func (s *Server) create(raw []byte, key string) (int, []byte) {
 	delete(s.scripts, body.Reference)
 	s.payments[body.Reference] = p
 	s.log(p, "CREATED", p.Amount, key)
+	// A read answers the landing page's URL whatever the flow: Vipps does
+	// not promise a QR's target URL there, so the fake does not either.
 	p.RedirectURL = s.srv.URL + "/landing?token=" + url.QueryEscape(p.Reference)
+	created := p.RedirectURL
 	if body.UserFlow == "QR" {
-		p.RedirectURL = QRTarget(p.Reference)
+		created = QRTarget(p.Reference)
 	}
-	raw, _ = json.Marshal(map[string]string{"reference": p.Reference, "redirectUrl": p.RedirectURL})
+	raw, _ = json.Marshal(map[string]string{"reference": p.Reference, "redirectUrl": created})
 	return http.StatusCreated, raw
 }
 
