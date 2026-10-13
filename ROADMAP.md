@@ -884,7 +884,7 @@ of two connections.
 
 *Unblocks:* project invoicing end to end; Time's and Expenses' "next: invoicing".
 
-### Phase 4 — Payments and reminders (4A and 4B done; 4C next)
+### Phase 4 — Payments and reminders (done)
 
 **4A and 4B — delivered** on `feat/invoices-payments-reminders`, the phase's first pull
 request ([design](docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
@@ -910,19 +910,52 @@ collection agency with its CSV export; the dashboard's attention items; and the
 customers slots' export, erase and merge for every new kind. Every race on a new lock
 is proved on a pool of two connections.
 
-**4C — planned after the first pull request merges**, the phase's second pull request
-(design D13–D17). **A payments port**, the access-point pattern of phase 2 applied to money in: a
-`PaymentProvider` port in a shared server package (not inside Invoices, so a later
-Point of sale module consumes the same adapters), **Vipps MobilePay ePayment first**
-— a payment request on an invoice, the customer's approval in the app, the callback or
-poll matched to the document as a registered payment — with credentials sealed in their
-own table, a fake for every suite, and a tagged test against the provider's test
-environment; pay links and the public **pay page**. **The quick invoice** beside it:
-create and issue in one step for a job
-finished on site (a single line, a person or business buyer, the ordinary number series),
-optionally with a Vipps payment request attached. This is a credit sale — the invoice is
-the document and the payment follows it — which is what keeps it inside Invoices; a sale
-paid at the counter is a cash sale and belongs to the Point of sale module below.
+**4C — delivered** on `feat/invoices-payments-port`, the phase's second pull request
+([design](docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md) D13–D19,
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#vipps-payments),
+[`docs/src/content/docs/en/admin/payments.md`](docs/src/content/docs/en/admin/payments.md#the-public-host)),
+on one migration, `00046_invoices_payments_port.sql`: **the payments port** —
+`internal/payments`, a platform package with no SQL and no module import, so a later
+Point of sale consumes the same adapters — with the **Vipps MobilePay ePayment**
+adapter (token cache, system headers, idempotency keys, typed errors, the on-site QR
+rendered locally), its fake `vippstest` in every suite and a tagged test against Vipps'
+test environment; **`PUBLIC_BASE_URL`**, a second admitted host that serves only an
+exact allowlist; the Vipps credentials sealed in their own table and the payment
+settings, on-site payment turned on only with the kontantsalg acknowledgement; **pay
+links** made at issue or on the send, printed on the PDF with a QR and in the e-mail
+and the reminder letter, revocable; the anonymous **pay page** on the public host;
+**payment attempts** and the `invoices-payments` worker, which reserves the amount
+under the invoice's lock, captures outside it and registers the payment in a second
+locked transaction, never releasing an outcome it cannot know (`capture_unknown`);
+abandon, the refund watch and four attention types; **the quick invoice**
+([reference](docs/src/content/docs/en/reference/invoices.md#the-quick-invoice)) —
+created, issued and recorded handed over in one transaction, safe to send again by its
+request id; **on-site payment**
+([reference](docs/src/content/docs/en/reference/invoices.md#paid-on-site--kontantsalg))
+with the day's Vipps payments and their reconciliation; the customers slots' export
+and erase of pay links and attempts; and the screens — settings, the invoice page's
+Vipps card, the Vipps tab, the quick invoice screen and the pay page. Every race on a
+new lock is proved on a pool of two connections.
+
+The quick invoice is **a credit sale when paid later** — by KID through the bank, or by
+its pay link once the tradesperson has left. **Paid on site by Vipps it is kontantsalg**
+(Vipps at delivery counts as cash), allowed without a kassasystem only as a
+**kontantfaktura**, which the quick invoice enforces: the buyer named with an address
+or an organisation number, one payment of the whole open amount per invoice in the
+ordinary series, the kontantsalg notice acknowledged before the setting goes on, and
+the day's list with its reconciliation. A sale over a counter is not that, and belongs
+to the Point of sale module below.
+
+**Vipps webhooks are deferred**: the integration polls. Pinning the webhook's HMAC step
+needs a real signed webhook from Vipps' test sales unit — the published example's
+signature does not reproduce (research R4 §7 item 37) — and no test keys or captured
+fixture existed when the worker landed, so the raw-body router option, the receiver and
+its registration were left out, and the public host's allowlist names no webhook path.
+
+**Still open in this phase:** a run of the tagged Vipps test (`go test -tags vipps`,
+which needs the test sales unit's keys); the webhook above; and a revisor's or
+accountant's reading of the kontantsalg notice before on-site payment is turned on in
+production.
 
 *Unblocks:* receivables without a spreadsheet; Point of sale's payment adapters.
 
@@ -981,9 +1014,12 @@ receipt numbering, a sales journal, X and Z reports, a receipt in the prescribed
 and a product declaration filed with Skatteetaten — separate records, retention and
 audit rules from the invoice series. It consumes Products (the catalog and tax
 categories), optionally Customers (a named buyer on a receipt) and the payments port of
-Invoices phase 4; it produces accounting output per VAT rate as Invoices' CSV does; it
-never issues invoices — a buyer at the counter who wants an invoice is handed to
-Invoices' quick invoice. A counter sale is also an order fulfilled and paid at once, so
+Invoices phase 4 (`internal/payments`, delivered with its Vipps adapter); it produces
+accounting output per VAT rate as Invoices' CSV does; it never issues invoices. An
+invoice paid at delivery is still kontantsalg: a business selling over a counter needs
+a kassasystem whatever document it issues, and Invoices' on-site payment covers only
+the kontantfaktura case — an identified buyer named on a full invoice, for a business
+that ordinarily sells on credit. A counter sale is also an order fulfilled and paid at once, so
 this module is a candidate first consumer of the deferred Orders model and is sequenced
 after the payments port and, where the timing allows, after Orders.
 
@@ -992,10 +1028,11 @@ after the payments port and, where the timing allows, after Orders.
 Before any design, a research pass in the shape of the Storecove spike, with sources,
 that settles which model is viable for which customer:
 
-1. **The cash-register rules**: what makes a sale kontantsalg (Vipps counts as cash),
-   the exemptions (small cash volumes, sporadic and mobile sales), what an approved
-   kassasystem must do and declare, what the receipt must say, and where the line runs
-   between "an invoice paid at once by Vipps" and a cash sale.
+1. **The cash-register rules** for the register itself: the exemptions (small cash
+   volumes, sporadic and mobile sales), what an approved kassasystem must do and
+   declare, and what the receipt must say. Where the line runs between "an invoice paid
+   at once by Vipps" and a cash sale is settled (Invoices research R4 §9): it is
+   kontantsalg, outside a kassasystem only as a kontantfaktura.
 2. **Vantigo as the register** with a card terminal attached: which terminal APIs work
    from a web app on a tablet in Norway (Adyen's terminal API, Viva Wallet, Stripe
    Terminal if available here, Nets/Verifone integrations), and what each costs in
@@ -1004,7 +1041,7 @@ that settles which model is viable for which customer:
    apps are themselves approved registers and whose purchases APIs can feed Vantigo's
    accounting export, products and customers — the cheap path for a shop that already
    owns one, with no cash-register obligation on Vantigo's side.
-4. **Vipps at the counter** through the phase 4 payments port in either model.
+4. **Vipps at the counter** through the payments port (`internal/payments`) in either model.
 
 *Unblocks:* the decision between building a register and integrating one.
 
