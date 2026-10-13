@@ -60,7 +60,8 @@ func paymentsPortObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 			    || ':' || is_nullable || ':' || coalesce(column_default, '')
 			FROM information_schema.columns
 			WHERE table_schema = 'invoices'
-			  AND (table_name = ANY($1) OR (table_name = 'payments' AND column_name = 'payment_attempt_id'))`, paymentsPortTables),
+			  AND (table_name = ANY($1) OR (table_name = 'payments' AND column_name = 'payment_attempt_id')
+			    OR (table_name = 'reminders' AND column_name = 'pay_link_id'))`, paymentsPortTables),
 		"tables": collect("tables", `
 			SELECT table_name FROM information_schema.tables
 			WHERE table_schema = 'invoices' AND table_name = ANY($1)`, paymentsPortTables),
@@ -75,7 +76,7 @@ func paymentsPortObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 			WHERE c.connamespace = 'invoices'::regnamespace AND c.contype IN ('c', 'f', 'u', 'p')
 			  AND (c.conrelid::regclass::text = ANY(SELECT 'invoices.' || unnest($1::text[]))
 			    OR c.conname IN ('ck_payments_source', 'ck_payments_origin', 'payments_payment_attempt_id_key',
-			        'payments_payment_attempt_id_fkey'))`, paymentsPortTables),
+			        'payments_payment_attempt_id_fkey', 'ck_reminders_pay_link', 'reminders_pay_link_id_fkey'))`, paymentsPortTables),
 		"functions": collect("functions", `
 			SELECT p.proname || ':' || p.provolatile::text || ':' || pg_catalog.format_type(p.prorettype, NULL)
 			FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -176,6 +177,12 @@ func TestInvoicesPaymentsPort_AppliesAndIsIdempotent(t *testing.T) {
 
 	migrateTo(t, url, paymentsPortVersion-1)
 	expect("after down", wantDown)
+	// The Down restores 00041's refuse_reminder_change, which knows no pay link.
+	var body string
+	if err := pool.QueryRow(ctx, `SELECT prosrc FROM pg_proc WHERE proname = 'refuse_reminder_change'`).Scan(&body); err != nil ||
+		strings.Contains(body, "pay_link") || !strings.Contains(body, "'withdrawal_reason'];") {
+		t.Errorf("refuse_reminder_change after the Down = %v %q, want 00041's", err, body)
+	}
 	receivablesBefore := receivablesObjectsBut00046(t, ctx, pool)
 
 	migrateTo(t, url, paymentsPortVersion)
@@ -193,13 +200,18 @@ func TestInvoicesPaymentsPort_AppliesAndIsIdempotent(t *testing.T) {
 }
 
 // receivablesObjectsBut00046 is receivablesObjects less the payments' two
-// CHECKs 00046 replaces.
+// CHECKs 00046 replaces and the letters' pay link it adds.
 func receivablesObjectsBut00046(t *testing.T, ctx context.Context, pool *pgxpool.Pool) map[string][]string {
 	t.Helper()
 	objects := receivablesObjects(t, ctx, pool)
 	objects["constraints"] = slices.DeleteFunc(objects["constraints"], func(c string) bool {
 		return strings.HasPrefix(c, "invoices.payments:ck_payments_source:") ||
-			strings.HasPrefix(c, "invoices.payments:ck_payments_origin:")
+			strings.HasPrefix(c, "invoices.payments:ck_payments_origin:") ||
+			strings.HasPrefix(c, "invoices.reminders:ck_reminders_pay_link:") ||
+			strings.HasPrefix(c, "invoices.reminders:reminders_pay_link_id_fkey:")
+	})
+	objects["columns"] = slices.DeleteFunc(objects["columns"], func(c string) bool {
+		return strings.HasPrefix(c, "reminders.pay_link_id:")
 	})
 	return objects
 }
@@ -274,6 +286,7 @@ var paymentsPortColumns = []string{
 	"payment_settings.updated_at:timestamp with time zone::NO:",
 	"payment_settings.updated_by_user_id:uuid::YES:",
 	"payments.payment_attempt_id:bigint::YES:",
+	"reminders.pay_link_id:bigint::YES:",
 	"quick_requests.body_sha256:character:64:NO:",
 	"quick_requests.created_at:timestamp with time zone::NO:",
 	"quick_requests.invoice_id:bigint::NO:",
@@ -321,6 +334,8 @@ var paymentsPortConstraints = []string{
 	"invoices.payments:ck_payments_source:CHECK (((source)::text = ANY ((ARRAY['manual'::character varying, 'ocr'::character varying, 'camt054'::character varying, 'vipps'::character varying])::text[])))",
 	"invoices.payments:payments_payment_attempt_id_fkey:FOREIGN KEY (payment_attempt_id) REFERENCES invoices.payment_attempts(id) ON DELETE RESTRICT",
 	"invoices.payments:payments_payment_attempt_id_key:UNIQUE (payment_attempt_id)",
+	"invoices.reminders:ck_reminders_pay_link:CHECK (((pay_link_id IS NULL) OR (sent_on IS NOT NULL)))",
+	"invoices.reminders:reminders_pay_link_id_fkey:FOREIGN KEY (pay_link_id) REFERENCES invoices.pay_links(id) ON DELETE RESTRICT",
 	"invoices.quick_requests:ck_quick_requests_body:CHECK ((body_sha256 ~ '^[0-9a-f]{64}$'::text))",
 	"invoices.quick_requests:quick_requests_invoice_id_fkey:FOREIGN KEY (invoice_id) REFERENCES invoices.invoices(id) ON DELETE RESTRICT",
 	"invoices.quick_requests:quick_requests_invoice_id_key:UNIQUE (invoice_id)",
@@ -373,7 +388,7 @@ func childOfIssued(table string) string {
 // childOfErased is the parent guard's refusal of a row of table for an
 // anonymised customer.
 func childOfErased(table string) string {
-	return "invoices: " + table + " is refused for an anonymised customer"
+	return "invoices: the customer is anonymised"
 }
 
 // payLink writes a live pay link of invoice with the token hash
@@ -962,5 +977,52 @@ func TestQuickRequests_TheRow(t *testing.T) {
 		if err := f.exec(sql); !refusedWith(err, quickRequestImmutable) {
 			t.Errorf("%s: %v, want %q", sql, err, quickRequestImmutable)
 		}
+	}
+}
+
+// reminderPayLinkForeign is refuse_reminder_change's refusal of another
+// invoice's link.
+const reminderPayLinkForeign = "invoices: a reminder's pay link is its own invoice's"
+
+// TestReminders_PayLink pins a letter's pay link (00046, after review): one
+// of its facts — written with them, never without them (ck_reminders_pay_link),
+// cleared with them while the letter is in flight — its own invoice's link
+// only, and frozen once the letter is sent, a revoked link kept.
+func TestReminders_PayLink(t *testing.T) {
+	t.Parallel()
+	f := newReceivablesFixture(t)
+	run := f.run()
+	invoice := f.issued(7)
+	link := f.mustPayLink(invoice, "a")
+	other := f.mustPayLink(f.issued(7), "b")
+	letter := f.mustReminder(invoice, run, 1)
+
+	if err := f.exec(`UPDATE invoices.reminders SET pay_link_id = $2 WHERE id = $1`, letter, link); !checkViolationOf(err, "ck_reminders_pay_link") {
+		t.Errorf("a link without the facts: %v, want ck_reminders_pay_link", err)
+	}
+	if err := f.exec(`UPDATE invoices.reminders SET `+receivablesFacts+`, pay_link_id = $2 WHERE id = $1`, letter, other); !refusedWith(err, reminderPayLinkForeign) {
+		t.Errorf("another invoice's link: %v, want %q", err, reminderPayLinkForeign)
+	}
+	for _, c := range []struct{ name, set string }{
+		{"written with the facts", receivablesFacts + ", pay_link_id = $2"},
+		{"cleared with the facts", "sent_on = NULL, deadline = NULL, credited = NULL, total = NULL, pay_link_id = NULL"},
+		{"written again", receivablesFacts + ", pay_link_id = $2"},
+	} {
+		if err := f.exec(`UPDATE invoices.reminders SET `+c.set+` WHERE id = $1 AND $2::bigint IS NOT NULL`, letter, link); err != nil {
+			t.Errorf("a queued letter's link %s: %v, want it allowed", c.name, err)
+		}
+	}
+	f.mustExec("the letter sent", `UPDATE invoices.reminders SET status = 'sent', sent_at = now() WHERE id = $1`, letter)
+	f.mustExec("the link revoked", `UPDATE invoices.pay_links SET revoked_at = now() WHERE id = $1`, link)
+	if got := f.text(`SELECT pay_link_id::text FROM invoices.reminders WHERE id = $1`, letter); got != fmt.Sprint(link) {
+		t.Errorf("a sent letter's link after its revocation = %s, want %d kept", got, link)
+	}
+	for _, set := range []string{"pay_link_id = NULL", "pay_link_id = pay_link_id + 0, sent_on = sent_on + 1"} {
+		if err := f.exec(`UPDATE invoices.reminders SET `+set+` WHERE id = $1`, letter); !refusedWith(err, receivablesReminderFinal) {
+			t.Errorf("a sent letter, SET %s: %v, want %q", set, err, receivablesReminderFinal)
+		}
+	}
+	if err := f.exec(`DELETE FROM invoices.pay_links WHERE id = $1`, link); err == nil {
+		t.Error("a letter's link deleted, want it refused")
 	}
 }

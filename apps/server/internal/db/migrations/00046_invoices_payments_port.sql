@@ -113,7 +113,9 @@ CREATE UNIQUE INDEX ux_pay_links_live ON invoices.pay_links (invoice_id) WHERE r
 -- (guard_child_of_issued_insert's shape); the marker is then read in a
 -- statement of its own, which sees an erase that committed while this insert
 -- waited. Where that guard blanks a note, this one refuses: a link to, or a
--- payment by, an anonymised buyer must never exist (plan reading 19).
+-- payment by, an anonymised buyer must never exist (plan reading 19). That
+-- refusal's message is a fixed key, the transmissions' own, so the issue can
+-- tell it from any other and skip the link.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.guard_payment_child_insert()
 RETURNS trigger LANGUAGE plpgsql AS $function$
@@ -128,7 +130,7 @@ BEGIN
         RAISE EXCEPTION 'invoices: % needs an issued invoice', TG_TABLE_NAME USING ERRCODE = 'P0001';
     END IF;
     IF EXISTS (SELECT 1 FROM invoices.erased_customers WHERE customer_id = parent_customer) THEN
-        RAISE EXCEPTION 'invoices: % is refused for an anonymised customer', TG_TABLE_NAME USING ERRCODE = 'P0001';
+        RAISE EXCEPTION 'invoices: the customer is anonymised' USING ERRCODE = 'P0001';
     END IF;
     RETURN NEW;
 END;
@@ -380,13 +382,115 @@ CREATE TRIGGER tr_quick_requests_immutable
     BEFORE UPDATE OR DELETE ON invoices.quick_requests
     FOR EACH ROW EXECUTE FUNCTION invoices.refuse_row_change();
 
+
+-- A reminder letter's pay link (D10, D15; after review): one of its facts,
+-- the invoice's live link judged under the invoice's lock when the facts are
+-- written, cleared with them, and — as every fact — frozen once the letter is
+-- sent. The letter prints that link's URL whether or not it was revoked
+-- later, so a letter renders the same bytes every time and a re-download of
+-- a posted batch is what was posted; a link revoked before the facts are
+-- written is never a letter's. refuse_reminder_change (00041's) is replaced
+-- with the column among the facts and the link required to be the letter's
+-- own invoice's; the Down restores 00041's.
+ALTER TABLE invoices.reminders
+    ADD COLUMN pay_link_id bigint REFERENCES invoices.pay_links (id) ON DELETE RESTRICT,
+    ADD CONSTRAINT ck_reminders_pay_link CHECK (pay_link_id IS NULL OR sent_on IS NOT NULL);
+
+-- +goose StatementBegin
+CREATE OR REPLACE FUNCTION invoices.refuse_reminder_change()
+RETURNS trigger LANGUAGE plpgsql AS $function$
+DECLARE
+    changing_columns text[] := ARRAY['recipient', 'print_batch_id', 'announces_collection', 'sent_on',
+        'deadline', 'regime', 'principal_open', 'credited', 'fee_kind', 'fee', 'compensation', 'charges_earlier',
+        'interest', 'interest_waived', 'interest_paid', 'interest_from', 'interest_segments', 'inkassosats', 'total',
+        'charge_notes', 'pdf_object_key', 'pdf_sha256', 'message_id', 'sent_at', 'status', 'held_reason',
+        'attempts', 'next_attempt_at', 'first_attempt_at', 'lease_id', 'lease_until', 'last_error', 'failed_at',
+        'withdrawn_at', 'withdrawn_by_user_id', 'withdrawal_reason', 'pay_link_id'];
+    pdf_columns text[] := ARRAY['recipient', 'pdf_object_key', 'pdf_sha256'];
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'invoices: a reminder is never deleted' USING ERRCODE = 'P0001';
+    END IF;
+    IF (to_jsonb(OLD) - changing_columns) <> (to_jsonb(NEW) - changing_columns) THEN
+        RAISE EXCEPTION 'invoices: a reminder keeps its identity' USING ERRCODE = 'P0001';
+    END IF;
+    IF NEW.recipient <> OLD.recipient AND NEW.recipient <> '' THEN
+        RAISE EXCEPTION 'invoices: a reminder''s recipient is only ever blanked' USING ERRCODE = 'P0001';
+    END IF;
+    IF NEW.message_id IS DISTINCT FROM OLD.message_id
+       AND (OLD.message_id IS NOT NULL OR OLD.status <> 'queued') THEN
+        RAISE EXCEPTION 'invoices: a reminder''s message id is set once, while queued' USING ERRCODE = 'P0001';
+    END IF;
+    IF NEW.pay_link_id IS NOT NULL AND NEW.pay_link_id IS DISTINCT FROM OLD.pay_link_id
+       AND NOT EXISTS (SELECT 1 FROM invoices.pay_links WHERE id = NEW.pay_link_id AND invoice_id = NEW.invoice_id) THEN
+        RAISE EXCEPTION 'invoices: a reminder''s pay link is its own invoice''s' USING ERRCODE = 'P0001';
+    END IF;
+    IF (to_jsonb(OLD) - 'recipient') = (to_jsonb(NEW) - 'recipient') THEN
+        RETURN NEW;
+    END IF;
+    IF OLD.status IN ('queued', 'awaiting_print', 'printed', 'failed') THEN
+        RETURN NEW;
+    END IF;
+    IF OLD.status = 'sent' AND (to_jsonb(OLD) - pdf_columns) = (to_jsonb(NEW) - pdf_columns)
+       AND (OLD.pdf_object_key IS NULL OR NEW.pdf_object_key IS NOT DISTINCT FROM OLD.pdf_object_key)
+       AND (OLD.pdf_sha256 IS NULL OR NEW.pdf_sha256 IS NOT DISTINCT FROM OLD.pdf_sha256) THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'invoices: a reminder is final once sent or withdrawn' USING ERRCODE = 'P0001';
+END;
+$function$;
+-- +goose StatementEnd
+
 -- +goose Down
--- Everything 00046 added, in reverse: the quick requests, the reconciliations, the payments'
--- attempt with 00041's two CHECKs restored — which fails while a Vipps
+-- Everything 00046 added, in reverse: the quick requests, the letters' pay
+-- link with 00041's refuse_reminder_change restored, the reconciliations,
+-- the payments' attempt with 00041's two CHECKs restored — which fails while a Vipps
 -- payment exists, the honest answer: a Down never deletes bookkeeping —
 -- then the attempts, the links, the settings, the credentials (their
 -- triggers and indexes go with them) and the functions.
 DROP TABLE invoices.quick_requests;
+
+-- +goose StatementBegin
+CREATE OR REPLACE FUNCTION invoices.refuse_reminder_change()
+RETURNS trigger LANGUAGE plpgsql AS $function$
+DECLARE
+    changing_columns text[] := ARRAY['recipient', 'print_batch_id', 'announces_collection', 'sent_on',
+        'deadline', 'regime', 'principal_open', 'credited', 'fee_kind', 'fee', 'compensation', 'charges_earlier',
+        'interest', 'interest_waived', 'interest_paid', 'interest_from', 'interest_segments', 'inkassosats', 'total',
+        'charge_notes', 'pdf_object_key', 'pdf_sha256', 'message_id', 'sent_at', 'status', 'held_reason',
+        'attempts', 'next_attempt_at', 'first_attempt_at', 'lease_id', 'lease_until', 'last_error', 'failed_at',
+        'withdrawn_at', 'withdrawn_by_user_id', 'withdrawal_reason'];
+    pdf_columns text[] := ARRAY['recipient', 'pdf_object_key', 'pdf_sha256'];
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'invoices: a reminder is never deleted' USING ERRCODE = 'P0001';
+    END IF;
+    IF (to_jsonb(OLD) - changing_columns) <> (to_jsonb(NEW) - changing_columns) THEN
+        RAISE EXCEPTION 'invoices: a reminder keeps its identity' USING ERRCODE = 'P0001';
+    END IF;
+    IF NEW.recipient <> OLD.recipient AND NEW.recipient <> '' THEN
+        RAISE EXCEPTION 'invoices: a reminder''s recipient is only ever blanked' USING ERRCODE = 'P0001';
+    END IF;
+    IF NEW.message_id IS DISTINCT FROM OLD.message_id
+       AND (OLD.message_id IS NOT NULL OR OLD.status <> 'queued') THEN
+        RAISE EXCEPTION 'invoices: a reminder''s message id is set once, while queued' USING ERRCODE = 'P0001';
+    END IF;
+    IF (to_jsonb(OLD) - 'recipient') = (to_jsonb(NEW) - 'recipient') THEN
+        RETURN NEW;
+    END IF;
+    IF OLD.status IN ('queued', 'awaiting_print', 'printed', 'failed') THEN
+        RETURN NEW;
+    END IF;
+    IF OLD.status = 'sent' AND (to_jsonb(OLD) - pdf_columns) = (to_jsonb(NEW) - pdf_columns)
+       AND (OLD.pdf_object_key IS NULL OR NEW.pdf_object_key IS NOT DISTINCT FROM OLD.pdf_object_key)
+       AND (OLD.pdf_sha256 IS NULL OR NEW.pdf_sha256 IS NOT DISTINCT FROM OLD.pdf_sha256) THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'invoices: a reminder is final once sent or withdrawn' USING ERRCODE = 'P0001';
+END;
+$function$;
+-- +goose StatementEnd
+ALTER TABLE invoices.reminders DROP COLUMN pay_link_id;
 DROP TABLE invoices.vipps_day_reconciliations;
 ALTER TABLE invoices.payments
     DROP CONSTRAINT ck_payments_origin,
