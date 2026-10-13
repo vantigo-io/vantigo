@@ -1,17 +1,18 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, and the payments port with its Vipps MobilePay adapter.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
 sidebar:
   order: 5
 sources:
   - apps/server/internal/secrets
   - apps/server/internal/payments
+  - apps/server/internal/calendar
 ---
 
 A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
-clear, and when it takes a payment.
+clear, when it takes a payment, and when it counts days around the public holidays.
 
 ## The secrets box
 
@@ -203,3 +204,29 @@ with) and a QR. With `VIPPS_TEST_WEBHOOK_URL` — a public https URL
 forwarded to `VIPPS_TEST_WEBHOOK_LISTEN` (default `127.0.0.1:8089`) — it also registers
 a webhook, captures one signed callback, verifies it, writes it as the fixture and
 deletes the registration.
+
+## The calendar
+
+[`apps/server/internal/calendar`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/calendar)
+is the one place the server knows which days are public holidays; a module that
+counts business days counts them with it. Invoices moves a due date and a reminder
+letter's deadline off them ([The rules](/en/reference/invoices/#the-rules)). It
+is a set of pure functions over the standard library's `time` package: it holds no
+data, has no table and no migration, and reads no clock — its own purity test fails
+on any other import or on a call such as `time.Now`.
+
+**A day is a civil date at UTC midnight.** The caller derives it in its own zone —
+the installation's calendar day, made `time.Date(y, m, d, 0, 0, 0, 0, time.UTC)` — so
+day arithmetic never meets a daylight-saving shift; a time that is not a UTC midnight
+gives no defined answer.
+
+| Function | Answers |
+|---|---|
+| `PublicHoliday(d) bool` | whether `d` is a Norwegian public holiday: New Year's Day, Maundy Thursday, Good Friday, Easter Sunday and Monday, 1 May, 17 May, Ascension Day, Whit Sunday and Monday, Christmas Day and Boxing Day — whatever weekday it falls on. Christmas Eve and New Year's Eve are not. |
+| `EasterSunday(year) time.Time` | the Gregorian Easter Sunday of the year (the anonymous Gregorian algorithm), from which the movable feasts are counted. |
+| `BusinessDay(d) bool` | whether `d` is neither a Saturday, a Sunday nor a public holiday. |
+| `NextBusinessDay(d) time.Time` | `d` when it is a business day, else the first business day after it. |
+| `PublicHolidays(from, to) []time.Time` | the public holidays from `from` to `to`, both counted, in date order and each day once (Whit Monday can fall on 17 May); none when `to` is before `from`. |
+
+The calendar is **Norway's only**. A region beyond it would be a later column on a
+module's settings, passed in by the caller; nothing in the package reads a setting.

@@ -259,11 +259,6 @@ func TestReminderRules_LetterDeadline(t *testing.T) {
 			t.Errorf("LetterDeadline(%s, %d) = %s, want %s", c.sent, c.days, got.Format(time.DateOnly), c.want)
 		}
 	}
-	for year, want := range map[int]string{2024: "2024-03-31", 2025: "2025-04-20", 2026: "2026-04-05", 2027: "2027-03-28", 2028: "2028-04-16"} {
-		if got := easterSunday(year); !got.Equal(day(want)) {
-			t.Errorf("Easter %d = %s, want %s", year, got.Format(time.DateOnly), want)
-		}
-	}
 	// Through Next: the facts carry it.
 	for _, c := range []struct {
 		l    string

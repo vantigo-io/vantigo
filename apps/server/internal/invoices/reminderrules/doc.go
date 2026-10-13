@@ -8,6 +8,7 @@
 // arithmetic never meets a daylight-saving shift; and every amount is an
 // exact decimal (*big.Rat), rounded only where the rules say: a fee to the
 // krone (.50 up), interest to the øre once, the half away from zero. A leaf:
-// it imports the standard library only (purity_test.go), and the server's
+// it imports the standard library and the platform's public-holiday calendar
+// (internal/calendar, as pure) only (purity_test.go), and the server's
 // rule-input loader is its only door.
 package reminderrules

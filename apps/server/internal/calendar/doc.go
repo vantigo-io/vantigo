@@ -1,0 +1,14 @@
+// Package calendar is the platform's public-holiday calendar: which days are
+// Norwegian public holidays, which are business days, and when Easter falls.
+// Invoices moves a due date and a reminder letter's deadline by it.
+//
+// A day is a civil date at UTC midnight. Deriving it in the installation's
+// zone is the caller's job — take the calendar day where the caller lives and
+// make it time.Date(y, m, d, 0, 0, 0, 0, time.UTC) — so day arithmetic never
+// meets a daylight-saving shift and two callers agree on what "a day" is. A
+// time that is not a UTC midnight gives no defined answer.
+//
+// The calendar is Norway's only; a region beyond it would be a later setting
+// that callers pass in. It holds no data, reads no clock and imports the time
+// package only (purity_test.go): every day is an input.
+package calendar

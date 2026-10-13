@@ -461,6 +461,7 @@ linters:
             - "**/internal/contracts/**"
             - "**/internal/apicommon/**"
             - "**/internal/buildinfo/**"
+            - "**/internal/calendar/**"
             - "**/internal/config/**"
             - "**/internal/db/**"
             - "**/internal/health/**"
