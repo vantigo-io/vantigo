@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"slices"
@@ -35,8 +36,8 @@ const publicHost = "pay.example.com"
 // to change, so the authority is written "modules.example.com@<public
 // host>" — the URL's host is then the public host, which is what the gate
 // reads, while httptest's client dials the harness's listener for
-// example.com and every host under it. The user part becomes a Basic Authorization header, which nothing
-// in Vantigo reads.
+// example.com and every host under it. The user part becomes a Basic
+// Authorization header, which nothing in Vantigo reads.
 func onPublicHost(path string) string { return "@" + publicHost + path }
 
 // portInvoice is an issued invoice as the story reads it.
@@ -285,7 +286,7 @@ func TestPaymentsPort_FromOnSiteAndPayLinkToTheErase(t *testing.T) {
 	}
 	res.JSON(&started)
 	byLink, ok := vipps.Payment(started.Reference)
-	if !ok || started.RedirectURL == "" || byLink.Amount != int64(issued.GrossTotal*100) {
+	if !ok || started.RedirectURL == "" || byLink.Amount != int64(math.Round(issued.GrossTotal*100)) {
 		t.Fatalf("Vipps' payment %s = %+v, want one of the whole invoice", started.Reference, byLink)
 	}
 	returnURL, err := url.Parse(fmt.Sprint(byLink.Request["returnUrl"]))

@@ -1006,6 +1006,7 @@ seam its tests pin.
 | an abandon | its lease, one statement as the claim's; its write the attempt alone `FOR NO KEY UPDATE`; when Vipps shows money captured, the registration's attempt and then its invoice |
 | a pay link made at issue or on demand | the invoice (the link inserted; its trigger shares the invoice) |
 | a pay link's revoke | the invoice, then the link `FOR NO KEY UPDATE` |
+| a quick invoice's merge follow-up (`RepointQuickInvoice`) | the document alone `FOR UPDATE`, in a transaction of its own after the issue's commit |
 | the issue and the quick invoice | the document (locked, or inserted and so held), settings `FOR SHARE`, the counter, as above; a pay link, a manual delivery and the quick invoice's request inserted |
 | an on-site request | the invoice, then the payment credentials `FOR SHARE`, then the attempt inserted — an attempt's create |
 | a cancel, a release, an on-site request's cancel | the attempt alone |
