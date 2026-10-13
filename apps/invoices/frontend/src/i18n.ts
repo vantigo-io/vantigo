@@ -1825,6 +1825,54 @@ export const invoicesCatalog = {
     "vippsDay.reconciledOn": "Reconciled on {{at}}: {{count}} payments, {{total}}.",
     "vippsDay.reconciledNote": "Note: {{note}}",
     "fieldInvalid.vippsDay.note": "The note holds at most 500 characters.",
+    "pay.title": "Pay an invoice",
+    "pay.language.label": "Language",
+    "pay.language.nb": "Norsk",
+    "pay.language.en": "English",
+    "pay.seller": "Seller",
+    "pay.organisationNumber": "Organisation number",
+    "pay.invoiceNumber": "Invoice number",
+    "pay.issueDate": "Invoice date",
+    "pay.dueDate": "Due date",
+    "pay.openAmount": "Amount to pay",
+    "pay.kid": "KID",
+    "pay.kidHelp":
+      "To pay by bank instead, use this KID as the payment reference. The account number is on the invoice.",
+    "pay.terms": "Sales terms",
+    "pay.privacy": "Privacy notice",
+    "pay.accept": "I accept the seller's sales terms and privacy notice",
+    "pay.acceptRequired": "Accept the sales terms and privacy notice to pay with Vipps.",
+    "pay.payWithVipps": "Pay with Vipps",
+    "pay.noLink": "This address does not name an invoice. Open the pay link from your invoice or e-mail again.",
+    "pay.tryAgain": "Try again",
+    "pay.checkAgain": "Check again",
+    "pay.reason.revoked":
+      "This pay link no longer works. You can still pay by bank with the KID, or ask the seller for a new link.",
+    "pay.reason.credited": "There is nothing to pay on this invoice: it has been credited.",
+    "pay.reason.settled": "This invoice is paid. There is nothing more to pay.",
+    "pay.reason.handed_off": "This invoice has been passed to a debt collection agency. Contact the agency to pay it.",
+    "pay.reason.unavailable":
+      "Paying with Vipps is not available right now. Try again later, or pay by bank with the KID.",
+    "pay.reason.payment_in_progress":
+      "A Vipps payment of this invoice is already being completed. You do not need to pay again; if it does not go through, try again later.",
+    "pay.reason.amount_out_of_range": "This amount cannot be paid with Vipps. Pay by bank with the KID instead.",
+    "pay.refusal.too_many_attempts":
+      "Several Vipps payments of this invoice were started a moment ago. Try again later, or pay by bank with the KID.",
+    "pay.refusal.provider_failed":
+      "Vipps could not start the payment. Try again in a moment, or pay by bank with the KID.",
+    "pay.refusal.rateLimited": "Too many tries in a short while. Wait a few minutes and try again.",
+    "pay.refusal.notFound":
+      "No invoice was found for this link. Check that you opened the whole link from your invoice or e-mail.",
+    "pay.refusal.generic": "Something went wrong. Try again later, or pay by bank with the KID.",
+    "pay.state.pending": "Waiting for Vipps to confirm the payment…",
+    "pay.state.couldNotRead": "The payment's state could not be read just now. Trying again.",
+    "pay.state.paid": "Thank you — the payment went through and the invoice is paid.",
+    "pay.state.failed": "The payment did not go through. Try again, or pay by bank with the KID.",
+    "pay.state.cancelled": "The payment was cancelled or timed out. Nothing was paid.",
+    "pay.state.stillPending":
+      "Vipps has not confirmed the payment yet. If you approved it in Vipps, it is registered on the invoice once Vipps confirms it — do not pay again.",
+    "pay.state.notFound":
+      "This payment could not be found. Open the pay link from your invoice again to see what is open.",
   },
   nb: {
     invoices: "Fakturaer",
@@ -3661,6 +3709,54 @@ export const invoicesCatalog = {
     "vippsDay.reconciledOn": "Avstemt {{at}}: {{count}} betalinger, {{total}}.",
     "vippsDay.reconciledNote": "Merknad: {{note}}",
     "fieldInvalid.vippsDay.note": "Merknaden kan ha høyst 500 tegn.",
+    "pay.title": "Betal en faktura",
+    "pay.language.label": "Språk",
+    "pay.language.nb": "Norsk",
+    "pay.language.en": "English",
+    "pay.seller": "Selger",
+    "pay.organisationNumber": "Organisasjonsnummer",
+    "pay.invoiceNumber": "Fakturanummer",
+    "pay.issueDate": "Fakturadato",
+    "pay.dueDate": "Forfallsdato",
+    "pay.openAmount": "Å betale",
+    "pay.kid": "KID",
+    "pay.kidHelp": "Vil du heller betale i nettbanken, bruker du denne KID-en. Kontonummeret står på fakturaen.",
+    "pay.terms": "Salgsvilkår",
+    "pay.privacy": "Personvernerklæring",
+    "pay.accept": "Jeg godtar selgerens salgsvilkår og personvernerklæring",
+    "pay.acceptRequired": "Godta salgsvilkårene og personvernerklæringen for å betale med Vipps.",
+    "pay.payWithVipps": "Betal med Vipps",
+    "pay.noLink":
+      "Denne adressen viser ikke til noen faktura. Åpne betalingslenken fra fakturaen eller e-posten på nytt.",
+    "pay.tryAgain": "Prøv igjen",
+    "pay.checkAgain": "Sjekk igjen",
+    "pay.reason.revoked":
+      "Denne betalingslenken virker ikke lenger. Du kan fortsatt betale i nettbanken med KID, eller be selgeren om en ny lenke.",
+    "pay.reason.credited": "Det er ingenting å betale på denne fakturaen: den er kreditert.",
+    "pay.reason.settled": "Denne fakturaen er betalt. Det er ikke mer å betale.",
+    "pay.reason.handed_off": "Denne fakturaen er sendt til et inkassobyrå. Kontakt inkassobyrået for å betale den.",
+    "pay.reason.unavailable":
+      "Betaling med Vipps er ikke tilgjengelig nå. Prøv igjen senere, eller betal i nettbanken med KID.",
+    "pay.reason.payment_in_progress":
+      "En Vipps-betaling av denne fakturaen holder allerede på å bli fullført. Du trenger ikke betale igjen; går den ikke gjennom, kan du prøve igjen senere.",
+    "pay.reason.amount_out_of_range": "Dette beløpet kan ikke betales med Vipps. Betal i nettbanken med KID i stedet.",
+    "pay.refusal.too_many_attempts":
+      "Flere Vipps-betalinger av denne fakturaen ble startet nettopp. Prøv igjen senere, eller betal i nettbanken med KID.",
+    "pay.refusal.provider_failed":
+      "Vipps kunne ikke starte betalingen. Prøv igjen om litt, eller betal i nettbanken med KID.",
+    "pay.refusal.rateLimited": "For mange forsøk på kort tid. Vent noen minutter og prøv igjen.",
+    "pay.refusal.notFound":
+      "Fant ingen faktura for denne lenken. Sjekk at du åpnet hele lenken fra fakturaen eller e-posten.",
+    "pay.refusal.generic": "Noe gikk galt. Prøv igjen senere, eller betal i nettbanken med KID.",
+    "pay.state.pending": "Venter på at Vipps bekrefter betalingen …",
+    "pay.state.couldNotRead": "Kunne ikke lese betalingens status akkurat nå. Prøver igjen.",
+    "pay.state.paid": "Takk — betalingen gikk gjennom, og fakturaen er betalt.",
+    "pay.state.failed": "Betalingen gikk ikke gjennom. Prøv igjen, eller betal i nettbanken med KID.",
+    "pay.state.cancelled": "Betalingen ble avbrutt eller gikk ut på tid. Ingenting ble betalt.",
+    "pay.state.stillPending":
+      "Vipps har ikke bekreftet betalingen ennå. Godkjente du den i Vipps, blir den registrert på fakturaen når Vipps bekrefter den — ikke betal igjen.",
+    "pay.state.notFound":
+      "Fant ikke denne betalingen. Åpne betalingslenken fra fakturaen på nytt for å se hva som står åpent.",
   },
 } satisfies CatalogResources;
 

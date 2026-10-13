@@ -517,7 +517,10 @@ The last two must answer 404 (the proxy sent the public host regardless) or be r
 by the proxy — never 200 and the sign-in page. The `Host: vantigo.example.com` check
 proves something only when `APP_URL`'s site is served by the same proxy; there it is
 exactly the request that would reach `APP_URL`'s site through the public address. Then open a pay link and check the proxy's
-access log: the line for `/pay` carries no `token`.
+access log: the line for `/pay` carries no `token`. In the browser, the pay page shows
+the invoice without signing in, its address bar no longer shows the `token`, and the
+developer tools' network list holds only requests from the table above — no
+`/api/v1/identity/session`.
 
 **What can go wrong:**
 

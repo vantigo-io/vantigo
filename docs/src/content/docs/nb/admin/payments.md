@@ -520,7 +520,10 @@ proxyen — aldri 200 og innloggingssiden. Kontrollen med `Host: vantigo.example
 beviser bare noe når nettstedet til `APP_URL` betjenes av den samme proxyen; der er den
 nettopp forespørselen som ville nådd nettstedet til `APP_URL` gjennom den offentlige
 adressen. Åpne deretter en betalingslenke og se i proxyens
-tilgangslogg: linjen for `/pay` har ikke noe `token`.
+tilgangslogg: linjen for `/pay` har ikke noe `token`. I nettleseren viser betalingssiden
+fakturaen uten innlogging, adresselinjen viser ikke lenger `token`, og nettverkslisten
+i utviklerverktøyene har bare forespørsler fra tabellen over — ingen
+`/api/v1/identity/session`.
 
 **Hva som kan gå galt:**
 
