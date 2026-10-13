@@ -240,7 +240,6 @@ var paymentsPortColumns = []string{
 	"payment_attempts.capture_attempts:integer::NO:0",
 	"payment_attempts.capture_guaranteed_until:timestamp with time zone::YES:",
 	"payment_attempts.capture_key:uuid::YES:",
-	"payment_attempts.capture_psp_reference:character varying:100:YES:",
 	"payment_attempts.captured_amount:numeric:14,2:YES:",
 	"payment_attempts.captured_at:timestamp with time zone::YES:",
 	"payment_attempts.create_key:uuid::YES:",

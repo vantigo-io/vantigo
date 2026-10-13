@@ -367,7 +367,6 @@ type InvoicesPaymentAttempt struct {
 	CancelledAmount        pgtype.Numeric
 	RefundedAmount         pgtype.Numeric
 	ReservedAmount         pgtype.Numeric
-	CapturePspReference    *string
 	CaptureGuaranteedUntil *time.Time
 	CreatedAt              time.Time
 	CreatedByUserID        *uuid.UUID

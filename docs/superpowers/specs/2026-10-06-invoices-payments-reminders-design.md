@@ -1705,7 +1705,7 @@ release_pending boolean NOT NULL DEFAULT false,      -- captured or capture_fail
 psp_reference varchar(100), redirect_url varchar(2500),       -- redirect_url: sensitive, never logged
 authorized_amount, captured_amount, cancelled_amount, refunded_amount numeric(14,2),
 reserved_amount numeric(14,2),                        -- live while 'capturing' or 'capture_unknown'
-capture_psp_reference varchar(100), capture_guaranteed_until timestamptz,
+capture_guaranteed_until timestamptz,                 -- capture_psp_reference dropped 2026-10-13 (4C review): never written; one column cannot name several captures, and Vipps' event log holds each
 created_at timestamptz NOT NULL, created_by_user_id uuid,   -- on_site: the tablet's user; pay_link: NULL
 expires_at timestamptz NOT NULL, authorized_at, captured_at, finished_at timestamptz,
 refund_watch_until timestamptz,                       -- captured_at + 30 days

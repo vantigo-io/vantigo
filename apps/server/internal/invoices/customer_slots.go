@@ -235,7 +235,7 @@ type exportedPayment struct {
 // state, the amounts and the times, and an abandoned one's reason — staff's
 // words kept as the audit trail, as a payment's removal reason is. Never its
 // redirect_url — the payer's landing page at Vipps, or the on-site QR's
-// target — its keys, its sales unit, its PSP references, its lease or its
+// target — its keys, its sales unit, its PSP reference, its lease or its
 // errors, which are the integration's, not the person's.
 type exportedPayAttempt struct {
 	ID               int64      `json:"id"`
