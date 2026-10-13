@@ -12,7 +12,8 @@ sources:
 
 The Invoices app issues the sales documents of your bookkeeping: a draft becomes a
 numbered invoice or credit note the moment it is issued, gets a PDF, and from then on
-never changes. The app has five areas in its sidebar: **Invoices**, **Invoice
+never changes. The app has six areas in its sidebar: **Invoices**, **Quick invoice**
+(shown only to someone who holds both `invoices:create` and `invoices:issue`), **Invoice
 journal**, **Overdue** (the overdue invoices and their reminders), **Payments** (the
 bank's files and the exception queue, and the day's Vipps payments, shown only with
 `invoices:payments`) and **Invoice
@@ -530,33 +531,61 @@ line, and issue again ([the write-back](/en/reference/invoices/#the-write-back))
 
 ## The quick invoice
 
-The quick invoice is for a job finished on site: you choose the customer, enter up to
-ten lines, and **Issue** — the invoice is created and issued in one step, numbered in the
-same series as every other, with the customer's terms and a due date. Because you hand
-it over there and then, Invoices also records it as **handed over** on the issue day,
-under your name; that record is the delivery a later reminder relies on
-([recording a delivery](#recording-a-delivery)). It needs both `invoices:create` and
-`invoices:issue`.
+The quick invoice is for a job finished on site, on a tablet or a phone. Open **Quick
+invoice** in the sidebar; it is offered to someone who holds both `invoices:create` and
+`invoices:issue`, and anyone else who opens it is told it is not allowed. Then:
+
+1. Choose the **Customer** by searching for it (this needs `customers:view`). The
+   customer's address on file is shown beneath — the primary invoice address, else the
+   primary postal one. A customer who is not registered yet can be made on the spot with
+   **New customer**: the name, whether it is a business or a private person, and the
+   address, which becomes the customer's primary invoice address. **New customer** is
+   offered with `customers:create` and `customers:update`.
+2. Enter one to ten lines — description, quantity, unit, unit price and VAT code. **Add a
+   line** stops at ten. **Your reference** is optional.
+3. Click **Issue**.
+
+The invoice is created and issued in one step, numbered in the same series as every
+other, with the customer's terms and a due date. Because you hand it over there and
+then, Invoices also records it as **handed over** on the issue day, under your name;
+that record is the delivery a later reminder relies on
+([recording a delivery](#recording-a-delivery)). The screen then says *Invoice n is
+issued and recorded as handed over* and offers **Download PDF**, **Open the invoice** and
+**New quick invoice**. While payment on site is off, the PDF is only downloaded, never
+opened on the screen, and the screen shows no pay link: showing a customer on site what
+they can pay is a cash sale. With payment on site on, **Show the PDF** opens it too.
 
 If anything stops the invoice — a field that is not filled in right, a customer who
 cannot be invoiced, a buyer without a complete address or an organisation number, a VAT
 code that cannot be used, or anything else that refuses an ordinary issue — nothing is
-kept: no draft is left behind and no number is used. Correct it and issue again. If the
-connection drops after you chose **Issue**, issuing again from the same screen never makes
-a second invoice: you get the one already issued.
+kept: no draft is left behind and no number is used. The screen says why in words, on
+the line it concerns where there is one, and offers **Open the customer** when the
+buyer's address or organisation number is missing. Correct it and issue again. If the
+connection drops after you chose **Issue**, the screen says *No answer came back*; click
+**Try again**, which sends the same quick invoice again and never makes a second one —
+you get the one already issued. Once you change anything on the form, the next **Issue**
+is a new quick invoice. If the same quick invoice was sent before with other contents,
+the screen says so: start a new quick invoice to issue another.
 
 A quick invoice the customer pays later — by bank with the KID, or through a pay link
 they open after you have left — is an ordinary credit sale. Paid on site with Vipps, or
 with the pay link or its QR code shown to the customer there, it is a cash sale
 (*kontantsalg*), which Invoices allows without a cash register only as a cash invoice
 (*kontantfaktura*) naming the buyer, through payment on site
-([taking a payment on site](#taking-a-payment-on-site)). Ask for **payment on site**
-when you issue it, and the invoice is issued and a Vipps QR code made for the customer
-in one go; if the QR cannot be made — payment on site is off, the buyer is not named
-with an address or an organisation number, Vipps refuses — the invoice is issued all the
-same and you are told why. Issuing again after a lost connection never makes a second
-QR code: you get the one already made, shown again while the customer has not answered. The quick invoice's own screen arrives with
-Vipps in the app; the request behind it is in place now
+([taking a payment on site](#taking-a-payment-on-site)). While payment on site is
+available to you, the screen offers **Issue and take payment with Vipps** beside a
+one-line reminder that this is a cash sale, and only for a customer whose address is on
+file. It issues the invoice and makes a Vipps QR code for the customer in one go, shown
+full screen as on the invoice page: the customer scans it and approves, the screen
+follows the payment until it is registered, and **Close** opens the invoice. If the QR
+cannot be made — payment on site is off, the buyer is not named with an address or an
+organisation number, Vipps refuses — the invoice is issued all the same and the screen
+says *The invoice is issued, but no Vipps payment request was made*, with the reason;
+when the request failed for no stated reason, take the payment from the invoice page.
+**Try again** after a lost connection never makes a second QR code: while the customer
+has not answered, the one already made is shown again; once they have approved it, the
+screen follows that payment and offers no cancel; and when the earlier QR code cannot be
+shown, the screen offers **Cancel it and make a new one**
 ([the quick invoice](/en/reference/invoices/#the-quick-invoice)).
 
 ## Downloading the PDF

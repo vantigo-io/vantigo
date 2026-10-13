@@ -13,6 +13,7 @@ import {
   isAppEnabled,
   switcherTiles,
 } from "./apps";
+import { navigationCatalog } from "./catalogs/navigation";
 
 const allModules = [
   "communications",
@@ -77,6 +78,7 @@ describe("the app registry", () => {
       "/staff/people",
       "/staff/settings",
       "/invoices",
+      "/invoices/quick",
       "/invoices/journal",
       "/invoices/overdue",
       "/invoices/payments",
@@ -194,17 +196,19 @@ describe("the app registry", () => {
     ]);
   });
 
-  // Invoices is five destinations: the list, the journal and Overdue for
-  // anyone who reads invoices, Payments for invoices:payments (invoices
-  // payments and reminders design D22), the settings for invoices:manage
-  // (invoices foundation design D12).
-  it("gives Invoices the list, the journal, Overdue, Payments and the settings", () => {
+  // Invoices is six destinations: the list, the journal and Overdue for
+  // anyone who reads invoices, the quick invoice for whoever may both create
+  // and issue (invoices payments and reminders design D17, D22), Payments for
+  // invoices:payments (D22), the settings for invoices:manage (invoices
+  // foundation design D12).
+  it("gives Invoices the list, the quick invoice, the journal, Overdue, Payments and the settings", () => {
     const invoices = appForKey("invoices");
     expect(invoices).toMatchObject({ module: "invoices", label: "navigation.invoices", home: "/invoices" });
     expect(invoices.requiredPermissions).toEqual(["invoices:access", "invoices:payments", "invoices:manage"]);
     const items = invoices.navSections.flatMap((section) => section.items);
     expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
       ["navigation.invoices", "/invoices", ["invoices:access"]],
+      ["navigation.invoiceQuick", "/invoices/quick", ["invoices:access"]],
       ["navigation.invoiceJournal", "/invoices/journal", ["invoices:access"]],
       ["navigation.invoiceOverdue", "/invoices/overdue", ["invoices:access"]],
       ["navigation.invoicePayments", "/invoices/payments", ["invoices:payments"]],
@@ -231,6 +235,35 @@ describe("the app registry", () => {
       "/invoices/payments",
     ]);
     expect(paths(["invoices:access", "invoices:manage"])).not.toContain("/invoices/payments");
+  });
+
+  // The quick invoice's API asks for invoices:access, invoices:create and
+  // invoices:issue together (D17), meta's canQuickInvoice. hasPermissions is
+  // any-of, so the entry names the app's own permission as requiredPermissions
+  // and the other two as requiredAllPermissions: a drafter or an issuer alone
+  // never sees an entry whose page would only say "not allowed".
+  it("Nav_QuickInvoiceBehindIssue", () => {
+    const paths = (permissions: string[]) =>
+      appNavSections(appForKey("invoices"), allModules, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      }).flatMap((section) => section.items.map((item) => item.to));
+    const quick = appForKey("invoices")
+      .navSections.flatMap((section) => section.items)
+      .find((item) => item.to === "/invoices/quick");
+    expect(quick?.requiredAllPermissions).toEqual(["invoices:create", "invoices:issue"]);
+    expect(paths(["invoices:access", "invoices:create", "invoices:issue"])).toContain("/invoices/quick");
+    expect(paths(["*"])).toContain("/invoices/quick");
+    expect(paths(["invoices:access", "invoices:issue"])).not.toContain("/invoices/quick");
+    expect(paths(["invoices:access", "invoices:create"])).not.toContain("/invoices/quick");
+    expect(paths(["invoices:create", "invoices:issue"])).not.toContain("/invoices/quick");
+  });
+
+  it("names the quick invoice in both languages", () => {
+    expect(navigationCatalog.en["navigation.invoiceQuick"]).toBe("Quick invoice");
+    expect(navigationCatalog.nb["navigation.invoiceQuick"]).toBe("Hurtigfaktura");
   });
 
   // Overdue is read by everyone who reads invoices (D12): its entry names

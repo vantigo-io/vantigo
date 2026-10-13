@@ -51,3 +51,6 @@ export const reminderRunHref = (runId: number): string => REMINDER_RUN_ROUTE_PAT
 
 /** Paper letters: the letters awaiting print, printed in batches and confirmed posted. */
 export const REMINDER_PRINT_ROUTE_PATH = "/invoices/reminders/print";
+
+/** The quick invoice: a customer and a few lines, issued at once and, where allowed, paid on the spot (D17, D22). */
+export const QUICK_INVOICE_ROUTE_PATH = "/invoices/quick";

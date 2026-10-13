@@ -11,6 +11,7 @@ import {
   IconClock,
   IconClockExclamation,
   IconFileInvoice,
+  IconFilePlus,
   IconFlag,
   IconId,
   IconInbox,
@@ -279,6 +280,20 @@ export const apps: readonly AppDefinition[] = [
       to: "/invoices",
       icon: IconFileInvoice,
       requiredPermissions: ["invoices:access"],
+    },
+    {
+      // The quick invoice (invoices payments and reminders design D17, D22):
+      // a customer and a few lines, created and issued in one step on site.
+      // Its API asks for invoices:access, invoices:create and invoices:issue
+      // together (meta's canQuickInvoice); requiredPermissions is any-of, so
+      // the app's own permission is named there and the other two must all
+      // be held as well, so neither a drafter nor an issuer alone is offered
+      // a page that would only say "not allowed".
+      label: "navigation.invoiceQuick",
+      to: "/invoices/quick",
+      icon: IconFilePlus,
+      requiredPermissions: ["invoices:access"],
+      requiredAllPermissions: ["invoices:create", "invoices:issue"],
     },
     {
       // The journal proves the series has no gaps (D11); everyone who reads

@@ -33,8 +33,9 @@ lageret ikke vil slette, og terskler for antall ansatte og tjenestepensjon som i
 bekreftet.
 
 Inne i en app lister sidemenyen appens områder. Mange av dem vises bare til den som har
-den tilhørende rettigheten, så en kollegas sidemeny kan være lengre eller kortere enn
-din:
+den tilhørende rettigheten — og noen få, som **Hurtigfaktura** i Fakturaer, bare til den
+som har flere rettigheter samtidig — så en kollegas sidemeny kan være lengre eller
+kortere enn din:
 
 | App | Områder |
 | --- | --- |
@@ -43,7 +44,7 @@ din:
 | [Timer](/nb/user/time/) | Min uke, Godkjenning, Personer, Timeinnstillinger |
 | [Utlegg](/nb/user/expenses/) | Mine utlegg, Godkjenning av utlegg, Refusjoner, Utleggsinnstillinger |
 | [Ansatte](/nb/user/staff/) | Min side, Ansattoversikt, Ansatteinnstillinger |
-| [Fakturaer](/nb/user/invoices/) | Fakturaer, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
+| [Fakturaer](/nb/user/invoices/) | Fakturaer, Hurtigfaktura, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
 | [Energi](/nb/user/energy/) | Målepunkter |

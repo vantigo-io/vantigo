@@ -5,13 +5,15 @@ import type { ReactNode } from "react";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { allNavSections } from "../apps";
-import { hasPermissions, type ModuleKey } from "../navigation";
+import { hasAllPermissions, hasPermissions, type ModuleKey } from "../navigation";
 import { ForbiddenPage } from "./errors";
 
 interface ModuleAccessRule {
   prefix: string;
   module: ModuleKey;
   requiredPermissions?: readonly string[];
+  /** Every one of these as well, from the entry's `requiredAllPermissions`. */
+  requiredAllPermissions?: readonly string[];
 }
 
 // The app registry is the single source of truth for which destinations
@@ -27,6 +29,7 @@ const rules: ModuleAccessRule[] = allNavSections
             prefix: item.to,
             module: item.module,
             requiredPermissions: item.guardPermissions ?? item.requiredPermissions,
+            requiredAllPermissions: item.requiredAllPermissions,
           },
         ]
       : ([] as ModuleAccessRule[]),
@@ -65,13 +68,19 @@ export const ModuleAccessGuard = ({ children }: { children: ReactNode }) => {
         <Loader size="sm" />
       </Center>
     );
-  const allowed = hasPermissions(authorization.data?.permissions, rule.requiredPermissions);
+  const allowed =
+    hasPermissions(authorization.data?.permissions, rule.requiredPermissions) &&
+    hasAllPermissions(authorization.data?.permissions, rule.requiredAllPermissions);
   return allowed ? (
     children
   ) : (
     <ForbiddenPage
       requiredModule={rule.module}
-      requiredPermissions={rule.requiredPermissions ? [...rule.requiredPermissions] : undefined}
+      requiredPermissions={
+        rule.requiredPermissions || rule.requiredAllPermissions
+          ? [...(rule.requiredPermissions ?? []), ...(rule.requiredAllPermissions ?? [])]
+          : undefined
+      }
     />
   );
 };

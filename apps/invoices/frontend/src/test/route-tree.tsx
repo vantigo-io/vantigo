@@ -18,6 +18,7 @@ import {
   INVOICE_ROUTE_PATH,
   OVERDUE_ROUTE_PATH,
   PAYMENTS_ROUTE_PATH,
+  QUICK_INVOICE_ROUTE_PATH,
   REMINDER_PRINT_ROUTE_PATH,
   REMINDER_RUN_ROUTE_PATH,
   VIPPS_PAYMENTS_ROUTE_PATH,
@@ -25,6 +26,7 @@ import {
 import { InvoicesPage } from "../pages/invoices";
 import { OverduePage } from "../pages/overdue";
 import { PaymentsPage } from "../pages/payments";
+import { QuickInvoicePage } from "../pages/quick-invoice";
 import { ReminderPrintPage } from "../pages/reminder-print";
 import { VippsPaymentsPage } from "../pages/vipps-payments";
 import { BankFileRoute } from "./bank-file-route";
@@ -38,7 +40,7 @@ import { ReminderRunRoute } from "./reminder-run-route";
  * instead of mocking navigation. The pages are told the signed-in user is
  * CURRENT_USER_ID, as the host tells them its session's.
  */
-const makeRouteTree = (canViewCustomers: boolean) => {
+const makeRouteTree = (canViewCustomers: boolean, canCreateCustomers: boolean) => {
   const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: () => <Outlet /> });
   return rootRoute.addChildren([
     createRoute({
@@ -50,6 +52,11 @@ const makeRouteTree = (canViewCustomers: boolean) => {
       getParentRoute: () => rootRoute,
       path: INVOICE_ROUTE_PATH,
       component: () => <InvoiceRoute canViewCustomers={canViewCustomers} currentUserId={CURRENT_USER_ID} />,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: QUICK_INVOICE_ROUTE_PATH,
+      component: () => <QuickInvoicePage canViewCustomers={canViewCustomers} canCreateCustomers={canCreateCustomers} />,
     }),
     createRoute({
       getParentRoute: () => rootRoute,
@@ -85,10 +92,16 @@ const makeRouteTree = (canViewCustomers: boolean) => {
 };
 
 /** Mounts the stand-in routes at a URL under the providers the host gives the pages. */
-export const renderRoute = (url: string, { canViewCustomers = true }: { canViewCustomers?: boolean } = {}) => {
+export const renderRoute = (
+  url: string,
+  {
+    canViewCustomers = true,
+    canCreateCustomers = false,
+  }: { canViewCustomers?: boolean; canCreateCustomers?: boolean } = {},
+) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const router = createRouter({
-    routeTree: makeRouteTree(canViewCustomers),
+    routeTree: makeRouteTree(canViewCustomers, canCreateCustomers),
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [url] }),
   });

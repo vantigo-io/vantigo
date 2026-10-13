@@ -187,6 +187,22 @@ describe("ModuleAccessGuard", () => {
     expect(screen.getByText("Allowed content")).toBeInTheDocument();
   });
 
+  // The quick invoice asks for all three of its API's permissions, so a URL
+  // pasted by an issuer who may not create drafts meets the access-denied
+  // page, never a page of 403s (invoices payments and reminders design D17).
+  it("QuickInvoiceRoute_GuardedByAllThree", () => {
+    renderGuardFor("/invoices/quick", ["invoices:access", "invoices:issue"]);
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+
+    cleanup();
+    renderGuardFor("/invoices/quick", ["invoices:access", "invoices:create"]);
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+
+    cleanup();
+    renderGuardFor("/invoices/quick", ["invoices:access", "invoices:create", "invoices:issue"]);
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
   // Staff's destinations come from the package (`staffNavItems`). People is
   // offered in the sidebar to staff:view and to staff:manage, but its URL —
   // and a person's page under it — is guarded by the app alone: a manager

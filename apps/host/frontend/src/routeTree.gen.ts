@@ -48,6 +48,7 @@ import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
 import { Route as InvoicesInvoiceIdRouteImport } from './routes/invoices/$invoiceId'
 import { Route as InvoicesJournalRouteImport } from './routes/invoices/journal'
 import { Route as InvoicesOverdueRouteImport } from './routes/invoices/overdue'
+import { Route as InvoicesQuickRouteImport } from './routes/invoices/quick'
 import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
@@ -294,6 +295,11 @@ const InvoicesJournalRoute = InvoicesJournalRouteImport.update({
 const InvoicesOverdueRoute = InvoicesOverdueRouteImport.update({
   id: '/overdue',
   path: '/overdue',
+  getParentRoute: () => InvoicesRoute,
+} as any)
+const InvoicesQuickRoute = InvoicesQuickRouteImport.update({
+  id: '/quick',
+  path: '/quick',
   getParentRoute: () => InvoicesRoute,
 } as any)
 const InvoicesSettingsRoute = InvoicesSettingsRouteImport.update({
@@ -599,6 +605,7 @@ export interface FileRoutesByFullPath {
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/invoices/journal': typeof InvoicesJournalRoute
   '/invoices/overdue': typeof InvoicesOverdueRoute
+  '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -678,6 +685,7 @@ export interface FileRoutesByTo {
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/invoices/journal': typeof InvoicesJournalRoute
   '/invoices/overdue': typeof InvoicesOverdueRoute
+  '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -770,6 +778,7 @@ export interface FileRoutesById {
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/invoices/journal': typeof InvoicesJournalRoute
   '/invoices/overdue': typeof InvoicesOverdueRoute
+  '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -864,6 +873,7 @@ export interface FileRouteTypes {
     | '/invoices/$invoiceId'
     | '/invoices/journal'
     | '/invoices/overdue'
+    | '/invoices/quick'
     | '/invoices/settings'
     | '/products/$productId'
     | '/products/categories'
@@ -943,6 +953,7 @@ export interface FileRouteTypes {
     | '/invoices/$invoiceId'
     | '/invoices/journal'
     | '/invoices/overdue'
+    | '/invoices/quick'
     | '/invoices/settings'
     | '/products/$productId'
     | '/products/categories'
@@ -1034,6 +1045,7 @@ export interface FileRouteTypes {
     | '/invoices/$invoiceId'
     | '/invoices/journal'
     | '/invoices/overdue'
+    | '/invoices/quick'
     | '/invoices/settings'
     | '/products/$productId'
     | '/products/categories'
@@ -1391,6 +1403,13 @@ declare module '@tanstack/react-router' {
       path: '/overdue'
       fullPath: '/invoices/overdue'
       preLoaderRoute: typeof InvoicesOverdueRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
+    '/invoices/quick': {
+      id: '/invoices/quick'
+      path: '/quick'
+      fullPath: '/invoices/quick'
+      preLoaderRoute: typeof InvoicesQuickRouteImport
       parentRoute: typeof InvoicesRoute
     }
     '/invoices/settings': {
@@ -1862,6 +1881,7 @@ interface InvoicesRouteChildren {
   InvoicesInvoiceIdRoute: typeof InvoicesInvoiceIdRoute
   InvoicesJournalRoute: typeof InvoicesJournalRoute
   InvoicesOverdueRoute: typeof InvoicesOverdueRoute
+  InvoicesQuickRoute: typeof InvoicesQuickRoute
   InvoicesSettingsRoute: typeof InvoicesSettingsRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
   InvoicesPaymentsVippsRoute: typeof InvoicesPaymentsVippsRoute
@@ -1875,6 +1895,7 @@ const InvoicesRouteChildren: InvoicesRouteChildren = {
   InvoicesInvoiceIdRoute: InvoicesInvoiceIdRoute,
   InvoicesJournalRoute: InvoicesJournalRoute,
   InvoicesOverdueRoute: InvoicesOverdueRoute,
+  InvoicesQuickRoute: InvoicesQuickRoute,
   InvoicesSettingsRoute: InvoicesSettingsRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
   InvoicesPaymentsVippsRoute: InvoicesPaymentsVippsRoute,

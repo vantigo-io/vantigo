@@ -12,7 +12,8 @@ sources:
 
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
 nummerert faktura eller kreditnota i det øyeblikket det utstedes, får en PDF, og endres
-aldri etter det. Appen har fem områder i sidemenyen: **Fakturaer**, **Fakturajournal**,
+aldri etter det. Appen har seks områder i sidemenyen: **Fakturaer**, **Hurtigfaktura**
+(vist bare for den som har både `invoices:create` og `invoices:issue`), **Fakturajournal**,
 **Forfalt** (de forfalte fakturaene og purringene deres), **Innbetalinger** (bankens
 filer og avvikskøen, og dagens Vipps-betalinger, vist bare med `invoices:payments`) og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
 PDF — ved nedlasting eller på e-post — eller som EHF-faktura i Peppol-nettverket, når
@@ -539,33 +540,62 @@ brukes: oppdater arbeidet eller endre linjen, og utsted på nytt
 
 ## Hurtigfaktura
 
-Hurtigfakturaen er for en jobb som er gjort ferdig på stedet: du velger kunden, fører opp
-inntil ti linjer og velger **Utsted** — fakturaen lages og utstedes i ett steg, nummerert i
-den samme serien som alle andre, med kundens betalingsbetingelser og en forfallsdato.
-Fordi du overleverer den der og da, registrerer Invoices den også som **overlevert** på
-utstedelsesdagen, i ditt navn; den registreringen er leveringen en senere purring bygger
-på ([registrere en levering](#registrere-en-levering)). Den krever både `invoices:create`
-og `invoices:issue`.
+Hurtigfakturaen er for en jobb som er gjort ferdig på stedet, på et nettbrett eller en
+telefon. Åpne **Hurtigfaktura** i sidemenyen; den tilbys den som har både
+`invoices:create` og `invoices:issue`, og alle andre som åpner den, får vite at det ikke
+er tillatt. Deretter:
+
+1. Velg **Kunde** ved å søke etter den (dette krever `customers:view`). Kundens adresse
+   vises under — den primære fakturaadressen, ellers den primære postadressen. En kunde
+   som ikke er registrert ennå, kan lages på stedet med **Ny kunde**: navnet, om det er en
+   virksomhet eller en privatperson, og adressen, som blir kundens primære
+   fakturaadresse. **Ny kunde** tilbys med `customers:create` og `customers:update`.
+2. Før opp én til ti linjer — beskrivelse, antall, enhet, enhetspris og mva-kode. **Legg
+   til en linje** stopper på ti. **Deres referanse** er valgfri.
+3. Velg **Utsted**.
+
+Fakturaen lages og utstedes i ett steg, nummerert i den samme serien som alle andre, med
+kundens betalingsbetingelser og en forfallsdato. Fordi du overleverer den der og da,
+registrerer Invoices den også som **overlevert** på utstedelsesdagen, i ditt navn; den
+registreringen er leveringen en senere purring bygger på
+([registrere en levering](#registrere-en-levering)). Skjermbildet sier så *Faktura n er
+utstedt og registrert som overlevert* og tilbyr **Last ned PDF**, **Åpne fakturaen** og
+**Ny hurtigfaktura**. Mens betaling på stedet er slått av, lastes PDF-en bare ned og åpnes
+aldri på skjermen, og skjermbildet viser ingen betalingslenke: å vise en kunde på stedet
+hva de kan betale, er kontantsalg. Med betaling på stedet slått på åpner **Vis PDF-en** den
+også.
 
 Stopper noe fakturaen — et felt som ikke er riktig fylt ut, en kunde som ikke kan
 faktureres, en kjøper uten fullstendig adresse eller organisasjonsnummer, en mva-kode som
 ikke kan brukes, eller noe annet som avviser en vanlig utstedelse — beholdes ingenting:
-ingen utkast blir liggende igjen og ingen nummer brukes. Rett opp og utsted på nytt.
-Faller forbindelsen etter at du valgte **Utsted**, lager det aldri en faktura til å utstede
-på nytt fra det samme skjermbildet: du får den som allerede er utstedt.
+ingen utkast blir liggende igjen og ingen nummer brukes. Skjermbildet sier hvorfor med
+ord, på linjen det gjelder der det er en, og tilbyr **Åpne kunden** når kjøperens adresse
+eller organisasjonsnummer mangler. Rett opp og utsted på nytt. Faller forbindelsen etter
+at du valgte **Utsted**, sier skjermbildet *Svaret kom ikke tilbake*; velg **Prøv igjen**,
+som sender den samme hurtigfakturaen på nytt og aldri lager en til — du får den som
+allerede er utstedt. Så snart du endrer noe i skjemaet, er neste **Utsted** en ny
+hurtigfaktura. Er den samme hurtigfakturaen sendt før med annet innhold, sier
+skjermbildet det: start en ny hurtigfaktura for å utstede en til.
 
 En hurtigfaktura kunden betaler senere — i banken med KID, eller via en betalingslenke
 de åpner etter at du har dratt — er et vanlig kredittsalg. Betalt med Vipps på stedet,
 eller med betalingslenken eller QR-koden vist kunden der, er det kontantsalg, som
 Invoices bare tillater uten kassasystem som kontantfaktura med kjøperen navngitt, gjennom
 betaling på stedet
-([ta imot betaling på stedet](#ta-imot-betaling-på-stedet)). Ber du om **betaling på
-stedet** når du utsteder, utstedes fakturaen og en Vipps-QR-kode lages for kunden i samme
-slengen; kan QR-koden ikke lages — betaling på stedet er slått av, kjøperen er ikke
-navngitt med adresse eller organisasjonsnummer, Vipps avviser — utstedes fakturaen like
-fullt, og du får vite hvorfor. Å utstede på nytt etter at forbindelsen falt, lager aldri en
-QR-kode til: du får den som allerede er laget, vist igjen mens kunden ikke har svart. Hurtigfakturaens eget
-skjermbilde kommer med Vipps i appen; forespørselen bak den er på plass nå
+([ta imot betaling på stedet](#ta-imot-betaling-på-stedet)). Mens betaling på stedet er
+tilgjengelig for deg, tilbyr skjermbildet **Utsted og ta betalt med Vipps** ved siden av en
+påminnelse på én linje om at dette er kontantsalg, og bare for en kunde som har adresse
+registrert. Den utsteder fakturaen og lager en Vipps-QR-kode for kunden i samme slengen,
+vist i fullskjerm som på fakturasiden: kunden skanner den og godkjenner, skjermbildet
+følger betalingen til den er registrert, og **Lukk** åpner fakturaen. Kan QR-koden ikke
+lages — betaling på stedet er slått av, kjøperen er ikke navngitt med adresse eller
+organisasjonsnummer, Vipps avviser — utstedes fakturaen like fullt, og skjermbildet sier
+*Fakturaen er utstedt, men ingen Vipps-betalingsforespørsel ble laget*, med grunnen; feilet
+forespørselen uten oppgitt grunn, tar du betalt fra fakturasiden. **Prøv igjen** etter at
+forbindelsen falt, lager aldri en QR-kode til: mens kunden ikke har svart, vises den som
+allerede er laget, igjen; har kunden godkjent den, følger skjermbildet den betalingen og
+tilbyr ingen avbrytelse; og når den tidligere QR-koden ikke kan vises, tilbyr skjermbildet
+**Avbryt den og lag en ny**
 ([hurtigfakturaen](/en/reference/invoices/#the-quick-invoice)).
 
 ## Laste ned PDF-en
