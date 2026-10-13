@@ -36,6 +36,10 @@ import { useInvoiceFormat } from "../lib/format";
 export const PaymentSettingsCard = () => {
   const { t, date } = useInvoiceFormat();
   const stored = useQuery(paymentSettingsQueryOptions());
+  // A save lost to someone else's: said here, outside the form, which is
+  // drawn afresh on the newer revision — the person's edits are not kept, and
+  // the notice says so — until the next save is answered.
+  const [stale, setStale] = useState(false);
   if (stored.isError && !stored.data) {
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("paymentSettings.failedToLoad")}>
@@ -44,7 +48,21 @@ export const PaymentSettingsCard = () => {
     );
   }
   if (!stored.data) return <ContentSkeleton rows={3} rowHeight={36} />;
-  return <PaymentSettingsForm key={stored.data.revision} stored={stored.data} />;
+  return (
+    <Stack gap="xs">
+      {stale && (
+        <Alert color="yellow" icon={<IconAlertTriangle size={16} />} withCloseButton onClose={() => setStale(false)}>
+          {t("paymentSettings.stale")}
+        </Alert>
+      )}
+      <PaymentSettingsForm
+        key={stored.data.revision}
+        stored={stored.data}
+        onSaving={() => setStale(false)}
+        onStale={() => setStale(true)}
+      />
+    </Stack>
+  );
 };
 
 /** The kontantsalg notice's paragraphs after its title, in order: its one wording (open question 3). */
@@ -60,7 +78,17 @@ const noticeParagraphs = ["cashSale", "withoutRegister", "counterSale", "truthfu
  * explained — `PUBLIC_BASE_URL` among the reasons for pay links — and every
  * refusal is said in words.
  */
-const PaymentSettingsForm = ({ stored }: { stored: PaymentSettings }) => {
+const PaymentSettingsForm = ({
+  stored,
+  onSaving,
+  onStale,
+}: {
+  stored: PaymentSettings;
+  /** A save is sent: any earlier lost save is no longer news. */
+  onSaving: () => void;
+  /** The save named a stale revision: the card says so, and the form is read again. */
+  onStale: () => void;
+}) => {
   const { t, date, dateTime } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const meta = useQuery(invoicesMetaQueryOptions());
@@ -85,7 +113,10 @@ const PaymentSettingsForm = ({ stored }: { stored: PaymentSettings }) => {
       if (turningOnSiteOn) input.acknowledgeKontantsalg = true;
       return putPaymentSettings(input);
     },
-    onMutate: () => setRefused(null),
+    onMutate: () => {
+      setRefused(null);
+      onSaving();
+    },
     onSuccess: async () => {
       setErrors({});
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
@@ -105,7 +136,7 @@ const PaymentSettingsForm = ({ stored }: { stored: PaymentSettings }) => {
       }
       // A stale revision carries no code: the settings are read again.
       if (error instanceof ApiConflictError && !refusalCode(error)) {
-        setRefused(t("paymentSettings.stale"));
+        onStale();
         await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY, "payment-settings"] });
         return;
       }

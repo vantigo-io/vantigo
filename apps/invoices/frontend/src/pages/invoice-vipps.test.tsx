@@ -442,6 +442,68 @@ describe("TakePayment_QrPollCancel", () => {
     ).toBeInTheDocument();
   });
 
+  it.each(["authorized", "capturing", "capture_unknown", "cancelling"] as const)(
+    "follows an open request the customer approved (%s) on payment_request_active, offering no cancel",
+    async (state) => {
+      const fetchMock = onSite({
+        create: () => refusal(409, "payment_request_active", { attemptId: 1001 }),
+        status: () => ({ state }),
+      });
+      renderRoute("/invoices/1001");
+
+      await takePayment();
+      const dialog = await screen.findByRole("dialog");
+      expect(await within(dialog).findByTestId("qr-state")).toHaveTextContent(
+        invoicesCatalog.en[`attempt.state.${state}`],
+      );
+      if (state !== "cancelling") {
+        expect(within(dialog).getByText("Approved. The money is being taken.")).toBeInTheDocument();
+      }
+      expect(within(dialog).queryByRole("img")).not.toBeInTheDocument();
+      expect(within(dialog).queryByRole("button", { name: "Cancel the request" })).not.toBeInTheDocument();
+      expect(within(dialog).queryByRole("button", { name: "Cancel it and make a new one" })).not.toBeInTheDocument();
+      expect(creates(fetchMock)).toBe(1);
+    },
+  );
+
+  it("offers a new request when the one the refusal named is over", async () => {
+    let asked = 0;
+    const fetchMock = onSite({
+      create: () =>
+        asked++ === 0
+          ? refusal(409, "payment_request_active", { attemptId: 1001 })
+          : jsonResponse(201, onSitePayment()),
+      status: () => (asked > 1 ? { state: "created", qrSvg: onSitePayment().qrSvg } : { state: "expired" }),
+    });
+    renderRoute("/invoices/1001");
+
+    await takePayment();
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("No Vipps payment request of this invoice is open.")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Cancel it and make a new one" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Take a Vipps payment now" }));
+    expect(await within(dialog).findByRole("img", { name: "QR code to scan with the Vipps app" })).toBeInTheDocument();
+    expect(creates(fetchMock)).toBe(2);
+  });
+
+  it("offers cancel-and-retry when the open request cannot be read", async () => {
+    server(
+      () => issued(),
+      {
+        "POST /api/v1/invoices/1001/payment-requests": () =>
+          refusal(409, "payment_request_active", { attemptId: 1001 }),
+        "GET /api/v1/invoices/1001/payment-requests/1001": () => new Response(null, { status: 500 }),
+      },
+      { canTakeOnSitePayment: true },
+      { onSitePaymentsAvailable: true },
+    );
+    renderRoute("/invoices/1001");
+
+    await takePayment();
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByRole("button", { name: "Cancel it and make a new one" })).toBeInTheDocument();
+  });
+
   it("offers no on-site payment without canTakeOnSitePayment", async () => {
     server(() => issued(), {}, { canTakeOnSitePayment: false });
     renderRoute("/invoices/1001");

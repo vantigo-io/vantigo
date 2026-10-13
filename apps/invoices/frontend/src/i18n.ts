@@ -1663,7 +1663,7 @@ export const invoicesCatalog = {
     "paymentSettings.saved": "The payment settings are saved",
     "paymentSettings.couldNotSave": "The payment settings were not saved",
     "paymentSettings.stale":
-      "Someone else changed the payment settings meanwhile. They are read again; make your change once more.",
+      "Your changes were not saved: someone else changed the payment settings meanwhile. The settings are shown as they are now; make your change again.",
     "fieldInvalid.paymentSettings.termsUrl": "Enter an https address of at most 500 characters. Pay links need it.",
     "fieldInvalid.paymentSettings.privacyUrl": "Enter an https address of at most 500 characters. Pay links need it.",
     "fieldInvalid.paymentSettings.acknowledgeKontantsalg": "Acknowledge the notice to turn payment on site on.",
@@ -3498,7 +3498,7 @@ export const invoicesCatalog = {
     "paymentSettings.saved": "Betalingsinnstillingene er lagret",
     "paymentSettings.couldNotSave": "Betalingsinnstillingene ble ikke lagret",
     "paymentSettings.stale":
-      "Noen andre endret betalingsinnstillingene i mellomtiden. De leses på nytt; gjør endringen én gang til.",
+      "Endringene dine ble ikke lagret: noen andre endret betalingsinnstillingene i mellomtiden. Innstillingene vises slik de er nå; gjør endringen på nytt.",
     "fieldInvalid.paymentSettings.termsUrl": "Legg inn en https-adresse på høyst 500 tegn. Betalingslenker krever den.",
     "fieldInvalid.paymentSettings.privacyUrl":
       "Legg inn en https-adresse på høyst 500 tegn. Betalingslenker krever den.",

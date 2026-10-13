@@ -1350,7 +1350,9 @@ sales unit — is always allowed.
 
 Two switches on the **Pay links and payment on site** card decide what Vipps is used
 for. Anyone with `invoices:access` may read them; changing them needs
-`invoices:manage`. Click **Save payment settings** after a change.
+`invoices:manage`. Click **Save payment settings** after a change. If someone else saved
+them meanwhile, your changes are not saved: the card says so and shows the settings as
+they are now, for you to make your change again.
 
 - **Pay links** put a link to a pay page on issued invoices. They need the **Sales terms
   address** and the **Privacy notice address** — both `https` addresses, which Vipps
@@ -1473,8 +1475,10 @@ customer who pays later, at home, makes an ordinary credit sale.
 **Cancel the request** stops a request the customer has not approved; one they approved
 is completed and registered. If the screen loses the QR code — the connection dropped —
 click **Take a Vipps payment now** again: while the customer has not answered, the same
-QR code is shown again (*The request already open is shown again*). Otherwise the screen
-offers **Cancel it and make a new one**. A request that cannot be cancelled — Vipps has
+QR code is shown again (*The request already open is shown again*). One the customer has
+approved is followed until it is paid, with no way to cancel it — the money may be on its
+way. One still being made, or whose code is gone, is offered **Cancel it and make a new
+one**; one that is already over is offered **Take a Vipps payment now** afresh. A request that cannot be cancelled — Vipps has
 not confirmed it, or the customer approved it — is said so; if it stays, someone with
 `invoices:manage` abandons it on the invoice's **Vipps payments** card.
 

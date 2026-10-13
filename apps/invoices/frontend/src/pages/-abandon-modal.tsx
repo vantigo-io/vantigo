@@ -30,6 +30,12 @@ export const AbandonModal = ({ attempt, currency, onClose }: AbandonModalProps) 
   const [confirmed, setConfirmed] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [refused, setRefused] = useState<string | null>(null);
+  const unsetError = (field: string) =>
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
   const abandon = useMutation({
     mutationFn: () => abandonAttempt(attempt.id, { reason: reason.trim(), confirmNotCaptured: confirmed }),
     onMutate: () => setRefused(null),
@@ -70,7 +76,7 @@ export const AbandonModal = ({ attempt, currency, onClose }: AbandonModalProps) 
           error={errors.reason}
           onChange={(e) => {
             setReason(e.currentTarget.value);
-            setErrors(({ reason: _, ...rest }) => rest);
+            unsetError("reason");
           }}
         />
         <Checkbox
@@ -79,7 +85,7 @@ export const AbandonModal = ({ attempt, currency, onClose }: AbandonModalProps) 
           error={errors.confirmNotCaptured}
           onChange={(e) => {
             setConfirmed(e.currentTarget.checked);
-            setErrors(({ confirmNotCaptured: _, ...rest }) => rest);
+            unsetError("confirmNotCaptured");
           }}
         />
         {refused && (

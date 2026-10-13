@@ -25,6 +25,7 @@ import {
   createPaymentRequest,
   paymentRequestQueryOptions,
   readPaymentRequest,
+  recoveryOf,
 } from "../api/attempts";
 import { type CustomerAddress, createCustomerWithAddress, customerInvoiceAddressQueryOptions } from "../api/customers";
 import { type InvoiceDocument, pdfUrl } from "../api/invoices";
@@ -77,13 +78,6 @@ const numberOf = (v: number | string): number => {
 
 /** The fields of the body the screen has an input for; a 400 naming another is said beside the buttons. */
 const quickInputs = /^(customerId|yourReference|lines\[\d+\]\.(description|quantity|unit|unitPrice|vatCodeId))$/;
-
-/**
- * The states in which Vipps has the customer's approval, or the request is
- * being ended: the screen shows the request's state and keeps polling, never
- * a QR code and never a cancel — the money may be on its way.
- */
-const APPROVED_STATES = ["authorized", "capturing", "capture_unknown", "cancelling", "captured"];
 
 /** Where the payment on site stands once the invoice is issued. */
 type PaymentStep =
@@ -213,25 +207,15 @@ const QuickInvoice = ({ meta, canCreateCustomers }: { meta: InvoicesMeta; canCre
 
   /** A request already open, read: shown again, followed, or offered to be cancelled — never guessed. */
   const recover = async (invoiceId: number, attemptId: number) => {
-    let open: Awaited<ReturnType<typeof readPaymentRequest>>;
-    try {
-      open = await readPaymentRequest(invoiceId, attemptId);
-    } catch {
-      step({
-        kind: "refused",
-        title: t("takePayment.couldNot"),
-        words: t("takePayment.activeNotShowable"),
-        staleAttemptId: attemptId,
-      });
-      return;
-    }
-    if (open.state === "created" && open.qrSvg) {
-      step({ kind: "qr", attemptId, qrSvg: open.qrSvg, notice: t("takePayment.activeShownAgain") });
-    } else if (APPROVED_STATES.includes(open.state)) {
+    const open = await readPaymentRequest(invoiceId, attemptId).catch(() => undefined);
+    const recovery = recoveryOf(open);
+    if (recovery === "reshow") {
+      step({ kind: "qr", attemptId, qrSvg: open?.qrSvg, notice: t("takePayment.activeShownAgain") });
+    } else if (recovery === "follow") {
       // Seeded, so the QR screen starts on the state read and never offers a cancel meanwhile.
       queryClient.setQueryData(paymentRequestQueryOptions(invoiceId, attemptId).queryKey, open);
       step({ kind: "qr", attemptId });
-    } else if (open.state === "created" || open.state === "creating") {
+    } else if (recovery === "cancel") {
       step({
         kind: "refused",
         title: t("takePayment.couldNot"),
