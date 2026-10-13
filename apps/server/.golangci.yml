@@ -434,6 +434,16 @@ linters:
               desc: "internal/staff may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/invoices/
               desc: "internal/staff may not import another business module"
+        test-fakes:
+          # A package that fakes a provider for tests is an ordinary package,
+          # so other packages' tests can import it; production code never
+          # may. Every non-test file, everywhere.
+          files:
+            - "$all"
+            - "!$test"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/payments/vipps/vippstest
+              desc: "vippstest is a test fake: only _test.go files may import it"
         platform:
           # Every platform package, not only the two the modules mount
           # through: nothing below cmd/vantigo may know a business module

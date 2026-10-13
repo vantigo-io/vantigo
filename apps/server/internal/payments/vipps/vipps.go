@@ -136,24 +136,30 @@ func amountOf(m payments.Money) amount { return amount{Currency: m.Currency, Val
 func (a amount) money() payments.Money { return payments.Money{Currency: a.Currency, Minor: a.Value} }
 
 // paymentBody is the part of GET's answer, and of a modification's, the port
-// reads.
+// reads. The amounts are pointers so that one Vipps left out is told from
+// zero.
 type paymentBody struct {
-	Reference    string `json:"reference"`
-	PSPReference string `json:"pspReference"`
-	State        string `json:"state"`
-	Aggregate    struct {
-		AuthorizedAmount amount `json:"authorizedAmount"`
-		CapturedAmount   amount `json:"capturedAmount"`
-		CancelledAmount  amount `json:"cancelledAmount"`
-		RefundedAmount   amount `json:"refundedAmount"`
+	Reference    string  `json:"reference"`
+	PSPReference string  `json:"pspReference"`
+	State        string  `json:"state"`
+	RedirectURL  string  `json:"redirectUrl"`
+	Amount       *amount `json:"amount"`
+	Aggregate    *struct {
+		AuthorizedAmount *amount `json:"authorizedAmount"`
+		CapturedAmount   *amount `json:"capturedAmount"`
+		CancelledAmount  *amount `json:"cancelledAmount"`
+		RefundedAmount   *amount `json:"refundedAmount"`
 	} `json:"aggregate"`
 	CaptureGuaranteedUntil string `json:"captureGuaranteedUntil"`
 }
 
-// paymentOf decodes a payment answered for reference. A body that does not
-// decode, names another reference or a state the port does not know is an
-// unknown outcome, never a guess.
-func paymentOf(reference string, body []byte) (payments.Payment, error) {
+// paymentOf decodes a payment answered for reference. currency is the
+// request's, empty when it named none (a read, a cancel): then the payment's
+// own amount's. A body that does not decode, names another reference or a
+// state the port does not know, or lacks the aggregate or any of its four
+// amounts, or holds one in another currency, is an unknown outcome — never a
+// guess, and never a zero.
+func paymentOf(reference, currency string, body []byte) (payments.Payment, error) {
 	var b paymentBody
 	if err := json.Unmarshal(body, &b); err != nil {
 		return payments.Payment{}, errors.New("vipps: the payment Vipps answered does not decode")
@@ -167,10 +173,21 @@ func paymentOf(reference string, body []byte) (payments.Payment, error) {
 	default:
 		return payments.Payment{}, fmt.Errorf("vipps: Vipps answered a state the port does not know: %q", b.State)
 	}
+	if currency == "" && b.Amount != nil {
+		currency = b.Amount.Currency
+	}
+	if currency == "" || b.Aggregate == nil {
+		return payments.Payment{}, errors.New("vipps: Vipps answered a payment without its amounts")
+	}
+	amounts := []*amount{b.Aggregate.AuthorizedAmount, b.Aggregate.CapturedAmount, b.Aggregate.CancelledAmount, b.Aggregate.RefundedAmount}
+	for _, a := range amounts {
+		if a == nil || a.Currency != currency {
+			return payments.Payment{}, errors.New("vipps: Vipps answered a payment with an amount missing or in another currency")
+		}
+	}
 	p := payments.Payment{
 		Reference: b.Reference, PSPReference: b.PSPReference, State: state,
-		Authorized: b.Aggregate.AuthorizedAmount.money(), Captured: b.Aggregate.CapturedAmount.money(),
-		Cancelled: b.Aggregate.CancelledAmount.money(), Refunded: b.Aggregate.RefundedAmount.money(),
+		Authorized: amounts[0].money(), Captured: amounts[1].money(), Cancelled: amounts[2].money(), Refunded: amounts[3].money(),
 	}
 	if b.CaptureGuaranteedUntil != "" {
 		until, err := time.Parse(time.RFC3339, b.CaptureGuaranteedUntil)
@@ -230,7 +247,7 @@ func (c *Client) get(ctx context.Context, reference string) (payments.Payment, e
 	if err := c.classify("get", a); err != nil {
 		return payments.Payment{}, err
 	}
-	return paymentOf(reference, a.body)
+	return paymentOf(reference, "", a.body)
 }
 
 // Capture is POST …/{reference}/capture under the caller's key. Vipps'
@@ -282,7 +299,11 @@ func (c *Client) modify(ctx context.Context, op, reference string, m *payments.M
 	if err := c.classify(op, a); err != nil {
 		return payments.Payment{}, err
 	}
-	return paymentOf(reference, a.body)
+	currency := ""
+	if m != nil {
+		currency = m.Currency
+	}
+	return paymentOf(reference, currency, a.body)
 }
 
 // event is one entry of a payment's event log.
@@ -292,7 +313,7 @@ type event struct {
 	Success   bool   `json:"success"`
 }
 
-// CaptureTime is GET …/{reference}/events: the first successful CAPTURED
+// CaptureTime is GET …/{reference}/events: the earliest successful CAPTURED
 // event's time — the log is "the authoritative data" for a payment (R4 §4.4).
 func (c *Client) CaptureTime(ctx context.Context, reference string) (time.Time, bool, error) {
 	if err := checkReference(reference); err != nil {
@@ -311,6 +332,10 @@ func (c *Client) CaptureTime(ctx context.Context, reference string) (time.Time, 
 	if err := json.Unmarshal(a.body, &events); err != nil {
 		return time.Time{}, false, errors.New("vipps: the event log Vipps answered does not decode")
 	}
+	// The earliest by its time, not the first in the list: the API does not
+	// promise the log's order.
+	var first time.Time
+	found := false
 	for _, e := range events {
 		if e.Name != "CAPTURED" || !e.Success {
 			continue
@@ -319,9 +344,11 @@ func (c *Client) CaptureTime(ctx context.Context, reference string) (time.Time, 
 		if err != nil {
 			return time.Time{}, false, errors.New("vipps: a capture event's timestamp does not parse")
 		}
-		return at, true, nil
+		if !found || at.Before(first) {
+			first, found = at, true
+		}
 	}
-	return time.Time{}, false, nil
+	return first, found, nil
 }
 
 const webhooksPath = "/webhooks/v1/webhooks"

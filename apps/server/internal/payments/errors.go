@@ -16,9 +16,13 @@ var (
 	ErrUnauthorized = errors.New("payments: the provider refused the credentials")
 	// ErrNotFound is a 404: the provider holds no payment under the reference.
 	ErrNotFound = errors.New("payments: the provider holds no such payment")
-	// ErrInsufficientFunds is a capture the payer's funds could not cover.
+	// ErrInsufficientFunds is a capture the payer's funds could not cover
+	// (Vipps 6260). Nothing was taken, but it is not final: the reservation
+	// may still be captured later, and the caller decides when to try again
+	// and when to give up.
 	ErrInsufficientFunds = errors.New("payments: the payer's funds are unavailable for the capture")
-	// ErrCaptureFailed is a capture the provider says failed.
+	// ErrCaptureFailed is a capture the provider says failed (Vipps 6280):
+	// nothing was taken, and the provider asks for a retry — it is not final.
 	ErrCaptureFailed = errors.New("payments: the provider failed the capture")
 	// ErrInvalidSignature is a callback that does not authenticate.
 	ErrInvalidSignature = errors.New("payments: the callback's signature does not verify")
@@ -41,8 +45,10 @@ func (e *ErrThrottled) Error() string {
 	return fmt.Sprintf("payments: the provider is throttling requests; retry after %s", e.RetryAfter)
 }
 
-// ErrConflict is a 409: the request conflicts with what the provider holds.
-// Code is the provider's error code, empty when it named none.
+// ErrConflict is a 409, or a refusal whose code says the reference or the
+// idempotency key is already in use: the request conflicts with what the
+// provider holds — which may be a payment made by an earlier attempt of the
+// same request. Code is the provider's error code, empty when it named none.
 type ErrConflict struct {
 	Code string
 }
@@ -74,9 +80,10 @@ func (e *ErrRefused) Error() string {
 
 // IsDefinitiveCreateRefusal reports whether a Create's error means the
 // provider refused the request for good, so no payment exists under it and
-// none ever will: a 400 or 409 problem naming a code, refused keys, or a
-// request refused before it was sent. Anything else leaves the outcome
-// unknown.
+// none ever will: a 400 problem naming a code, refused keys, or a request
+// refused before it was sent. A conflict never is — "the reference already
+// exists" may be this very request, made by an earlier try — and anything
+// else leaves the outcome unknown.
 func IsDefinitiveCreateRefusal(err error) bool {
 	if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrInvalidRequest) {
 		return true
@@ -84,16 +91,14 @@ func IsDefinitiveCreateRefusal(err error) bool {
 	if refused, ok := errors.AsType[*ErrRefused](err); ok {
 		return refused.Code != ""
 	}
-	if conflict, ok := errors.AsType[*ErrConflict](err); ok {
-		return conflict.Code != ""
-	}
 	return false
 }
 
 // IsCaptureFailure reports whether a Capture's error means the capture
 // failed and took nothing: ErrInsufficientFunds or ErrCaptureFailed, and
 // nothing else. Every other error — a conflict, a throttle, refused keys, a
-// 404, a 5xx — leaves the capture's outcome unknown.
+// 404, a 5xx — leaves the capture's outcome unknown. A capture failure is
+// not final either: nothing moved, and the caller may capture again.
 func IsCaptureFailure(err error) bool {
 	return errors.Is(err, ErrInsufficientFunds) || errors.Is(err, ErrCaptureFailed)
 }

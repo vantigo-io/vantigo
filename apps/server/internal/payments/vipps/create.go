@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/vantigo-io/vantigo/server/internal/payments"
+	"github.com/vantigo-io/vantigo/server/internal/payments/qrsvg"
 )
 
 // Vipps' limits on a create (R4 §4.4).
@@ -19,6 +19,9 @@ const (
 	maxAmount      = 65_000_000 // 650 000.00 NOK
 	minDescription = 3
 	maxDescription = 100
+	// maxURLChars is Vipps' limit on returnUrl (R4 §4.3), held for the legal
+	// links too.
+	maxURLChars = 2500
 )
 
 // createBody is ePayment's CreatePaymentRequest as the port sends it.
@@ -67,13 +70,33 @@ func checkCreate(r payments.CreateRequest) error {
 	default:
 		return fmt.Errorf("%w: an unknown flow %q", payments.ErrInvalidRequest, r.Flow)
 	}
+	for _, link := range []string{r.ReturnURL, r.TermsURL, r.PrivacyURL} {
+		if link != "" && !httpsURL(link) {
+			return fmt.Errorf("%w: a return URL and the legal links are https URLs of at most %d characters", payments.ErrInvalidRequest, maxURLChars)
+		}
+	}
 	return nil
 }
 
+// httpsURL reports whether raw is an absolute https URL Vipps accepts.
+func httpsURL(raw string) bool {
+	if len(raw) > maxURLChars {
+		return false
+	}
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && u.Host != ""
+}
+
 // Create is POST /epayment/v1/payments under the caller's key: a WALLET
-// payment, WEB_REDIRECT back to ReturnURL or a QR as an SVG. For a QR, Vipps'
-// redirectUrl links to the image, which is fetched at once — over https,
-// without the keys — and answered as QRSVG.
+// payment, WEB_REDIRECT back to ReturnURL, or a QR. For a QR Vipps is asked
+// for the code's target URL (TEXT/TARGETURL), and the image is rendered here
+// by qrsvg — never fetched from a URL an answer names.
+//
+// A create refused because the reference or the key is already in use (4150,
+// 4020) may be this very request, made by an earlier try whose answer was
+// lost: the payment is then read, and answered as created when it is the
+// one asked for — the same amount and currency; otherwise the outcome is
+// unknown.
 func (c *Client) Create(ctx context.Context, r payments.CreateRequest) (payments.Created, error) {
 	if err := checkCreate(r); err != nil {
 		return payments.Created{}, err
@@ -90,7 +113,7 @@ func (c *Client) Create(ctx context.Context, r payments.CreateRequest) (payments
 		body.UserFlow = "QR"
 		body.QRFormat = &struct {
 			Format string `json:"format"`
-		}{Format: "IMAGE/SVG+XML"}
+		}{Format: "TEXT/TARGETURL"}
 	} else {
 		body.UserFlow, body.ReturnURL = "WEB_REDIRECT", r.ReturnURL
 	}
@@ -109,6 +132,9 @@ func (c *Client) Create(ctx context.Context, r payments.CreateRequest) (payments
 		return payments.Created{}, err
 	}
 	if err := c.classify("create", a); err != nil {
+		if conflict, ok := errors.AsType[*payments.ErrConflict](err); ok && (conflict.Code == codeReferenceExists || conflict.Code == codeKeyExists) {
+			return c.existing(ctx, r)
+		}
 		return payments.Created{}, err
 	}
 	var created struct {
@@ -118,34 +144,41 @@ func (c *Client) Create(ctx context.Context, r payments.CreateRequest) (payments
 	if err := json.Unmarshal(a.body, &created); err != nil || created.Reference != r.Reference || created.RedirectURL == "" {
 		return payments.Created{}, errors.New("vipps: Vipps accepted the payment but answered no reference and redirect URL")
 	}
-	if r.Flow != payments.FlowQR {
-		return payments.Created{Reference: created.Reference, RedirectURL: created.RedirectURL}, nil
-	}
-	svg, err := c.fetchQR(ctx, created.RedirectURL)
+	return createdOf(r, created.RedirectURL)
+}
+
+// existing answers the payment already held under r's reference as created
+// when it is the one r asks for; anything else is an unknown outcome.
+func (c *Client) existing(ctx context.Context, r payments.CreateRequest) (payments.Created, error) {
+	a, err := c.call(ctx, "get", http.MethodGet, paymentPath(r.Reference), nil, "")
 	if err != nil {
 		return payments.Created{}, err
 	}
-	return payments.Created{Reference: created.Reference, QRSVG: svg}, nil
+	if a.status != http.StatusOK {
+		return payments.Created{}, fmt.Errorf("vipps: the reference is in use, and reading it answered %d", a.status)
+	}
+	var held paymentBody
+	if err := json.Unmarshal(a.body, &held); err != nil || held.Reference != r.Reference || held.Amount == nil {
+		return payments.Created{}, errors.New("vipps: the reference is in use, and its payment does not decode")
+	}
+	if *held.Amount != amountOf(r.Amount) {
+		return payments.Created{}, errors.New("vipps: the reference is in use by a payment of another amount")
+	}
+	if held.RedirectURL == "" {
+		return payments.Created{}, errors.New("vipps: the reference is in use, and its payment answers no redirect URL")
+	}
+	return createdOf(r, held.RedirectURL)
 }
 
-// fetchQR downloads the QR image Vipps links to. Its errors never carry the
-// URL, which grants the payment to whoever holds it.
-func (c *Client) fetchQR(ctx context.Context, raw string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Host == "" {
-		return "", errors.New("vipps: the QR Vipps linked to is not an https URL")
+// createdOf is the answer to r: the redirect URL, or the QR rendered from
+// the target URL Vipps answered for it.
+func createdOf(r payments.CreateRequest, redirectURL string) (payments.Created, error) {
+	if r.Flow != payments.FlowQR {
+		return payments.Created{Reference: r.Reference, RedirectURL: redirectURL}, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	svg, err := qrsvg.Render(redirectURL)
 	if err != nil {
-		return "", errors.New("vipps: the QR's URL does not parse")
+		return payments.Created{}, fmt.Errorf("vipps: render the QR: %w", err)
 	}
-	req.Header.Set("Accept", "image/svg+xml")
-	a, err := c.do(req, "qr")
-	if err != nil {
-		return "", err
-	}
-	if a.status != http.StatusOK || !strings.Contains(string(a.body), "<svg") {
-		return "", fmt.Errorf("vipps: the QR image answered %d and no SVG", a.status)
-	}
-	return string(a.body), nil
+	return payments.Created{Reference: r.Reference, QRSVG: svg}, nil
 }
