@@ -1309,7 +1309,11 @@ sykmelding, a sick child and a holiday are the same dates, shown `absent`. Nor i
 colleague shown the rows themselves (whole-branch review): a person's `approved` and
 `registered` day rows are coalesced into **spans** — a row that overlaps or adjoins the
 span before it extends it — answered with no `id`, so a sykmelding over ferie, or a
-row registered afterwards beside another, reads as one span.
+row registered afterwards beside another, reads as one span. The spans are coalesced
+over the person's whole absence and then **clipped to the window** asked for (`from`,
+`to`; the calendar's range), so sliding the window across where one row ends and the
+next begins shows only the clipped union, never a row's own first or last day
+(privacy re-check).
 
 **Hour rows** go only to the person, to `staff:personal-data` and, for a type that is
 not HR-only, to the readers of the type (the manager, the Approver, HR): never to a
@@ -1359,15 +1363,16 @@ grades the sick leave against the work that is left, so the day's sick share is
 (plan Revision 3, M1; the payroll export and the sick-leave rate read that share). Two
 sykmeldinger never share a day.
 
-**What a writer may not read, overlap does not tell** (whole-branch review; plan
-reading 35). A writer who reads HR-only types as leave — HR without
-`staff:personal-data`, a manager deciding — judges an approved or registered HR-only row
-as one whole day of leave that shares nothing, its hours and share unread, and does not
-judge an HR-only request at all: a 24-hour probe beside a svangerskapskontroll, or a day
-row over a pending svangerskapspermisjon, is not refused for them. The person and
+**What a writer may not read, overlap does not tell** (whole-branch review and its
+privacy re-check; plan reading 35). A writer who reads HR-only types as leave — HR
+without `staff:personal-data`, a manager deciding — judges an approved or registered
+HR-only **day** row as one whole day of leave that shares nothing, its share unread,
+and judges neither an HR-only request nor an HR-only **hour** row, which they never see
+(reading 36) and which never blocks a day row in the rule anyway: a 24-hour probe beside
+a svangerskapskontroll, ferie or a sykmelding over a check-up day, or a day row over a
+pending svangerskapspermisjon is not refused for them. The person and
 `staff:personal-data` judge every row as it is, so such a row is refused at the HR-only
-request's approval. What remains: a day row over an HR-only hour row is refused, as over
-any approved leave.
+request's approval when the two cannot stand together.
 
 ### The holiday account
 
@@ -1606,7 +1611,9 @@ stores the result (plan reading 13):
 - **Its days**: `first_day` the first row's, `last_day` the last row's, stored. A case
   keeps its id while its rows do; a case whose rows are all gone is removed, its
   documents leaving it — unless HR closed it, or the retention run erased it (which
-  closes it, keeping its dates and milestone kinds), or an absence still names it.
+  closes it at its derived close, its last day + 17, keeping its dates and milestone
+  kinds), or an absence still names it. An HR-closed case whose rows are all removed
+  stays, empty, with its milestones and notes: the employer's follow-up record.
   A row changed or corrected into a type that is not sick leaves its case and its
   degree in the same write.
 - **A merge** (plan Revision 3, M3): a row that fills the gap between two cases merges
@@ -2257,7 +2264,9 @@ time zone's civil day:
 - **orphaned sick events** — reported as `cases` — a person, not held, whatever their
   employment, with an absence or case event that nothing owns any more (its row, its
   case and the sykmelding it names all gone: a case removed with its only row, a case
-  merged away before the merge was recorded), recorded more than `healthRetentionDays`
+  merged away before the merge was recorded, or a case a row's event names that is gone
+  though the row has since become a child-sick one — the child-sick schedule owns only
+  events that never named a case), recorded more than `healthRetentionDays`
   and seventeen days ago — the latest its case could have closed, on its last day + 17,
   the same bound the case schedule reads — that still holds a health value.
 - **A** — per **employment**: ended in a year more than five years before this one
@@ -2282,8 +2291,9 @@ since the cycle chose the person is seen there:
 - **health** deletes their documents in restricted categories filed under no case and
   replaces the class E values of the events no other schedule owns.
 - **cases**, for each due case, erases its class E columns and its milestones' (the
-  case keeps its id and its days, and is marked closed when HR had not closed it; a
-  milestone its kind and date),
+  case keeps its id and its days, and is marked closed at its derived close — its last
+  day + 17 in the settings' zone — when HR had not closed it; a milestone its kind and
+  date),
   writes the reserved `absent` type in place of its rows' sick type and nulls their
   degree, deletes the documents filed under it, and replaces the health fields — and
   the `typeIds` of class E — of the events it owns: its own, those of the cases it took

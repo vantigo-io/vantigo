@@ -61,7 +61,8 @@ WHERE NOT p.legal_hold
             AND NOT (
                 (ev.payload ? 'absenceId' AND EXISTS (
                     SELECT 1 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
-                    WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND (a.case_id IS NOT NULL OR t.kind = 'child_sick')))
+                    WHERE a.id = (ev.payload ->> 'absenceId')::bigint
+                      AND (a.case_id IS NOT NULL OR (t.kind = 'child_sick' AND NOT ev.payload ? 'rowCaseId'))))
                 OR (ev.payload ? 'sickAbsenceId' AND EXISTS (
                     SELECT 1 FROM staff.absences a
                     WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))
@@ -139,10 +140,12 @@ LIMIT @row_limit;
 SELECT id FROM staff.absences WHERE case_id = @case_id ORDER BY id;
 
 -- name: MarkCaseErased :exec
--- MarkCaseErased closes an erased case where HR had not (its derived close
--- already lies past the health period), so it is never derived away or
--- removed with its rows: its dates and milestone kinds stay.
-UPDATE staff.sick_cases SET closed_at = @now::timestamptz WHERE id = @id AND closed_at IS NULL;
+-- MarkCaseErased closes an erased case where HR had not, at its derived
+-- close — its last day + 17 at midnight in @zone, not the erase's instant
+-- (retention re-check) — so it is never derived away or removed with its
+-- rows: its dates and milestone kinds stay.
+UPDATE staff.sick_cases SET closed_at = ((last_day + 17)::timestamp AT TIME ZONE @zone::text)
+WHERE id = @id AND closed_at IS NULL;
 
 -- name: SetCaseRowsAbsent :execrows
 -- SetCaseRowsAbsent writes the reserved absent type in place of the sick
@@ -238,7 +241,8 @@ WHERE NOT p.legal_hold
   AND NOT (
       (ev.payload ? 'absenceId' AND EXISTS (
           SELECT 1 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
-          WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND (a.case_id IS NOT NULL OR t.kind = 'child_sick')))
+          WHERE a.id = (ev.payload ->> 'absenceId')::bigint
+                      AND (a.case_id IS NOT NULL OR (t.kind = 'child_sick' AND NOT ev.payload ? 'rowCaseId'))))
       OR (ev.payload ? 'sickAbsenceId' AND EXISTS (
           SELECT 1 FROM staff.absences a
           WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))

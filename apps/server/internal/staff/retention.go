@@ -714,7 +714,9 @@ func ownedHealthEvents(ctx context.Context, txq *store.Queries, personID int64) 
 		switch {
 		case ids.Withdrawal:
 			return true
-		case ids.AbsenceID != nil && (cased[*ids.AbsenceID] || childSick[*ids.AbsenceID]):
+		// A child-sick row owns only events that never named a case: one
+		// naming a case that is gone is an orphan (retention re-check).
+		case ids.AbsenceID != nil && (cased[*ids.AbsenceID] || (childSick[*ids.AbsenceID] && ids.RowCaseID == nil)):
 			return true
 		case ids.SickAbsenceID != nil && cased[*ids.SickAbsenceID]:
 			return true
@@ -834,7 +836,7 @@ func (s *server) eraseCase(ctx context.Context, tx pgx.Tx, txq *store.Queries, p
 		count += n
 	}
 	id := caseID
-	if err := txq.MarkCaseErased(ctx, store.MarkCaseErasedParams{Now: now, ID: caseID}); err != nil {
+	if err := txq.MarkCaseErased(ctx, store.MarkCaseErasedParams{Zone: plan.zone, ID: caseID}); err != nil {
 		return 0, fmt.Errorf("staff: mark case %d erased: %w", caseID, err)
 	}
 	n, err := txq.SetCaseRowsAbsent(ctx, store.SetCaseRowsAbsentParams{AbsentID: plan.absentID, Now: now, CaseID: &id})
