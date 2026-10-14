@@ -683,7 +683,8 @@ The rules behind the screens above:
   and after that only HR; HR corrects a decided or
   registered absence when the days were wrong. You are mailed when your request is
   decided, cancelled or corrected, and your manager when you ask for or register an
-  absence — the mail never names a sickness, an HR-only type, a percentage or a note.
+  absence — the mail never names a sickness, an HR-only type, a percentage or a note,
+  and a registration reaches your manager only as "an absence".
 - **Leave that reveals health or family matters** (an HR-only type, such as pregnancy
   leave) is decided by whoever holds the personal-data permission, not by your manager,
   and your manager is not mailed about it; they see it only once approved, as *leave*.

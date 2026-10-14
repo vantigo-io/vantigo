@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"slices"
 	"testing"
+
+	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
 
 // values is a row's fields as an event names them, from literal JSON.
@@ -230,6 +232,35 @@ func TestAbsenceEvent_UnclassedFieldsBlankedByEveryErase(t *testing.T) {
 		f = fieldsAfter(bare, class)
 		if f["firstDay"] != changed || f["type"] != changed {
 			t.Errorf("the %s erase of an event without a map: %v, want every field blanked", class, f)
+		}
+	}
+}
+
+// Every key an absence event's payload can carry is classed on purpose, and
+// a name the module does not know is E — erased by every erase, shaped by
+// the health group — so a field added later fails closed (whole-branch
+// review).
+func TestAbsenceFieldClass_EveryKeyAndFailClosed(t *testing.T) {
+	want := map[string][2]string{ // name: {class on a plain row, on a health row}
+		"firstDay": {"C", "C"}, "lastDay": {"C", "C"}, "status": {"C", "C"}, "percent": {"C", "C"},
+		"hours": {"C", "C"}, "selfApproved": {"C", "C"}, fieldType: {"C", "E"}, fieldDegree: {"C", "E"},
+		"note": {"D", "D"}, "decisionNote": {"D", "D"}, fieldDemandedOn: {"E", "E"}, fieldPostponedUnder: {"E", "E"},
+		"somethingNew": {"E", "E"},
+	}
+	note, decision := "n", "d"
+	full := store.StaffAbsence{TypeID: 1, Hours: numericOfHundredths(200), DegreePercent: numericOfHundredths(5000),
+		Percent: numericOfHundredths(wholeDay), Note: &note, DecisionNote: &decision, SelfApproved: true}
+	for name := range absenceValues(full) {
+		if _, ok := want[name]; !ok {
+			t.Errorf("absenceValues carries %q, which this table does not class", name)
+		}
+	}
+	for name, classes := range want {
+		if got := absenceFieldClass(name, false); got != classes[0] {
+			t.Errorf("absenceFieldClass(%q, plain) = %s, want %s", name, got, classes[0])
+		}
+		if got := absenceFieldClass(name, true); got != classes[1] {
+			t.Errorf("absenceFieldClass(%q, health) = %s, want %s", name, got, classes[1])
 		}
 	}
 }

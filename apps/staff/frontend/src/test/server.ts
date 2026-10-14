@@ -1970,12 +1970,12 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           return staffProblem(400, { title: "Invalid milestone", errors: { kind: ["Not a milestone to mark"] } });
         if (sickCase[4] === "note" && method === "PUT") {
           if (!holdsPersonalData(role)) return forbidden();
-          const stale = staleRevision(init, milestone.revision, "milestone");
+          const stale = staleRevision(init, milestone.revision ?? 0, "milestone");
           if (stale) return stale;
           const note = (body as { note?: string } | undefined)?.note;
           if (note) milestone.note = note;
           else delete milestone.note;
-          milestone.revision += 1;
+          milestone.revision = (milestone.revision ?? 0) + 1;
           return jsonResponse(200, found);
         }
         if (sickCase[4] === "done") {
@@ -1989,11 +1989,11 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           delete milestone.doneAt;
         }
         milestone.due = false;
-        milestone.revision += 1;
+        milestone.revision = (milestone.revision ?? 0) + 1;
         return jsonResponse(200, found);
       }
       if (method === "PUT") {
-        const stale = staleRevision(init, found.revision, "case");
+        const stale = staleRevision(init, found.revision ?? 0, "case");
         if (stale) return stale;
         // A field left out is kept; one sent is written, null clearing it.
         const input = body as { accommodationNote?: string | null; maxBenefitEstimate?: string | null };
@@ -2012,7 +2012,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           found.maxBenefitEstimate = input.maxBenefitEstimate ?? derived.toISOString().slice(0, 10);
           found.maxBenefitEstimateEdited = input.maxBenefitEstimate != null;
         }
-        found.revision += 1;
+        found.revision = (found.revision ?? 0) + 1;
         return jsonResponse(200, found);
       }
     }

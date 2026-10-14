@@ -25,13 +25,20 @@ export const markMilestoneDone = (caseId: number, kind: StaffMilestoneKind): Pro
 export const waiveMilestone = (caseId: number, kind: StaffMilestoneKind, reason: string): Promise<StaffCase> =>
   sendAbsenceWrite<StaffCase>(`/api/v1/staff/cases/${caseId}/milestones/${kind}/waive`, "POST", { reason });
 
-/** The accommodation note — the manager's and HR's — guarded by the case's revision; empty clears it. */
+/**
+ * A case's If-Match: the etag a writer without the health group is sent in
+ * place of the revision, quoted, else the revision (design §5).
+ */
+export const caseIfMatch = (sickCase: StaffCase): string =>
+  sickCase.etag ? `"${sickCase.etag}"` : String(sickCase.revision);
+
+/** The accommodation note — the manager's and HR's — guarded by the case's revision or etag; empty clears it. */
 export const updateAccommodationNote = (sickCase: StaffCase, note: string): Promise<StaffCase> =>
   sendAbsenceWrite<StaffCase>(
     `/api/v1/staff/cases/${sickCase.id}`,
     "PUT",
     { accommodationNote: note.trim() === "" ? null : note },
-    String(sickCase.revision),
+    caseIfMatch(sickCase),
   );
 
 /** A person's sick-leave cases the caller may read, open or all. */
@@ -50,7 +57,7 @@ export const updateMaxBenefitEstimate = (sickCase: StaffCase, estimate: string |
     `/api/v1/staff/cases/${sickCase.id}`,
     "PUT",
     { maxBenefitEstimate: estimate },
-    String(sickCase.revision),
+    caseIfMatch(sickCase),
   );
 
 /** HR closes a case before sixteen days have passed since its last day. */

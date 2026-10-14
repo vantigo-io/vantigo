@@ -68,7 +68,7 @@ Every Staff operation requires `staff:access`, and four permissions sit above it
 | --- | --- |
 | `staff:access` | Everyone who should see their own record. |
 | `staff:view` | Colleagues who should see the directory and the company's structure. |
-| `staff:approve` | Whoever decides everyone's absence: they approve, reject and cancel requests, see every person's work details and absences (an HR-only type as leave), the approvals inbox and the calendar — no pay, no private details, no history. |
+| `staff:approve` | Whoever decides everyone's absence: they approve, reject and cancel requests, see every person's work details and absences (an HR-only type as leave), the approvals inbox and the calendar, and open sick-leave cases (their milestones, not the notes) — no pay, no private details, no history. |
 | `staff:manage` | HR: people, employments, documents other than health documents, the document categories, the structure and the settings. Sensitive. |
 | `staff:personal-data` | Whoever may reveal national identity numbers and bank accounts, and read and file health documents. Sensitive. |
 
