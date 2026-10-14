@@ -67,12 +67,20 @@ describe("Settings — the data cards are HR's", () => {
       expect(screen.queryByRole("region", { name })).not.toBeInTheDocument();
   });
 
-  it("shows all four to staff:manage without the directory", async () => {
+  it("shows three to staff:manage without the directory — the payroll export needs staff:personal-data too", async () => {
     stubStaffApi({ role: "manageOnly" });
     renderRoute("/staff/settings");
 
-    for (const name of ["Import and export people", "Payroll export", "Retention", "Thresholds"])
+    for (const name of ["Import and export people", "Retention", "Thresholds"])
       expect(await region(name)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Payroll export" })).not.toBeInTheDocument();
+  });
+
+  it("shows the payroll export to HR holding staff:personal-data", async () => {
+    stubStaffApi({ role: "personalData" });
+    renderRoute("/staff/settings");
+
+    expect(await region("Payroll export")).toBeInTheDocument();
   });
 });
 
@@ -335,7 +343,7 @@ describe("Settings — export people", () => {
 describe("Settings — the payroll export", () => {
   it("exports the previous month by default, as YYYY-MM, under the server's file name", async () => {
     const downloads = catchDownloads();
-    const fetchMock = stubStaffApi();
+    const fetchMock = stubStaffApi({ role: "personalData" });
     renderRoute("/staff/settings");
 
     const card = await region("Payroll export");
@@ -353,7 +361,7 @@ describe("Settings — the payroll export", () => {
 
   it("exports another month picked", async () => {
     catchDownloads();
-    const fetchMock = stubStaffApi();
+    const fetchMock = stubStaffApi({ role: "personalData" });
     renderRoute("/staff/settings");
 
     const card = await region("Payroll export");

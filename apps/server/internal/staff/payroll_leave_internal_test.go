@@ -1,6 +1,7 @@
 package staff
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
@@ -72,8 +73,12 @@ func payrollWithAbsences(t *testing.T, absences ...payrollAbsence) []payrollRow 
 		Terms:       chains,
 		Units:       map[int64]store.StaffBusinessUnit{1: {ID: 1, OrgNumber: &org}},
 		Absences:    rows,
+		LeaveID:     testLeaveID,
 	}, m)
 }
+
+// testLeaveID stands in for the export's keyed surrogate in the pure tests.
+func testLeaveID(id int64) string { return "L" + strconv.FormatInt(id, 10) }
 
 // leaveRows is rows' leave rows, as [id, start, end, description, percent].
 func leaveRows(rows []payrollRow) [][5]string {
@@ -100,7 +105,7 @@ func TestPayrollLeave_OverFourteenDaysAndItsExtension(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("rows = %d, want the employment's and one leave row: %+v", len(rows), rows)
 	}
-	want := [][5]string{{"11", "2026-08-20", "2026-10-15", "permisjonMedForeldrepenger", "80,00"}}
+	want := [][5]string{{"L11", "2026-08-20", "2026-10-15", "permisjonMedForeldrepenger", "80,00"}}
 	if got := leaveRows(rows); len(got) != 1 || got[0] != want[0] {
 		t.Errorf("leave rows = %v, want %v", got, want)
 	}
@@ -134,7 +139,7 @@ func TestPayrollLeave_FourteenDaysAndTheTwelveMonths(t *testing.T) {
 	}
 	february := payrollAbsence{id: 20, typeID: 8, kind: "leave", key: "velferdspermisjon", first: "2026-02-02", last: "2026-02-11"}
 	got := leaveRows(payrollWithAbsences(t, february, tenDays))
-	if want := [5]string{"21", "2026-09-10", "2026-09-19", "andreIkkeLovfestedePermisjoner", "100,00"}; len(got) != 1 || got[0] != want {
+	if want := [5]string{"L21", "2026-09-10", "2026-09-19", "andreIkkeLovfestedePermisjoner", "100,00"}; len(got) != 1 || got[0] != want {
 		t.Errorf("two ten-day leaves in twelve months gave %v, want September's %v", got, want)
 	}
 	lastYear := payrollAbsence{id: 19, typeID: 8, kind: "leave", key: "velferdspermisjon", first: "2025-08-01", last: "2025-08-10"}
@@ -156,12 +161,14 @@ func TestPayrollLeave_FourteenDaysAndTheTwelveMonths(t *testing.T) {
 // percentage leave by degree × (100 − leave %) / 100; child-sick days and
 // those beyond the employer's ten of the year; leave days by their percent;
 // time off in hours; other day rows. Approved ferie under a 100 %
-// sykmelding counts once, as sick — never as holiday too.
+// sykmelding counts as holiday, not sick (ferieloven § 9: the ferie stands
+// until the employee's demand is recorded, and no sykepenger are paid on a
+// holiday day), until a postponement splits it.
 func TestPayrollTotals_PerKind(t *testing.T) {
 	t.Parallel()
 	rows := payrollWithAbsences(t,
 		// Ferie 1–4 September (4 days), a 100 % sykmelding 3–4 September
-		// over it: 2 holiday days, 2 certified sick days.
+		// over it and no demand recorded: 4 holiday days, no sick day.
 		payrollAbsence{id: 1, typeID: 1, kind: "holiday", first: "2026-09-01", last: "2026-09-04"},
 		payrollAbsence{id: 2, typeID: 3, kind: "sick_certified", first: "2026-09-03", last: "2026-09-04"},
 		// Egenmelding Monday–Tuesday 7–8 September: 2 days.
@@ -180,9 +187,9 @@ func TestPayrollTotals_PerKind(t *testing.T) {
 	)
 	r := rows[0]
 	for name, c := range map[string][2]string{
-		"Holiday days":                    {r.HolidayDays, "2,00"},
+		"Holiday days":                    {r.HolidayDays, "4,00"},
 		"Self-certified sick days":        {r.SelfCertifiedSickDays, "2,00"},
-		"Certified sick days":             {r.CertifiedSickDays, "3,50"},
+		"Certified sick days":             {r.CertifiedSickDays, "1,50"},
 		"Child sick days":                 {r.ChildSickDays, "3,00"},
 		"Child sick days beyond employer": {r.ChildSickBeyondEmployer, "2,00"},
 		"Leave days":                      {r.LeaveDays, "2,50"},
@@ -233,10 +240,10 @@ func sharesOnDay(t *testing.T, d string, absences ...payrollAbsence) dayShares {
 	return sharesOn(rows, day(t, d))
 }
 
-// A ferie day is a holiday unless a 100 % sykmelding covers it, which makes
-// it sick and not holiday (Revision 3 H1): a graded sykmelding or an
-// egenmelding over ferie counts nothing as sick — no sykepenger are paid on
-// a holiday day, and an egenmelding cannot interrupt one. Beside leave the
+// A ferie day is a holiday day whatever sickness covers it, until a recorded
+// postponement splits the ferie (ferieloven § 9, Revision 3 H1): a
+// sykmelding of any degree or an egenmelding over ferie counts nothing as
+// sick — no sykepenger are paid on a holiday day. Beside leave the
 // sick share is degree × (100 − the leaves' percent) / 100, the leaves summed
 // and capped at a whole day, so sickness on a 100 % leave day counts nothing.
 func TestSharesOn_FerieAndLeaveDays(t *testing.T) {
@@ -247,7 +254,7 @@ func TestSharesOn_FerieAndLeaveDays(t *testing.T) {
 		absences      []payrollAbsence
 		holiday, sick int64
 	}{
-		{"a 100 % sykmelding over ferie", []payrollAbsence{ferie, {id: 2, typeID: 3, kind: "sick_certified", first: "2026-09-07", last: "2026-09-11"}}, 0, wholeDay},
+		{"a 100 % sykmelding over ferie", []payrollAbsence{ferie, {id: 2, typeID: 3, kind: "sick_certified", first: "2026-09-07", last: "2026-09-11"}}, wholeDay, 0},
 		{"a 50 % sykmelding over ferie", []payrollAbsence{ferie, {id: 2, typeID: 3, kind: "sick_certified", first: "2026-09-07", last: "2026-09-11", degree: 50}}, wholeDay, 0},
 		{"an egenmelding over ferie", []payrollAbsence{ferie, {id: 2, typeID: 2, kind: "sick_self", first: "2026-09-07", last: "2026-09-08"}}, wholeDay, 0},
 		{"a sykmelding on a 100 % leave day", []payrollAbsence{
@@ -317,7 +324,7 @@ func TestPayrollLeave_AWeekendDoesNotBreakALeave(t *testing.T) {
 		payrollAbsence{id: 31, typeID: 8, kind: "leave", key: "velferdspermisjon", first: "2026-09-07", last: "2026-09-11"},
 		payrollAbsence{id: 30, typeID: 8, kind: "leave", key: "velferdspermisjon", first: "2026-09-14", last: "2026-09-25"},
 	))
-	want := [5]string{"30", "2026-09-07", "2026-09-25", "andreIkkeLovfestedePermisjoner", "100,00"}
+	want := [5]string{"L30", "2026-09-07", "2026-09-25", "andreIkkeLovfestedePermisjoner", "100,00"}
 	if len(got) != 1 || got[0] != want {
 		t.Errorf("leave rows = %v, want the one %v", got, want)
 	}

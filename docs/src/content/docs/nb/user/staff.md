@@ -918,7 +918,9 @@ oppdatert og endrer ingenting.
 
 ### Eksporter en måned til lønn
 
-**Lønnseksport** gir lønnssystemet en måneds arbeidsforhold.
+**Lønnseksport** gir lønnssystemet en måneds arbeidsforhold. Den vises for HR som også
+har `staff:personal-data`, siden filen navngir HR-permisjon med a-meldingens
+beskrivelse.
 
 1. Velg **Måned**. Måneden før i dag er valgt når du åpner siden.
 2. Trykk **Eksporter til lønn**. Filen lastes ned som `staff-payroll-<ÅÅÅÅ-MM>.csv`.
@@ -938,7 +940,9 @@ egenmelding, sykmelding, sykt barn (og dagene av det utover arbeidsgiverens ti),
 permisjon og andre dager, og timene med avspasering. Etter et arbeidsforholds rad
 kommer **permisjonsradene**, én per permisjon a-meldingen skal ha — en permisjon over
 fjorten dager, kortere permisjoner som til sammen passerer fjorten dager på tolv
-måneder, og all permittering — med permisjonens id, dager, beskrivelse og prosent.
+måneder, og all permittering — med permisjonens id (en kode som er den samme hver
+måned), dager, beskrivelse og prosent. Ferie er ferie i filen når personen er syk i
+den, til du registrerer kravet om å utsette den.
 
 ### Oppbevaring
 

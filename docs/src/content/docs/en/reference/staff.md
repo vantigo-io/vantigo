@@ -1703,7 +1703,8 @@ Registered over the person's rows, a sykmelding stands over some of them:
   for sickness that begins before the holiday, by the last working day before it
   (§ 9 first paragraph); for sickness during the holiday, as replacement days later
   (§ 9 second paragraph). Until HR records the demand, the approved ferie and a 100 %
-  sykmelding stand side by side — the ferie still counted as taken — and HR's
+  sykmelding stand side by side — the ferie still counted as taken, and in the payroll
+  file and the sick-leave rate as holiday, not sickness — and HR's
   attention list names the ferie ([`holidayAffectedBySickness`](#attention-items)). A
   sykmelding over a *requested* ferie leaves the request as it is; the overlap check
   refuses it at approval.
@@ -1993,7 +1994,11 @@ cut, so they do not sum to `rows`. A dry run records nothing.
 ## The payroll export
 
 `GET /payroll/export?month=YYYY-MM&format=csv` hands a month's employments to payroll
-(design S18). It is `staff:manage`'s; anyone else gets the uniform 403. The rows are the
+(design S18). It is `staff:manage`'s **with `staff:personal-data`** (whole-branch
+review; interim, open question 10 in the plan): its leave rows name HR-only leave by
+its a-melding description, so HR without `staff:personal-data` — who reads such leave
+only as *leave* — and anyone else get the uniform 403. The alternative left to the
+owner is to leave HR-only chains out of the file for HR without that permission. The rows are the
 module's own; what file they become is a **payroll port**'s — `PayrollExporter`, an
 interface inside the module with one implementation today, `csvExporter`, chosen by
 `format` — so a payroll system that wants its own file is one implementation more and
@@ -2060,7 +2065,7 @@ request, a refusal and a cancel count nothing.
 
 | Column | On | Source |
 | --- | --- | --- |
-| `Leave ID` | a leave row | The leave's id: the lowest id among its rows, the a-melding `permisjonId` — it stays as rows are added to the chain, so it is the same every month the leave is reported. |
+| `Leave ID` | a leave row | The leave's a-melding `permisjonId`: a stable surrogate of its chain — `L-` and twelve hex digits, a keyed MAC of the lowest id among its rows under the installation's secret — so it stays as rows are added to the chain and is the same every month the leave is reported, and the file tells no id of the register (whole-branch review). |
 | `Leave start`, `Leave end` | a leave row | The leave's whole first and last day — before or after the month, a last day ahead when it is known. |
 | `Leave description` | a leave row | The type's [a-melding description](#the-a-meldings-leave-descriptions). |
 | `Leave percent` | a leave row | The leave's percent, always filled (> 0 and ≤ 100; 100 for a type without one). |
@@ -2077,13 +2082,14 @@ A total counts the working days — Monday to Friday, not a public holiday — o
 employment within the month, each by the row's share; it is blank when nothing was
 counted. A sick day **beside leave** counts degree × (100 − the leaves' percent) / 100,
 the leaves summed and capped at a whole day, so sickness on a day of 100 % leave counts
-nothing (Revision 3 M1). **A ferie day is a holiday day and counts no sickness** — no
-sykepenger are paid on a holiday day, and an egenmelding cannot interrupt one — so a
-graded sykmelding or an egenmelding over ferie counts as holiday alone; **a 100 %
-sykmelding over approved ferie counts the day once, as sick**, and not as holiday,
-until HR records the employee's [demand to postpone](#a-sykmelding-over-other-rows)
-and the ferie is split (Revision 3 H1). An hour row of another kind than time off
-counts in no total. **Concurrent employments**: a person with two employments in force
+nothing (Revision 3 M1). **A ferie day is a holiday day and counts no sickness**,
+whatever sickness covers it — a sykmelding of any degree or an egenmelding: the ferie
+stands until the employee demands to postpone it (ferieloven § 9), and no sykepenger
+are paid on a holiday day. When HR records the employee's
+[demand to postpone](#a-sykmelding-over-other-rows) the ferie is split, and the split
+rows then decide the days — the sick days the sykmelding's, the rest holiday (Revision
+3 H1). The sick-leave rate reads the days alike. An hour row of another kind than time
+off counts in no total. **Concurrent employments**: a person with two employments in force
 has the day totals on each — the absence is from both — and the days beyond the
 employer's ten on the main one alone. An absence names no employment (a later
 delivery's), so the file cannot tell which employment a leave is from: **its leave
@@ -2107,7 +2113,10 @@ its rows. Skatteetaten's rules decide which are reported
   however many leaves lie on it;
 - **permittering**, whatever its length;
 - **never a child's sickness**: omsorgsdager are not leave, and no child-sick type
-  carries a description; nor svangerskapspenger, which no type models.
+  carries a description; nor svangerskapspenger, which no type models;
+- **never an hour row**: a leave counted in hours — `ammefri` among the seeds, though
+  it carries the description `andreLovfestedePermisjoner` — is never a leave row; it
+  counts in no total either.
 
 **The descriptions' spellings** were checked on 2026-10-14: the a-melding's XSD types
 `beskrivelse` as a plain string (`PermisjonsOgPermitteringsBeskrivelse`, NAV's

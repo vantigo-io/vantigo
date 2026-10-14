@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"regexp"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
@@ -57,6 +56,9 @@ type payrollInput struct {
 	// month's totals, the year's child-sick days before it and the leaves
 	// whose chains reach into it are all judged on them.
 	Absences []store.AbsencesBetweenRow
+	// LeaveID is a leave chain's Leave ID from its first row's id: a stable
+	// surrogate, never the row's own id (whole-branch review).
+	LeaveID func(firstRowID int64) string
 }
 
 // payrollColumns is the file's header (plan, Exact values): sentence-case
@@ -126,6 +128,10 @@ func payrollTermsDay(e store.StaffEmployment, m payrollMonth) time.Time {
 // row being dated the start — still has its row, its terms cells blank.
 func payrollRows(in payrollInput, m payrollMonth) []payrollRow {
 	var out []payrollRow
+	leaveID := in.LeaveID
+	if leaveID == nil {
+		leaveID = func(int64) string { return "" }
+	}
 	absences := map[int64][]store.AbsencesBetweenRow{}
 	for _, a := range in.Absences {
 		absences[a.PersonID] = append(absences[a.PersonID], a)
@@ -167,7 +173,7 @@ func payrollRows(in payrollInput, m payrollMonth) []payrollRow {
 		for _, l := range reportedLeaves(rows, e, m) {
 			out = append(out, payrollRow{
 				EmployeeNumber: r.EmployeeNumber, Name: r.Name, EmploymentNumber: r.EmploymentNumber,
-				LeaveID: strconv.FormatInt(l.ID, 10), LeaveStart: l.First.Format(time.DateOnly), LeaveEnd: l.Last.Format(time.DateOnly),
+				LeaveID: leaveID(l.ID), LeaveStart: l.First.Format(time.DateOnly), LeaveEnd: l.Last.Format(time.DateOnly),
 				LeaveDescription: l.Description, LeavePercent: payrollNumber(l.Percent),
 			})
 		}

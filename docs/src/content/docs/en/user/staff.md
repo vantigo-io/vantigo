@@ -919,7 +919,9 @@ again, then **Import**; the rows already in count as updated and change nothing.
 
 ### Export a month for payroll
 
-**Payroll export** hands a month's employments to your payroll system.
+**Payroll export** hands a month's employments to your payroll system. It is shown to
+HR who also hold `staff:personal-data`, since the file names HR-only leave by its
+a-melding description.
 
 1. Pick the **Month**. The month before today is chosen when you open the page.
 2. Press **Export for payroll**. The file downloads as `staff-payroll-<YYYY-MM>.csv`.
@@ -940,7 +942,9 @@ egenmelding, sykmelding, child-sick (and the days of it beyond the employer's te
 leave and other days, and the hours of time off. After an employment's row come its
 **leave rows**, one per leave the a-melding reports — a leave longer than fourteen
 days, shorter leaves that together pass fourteen days in twelve months, and every
-permittering — with the leave's id, days, description and percent.
+permittering — with the leave's id (a code that stays the same every month), days,
+description and percent. Holiday stays holiday in the file when the person is sick
+during it, until you record their demand to postpone it.
 
 ### Retention
 

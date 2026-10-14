@@ -611,7 +611,11 @@ ingenting; endrer du den, avvises raden med `person_erased`.
 
 ## Eksporter en måned til lønn
 
-Lønnsfilen gir lønnssystemet en måneds arbeidsforhold. Du trenger `staff:manage`.
+Lønnsfilen gir lønnssystemet en måneds arbeidsforhold. Du trenger `staff:manage`
+**og** `staff:personal-data`: filens permisjonsrader navngir HR-permisjon, som
+svangerskapspermisjon, med a-meldingens beskrivelse. Lønn kjøres av noen som har begge
+(en midlertidig regel; eieren kan i stedet velge å utelate HR-permisjon fra filen for HR
+uten `staff:personal-data`).
 
 1. I **Ansatteinnstillinger**, under **Lønnseksport**, velger du **Måned** — måneden før
    i dag er valgt fra start — og trykker **Eksporter til lønn**
@@ -646,10 +650,11 @@ utover de ti arbeidsgiveren dekker i året, det NAV refunderer — **Leave days*
 (permisjon), **Time off hours** (avspasering i timer) og **Other days** (annet). Bare
 godkjent og registrert fravær teller. To regler å kjenne: en sykedag ved siden av en
 prosentpermisjon teller grad × (100 − permisjonens prosent) / 100, og godkjent ferie
-under en 100 % sykmelding teller én gang, **som syk**, til du registrerer den ansattes
-krav om å utsette den ([Utsett ferie ved sykdom](#utsett-ferie-ved-sykdom)); en
-gradert sykmelding eller en egenmelding i ferien teller bare som ferie, siden det ikke
-betales sykepenger på en feriedag. Sykt barn-dager teller etter prosenten.
+teller **som ferie** under all sykdom — en sykmelding av hvilken som helst grad eller en
+egenmelding — siden ferien står til den ansatte krever den utsatt, og det ikke betales
+sykepenger på en feriedag; når du registrerer kravet
+([Utsett ferie ved sykdom](#utsett-ferie-ved-sykdom)), deles ferien, og sykedagene teller
+som syk. Sykt barn-dager teller etter prosenten.
 
 **En person med to arbeidsforhold samtidig**: dagsummene står på hvert arbeidsforholds
 rad, sykt barn-dagene utover arbeidsgiverens ti bare på hovedarbeidsforholdet (høyest
@@ -662,10 +667,11 @@ Etter et arbeidsforholds rad kommer **permisjonsradene**: én per permisjon a-me
 skal ha (Skatteetatens *Permisjon*), med **Leave ID**, **Leave start**, **Leave end**,
 **Leave description** og **Leave percent**. En permisjon rapporteres når den varer mer
 enn fjorten dager, eller når personens permisjoner de siste tolv månedene til sammen
-passerer fjorten dager; permittering alltid; sykt barn aldri. En permisjon som
-forlenges med en ny rad — dagen etter, eller etter en helg eller helligdag — er fortsatt
-én permisjon under den laveste id-en blant radene, den id-en a-meldingen kjenner den
-under. Før du kobler filen til et lønnssystem, sjekk de sju beskrivelsesverdiene
+passerer fjorten dager; permittering alltid; sykt barn og permisjon i timer (*ammefri*)
+aldri. En permisjon som forlenges med en ny rad — dagen etter, eller etter en helg eller
+helligdag — er fortsatt én permisjon under én **Leave ID**, den id-en a-meldingen kjenner
+den under: en kode som `L-C098AE873961`, den samme i hver måneds fil og aldri en id fra
+registeret. Før du kobler filen til et lønnssystem, sjekk de sju beskrivelsesverdiene
 mot kodelisten det systemet bruker: de ble sjekket mot NAVs kilder 14.10.2026, men
 Skatteetatens egen kodeliste var ikke tilgjengelig
 ([referansen](/en/reference/staff/#the-payroll-export)).

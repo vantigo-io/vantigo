@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func payrollEvent(t *testing.T, h *harness, actor uuid.UUID) map[string]any {
 func TestPayroll_TheGoldenMonth(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	hr, hrID := signIn(t, h, "staff:manage")
+	hr, hrID := signIn(t, h, "staff:manage", "staff:personal-data")
 	pd, _ := signIn(t, h, "staff:manage", "staff:personal-data")
 	le := createLegalEntity(t, hr, map[string]any{"name": "Kraft-Verket AS"})
 	unit := createBusinessUnit(t, hr, map[string]any{"legalEntityId": le.Id, "name": "Oslo", "orgNumber": "923609016"})
@@ -153,7 +154,7 @@ func TestPayroll_TheGoldenMonth(t *testing.T) {
 func TestPayroll_TheFormatDefaultsToCSV(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	hr, hrID := signIn(t, h, "staff:manage")
+	hr, hrID := signIn(t, h, "staff:manage", "staff:personal-data")
 	r := hr.Do(http.MethodGet, payrollPath("month=2026-02"), nil)
 	if r.Status != http.StatusOK {
 		t.Fatalf("export: %d %s", r.Status, r.Body)
@@ -171,7 +172,7 @@ func TestPayroll_TheFormatDefaultsToCSV(t *testing.T) {
 func TestPayroll_AnEmptyMonthIsTheHeaderAlone(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	hr, hrID := signIn(t, h, "staff:manage")
+	hr, hrID := signIn(t, h, "staff:manage", "staff:personal-data")
 	company(t, hr)
 	employed(t, hr, "Kari", "2026-01-01", terms())
 	r := hr.Do(http.MethodGet, payrollPath("month=2025-12&format=csv"), nil)
@@ -197,7 +198,7 @@ func TestPayroll_AnEmptyMonthIsTheHeaderAlone(t *testing.T) {
 func TestPayroll_RefusesAMonthOrAFormatItCannotWrite(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	hr, _ := signIn(t, h, "staff:manage")
+	hr, _ := signIn(t, h, "staff:manage", "staff:personal-data")
 	for _, query := range []string{"month=2026-1", "month=2026-13", "month=2026-00", "month=abcd", "month=", "month=2026-09-01", "format=csv"} {
 		p := refused(t, hr.Do(http.MethodGet, payrollPath(query), nil), http.StatusBadRequest, "payroll_month_invalid")
 		if len(p.Errors["month"]) == 0 {
@@ -215,12 +216,15 @@ func TestPayroll_RefusesAMonthOrAFormatItCannotWrite(t *testing.T) {
 	}
 }
 
-// The export is staff:manage's: a reader of the directory, an approver and a
-// holder of staff:access alone get the uniform 403, and nothing is recorded.
+// The export is staff:manage's with staff:personal-data (whole-branch
+// review, open question 10's interim): its leave rows name HR-only leave by
+// its a-melding description. HR without staff:personal-data, a reader of the
+// directory, an approver and a holder of staff:access alone get the uniform
+// 403, and nothing is recorded.
 func TestPayroll_ManageOnly(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	for _, permissions := range [][]string{{"staff:view"}, {"staff:approve"}, {}} {
+	for _, permissions := range [][]string{{"staff:manage"}, {"staff:view"}, {"staff:approve"}, {}} {
 		c, _ := signIn(t, h, permissions...)
 		if r := c.Do(http.MethodGet, payrollPath("month=2026-09"), nil); r.Status != http.StatusForbidden {
 			t.Errorf("%v: %d, want 403", permissions, r.Status)
@@ -274,4 +278,37 @@ func readPayroll(t *testing.T, body []byte) ([]string, [][]string) {
 		records = append(records, strings.Split(line, ";"))
 	}
 	return records[0], records[1:]
+}
+
+// A leave row's Leave ID is a stable surrogate of its chain, never the
+// absence's own id (whole-branch review): the same leave carries the same
+// id in every month's file, and the file tells no row id of the register.
+func TestPayroll_TheLeaveIDIsAStableSurrogate(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	leave := register(t, w.hr, w.kari.Id, absence(t, h, "foreldrepermisjon", "2026-08-24", "2026-09-30"))
+	approveRow(t, h, leave.Id)
+	leaveIDs := func(month string) []string {
+		t.Helper()
+		r := hrPD.Do(http.MethodGet, payrollPath("month="+month), nil)
+		if r.Status != http.StatusOK {
+			t.Fatalf("export %s: %d %s", month, r.Status, r.Body)
+		}
+		var out []string
+		for _, line := range strings.Split(strings.TrimPrefix(string(r.Body), "\ufeff"), "\r\n")[1:] {
+			if cells := strings.Split(line, ";"); len(cells) > 19 && cells[19] != "" {
+				out = append(out, cells[19])
+			}
+		}
+		return out
+	}
+	august, september := leaveIDs("2026-08"), leaveIDs("2026-09")
+	if len(august) != 1 || len(september) != 1 || august[0] != september[0] {
+		t.Fatalf("Leave IDs = %v in August and %v in September, want one, the same", august, september)
+	}
+	if august[0] == strconv.FormatInt(leave.Id, 10) || !strings.HasPrefix(august[0], "L-") {
+		t.Errorf("Leave ID = %q, want a surrogate, not the absence's id %d", august[0], leave.Id)
+	}
 }
