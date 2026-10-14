@@ -142,3 +142,58 @@ func TestDocuments_NotFiledUnderAnErasedCase(t *testing.T) {
 		t.Errorf("the refusal does not name the case: %s", r.Body)
 	}
 }
+
+// A colleague's spans are coalesced over the person's whole absence and
+// clipped to the window asked for (privacy re-check): sliding from or to
+// across where one row ends and another begins shows only the clipped
+// union, never a row's own first or last day.
+func TestAbsences_ColleagueSpansAreClippedToTheWindow(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	ferie := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-10-01", "2026-10-10"))
+	approveRow(t, h, ferie.Id)
+	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-10-08", "2026-10-15"))
+	spans := func(query string) [][2]any {
+		var out [][2]any
+		for _, r := range rowsAs(t, w.viewer, fmt.Sprintf("?personId=%d%s", w.kari.Id, query)) {
+			out = append(out, [2]any{r["firstDay"], r["lastDay"]})
+		}
+		return out
+	}
+	for query, want := range map[string][2]any{
+		"":                 {"2026-10-01", "2026-10-15"},
+		"&from=2026-10-09": {"2026-10-09", "2026-10-15"},
+		"&from=2026-10-11": {"2026-10-11", "2026-10-15"},
+		"&to=2026-10-09":   {"2026-10-01", "2026-10-09"},
+		"&to=2026-10-12":   {"2026-10-01", "2026-10-12"},
+	} {
+		if got := spans(query); len(got) != 1 || got[0] != want {
+			t.Errorf("a colleague's spans%s = %v, want the one clipped union %v", query, got, want)
+		}
+	}
+	cal, _ := calendarAs(t, w.viewer, "?from=2026-10-11&to=2026-10-31")
+	if bars := cal[w.kari.Id]; len(bars) != 1 || bars[0]["firstDay"] != "2026-10-11" || bars[0]["lastDay"] != "2026-10-15" {
+		t.Errorf("a colleague's calendar from 11 October = %v, want 11–15 October", bars)
+	}
+}
+
+// An HR-only hour row never blocks a day row in the real rule, so a writer
+// who reads HR-only types as leave judges none at all (privacy re-check):
+// a manager approves ferie over a day with a check-up, and HR without
+// staff:personal-data registers a sykmelding over it, as they would over a
+// day without one.
+func TestAbsences_AnHROnlyHourRowBlocksNoDayRow(t *testing.T) {
+	t.Parallel()
+	w := newDecisionWorld(t)
+	h := w.h
+	requestOwn(t, w.kariC, absence(t, h, "svangerskapskontroll", "2026-10-07", "2026-10-07", "hours", 1))
+	ferie := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-10-05", "2026-10-09"))
+	if r := decide(w.bossC, approvePath(ferie.Id), ""); r.Status != http.StatusOK {
+		t.Errorf("the manager approving ferie over a check-up day: %d %s, want 200", r.Status, r.Body)
+	}
+	requestOwn(t, w.kariC, absence(t, h, "svangerskapskontroll", "2026-11-04", "2026-11-04", "hours", 1))
+	if r := w.hr.Do(http.MethodPost, absencesPath, with(absence(t, h, "sykmelding", "2026-11-02", "2026-11-06"), "personId", w.kari.Id)); r.Status != http.StatusCreated {
+		t.Errorf("HR registering a sykmelding over a check-up day: %d %s, want 201", r.Status, r.Body)
+	}
+}

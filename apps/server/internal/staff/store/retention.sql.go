@@ -472,7 +472,8 @@ WHERE NOT p.legal_hold
             AND NOT (
                 (ev.payload ? 'absenceId' AND EXISTS (
                     SELECT 1 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
-                    WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND (a.case_id IS NOT NULL OR t.kind = 'child_sick')))
+                    WHERE a.id = (ev.payload ->> 'absenceId')::bigint
+                      AND (a.case_id IS NOT NULL OR (t.kind = 'child_sick' AND NOT ev.payload ? 'rowCaseId'))))
                 OR (ev.payload ? 'sickAbsenceId' AND EXISTS (
                     SELECT 1 FROM staff.absences a
                     WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))
@@ -546,7 +547,8 @@ WHERE NOT p.legal_hold
   AND NOT (
       (ev.payload ? 'absenceId' AND EXISTS (
           SELECT 1 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
-          WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND (a.case_id IS NOT NULL OR t.kind = 'child_sick')))
+          WHERE a.id = (ev.payload ->> 'absenceId')::bigint
+                      AND (a.case_id IS NOT NULL OR (t.kind = 'child_sick' AND NOT ev.payload ? 'rowCaseId'))))
       OR (ev.payload ? 'sickAbsenceId' AND EXISTS (
           SELECT 1 FROM staff.absences a
           WHERE a.id = (ev.payload ->> 'sickAbsenceId')::bigint AND a.case_id IS NOT NULL))
@@ -782,19 +784,21 @@ func (q *Queries) LastErasedAt(ctx context.Context) (time.Time, error) {
 }
 
 const markCaseErased = `-- name: MarkCaseErased :exec
-UPDATE staff.sick_cases SET closed_at = $1::timestamptz WHERE id = $2 AND closed_at IS NULL
+UPDATE staff.sick_cases SET closed_at = ((last_day + 17)::timestamp AT TIME ZONE $1::text)
+WHERE id = $2 AND closed_at IS NULL
 `
 
 type MarkCaseErasedParams struct {
-	Now time.Time
-	ID  int64
+	Zone string
+	ID   int64
 }
 
-// MarkCaseErased closes an erased case where HR had not (its derived close
-// already lies past the health period), so it is never derived away or
-// removed with its rows: its dates and milestone kinds stay.
+// MarkCaseErased closes an erased case where HR had not, at its derived
+// close — its last day + 17 at midnight in @zone, not the erase's instant
+// (retention re-check) — so it is never derived away or removed with its
+// rows: its dates and milestone kinds stay.
 func (q *Queries) MarkCaseErased(ctx context.Context, arg MarkCaseErasedParams) error {
-	_, err := q.db.Exec(ctx, markCaseErased, arg.Now, arg.ID)
+	_, err := q.db.Exec(ctx, markCaseErased, arg.Zone, arg.ID)
 	return err
 }
 

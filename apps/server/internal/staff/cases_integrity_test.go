@@ -31,6 +31,34 @@ func TestCases_AnErasedCaseOutlivesANewSickRow(t *testing.T) {
 	if n := h.Count(t, `SELECT count(*) FROM staff.absences WHERE id = $1 AND case_id = $2`, old.Id, erased); n != 1 {
 		t.Error("the erased case's row no longer names it")
 	}
+	// Its close is the derived one — its last day + 17, at midnight in the
+	// settings' zone — not an HR-style close dated the erase (retention
+	// re-check).
+	if n := h.Count(t, `SELECT count(*) FROM staff.sick_cases c, staff.settings s
+		WHERE c.id = $1 AND c.closed_at = ((c.last_day + 17)::timestamp AT TIME ZONE s.time_zone)`, erased); n != 1 {
+		t.Error("the erased case's closed_at is not its derived close")
+	}
+}
+
+// An event naming a case that no longer exists (rowCaseId) is an orphan,
+// erased by its own instant, even when its row has since become a child-sick
+// one: the child-sick schedule — the end of the row's year — owns only
+// events that never named a case (retention re-check).
+func TestRetention_AnEventOfAGoneCaseIsAnOrphan(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	sick := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-09-01", "2026-09-01"))
+	c := caseOfRow(t, h, sick.Id)
+	do(t, w.hr, http.MethodPut, absencePath(sick.Id), absence(t, h, "sykt_barn", "2026-09-01", "2026-09-01"), http.StatusOK, nil, ifMatchAs(t, w.hr, sick.Id))
+	if n := h.Count(t, `SELECT count(*) FROM staff.sick_cases WHERE id = $1`, c); n != 0 {
+		t.Fatal("the case outlived its only row")
+	}
+	setClock(t, h, h.Now().AddDate(0, 0, 365+17+1))
+	runCycle(t, h)
+	if f := eventFields(t, h, "absence_registered", "absenceId", sick.Id); f["type"] != "changed" {
+		t.Errorf("the gone case's registration kept its type %v, waiting on the child-sick row's year", f["type"])
+	}
 }
 
 // A sick row changed into a type that is not sick — by HR's change of a

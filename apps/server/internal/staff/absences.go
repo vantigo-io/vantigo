@@ -420,11 +420,11 @@ func readsHROnlyOf(caller *callerContext, personID int64) bool {
 // approved and registered rows but exclude, read under the person's lock:
 // absence_overlap when it may not stand beside them. An approval judges its
 // row again here (plan reading 17). A writer who does not read HR-only types
-// (hrOnly false) judges an approved or registered HR-only row as one whole
-// day of leave that shares nothing — its hours and share unread — and does
-// not judge an HR-only request at all, which they never see (whole-branch
-// review): a refusal must not tell them what the row is. The residual: a
-// day row over an HR-only hour row is still refused, as over any leave.
+// (hrOnly false) judges an approved or registered HR-only day row as one
+// whole day of leave that shares nothing — its share unread — and judges
+// neither an HR-only request nor an HR-only hour row, which they never see
+// (whole-branch review, privacy re-check; plan reading 35): a refusal must
+// not tell them what the row is, nor that a row they cannot see is there.
 func judgeOverlap(ctx context.Context, txq *store.Queries, personID, exclude int64, p parsedAbsence, t store.StaffAbsenceType, hrOnly bool) error {
 	rows, err := txq.OverlappingAbsences(ctx, store.OverlappingAbsencesParams{
 		PersonID: personID, Exclude: exclude, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last),
@@ -435,7 +435,11 @@ func judgeOverlap(ctx context.Context, txq *store.Queries, personID, exclude int
 	existing := make([]overlapRow, 0, len(rows))
 	for _, r := range rows {
 		if !hrOnly && hrOnlyType(r.Visibility) {
-			if r.StaffAbsence.Status == absenceRequested {
+			// A request they never see, and an hour row — which never blocks
+			// a day row in the real rule, and which they cannot read — are
+			// not judged at all (privacy re-check); a day row is one whole
+			// day of leave that shares nothing.
+			if r.StaffAbsence.Status == absenceRequested || r.Unit == unitHours {
 				continue
 			}
 			existing = append(existing, overlapRow{First: civil(r.StaffAbsence.FirstDay), Last: civil(r.StaffAbsence.LastDay), Share: wholeDay, Kind: kindLeave, Status: r.StaffAbsence.Status})
@@ -733,15 +737,35 @@ func spanResponse(sp awaySpan) gen.StaffAbsence {
 }
 
 // colleagueSpans is what a colleague reads of people's absence (whole-branch
-// review): their approved and registered day rows touching from..to,
-// coalesced into spans with no row id — so a sykmelding over ferie, or a row
-// registered afterwards beside another, reads as one span — and no hour row.
+// review): their approved and registered day rows coalesced into spans with
+// no row id — so a sykmelding over ferie, or a row registered afterwards
+// beside another, reads as one span — and no hour row. The spans are
+// coalesced over the people's whole absence and then clipped to from..to
+// (either open when not valid; privacy re-check): coalescing only the rows
+// touching the window, or answering a span's own ends, would let a window
+// slid across a row's end show where one row stops and the next begins.
 func colleagueSpans(ctx context.Context, q *store.Queries, people []int64, from, to pgtype.Date) ([]gen.StaffAbsence, error) {
-	rows, err := q.ColleagueAbsenceDays(ctx, store.ColleagueAbsenceDaysParams{PersonIds: people, FromDay: from, ToDay: to})
+	rows, err := q.ColleagueAbsenceDays(ctx, store.ColleagueAbsenceDaysParams{PersonIds: people})
 	if err != nil {
 		return nil, fmt.Errorf("staff: read the colleagues' absence: %w", err)
 	}
-	return mapRows(coalesceDays(rows), spanResponse), nil
+	var out []gen.StaffAbsence
+	for _, sp := range coalesceDays(rows) {
+		if from.Valid {
+			if sp.last.Before(civil(from)) {
+				continue
+			}
+			sp.first = later(sp.first, civil(from))
+		}
+		if to.Valid {
+			if sp.first.After(civil(to)) {
+				continue
+			}
+			sp.last = earlier(sp.last, civil(to))
+		}
+		out = append(out, spanResponse(sp))
+	}
+	return out, nil
 }
 
 // GetStaffAbsences List absences
