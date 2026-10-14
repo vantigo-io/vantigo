@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { validateAbsenceSearch } from "../lib/search";
 import { colleagueCalendarPeople, hrCalendarPeople, hrOnlyApprovals } from "../test/absence-fixtures";
+import { jsonResponse } from "../test/api";
 import { choose, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -77,6 +78,33 @@ describe("Absence — the calendar, as the server shaped it", () => {
       "weekend",
     );
     expect(within(table).getByRole("columnheader", { name: "Tue, Oct 13, 2026" })).not.toHaveAttribute("data-closed");
+    expect(holiday).toHaveAttribute("scope", "col");
+  });
+
+  it("draws no bar for a row wholly outside the month", async () => {
+    stubStaffApi({
+      role: "view",
+      read: (path) =>
+        path === "/api/v1/staff/calendar"
+          ? jsonResponse(200, {
+              from: "2026-10-01",
+              to: "2026-10-31",
+              publicHolidays: [],
+              people: [
+                {
+                  person: { id: 102, displayName: "Grace Hopper", employeeNumber: "E-2" },
+                  absences: [
+                    { id: 631, personId: 102, firstDay: "2026-09-20", lastDay: "2026-09-25", shownAs: "absent" },
+                    { id: 632, personId: 102, firstDay: "2026-10-30", lastDay: "2026-11-04", shownAs: "absent" },
+                  ],
+                },
+              ],
+            })
+          : undefined,
+    });
+    renderRoute("/staff/absence");
+
+    expect(await bars("Grace Hopper")).toEqual(["Grace Hopper: Absent · Oct 30, 2026 – Nov 4, 2026"]);
   });
 
   it("pages a month at a time, each month read on its own", async () => {
@@ -218,6 +246,18 @@ describe("Absence — the approvals inbox", () => {
     expect(
       await screen.findByRole("article", { name: "Grace Hopper: Pregnancy leave, Feb 1, 2027 – Apr 30, 2027" }),
     ).toBeInTheDocument();
+  });
+
+  it("says so when the inbox cannot be read", async () => {
+    stubStaffApi({
+      role: "manage",
+      read: (path) =>
+        path === "/api/v1/staff/approvals" ? staffProblem(500, { title: "Server error", detail: "Boom" }) : undefined,
+    });
+    renderRoute("/staff/absence?tab=approvals");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the requests");
+    expect(screen.queryByText("Nothing waits for your decision")).not.toBeInTheDocument();
   });
 
   it("draws only what the inbox answers: an empty one hints at nothing", async () => {

@@ -112,6 +112,9 @@ export const MyPage = () => {
         <Tabs.Panel value="absence" pt="lg">
           {current === "absence" && (
             <MyAbsence
+              // The spotlight's Request absence may arrive while the tab is
+              // open: a new `create` mounts it afresh, the sheet seeded open.
+              key={create === "absence" ? "requesting" : "plain"}
               today={meta.data.today}
               types={meta.data.absenceTypes}
               requestOnArrival={create === "absence"}

@@ -432,6 +432,18 @@ describe("My page — the request sheet opened from elsewhere", () => {
     expect(router.state.location.search).toEqual({ tab: "absence" });
   });
 
+  it("opens the sheet when the link arrives while the Absence tab is already open", async () => {
+    stubStaffApi({ role: "access", me: 101 });
+    const { router } = renderRoute("/staff/me?tab=absence");
+    await screen.findByRole("button", { name: "Request absence" });
+
+    await router.navigate({ to: "/staff/me", search: { tab: "absence", create: "absence" } } as never);
+
+    const dialog = await screen.findByRole("dialog", { name: "Request absence" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ tab: "absence" }));
+  });
+
   it("keeps the asked-for view in the URL's own words", () => {
     expect(validateMyPageSearch({ tab: "absence", create: "absence" })).toEqual({ tab: "absence", create: "absence" });
     expect(validateMyPageSearch({ tab: "absence", create: "person" })).toEqual({ tab: "absence" });

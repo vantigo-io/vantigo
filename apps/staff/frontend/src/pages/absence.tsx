@@ -238,6 +238,7 @@ const MonthTable = ({
               return (
                 <Table.Th
                   key={day}
+                  scope="col"
                   w={DAY_WIDTH}
                   ta="center"
                   aria-label={closed(day) === "holiday" ? t("publicHolidayDay", { date: full }) : full}
@@ -334,6 +335,8 @@ const AbsenceBar = ({
     ...(absence.hours !== undefined ? [t("absenceHours", { hours: number(absence.hours) })] : []),
     ...(absence.degreePercent !== undefined ? [t("absenceDegree", { percent: number(absence.degreePercent) })] : []),
   ].join(" · ");
+  // The server answers rows that touch the range; one that does not is drawn nowhere.
+  if (absence.lastDay < days[0] || absence.firstDay > days[days.length - 1]) return null;
   const start = Math.max(0, days.indexOf(absence.firstDay < days[0] ? days[0] : absence.firstDay));
   const lastIndex = days.indexOf(absence.lastDay > days[days.length - 1] ? days[days.length - 1] : absence.lastDay);
   const end = lastIndex < 0 ? days.length - 1 : lastIndex;

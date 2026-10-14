@@ -1,7 +1,7 @@
-import { Button, Card, Group, Stack, Text, Textarea } from "@mantine/core";
+import { Alert, Button, Card, Group, Stack, Text, Textarea } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { IconAlertCircle, IconCheck, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, useLocale } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -27,6 +27,11 @@ export const ApprovalsInbox = ({ types }: { types: readonly StaffAbsenceType[] }
   const approvals = useQuery(approvalsQueryOptions());
   return (
     <FieldGroup title={t("approvalsTitle")} description={t("approvalsDescription")}>
+      {approvals.isError && (
+        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadApprovals")}>
+          {approvals.error.message}
+        </Alert>
+      )}
       {approvals.isPending && <ContentSkeleton rows={2} rowHeight={44} />}
       {approvals.data?.data.length === 0 && <Text size="sm">{t("noApprovals")}</Text>}
       {approvals.data?.data.map((approval) => (
