@@ -650,6 +650,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         // Who decides the person's absence requests: their manager, an
         // Approver or HR, never they themselves (the stub knows no self-approver).
         canDecide: (audience.manager || audience.hr || role === "approve") && !audience.self,
+        // Who the caller is to the person: themselves, or their manager today.
+        self: audience.self,
+        isManager: audience.manager && !audience.self,
       },
     };
     return shape(audience, whole, ["id", "revision", "capabilities", "status"], personGroupOf);
@@ -1857,7 +1860,14 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     }
     if (path === "/api/v1/staff/absences") {
       const personId = Number(url.searchParams.get("personId"));
-      if (method === "GET") return jsonResponse(200, page(personRows(personId) ?? [], 1, pageSize));
+      if (method === "GET") {
+        // from and to keep the rows that touch the range; paged as the server pages.
+        const from = url.searchParams.get("from") ?? "0000-01-01";
+        const to = url.searchParams.get("to") ?? "9999-12-31";
+        const rows = (personRows(personId) ?? []).filter((one) => one.firstDay <= to && one.lastDay >= from);
+        const size = Math.min(Number(url.searchParams.get("pageSize")) || pageSize, pageSize);
+        return jsonResponse(200, page(rows, Math.max(1, Number(url.searchParams.get("page")) || 1), size));
+      }
       if (method === "POST") {
         if (!manages(role)) return forbidden();
         const input = body as Schemas["StaffAbsenceRequest"];

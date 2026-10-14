@@ -242,7 +242,8 @@ see the tab. From top to bottom:
   Approver is not shown it). HR also has **Change the estimate** — or **Reset to first
   day + 364** — and **Close the case**. A milestone's note, and why one was waived, are
   shown to `staff:personal-data` only, who has **Change the note** on each milestone.
-- **Absences** — the person's rows as you may see them. A type that reveals health or
+- **Absences** — the person's rows that touch the year shown, as you may see them, a
+  page at a time when there are many. A type that reveals health or
   family matters shows a manager and HR without `staff:personal-data` as an approved
   *Leave*, with nothing to change. HR has **Register absence** — a sykmelding the
   person brings, say — and on a row:
@@ -250,7 +251,7 @@ see the tab. From top to bottom:
   - **Correct** on an approved absence whose days or type were wrong,
   - **Cancel absence** on an approved absence (also for the one who decides it) or a
     request, after asking,
-  - **Postpone holiday** on a 100 % sykmelding: the employee's demand to postpone
+  - **Postpone holiday** on a registered 100 % sykmelding: the employee's demand to postpone
     approved ferie under ferieloven § 9. Set **Demanded on** — never after today, never
     before the sykmelding began — and press **Record the demand**; the ferie it lies over
     is split and its days return to the account. A demand made after the last working

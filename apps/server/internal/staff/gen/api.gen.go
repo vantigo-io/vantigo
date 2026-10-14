@@ -2227,6 +2227,12 @@ type StaffPersonCapabilities struct {
 
 	// CanSeePay The person themselves, staff:manage or staff:personal-data — the pay terms of the person's employments.
 	CanSeePay bool `json:"canSeePay"`
+
+	// IsManager The caller manages the person today by the one manager rule — a manager of theirs, who decides their absence, ticks their sick-leave case's milestones and writes its accommodation note. False for oneself.
+	IsManager bool `json:"isManager"`
+
+	// Self The caller's self-service link names the person — the person themselves.
+	Self bool `json:"self"`
 }
 
 // StaffPersonLink A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody.

@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 import {
   casesAsApprover,
   casesAsPersonalData,
+  graceAbsencesAsHr,
   graceAsHr,
   graceAsManager,
   selfCertification,
 } from "../test/absence-fixtures";
+import { people, person } from "../test/fixtures";
 import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -403,5 +405,109 @@ describe("Person page — egenmelding and care days", () => {
 
     const care = await region("Care days 2026");
     expect(within(care).getByText("Remaining").nextElementSibling).toHaveTextContent("7");
+  });
+});
+
+describe("Person page — the Absence tab after review", () => {
+  it("offers Postpone holiday only on a registered sykmelding", async () => {
+    stubStaffApi({
+      role: "manage",
+      absence: {
+        people: {
+          102: {
+            ...graceAsHr(),
+            absences: graceAbsencesAsHr().map((one) =>
+              one.id === 712 ? { ...one, status: "approved" as const } : one,
+            ),
+          },
+        },
+      },
+    });
+    renderRoute("/staff/people/102?tab=absence");
+
+    expect(within(await row(SICK)).queryByRole("button", { name: "Postpone holiday" })).not.toBeInTheDocument();
+  });
+
+  it("reads the absences of the year shown, and pages them", async () => {
+    const fetchMock = stubStaffApi({ role: "manage", pageSize: 2, absence: { people: { 102: graceAsHr() } } });
+    renderRoute("/staff/people/102?tab=absence");
+
+    const list = await region("Absences");
+    expect(await within(list).findAllByRole("article")).toHaveLength(2);
+    expect(within(list).getByRole("article", { name: CHRISTMAS })).toBeInTheDocument();
+    await userEvent.click(within(list).getByRole("button", { name: "2" }));
+    expect(await within(list).findByRole("article", { name: SUMMER })).toBeInTheDocument();
+    expect(within(list).queryByRole("article", { name: CHRISTMAS })).not.toBeInTheDocument();
+    expect(sent(fetchMock, "GET", /absences\?personId=102&from=2026-01-01&to=2026-12-31&page=2/)).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Previous year" }));
+    await waitFor(() =>
+      expect(sent(fetchMock, "GET", /absences\?personId=102&from=2025-01-01&to=2025-12-31&page=1/)).toHaveLength(1),
+    );
+    expect(await within(list).findByText("No absence this year")).toBeInTheDocument();
+  });
+
+  it("offers the accommodation note on the server's word that the caller manages the person, not on a guess", async () => {
+    // Ada is an Approver who manages Grace — but not Hedy, whose case she
+    // reads as an Approver: no accommodation note to write.
+    const hedy = person({
+      id: 107,
+      givenName: "Hedy",
+      familyName: "Lamarr",
+      displayName: "Hedy Lamarr",
+      employeeNumber: "E-7",
+    });
+    delete hedy.manager;
+    delete hedy.department;
+    stubStaffApi({
+      role: "approve",
+      me: 101,
+      people: [...people(), hedy],
+      absence: {
+        people: { 107: { ...graceAsManager(), absences: [] } },
+        cases: casesAsApprover().map((one) => ({ ...one, id: 703, personId: 107 })),
+      },
+    });
+    renderRoute("/staff/people/107?tab=absence");
+
+    const sickCase = await screen.findByRole("article", { name: "Sick-leave case from Sep 28, 2026" });
+    expect(within(sickCase).getAllByRole("button", { name: "Mark done" }).length).toBeGreaterThan(0);
+    expect(within(sickCase).queryByRole("button", { name: "Change the accommodation note" })).not.toBeInTheDocument();
+  });
+
+  it("offers the person on their own page nothing of the case to change", async () => {
+    stubStaffApi({ role: "access", me: 102, absence: { people: { 102: graceAsManager() } } });
+    renderRoute("/staff/people/102?tab=absence");
+
+    const sickCase = await screen.findByRole("article", { name: "Sick-leave case from Sep 28, 2026" });
+    expect(within(sickCase).getByText("Shorter days for now")).toBeInTheDocument();
+    for (const name of ["Mark done", "Waive", "Change the accommodation note"])
+      expect(within(sickCase).queryByRole("button", { name })).not.toBeInTheDocument();
+  });
+
+  it("puts a refused withdrawal's field error on its field", async () => {
+    stubStaffApi({
+      role: "manage",
+      absence: { people: { 102: graceAsHr() } },
+      write: (method, path) =>
+        method === "PUT" && path.endsWith("/self-certification/withdrawal")
+          ? staffProblem(400, {
+              title: "Invalid withdrawal",
+              errors: { until: ["The withdrawal ends after today, at most a year ahead"] },
+            })
+          : undefined,
+    });
+    renderRoute("/staff/people/102?tab=absence");
+
+    await userEvent.click(within(await region("Egenmelding")).getByRole("button", { name: "Withdraw egenmelding" }));
+    const dialog = await screen.findByRole("dialog", { name: "Withdraw egenmelding" });
+    await typeDate(within(dialog).getByRole("textbox", { name: "Until" }), "Jan 31, 2027");
+    await retype(within(dialog).getByRole("textbox", { name: "Reason" }), "Repeated short absences");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Withdraw" }));
+    expect(
+      await within(dialog).findByText("The withdrawal ends after today, at most a year ahead"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: "Until" })).toHaveAttribute("aria-invalid", "true");
+    expect(within(dialog).getByRole("textbox", { name: "Reason" })).not.toHaveAttribute("aria-invalid", "true");
   });
 });

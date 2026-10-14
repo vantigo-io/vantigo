@@ -331,6 +331,8 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 			CanSeeHealth:         a.reads(groupHealth),
 			CanHold:              a.PersonalData,
 			CanDecide:            canDecide,
+			Self:                 a.Self,
+			IsManager:            a.Manager && !a.Self,
 		},
 		WorkEmail:    shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:    shown(a, "phoneWork", row.PhoneWork),

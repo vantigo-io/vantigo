@@ -337,7 +337,8 @@ names, the employee number and the work email — never a private field. Every r
 
 A list row also carries **`onLeaveToday`** (People's "on leave today", design §7): true
 when an approved or registered absence of whole or part days covers today, of any type —
-the rows `GET /stats` counts in `onLeaveToday`, read in the same request. It is the same
+the rows `GET /stats` counts in `onLeaveToday`, read in the same request for the people
+of the page alone. It is the same
 to every reader of the list and names no type, so a colleague learns no more than the
 calendar's "absent" bar shows them; a request does not count, nor an hour registration.
 
@@ -419,7 +420,11 @@ Each person carries `capabilities`: `canEdit` and `canManageAccount` (`staff:man
 `staff:manage` or `staff:personal-data`), `canSeeHealth` (the person themselves or
 `staff:personal-data`: the person's health documents) and `canHold`
 (`staff:personal-data`: the [legal hold](#the-legal-hold), the
-[reassessment](#the-reassessment) and the [complete export](#the-personal-data-exports)).
+[reassessment](#the-reassessment) and the [complete export](#the-personal-data-exports)),
+`canDecide` (the caller decides the person's absence), and who the caller is to the
+person: `self` (the caller's self-service link names them) and `isManager` (the caller
+manages them today by [the manager rule](#managers-and-the-org-view); false for oneself) —
+which the page reads to offer a manager's writes on a sick-leave case, never guessing.
 
 The **hold** group is about the record's retention rather than the person: whether a
 legal hold stands, with its reason and when it was set, when the retention run erased

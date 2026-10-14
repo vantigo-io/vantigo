@@ -271,9 +271,11 @@ const TypeForm = ({ row, onClose }: { row?: StaffAbsenceType; onClose: () => voi
       if (row)
         return updateAbsenceType(
           row.id,
-          // A seed sends its rules back exactly as read; the server refuses any other.
+          // A seed sends its rules back exactly as read; the server refuses any
+          // other. A company type sends the form's rules — an a-melding mapping
+          // cleared in the form is left out, which clears it.
           {
-            ...(fixed ? changeOf(row) : { ...changeOf(row), ...rules }),
+            ...(fixed ? changeOf(row) : rules),
             names,
             sort: Number(values.sort),
             hidden: values.hidden,
@@ -367,6 +369,8 @@ const TypeForm = ({ row, onClose }: { row?: StaffAbsenceType; onClose: () => voi
           description={t("ameldingLeaveDescription")}
           disabled={fixed}
           clearable
+          // Mantine hides its clear button from assistive technology; this one is named and reachable.
+          clearButtonProps={{ "aria-label": t("clearAmelding"), "aria-hidden": false, tabIndex: 0 }}
           data={ameldingLeaves}
           {...form.getInputProps("ameldingLeave")}
         />

@@ -244,7 +244,8 @@ Ovenfra og ned:
   anslaget** — eller **Tilbakestill til første dag + 364** — og **Lukk saken**. En
   milepæls notat, og hvorfor en ble frafalt, vises bare for `staff:personal-data`, som har
   **Endre notatet** på hver milepæl.
-- **Fravær** — personens rader slik du har lov til å se dem. En type som avslører helse-
+- **Fravær** — personens rader i året som vises, slik du har lov til å se dem, en side
+  om gangen når de er mange. En type som avslører helse-
   eller familieforhold, vises for en leder og for HR uten `staff:personal-data` som en
   godkjent *Permisjon*, uten noe å endre. HR har **Registrer fravær** — en sykmelding
   personen kommer med, for eksempel — og på en rad:
@@ -252,7 +253,7 @@ Ovenfra og ned:
   - **Rett** på et godkjent fravær der dagene eller typen var feil,
   - **Trekk tilbake fraværet** på et godkjent fravær (også for den som avgjorde det)
     eller en søknad, etter å ha spurt,
-  - **Utsett ferie** på en 100 % sykmelding: arbeidstakerens krav om å utsette innvilget
+  - **Utsett ferie** på en registrert 100 % sykmelding: arbeidstakerens krav om å utsette innvilget
     ferie etter ferieloven § 9. Sett **Krevd den** — aldri etter i dag, aldri før
     sykmeldingen begynte — og trykk **Registrer kravet**; ferien den ligger over, deles,
     og dagene går tilbake til kontoen. Et krav som kom etter siste arbeidsdag før ferien,

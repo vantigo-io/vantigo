@@ -104,7 +104,7 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 		if placements, err = placementsOf(ctx, q, ids, caller.Today); err != nil {
 			return err
 		}
-		away, err = awayToday(ctx, q, caller.Today)
+		away, err = awayToday(ctx, q, ids, caller.Today)
 		return err
 	})
 	if err != nil {
@@ -123,21 +123,22 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 	}), nil
 }
 
-// awayToday is the people with an approved or registered day row of any
-// kind covering today (design §7's "on leave today", plan M3) — the rows
-// GET /stats's onLeaveToday counts, so the list and the figure agree. Every
-// kind counts and the flag names none, so a colleague learns no more than
-// the calendar's "absent" bar tells them.
-func awayToday(ctx context.Context, q *store.Queries, today time.Time) (map[int64]bool, error) {
-	rows, err := q.AbsencesBetween(ctx, store.AbsencesBetweenParams{FromDay: dayParam(today), ToDay: dayParam(today)})
+// awayToday is which of ids — one page of the directory — have an approved
+// or registered day row of any kind covering today (design §7's "on leave
+// today", plan M3) — the rows GET /stats's onLeaveToday counts, so the list
+// and the figure agree. Every kind counts and the flag names none, so a
+// colleague learns no more than the calendar's "absent" bar tells them.
+func awayToday(ctx context.Context, q *store.Queries, ids []int64, today time.Time) (map[int64]bool, error) {
+	away := map[int64]bool{}
+	if len(ids) == 0 {
+		return away, nil
+	}
+	rows, err := q.PeopleAwayOn(ctx, store.PeopleAwayOnParams{PersonIds: ids, Today: dayParam(today)})
 	if err != nil {
 		return nil, fmt.Errorf("staff: read today's absences: %w", err)
 	}
-	away := map[int64]bool{}
-	for _, r := range rows {
-		if covers(r, today) {
-			away[r.PersonID] = true
-		}
+	for _, id := range rows {
+		away[id] = true
 	}
 	return away, nil
 }
