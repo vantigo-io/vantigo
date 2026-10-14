@@ -210,8 +210,10 @@ func groupOf(field string) fieldGroup {
 // work group's (§5's Work row), read by everyone who sees the person, while a
 // terms row's title — the history of titles, and its events — stays the
 // employment group's, which a colleague does not read (§5: a colleague's
-// terms are "dates, type, fte").
-var personFieldGroups = map[string]fieldGroup{"title": groupWork}
+// terms are "dates, type, fte"). The directory's onLeaveToday is the
+// absence group's dates (People's "on leave today", plan M3), which a
+// colleague reads as "absent" — never the type.
+var personFieldGroups = map[string]fieldGroup{"title": groupWork, "onLeaveToday": groupAbsence}
 
 // personGroupOf is a field's group on the person's response and the
 // directory's row.

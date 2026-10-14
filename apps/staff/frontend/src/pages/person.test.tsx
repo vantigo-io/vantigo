@@ -430,3 +430,75 @@ describe("Person page — the self-service link", () => {
     expect(sent(fetchMock, "PUT", /\/people\/101\/user$/)[0].body).toEqual({ userId: null });
   });
 });
+
+describe("Person page — the care-day fields", () => {
+  const withCareDays = (fetchMock: ReturnType<typeof stubStaffApi>) => {
+    const ada = fetchMock.state.people.find((one) => one.id === 101);
+    if (ada?.record) Object.assign(ada.record, { childrenUnder12: 2, soleCarer: true, chronicallyIllChildren: 1 });
+  };
+
+  it("shows HR the fields the person response carries", async () => {
+    withCareDays(stubStaffApi({ role: "manage" }));
+    renderRoute("/staff/people/101");
+
+    const care = await region("Children and care days");
+    expect(within(care).getByText("Children under 12").nextElementSibling).toHaveTextContent("2");
+    expect(within(care).getByText("Sole carer").nextElementSibling).toHaveTextContent("Yes");
+    expect(within(care).getByText("Children with extra care days").nextElementSibling).toHaveTextContent("1");
+  });
+
+  it("shows a colleague none of them, the response carrying none", async () => {
+    withCareDays(stubStaffApi({ role: "view" }));
+    renderRoute("/staff/people/101");
+
+    await region("Work");
+    expect(screen.queryByRole("region", { name: "Children and care days" })).not.toBeInTheDocument();
+  });
+
+  it("lets HR change them in the edit modal, an untouched one sent back as it was", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    withCareDays(fetchMock);
+    renderRoute("/staff/people/101");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
+    const children = within(dialog).getByRole("textbox", { name: "Children under 12" });
+    expect(children).toHaveValue("2");
+    await retype(children, "3");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/people\/101$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /\/staff\/people\/101$/);
+    expect(put.body).toMatchObject({ childrenUnder12: 3, soleCarer: true, chronicallyIllChildren: 1 });
+  });
+
+  it("records them for a person who has none yet, and clears one emptied", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    renderRoute("/staff/people/101");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
+    await retype(within(dialog).getByRole("textbox", { name: "Children under 12" }), "1");
+    await choose(dialog, "Sole carer", "No");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/people\/101$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /\/staff\/people\/101$/);
+    expect(put.body).toMatchObject({ childrenUnder12: 1, soleCarer: false });
+    expect(put.body).not.toHaveProperty("chronicallyIllChildren");
+  });
+
+  it("never sends them with my own details (PUT /me takes none)", async () => {
+    const fetchMock = stubStaffApi({ role: "access", me: 101 });
+    withCareDays(fetchMock);
+    renderRoute("/staff/me");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit my details" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit my details" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/me$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /\/staff\/me$/);
+    for (const field of ["childrenUnder12", "soleCarer", "chronicallyIllChildren"])
+      expect(put.body).not.toHaveProperty(field);
+  });
+});

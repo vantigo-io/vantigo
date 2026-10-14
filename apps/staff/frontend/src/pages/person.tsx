@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { personHolidayAccountQueryOptions } from "../api/absence";
 import { staffMetaQueryOptions } from "../api/meta";
 import { personEventsQueryOptions, personQueryOptions, type StaffPerson } from "../api/people";
 import { NotFoundError } from "../api/request";
@@ -14,6 +15,7 @@ import { PEOPLE_ROUTE_PATH } from "../lib/routes";
 import type { PersonSearch, PersonTab } from "../lib/search";
 import { ErasedBanner } from "./-erased-banner";
 import { LegalHoldAlert, LegalHoldButton } from "./-legal-hold";
+import { PersonAbsence } from "./-person-absence";
 import { PersonDocuments } from "./-person-documents";
 import { PersonEmployments } from "./-person-employments";
 import { PersonHistory } from "./-person-history";
@@ -21,11 +23,11 @@ import { PersonProfile } from "./-person-profile";
 import { PersonalDataDownload } from "./-personal-data-download";
 
 /**
- * The person page (design §7): Profile, Employments, History and Documents,
- * the tab in the URL. What it shows is what `GET /people/{id}` and its
- * sub-resources answer this reader (§5); what it offers follows the person's
- * capabilities. The Account and Absence tabs belong to later deliveries and
- * are not drawn at all until they exist.
+ * The person page (design §7): Profile, Employments, Absence, History and
+ * Documents, the tab in the URL. What it shows is what `GET /people/{id}`
+ * and its sub-resources answer this reader (§5); what it offers follows the
+ * person's capabilities. The Account tab belongs to delivery C and is not
+ * drawn until it exists.
  *
  * The hold group (design S15) sits above the tabs: the legal hold and an
  * erased record's banner for `staff:manage` and `staff:personal-data`, and
@@ -55,6 +57,18 @@ export const PersonPage = () => {
   if (historyFor?.id !== personId && (history.isSuccess || history.isError))
     setHistoryFor({ id: personId, readable: !(history.error instanceof NotFoundError) });
   const historyReadable = historyFor?.id === personId && historyFor.readable;
+  // The absence is the person's, a manager's of theirs, an Approver's and
+  // HR's; to anyone else the holiday account is the unknown id's 404 — so the
+  // tab is left out on that 404 alone, decided once per person as the history.
+  const year = meta.data ? Number(meta.data.today.slice(0, 4)) : 0;
+  const absence = useQuery({
+    ...personHolidayAccountQueryOptions(personId, year),
+    enabled: person.isSuccess && meta.isSuccess,
+  });
+  const [absenceFor, setAbsenceFor] = useState<{ id: number; readable: boolean } | null>(null);
+  if (absenceFor?.id !== personId && (absence.isSuccess || absence.isError))
+    setAbsenceFor({ id: personId, readable: !(absence.error instanceof NotFoundError) });
+  const absenceReadable = absenceFor?.id === personId && absenceFor.readable;
 
   if (person.error instanceof NotFoundError)
     return <EmptyState title={t("personNotFound")} description={t("personNotFoundHint")} />;
@@ -78,6 +92,7 @@ export const PersonPage = () => {
   const tabs = [
     { value: "profile" as const, label: t("tab_profile") },
     { value: "employments" as const, label: t("tab_employments") },
+    ...(absenceReadable ? [{ value: "absence" as const, label: t("tab_absence") }] : []),
     ...(historyReadable ? [{ value: "history" as const, label: t("tab_history") }] : []),
     ...(readsDocuments(data) ? [{ value: "documents" as const, label: t("tab_documents") }] : []),
   ];
@@ -126,6 +141,18 @@ export const PersonPage = () => {
             rehire={erased && data.capabilities.canEdit}
           />
         </Tabs.Panel>
+        {absenceReadable && (
+          <Tabs.Panel value="absence" pt="lg">
+            {current === "absence" && (
+              <PersonAbsence
+                person={shown}
+                today={meta.data.today}
+                types={meta.data.absenceTypes}
+                capabilities={meta.data.capabilities}
+              />
+            )}
+          </Tabs.Panel>
+        )}
         {historyReadable && (
           <Tabs.Panel value="history" pt="lg">
             <PersonHistory

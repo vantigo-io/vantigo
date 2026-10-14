@@ -26,12 +26,22 @@ export interface PersonFormValues {
   /** HR's notes — read and written by `staff:manage` and `staff:personal-data` alone. */
   notes: string;
   /**
-   * The care-day fields (design S11), which the form does not show yet but
-   * must send back: `PUT /people/{id}` is a full replace and clears what it
-   * leaves out (plan pre-flight M9). Kept as the person read them.
+   * The care-day fields (design S11), as HR's edit holds them: a number or
+   * empty, and the sole carer as yes, no or not recorded. `PUT /people/{id}`
+   * is a full replace that clears what it leaves out (plan pre-flight M9),
+   * so a field untouched is sent back as the person read it, and one left
+   * empty is left out — not recorded.
    */
-  careDays: Pick<StaffPersonInput, "childrenUnder12" | "soleCarer" | "chronicallyIllChildren">;
+  careDays: CareDayValues;
 }
+
+export interface CareDayValues {
+  childrenUnder12: number | string;
+  chronicallyIllChildren: number | string;
+  soleCarer: "yes" | "no" | null;
+}
+
+const noCareDays = (): CareDayValues => ({ childrenUnder12: "", chronicallyIllChildren: "", soleCarer: null });
 
 export const emptyPerson = (): PersonFormValues => ({
   givenName: "",
@@ -54,7 +64,7 @@ export const emptyPerson = (): PersonFormValues => ({
   city: "",
   country: "",
   notes: "",
-  careDays: {},
+  careDays: noCareDays(),
 });
 
 /**
@@ -83,10 +93,19 @@ export const personFormValuesOf = (person: StaffPerson): PersonFormValues => ({
   country: person.country ?? "",
   notes: person.notes ?? "",
   careDays: {
-    ...(person.childrenUnder12 !== undefined ? { childrenUnder12: person.childrenUnder12 } : {}),
-    ...(person.soleCarer !== undefined ? { soleCarer: person.soleCarer } : {}),
-    ...(person.chronicallyIllChildren !== undefined ? { chronicallyIllChildren: person.chronicallyIllChildren } : {}),
+    childrenUnder12: person.childrenUnder12 ?? "",
+    chronicallyIllChildren: person.chronicallyIllChildren ?? "",
+    soleCarer: person.soleCarer === undefined ? null : person.soleCarer ? "yes" : "no",
   },
+});
+
+/** The care-day fields as the request names them: what is empty is left out, and so not recorded. */
+const careDayInputOf = (
+  values: CareDayValues,
+): Pick<StaffPersonInput, "childrenUnder12" | "soleCarer" | "chronicallyIllChildren"> => ({
+  ...(values.childrenUnder12 === "" ? {} : { childrenUnder12: Number(values.childrenUnder12) }),
+  ...(values.soleCarer === null ? {} : { soleCarer: values.soleCarer === "yes" }),
+  ...(values.chronicallyIllChildren === "" ? {} : { chronicallyIllChildren: Number(values.chronicallyIllChildren) }),
 });
 
 /** The private group (design §5): optional at the create, the person's own and HR's to read. */
@@ -139,7 +158,7 @@ export const personInputOf = (values: PersonFormValues): StaffPersonInput => ({
   ...text("city", values.city),
   ...(values.country.trim() ? { country: values.country.trim().toUpperCase() } : {}),
   ...text("notes", values.notes),
-  ...values.careDays,
+  ...careDayInputOf(values.careDays),
 });
 
 /** One of the next of kin as a form holds them: the texts as strings, the relationship unchosen as null. */
@@ -227,6 +246,10 @@ const country = (t: Translate) => (value: string) =>
   value.trim() === "" || /^[A-Za-z]{2}$/.test(value.trim()) ? null : t("countryInvalid");
 const email = (t: Translate) => (value: string) =>
   value.trim() === "" || /^[^\s@]+@[^\s@]+$/.test(value.trim()) ? null : t("emailInvalid");
+const childCount = (t: Translate) => (value: number | string) =>
+  value === "" || (Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 20)
+    ? null
+    : t("childCountInvalid");
 const maxLength = (t: Translate, max: number) => (value: string) =>
   value.trim().length > max ? t("textTooLong", { max }) : null;
 
@@ -254,6 +277,10 @@ export const personValidation = (t: Translate) => ({
   workCountry: country(t),
   country: country(t),
   notes: maxLength(t, 2000),
+  careDays: {
+    childrenUnder12: childCount(t),
+    chronicallyIllChildren: childCount(t),
+  },
 });
 
 /** The checks My page makes before asking; the server judges them again. */

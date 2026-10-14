@@ -15,6 +15,7 @@ import type { StaffBusinessUnit, StaffDepartment, StaffLegalEntity, StaffLocatio
 import type { components } from "../api-schema";
 import { defaultFullTimeHours, fullTimeHoursMismatch } from "../lib/terms";
 import {
+  allAbsenceTypes,
   approvals as defaultApprovals,
   calendarPeople as defaultCalendarPeople,
   careDays as defaultCareDays,
@@ -22,6 +23,7 @@ import {
   holidayAccount as defaultHolidayAccount,
   myAbsences as defaultMyAbsences,
   selfCertification as defaultSelfCertification,
+  type PersonAbsence,
 } from "./absence-fixtures";
 import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
@@ -34,6 +36,7 @@ import {
   documents as defaultDocuments,
   employments as defaultEmployments,
   events as defaultEvents,
+  holidaySchemes as defaultHolidaySchemes,
   importTally as defaultImportTally,
   legalEntities as defaultLegalEntities,
   locations as defaultLocations,
@@ -106,8 +109,18 @@ export interface AbsenceServer {
   calendarPeople?: Schemas["StaffCalendarPerson"][];
   /** The requests the caller decides, oldest first. */
   approvals?: Schemas["StaffApproval"][];
-  /** The open cases the caller reads. */
+  /** The cases the caller reads, open and closed; `GET /cases` answers the open ones unless asked for all. */
   cases?: Schemas["StaffCase"][];
+  /**
+   * What the person page's Absence tab reads of each person, as the caller
+   * reads it. A person not here is one whose absence the caller may not
+   * read: their holiday account is the 404 of an unknown id.
+   */
+  people?: Record<number, PersonAbsence>;
+  /** `GET /absence-types` as staff:manage reads it; the meta's types with a hidden seed, the reserved one and a company type by default. */
+  types?: Schemas["StaffAbsenceType"][];
+  /** `GET /holiday-schemes`; the meta's by default. */
+  schemes?: Schemas["StaffHolidayScheme"][];
 }
 
 /** What the fake holds after the writes, for a test to read back. */
@@ -126,6 +139,9 @@ export interface StaffState {
   myAbsences: Schemas["StaffAbsence"][];
   approvals: Schemas["StaffApproval"][];
   cases: Schemas["StaffCase"][];
+  personAbsence: Record<number, PersonAbsence>;
+  absenceTypes: Schemas["StaffAbsenceType"][];
+  holidaySchemes: Schemas["StaffHolidayScheme"][];
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -430,6 +446,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     myAbsences: server.absence?.myAbsences ?? defaultMyAbsences(),
     approvals: server.absence?.approvals ?? defaultApprovals(),
     cases: server.absence?.cases ?? defaultCases(),
+    personAbsence: server.absence?.people ?? {},
+    absenceTypes: server.absence?.types ?? allAbsenceTypes(defaultMeta(role).absenceTypes),
+    holidaySchemes: server.absence?.schemes ?? defaultHolidaySchemes(),
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -543,6 +562,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       phoneWork: body.phoneWork,
       workCountry: body.workCountry ?? "NO",
       preferredLanguage: body.preferredLanguage ?? "nb",
+      onLeaveToday: false,
       status: { state: "none" },
     };
     state.people.push(stored);
@@ -627,9 +647,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         canSeePay: audience.self || audience.hr || audience.personalData,
         canSeeHealth: audience.self || audience.personalData,
         canHold: audience.personalData,
-        // Who decides the person's absence requests: their manager or HR, never
-        // they themselves (the stub knows no self-approver).
-        canDecide: (audience.manager || audience.hr) && !audience.self,
+        // Who decides the person's absence requests: their manager, an
+        // Approver or HR, never they themselves (the stub knows no self-approver).
+        canDecide: (audience.manager || audience.hr || role === "approve") && !audience.self,
       },
     };
     return shape(audience, whole, ["id", "revision", "capabilities", "status"], personGroupOf);
@@ -864,7 +884,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const locationId = id("locationId");
     const standing = (one: StoredPerson) => {
       // A colleague lists the people active today, whatever status says.
-      if (role === "view") return one.status.state === "active";
+      if (role === "view" || role === "approve") return one.status.state === "active";
       if (status === "all") return true;
       if (status === "ended") return one.status.state === "ended";
       return one.status.state !== "ended";
@@ -1475,7 +1495,12 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (method === "PUT") {
         const stale = staleRevision(init, document.revision, "document");
         if (stale) return stale;
-        const input = body as { categoryId: number; validTo?: string; signedAt?: string };
+        const input = body as {
+          categoryId: number;
+          validTo?: string;
+          signedAt?: string;
+          caseId?: number | null;
+        };
         const category = state.documentCategories.find((row) => row.id === input.categoryId);
         if (!category || category.archivedAt)
           return staffProblem(400, {
@@ -1485,6 +1510,15 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         if (category.restricted && !holdsPersonalData(role)) return restrictedRefusal();
         delete document.validTo;
         delete document.signedAt;
+        // caseId: written only when named — null clears it — and a document
+        // moved out of a restricted category leaves its case.
+        if (input.caseId !== undefined && !category.restricted)
+          return staffProblem(400, {
+            title: "Invalid document",
+            errors: { caseId: ["Only a document of a restricted category belongs to a case"] },
+          });
+        if (input.caseId === null || !category.restricted) delete document.caseId;
+        else if (input.caseId !== undefined) document.caseId = input.caseId;
         Object.assign(document, {
           category: summaryOf(category),
           ...(input.validTo ? { validTo: input.validTo } : {}),
@@ -1734,7 +1768,121 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     if (path === "/api/v1/staff/approvals" && method === "GET")
       return jsonResponse(200, page(state.approvals, 1, pageSize));
 
-    const absence = /^\/api\/v1\/staff\/absences\/(\d+)\/?(approve|reject|cancel)?$/.exec(path);
+    // The person page's Absence tab: a person's rows, account, adjustments,
+    // standing and care days, as the test shaped them for the caller.
+    const personRows = (personId: number) => state.personAbsence[personId]?.absences;
+    const rowOf = (id: number) =>
+      state.myAbsences.find((one) => one.id === id) ??
+      Object.values(state.personAbsence)
+        .flatMap((one) => one.absences)
+        .find((one) => one.id === id);
+    const holidayPerson =
+      /^\/api\/v1\/staff\/people\/(\d+)\/(holiday-account|holiday-adjustments|carry-over|self-certification|self-certification\/withdrawal|care-days)$/.exec(
+        path,
+      );
+    if (holidayPerson) {
+      const personId = Number(holidayPerson[1]);
+      const read = state.personAbsence[personId];
+      if (!read) return notFound();
+      switch (holidayPerson[2]) {
+        case "holiday-account": {
+          const found = read.accounts?.find((one) => one.year === year);
+          return jsonResponse(200, found ?? defaultHolidayAccount({ personId, year }));
+        }
+        case "holiday-adjustments": {
+          if (!manages(role)) return forbidden();
+          read.adjustments ??= [];
+          if (method === "GET") return jsonResponse(200, read.adjustments);
+          const input = body as Schemas["StaffHolidayAdjustmentRequest"];
+          const created = { ...input, id: nextId++, personId, createdAt: "2026-10-11T08:00:00Z" };
+          read.adjustments.unshift(created);
+          return jsonResponse(201, created);
+        }
+        case "carry-over": {
+          if (!manages(role)) return forbidden();
+          const input = body as Schemas["StaffCarryOverRequest"];
+          read.adjustments ??= [];
+          if (read.adjustments.some((one) => one.fromYear === input.fromYear && one.reason !== "correction"))
+            return staffProblem(409, {
+              code: "carry_over_recorded",
+              title: "Carry-over recorded",
+              detail: `A carry-over from ${input.fromYear} is already recorded.`,
+            });
+          const created: Schemas["StaffHolidayAdjustment"] = {
+            id: nextId++,
+            personId,
+            year: input.fromYear + 1,
+            days: input.days ?? 4,
+            reason: input.kind === "forced" ? "forced_carry_over" : "agreed_carry_over",
+            fromYear: input.fromYear,
+            ...(input.note ? { note: input.note } : {}),
+            createdAt: "2026-10-11T08:00:00Z",
+          };
+          read.adjustments.unshift(created);
+          return jsonResponse(201, created);
+        }
+        case "self-certification":
+          return read.selfCertification ? jsonResponse(200, read.selfCertification) : notFound();
+        case "self-certification/withdrawal": {
+          if (!manages(role)) return forbidden();
+          const input = body as Schemas["StaffSelfCertWithdrawalRequest"];
+          const standing = read.selfCertification ?? defaultSelfCertification({ personId });
+          delete standing.withdrawnUntil;
+          delete standing.withdrawnReason;
+          delete standing.withdrawnFrom;
+          if (input.until)
+            Object.assign(standing, {
+              withdrawnUntil: input.until,
+              withdrawnReason: input.reason,
+              withdrawnFrom: TODAY,
+            });
+          read.selfCertification = standing;
+          return jsonResponse(200, standing);
+        }
+        case "care-days":
+          return read.careDays ? jsonResponse(200, { ...read.careDays, year }) : notFound();
+      }
+    }
+    const adjustment = /^\/api\/v1\/staff\/holiday-adjustments\/(\d+)$/.exec(path);
+    if (adjustment && method === "DELETE") {
+      if (!manages(role)) return forbidden();
+      for (const read of Object.values(state.personAbsence)) {
+        const index = (read.adjustments ?? []).findIndex((one) => one.id === Number(adjustment[1]));
+        if (index >= 0) {
+          read.adjustments?.splice(index, 1);
+          return new Response(null, { status: 204 });
+        }
+      }
+      return notFound();
+    }
+    if (path === "/api/v1/staff/absences") {
+      const personId = Number(url.searchParams.get("personId"));
+      if (method === "GET") return jsonResponse(200, page(personRows(personId) ?? [], 1, pageSize));
+      if (method === "POST") {
+        if (!manages(role)) return forbidden();
+        const input = body as Schemas["StaffAbsenceRequest"];
+        const type = types.find((one) => one.id === input.typeId);
+        const rows = personRows(input.personId);
+        if (!type || !rows) return notFound();
+        const lastDay = input.lastDay ?? input.firstDay;
+        const row: Schemas["StaffAbsence"] = {
+          ...input,
+          id: nextId++,
+          status: type.needsDecision ? "requested" : "registered",
+          lastDay,
+          workingDays: type.unit === "hours" ? 0 : weekdays(input.firstDay, lastDay),
+          shownAs: "type",
+          percent: input.percent ?? 100,
+          etag: `e${nextId}`,
+        };
+        rows.unshift(row);
+        return jsonResponse(201, row);
+      }
+    }
+
+    const absence = /^\/api\/v1\/staff\/absences\/(\d+)\/?(approve|reject|cancel|correct|postpone-holiday)?$/.exec(
+      path,
+    );
     if (absence) {
       const id = Number(absence[1]);
       const action = absence[2];
@@ -1746,38 +1894,81 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         state.approvals = state.approvals.filter((one) => one !== waiting);
         return jsonResponse(200, { ...waiting.absence, status: action === "approve" ? "approved" : "rejected" });
       }
-      const row = state.myAbsences.find((one) => one.id === id);
+      const row = rowOf(id);
       if (!row) return notFound();
       if (action === "cancel" && method === "POST") {
-        if (row.status !== "requested")
+        if (row.status !== "requested" && !(row.status === "approved" && manages(role)))
           return staffProblem(409, {
             code: "absence_not_cancellable",
             title: "Absence not cancellable",
             detail: "This absence cannot be cancelled by you.",
           });
         row.status = "cancelled";
-        row.revision = (row.revision ?? 1) + 1;
+        if (row.revision !== undefined) row.revision += 1;
+        if (row.etag) row.etag = `${row.etag}+`;
         return jsonResponse(200, row);
       }
-      if (!action && method === "PUT") {
+      if (action === "postpone-holiday" && method === "POST") {
+        if (!manages(role)) return forbidden();
+        const demandedOn = (body as { demandedOn?: string } | undefined)?.demandedOn ?? TODAY;
+        if (demandedOn < row.firstDay)
+          return staffProblem(400, {
+            title: "Invalid demand",
+            errors: { demandedOn: ["The demand is never dated before the sykmelding's first day"] },
+          });
+        return jsonResponse(200, { demandedOn, absences: [] });
+      }
+      if ((!action && method === "PUT") || (action === "correct" && method === "POST")) {
         if (ifMatchOf() !== tokenOf(row)) return changed();
+        if (action === "correct" && row.status !== "approved" && row.status !== "registered")
+          return staffProblem(409, {
+            code: "absence_not_cancellable",
+            title: "Absence not cancellable",
+            detail: "Only an approved or registered absence is corrected.",
+          });
         const input = body as Schemas["StaffAbsenceChangeRequest"];
         for (const key of ["percent", "hours", "degreePercent", "note"] as const) delete row[key];
-        Object.assign(row, input, { lastDay: input.lastDay ?? input.firstDay, revision: (row.revision ?? 1) + 1 });
+        Object.assign(row, input, { lastDay: input.lastDay ?? input.firstDay });
+        if (row.revision !== undefined) row.revision += 1;
+        if (row.etag) row.etag = `${row.etag}+`;
         return jsonResponse(200, row);
       }
     }
 
-    if (path === "/api/v1/staff/cases" && method === "GET") return jsonResponse(200, page(state.cases, 1, pageSize));
-    const sickCase = /^\/api\/v1\/staff\/cases\/(\d+)(?:\/milestones\/(\w+)\/(done|waive))?$/.exec(path);
+    if (path === "/api/v1/staff/cases" && method === "GET") {
+      const personId = Number(url.searchParams.get("personId")) || undefined;
+      const status = url.searchParams.get("status") ?? "open";
+      const listed = state.cases.filter(
+        (one) => (personId === undefined || one.personId === personId) && (status === "all" || one.open),
+      );
+      return jsonResponse(200, page(listed, 1, pageSize));
+    }
+    const sickCase = /^\/api\/v1\/staff\/cases\/(\d+)(?:\/(close)|\/milestones\/(\w+)\/(done|waive|note))?$/.exec(path);
     if (sickCase) {
       const found = state.cases.find((one) => one.id === Number(sickCase[1]));
       if (!found) return notFound();
       if (sickCase[2] && method === "POST") {
-        const milestone = found.milestones.find((one) => one.kind === sickCase[2]);
+        if (!manages(role)) return forbidden();
+        found.open = false;
+        found.closedAt = "2026-10-11T08:00:00Z";
+        for (const milestone of found.milestones) milestone.due = false;
+        return jsonResponse(200, found);
+      }
+      if (sickCase[3]) {
+        const milestone = found.milestones.find((one) => one.kind === sickCase[3]);
         if (!milestone || milestone.kind === "employer_period_end")
           return staffProblem(400, { title: "Invalid milestone", errors: { kind: ["Not a milestone to mark"] } });
-        if (sickCase[3] === "done") {
+        if (sickCase[4] === "note" && method === "PUT") {
+          if (!holdsPersonalData(role)) return forbidden();
+          const stale = staleRevision(init, milestone.revision, "milestone");
+          if (stale) return stale;
+          const note = (body as { note?: string } | undefined)?.note;
+          if (note) milestone.note = note;
+          else delete milestone.note;
+          milestone.revision += 1;
+          return jsonResponse(200, found);
+        }
+        if (sickCase[4] === "done") {
           milestone.doneAt = (body as { doneAt?: string } | undefined)?.doneAt ?? TODAY;
           milestone.waived = false;
           delete milestone.waivedReason;
@@ -1794,12 +1985,121 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (method === "PUT") {
         const stale = staleRevision(init, found.revision, "case");
         if (stale) return stale;
-        const note = (body as { accommodationNote?: string | null }).accommodationNote;
-        if (note) found.accommodationNote = note;
-        else delete found.accommodationNote;
+        // A field left out is kept; one sent is written, null clearing it.
+        const input = body as { accommodationNote?: string | null; maxBenefitEstimate?: string | null };
+        if ("accommodationNote" in input) {
+          if (input.accommodationNote) found.accommodationNote = input.accommodationNote;
+          else delete found.accommodationNote;
+        }
+        if ("maxBenefitEstimate" in input) {
+          if (!manages(role))
+            return staffProblem(400, {
+              title: "Invalid case",
+              errors: { maxBenefitEstimate: ["The estimate is staff:manage's"] },
+            });
+          const derived = new Date(`${found.firstDay}T00:00:00Z`);
+          derived.setUTCDate(derived.getUTCDate() + 364);
+          found.maxBenefitEstimate = input.maxBenefitEstimate ?? derived.toISOString().slice(0, 10);
+          found.maxBenefitEstimateEdited = input.maxBenefitEstimate != null;
+        }
         found.revision += 1;
         return jsonResponse(200, found);
       }
+    }
+
+    // Settings' absence types and holiday schemes (staff:manage's to write).
+    const typeRoute = /^\/api\/v1\/staff\/absence-types(?:\/(\d+))?$/.exec(path);
+    if (typeRoute) {
+      if (method === "GET") return jsonResponse(200, state.absenceTypes);
+      if (!manages(role)) return forbidden();
+      if (method === "POST") {
+        const input = body as Schemas["StaffAbsenceTypeRequest"];
+        const created: Schemas["StaffAbsenceType"] = {
+          hidden: false,
+          sort: 100,
+          ...input,
+          id: nextId++,
+          seeded: false,
+          reserved: false,
+          revision: 1,
+        };
+        state.absenceTypes.push(created);
+        return jsonResponse(201, created);
+      }
+      const type = state.absenceTypes.find((one) => one.id === Number(typeRoute[1]));
+      if (!type) return notFound();
+      const stale = staleRevision(init, type.revision, "absence type");
+      if (stale) return stale;
+      const input = body as Schemas["StaffAbsenceTypeChangeRequest"];
+      const fixed = ["allowsPercent", "drawsHoliday", "needsDecision", "paid", "visibility", "ameldingLeave"] as const;
+      if (type.seeded && fixed.some((key) => input[key] !== type[key]))
+        return staffProblem(409, {
+          code: "seed_immutable",
+          title: "Seeded type",
+          detail: "A seeded type changes only its names, its order and whether it is hidden.",
+        });
+      delete type.ameldingLeave;
+      Object.assign(type, input, { revision: type.revision + 1 });
+      return jsonResponse(200, type);
+    }
+    const schemeRoute = /^\/api\/v1\/staff\/holiday-schemes(?:\/(\d+))?$/.exec(path);
+    if (schemeRoute) {
+      if (method === "GET") return jsonResponse(200, state.holidaySchemes);
+      if (!manages(role)) return forbidden();
+      const convert = (v: number) => Math.floor(v / 6) * 5 + Math.min(v % 6, 5);
+      const filled = (input: Schemas["StaffHolidaySchemeRequest"]) => {
+        const values = {
+          name: input.name,
+          entitlementVirkedager: input.entitlementVirkedager,
+          extraFrom60Virkedager: input.extraFrom60Virkedager,
+          mainPeriodVirkedager: input.mainPeriodVirkedager ?? 18,
+          afterSeptemberVirkedager: input.afterSeptemberVirkedager ?? 6,
+          maxCarryOverVirkedager: input.maxCarryOverVirkedager ?? 12,
+        };
+        return {
+          ...values,
+          converted: {
+            entitlement: convert(values.entitlementVirkedager),
+            extraFrom60: convert(values.extraFrom60Virkedager),
+            mainPeriod: convert(values.mainPeriodVirkedager),
+            afterSeptember: convert(values.afterSeptemberVirkedager),
+            maxCarryOver: convert(values.maxCarryOverVirkedager),
+          },
+        };
+      };
+      const moveDefault = (to: Schemas["StaffHolidayScheme"]) => {
+        for (const other of state.holidaySchemes) if (other !== to && other.isDefault) other.isDefault = false;
+        to.isDefault = true;
+      };
+      if (method === "POST") {
+        const input = body as Schemas["StaffHolidaySchemeRequest"];
+        const created: Schemas["StaffHolidayScheme"] = {
+          ...filled(input),
+          id: nextId++,
+          isDefault: false,
+          seeded: false,
+          revision: 1,
+        };
+        state.holidaySchemes.push(created);
+        if (input.isDefault) moveDefault(created);
+        return jsonResponse(201, created);
+      }
+      const scheme = state.holidaySchemes.find((one) => one.id === Number(schemeRoute[1]));
+      if (!scheme) return notFound();
+      const stale = staleRevision(init, scheme.revision, "holiday scheme");
+      if (stale) return stale;
+      const input = body as Schemas["StaffHolidaySchemeChangeRequest"];
+      if (input.archived && scheme.isDefault)
+        return staffProblem(409, {
+          code: "holiday_scheme_in_use",
+          title: "Holiday scheme in use",
+          detail: "The default scheme, or one an employment names, is not archived.",
+        });
+      Object.assign(scheme, filled(input), { revision: scheme.revision + 1 });
+      if (input.archived) scheme.archivedAt = scheme.archivedAt ?? "2026-10-11T08:00:00Z";
+      else delete scheme.archivedAt;
+      if (input.isDefault) moveDefault(scheme);
+      return jsonResponse(200, scheme);
     }
     return undefined;
   };

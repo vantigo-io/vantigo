@@ -3,10 +3,10 @@ import { DateInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { type StaffEmployment, type StaffRelationshipType, updateEmployment } from "../api/employments";
-import type { StaffStructure } from "../api/meta";
+import { type StaffStructure, staffMetaQueryOptions } from "../api/meta";
 import { STAFF_QUERY_KEY } from "../api/request";
 import "../i18n";
 import { conflictField, fieldRefusals, isRevisionConflict } from "../lib/errors";
@@ -25,18 +25,18 @@ interface EmploymentFormValues {
   relationshipType: StaffRelationshipType;
   contractSignedAt: string | null;
   /**
-   * The holiday scheme (delivery B), which the form does not show yet but must
-   * send back: the PUT is a full replace, and a scheme left out is the
-   * default's. Kept as the employment read it.
+   * The holiday scheme (delivery B), `"default"` for none: the PUT is a full
+   * replace, and a scheme left out is the default's, so an untouched one is
+   * sent back as the employment read it.
    */
-  holidaySchemeId: number | null;
+  holidaySchemeId: string;
 }
 
 /**
  * *Edit employment* (`PUT /employments/{id}`, `If-Match`): the start — the
  * first terms move with it — the business unit, the kind of relationship and
- * the day the contract was signed, replaced whole — the holiday scheme
- * carried back as it was read. The employment number is
+ * the day the contract was signed and the holiday scheme, replaced whole.
+ * The employment number is
  * shown and never changes; the end has its own action.
  */
 export const EmploymentEditModal = ({ employment, structure, opened, onClose }: EmploymentEditModalProps) => {
@@ -71,7 +71,7 @@ const EmploymentForm = ({
       businessUnitId: employment.businessUnitId ? String(employment.businessUnitId) : null,
       relationshipType: employment.relationshipType ?? "ordinary",
       contractSignedAt: employment.contractSignedAt ?? null,
-      holidaySchemeId: employment.holidaySchemeId ?? null,
+      holidaySchemeId: employment.holidaySchemeId === undefined ? "default" : String(employment.holidaySchemeId),
     },
     validate: { startDate: (value) => (value ? null : t("startDateRequired")) },
   });
@@ -79,6 +79,12 @@ const EmploymentForm = ({
   const units = (structure?.businessUnits ?? []).filter(
     (unit) => !unit.archivedAt || unit.id === employment.businessUnitId,
   );
+  // Likewise the holiday schemes: an archived one only when the employment follows it.
+  const { data: meta } = useQuery(staffMetaQueryOptions());
+  const schemes = (meta?.holidaySchemes ?? []).filter(
+    (scheme) => !scheme.archivedAt || scheme.id === employment.holidaySchemeId,
+  );
+  const defaultScheme = schemes.find((scheme) => scheme.isDefault);
 
   const save = useMutation({
     mutationFn: (values: EmploymentFormValues) =>
@@ -89,7 +95,7 @@ const EmploymentForm = ({
           businessUnitId: Number(values.businessUnitId ?? employment.businessUnitId),
           relationshipType: values.relationshipType,
           ...(values.contractSignedAt ? { contractSignedAt: values.contractSignedAt } : {}),
-          ...(values.holidaySchemeId !== null ? { holidaySchemeId: values.holidaySchemeId } : {}),
+          ...(values.holidaySchemeId !== "default" ? { holidaySchemeId: Number(values.holidaySchemeId) } : {}),
         },
         employment.revision,
       ),
@@ -113,6 +119,7 @@ const EmploymentForm = ({
         "businessUnitId",
         "relationshipType",
         "contractSignedAt",
+        "holidaySchemeId",
       ]);
       form.setErrors(fields);
       if (rest.length > 0)
@@ -155,6 +162,21 @@ const EmploymentForm = ({
           valueFormat={t("dateInputFormat")}
           clearable
           {...form.getInputProps("contractSignedAt")}
+        />
+        <Select
+          label={t("holidayScheme")}
+          description={t("holidaySchemeDescription")}
+          allowDeselect={false}
+          data={[
+            { value: "default", label: t("holidaySchemeDefault", { name: defaultScheme?.name ?? "" }) },
+            ...schemes
+              .filter((scheme) => !scheme.isDefault || scheme.id === employment.holidaySchemeId)
+              .map((scheme) => ({
+                value: String(scheme.id),
+                label: scheme.archivedAt ? t("archivedName", { name: scheme.name }) : scheme.name,
+              })),
+          ]}
+          {...form.getInputProps("holidaySchemeId")}
         />
         <Group justify="flex-end">
           <Button type="button" variant="default" onClick={onDone}>

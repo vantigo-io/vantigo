@@ -199,3 +199,22 @@ describe("PeoplePage — HR without the directory", () => {
     expect(screen.getByRole("button", { name: "New person" })).toBeInTheDocument();
   });
 });
+
+describe("PeoplePage — on leave today", () => {
+  // The flag is the list response's (GET /people's onLeaveToday): the same to
+  // every reader, never a type — a colleague learns no more than the
+  // calendar's "absent" bar tells them.
+  it.each([
+    ["HR", "manage"],
+    ["a colleague", "view"],
+  ] as const)("shows %s who is on leave today, and nobody else as such", async (_, role) => {
+    stubStaffApi({
+      role,
+      people: people().map((one) => (one.id === 102 ? { ...one, onLeaveToday: true } : one)),
+    });
+    renderRoute("/staff/people");
+
+    expect(await row("Grace Hopper")).toHaveTextContent("On leave today");
+    expect(await row("Ada Lovelace")).not.toHaveTextContent("On leave today");
+  });
+});

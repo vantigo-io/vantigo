@@ -2270,6 +2270,9 @@ type StaffPersonListItem struct {
 	// Manager A person as the work group names them.
 	Manager *StaffPersonSummary `json:"manager,omitempty"`
 
+	// OnLeaveToday Whether an approved or registered absence of a whole or part day, of any type, covers today (design §7, "on leave today") — the same to every reader of the list, a colleague included, and never naming the type: it says no more than the calendar's "absent" bar. A request does not count, nor an hour registration.
+	OnLeaveToday bool `json:"onLeaveToday"`
+
 	// PhoneWork Absent when not set.
 	PhoneWork *string `json:"phoneWork,omitempty"`
 

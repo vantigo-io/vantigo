@@ -1,22 +1,17 @@
-import { Alert, Button, Card, Group, List, Modal, Stack, Text, Textarea } from "@mantine/core";
-import { useForm } from "@mantine/form";
-import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconPencil } from "@tabler/icons-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert, List, Stack, Text } from "@mantine/core";
+import { IconAlertCircle } from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, useI18n, useLocale } from "@vantigo/frontend-shell";
-import { useState } from "react";
 import { calendarQueryOptions, type StaffAbsence } from "../api/absence";
-import { openCasesQueryOptions, type StaffCase, updateAccommodationNote } from "../api/cases";
+import { openCasesQueryOptions } from "../api/cases";
 import type { StaffAbsenceType } from "../api/meta";
 import { orgQueryOptions, type StaffPerson, type StaffPersonSummary } from "../api/people";
-import { STAFF_QUERY_KEY } from "../api/request";
 import { ApprovalsInbox } from "../components/approvals";
-import { FieldGroup, Fields } from "../components/field-group";
-import { MilestoneList } from "../components/milestone-list";
+import { CaseCard } from "../components/case-card";
+import { FieldGroup } from "../components/field-group";
 import "../i18n";
-import { absenceDays, absenceName, refusalText } from "../lib/absence";
+import { absenceDays, absenceName } from "../lib/absence";
 import { toUtc } from "../lib/dates";
-import { isRevisionConflict } from "../lib/errors";
 import { useStaffFormat } from "../lib/format";
 import { monthOf } from "../lib/workdays";
 
@@ -118,7 +113,7 @@ const MonthAbsence = ({
 
 /** My reports' open sick-leave cases with their milestones and the accommodation note. */
 const OpenCases = ({ reports }: { reports: StaffPersonSummary[] }) => {
-  const { t } = useStaffFormat();
+  const { t, date } = useStaffFormat();
   const cases = useQuery(openCasesQueryOptions());
   const names = new Map(reports.map((report) => [report.id, report.displayName]));
   const mine = cases.data?.data.filter((one) => names.has(one.personId)) ?? [];
@@ -127,95 +122,12 @@ const OpenCases = ({ reports }: { reports: StaffPersonSummary[] }) => {
       {cases.isPending && <ContentSkeleton rows={2} rowHeight={44} />}
       {cases.data && mine.length === 0 && <Text size="sm">{t("noOpenCases")}</Text>}
       {mine.map((sickCase) => (
-        <CaseCard key={sickCase.id} sickCase={sickCase} name={names.get(sickCase.personId) ?? ""} />
+        <CaseCard
+          key={sickCase.id}
+          sickCase={sickCase}
+          title={t("caseLabel", { person: names.get(sickCase.personId) ?? "", date: date(sickCase.firstDay) })}
+        />
       ))}
     </FieldGroup>
-  );
-};
-
-const CaseCard = ({ sickCase, name }: { sickCase: StaffCase; name: string }) => {
-  const { t, date } = useStaffFormat();
-  const [editing, setEditing] = useState(false);
-  return (
-    <Card
-      withBorder
-      radius="md"
-      padding="sm"
-      component="article"
-      aria-label={t("caseLabel", { person: name, date: date(sickCase.firstDay) })}
-    >
-      <Stack gap="xs">
-        <Text fw={500}>{t("caseLabel", { person: name, date: date(sickCase.firstDay) })}</Text>
-        <Fields
-          items={[
-            [t("caseLastDay"), date(sickCase.lastDay)],
-            [t("caseMaxBenefit"), date(sickCase.maxBenefitEstimate)],
-          ]}
-        />
-        <MilestoneList sickCase={sickCase} />
-        <Stack gap={0}>
-          <Text size="xs" c="dimmed">
-            {t("accommodationNote")}
-          </Text>
-          {sickCase.accommodationNote && <Text size="sm">{sickCase.accommodationNote}</Text>}
-        </Stack>
-        <Group>
-          <Button size="xs" variant="light" leftSection={<IconPencil size={14} />} onClick={() => setEditing(true)}>
-            {t("changeAccommodationNote")}
-          </Button>
-        </Group>
-      </Stack>
-      <Modal opened={editing} onClose={() => setEditing(false)} title={t("accommodationNote")}>
-        {editing && <AccommodationNoteForm sickCase={sickCase} onDone={() => setEditing(false)} />}
-      </Modal>
-    </Card>
-  );
-};
-
-/** The accommodation note, sent with the case's revision; a newer save is a conflict, never overwritten. */
-const AccommodationNoteForm = ({ sickCase, onDone }: { sickCase: StaffCase; onDone: () => void }) => {
-  const { t } = useStaffFormat();
-  const queryClient = useQueryClient();
-  const form = useForm({ initialValues: { note: sickCase.accommodationNote ?? "" } });
-  const save = useMutation({
-    mutationFn: (note: string) => updateAccommodationNote(sickCase, note),
-    onSuccess: async () => {
-      notifications.show({ color: "teal", title: t("accommodationNoteSaved"), message: "" });
-      await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
-      onDone();
-    },
-    onError: async (error) => {
-      if (isRevisionConflict(error)) {
-        // Somebody saved the case meanwhile: close on what is there now, so a
-        // second Save never overwrites what the other writer wrote.
-        notifications.show({ color: "yellow", title: t("revisionConflict"), message: t("revisionConflictHint") });
-        await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
-        onDone();
-        return;
-      }
-      notifications.show({ color: "red", title: t("couldNotSave"), message: refusalText(error, t) });
-      await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY, "cases"] });
-    },
-  });
-  return (
-    <form onSubmit={form.onSubmit((values) => save.mutate(values.note))}>
-      <Stack>
-        <Textarea
-          label={t("accommodationNote")}
-          description={t("accommodationNoteDescription")}
-          rows={3}
-          maxLength={2000}
-          {...form.getInputProps("note")}
-        />
-        <Group justify="flex-end">
-          <Button type="button" variant="default" onClick={onDone}>
-            {t("cancel")}
-          </Button>
-          <Button type="submit" loading={save.isPending}>
-            {t("save")}
-          </Button>
-        </Group>
-      </Stack>
-    </form>
   );
 };

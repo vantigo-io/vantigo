@@ -51,6 +51,11 @@ over som fortsatt er ansatt; en strek betyr at det ikke finnes noen.
 En kollega med `staff:view` ser bare personene som er **aktive i dag**: den som ikke
 har begynt ennå og den som har sluttet, står ikke i listen deres.
 
+**Fraværende i dag** ved et navn betyr at et godkjent eller registrert fravær gjelder i
+dag — ferie, permisjon eller en sykedag. Alle som ser listen, ser det samme merket, og
+det sier aldri hva slags fravær det er; en søknad som venter, og en legetime på noen
+timer, teller ikke.
+
 ### Status, for HR
 
 Med `staff:manage` ser du også **Status**-valget og en statuskolonne:
@@ -72,7 +77,7 @@ Trykk på et navn for å åpne [personsiden](#personsiden).
 
 ## Personsiden
 
-En persons side har fire faner — **Profil**, **Arbeidsforhold**, **Historikk** og **Dokumenter** — og
+En persons side har fem faner — **Profil**, **Arbeidsforhold**, **Fravær**, **Historikk** og **Dokumenter** — og
 fanen du står på, ligger i sidens adresse. Siden viser det du kan se av personen og
 ikke noe annet: en gruppe felt som ikke er din å lese, står ikke på siden i det hele
 tatt, heller ikke som en tom overskrift. Personen selv, en leder av dem, en kollega med
@@ -94,6 +99,9 @@ referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
 - **Pårørende** og **Roller** (verneombud, medlem av AMU, HMS-ansvarlig, hver med
   dagene de har rollen).
 - **Selvbetjening** — brukeren personen logger inn med, hvis HR har koblet en.
+- **Barn og omsorgsdager** — **Barn under 12**, **Aleneomsorg** og **Barn med ekstra
+  omsorgsdager**, det personens omsorgsdager telles ut fra. Personen, HR og
+  `staff:personal-data`, og bare når ett av dem er registrert.
 - **Organisasjon** — **Ledere** oppover fra personens leder i dag, og de **Direkte
   underordnede**. Trykk på et navn for å åpne siden deres.
 
@@ -108,12 +116,13 @@ går til avdelingens leder, eller nærmeste leder over.
 2. Endre det du trenger, og trykk **Lagre**. En avvisning havner på feltet den gjelder
    — for eksempel en e-post på jobb som en annen person har.
 
-En person har også tre **omsorgsdagfelt** — barna under tolv, de kronisk syke eller
-funksjonshemmede barna og om personen har omsorgen alene — som tellingen av
-omsorgsdager for sykt barn skal lese. Skjemaet viser dem ikke ennå, og når du lagrer det,
-beholdes de som de er; HR setter dem gjennom API-et til personens Fravær-fane kommer
-([omsorgsdagfeltene](/nb/admin/staff/#omsorgsdagfeltene)). Personen, HR og
-`staff:personal-data` ser dem; en leder og en kollega gjør det aldri.
+Skjemaet har også de tre **omsorgsdagfeltene** under **Barn og omsorgsdager**: **Barn
+under 12** (uten NAVs vedtak om ekstra dager), **Aleneomsorg** og **Barn med ekstra
+omsorgsdager** (med vedtaket) — det omsorgsdagene for sykt barn telles ut fra
+([omsorgsdagfeltene](/nb/admin/staff/#omsorgsdagfeltene)). Et felt som står tomt, er
+ikke registrert; et du ikke rører, lagres som det var. Personen, HR og
+`staff:personal-data` ser dem; en leder og en kollega gjør det aldri, og personens egen
+**Endre opplysningene mine** endrer dem aldri.
 
 Har noen andre lagret personen etter at du åpnet skjemaet, lukkes skjemaet, siden lastes
 inn på nytt og sier *Noen andre lagret dette først; det er lastet inn på nytt*. Gjør
@@ -207,6 +216,52 @@ registrert. Den informerer; den stopper aldri en lagring. Personen, en leder av 
 HR ser den; en leder, som ikke ser lønnen, ser den uten punkt i), lønnen. Se [§ 14-6-kontrollen](/en/reference/staff/#the--14-6-check) i referansen for hvor
 hvert punkt leses fra.
 
+### Fravær
+
+**Fravær** er personens fravær slik du har lov til å se det: personen, en leder av
+personen, den som avgjør alles fravær (`staff:approve`) og HR. Andre ser ikke fanen.
+Ovenfra og ned:
+
+- **Feriekontoen** for et år — ferierett, overført, tatt, søkt om og igjen — med
+  **Forrige år** og **Neste år** for å bla mellom årene.
+- **Feriejusteringer** (HR): overføringene og rettingene, nyeste år først. **Legg til
+  justering** registrerer en for året som vises — en **Retting** (med en **Merknad** om
+  hvorfor), eller en **Avtalt** eller **Tvungen overføring** fra et tidligere år — og
+  søppelbøtta sletter en etter å ha spurt. **Overfør fra** *år* (HR) overfører årets
+  ferie som ikke er tatt, til neste år: velg **Type** — *Avtalt*, innenfor
+  ferieordningens maksimum, eller *Tvungen*, utover det med en merknad — la **Dager** stå
+  tomt for det som er igjen, og trykk **Overfør**. En ny overføring fra samme år avvises:
+  *En overføring fra det året er allerede registrert*.
+- **Egenmelding** — personens stilling etter selskapets regler. HR har **Trekk tilbake
+  egenmelding**: velg **Til og med** — en dag etter i dag, høyst ett år frem — skriv
+  **Grunn** og trykk **Trekk tilbake**. **Opphev tilbaketrekkingen** avslutter den
+  tidligere. En tilbaketrekking vises bare for personen, HR og `staff:personal-data`.
+- **Omsorgsdager** for året, for personen, HR og `staff:personal-data`.
+- **Sykefraværssak fra** *dato* — den åpne saken: siste dag så langt, 52-ukersgrensen,
+  milepælene og tilretteleggingsnotatet. En leder, en godkjenner og HR har **Marker som
+  gjort** og **Frafall** på en milepæl; lederen og HR har **Endre
+  tilretteleggingsnotatet** (en godkjenner får ikke se det). HR har også **Endre
+  anslaget** — eller **Tilbakestill til første dag + 364** — og **Lukk saken**. En
+  milepæls notat, og hvorfor en ble frafalt, vises bare for `staff:personal-data`, som har
+  **Endre notatet** på hver milepæl.
+- **Fravær** — personens rader slik du har lov til å se dem. En type som avslører helse-
+  eller familieforhold, vises for en leder og for HR uten `staff:personal-data` som en
+  godkjent *Permisjon*, uten noe å endre. HR har **Registrer fravær** — en sykmelding
+  personen kommer med, for eksempel — og på en rad:
+  - **Endre** på en søknad eller en registrering (en sykmelding som sluttet tidligere),
+  - **Rett** på et godkjent fravær der dagene eller typen var feil,
+  - **Trekk tilbake fraværet** på et godkjent fravær (også for den som avgjorde det)
+    eller en søknad, etter å ha spurt,
+  - **Utsett ferie** på en 100 % sykmelding: arbeidstakerens krav om å utsette innvilget
+    ferie etter ferieloven § 9. Sett **Krevd den** — aldri etter i dag, aldri før
+    sykmeldingen begynte — og trykk **Registrer kravet**; ferien den ligger over, deles,
+    og dagene går tilbake til kontoen. Et krav som kom etter siste arbeidsdag før ferien,
+    for sykdom som begynte før den, avvises med ord.
+
+En endring sender med det raden har for å vokte den: har noen endret raden imens,
+lukkes skjemaet, fanen lastes på nytt og sier fra — gjør endringen igjen på det som står
+der nå. En rad som er borte imens, sier *Dette finnes ikke lenger.*
+
 ### Historikk
 
 **Historikk** lister hver endring av personen, nyeste først og sidevis: hva som ble
@@ -276,7 +331,10 @@ arbeidsforholdet i stedet.
 
 Å endre eller fjerne et helsedokument, og å flytte et dokument inn i eller ut av en
 helsekategori, er `staff:personal-data` sin oppgave: HR uten den får ikke **Endre** og
-**Fjern** på et helsedokument — heller ikke på sitt eget.
+**Fjern** på et helsedokument — heller ikke på sitt eget. Når `staff:personal-data`
+endrer et helsedokument, velger hen også **Sykefraværssak** — en av personens saker,
+åpen eller lukket — så dokumentet slettes sammen med sakens helseopplysninger; tøm
+feltet for å ta det ut av saken. Et dokument i en annen kategori hører ikke til noen sak.
 
 ### En slettesperre
 
@@ -690,9 +748,10 @@ Ansatteinnstillinger.
 ## Endre innstillingene
 
 **Ansatteinnstillinger** (`staff:manage`) har de generelle innstillingene først, så
-selskapets struktur, dokumentkategoriene, og fire kort for dataene: **Importer og
-eksporter personer**, **Lønnseksport**, **Oppbevaring** og **Terskler**. Den som ikke har
-`staff:manage` og åpner siden med adressen, ser ingen av de fire.
+selskapets struktur, dokumentkategoriene, tre kort for fravær — **Fraværstyper**,
+**Ferieordninger** og **Egenmelding og overføring** — og fire kort for dataene:
+**Importer og eksporter personer**, **Lønnseksport**, **Oppbevaring** og **Terskler**. Den
+som ikke har `staff:manage` og åpner siden med adressen, ser ingen av dem.
 
 ### Generelt
 
@@ -759,6 +818,54 @@ kategorien slettes. På en egen kategori endrer blyanten navnene, **Arkiver** sl
 tilby den for nye dokumenter, og **Gjenopprett** tilbyr den igjen. En kategori det er
 arkivert dokumenter under, arkiveres ikke — siden sier fra: flytt dem til en annen
 kategori først.
+
+### Fraværstyper
+
+**Fraværstyper** viser alle typene folk kan velge, og de skjulte: navnet, **Art**,
+**Hvem ser typen** — *Leder og HR*, eller *Bare HR* for en type som avslører helse- eller
+familieforhold — hva den **Rapporteres i a-meldingen som**, reglene (**Må avgjøres**
+eller **Melding**, **Trekkes fra feriekontoen**, **Kan være del av dagen**, **Lønnet**
+eller **Ulønnet**) og om den er **Forhåndsdefinert** eller **Skjult**.
+
+- **Ny fraværstype** legger til en egen: en **Nøkkel**, **Navn på engelsk** og **Navn på
+  norsk**, **Art** og hva den **Telles i** — som ikke endres senere — **Hvem ser
+  typen**, permisjonsbeskrivelsen i a-meldingen og bryterne. Trykk **Legg til**.
+- Blyanten endrer en type. En forhåndsdefinert type endrer bare navnene, **Rekkefølge**
+  og om den er **Skjult**; reglene er lovens og vises nedtonet.
+- **Skjul** slutter å tilby en type for nytt fravær; **Tilby** tar den tilbake. Fravær
+  som har typen, beholder den.
+
+En egen type som bare er for HR, åpnes ikke for kolleger mens fravær har den — skjemaet
+sier fra: legg til en annen type i stedet.
+
+### Ferieordninger
+
+**Ferieordninger** viser selskapets ferieregler med hva hver blir — «25 virkedager =
+21 dager i en femdagersuke» — og hvilken som er **Standard**, ordningen for alle
+arbeidsforhold som ikke har noen.
+
+- **Ny ferieordning**: **Navn**, **Ferierett (virkedager)**, **Ekstra fra 60 år
+  (virkedager)**, **Hovedferie (virkedager)**, **Etter september (virkedager)** og
+  **Mest overført (virkedager)**, hver med hva den blir i en femdagersuke, og
+  **Standard**. Skjemaet holder ferielovens gulv: en ferierett på 25 til 60, en
+  hovedferie på minst 18, minst 6 ved start etter september, og høyst 12 overført pluss
+  feriedagene over 25.
+- Blyanten endrer en ordning; det du ikke rører, beholdes. **Arkiver** slutter å tilby
+  den, **Gjenopprett** tar den tilbake — standarden, eller en ordning et arbeidsforhold
+  følger, arkiveres ikke, og siden sier fra.
+- Et arbeidsforhold settes på en ordning under personens **Arbeidsforhold**: **Endre
+  arbeidsforholdet**, **Ferieordning**. *Standard* følger den ordningen som til enhver
+  tid er standard.
+
+### Egenmelding og overføring
+
+Velg **Regler**: *Lovens minimum (ftrl. § 8-23)* — 3 dager om gangen, 4 ganger på 12
+måneder — *Utvidet (IA)* — 8 dager om gangen, 24 dager i året — eller *Egne tall*, med
+**Dager per tilfelle** (3 til 16), **Tilfeller per år** (4 til 52) og **Dager per år**
+(12 til 365); skjemaet avviser tall under lovens gulv. **Måneder i arbeid først** (0 til
+2) er hvor lenge noen må ha jobbet før egenmelding. **Overfør ferie som ikke er tatt,
+automatisk** overfører årets gjenstående ferie til neste år uten at HR gjør noe, fra året
+du slår det på. Trykk **Lagre**; de andre innstillingene beholdes som de er.
 
 ### Importer og eksporter personer
 

@@ -1,4 +1,4 @@
-import { Button, Group, Modal, Stack, Textarea } from "@mantine/core";
+import { Button, Group, Modal, NumberInput, Select, SimpleGrid, Stack, Text, Textarea, Title } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
@@ -85,6 +85,46 @@ const PersonEditForm = ({ person, onDone }: { person: StaffPerson; onDone: () =>
           minRows={3}
           {...form.getInputProps("notes")}
         />
+        {/* The care-day fields (design S11): this modal is staff:manage's, who
+            reads and writes them; PUT /me never sends them. */}
+        <Stack gap="xs">
+          <Title order={4} size="h5">
+            {t("careDayFields")}
+          </Title>
+          <Text size="sm" c="dimmed">
+            {t("careDayFieldsEditDescription")}
+          </Text>
+          <SimpleGrid cols={{ base: 1, sm: 3 }}>
+            <NumberInput
+              label={t("childrenUnder12")}
+              description={t("childrenUnder12Description")}
+              min={0}
+              max={20}
+              allowDecimal={false}
+              allowNegative={false}
+              {...form.getInputProps("careDays.childrenUnder12")}
+            />
+            <Select
+              label={t("soleCarer")}
+              description={t("soleCarerDescription")}
+              clearable
+              data={[
+                { value: "yes", label: t("yes") },
+                { value: "no", label: t("no") },
+              ]}
+              {...form.getInputProps("careDays.soleCarer")}
+            />
+            <NumberInput
+              label={t("chronicallyIllChildren")}
+              description={t("chronicallyIllChildrenDescription")}
+              min={0}
+              max={20}
+              allowDecimal={false}
+              allowNegative={false}
+              {...form.getInputProps("careDays.chronicallyIllChildren")}
+            />
+          </SimpleGrid>
+        </Stack>
         <Group justify="flex-end">
           <Button type="button" variant="default" onClick={onDone}>
             {t("cancel")}

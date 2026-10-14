@@ -79,8 +79,12 @@ export const absenceRefusals = (
   error: unknown,
   shown: readonly string[],
   t: Translate,
+  forAnother = false,
 ): { fields: Record<string, string>; rest: string[] } => {
   const code = codeOf(error);
+  // An overlap on somebody else's row is theirs: said in the third person.
+  if (forAnother && code === "absence_overlap")
+    return { fields: { firstDay: t("refusal.absence_overlap_decide") }, rest: [] };
   const coded = code ? (refusalFields[code] ?? []) : [];
   const fields: Record<string, string> = {};
   const rest: string[] = [];

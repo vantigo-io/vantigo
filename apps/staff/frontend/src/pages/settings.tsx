@@ -28,10 +28,13 @@ import {
   nextGeneratedNumber,
 } from "../lib/employee-number";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
+import { AbsenceTypesTable } from "./-absence-types";
 import { DocumentCategoriesTable } from "./-document-categories";
+import { HolidaySchemesTable } from "./-holiday-schemes";
 import { RegisterDataCard } from "./-import-modal";
 import { PayrollExportCard } from "./-payroll-export";
 import { RetentionPanel } from "./-retention-panel";
+import { SelfCertPolicyForm } from "./-self-cert-policy";
 import { BusinessUnitsTable, DepartmentsTable, LegalEntitiesTable, LocationsTable } from "./-structure-tables";
 import { ThresholdsPanel } from "./-thresholds-panel";
 
@@ -40,7 +43,8 @@ import { ThresholdsPanel } from "./-thresholds-panel";
  * employee number is generated, the pension provider and the insurer — the
  * company's structure, the document categories, and A2's data operations:
  * the register's import and export, the payroll month, retention and the
- * thresholds. The page is `staff:manage`'s; the navigation offers it to
+ * thresholds — and delivery B's absence types, holiday schemes, the
+ * egenmelding policy and automatic carry-over. The page is `staff:manage`'s; the navigation offers it to
  * that permission alone, and the data cards are drawn only for a reader
  * `/meta` says holds it (`canEdit`), so a colleague who types the address
  * sees none of them.
@@ -68,6 +72,9 @@ export const SettingsPage = () => {
       <DocumentCategoriesTable />
       {capabilities?.canEdit && meta.data && (
         <>
+          <AbsenceTypesTable />
+          <HolidaySchemesTable />
+          {settings.data && <SelfCertPolicyForm settings={settings.data} />}
           <RegisterDataCard sealedAllowed={capabilities.canRevealIdentifiers} />
           <PayrollExportCard today={meta.data.today} />
           {settings.data && <RetentionPanel settings={settings.data} />}

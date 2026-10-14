@@ -120,6 +120,22 @@ export const PersonProfile = ({ person, canOpenPeople, privateActions }: PersonP
         </FieldGroup>
       )}
 
+      {/* The care-day fields (design S11): the person's, staff:manage's and
+          staff:personal-data's — drawn only when the response carries one. */}
+      {(person.childrenUnder12 !== undefined ||
+        person.soleCarer !== undefined ||
+        person.chronicallyIllChildren !== undefined) && (
+        <FieldGroup title={t("careDayFields")} description={t("careDayFieldsDescription")}>
+          <Fields
+            items={[
+              [t("childrenUnder12"), person.childrenUnder12?.toString()],
+              [t("soleCarer"), person.soleCarer === undefined ? undefined : t(person.soleCarer ? "yes" : "no")],
+              [t("chronicallyIllChildren"), person.chronicallyIllChildren?.toString()],
+            ]}
+          />
+        </FieldGroup>
+      )}
+
       {person.notes && (
         <FieldGroup title={t("hrNotes")}>
           <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
