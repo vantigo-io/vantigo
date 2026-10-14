@@ -1,4 +1,4 @@
-import { IconUsersGroup } from "@tabler/icons-react";
+import { IconCalendarEvent, IconUsersGroup } from "@tabler/icons-react";
 import { staffNavItems } from "@vantigo/staff-ui";
 import { describe, expect, it } from "vitest";
 import {
@@ -76,6 +76,7 @@ describe("the app registry", () => {
       "/expenses/settings",
       "/staff/me",
       "/staff/people",
+      "/staff/absence",
       "/staff/settings",
       "/invoices",
       "/invoices/quick",
@@ -324,6 +325,9 @@ describe("the app registry", () => {
     const staff = appForKey("staff");
     expect(staff).toMatchObject({ module: "staff", label: "navigation.staff", home: "/staff" });
     expect(staff.icon).toBe(IconUsersGroup);
+    expect(
+      staff.navSections.flatMap((section) => section.items).find((item) => item.to === "/staff/absence")?.icon,
+    ).toBe(IconCalendarEvent);
     // The tile asks for the app itself: the server refuses every Staff call
     // without staff:access, whatever else the caller holds.
     expect(staff.requiredPermissions).toEqual(["staff:access"]);
@@ -331,6 +335,12 @@ describe("the app registry", () => {
     expect(items.map((item) => [item.label, item.to, item.requiredPermissions, item.guardPermissions])).toEqual([
       ["navigation.staffMyPage", "/staff/me", ["staff:access"], undefined],
       ["navigation.staffPeople", "/staff/people", ["staff:view", "staff:manage"], ["staff:access"]],
+      [
+        "navigation.staffAbsence",
+        "/staff/absence",
+        ["staff:view", "staff:approve", "staff:manage", "staff:personal-data"],
+        ["staff:access"],
+      ],
       ["navigation.staffSettings", "/staff/settings", ["staff:manage"], undefined],
     ]);
     expect(items.map((item) => item.to)).toEqual(staffNavItems.map((item) => item.to));
@@ -354,11 +364,18 @@ describe("the app registry", () => {
         enabledModules: allModules,
       }).flatMap((section) => section.items.map((item) => item.to));
     expect(paths(["staff:access"])).toEqual(["/staff/me"]);
-    expect(paths(["staff:access", "staff:approve"])).toEqual(["/staff/me"]);
-    expect(paths(["staff:access", "staff:personal-data"])).toEqual(["/staff/me"]);
-    expect(paths(["staff:access", "staff:view"])).toEqual(["/staff/me", "/staff/people"]);
-    expect(paths(["staff:access", "staff:manage"])).toEqual(["/staff/me", "/staff/people", "/staff/settings"]);
-    expect(paths(["*"])).toEqual(["/staff/me", "/staff/people", "/staff/settings"]);
+    // Absence for whoever reads the calendar or decides: the directory, the
+    // Approver, HR, and staff:personal-data, which decides the HR-only types.
+    expect(paths(["staff:access", "staff:approve"])).toEqual(["/staff/me", "/staff/absence"]);
+    expect(paths(["staff:access", "staff:personal-data"])).toEqual(["/staff/me", "/staff/absence"]);
+    expect(paths(["staff:access", "staff:view"])).toEqual(["/staff/me", "/staff/people", "/staff/absence"]);
+    expect(paths(["staff:access", "staff:manage"])).toEqual([
+      "/staff/me",
+      "/staff/people",
+      "/staff/absence",
+      "/staff/settings",
+    ]);
+    expect(paths(["*"])).toEqual(["/staff/me", "/staff/people", "/staff/absence", "/staff/settings"]);
   });
 
   it("treats Home as always enabled and module apps as enabled when their module is", () => {

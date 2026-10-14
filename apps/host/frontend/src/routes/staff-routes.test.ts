@@ -1,19 +1,23 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, isNotFound, isRedirect } from "@tanstack/react-router";
 import {
+  ABSENCE_ROUTE_PATH,
   MY_PAGE_ROUTE_PATH,
   PEOPLE_ROUTE_PATH,
   PERSON_ROUTE_PATH,
   STAFF_HOME_PATH,
   STAFF_SETTINGS_ROUTE_PATH,
   staffNavItems,
+  validateAbsenceSearch,
   validateMyPageSearch,
   validatePeopleSearch,
   validatePersonSearch,
 } from "@vantigo/staff-ui";
 import { describe, expect, it, vi } from "vitest";
 import { routeTree } from "../routeTree.gen";
+import { attentionHref } from "./dashboard";
 import { Route as StaffRoute } from "./staff";
+import { Route as StaffAbsenceRoute } from "./staff/absence";
 import { Route as StaffIndexRoute } from "./staff/index";
 import { Route as StaffMeRoute } from "./staff/me";
 import { Route as StaffPersonRoute } from "./staff/people.$id";
@@ -65,6 +69,16 @@ describe("the staff routes", () => {
     expect(matchedRouteIds("/staff/people/12")).toContain(PERSON_ROUTE_PATH);
     expect(matchedRouteIds("/staff/people/12")).not.toContain(PEOPLE_ROUTE_PATH);
     for (const item of staffNavItems) expect(matchedRouteIds(item.to)).toContain(item.to);
+  });
+
+  // The dashboard's approval items open the Absence page, which a manager by
+  // the terms reaches by the URL though the sidebar cannot offer it them.
+  it("mounts the Absence page the dashboard's approval items link to, with the package's validator", () => {
+    expect(ABSENCE_ROUTE_PATH).toBe("/staff/absence");
+    expect(matchedRouteIds(ABSENCE_ROUTE_PATH)).toContain(ABSENCE_ROUTE_PATH);
+    for (const type of ["absenceAwaitingDecision", "hrOnlyAwaitingDecision"])
+      expect(attentionHref({ module: "staff", type, entityId: "approvals" })).toBe(ABSENCE_ROUTE_PATH);
+    expect(StaffAbsenceRoute.options.validateSearch).toBe(validateAbsenceSearch);
   });
 
   it("sits under the staff layout, which carries the app and its module gate", () => {
@@ -127,6 +141,8 @@ describe("the staff routes", () => {
     expect(validateMyPageSearch({ tab: "absence" })).toEqual({ tab: "absence" });
     expect(validateMyPageSearch({ tab: "team" })).toEqual({ tab: "team" });
     expect(validatePersonSearch({ tab: "team" })).toEqual({ tab: undefined });
+    // The spotlight's Request absence lands on My page with the sheet open.
+    expect(validateMyPageSearch({ tab: "absence", create: "absence" })).toEqual({ tab: "absence", create: "absence" });
   });
 
   // A person's id is a positive whole number: anything else in the path never

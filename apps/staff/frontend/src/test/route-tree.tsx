@@ -11,8 +11,15 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
-import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH, PERSON_ROUTE_PATH, STAFF_SETTINGS_ROUTE_PATH } from "../lib/routes";
-import { validateMyPageSearch, validatePeopleSearch, validatePersonSearch } from "../lib/search";
+import {
+  ABSENCE_ROUTE_PATH,
+  MY_PAGE_ROUTE_PATH,
+  PEOPLE_ROUTE_PATH,
+  PERSON_ROUTE_PATH,
+  STAFF_SETTINGS_ROUTE_PATH,
+} from "../lib/routes";
+import { validateAbsenceSearch, validateMyPageSearch, validatePeopleSearch, validatePersonSearch } from "../lib/search";
+import { AbsencePage } from "../pages/absence";
 import { MyPage } from "../pages/my-page";
 import { PeoplePage } from "../pages/people";
 import { PersonPage } from "../pages/person";
@@ -48,6 +55,12 @@ export const makeRouteTree = () => {
       path: MY_PAGE_ROUTE_PATH,
       component: MyPage,
       validateSearch: validateMyPageSearch,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: ABSENCE_ROUTE_PATH,
+      component: AbsencePage,
+      validateSearch: validateAbsenceSearch,
     }),
     createRoute({ getParentRoute: () => rootRoute, path: STAFF_SETTINGS_ROUTE_PATH, component: SettingsPage }),
   ]);

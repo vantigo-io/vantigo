@@ -256,6 +256,32 @@ describe("AppSpotlight navigation authorization", () => {
     expect(screen.queryByText("My page", { exact: true })).not.toBeInTheDocument();
   });
 
+  // Request absence is everyone's in the app: it lands on My page's Absence
+  // tab with the request sheet open (the package's `create=absence` seam).
+  it("opens the request sheet from Request absence for staff:access", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["staff:access"], false, false, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText("Request absence", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/staff/me", search: { tab: "absence", create: "absence" } }),
+    );
+  });
+
+  it("hides Request absence without staff:access and when the staff module is not enabled", async () => {
+    renderSpotlight(["staff:view", "staff:manage"], false, false);
+    await waitFor(() => expect(screen.getByText("Staff settings", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Request absence", { exact: true })).not.toBeInTheDocument();
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["*"], true, true, undefined, ["customers"]);
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Request absence", { exact: true })).not.toBeInTheDocument();
+  });
+
   // The Staff destinations are the sidebar's: My page for everyone in the app,
   // the directory for staff:view or staff:manage, the settings for staff:manage.
   it("offers a staff:access holder My page alone, and HR the directory and the settings", async () => {
@@ -270,6 +296,7 @@ describe("AppSpotlight navigation authorization", () => {
     await expectNavigationParity(["staff:access", "staff:manage"], false, false);
     expect(screen.getByText("Staff directory", { exact: true })).toBeInTheDocument();
     expect(screen.getByText("Staff settings", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("Absence", { exact: true })).toBeInTheDocument();
   });
 
   it("hides Create task when the projects module is not enabled", async () => {

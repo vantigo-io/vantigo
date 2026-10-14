@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { validateMyPageSearch } from "../lib/search";
 import { holidayAccount, myAbsences, selfCertification } from "../test/absence-fixtures";
 import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
@@ -387,5 +388,23 @@ describe("My page — the request sheet on a phone", () => {
       shapes[type] = outline();
     }
     expect(shapes).toMatchSnapshot();
+  });
+});
+
+describe("My page — the request sheet opened from elsewhere", () => {
+  it("opens the sheet on arrival when the link asks for it (the spotlight's Request absence), and forgets it on close", async () => {
+    stubStaffApi({ role: "access", me: 101 });
+    const { router } = renderRoute("/staff/me?tab=absence&create=absence");
+
+    const dialog = await screen.findByRole("dialog", { name: "Request absence" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Request absence" })).not.toBeInTheDocument());
+    expect(router.state.location.search).toEqual({ tab: "absence" });
+  });
+
+  it("keeps the asked-for view in the URL's own words", () => {
+    expect(validateMyPageSearch({ tab: "absence", create: "absence" })).toEqual({ tab: "absence", create: "absence" });
+    expect(validateMyPageSearch({ tab: "absence", create: "person" })).toEqual({ tab: "absence" });
   });
 });

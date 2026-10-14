@@ -46,7 +46,7 @@ shorter than yours:
 | [Projects](/en/user/projects/) | Projects, My tasks, Project economy |
 | [Time](/en/user/time/) | My week, Approvals, People, Time settings |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
-| [Staff](/en/user/staff/) | My page (its **Absence** tab and, for a manager, **My team**), Staff directory, Staff settings |
+| [Staff](/en/user/staff/) | My page (its **Absence** tab and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Staff settings |
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |

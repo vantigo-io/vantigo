@@ -1,6 +1,6 @@
 import type { StaffAbsence } from "../api/absence";
 import type { StaffAbsenceType } from "../api/meta";
-import { ApiValidationError } from "../api/request";
+import { ApiValidationError, NotFoundError } from "../api/request";
 import { staffCatalog } from "../i18n";
 import { useStaffFormat } from "./format";
 
@@ -51,6 +51,8 @@ const codeOf = (error: unknown): string | undefined => {
 export const refusalText = (error: unknown, t: Translate): string => {
   const code = codeOf(error);
   if (code && `refusal.${code}` in catalog) return t(`refusal.${code}`);
+  // A row that is gone — or never the caller's to write — is a 404 with no body.
+  if (error instanceof NotFoundError) return t("refusal.not_found");
   if (error instanceof ApiValidationError) return Object.values(error.fieldErrors)[0] ?? error.message;
   return error instanceof Error ? error.message : String(error);
 };

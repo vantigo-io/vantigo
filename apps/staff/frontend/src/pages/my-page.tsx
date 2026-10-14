@@ -43,7 +43,7 @@ import { PersonProfile } from "./-person-profile";
  */
 export const MyPage = () => {
   const { t } = useI18n("staff");
-  const { tab = "profile" } = useSearch({ strict: false }) as MyPageSearch;
+  const { tab = "profile", create } = useSearch({ strict: false }) as MyPageSearch;
   const navigate = useNavigate() as (options: unknown) => void;
   const meta = useQuery(staffMetaQueryOptions());
   const me = useQuery(meQueryOptions());
@@ -110,7 +110,14 @@ export const MyPage = () => {
           {current === "documents" && <MyDocuments today={meta.data.today} />}
         </Tabs.Panel>
         <Tabs.Panel value="absence" pt="lg">
-          {current === "absence" && <MyAbsence today={meta.data.today} types={meta.data.absenceTypes} />}
+          {current === "absence" && (
+            <MyAbsence
+              today={meta.data.today}
+              types={meta.data.absenceTypes}
+              requestOnArrival={create === "absence"}
+              onArrivalDone={() => navigate({ search: { tab: "absence" }, replace: true })}
+            />
+          )}
         </Tabs.Panel>
         {managesAnyone && (
           <Tabs.Panel value="team" pt="lg">

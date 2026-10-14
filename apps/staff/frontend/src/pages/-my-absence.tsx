@@ -31,14 +31,26 @@ import { useStaffFormat } from "../lib/format";
  * request to change or cancel while it waits — and the request sheet. Every
  * figure is the server's; the page counts nothing but the sheet's estimate.
  */
-export const MyAbsence = ({ today, types }: { today: string; types: readonly StaffAbsenceType[] }) => {
+export const MyAbsence = ({
+  today,
+  types,
+  requestOnArrival = false,
+  onArrivalDone,
+}: {
+  today: string;
+  types: readonly StaffAbsenceType[];
+  /** Opens the sheet on arrival — the host spotlight's Request absence. */
+  requestOnArrival?: boolean;
+  /** Called when the sheet opened on arrival closes, so the URL forgets it. */
+  onArrivalDone?: () => void;
+}) => {
   const { t } = useStaffFormat();
   const year = Number(today.slice(0, 4));
   const account = useQuery(myHolidayAccountQueryOptions(year));
   const standing = useQuery(mySelfCertificationQueryOptions());
   const careDays = useQuery(myCareDaysQueryOptions(year));
   const absences = useQuery(myAbsencesQueryOptions());
-  const [sheet, setSheet] = useState<{ absence?: StaffAbsence } | undefined>();
+  const [sheet, setSheet] = useState<{ absence?: StaffAbsence } | undefined>(requestOnArrival ? {} : undefined);
 
   return (
     <Stack gap="md">
@@ -64,7 +76,10 @@ export const MyAbsence = ({ today, types }: { today: string; types: readonly Sta
       </FieldGroup>
       <RequestSheet
         opened={sheet !== undefined}
-        onClose={() => setSheet(undefined)}
+        onClose={() => {
+          setSheet(undefined);
+          if (requestOnArrival) onArrivalDone?.();
+        }}
         types={types}
         today={today}
         absence={sheet?.absence}

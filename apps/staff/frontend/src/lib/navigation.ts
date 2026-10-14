@@ -1,4 +1,4 @@
-import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH, STAFF_SETTINGS_ROUTE_PATH } from "./routes";
+import { ABSENCE_ROUTE_PATH, MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH, STAFF_SETTINGS_ROUTE_PATH } from "./routes";
 
 /**
  * One destination of the Staff app's sidebar (design S28), as the host
@@ -8,7 +8,7 @@ import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH, STAFF_SETTINGS_ROUTE_PATH } from
  * and this package's own gate cannot disagree.
  */
 export interface StaffNavItem {
-  key: "myPage" | "people" | "settings";
+  key: "myPage" | "people" | "absence" | "settings";
   /** A key in the `staff` catalog. */
   label: string;
   to: string;
@@ -31,6 +31,18 @@ export const staffNavItems: readonly StaffNavItem[] = [
     to: PEOPLE_ROUTE_PATH,
     // Any of (the host's `hasPermissions`): the directory, or HR without it.
     requiredPermissions: ["staff:view", "staff:manage"],
+    guardPermissions: ["staff:access"],
+  },
+  {
+    key: "absence",
+    label: "navAbsence",
+    to: ABSENCE_ROUTE_PATH,
+    // Any of: the calendar's readers (the directory, HR) and the deciders by
+    // right — the Approver, HR, and staff:personal-data, which alone decides
+    // the HR-only types (plan reading 33). A manager by the terms is no
+    // permission the sidebar can see: My team decides for them, and the
+    // URL — the dashboard's link — is guarded by the app alone.
+    requiredPermissions: ["staff:view", "staff:approve", "staff:manage", "staff:personal-data"],
     guardPermissions: ["staff:access"],
   },
   { key: "settings", label: "navSettings", to: STAFF_SETTINGS_ROUTE_PATH, requiredPermissions: ["staff:manage"] },
