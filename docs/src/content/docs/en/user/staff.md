@@ -541,7 +541,9 @@ team lead needs no other permission for their own reports. It shows:
 ## The Absence page
 
 **Absence** in the sidebar has two tabs. It opens on **Approvals** when you decide
-requests, and on **Calendar** otherwise; the dashboard's request items open it too.
+requests, and on **Calendar** otherwise; the dashboard's request items open it too — a
+manager without a permission beyond `staff:access` lands there on **Approvals**, with
+the same requests as on [My team](#my-team).
 
 ### Calendar
 

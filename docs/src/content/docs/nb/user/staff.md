@@ -541,7 +541,9 @@ en teamleder trenger ingen annen rettighet for dem hen er leder for. Den viser:
 ## Fraværssiden
 
 **Fravær** i sidemenyen har to faner. Den åpner på **Godkjenninger** når du avgjør
-søknader, og ellers på **Kalender**; søknadspunktene på dashbordet åpner den også.
+søknader, og ellers på **Kalender**; søknadspunktene på dashbordet åpner den også — en
+leder uten annen rettighet enn `staff:access` havner der på **Godkjenninger**, med de
+samme søknadene som under [Mitt team](#mitt-team).
 
 ### Kalender
 

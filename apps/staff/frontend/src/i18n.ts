@@ -1019,6 +1019,7 @@ export const staffCatalog = {
       "Each bar is an absence as you may see it. A dashed bar is a request still waiting. Weekends and public holidays are shaded.",
     calendarEmpty: "Nobody to show this month",
     failedToLoadCalendar: "Could not load the calendar",
+    failedToLoadApprovals: "Could not load the requests",
   },
   nb: {
     staff: "Ansatte",
@@ -2037,6 +2038,7 @@ export const staffCatalog = {
       "Hver stolpe er et fravær slik du har lov til å se det. En stiplet stolpe er en søknad som venter. Helger og helligdager er skyggelagt.",
     calendarEmpty: "Ingen å vise denne måneden",
     failedToLoadCalendar: "Kunne ikke laste kalenderen",
+    failedToLoadApprovals: "Kunne ikke laste søknadene",
   },
 } satisfies CatalogResources;
 
