@@ -1064,7 +1064,7 @@ identity**. Payroll itself (the a-melding, skattekort, feriepenger) stays out: S
 keeps the fields payroll needs and exports them. The owner's sequence (research §10.11):
 **this phase → the Entra module → Staff phase 2 → Staffing.**
 
-### Phase 1 — The register, absence and the account flag (A1 and A2 done; B and C next)
+### Phase 1 — The register, absence and the account flag (A1, A2 and B done; C next)
 
 Four deliveries, four pull requests, one migration each.
 
@@ -1099,13 +1099,54 @@ store; the dashboard's figures, attention items and thresholds, one manager rule
 the dashboard, the Manager audience and the org view; and the Staff app's screens for
 all of it.
 
-**B — Absence.** The public-holiday calendar moved to the platform; absence types with
-their a-melding mapping; holiday schemes above the statutory minimum and the accounts
-they drive; requests, decisions and notifications; sick-leave cases with the statutory
-follow-up milestones; care days; the calendar and the approvals inbox; My page's
-absence. `staff:approve`, registered in A1, starts granting here.
+**B — Absence, built** on `feat/staff-absence`
+([the spec](docs/superpowers/specs/2026-10-11-staff-foundation-design.md), delivery B;
+[the plan](docs/superpowers/plans/2026-10-13-staff-absence.md);
+[the reference](docs/src/content/docs/en/reference/staff.md#absence)): the Norwegian
+public-holiday calendar moved out of Invoices into the platform package
+`internal/calendar`; absence types in the statutory vocabulary with their a-melding
+leave descriptions ([the mapping](docs/src/content/docs/en/reference/staff.md#the-a-meldings-leave-descriptions)),
+an HR-only visibility and company types beside the seeds; holiday schemes above the
+statutory minimum, converted from virkedager, and the
+[holiday account](docs/src/content/docs/en/reference/staff.md#the-holiday-account) per
+person per year with adjustments, carry-over and the optional automatic carry-over;
+requests and registrations, [decisions](docs/src/content/docs/en/reference/staff.md#decisions)
+by the one manager rule and `staff:approve` (which starts granting here, with the
+Approver audience), the narrowed self-approval, the absence mails to addresses Staff
+holds, the approvals inbox and the
+[calendar](docs/src/content/docs/en/reference/staff.md#the-calendar);
+[sick-leave cases](docs/src/content/docs/en/reference/staff.md#sick-leave-cases) with
+the arbeidsgiverperiode (weekends and public holidays between sick rows bridged) and
+the follow-up milestones, [egenmelding](docs/src/content/docs/en/reference/staff.md#egenmelding)
+under the installation's policy and its withdrawal, and
+[care days](docs/src/content/docs/en/reference/staff.md#care-days) by ftrl. § 9-6; and
+what absence adds to A2's records — the payroll export's leave rows and per-kind
+totals, the health erase on the case's own schedule, the absences and cases in the
+personal-data exports, the dashboard's absence figures and items, People's "on leave
+today" — with My page's absence, the request sheet and My team, the Absence area's
+calendar and approvals, and the person's Absence tab and the absence settings. One
+migration, `00047_staff_absence.sql`.
 
-**C — Accounts.** Identity's provisioning contract and managed users; the employee
+Decisions taken while building it that change the design:
+
+- **Holiday is postponed only on the employee's demand** (ferieloven § 9): a
+  sykmelding stands beside approved ferie and splits it only when HR records the
+  employee's demand, with the § 9 (1) deadline judged; spec S9 and its reading 29
+  amended ([the reference](docs/src/content/docs/en/reference/staff.md#a-sykmelding-over-other-rows)).
+- **HR-only types are decided by `staff:personal-data` alone** — provisional, open
+  question 9 in the plan: no manager, Approver or HR without that permission sees
+  such a request, its mail or its history; the alternative (svangerskapskontroll
+  approved automatically, managers deciding the rest) waits for the owner.
+- **Colleagues read dates only**: "absent", with no type, percentage, hours or note,
+  and none of the row's events.
+- **The a-melding codes follow Skatteetaten's guide and NAV's kodeverk** — six leave
+  descriptions plus `permittering`, the expired `velferdspermisjon` and unsplit
+  `utdanningspermisjon` not used; leave reported over fourteen days, omsorgsdager
+  never. The seven spellings are checked against the kodeliste the payroll system
+  validates with before the payroll export is relied on
+  ([the payroll export](docs/src/content/docs/en/reference/staff.md#the-payroll-export)).
+
+**C — Accounts, next.** Identity's provisioning contract and managed users; the employee
 role; the authority mode; the flag on the person and its dates, the account created
 disabled ahead of the start, enabled on the day and disabled after the end, never
 deleted; the managed link; the accounts worker; the adoption of existing users; the
