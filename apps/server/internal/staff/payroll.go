@@ -91,7 +91,12 @@ func readPayroll(ctx context.Context, q *store.Queries) (payrollInput, error) {
 		return in, fmt.Errorf("staff: list the people for payroll: %w", err)
 	}
 	for _, p := range people {
-		in.People[p.ID] = payrollPerson{EmployeeNumber: p.EmployeeNumber, GivenName: p.GivenName, FamilyName: p.FamilyName}
+		person := payrollPerson{EmployeeNumber: p.EmployeeNumber, GivenName: p.GivenName, FamilyName: p.FamilyName}
+		if p.ChildrenUnder12 != nil || p.ChronicallyIllChildren != nil || p.SoleCarer != nil {
+			days := careDayEntitlement(int16Value(p.ChildrenUnder12), int16Value(p.ChronicallyIllChildren), p.SoleCarer != nil && *p.SoleCarer)
+			person.CareDays = &days
+		}
+		in.People[p.ID] = person
 	}
 	if in.Employments, err = q.ListAllEmployments(ctx); err != nil {
 		return in, fmt.Errorf("staff: list the employments for payroll: %w", err)

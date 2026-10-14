@@ -33,12 +33,18 @@ func TestCareDayEntitlement(t *testing.T) {
 }
 
 // The employer pays the first ten days itself and is refunded from day
-// eleven (ftrl. § 9-8): the year's used days split at ten.
+// eleven (ftrl. § 9-8): the year's used days split at ten — and the days
+// beyond go no further than the entitlement (whole-branch review): a day used
+// past it is no care day NAV refunds. An entitlement not recorded (-1)
+// caps nothing.
 func TestCareDaySplit(t *testing.T) {
 	t.Parallel()
-	for _, c := range []struct{ used, employer, beyond int }{{0, 0, 0}, {7, 7, 0}, {10, 10, 0}, {13, 10, 3}} {
-		if e, b := careDaySplit(c.used); e != c.employer || b != c.beyond {
-			t.Errorf("%d used: employer %d, beyond %d, want %d and %d", c.used, e, b, c.employer, c.beyond)
+	for _, c := range []struct{ used, entitlement, employer, beyond int }{
+		{0, 10, 0, 0}, {7, 10, 7, 0}, {10, 10, 10, 0}, {13, -1, 10, 3},
+		{13, 10, 10, 0}, {25, 20, 10, 10}, {18, 20, 10, 8}, {13, 0, 0, 0},
+	} {
+		if e, b := careDaySplit(c.used, c.entitlement); e != c.employer || b != c.beyond {
+			t.Errorf("%d used of %d: employer %d, beyond %d, want %d and %d", c.used, c.entitlement, e, b, c.employer, c.beyond)
 		}
 	}
 }

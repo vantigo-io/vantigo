@@ -187,7 +187,9 @@ Through the API, as a user with `staff:manage`:
    colleagues and managers (`absence_type_in_use`): add another type instead. Making a
    type in use HR-only reaches back: from then on its rows already entered show
    managers only *leave*, and their requests, refusals and history are hidden from them
-   too.
+   too. An HR-only type of your own neither allows a percentage nor draws on the
+   holiday account: the form refuses either, since a share or a holiday deduction would
+   tell managers what kind of leave it is.
 4. Verify: `GET /api/v1/staff/meta` lists the types people may pick — the hidden ones
    left out.
 
@@ -278,6 +280,11 @@ automatically. It is off by default.
 
 ## Carry holiday over
 
+Holiday taken in advance of the year it is earned in (*forskuddsferie*, up to 12
+virkedager by written agreement, ferieloven § 7 nr. 3) is not modelled: the account records no advance. When one is agreed, record it
+as a **Correction** adjustment with a note, in the year it is taken and back in the
+year it is earned.
+
 Holiday left at a year's end does not vanish. HR carries it into the next year. On the
 screen: open the person's **Absence** tab, page to the year with **Previous year**, and
 press **Carry over from** *year*. Choose the **Kind** — *Agreed* or *Forced* (with a
@@ -367,8 +374,9 @@ case from the person's **Documents** tab: change the document and choose its
 **Sick-leave case**.
 
 1. **The arbeidsgiverperiode.** The milestone `employer_period_end` is the case's
-   sixteenth sick day, weekends and public holidays between two sick absences counted;
-   until then it has no date. The employer pays those days when the employee has
+   sixteenth sick day, weekends and public holidays between two sick absences counted,
+   the count starting on a working day (a sick absence from a Saturday counts from
+   the Monday); until then it has no date. The employer pays those days when the employee has
    worked for it four weeks.
 2. **The follow-up.** The follow-up plan is due four weeks after the first day, the
    first dialogue meeting at seven, NAV's activity requirement at eight and the second
@@ -449,7 +457,8 @@ The counter is `GET /api/v1/staff/people/{id}/care-days?year` (the employee, HR 
 carer). The year's sick-child working days are counted against it; the first ten are
 the employer's own, the rest are refunded by NAV — from the first day when the only
 children who qualify are over twelve with extra days, which payroll applies by hand.
-More than the entitlement is shown, never refused. The right needs four weeks'
+More than the entitlement is shown, never refused; the days counted as refunded stop at
+the entitlement when the fields are recorded, in the counter and in the payroll file. The right needs four weeks'
 employment — counted from the start of an unbroken run of employments, one starting
 the day after another ended continuing it: before that the answer says
 `eligible: false` and from which day, and a sick-child day before it is counted apart
@@ -702,7 +711,10 @@ become due. What is due, and what each erase removes, is in
   **`healthRetentionDays`** (default 365) after the case closed — closed by you, or
   sixteen days after its last day. A child-sick row's type goes the same period after
   the end of its year, and a withdrawal of egenmelding the same period after it
-  lapsed. The days stay: who was away when is kept.
+  lapsed — or all of it with the person's other health data, when their last
+  employment ended more than `healthRetentionDays` ago and that comes first. The days
+  stay: who was away when is kept, and an erased case keeps its dates and its
+  milestones' names and dates (an open question with the owner).
 - **Other health documents** — those in a restricted category not filed under a case —
   are deleted **`healthRetentionDays`** after the last employment ended.
 - **Pay** — an employment's pay terms, seniority date and pay grade, its contracts and

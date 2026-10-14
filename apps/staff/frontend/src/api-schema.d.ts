@@ -1628,7 +1628,7 @@ export interface paths {
         get?: never;
         /**
          * Withdraw or restore egenmelding
-         * @description Withdraws the person's right to egenmelding until a day (ftrl. § 8-27) — after today, at most a year ahead — with the reason, 1 to 500 characters; until null lifts it. From the day it is decided (withdrawnFrom; re-issuing a withdrawal still in force keeps that day) until that day, an egenmelding whose first day lies in between is refused self_certification_withdrawn; days before the decision are not. Recorded as self_cert_withdrawn or self_cert_restored, class E, listed only to the readers of the care-day fields.
+         * @description Withdraws the person's right to egenmelding until a day (ftrl. § 8-27) — after today, at most a year ahead — with the reason, 1 to 500 characters; until null lifts it. From the day it is decided (withdrawnFrom; re-issuing a withdrawal still in force keeps that day) until that day, an egenmelding with any day in between is refused self_certification_withdrawn — one that begins before the decision and runs into the withdrawal is refused whole; days before the decision stand as a row of their own. The write moves the person's revision. Recorded as self_cert_withdrawn or self_cert_restored, class E, listed only to the readers of the care-day fields.
          */
         put: operations["putStaffPeopleByIdSelfCertificationWithdrawal"];
         post?: never;
@@ -2636,9 +2636,9 @@ export interface components {
             at: string;
             /** Format: int64 */
             id: number;
-            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; the kinds grow with the module. */
+            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the kinds grow with the module. */
             kind: string;
-            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A", "count": n}]}, read by HR — the health entry by staff:personal-data alone — and is listed as the hold's kinds are: not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone. */
+            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal", "count": n}]}, read by HR — the four health-side entries (health, cases, childSick, withdrawal) by staff:personal-data alone — and is listed as the hold's kinds are: not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone. */
             payload: {
                 [key: string]: unknown;
             };
@@ -2835,7 +2835,7 @@ export interface components {
         StaffHolidaySchemeChangeRequest: {
             /**
              * Format: int32
-             * @description 6 (ferieloven § 5 (2)) to the entitlement. Left out, 6.
+             * @description 6 (ferieloven § 5 nr. 3) to the entitlement. Left out, 6.
              */
             afterSeptemberVirkedager?: number;
             archived: boolean;
@@ -2880,7 +2880,7 @@ export interface components {
         StaffHolidaySchemeRequest: {
             /**
              * Format: int32
-             * @description 6 (ferieloven § 5 (2)) to the entitlement. Left out, 6.
+             * @description 6 (ferieloven § 5 nr. 3) to the entitlement. Left out, 6.
              */
             afterSeptemberVirkedager?: number;
             /**

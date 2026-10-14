@@ -918,6 +918,7 @@ UPDATE staff.people SET
     self_cert_withdrawn_until = $1,
     self_cert_withdrawn_reason = $2,
     self_cert_withdrawn_from = $3,
+    revision = revision + 1,
     updated_at = $4::timestamptz
 WHERE id = $5
 `
@@ -931,7 +932,8 @@ type SetSelfCertWithdrawalParams struct {
 }
 
 // SetSelfCertWithdrawal records or lifts the withdrawal of a person's right
-// to egenmelding (ftrl. § 8-27).
+// to egenmelding (ftrl. § 8-27), a change of the person: their revision
+// moves (whole-branch review).
 func (q *Queries) SetSelfCertWithdrawal(ctx context.Context, arg SetSelfCertWithdrawalParams) error {
 	_, err := q.db.Exec(ctx, setSelfCertWithdrawal,
 		arg.Until,

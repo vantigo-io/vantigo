@@ -58,8 +58,13 @@ func careDayEntitlement(under12, ill int, sole bool) int {
 }
 
 // careDaySplit is the used days the employer bears, and the ones beyond —
-// refunded by NAV.
-func careDaySplit(used int) (employer, beyond int) {
+// refunded by NAV — counted no further than entitlement (whole-branch
+// review): a day used past the entitlement is no care day. An entitlement
+// below zero is one not recorded, which caps nothing.
+func careDaySplit(used, entitlement int) (employer, beyond int) {
+	if entitlement >= 0 {
+		used = min(used, entitlement)
+	}
 	if used <= careDaysEmployerBears {
 		return used, 0
 	}
@@ -104,7 +109,11 @@ func careDaysResponse(ctx context.Context, q *store.Queries, personID int64, yea
 			}
 		}
 	}
-	employer, beyond := careDaySplit(used)
+	known := entitlement
+	if !out.Recorded {
+		known = -1
+	}
+	employer, beyond := careDaySplit(used, known)
 	out.Entitlement, out.Used, out.IneligibleDays, out.Remaining = int32(entitlement), int32(used), int32(ineligible), int32(entitlement-used)
 	out.Exceeded = used > entitlement
 	out.EmployerPaid, out.BeyondEmployer = int32(employer), int32(beyond)

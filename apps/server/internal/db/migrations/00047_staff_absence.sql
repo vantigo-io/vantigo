@@ -180,9 +180,9 @@ CREATE INDEX ix_documents_case ON staff.documents (case_id);
 ALTER TABLE staff.settings ADD COLUMN auto_carry_over_since date;
 
 -- The day HR withdrew a person's right to egenmelding (ftrl. § 8-27, Task 5
--- review L1): an egenmelding is refused from it until
--- self_cert_withdrawn_until, never for days before the decision. Class E,
--- as the withdrawal is.
+-- review L1): an egenmelding with any day from it until
+-- self_cert_withdrawn_until is refused whole; days before the decision stand
+-- as a row of their own. Class E, as the withdrawal is.
 ALTER TABLE staff.people ADD COLUMN self_cert_withdrawn_from date;
 
 -- The statutory vocabulary (S8, plan Task 2 and Revision 2). The a-melding

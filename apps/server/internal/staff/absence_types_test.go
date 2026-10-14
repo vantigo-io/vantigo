@@ -282,6 +282,7 @@ func TestAbsenceTypes_Change(t *testing.T) {
 	change := changeOf(own)
 	change["paid"] = false
 	change["visibility"] = "hr_only"
+	change["allowsPercent"] = false
 	change["ameldingLeave"] = "andreIkkeLovfestedePermisjoner"
 	var changed gen.StaffAbsenceType
 	do(t, hr, http.MethodPut, absenceTypePath(own.Id), change, http.StatusOK, &changed, ifMatch(own.Revision))
@@ -311,7 +312,7 @@ func TestAbsenceTypes_VisibilityIsNotWidenedUnderRows(t *testing.T) {
 	hr, hrID := signIn(t, h, "staff:manage")
 
 	var private gen.StaffAbsenceType
-	do(t, hr, http.MethodPost, absenceTypesPath, companyType("private_matter", map[string]any{"visibility": "hr_only"}), http.StatusCreated, &private)
+	do(t, hr, http.MethodPost, absenceTypesPath, companyType("private_matter", map[string]any{"visibility": "hr_only", "allowsPercent": false}), http.StatusCreated, &private)
 	var widened gen.StaffAbsenceType
 	do(t, hr, http.MethodPut, absenceTypePath(private.Id), changeOf(private), http.StatusOK, nil, ifMatch(private.Revision))
 	open := changeOf(private)
@@ -360,4 +361,24 @@ func TestAbsenceTypes_ClearingTheMapping(t *testing.T) {
 	if got := absenceTypeByKey(t, absenceTypesAs(t, h, "staff:manage"), "own_mapped").AmeldingLeave; got != nil {
 		t.Errorf("stored ameldingLeave = %v, want none", *got)
 	}
+}
+
+// A company type that is HR-only neither allows a percentage nor draws on
+// the holiday account (whole-branch review): either would show its readers
+// as leave — through overlap's shares or the account's arithmetic — what
+// kind of leave it is.
+func TestAbsenceTypes_HROnlyTakesNoShareAndNoHoliday(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	for field, body := range map[string]map[string]any{
+		"allowsPercent": companyType("hr_share", map[string]any{"visibility": "hr_only", "allowsPercent": true}),
+		"drawsHoliday":  companyType("hr_holiday", map[string]any{"visibility": "hr_only", "allowsPercent": false, "drawsHoliday": true}),
+	} {
+		p := refused(t, hr.Do(http.MethodPost, absenceTypesPath, body), http.StatusBadRequest, "")
+		if _, ok := p.Errors[field]; !ok {
+			t.Errorf("an HR-only type with %s: errors %v, want one on %s", field, p.Errors, field)
+		}
+	}
+	do(t, hr, http.MethodPost, absenceTypesPath, companyType("hr_plain", map[string]any{"visibility": "hr_only", "allowsPercent": false}), http.StatusCreated, nil)
 }

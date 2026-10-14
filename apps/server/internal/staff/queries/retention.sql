@@ -7,6 +7,14 @@
 -- module's columnClasses (retention.go), and the statements that null them
 -- are built from it.
 
+-- name: PersonHealthGone :one
+-- PersonHealthGone is whether the person's own health cutoff has passed:
+-- at least one employment, and every one ended before @cutoff (today minus
+-- healthRetentionDays) — DuePeopleHealth's bound, which the schedules a case,
+-- a child-sick row and a withdrawal own meet too when it comes first.
+SELECT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = @person_id)
+   AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = @person_id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date));
+
 -- name: DuePeopleD :many
 -- DuePeopleD is the people whose personnel administration (class D) is due
 -- for erasure: not erased yet, not held, with at least one employment and
@@ -76,8 +84,9 @@ LIMIT @row_limit;
 
 -- name: DueCasesE :many
 -- DueCasesE is the sick-leave cases whose health content is due (design
--- S15, delivery B Task 6): closed — by HR, or sixteen days after their last
--- day, whichever came first — before @cutoff (today minus
+-- S15, delivery B Task 6): closed — by HR, or on the day after the sixteen
+-- that follow their last day (last_day + 17, caseClosesAfter), whichever
+-- came first — before @cutoff (today minus
 -- healthRetentionDays), whatever the person's employment, of a person not
 -- held, with something of class E left: a value of the case's or its
 -- milestones' class E columns (@case_columns, @milestone_columns, from
@@ -89,7 +98,11 @@ FROM staff.sick_cases c
 JOIN staff.people p ON p.id = c.person_id
 WHERE NOT p.legal_hold
   AND (sqlc.narg(person_id)::bigint IS NULL OR c.person_id = sqlc.narg(person_id)::bigint)
-  AND least(coalesce((c.closed_at AT TIME ZONE @zone::text)::date, c.last_day + 17), c.last_day + 17) < @cutoff::date
+  AND (least(coalesce((c.closed_at AT TIME ZONE @zone::text)::date, c.last_day + 17), c.last_day + 17) < @cutoff::date
+       -- or the person's own health cutoff, when it comes first: every
+       -- employment ended before @cutoff (whole-branch review)
+       OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = c.person_id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = c.person_id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
   AND (
       EXISTS (
           SELECT 1 FROM jsonb_each(to_jsonb(c)) j
@@ -160,7 +173,8 @@ JOIN staff.absence_types t ON t.id = a.type_id AND t.kind = 'child_sick'
 JOIN staff.people p ON p.id = a.person_id
 WHERE NOT p.legal_hold
   AND (sqlc.narg(person_id)::bigint IS NULL OR a.person_id = sqlc.narg(person_id)::bigint)
-  AND make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date
+  AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
 GROUP BY a.person_id
 ORDER BY min(a.last_day), a.person_id
 LIMIT @row_limit;
@@ -170,7 +184,9 @@ LIMIT @row_limit;
 -- judges them.
 SELECT a.id FROM staff.absences a
 JOIN staff.absence_types t ON t.id = a.type_id AND t.kind = 'child_sick'
-WHERE a.person_id = @person_id AND make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date
+WHERE a.person_id = @person_id
+  AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
 ORDER BY a.id;
 
 -- name: SetRowsAbsent :exec
@@ -190,10 +206,15 @@ WHERE NOT p.legal_hold
   AND (sqlc.narg(person_id)::bigint IS NULL OR p.id = sqlc.narg(person_id)::bigint)
   AND (
       p.self_cert_withdrawn_until < @cutoff::date
-      OR ((p.self_cert_withdrawn_until IS NULL OR p.self_cert_withdrawn_until < @cutoff::date)
+      OR (p.self_cert_withdrawn_until IS NOT NULL AND (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
+      OR ((p.self_cert_withdrawn_until IS NULL OR p.self_cert_withdrawn_until < @cutoff::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
           AND EXISTS (
               SELECT 1 FROM staff.events ev, jsonb_each(ev.payload -> 'fields') f
-              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal' AND ev.at < @cutoff_at::timestamptz
+              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal'
+                AND (ev.at < @cutoff_at::timestamptz OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
                 AND f.value <> to_jsonb(@blanked::text))))
 ORDER BY p.id
 LIMIT @row_limit;
@@ -210,7 +231,8 @@ FROM staff.events ev
 JOIN staff.people p ON p.id = ev.person_id
 WHERE NOT p.legal_hold
   AND (sqlc.narg(person_id)::bigint IS NULL OR ev.person_id = sqlc.narg(person_id)::bigint)
-  AND 'E' = ANY(ev.payload_classes) AND ev.at < @cutoff_at::timestamptz
+  AND 'E' = ANY(ev.payload_classes) AND (ev.at < @cutoff_at::timestamptz OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = ev.person_id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = ev.person_id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
   AND (ev.payload ? 'absenceId' OR ev.payload ? 'caseId' OR ev.payload ? 'rowCaseId' OR ev.payload ? 'sickAbsenceId')
   AND NOT ev.payload ? 'selfCertWithdrawal'
   AND NOT (

@@ -1653,10 +1653,10 @@ type StaffEvent struct {
 	At    time.Time       `json:"at"`
 	Id    int64           `json:"id"`
 
-	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; the kinds grow with the module.
+	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the kinds grow with the module.
 	Kind string `json:"kind"`
 
-	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A", "count": n}]}, read by HR — the health entry by staff:personal-data alone — and is listed as the hold's kinds are: not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone.
+	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal", "count": n}]}, read by HR — the four health-side entries (health, cases, childSick, withdrawal) by staff:personal-data alone — and is listed as the hold's kinds are: not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone.
 	Payload map[string]interface{} `json:"payload"`
 }
 
@@ -1789,7 +1789,7 @@ type StaffHolidayScheme struct {
 
 // StaffHolidaySchemeChangeRequest A scheme replaced as a whole, and archived or restored. isDefault true makes it the default (an archived scheme never is, structure_archived); false on the default is refused structure_default, since there is always one; left out, the flag stays. Archiving the default or a scheme an employment names is refused holiday_scheme_in_use.
 type StaffHolidaySchemeChangeRequest struct {
-	// AfterSeptemberVirkedager 6 (ferieloven § 5 (2)) to the entitlement. Left out, 6.
+	// AfterSeptemberVirkedager 6 (ferieloven § 5 nr. 3) to the entitlement. Left out, 6.
 	AfterSeptemberVirkedager *int32 `json:"afterSeptemberVirkedager,omitempty"`
 	Archived                 bool   `json:"archived"`
 
@@ -1821,7 +1821,7 @@ type StaffHolidaySchemeConverted struct {
 
 // StaffHolidaySchemeRequest A new scheme. isDefault true makes it the default in place of the one there is.
 type StaffHolidaySchemeRequest struct {
-	// AfterSeptemberVirkedager 6 (ferieloven § 5 (2)) to the entitlement. Left out, 6.
+	// AfterSeptemberVirkedager 6 (ferieloven § 5 nr. 3) to the entitlement. Left out, 6.
 	AfterSeptemberVirkedager *int32 `json:"afterSeptemberVirkedager,omitempty"`
 
 	// EntitlementVirkedager 25 to 60.

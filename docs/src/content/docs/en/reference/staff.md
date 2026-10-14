@@ -123,15 +123,15 @@ C.
 | `healthRetentionDays` | 365 | 30 to 3650 days from the last employment's end to the [health erase](#what-is-due); left out, kept. |
 | `selfCertPolicy` | `minimum` | `minimum`, `extended` or `custom` (below); left out, kept. |
 | `selfCertDaysPerOccurrence` | 3 | 3 to 16 calendar days one egenmelding may last; read under `custom` only; left out, kept. |
-| `selfCertOccurrencesPerYear` | 4 | 4 to 52 occurrences in a rolling year; read under `custom` only; left out, kept. |
-| `selfCertDaysPerYear` | 24 | 12 to 365 self-certified days in a rolling year; read under `custom` only; left out, kept. |
+| `selfCertOccurrencesPerYear` | 4 | 4 to 52 occurrences in twelve months; read under `custom` only; left out, kept. |
+| `selfCertDaysPerYear` | 24 | 12 to 365 self-certified days in twelve months; read under `custom` only; left out, kept. |
 | `selfCertAfterMonths` | 2 | 0 to 2 months of employment before egenmelding may be used; left out, kept. |
 | `autoCarryOver` | false | Carry holiday left at a year's end into the next as forced, without HR's action; left out, kept. |
 
 **The self-certification policy.** A preset writes its own numbers, whatever the
 request carries: `minimum` — the statutory one — 3 days an occurrence and 4
-occurrences in a rolling year; `extended` 8 days an occurrence and 24 days in a
-rolling year. The number a preset does not use keeps what it holds. `custom` takes the
+occurrences in twelve months; `extended` 8 days an occurrence and 24 days in
+twelve months. The number a preset does not use keeps what it holds. `custom` takes the
 three as sent, but never below the statutory minimum (ftrl. § 8-23: 3 days an
 occurrence, 4 occurrences and 12 days in twelve months), which no agreement goes
 below; the floors are judged whatever the policy. Egenmelding keys on the policy's
@@ -471,7 +471,7 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `people_exported` | Installation-level (no person): `rows`, the people the [export](#the-registers-import-and-export) wrote. |
 | `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; no personal data, so no payload class. |
 | `threshold_acknowledged` | Installation-level (no person): `key`, the [threshold](#the-thresholds) acknowledged (`5`, `30`, `50` or `otp`); the actor is the caller; no payload class. |
-| `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`), read by `staff:manage` and `staff:personal-data`, the `health` entry by `staff:personal-data` alone; listed as the hold's kinds are; the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
+| `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`, `cases`, `childSick`, `withdrawal`), read by `staff:manage` and `staff:personal-data`, the four health-side entries (`health`, `cases`, `childSick`, `withdrawal`) by `staff:personal-data` alone; listed as the hold's kinds are; the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
 
 Delivery B's absence and adjustment events carry their classes per field and are
 shaped by the absence groups; they are described under
@@ -1113,7 +1113,10 @@ The seeds, every installation's, in their order:
   `seed_immutable` (409). A company type's visibility is **widened** — `hr_only` to
   `absent` — only while no absence names it: once one does, widening is
   `absence_type_in_use` (409), since it would show colleagues and managers, after the
-  fact, a type people took as HR-only. Narrowing is always allowed. The type's row is
+  fact, a type people took as HR-only. Narrowing is always allowed. A company type that
+  is HR-only neither allows a percentage nor draws on the holiday account (a 400 on
+  `allowsPercent` or `drawsHoliday`; whole-branch review): a reader of it as leave would
+  learn its kind from overlap's shares or the account's arithmetic. The type's row is
   held `FOR UPDATE`, which an absence's foreign key waits for, so no absence slips in
   between the question and the change.
 - **History.** Each write is an installation event, `absence_type_created` or
@@ -1168,7 +1171,7 @@ days and an entitlement is never undercounted.
 | `entitlementVirkedager` | 25–60 (the Holiday Act's 25 at least). |
 | `extraFrom60Virkedager` | 6–30: the extra days from the year the person turns 60. |
 | `mainPeriodVirkedager` | 18 (ferieloven § 7 (1)) to the entitlement; left out, 18. |
-| `afterSeptemberVirkedager` | 6 (ferieloven § 5 (2)) to the entitlement, for a start after 30 September; left out, 6. |
+| `afterSeptemberVirkedager` | 6 (ferieloven § 5 nr. 3) to the entitlement, for a start after 30 September; left out, 6. |
 | `maxCarryOverVirkedager` | 0 to 12 plus the entitlement's days above 25 (ferieloven § 7 (3)), the agreed carry-over's cap; left out, 12. |
 
 The statutory scheme is seeded — "Statutory (ferieloven)", 25 / 6 / 18 / 6 / 12, the
@@ -1377,7 +1380,12 @@ in the business time zone when left out; 2000–2100), in working days:
   (two concurrent employments, one account), [converted](#holiday-schemes) — its
   after-September days when that employment starts after 30 September of the year —
   plus the extra days converted when the person turns 60 or more in the year,
-  un-prorated. No employment in the year, nothing.
+  un-prorated — after-September included: ferieloven § 5 nr. 2 sets the extra week
+  no start condition, and nr. 3 limits only the feriefritid (checked on Lovdata,
+  2026-10-14). No employment in the year, nothing. **Forskuddsferie** (holiday taken
+  in advance of the year it is earned in, up to 12 virkedager by written agreement,
+  ferieloven § 7 nr. 3) is out of scope: the account
+  records no advance, and an advance agreed is HR's to keep as a correction.
 - **`carriedIn`**: the year's agreed carry-overs, capped at the scheme's maximum
   converted, and its forced carry-overs and corrections, uncapped.
 - **`carriedInDerived`**: with automatic carry-over on, for a year whose 1 January is
@@ -1663,7 +1671,7 @@ rows change — never touching a milestone's done day, its waiver or its note:
 
 | Kind | Date |
 | --- | --- |
-| `employer_period_end` | The case's sixteenth sick day; none until the rows reach it. |
+| `employer_period_end` | The case's sixteenth sick day; none until the rows reach it. The count starts on a working day (NAV; whole-branch review): a row that begins on a Saturday, a Sunday or a public holiday — the case's first, or one after worked days — counts from its first working day. |
 | `follow_up_plan` | `first_day + 28` — the follow-up plan (aml. § 4-6 (3)). |
 | `dialogue_1` | `first_day + 49` — the first dialogue meeting. |
 | `nav_activity` | `first_day + 56` — the activity requirement at eight weeks (ftrl. § 8-8 second paragraph); NAV's own follow-up is § 8-7 a. |
@@ -1744,8 +1752,10 @@ pre-flight I2):
   apart are two occurrences, even within one case. One occurrence is at most the
   policy's days: 1+1+1+1 on four consecutive weekdays is refused on day four under the
   minimum's three, and egenmelding Friday and again Monday is day four.
-- **The rolling year** — every 365 days that hold a day of the row, later occurrences
-  counted too, so a backdated egenmelding is judged in each rolling year it lies in
+- **The twelve months** — every window of twelve months (ftrl. § 8-23 "i løpet av 12
+  måneder"; the day after the same date a year earlier to the day, 366 days across 29
+  February — whole-branch review) that holds a day of the row, later occurrences
+  counted too, so a backdated egenmelding is judged in each twelve months it lies in
   (review L10): under `minimum` at most four occurrences; under `extended` at most 24
   days; under `custom` both by the stored numbers. The limits **key on the policy's
   name**: under `minimum` and `extended` the preset's numbers are used whatever the
@@ -1764,7 +1774,7 @@ Past a limit is `self_certification_exhausted`; each refusal is a 409 whose deta
 why and tells the person to register a sykmelding.
 `GET /people/{id}/self-certification` (the person, their manager, the Approver and HR)
 and `GET /me/self-certification` answer the standing today: the policy and its
-numbers, the occurrences and days used in the rolling year ending today, the day the
+numbers, the occurrences and days used in the twelve months ending today, the day the
 months of employment allow it from (`eligibleFrom`) and — to the readers of the
 care-day fields alone — the withdrawal.
 
@@ -1774,7 +1784,8 @@ care-day fields alone — the withdrawal.
 withdraws a person's right to egenmelding (ftrl. § 8-27) until a day after today and at
 most a year ahead, with a reason of 1–500 characters; `{"until": null}` lifts it. It
 applies from the day it is decided (`withdrawnFrom`), never to days before; re-issuing
-a withdrawal still in force — to extend it, say — keeps that day. The three
+a withdrawal still in force — to extend it, say — keeps that day. The write moves the
+person's revision, as any change of the person does. The three
 columns are on the person (`self_cert_withdrawn_from`, `_until`, `_reason`, class E). The
 events `self_cert_withdrawn` and `self_cert_restored` carry their fields with their
 classes (E) and the marker `selfCertWithdrawal`, and are listed **only to the readers
@@ -1802,7 +1813,9 @@ right — four weeks into the unbroken employment the day lies in, an employment
 began the day after another ended continuing it (review L10); a day before it is no
 care day and is counted apart (`ineligibleDays`). `employerPaid` the first ten,
 which the employer bears itself, `beyondEmployer` the rest, which NAV refunds
-(ftrl. § 9-8). When the only children who qualify are over twelve with extra days, NAV
+(ftrl. § 9-8) — counted no further than the entitlement when the care-day fields are
+recorded (whole-branch review): a day used past it is no care day; the payroll file's
+`Child sick days beyond employer` is capped the same way. When the only children who qualify are over twelve with extra days, NAV
 refunds from the first day — HR and payroll apply that; the module does not model it.
 Using more than the entitlement is shown (`exceeded`, `remaining` below zero), never
 refused. The right needs four weeks' employment (§ 9-8): `eligible` is false until
@@ -2226,13 +2239,18 @@ time zone's civil day:
   case's), and of the withdrawal; what none
   owns stays here too.
 - **cases** — a sick-leave case, of a person not held, **whatever their employment**,
-  closed — by HR, or sixteen days after its last day, whichever came first — before
-  today minus `healthRetentionDays` (spec open question 1: 365 days, built as
+  closed — by HR, or on its last day + 17 (the sixteen days a row may still join in
+  over), whichever came first — before today minus `healthRetentionDays` (spec open question 1: 365 days, built as
   designed), with something of class E left: a value of the case's or its milestones'
   E columns, a row still of a sick type or with a degree, a document filed under it, or
   a health field of an event it owns.
 - **childSick** — a person, not held, with a child-sick row whose year ended before
   today minus `healthRetentionDays` (plan reading 21).
+
+  These three, and the orphaned events below, are **capped by the person's own health
+  cutoff** (whole-branch review): when every employment of the person ended before
+  today minus `healthRetentionDays`, what a case, a child-sick row or a withdrawal
+  owns is due with the rest of their health data, whichever comes first.
 - **withdrawal** — a person, not held, whose [withdrawal](#the-withdrawal) of
   egenmelding lapsed before today minus `healthRetentionDays`, or — none in force —
   with a withdrawal event recorded before then that still holds a value.
@@ -2240,8 +2258,8 @@ time zone's civil day:
   employment, with an absence or case event that nothing owns any more (its row, its
   case and the sykmelding it names all gone: a case removed with its only row, a case
   merged away before the merge was recorded), recorded more than `healthRetentionDays`
-  and sixteen days ago — the latest its case could have closed — that still holds a
-  health value.
+  and seventeen days ago — the latest its case could have closed, on its last day + 17,
+  the same bound the case schedule reads — that still holds a health value.
 - **A** — per **employment**: ended in a year more than five years before this one
   (ended in 2020, due from 1 January 2026; ended in 2021, not before 2027), of a person
   not held, erased or not, with something of class A still there — a pay column set on
@@ -2521,7 +2539,7 @@ the caller's roles find is listed once.
 | `hrOnlyAwaitingDecision` | personal-data (never manage without it) | Requests of an HR-only type undecided for more than seven days — the caller's own included, so the only holder of `staff:personal-data`, whose own request nobody may decide ([decisions](#decisions)), sees it stall (open question 9). One item; `id` `hrOnlyAwaitingDecision`. | The oldest's seventh day. | `approvals`; `count` the requests. |
 | `sickMilestoneDue` | manage, approve; a manager today of the person | A [milestone](#the-arbeidsgiverperiode-and-the-milestones) due — the case open and lasted to within a week of the date, neither done nor waived (pre-flight I5) — dated within seven days or past. The end of the arbeidsgiverperiode is a date, never an action, and raises none; a three-day case raises none. One per milestone; `id` `sickMilestoneDue/<case id>/<kind>`. | The milestone's date. | The person. |
 | `holidayUntaken` | manage | In January: a person with an employment in force today whose [holiday account](#the-holiday-account) for last year has days remaining and no carry-over from it recorded — a carry-in [automatic carry-over](#adjustments-and-carry-over) derives counts as recorded (pre-flight M6). One per person. | 1 January. | The person. |
-| `mainPeriodShort` | manage | From 1 April to 30 September (reading 23): a person with an employment in force today that began before 1 June, with fewer approved ferie working days in 1 June – 30 September than that employment's scheme's main period converted — 18 virkedager are 15 days (ferieloven § 7 (1)). One per person. | 1 April. | The person. |
+| `mainPeriodShort` | manage | From 1 April to 30 September (reading 23): a person with an employment in force today that began before 1 June, with fewer approved ferie working days in 1 June – 30 September than the main period, converted, of the scheme the holiday account reads — the earliest employment's in the year (whole-branch review) — 18 virkedager are 15 days (ferieloven § 7 (1)). One per person. | 1 April. | The person. |
 
 `id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for
 the person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
@@ -2618,7 +2636,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `own_request` | 403 | Deciding, cancelling or correcting one's own absence, but for the self-approver. |
 | `absence_status_change` | 409 | Changing an absence's type between one that needs a decision and one that is a notification. |
 | `carry_over_recorded` | 409 | A second carry-over for one person from one year. |
-| `self_certification_exhausted` | 409 | An egenmelding past the policy's days of one occurrence, its rolling year's occurrences or days, or its case's sixteenth sick day. |
+| `self_certification_exhausted` | 409 | An egenmelding past the policy's days of one occurrence, its twelve months' occurrences or days, or its case's sixteenth sick day. |
 | `self_certification_too_early` | 409 | An egenmelding before the policy's months of employment. |
 | `self_certification_withdrawn` | 409 | An egenmelding from the day HR decided to withdraw the right until its last day. |
 | `holiday_postponement_not_applicable` | 409 | A demand to postpone holiday on a row that is no 100 % sykmelding, or one over no approved ferie. |
@@ -2691,8 +2709,10 @@ person's, which it moves on when the list changes.
 - **An absence's rows.** A new absence takes the person's row, then the absence type it
   names `FOR KEY SHARE` — a type's own change holds it `FOR UPDATE` and never a person,
   so the two queue; a change, removal, cancel or correction takes the person's row, the
-  absence's row, then its type `FOR KEY SHARE`; an adjustment takes the person's row,
-  then the adjustment's. Overlap, the carry-over's "at most one" and the account an answer
+  absence's row, then its type `FOR KEY SHARE`, and — for a change or a correction — the
+  new type it names `FOR KEY SHARE` too; an adjustment, and its removal, takes the
+  person's row, then the adjustment's (`FOR UPDATE`). A withdrawal of egenmelding, or
+  its lifting, takes the person's row alone. Overlap, the carry-over's "at most one" and the account an answer
   carries are judged over rows read inside that lock, so two writes for one person are
   judged one after the other.
 - **Sick-leave cases.** A sick row's write takes, after the person's row and their
@@ -2700,7 +2720,12 @@ person's, which it moves on when the list changes.
   documents (a merged or removed case's). A case's own write — its notes, a milestone,
   the close — takes the person's row, then the case; one on a case a merge removed
   meanwhile finds it gone (404). A demand to postpone holiday takes the person's row,
-  the sykmelding, then each ferie row's type `FOR KEY SHARE`. A change, removal,
+  the sykmelding, then each ferie row's type `FOR KEY SHARE`, and the ferie rows it
+  splits are written — shortened, inserted or cancelled, each `UPDATE` taking its row —
+  under the person's row; a sykmelding's carve of the egenmelding it covers is written
+  the same way. A case's milestones are dated by an upsert on `(case_id, kind)` under the
+  person's row and the case's, which never touches a milestone's done day, waiver or
+  note. A change, removal,
   cancel or correction of an absence takes its type `FOR KEY SHARE` too, after the row
   (a review finding), so a change of the type's own waits. Every case write and every sick
   row of one person are judged one after the other; the case's dates are derived

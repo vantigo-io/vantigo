@@ -43,6 +43,10 @@ func parsePayrollMonth(raw string) (payrollMonth, bool) {
 // holds them (design reading 9).
 type payrollPerson struct {
 	EmployeeNumber, GivenName, FamilyName string
+	// CareDays is the year's care-day entitlement from the person's care-day
+	// fields, nil when none is recorded: the days beyond the employer's ten
+	// count no further (whole-branch review). Read, never written.
+	CareDays *int
 }
 
 // payrollInput is what one export reads in its snapshot.
@@ -168,7 +172,7 @@ func payrollRows(in payrollInput, m payrollMonth) []payrollRow {
 			payrollTerms(&r, *t, chain, on, in.Departments)
 		}
 		rows := absences[e.PersonID]
-		payrollTotals(&r, rows, employments[e.PersonID], e, m, mainEmployment(employments[e.PersonID], in.Terms, m) == e.ID)
+		payrollTotals(&r, rows, employments[e.PersonID], e, m, mainEmployment(employments[e.PersonID], in.Terms, m) == e.ID, person.CareDays)
 		out = append(out, r)
 		for _, l := range reportedLeaves(rows, e, m) {
 			out = append(out, payrollRow{
@@ -264,7 +268,11 @@ func payrollDays(e store.StaffEmployment, m payrollMonth) (time.Time, time.Time)
 // weeks counting none. A person with two employments in force has their
 // absence on each, as it is from both — but the days beyond the employer's
 // ten, the person's and refunded once, on the main one alone (mainEmployment).
-func payrollTotals(r *payrollRow, rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, e store.StaffEmployment, m payrollMonth, main bool) {
+func payrollTotals(r *payrollRow, rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, e store.StaffEmployment, m payrollMonth, main bool, careDays *int) {
+	careLimit := int64(-1)
+	if careDays != nil {
+		careLimit = int64(*careDays) * wholeDay
+	}
 	if len(rows) == 0 {
 		return
 	}
@@ -291,7 +299,7 @@ func payrollTotals(r *payrollRow, rows []store.AbsencesBetweenRow, employments [
 	r.HolidayDays, r.SelfCertifiedSickDays, r.CertifiedSickDays = payrollTotal(sum.Holiday), payrollTotal(sum.SelfSick), payrollTotal(sum.CertifiedSick)
 	r.ChildSickDays = payrollTotal(sum.ChildSick)
 	if main {
-		r.ChildSickBeyondEmployer = payrollTotal(childSickBeyondEmployer(rows, employments, from, to))
+		r.ChildSickBeyondEmployer = payrollTotal(childSickBeyondEmployer(rows, employments, from, to, careLimit))
 	}
 	r.LeaveDays, r.OtherDays = payrollTotal(sum.Leave), payrollTotal(sum.Other)
 	if hours > 0 {
@@ -302,8 +310,9 @@ func payrollTotals(r *payrollRow, rows []store.AbsencesBetweenRow, employments [
 // childSickBeyondEmployer is the share of the care days from..to beyond the
 // employer's ten of their year, in hundredths of a percent of a day: each
 // working day of a child-sick row on or after the right to care days, by its
-// percent, summed from 1 January.
-func childSickBeyondEmployer(rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, from, to time.Time) int64 {
+// percent, summed from 1 January — and no further than limit, the year's
+// entitlement in the same unit (below zero: none recorded, no limit).
+func childSickBeyondEmployer(rows []store.AbsencesBetweenRow, employments []store.StaffEmployment, from, to time.Time, limit int64) int64 {
 	spans := employmentSpans(employments)
 	jan1 := time.Date(from.Year(), time.January, 1, 0, 0, 0, 0, time.UTC)
 	const bears = careDaysEmployerBears * wholeDay
@@ -321,8 +330,12 @@ func childSickBeyondEmployer(rows []store.AbsencesBetweenRow, employments []stor
 		}
 		before := used
 		used += share
-		if !d.Before(from) && used > bears {
-			beyond += used - max(before, bears)
+		counted := used
+		if limit >= 0 {
+			counted = min(used, limit)
+		}
+		if !d.Before(from) && counted > bears {
+			beyond += counted - min(max(before, bears), counted)
 		}
 	}
 	return beyond

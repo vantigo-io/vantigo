@@ -63,6 +63,12 @@ func TestEmployerPeriodEnd(t *testing.T) {
 			[]sickSpan{span(t, "2026-03-23", "2026-04-01"), span(t, "2026-04-07", "2026-04-10")}, "2026-04-07"},
 		{"an interrupted case: the worked days between are not counted",
 			[]sickSpan{span(t, "2026-10-05", "2026-10-07"), span(t, "2026-10-14", "2026-10-28")}, "2026-10-26"},
+		// The period starts on a working day (NAV; whole-branch review): a
+		// row that begins on a Saturday counts from the Monday, and so does a
+		// row after an unbridged gap.
+		{"a row from a Saturday counts from the Monday", []sickSpan{span(t, "2026-10-03", "2026-10-25")}, "2026-10-20"},
+		{"after worked days, a row from a Saturday counts from the Monday",
+			[]sickSpan{span(t, "2026-10-05", "2026-10-07"), span(t, "2026-10-10", "2026-10-30")}, "2026-10-24"},
 		{"fifteen days: no end yet", []sickSpan{span(t, "2026-10-05", "2026-10-19")}, ""},
 		{"a three-day case", []sickSpan{span(t, "2026-10-05", "2026-10-07")}, ""},
 	} {

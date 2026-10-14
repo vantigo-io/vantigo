@@ -122,7 +122,7 @@ func parseScheme(name string, entitlement, extra int32, main, after, carry *int3
 		return int16(*v)
 	}
 	// The Holiday Act's floors and the carry-over's cap: 18 days in the main
-	// period (ferieloven § 7 (1)), 6 for a start after 30 September (§ 5 (2)),
+	// period (ferieloven § 7 (1)), 6 for a start after 30 September (§ 5 nr. 3),
 	// and an agreed carry-over of at most 12 days plus the days above the
 	// statutory 25 (§ 7 (3)).
 	out.MainPeriod = part("mainPeriodVirkedager", "The main period", main, mainPeriodDefault, mainPeriodDefault, entitlement)

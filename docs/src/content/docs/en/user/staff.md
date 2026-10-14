@@ -667,7 +667,7 @@ The rules behind the screens above:
   twelve months.
 - **Your sick-leave case.** Your sick absences are gathered into a case — a new one
   when more than sixteen days have passed since the last. Its follow-up — the end of
-  the employer's sixteen days, the follow-up plan at four weeks, the dialogue meetings
+  the employer's sixteen days (counted from your first working day off sick), the follow-up plan at four weeks, the dialogue meetings
   at seven and twenty-six, NAV's activity requirement at eight — is your manager's and
   HR's to mark. A case never holds a diagnosis: there is nowhere to write one.
 - **Care days** for a sick child count against your days for the year — 10 for one or

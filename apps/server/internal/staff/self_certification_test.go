@@ -237,3 +237,16 @@ func TestCareDays(t *testing.T) {
 	}
 	refused(t, w.nobody.Do(http.MethodGet, meCareDaysPath, nil), http.StatusNotFound, "no_person")
 }
+
+// A withdrawal of egenmelding is a change of the person: it moves their
+// revision (whole-branch review), so a full replace read before it is
+// refused rather than silently kept.
+func TestSelfCertification_TheWithdrawalMovesThePersonsRevision(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	before := modtest.One[int32](t, w.h.Harness, `SELECT revision FROM staff.people WHERE id = $1`, w.kari.Id)
+	do(t, w.hr, http.MethodPut, withdrawalPath(w.kari.Id), map[string]any{"until": "2026-12-31", "reason": "Gjentatt"}, http.StatusOK, nil)
+	if after := modtest.One[int32](t, w.h.Harness, `SELECT revision FROM staff.people WHERE id = $1`, w.kari.Id); after != before+1 {
+		t.Errorf("revision %d after the withdrawal, want %d", after, before+1)
+	}
+}
