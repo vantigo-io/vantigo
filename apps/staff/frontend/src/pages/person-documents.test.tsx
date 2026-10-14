@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { cases } from "../test/absence-fixtures";
 import { awaitDownload, choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { type StaffStub, staffProblem, stubStaffApi } from "../test/server";
@@ -532,5 +533,35 @@ describe("Documents tab — on a phone", () => {
     const camera = within(dialog).getByLabelText("Take a photo", { selector: "input" });
     expect(camera).toHaveAttribute("capture", "environment");
     expect(camera).toHaveAttribute("accept", "image/*");
+  });
+});
+
+describe("Person page — a health document filed under a sick-leave case", () => {
+  const adaCase = () => ({ ...cases()[0], id: 702, personId: 101, firstDay: "2026-09-14", lastDay: "2026-09-15" });
+
+  it("lets staff:personal-data file a restricted document under one of the person's cases", async () => {
+    const fetchMock = stubStaffApi({ role: "personalData", absence: { cases: [adaCase()] } });
+    renderRoute("/staff/people/101?tab=documents");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Change sick-note.pdf" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change sick-note.pdf" });
+    await choose(dialog, "Sick-leave case", "Sick-leave case from Sep 14, 2026");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /documents\/504$/)).toHaveLength(1));
+    expect(sent(fetchMock, "PUT", /documents\/504$/)[0].body).toMatchObject({ caseId: 702 });
+    expect(sent(fetchMock, "GET", /cases\?personId=101&status=all/).length).toBeGreaterThan(0);
+  });
+
+  it("offers no case for a document outside a restricted category, and sends none", async () => {
+    const fetchMock = stubStaffApi({ role: "personalData", absence: { cases: [adaCase()] } });
+    renderRoute("/staff/people/101?tab=documents");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Change forklift-licence.pdf" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change forklift-licence.pdf" });
+    expect(within(dialog).queryByRole("combobox", { name: "Sick-leave case" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT", /documents\/502$/)).toHaveLength(1));
+    expect(sent(fetchMock, "PUT", /documents\/502$/)[0].body).not.toHaveProperty("caseId");
   });
 });

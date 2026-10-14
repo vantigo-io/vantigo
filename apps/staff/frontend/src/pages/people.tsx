@@ -1,6 +1,7 @@
 import {
   Alert,
   Anchor,
+  Badge,
   Button,
   Card,
   Group,
@@ -184,9 +185,22 @@ export const PeoplePage = () => {
                   {people.map((person) => (
                     <Table.Tr key={person.id} data-person={person.id}>
                       <Table.Td>
-                        <Anchor size="sm" renderRoot={(props) => <Link {...personLinkOptions(person.id)} {...props} />}>
-                          {person.displayName}
-                        </Anchor>
+                        <Group gap={6} wrap="wrap">
+                          <Anchor
+                            size="sm"
+                            renderRoot={(props) => <Link {...personLinkOptions(person.id)} {...props} />}
+                          >
+                            {person.displayName}
+                          </Anchor>
+                          {/* The list's own flag (GET /people's onLeaveToday): the same to
+                              every reader and never a type, so a colleague learns no more
+                              than the calendar's "absent" bar tells them. */}
+                          {person.onLeaveToday && (
+                            <Badge variant="light" color="orange" size="sm">
+                              {t("onLeaveToday")}
+                            </Badge>
+                          )}
+                        </Group>
                       </Table.Td>
                       <Table.Td>{person.employeeNumber}</Table.Td>
                       <Table.Td>{person.title ?? t("notSet")}</Table.Td>

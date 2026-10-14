@@ -3236,6 +3236,8 @@ export interface components {
             id: number;
             location?: components["schemas"]["StaffLocationSummary"];
             manager?: components["schemas"]["StaffPersonSummary"];
+            /** @description Whether an approved or registered absence of a whole or part day, of any type, covers today (design §7, "on leave today") — the same to every reader of the list, a colleague included, and never naming the type: it says no more than the calendar's "absent" bar. A request does not count, nor an hour registration. */
+            onLeaveToday: boolean;
             /** @description Absent when not set. */
             phoneWork?: string;
             preferredLanguage: components["schemas"]["StaffLanguage"];

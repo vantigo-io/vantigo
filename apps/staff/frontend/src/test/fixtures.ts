@@ -27,10 +27,12 @@ export const TODAY = "2026-10-11";
  * `personalDataOnly` a role holding `staff:personal-data` alone — it reads
  * every group of anyone and reveals and sets the sealed fields, but edits
  * nothing else, lists nobody and reads no structure — and `access` somebody
- * holding `staff:access` alone, who reads neither. Being the person
+ * holding `staff:access` alone, who reads neither; `approve` a holder of
+ * `staff:view` and `staff:approve` — the Approver, who decides everyone's
+ * absence and writes nothing else. Being the person
  * themselves or their manager is not a role but a link (the stub's `me`).
  */
-export type Role = "manage" | "view" | "manageOnly" | "personalData" | "personalDataOnly" | "access";
+export type Role = "manage" | "view" | "manageOnly" | "personalData" | "personalDataOnly" | "access" | "approve";
 
 /** Whether the role holds `staff:manage`: the one that writes a person, an employment and the structure. */
 export const manages = (role: Role) => role === "manage" || role === "manageOnly" || role === "personalData";
@@ -43,9 +45,9 @@ export const capabilitiesOf = (role: Role): StaffCapabilities => ({
   canSeePay: manages(role) || holdsPersonalData(role),
   canRevealIdentifiers: holdsPersonalData(role),
   canSeeHealth: holdsPersonalData(role),
-  canViewDirectory: role === "manage" || role === "view" || role === "personalData",
-  // staff:manage decides absence; no fixture role manages anyone by the terms.
-  canDecide: manages(role),
+  canViewDirectory: role === "manage" || role === "view" || role === "personalData" || role === "approve",
+  // staff:manage and staff:approve decide absence; no fixture role manages anyone by the terms.
+  canDecide: manages(role) || role === "approve",
   managesAnyone: false,
 });
 
@@ -321,6 +323,7 @@ export const person = (overrides: Partial<StoredPerson> = {}): StoredPerson => (
   workCountry: "NO",
   preferredLanguage: "en",
   status: { state: "active" },
+  onLeaveToday: false,
   department: { id: 21, code: "ENG", name: "Engineering" },
   title: "Senior engineer",
   businessUnit: { id: 11, name: "Oslo office" },

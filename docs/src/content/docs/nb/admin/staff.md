@@ -151,9 +151,28 @@ Fravær registreres i et vokabular av typer: ferie, egenmelding, sykmelding, de
 lovfestede permisjonene, avspasering, lege- eller tannlegetime og resten — 22
 standardtyper som hver installasjon starter med, hver knyttet til permisjonsbeskrivelsen
 den rapporteres som i a-meldingen ([referansen](/en/reference/staff/#absence-types)).
-Selve fraværet kommer med et senere steg i fraværsleveransen; typene, ferieordningene og
-reglene under kan settes opp allerede nå. Gjennom API-et, som en bruker med
-`staff:manage`:
+
+På skjermen, som en bruker med `staff:manage`: åpne **Ansatteinnstillinger** og finn
+**Fraværstyper**.
+
+1. Tabellen viser alle typene: navnet, **Art**, **Hvem ser typen** (*Leder og HR*, eller
+   *Bare HR*), hva den **Rapporteres i a-meldingen som**, reglene og om den er
+   **Forhåndsdefinert** eller **Skjult**. Den reserverte typen helsesletten skriver, vises
+   ikke.
+2. **Ny fraværstype** legger til en egen: en **Nøkkel**, **Navn på engelsk** og **Navn på
+   norsk**, **Art** og hva den **Telles i** (begge låst fra da av), hvem som ser den,
+   permisjonsbeskrivelsen og bryterne **Må avgjøres**, **Lønnet**, **Trekkes fra
+   feriekontoen** og **Kan være en prosent av dagen** (de to siste for en type som telles
+   i dager). Trykk **Legg til**.
+3. Blyanten (**Endre** *type*) åpner en type. En forhåndsdefinert type endrer bare
+   navnene, **Rekkefølge** og om den er **Skjult** — de andre feltene vises nedtonet; en
+   egen type endrer alt unntatt nøkkel, art og enhet.
+4. **Skjul** slutter å tilby en type for nytt fravær (fravær som har den, beholder den);
+   **Tilby** tar den tilbake. Alle felt du ikke endret, sendes tilbake som de var.
+5. En avvisning står i skjemaet: en endring av en forhåndsdefinert types regler, eller å
+   åpne en type som bare er for HR, for kolleger mens fravær har den.
+
+Gjennom API-et, som en bruker med `staff:manage`:
 
 1. Les listen: `GET /api/v1/staff/absence-types` svarer med alle typene, de skjulte også
    for deg.
@@ -192,7 +211,22 @@ hovedferieperioden, 6 ved start etter 30. september, 12 dagers avtalt overførin
 finnes fra start og er standardordningen. Hver ordning svares med tallene omregnet til
 arbeidsdager i en femdagersuke: 25 virkedager er 21 dager, 30 er 25.
 
-For å gi noen eller alle ansatte mer, som en bruker med `staff:manage`:
+For å gi noen eller alle ansatte mer, som en bruker med `staff:manage`, på skjermen:
+
+1. Åpne **Ansatteinnstillinger**, finn **Ferieordninger** og trykk **Ny ferieordning**.
+   Tabellen viser hver ordnings **Ferierett** og **Mest overført** som «30 virkedager =
+   25 dager i en femdagersuke», og hvilken som er **Standard**.
+2. Fyll inn **Navn**, **Ferierett (virkedager)**, **Ekstra fra 60 år (virkedager)**,
+   **Hovedferie (virkedager)**, **Etter september (virkedager)** og **Mest overført
+   (virkedager)**; hvert felt viser hva det blir i en femdagersuke. Skjemaet holder
+   ferielovens gulv før noe sendes. Slå på **Standard** for å gjøre den til ordningen for
+   alle arbeidsforhold uten ordning. Trykk **Legg til**.
+3. Sett et arbeidsforhold på den: under personens **Arbeidsforhold**, **Endre
+   arbeidsforholdet** og velg **Ferieordning**.
+4. **Arkiver** slutter å tilby en ordning; **Gjenopprett** tar den tilbake. Å arkivere
+   standarden, eller en ordning et arbeidsforhold følger, avvises med ord.
+
+Gjennom API-et:
 
 1. `POST /api/v1/staff/holiday-schemes` med et `name` og tallene, for eksempel
    `{"name": "Fem uker", "entitlementVirkedager": 30, "extraFrom60Virkedager": 6}`
@@ -213,8 +247,15 @@ alltid nøyaktig én standardordning; gjør en annen til standard for å flytte 
 
 ## Reglene for egenmelding
 
-Hvor mye egenmelding en ansatt kan bruke, er installasjonens regel, på
-`PUT /api/v1/staff/settings` (`staff:manage`):
+Hvor mye egenmelding en ansatt kan bruke, er installasjonens regel. På skjermen: åpne
+**Ansatteinnstillinger**, finn **Egenmelding og overføring**, velg **Regler** — *Lovens
+minimum (ftrl. § 8-23)*, *Utvidet (IA)* eller *Egne tall* — og for egne tall **Dager per
+tilfelle**, **Tilfeller per år** og **Dager per år**; skjemaet avviser tall under lovens
+gulv før noe sendes. Sett **Måneder i arbeid først** og **Overfør ferie som ikke er tatt,
+automatisk** i samme kort, og trykk **Lagre**. Kortet sender de generelle innstillingene
+tilbake som de er, så ingenting annet endres.
+
+Gjennom API-et, på `PUT /api/v1/staff/settings` (`staff:manage`):
 
 - `selfCertPolicy: "minimum"` — lovens regel: 3 kalenderdager om gangen, 4 ganger på
   tolv måneder. Standard.
@@ -240,8 +281,14 @@ standard.
 
 ## Overfør ferie
 
-Ferie som står igjen ved årsskiftet, forsvinner ikke. HR overfører den til neste år med
-`POST /api/v1/staff/people/{id}/carry-over` (`staff:manage`):
+Ferie som står igjen ved årsskiftet, forsvinner ikke. HR overfører den til neste år. På
+skjermen: åpne personens **Fravær**-fane, bla til året med **Forrige år**, og trykk
+**Overfør fra** *år*. Velg **Type** — *Avtalt* eller *Tvungen* (med en **Merknad**) — la
+**Dager** stå tomt for det som er igjen, og trykk **Overfør**. En ny overføring fra samme
+år avvises med ord. **Feriejusteringer** på samme fane viser overføringene og rettingene;
+**Legg til justering** registrerer en retting (med merknad), og søppelbøtta sletter en.
+
+Gjennom API-et, med `POST /api/v1/staff/people/{id}/carry-over` (`staff:manage`):
 
 1. Les personens konto for året den kommer fra:
    `GET /api/v1/staff/people/{id}/holiday-account?year=2025` — `remaining` er det som står
@@ -271,7 +318,11 @@ automatiske.
 ## Rett et registrert sykefravær
 
 En egenmelding eller en sykmelding er registrert, ikke avgjort, og den ansatte kan ikke
-endre den når den først er lagt inn: slutter en sykmelding tidligere, eller var en dag
+endre den når den først er lagt inn. På personens **Fravær**-fane har en registrert rad
+eller en søknad **Endre**, en godkjent rad **Rett**, og **Registrer fravær** legger inn en
+sykmelding for personen; arket sender med det raden har for å vokte den, og har noen endret
+raden imens, lukkes det og lastes på nytt i stedet for å overskrive. Gjennom API-et:
+slutter en sykmelding tidligere, eller var en dag
 feil, endrer HR den (`PUT /api/v1/staff/absences/{id}`, `staff:manage`, med revisjonen i
 `If-Match`) eller fjerner den (`DELETE /api/v1/staff/absences/{id}`). Begge føres i
 personens historikk. En endring holder raden en registrering: å gjøre en sykmelding om
@@ -285,7 +336,9 @@ milepælene — og beholder det som er markert på milepælene.
 ## Trekk tilbake retten til egenmelding
 
 Når en ansatt har brukt egenmelding slik at det gir grunn til det (ftrl. § 8-27), kan HR
-trekke tilbake retten for en periode:
+trekke tilbake retten for en periode. På skjermen: personens **Fravær**-fane, kortet
+**Egenmelding**, **Trekk tilbake egenmelding** — **Til og med** og **Grunn** — og så
+**Trekk tilbake**; **Opphev tilbaketrekkingen** avslutter den tidligere. Gjennom API-et:
 
 1. `PUT /api/v1/staff/people/{id}/self-certification/withdrawal` (`staff:manage`) med
    `until` — en dag etter i dag, høyst ett år fram — og `reason`.
@@ -306,6 +359,12 @@ Hver egenmelding og sykmelding hører til en sykefraværssak, som Ansatte holder
 sykefravær som begynner høyst seksten dager etter det forrige, hører til samme sak, og
 ett som begynner senere, åpner en ny. `GET /api/v1/staff/cases` viser de åpne sakene du
 følger — personens leder ser sine medarbeideres, HR og den som har `staff:approve`, alle.
+På skjermen er den åpne saken et kort på personens **Fravær**-fane (og, for en leder, på
+**Mitt team**): **Marker som gjort** og **Frafall** på hver milepæl, **Endre
+tilretteleggingsnotatet**, og for HR **Endre anslaget** (med **Tilbakestill til første
+dag + 364**) og **Lukk saken**; den som har `staff:personal-data`, har også **Endre
+notatet** på hver milepæl. Et helsedokument arkiveres under saken fra personens
+**Dokumenter**-fane: endre dokumentet og velg **Sykefraværssak**.
 
 1. **Arbeidsgiverperioden.** Milepælen `employer_period_end` er sakens sekstende
    sykedag, der helger og helligdager mellom to sykefravær telles med; før det har den
@@ -346,7 +405,9 @@ dekker den helt.
 
 En sykmelding over innvilget ferie endrer ikke ferien av seg selv: om ferien utsettes,
 er den ansattes krav, med legeerklæring (ferieloven § 9). Imens viser dashbordet ditt
-ferien under *ferie berørt av sykdom*.
+ferien under *ferie berørt av sykdom*. På skjermen har sykmeldingens rad på personens
+**Fravær**-fane **Utsett ferie**: sett **Krevd den** og trykk **Registrer kravet**; en
+avvisning står i dialogen.
 
 1. Sjekk at sykmeldingen er 100 %: en gradert sykmelding gir ikke rett til utsettelse.
 2. Når den ansatte krever det, registrer kravet på sykmeldingen:
@@ -373,9 +434,12 @@ den ansatte opplyser — ingen barn navngis:
   vedtak fra NAV om utvidet rett, til og med året de fyller atten.
 - **Alene om omsorgen** (`soleCarer`) — om den ansatte har omsorgen alene.
 
-Tell hvert barn én gang: et barn med vedtak fra NAV føres bare i det andre feltet.
-Feltene skrives sammen med resten av personen (`PUT /api/v1/staff/people/{id}`); den
-ansatte ser dem på sin egen side, men kan ikke endre dem.
+Tell hvert barn én gang: et barn med vedtak fra NAV føres bare i det andre feltet. På
+skjermen er de **Barn under 12**, **Aleneomsorg** og **Barn med ekstra omsorgsdager** i
+**Endre opplysninger** på personens **Profil**, og profilen viser dem som **Barn og
+omsorgsdager**; et felt som står tomt, er ikke registrert. Feltene skrives sammen med
+resten av personen (`PUT /api/v1/staff/people/{id}`); den ansatte ser dem på sin egen
+side, men kan ikke endre dem.
 
 Telleren er `GET /api/v1/staff/people/{id}/care-days?year` (den ansatte, HR og
 `staff:personal-data`): 10 dager for ett eller to barn, 15 for tre eller flere, 20 og
@@ -773,7 +837,8 @@ personens navn) til fraværet er over, så noen ser det. For å unngå
 det gir du personen en leder i arbeidsvilkårene, koblet til en aktiv bruker.
 
 HR retter et godkjent eller registrert fravær — dagene, typen, prosenten eller
-graderingen — fra personens fravær; rettingen lagres med hva det var før, og personen
+graderingen — med **Rett** (et godkjent) eller **Endre** (et registrert) på personens
+**Fravær**-fane; rettingen lagres med hva det var før, og personen
 får e-post. Et avgjort fravær som har begynt, kanselleres bare av HR.
 
 ## E-postene om fravær

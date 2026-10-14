@@ -93,6 +93,10 @@ describe("the staff catalog", () => {
       "self_certification_withdrawn",
       "holiday_postponement_not_applicable",
       "holiday_postponement_too_late",
+      "seed_immutable",
+      "absence_type_in_use",
+      "holiday_scheme_in_use",
+      "structure_default",
       "revision_conflict",
       "person_erased",
     ];

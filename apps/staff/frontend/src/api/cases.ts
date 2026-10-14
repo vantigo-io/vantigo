@@ -33,3 +33,35 @@ export const updateAccommodationNote = (sickCase: StaffCase, note: string): Prom
     { accommodationNote: note.trim() === "" ? null : note },
     String(sickCase.revision),
   );
+
+/** A person's sick-leave cases the caller may read, open or all. */
+export const personCasesQueryOptions = (personId: number, status: "open" | "all" = "open") =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "cases", "person", personId, status],
+    queryFn: ({ signal }) =>
+      request<Paginated<StaffCase>>(`/api/v1/staff/cases?personId=${personId}&status=${status}&pageSize=100`, {
+        signal,
+      }),
+  });
+
+/** HR's estimate of the 52-week end; null returns it to the derived first day + 364. */
+export const updateMaxBenefitEstimate = (sickCase: StaffCase, estimate: string | null): Promise<StaffCase> =>
+  sendAbsenceWrite<StaffCase>(
+    `/api/v1/staff/cases/${sickCase.id}`,
+    "PUT",
+    { maxBenefitEstimate: estimate },
+    String(sickCase.revision),
+  );
+
+/** HR closes a case before sixteen days have passed since its last day. */
+export const closeCase = (caseId: number): Promise<StaffCase> =>
+  sendAbsenceWrite<StaffCase>(`/api/v1/staff/cases/${caseId}/close`, "POST");
+
+/** A milestone's note — staff:personal-data's — guarded by the milestone's revision; empty clears it. */
+export const updateMilestoneNote = (caseId: number, milestone: StaffCaseMilestone, note: string): Promise<StaffCase> =>
+  sendAbsenceWrite<StaffCase>(
+    `/api/v1/staff/cases/${caseId}/milestones/${milestone.kind}/note`,
+    "PUT",
+    note.trim() ? { note } : {},
+    String(milestone.revision),
+  );

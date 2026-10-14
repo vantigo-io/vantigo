@@ -50,6 +50,11 @@ one up who is still employed; a dash means there is none.
 A colleague holding `staff:view` sees the people **active today** only: someone who
 has not started yet, and someone who has left, are not in their list.
 
+**On leave today** beside a name means an approved or registered absence covers today
+— ferie, a leave, a sick day alike. Everyone who sees the list sees the same badge, and
+it never says which kind of absence it is; a request still waiting, and a doctor's
+visit of a few hours, do not count.
+
 ### Status, for HR
 
 With `staff:manage` you also see the **Status** control and a status column:
@@ -71,7 +76,7 @@ Press a name to open [the person's page](#a-persons-page).
 
 ## A person's page
 
-A person's page has four tabs — **Profile**, **Employments**, **History** and **Documents** — and the
+A person's page has five tabs — **Profile**, **Employments**, **Absence**, **History** and **Documents** — and the
 tab you are on is in the page's address. It shows what you may see of the person and
 nothing else: a group of fields that is not yours to read is not on the page at all,
 not even as an empty heading. The person themselves, a manager of theirs, a colleague
@@ -93,6 +98,9 @@ you may not see answers exactly as one who does not exist.
 - **Next of kin** and **Roles** (Safety representative, AMU member, HSE responsible,
   each with the days they hold it).
 - **Self-service** — the user the person signs in as, if HR has linked one.
+- **Children and care days** — **Children under 12**, **Sole carer** and **Children
+  with extra care days**, what the person's care days are counted from. The person, HR
+  and `staff:personal-data`, and only when one of them is recorded.
 - **Organisation** — **Managers** up the chain from the person's manager today, and
   the **Direct reports**. Press a name to open their page.
 
@@ -107,12 +115,13 @@ nobody: their people go to the department's manager, or the next one up.
 2. Change what you need and press **Save**. A refusal lands on its field — a work email
    another person has, for one.
 
-A person also has three **care-day fields** — the children under twelve, the
-chronically ill or disabled children and whether the person cares for them alone —
-which the care-day count for a sick child will read. The form does not show them yet,
-and saving it keeps them as they are; HR sets them through the API until the person's
-Absence tab arrives ([the care-day fields](/en/admin/staff/#the-care-day-fields)). The
-person, HR and `staff:personal-data` read them; a manager and a colleague never do.
+The form also holds the three **care-day fields** under **Children and care days**:
+**Children under 12** (without NAV's extra-days decision), **Sole carer** and
+**Children with extra care days** (with it) — what the care days for a sick child are
+counted from ([the care-day fields](/en/admin/staff/#the-care-day-fields)). A field left
+empty is not recorded; one you do not touch is saved as it was. The person, HR and
+`staff:personal-data` read them; a manager and a colleague never do, and the person's
+own **Edit my details** never changes them.
 
 If somebody else saved the person since you opened the form, the form closes, the page
 reloads and says *Somebody else saved this; it has been reloaded*. Make your change
@@ -206,6 +215,51 @@ never stops a save. The person, a manager of theirs and HR see it; a manager, wh
 not see the pay, sees it without item i), the pay. See
 [the § 14-6 check](/en/reference/staff/#the--14-6-check) for where each item is read from.
 
+### Absence
+
+**Absence** is the person's absence as you may see it: the person, a manager of
+theirs, whoever decides everyone's absence (`staff:approve`) and HR. Anyone else does not
+see the tab. From top to bottom:
+
+- **The holiday account** for a year — entitlement, carried in, taken, requested and
+  remaining — with **Previous year** and **Next year** to page through the years.
+- **Holiday adjustments** (HR): the carry-overs and corrections, newest year first.
+  **Add adjustment** records one for the year shown — a **Correction** (with a **Note**
+  saying why), or an **Agreed** or **Forced carry-over** from an earlier year — and the
+  bin deletes one after asking. **Carry over from** *year* (HR) carries the year's
+  untaken holiday into the next: choose the **Kind** — *Agreed*, within the holiday
+  scheme's maximum, or *Forced*, beyond it with a note — leave **Days** empty for what
+  remains, and press **Carry over**. A second carry-over from the same year is refused:
+  *A carry-over from that year is already recorded*.
+- **Egenmelding** — the person's standing under the company's policy. HR has **Withdraw
+  egenmelding**: choose **Until** — a day after today, at most a year ahead — give the
+  **Reason** and press **Withdraw**. **Lift the withdrawal** ends it early. A withdrawal
+  is shown only to the person, HR and `staff:personal-data`.
+- **Care days** for the year, to the person, HR and `staff:personal-data`.
+- **Sick-leave case from** *date* — the open case: its last day so far, the 52-week end,
+  the milestones and the accommodation note. A manager, an Approver and HR **Mark done**
+  and **Waive** a milestone; the manager and HR **Change the accommodation note** (an
+  Approver is not shown it). HR also has **Change the estimate** — or **Reset to first
+  day + 364** — and **Close the case**. A milestone's note, and why one was waived, are
+  shown to `staff:personal-data` only, who has **Change the note** on each milestone.
+- **Absences** — the person's rows as you may see them. A type that reveals health or
+  family matters shows a manager and HR without `staff:personal-data` as an approved
+  *Leave*, with nothing to change. HR has **Register absence** — a sykmelding the
+  person brings, say — and on a row:
+  - **Change** on a request or a registration (a sykmelding that ended early),
+  - **Correct** on an approved absence whose days or type were wrong,
+  - **Cancel absence** on an approved absence (also for the one who decides it) or a
+    request, after asking,
+  - **Postpone holiday** on a 100 % sykmelding: the employee's demand to postpone
+    approved ferie under ferieloven § 9. Set **Demanded on** — never after today, never
+    before the sykmelding began — and press **Record the demand**; the ferie it lies over
+    is split and its days return to the account. A demand made after the last working
+    day before the holiday, for sickness that began before it, is refused in words.
+
+A write sends what the row carries to guard it: if somebody changed the row meanwhile,
+the form closes, the tab reloads and says so — make your change again on what is there
+now. A row that has gone meanwhile says *This is no longer there.*
+
 ### History
 
 **History** lists every change to the person, newest first and paged: what changed,
@@ -275,7 +329,10 @@ employments cover the day, nothing is set — type the date on the employment in
 
 Changing or removing a health document, and moving a document into or out of a health
 category, is `staff:personal-data`'s: HR without it is not offered **Change** and
-**Remove** on a health document — not even on their own.
+**Remove** on a health document — not even on their own. Changing a health document,
+`staff:personal-data` also chooses its **Sick-leave case** — one of the person's cases,
+open or closed — so it is erased with the case's health data; empty the field to take it
+off the case. A document in any other category belongs to no case.
 
 ### A legal hold
 
@@ -690,9 +747,10 @@ Staff settings.
 ## Change the settings
 
 **Staff settings** (`staff:manage`) has the general settings first, then the company's
-structure, the document categories, and four cards for the data: **Import and export
-people**, **Payroll export**, **Retention** and **Thresholds**. Someone without
-`staff:manage` who opens the page by its address sees none of the four.
+structure, the document categories, three cards for absence — **Absence types**,
+**Holiday schemes** and **Egenmelding and carry-over** — and four cards for the data:
+**Import and export people**, **Payroll export**, **Retention** and **Thresholds**.
+Someone without `staff:manage` who opens the page by its address sees none of them.
 
 ### General
 
@@ -760,6 +818,54 @@ in the category is erased. On a category of your own, the pencil changes the nam
 **Archive** stops offering it for new documents, and **Restore** offers it again. A
 category documents are filed under is not archived — the page says so: move them to
 another category first.
+
+### Absence types
+
+**Absence types** lists every type people may pick, and the hidden ones: its name, its
+**Kind**, **Who sees the type** — *Manager and HR*, or *HR only* for a type that reveals
+health or family matters — what it is **Reported in the a-melding as**, its rules
+(**Needs a decision** or **Notification**, **Draws on the holiday account**, **May be
+part of a day**, **Paid** or **Unpaid**) and whether it is **Seeded** or **Hidden**.
+
+- **New absence type** adds one of your own: a **Key**, the **Name in English** and
+  **Name in Norwegian**, the **Kind** and what it is **Counted in** — fixed from then on
+  — **Who sees the type**, the a-melding description and the switches. Press **Add**.
+- The pencil changes a type. A seeded type changes only its names, its **Order** and
+  whether it is **Hidden**; its rules are the statute's and shown greyed out.
+- **Hide** stops offering a type for new absence; **Offer** brings it back. Absences
+  that name it keep it.
+
+A type of your own that is HR-only is not opened to colleagues while absences name it —
+the form says so: add another type instead.
+
+### Holiday schemes
+
+**Holiday schemes** lists the company's holiday rules with what each comes to — "25
+virkedager = 21 days on a five-day week" — and which is the **Default**, the scheme of
+every employment that names none.
+
+- **New holiday scheme**: the **Name**, **Entitlement (virkedager)**, **Extra from 60
+  (virkedager)**, **Main period (virkedager)**, **After September (virkedager)** and
+  **Most carried over (virkedager)**, each with what it comes to on a five-day week, and
+  **The default**. The form holds the Holiday Act's floors: an entitlement of 25 to 60,
+  a main period of at least 18, at least 6 for a start after September, and at most 12
+  carried over plus the entitlement's days above 25.
+- The pencil changes a scheme; what you do not touch is kept. **Archive** stops offering
+  it, **Restore** brings it back — the default, or a scheme an employment follows, is
+  not archived, and the page says so.
+- An employment is put on a scheme on the person's **Employments** tab: **Edit
+  employment**, **Holiday scheme**. *The default* follows whichever scheme is the default.
+
+### Egenmelding and carry-over
+
+Choose the **Policy**: *The statutory minimum (ftrl. § 8-23)* — 3 days at a time, 4
+times in 12 months — *Extended (IA)* — 8 days at a time, 24 days a year — or *Custom
+numbers*, with **Days per occurrence** (3 to 16), **Occurrences per year** (4 to 52) and
+**Days per year** (12 to 365); the form refuses numbers below the law's floors. **Months
+of employment first** (0 to 2) is how long someone must have worked before egenmelding.
+**Carry untaken holiday over automatically** carries a year's remaining holiday into the
+next without HR's action, from the year you turn it on. Press **Save**; the other
+settings are kept as they are.
 
 ### Import and export people
 

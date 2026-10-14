@@ -2210,6 +2210,9 @@ components:
                     $ref: '#/components/schemas/StaffLocationSummary'
                 manager:
                     $ref: '#/components/schemas/StaffPersonSummary'
+                onLeaveToday:
+                    description: 'Whether an approved or registered absence of a whole or part day, of any type, covers today (design §7, "on leave today") — the same to every reader of the list, a colleague included, and never naming the type: it says no more than the calendar''s "absent" bar. A request does not count, nor an hour registration.'
+                    type: boolean
                 phoneWork:
                     description: Absent when not set.
                     type: string
@@ -2234,6 +2237,7 @@ components:
                 - workCountry
                 - preferredLanguage
                 - status
+                - onLeaveToday
             type: object
         StaffPersonNationalId:
             description: Whether a national identity number is on file, and its kind — never a digit of it. Present for the person themselves, staff:manage and staff:personal-data.

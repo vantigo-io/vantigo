@@ -79,6 +79,7 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 		rows       []store.ListPeopleRow
 		total      int64
 		placements map[int64]placement
+		away       map[int64]bool
 	)
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
@@ -100,7 +101,10 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 		for _, r := range rows {
 			ids = append(ids, r.ID)
 		}
-		placements, err = placementsOf(ctx, q, ids, caller.Today)
+		if placements, err = placementsOf(ctx, q, ids, caller.Today); err != nil {
+			return err
+		}
+		away, err = awayToday(ctx, q, caller.Today)
 		return err
 	})
 	if err != nil {
@@ -111,10 +115,31 @@ func (s *server) GetStaffPeople(ctx context.Context, req gen.GetStaffPeopleReque
 	a := audience{Colleague: caller.View, Manage: caller.Manage}
 	return gen.GetStaffPeople200JSONResponse(gen.PaginatedResponseOfStaffPersonListItem{
 		Data: mapRows(rows, func(r store.ListPeopleRow) gen.StaffPersonListItem {
-			return personListItemResponse(r, placements[r.ID], a)
+			item := personListItemResponse(r, placements[r.ID], a)
+			item.OnLeaveToday = away[r.ID] && a.reads(personGroupOf("onLeaveToday"))
+			return item
 		}),
 		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}), nil
+}
+
+// awayToday is the people with an approved or registered day row of any
+// kind covering today (design §7's "on leave today", plan M3) — the rows
+// GET /stats's onLeaveToday counts, so the list and the figure agree. Every
+// kind counts and the flag names none, so a colleague learns no more than
+// the calendar's "absent" bar tells them.
+func awayToday(ctx context.Context, q *store.Queries, today time.Time) (map[int64]bool, error) {
+	rows, err := q.AbsencesBetween(ctx, store.AbsencesBetweenParams{FromDay: dayParam(today), ToDay: dayParam(today)})
+	if err != nil {
+		return nil, fmt.Errorf("staff: read today's absences: %w", err)
+	}
+	away := map[int64]bool{}
+	for _, r := range rows {
+		if covers(r, today) {
+			away[r.PersonID] = true
+		}
+	}
+	return away, nil
 }
 
 // placement is where a person stands today and whom their terms in force

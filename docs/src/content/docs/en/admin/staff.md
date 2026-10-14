@@ -147,9 +147,29 @@ Absence is entered in a vocabulary of types: holiday (ferie), egenmelding, sykme
 the statutory leaves, avspasering, a doctor's or dentist's appointment and the rest —
 22 seeds that every installation starts with, each mapped to the a-melding leave
 description it is reported as ([the reference](/en/reference/staff/#absence-types)).
-The absences themselves arrive with a later step of the absence delivery; the types,
-the schemes and the policy below can be set up now. Through the API, as a user with
-`staff:manage`:
+
+On the screen, as a user with `staff:manage`: open **Staff settings** and find
+**Absence types**.
+
+1. The table lists every type: its name, its **Kind**, **Who sees the type** (*Manager
+   and HR*, or *HR only*), what it is **Reported in the a-melding as**, its rules and
+   whether it is **Seeded** or **Hidden**. The reserved type the health erase writes
+   is not listed.
+2. **New absence type** adds one of your own: a **Key**, the **Name in English** and
+   **Name in Norwegian**, the **Kind** and what it is **Counted in** (both fixed from
+   then on), who sees it, the a-melding description, and the switches **Needs a
+   decision**, **Paid**, **Draws on the holiday account** and **May be a percentage of
+   the day** (the last two for a type counted in days). Press **Add**.
+3. The pencil (**Change** *type*) opens a type. A seed changes only its names, its
+   **Order** and whether it is **Hidden** — its other fields are shown greyed out; a
+   type of your own changes everything but its key, kind and unit.
+4. **Hide** stops offering a type for new absence (absences that name it keep it);
+   **Offer** brings it back. Every field you did not change is sent back as it was.
+5. A refusal is said in the form: a change to a seed's rules ("only its names, its
+   order and whether it is hidden"), or opening an HR-only type to colleagues while
+   absences name it.
+
+Through the API, as a user with `staff:manage`:
 
 1. Read the list: `GET /api/v1/staff/absence-types` answers every type, the hidden ones
    too for you.
@@ -188,7 +208,22 @@ period, 6 for a start after 30 September, 12 days' agreed carry-over — is ther
 start and is the default. Each scheme is answered with its figures converted to working
 days of a five-day week: 25 virkedager are 21 days, 30 are 25.
 
-To give some or all employees more, as a user with `staff:manage`:
+To give some or all employees more, as a user with `staff:manage`, on the screen:
+
+1. Open **Staff settings**, find **Holiday schemes** and press **New holiday scheme**.
+   The table shows each scheme's **Entitlement** and **Most carried over** as
+   "30 virkedager = 25 days on a five-day week", and which is the **Default**.
+2. Fill in the **Name**, **Entitlement (virkedager)**, **Extra from 60 (virkedager)**,
+   **Main period (virkedager)**, **After September (virkedager)** and **Most carried
+   over (virkedager)**; each shows what it comes to on a five-day week. The form holds
+   the Holiday Act's floors before anything is sent. Turn on **The default** to make it
+   the scheme of every employment that names none. Press **Add**.
+3. Put an employment on it: on the person's **Employments** tab, **Edit employment**
+   and choose the **Holiday scheme**.
+4. **Archive** stops offering a scheme; **Restore** brings it back. Archiving the
+   default, or a scheme an employment follows, is refused in words.
+
+Through the API:
 
 1. `POST /api/v1/staff/holiday-schemes` with a `name` and the figures, for example
    `{"name": "Five weeks", "entitlementVirkedager": 30, "extraFrom60Virkedager": 6}`
@@ -208,8 +243,16 @@ default; make another scheme the default to move it.
 
 ## The self-certification policy
 
-How much egenmelding an employee may use is the installation's policy, on
-`PUT /api/v1/staff/settings` (`staff:manage`):
+How much egenmelding an employee may use is the installation's policy. On the screen:
+open **Staff settings**, find **Egenmelding and carry-over**, choose the **Policy** —
+*The statutory minimum (ftrl. § 8-23)*, *Extended (IA)* or *Custom numbers* — and, for
+custom numbers, the **Days per occurrence**, **Occurrences per year** and **Days per
+year**; the form refuses numbers below the statutory floors before anything is sent.
+Set the **Months of employment first** and **Carry untaken holiday over automatically**
+in the same card, and press **Save**. The card sends the general settings back as they
+are, so nothing else changes.
+
+Through the API, on `PUT /api/v1/staff/settings` (`staff:manage`):
 
 - `selfCertPolicy: "minimum"` — the statutory rule: 3 calendar days at a time, 4 times
   in twelve months. The default.
@@ -235,8 +278,15 @@ automatically. It is off by default.
 
 ## Carry holiday over
 
-Holiday left at a year's end does not vanish. HR carries it into the next year on
-`POST /api/v1/staff/people/{id}/carry-over` (`staff:manage`):
+Holiday left at a year's end does not vanish. HR carries it into the next year. On the
+screen: open the person's **Absence** tab, page to the year with **Previous year**, and
+press **Carry over from** *year*. Choose the **Kind** — *Agreed* or *Forced* (with a
+**Note**) — leave **Days** empty for what remains, and press **Carry over**. A second
+carry-over from the same year is refused in words. **Holiday adjustments** on the same
+tab lists the carry-overs and corrections; **Add adjustment** records a correction (with
+a note) and the bin deletes one.
+
+Through the API, on `POST /api/v1/staff/people/{id}/carry-over` (`staff:manage`):
 
 1. Read the person's account for the year it comes from:
    `GET /api/v1/staff/people/{id}/holiday-account?year=2025` — `remaining` is what is
@@ -267,7 +317,11 @@ year replaces the automatic one.
 ## Correct a registered sick absence
 
 An egenmelding or a sykmelding is registered, not decided, and the employee cannot
-change it once it is in: when a sykmelding ends early, or a day was wrong, HR changes
+change it once it is in. On the person's **Absence** tab, a registered or requested row
+has **Change**, an approved one **Correct**, and **Register absence** enters a
+sykmelding for the person; the sheet sends the token the row carries, and if somebody
+changed the row meanwhile it closes and reloads rather than overwrite. Through the API:
+when a sykmelding ends early, or a day was wrong, HR changes
 it (`PUT /api/v1/staff/absences/{id}`, `staff:manage`, with the revision in `If-Match`)
 or removes it (`DELETE /api/v1/staff/absences/{id}`). Each is recorded in the person's
 history. A change keeps the row a registration: changing a sykmelding into ferie, say,
@@ -280,7 +334,9 @@ dates — and keeps what was marked on the milestones.
 ## Withdraw egenmelding
 
 When an employee has used egenmelding in a way that gives reason to (ftrl. § 8-27), HR
-may withdraw the right for a period:
+may withdraw the right for a period. On the screen: the person's **Absence** tab, the
+**Egenmelding** card, **Withdraw egenmelding** — **Until** and **Reason** — then
+**Withdraw**; **Lift the withdrawal** ends it early. Through the API:
 
 1. `PUT /api/v1/staff/people/{id}/self-certification/withdrawal` (`staff:manage`) with
    `until` — a day after today, at most a year ahead — and the `reason`.
@@ -301,7 +357,13 @@ Every egenmelding and sykmelding belongs to a sick-leave case, which Staff keeps
 itself: a sick absence that starts no more than sixteen days after the last one joins
 its case, and one that starts later opens a new one. `GET /api/v1/staff/cases` lists
 the open ones you follow — the person's manager sees their reports', HR and whoever
-holds `staff:approve` everyone's.
+holds `staff:approve` everyone's. On the screen the open case is a card on the person's
+**Absence** tab (and, for a manager, on **My team**): **Mark done** and **Waive** on each
+milestone, **Change the accommodation note**, and for HR **Change the estimate** (with
+**Reset to first day + 364**) and **Close the case**; a holder of `staff:personal-data`
+also has **Change the note** on each milestone. A health document is filed under the
+case from the person's **Documents** tab: change the document and choose its
+**Sick-leave case**.
 
 1. **The arbeidsgiverperiode.** The milestone `employer_period_end` is the case's
    sixteenth sick day, weekends and public holidays between two sick absences counted;
@@ -342,7 +404,9 @@ it whole.
 
 A sykmelding over approved ferie does not change the ferie by itself: whether the
 holiday is postponed is the employee's demand, with a legeerklæring (ferieloven § 9).
-Meanwhile your dashboard lists the ferie under *ferie affected by sickness*.
+Meanwhile your dashboard lists the ferie under *ferie affected by sickness*. On the
+screen, the sykmelding's row on the person's **Absence** tab has **Postpone holiday**:
+set **Demanded on** and press **Record the demand**; a refusal is said in the dialog.
 
 1. Check the sykmelding is 100 %: a graded one gives no right to postpone.
 2. When the employee demands it, record the demand on the sykmelding:
@@ -371,9 +435,12 @@ which HR types from what the employee declares — no child is named:
   **with** NAV's decision of extra care days, through the year they turn eighteen.
 - **Sole carer** (`soleCarer`) — whether the employee cares for the children alone.
 
-Count each child once: a child with NAV's decision goes in the second field only. The
-fields are written with the rest of the person (`PUT /api/v1/staff/people/{id}`); the
-employee reads them on their own record but cannot change them.
+Count each child once: a child with NAV's decision goes in the second field only. On
+the screen they are **Children under 12**, **Sole carer** and **Children with extra
+care days** in **Edit details** on the person's **Profile**, and the profile shows them
+as **Children and care days**; a field left empty is not recorded. The fields are
+written with the rest of the person (`PUT /api/v1/staff/people/{id}`); the employee
+reads them on their own record but cannot change them.
 
 The counter is `GET /api/v1/staff/people/{id}/care-days?year` (the employee, HR and
 `staff:personal-data`): 10 days for one or two children, 15 for three or more, 20 and
@@ -763,7 +830,8 @@ person's name) until the absence ends, so somebody sees it. To
 avoid it, give that person a manager in their terms, linked to an active user.
 
 HR corrects an approved or registered absence — its days, type, percentage or degree —
-from the person's absences; the correction is recorded with what it was before, and the
+with **Correct** (an approved one) or **Change** (a registered one) on the person's
+**Absence** tab; the correction is recorded with what it was before, and the
 person is mailed. A decided absence that has begun is cancelled by HR only.
 
 ## The absence mails

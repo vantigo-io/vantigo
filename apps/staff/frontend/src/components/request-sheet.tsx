@@ -7,8 +7,12 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useLocale } from "@vantigo/frontend-shell";
 import {
   calendarQueryOptions,
+  correctAbsence,
   myHolidayAccountQueryOptions,
   mySelfCertificationQueryOptions,
+  personHolidayAccountQueryOptions,
+  personSelfCertificationQueryOptions,
+  registerAbsence,
   requestMyAbsence,
   type StaffAbsence,
   type StaffAbsenceInput,
@@ -31,6 +35,14 @@ export interface RequestSheetProps {
   today: string;
   /** A request to change; left out, a new absence of my own. */
   absence?: StaffAbsence;
+  /**
+   * The person HR enters or changes the absence for, from the person page:
+   * a new one is registered for them (`POST /absences`), and the estimate
+   * and the egenmelding standing are theirs, not mine.
+   */
+  personId?: number;
+  /** HR's correction of an approved or registered row (`POST /absences/{id}/correct`) rather than a change. */
+  correct?: boolean;
 }
 
 /**
@@ -38,12 +50,20 @@ export interface RequestSheetProps {
  * dialog above it. Its title names what it does; the form opens fresh each
  * time it is shown.
  */
-export const RequestSheet = ({ opened, onClose, types, today, absence }: RequestSheetProps) => {
+export const RequestSheet = ({ opened, onClose, types, today, absence, personId, correct }: RequestSheetProps) => {
   const { t } = useStaffFormat();
   // Strictly below Mantine's `sm` (48em): at 768 px the sheet is already a dialog.
   const phone = useMediaQuery(`(max-width: ${em(767.98)})`);
-  const title = absence ? t("changeAbsence") : t("requestAbsence");
-  const form = opened && <RequestForm types={types} today={today} absence={absence} onDone={onClose} />;
+  const title = correct
+    ? t("correctAbsence")
+    : absence
+      ? t("changeAbsence")
+      : personId !== undefined
+        ? t("registerAbsenceTitle")
+        : t("requestAbsence");
+  const form = opened && (
+    <RequestForm types={types} today={today} absence={absence} personId={personId} correct={correct} onDone={onClose} />
+  );
   return phone ? (
     <Drawer opened={opened} onClose={onClose} title={title} position="bottom" size="90%">
       {form}
@@ -98,11 +118,15 @@ const RequestForm = ({
   types,
   today,
   absence,
+  personId,
+  correct,
   onDone,
 }: {
   types: readonly StaffAbsenceType[];
   today: string;
   absence?: StaffAbsence;
+  personId?: number;
+  correct?: boolean;
   onDone: () => void;
 }) => {
   const { t, number } = useStaffFormat();
@@ -134,7 +158,8 @@ const RequestForm = ({
   const save = useMutation({
     mutationFn: (values: RequestFormValues) => {
       const input = inputOf(values, type as StaffAbsenceType);
-      return absence ? updateAbsence(absence, input) : requestMyAbsence(input);
+      if (absence) return correct ? correctAbsence(absence, input) : updateAbsence(absence, input);
+      return personId === undefined ? requestMyAbsence(input) : registerAbsence({ personId, ...input });
     },
     onSuccess: async (answer) => {
       // The server's answer, not the estimate: its working days and the
@@ -156,11 +181,13 @@ const RequestForm = ({
       );
       notifications.show({
         color: "teal",
-        title: absence
-          ? t("absenceChanged")
-          : answer.status === "requested"
-            ? t("requestSent")
-            : t("absenceRegistered"),
+        title: correct
+          ? t("absenceCorrected")
+          : absence
+            ? t("absenceChanged")
+            : answer.status === "requested"
+              ? t("requestSent")
+              : t("absenceRegistered"),
         message: [...days, ...accounts].join(" "),
       });
       if (answer.overdrawn) notifications.show({ color: "yellow", title: t("answerOverdrawn"), message: "" });
@@ -174,7 +201,8 @@ const RequestForm = ({
         onDone();
         return;
       }
-      const { fields, rest } = absenceRefusals(error, formFields, t);
+      // On another person's row an overlap is theirs, not mine.
+      const { fields, rest } = absenceRefusals(error, formFields, t, personId !== undefined);
       form.setErrors(fields);
       if (rest.length > 0)
         notifications.show({ color: "red", title: t("couldNotSendAbsence"), message: rest.join(" ") });
@@ -192,7 +220,7 @@ const RequestForm = ({
           data={offered.map((one) => ({ value: String(one.id), label: locale === "nb" ? one.names.nb : one.names.en }))}
           {...form.getInputProps("typeId")}
         />
-        {type?.kind === "sick_self" && <SelfCertificationStanding today={today} />}
+        {type?.kind === "sick_self" && <SelfCertificationStanding today={today} personId={personId} />}
         <DateInput
           label={hourType ? t("oneDay") : t("firstDay")}
           withAsterisk
@@ -259,6 +287,7 @@ const RequestForm = ({
             lastDay={form.values.lastDay ?? form.values.firstDay}
             percent={form.values.percent === "" ? 100 : Number(form.values.percent)}
             absence={absence}
+            personId={personId}
           />
         )}
         <Group justify="flex-end">
@@ -266,7 +295,13 @@ const RequestForm = ({
             {t("cancel")}
           </Button>
           <Button type="submit" loading={save.isPending}>
-            {absence ? t("save") : type?.needsDecision === false ? t("registerAbsence") : t("sendRequest")}
+            {correct
+              ? t("saveCorrection")
+              : absence
+                ? t("save")
+                : type?.needsDecision === false || personId !== undefined
+                  ? t("registerAbsence")
+                  : t("sendRequest")}
           </Button>
         </Group>
       </Stack>
@@ -274,10 +309,14 @@ const RequestForm = ({
   );
 };
 
-/** What the policy allows me today, before an egenmelding is sent. */
-const SelfCertificationStanding = ({ today }: { today: string }) => {
-  const standing = useQuery(mySelfCertificationQueryOptions());
-  return standing.data ? <SelfCertificationAllows standing={standing.data} today={today} /> : null;
+/** What the policy allows me — or the person HR enters it for — today, before an egenmelding is sent. */
+const SelfCertificationStanding = ({ today, personId }: { today: string; personId?: number }) => {
+  const mine = useQuery({ ...mySelfCertificationQueryOptions(), enabled: personId === undefined });
+  const theirs = useQuery({ ...personSelfCertificationQueryOptions(personId ?? 0), enabled: personId !== undefined });
+  const standing = personId === undefined ? mine : theirs;
+  return standing.data ? (
+    <SelfCertificationAllows standing={standing.data} today={today} own={personId === undefined} />
+  ) : null;
 };
 
 /**
@@ -292,19 +331,29 @@ const Estimate = ({
   lastDay,
   percent,
   absence,
+  personId,
 }: {
   type: StaffAbsenceType;
   firstDay: string;
   lastDay: string;
   percent: number;
   absence?: StaffAbsence;
+  personId?: number;
 }) => {
   const { t, number } = useStaffFormat();
   const year = Number(firstDay.slice(0, 4));
   const valid = lastDay >= firstDay;
   const windows = valid ? calendarWindows(firstDay, lastDay) : [];
   const calendars = useQueries({ queries: windows.map(({ from, to }) => calendarQueryOptions(from, to)) });
-  const account = useQuery({ ...myHolidayAccountQueryOptions(year), enabled: type.drawsHoliday });
+  const mine = useQuery({
+    ...myHolidayAccountQueryOptions(year),
+    enabled: type.drawsHoliday && personId === undefined,
+  });
+  const theirs = useQuery({
+    ...personHolidayAccountQueryOptions(personId ?? 0, year),
+    enabled: type.drawsHoliday && personId !== undefined,
+  });
+  const account = personId === undefined ? mine : theirs;
   if (!valid || calendars.some((one) => !one.data)) return null;
   const holidays = calendars.flatMap((one) => one.data?.publicHolidays ?? []);
   const days = workingDays(firstDay, lastDay, holidays);

@@ -335,6 +335,12 @@ names, the employee number and the work email — never a private field. Every r
   today, else the department's or one above it — so always someone active today;
   absent when there is none.
 
+A list row also carries **`onLeaveToday`** (People's "on leave today", design §7): true
+when an approved or registered absence of whole or part days covers today, of any type —
+the rows `GET /stats` counts in `onLeaveToday`, read in the same request. It is the same
+to every reader of the list and names no type, so a colleague learns no more than the
+calendar's "absent" bar shows them; a request does not count, nor an hour registration.
+
 Who lists whom:
 
 - **`staff:manage`** lists by `status`: `current` (the default — active, upcoming and

@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
@@ -7,6 +7,7 @@ import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { personCasesQueryOptions } from "../api/cases";
 import {
   deleteDocument,
   documentCategoriesQueryOptions,
@@ -22,6 +23,7 @@ import { DocumentFields, type DocumentFieldValues, DocumentUpload } from "../com
 import "../i18n";
 import { fileableCategories, placeDocumentRefusal } from "../lib/documents";
 import { isRevisionConflict, refusalMessage } from "../lib/errors";
+import { useStaffFormat } from "../lib/format";
 
 export interface PersonDocumentsProps {
   person: StaffPerson;
@@ -150,29 +152,46 @@ const DocumentEditForm = ({
   canSeeHealth,
   onDone,
 }: Omit<DocumentEditModalProps, "document" | "onClose"> & { document: StaffDocument; onDone: () => void }) => {
-  const { t } = useI18n("staff");
+  const { t, date } = useStaffFormat();
   const queryClient = useQueryClient();
   const [banner, setBanner] = useState<string | null>(null);
   const offered = fileableCategories(categories, canSeeHealth);
-  const form = useForm<DocumentFieldValues>({
+  const form = useForm<DocumentFieldValues & { caseId: string | null }>({
     initialValues: {
       categoryId: String(document.category.id),
       validTo: document.validTo ?? null,
       signedAt: document.signedAt ?? null,
+      caseId: document.caseId === undefined ? null : String(document.caseId),
     },
     validate: { categoryId: (value) => (value ? null : t("documentCategoryRequired")) },
+  });
+  // A health document — one of a restricted category — may be filed under one
+  // of the person's sick-leave cases (S15), staff:personal-data's to do; the
+  // server takes caseId for no other category, so none is sent for one.
+  const restricted = categories.find((one) => String(one.id) === form.values.categoryId)?.restricted ?? false;
+  const cases = useQuery({
+    ...personCasesQueryOptions(document.personId, "all"),
+    enabled: canSeeHealth && restricted,
   });
 
   const save = useMutation({
     // A replace: a date left out is cleared; the employment it is filed
     // against is left as the upload derived it.
-    mutationFn: (values: DocumentFieldValues) =>
+    mutationFn: (values: DocumentFieldValues & { caseId: string | null }) =>
       updateDocument(
         document.id,
         {
           categoryId: Number(values.categoryId),
           ...(values.validTo ? { validTo: values.validTo } : {}),
           ...(values.signedAt ? { signedAt: values.signedAt } : {}),
+          // Named only for a restricted category: a case chosen, or null to take it off one.
+          ...(canSeeHealth && restricted
+            ? values.caseId
+              ? { caseId: Number(values.caseId) }
+              : document.caseId !== undefined
+                ? { caseId: null }
+                : {}
+            : {}),
         },
         document.revision,
       ),
@@ -206,6 +225,18 @@ const DocumentEditForm = ({
           </Alert>
         )}
         <DocumentFields form={form} categories={offered} />
+        {canSeeHealth && restricted && (
+          <Select
+            label={t("documentCase")}
+            description={t("documentCaseDescription")}
+            clearable
+            data={(cases.data?.data ?? []).map((one) => ({
+              value: String(one.id),
+              label: t("caseFrom", { date: date(one.firstDay) }),
+            }))}
+            {...form.getInputProps("caseId")}
+          />
+        )}
         <Group justify="flex-end">
           <Button type="button" variant="default" onClick={onDone}>
             {t("cancel")}

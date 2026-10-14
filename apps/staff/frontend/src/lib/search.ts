@@ -49,8 +49,8 @@ export const validatePeopleSearch = (search: Record<string, unknown>): PeopleSea
   create: search.create === "person" ? "person" : undefined,
 });
 
-/** The tabs of the person page and My page (design §7); the Account and Absence tabs come with later deliveries. */
-export const personTabs = ["profile", "employments", "history", "documents"] as const;
+/** The tabs of the person page and My page (design §7); the Account tab comes with delivery C. */
+export const personTabs = ["profile", "employments", "absence", "history", "documents"] as const;
 export type PersonTab = (typeof personTabs)[number];
 
 /** The person page's and My page's URL search: the tab, so a refresh or a pasted link opens the same view. */
@@ -68,7 +68,7 @@ export const validatePersonSearch = (search: Record<string, unknown>): PersonSea
  * anyone — My team (plan reading 6: a section of My page, since the host's
  * sidebar is gated by permission and cannot know who manages anyone).
  */
-export const myPageTabs = [...personTabs, "absence", "team"] as const;
+export const myPageTabs = [...personTabs, "team"] as const;
 export type MyPageTab = (typeof myPageTabs)[number];
 
 /** My page's URL search: the tab, and the request sheet to open on arrival (the host's spotlight action). */

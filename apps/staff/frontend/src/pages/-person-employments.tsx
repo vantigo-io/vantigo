@@ -21,7 +21,7 @@ import {
   type StaffTerms,
   termsQueryOptions,
 } from "../api/employments";
-import type { StaffStructure } from "../api/meta";
+import { type StaffStructure, staffMetaQueryOptions } from "../api/meta";
 import { orgQueryOptions, personQueryOptions, type StaffPerson, type StaffPersonSummary } from "../api/people";
 import { STAFF_QUERY_KEY } from "../api/request";
 import { ContractCheck } from "../components/contract-check";
@@ -219,6 +219,14 @@ const EmploymentCard = ({
       ? person.businessUnit.name
       : undefined);
   const canSeePay = person.capabilities.canSeePay;
+  // The scheme the employment names — the employment group's, absent when it
+  // follows the default — by its name from /meta's schemes.
+  const { data: meta } = useQuery(staffMetaQueryOptions());
+  const scheme =
+    employment.holidaySchemeId === undefined
+      ? undefined
+      : (meta?.holidaySchemes.find((one) => one.id === employment.holidaySchemeId)?.name ??
+        t("holidaySchemeById", { id: employment.holidaySchemeId }));
   // New terms start from the row in force today; when none is — before the
   // start, the first row; after the end, the last.
   const inForce =
@@ -307,6 +315,7 @@ const EmploymentCard = ({
               employment.relationshipType && t(`relationshipType_${employment.relationshipType}`),
             ],
             [t("contractSignedAt"), employment.contractSignedAt && format.date(employment.contractSignedAt)],
+            [t("holidayScheme"), scheme],
             [t("fteChangedAt"), employment.fteChangedAt && format.date(employment.fteChangedAt)],
             [t("salaryChangedAt"), canSeePay && employment.salaryChangedAt && format.date(employment.salaryChangedAt)],
           ]}

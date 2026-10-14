@@ -135,3 +135,104 @@ export const approveAbsence = (id: number): Promise<StaffAbsence> =>
 /** A rejection says why: the note is required. */
 export const rejectAbsence = (id: number, note: string): Promise<StaffAbsence> =>
   sendAbsenceWrite<StaffAbsence>(`/api/v1/staff/absences/${id}/reject`, "POST", { note });
+
+export type StaffHolidayAdjustment = Schemas["StaffHolidayAdjustment"];
+export type StaffHolidayAdjustmentInput = Schemas["StaffHolidayAdjustmentRequest"];
+export type StaffCarryOverInput = Schemas["StaffCarryOverRequest"];
+export type StaffHolidayPostponement = Schemas["StaffHolidayPostponement"];
+export type StaffSelfCertWithdrawalInput = Schemas["StaffSelfCertWithdrawalRequest"];
+export type StaffAbsenceRegistration = Schemas["StaffAbsenceRequest"];
+
+/** A person's absences as the caller may see them, newest first (`GET /absences?personId=`). */
+export const personAbsencesQueryOptions = (personId: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "absences", "person", personId],
+    queryFn: ({ signal }) =>
+      request<Paginated<StaffAbsence>>(`/api/v1/staff/absences?personId=${personId}&pageSize=${MAX_PAGE_SIZE}`, {
+        signal,
+      }),
+  });
+
+/**
+ * A person's holiday account for a year — the person's, a manager's of theirs,
+ * an Approver's and HR's; to anyone else the 404 of an unknown id, which is
+ * what decides whether the person page draws the Absence tab at all.
+ */
+export const personHolidayAccountQueryOptions = (personId: number, year: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", personId, "holiday-account", year],
+    queryFn: ({ signal }) =>
+      request<StaffHolidayAccount>(`/api/v1/staff/people/${personId}/holiday-account?year=${year}`, { signal }),
+    retry: false,
+  });
+
+/** A person's holiday adjustments, newest year first — staff:manage's. */
+export const holidayAdjustmentsQueryOptions = (personId: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", personId, "holiday-adjustments"],
+    queryFn: ({ signal }) =>
+      request<StaffHolidayAdjustment[]>(`/api/v1/staff/people/${personId}/holiday-adjustments`, { signal }),
+  });
+
+/** A person's egenmelding standing today; the withdrawal only when the response carries it. */
+export const personSelfCertificationQueryOptions = (personId: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", personId, "self-certification"],
+    queryFn: ({ signal }) =>
+      request<StaffSelfCertification>(`/api/v1/staff/people/${personId}/self-certification`, { signal }),
+    retry: false,
+  });
+
+/** A person's care days for a year — the care-day fields' readers alone; a refusal leaves the card out. */
+export const personCareDaysQueryOptions = (personId: number, year: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", personId, "care-days", year],
+    queryFn: ({ signal }) =>
+      request<StaffCareDays>(`/api/v1/staff/people/${personId}/care-days?year=${year}`, { signal }),
+    retry: false,
+  });
+
+/** HR registers or requests an absence on a person's behalf (`POST /absences`, staff:manage). */
+export const registerAbsence = (input: StaffAbsenceRegistration): Promise<StaffAbsence> =>
+  sendAbsenceWrite<StaffAbsence>("/api/v1/staff/absences", "POST", input);
+
+/** HR corrects an approved or registered absence, guarded by the token the row carries. */
+export const correctAbsence = (absence: StaffAbsence, input: StaffAbsenceInput): Promise<StaffAbsence> =>
+  sendAbsenceWrite<StaffAbsence>(
+    `/api/v1/staff/absences/${absence.id}/correct`,
+    "POST",
+    input,
+    absenceIfMatch(absence),
+  );
+
+/** Records the employee's demand to postpone holiday for a sykmelding (ferieloven § 9). */
+export const postponeHoliday = (id: number, demandedOn?: string): Promise<StaffHolidayPostponement> =>
+  sendAbsenceWrite<StaffHolidayPostponement>(
+    `/api/v1/staff/absences/${id}/postpone-holiday`,
+    "POST",
+    demandedOn ? { demandedOn } : {},
+  );
+
+export const createHolidayAdjustment = (
+  personId: number,
+  input: StaffHolidayAdjustmentInput,
+): Promise<StaffHolidayAdjustment> =>
+  sendAbsenceWrite<StaffHolidayAdjustment>(`/api/v1/staff/people/${personId}/holiday-adjustments`, "POST", input);
+
+export const deleteHolidayAdjustment = (id: number): Promise<void> =>
+  sendAbsenceWrite<void>(`/api/v1/staff/holiday-adjustments/${id}`, "DELETE");
+
+/** Carries a year's untaken holiday into the next: once per person and year (`carry_over_recorded`). */
+export const carryOver = (personId: number, input: StaffCarryOverInput): Promise<StaffHolidayAdjustment> =>
+  sendAbsenceWrite<StaffHolidayAdjustment>(`/api/v1/staff/people/${personId}/carry-over`, "POST", input);
+
+/** Withdraws the right to egenmelding until a day, or lifts the withdrawal (`until` null). */
+export const setSelfCertWithdrawal = (
+  personId: number,
+  input: StaffSelfCertWithdrawalInput,
+): Promise<StaffSelfCertification> =>
+  sendAbsenceWrite<StaffSelfCertification>(
+    `/api/v1/staff/people/${personId}/self-certification/withdrawal`,
+    "PUT",
+    input,
+  );

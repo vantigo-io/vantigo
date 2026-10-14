@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { jsonResponse } from "../test/api";
-import { employments, terms } from "../test/fixtures";
+import { employments, holidaySchemes, meta, terms } from "../test/fixtures";
 import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -129,7 +129,7 @@ describe("Employments — HR changes the terms", () => {
     const fetchMock = stubStaffApi({ role: "manage" });
     renderRoute("/staff/people/101?tab=employments");
 
-    await userEvent.click(within(await adaEmployment()).getByRole("button", { name: "New terms" }));
+    await userEvent.click(await within(await adaEmployment()).findByRole("button", { name: "New terms" }));
     const dialog = await screen.findByRole("dialog", { name: "New terms" });
     expect(within(dialog).getByRole("textbox", { name: /Percentage of a full position/ })).toHaveValue("80");
     expect(within(dialog).getByRole("textbox", { name: "Title" })).toHaveValue("Senior engineer");
@@ -160,7 +160,7 @@ describe("Employments — HR changes the terms", () => {
     stubStaffApi({ role: "manage" });
     renderRoute("/staff/people/101?tab=employments");
 
-    await userEvent.click(within(await adaEmployment()).getByRole("button", { name: "New terms" }));
+    await userEvent.click(await within(await adaEmployment()).findByRole("button", { name: "New terms" }));
     const dialog = await screen.findByRole("dialog", { name: "New terms" });
     await typeDate(within(dialog).getByRole("textbox", { name: /Takes effect/ }), "Mar 1, 2026");
     await userEvent.click(within(dialog).getByRole("button", { name: "Save terms" }));
@@ -183,7 +183,7 @@ describe("Employments — HR changes the terms", () => {
     });
     renderRoute("/staff/people/101?tab=employments");
 
-    await userEvent.click(within(await adaEmployment()).getByRole("button", { name: "New terms" }));
+    await userEvent.click(await within(await adaEmployment()).findByRole("button", { name: "New terms" }));
     const dialog = await screen.findByRole("dialog", { name: "New terms" });
     await typeDate(within(dialog).getByRole("textbox", { name: /Takes effect/ }), "Apr 1, 2027");
     await userEvent.click(within(dialog).getByRole("button", { name: "Save terms" }));
@@ -328,6 +328,40 @@ describe("Employments — HR ends and reopens", () => {
     const [put] = sent(fetchMock, "PUT", /employments\/201$/);
     // PUT /employments/{id} is a full replace: a scheme left out is the default's.
     expect(put.body).toMatchObject({ holidaySchemeId: 1002 });
+  });
+});
+
+describe("Employments — the holiday scheme", () => {
+  const tariff = () => ({
+    ...holidaySchemes()[0],
+    id: 1002,
+    name: "Tariff (five weeks)",
+    entitlementVirkedager: 30,
+    isDefault: false,
+    seeded: false,
+  });
+
+  it("puts an employment on a scheme, and back on the default", async () => {
+    const fetchMock = stubStaffApi({
+      role: "manage",
+      meta: meta("manage", { holidaySchemes: [...holidaySchemes(), tariff()] }),
+    });
+    renderRoute("/staff/people/101?tab=employments");
+
+    await userEvent.click(await within(await adaEmployment()).findByRole("button", { name: "Edit employment" }));
+    let dialog = await screen.findByRole("dialog", { name: "Edit employment E-1-1" });
+    await choose(dialog, "Holiday scheme", "Tariff (five weeks)");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT", /employments\/201$/)).toHaveLength(1));
+    expect(sent(fetchMock, "PUT", /employments\/201$/)[0].body).toMatchObject({ holidaySchemeId: 1002 });
+    expect(await within(await adaEmployment()).findByText("Tariff (five weeks)")).toBeInTheDocument();
+
+    await userEvent.click(await within(await adaEmployment()).findByRole("button", { name: "Edit employment" }));
+    dialog = await screen.findByRole("dialog", { name: "Edit employment E-1-1" });
+    await choose(dialog, "Holiday scheme", /The default/);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT", /employments\/201$/)).toHaveLength(2));
+    expect(sent(fetchMock, "PUT", /employments\/201$/)[1].body).not.toHaveProperty("holidaySchemeId");
   });
 });
 

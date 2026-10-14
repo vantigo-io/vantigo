@@ -274,3 +274,206 @@ export const hrOnlyApprovals = (): Schemas["StaffApproval"][] => [
     },
   },
 ];
+
+/**
+ * What the person page's Absence tab reads of one person, as the caller
+ * reads it: the rows of `GET /absences?personId=`, the holiday accounts per
+ * year, HR's adjustments, the egenmelding standing and the care days — each
+ * left out for a reader the server does not answer it (`careDays` null is
+ * the 404 a reader outside the care-day fields gets).
+ */
+export interface PersonAbsence {
+  absences: Schemas["StaffAbsence"][];
+  accounts?: Schemas["StaffHolidayAccount"][];
+  adjustments?: Schemas["StaffHolidayAdjustment"][];
+  selfCertification?: Schemas["StaffSelfCertification"] | null;
+  careDays?: Schemas["StaffCareDays"] | null;
+}
+
+/**
+ * Grace's absence as HR without `staff:personal-data` reads it: an opaque
+ * etag on every row in place of the revision, her HR-only leave as an
+ * approved "leave" with no type, note or decision, the summer's approved
+ * ferie, the autumn's sykmelding registered, and a ferie she asked for in
+ * December.
+ */
+export const graceAbsencesAsHr = (): Schemas["StaffAbsence"][] => [
+  {
+    id: 714,
+    personId: 102,
+    status: "requested",
+    firstDay: "2026-12-21",
+    lastDay: "2026-12-23",
+    workingDays: 3,
+    shownAs: "type",
+    typeId: 1001,
+    percent: 100,
+    note: "Christmas",
+    etag: "e714",
+  },
+  {
+    id: 712,
+    personId: 102,
+    status: "registered",
+    firstDay: "2026-09-28",
+    lastDay: "2026-10-30",
+    workingDays: 25,
+    shownAs: "type",
+    typeId: 1003,
+    percent: 100,
+    degreePercent: 100,
+    etag: "e712",
+  },
+  {
+    id: 713,
+    personId: 102,
+    status: "approved",
+    firstDay: "2026-08-17",
+    lastDay: "2026-08-21",
+    workingDays: 5,
+    shownAs: "leave",
+    etag: "e713",
+  },
+  {
+    id: 711,
+    personId: 102,
+    status: "approved",
+    firstDay: "2026-07-06",
+    lastDay: "2026-07-24",
+    workingDays: 15,
+    shownAs: "type",
+    typeId: 1001,
+    percent: 100,
+    decisionNote: "Enjoy",
+    etag: "e711",
+  },
+];
+
+/**
+ * The same rows as Grace's manager reads them: the types the matrix lets a
+ * manager name, the HR-only leave as "leave", and neither a revision nor an
+ * etag — a manager writes none of them.
+ */
+export const graceAbsencesAsManager = (): Schemas["StaffAbsence"][] =>
+  graceAbsencesAsHr().map((row) => {
+    const shown = { ...row };
+    delete shown.etag;
+    return shown;
+  });
+
+export const graceAccount = (overrides: Partial<Schemas["StaffHolidayAccount"]> = {}) =>
+  holidayAccount({ personId: 102, carriedIn: 3, taken: 15, pending: 3, remaining: 9, ...overrides });
+
+export const graceAdjustments = (): Schemas["StaffHolidayAdjustment"][] => [
+  {
+    id: 801,
+    personId: 102,
+    year: 2026,
+    days: 3,
+    reason: "agreed_carry_over",
+    fromYear: 2025,
+    createdAt: "2026-01-05T09:00:00Z",
+  },
+];
+
+/** Grace's absence as HR reads it, every part answered. */
+export const graceAsHr = (): PersonAbsence => ({
+  absences: graceAbsencesAsHr(),
+  accounts: [graceAccount(), graceAccount({ year: 2025, carriedIn: 0, taken: 18, pending: 0, remaining: 3 })],
+  adjustments: graceAdjustments(),
+  selfCertification: selfCertification({ personId: 102 }),
+  careDays: careDays({ personId: 102 }),
+});
+
+/** Grace's absence as her manager reads it: no adjustments, no care days, the standing without a withdrawal. */
+export const graceAsManager = (): PersonAbsence => ({
+  absences: graceAbsencesAsManager(),
+  accounts: [graceAccount()],
+  selfCertification: selfCertification({ personId: 102 }),
+  careDays: null,
+});
+
+/**
+ * Grace's case as staff:personal-data reads it: the milestones' notes and a
+ * waiver's reason, which nobody else is sent.
+ */
+export const casesAsPersonalData = (): Schemas["StaffCase"][] =>
+  cases().map((one) => ({
+    ...one,
+    milestones: one.milestones.map((milestone) =>
+      milestone.kind === "follow_up_plan"
+        ? { ...milestone, note: "Plan agreed with Grace", revision: 4 }
+        : milestone.kind === "nav_activity"
+          ? { ...milestone, waived: true, due: false, waivedReason: "Back at work part-time" }
+          : milestone,
+    ),
+  }));
+
+/** Grace's case as an Approver reads it: the milestones, and no accommodation note — it is not theirs. */
+export const casesAsApprover = (): Schemas["StaffCase"][] =>
+  cases().map((one) => {
+    const shown = { ...one };
+    delete shown.accommodationNote;
+    return shown;
+  });
+
+/**
+ * Every absence type as `GET /absence-types` answers staff:manage: the
+ * seeds `/meta` offers, a hidden seed, the reserved `absent` and a company
+ * type of its own, HR-only.
+ */
+export const allAbsenceTypes = (types: Schemas["StaffAbsenceType"][]): Schemas["StaffAbsenceType"][] => [
+  ...types,
+  {
+    id: 1011,
+    key: "velferdspermisjon",
+    names: { en: "Welfare leave", nb: "Velferdspermisjon" },
+    kind: "leave",
+    unit: "days",
+    paid: true,
+    drawsHoliday: false,
+    allowsPercent: false,
+    needsDecision: true,
+    visibility: "absent",
+    ameldingLeave: "andreIkkeLovfestedePermisjoner",
+    seeded: true,
+    hidden: true,
+    reserved: false,
+    sort: 11,
+    revision: 1,
+  },
+  {
+    id: 1099,
+    key: "absent",
+    names: { en: "Absent", nb: "Fravær" },
+    kind: "other",
+    unit: "days",
+    paid: false,
+    drawsHoliday: false,
+    allowsPercent: false,
+    needsDecision: false,
+    visibility: "absent",
+    seeded: true,
+    hidden: true,
+    reserved: true,
+    sort: 999,
+    revision: 1,
+  },
+  {
+    id: 2001,
+    key: "studiedag",
+    names: { en: "Study day", nb: "Studiedag" },
+    kind: "time_off",
+    unit: "days",
+    paid: true,
+    drawsHoliday: false,
+    allowsPercent: true,
+    needsDecision: true,
+    visibility: "hr_only",
+    seeded: false,
+    hidden: false,
+    reserved: false,
+    sort: 30,
+    revision: 2,
+  },
+];
