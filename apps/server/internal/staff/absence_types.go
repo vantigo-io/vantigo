@@ -165,6 +165,22 @@ func parseAbsenceTypeFlags(names gen.StaffAbsenceTypeNames, unit string, in abse
 	return out
 }
 
+// judgeHROnlyFlags refuses a company type that is HR-only and allows a
+// percentage or draws on the holiday account (whole-branch review): a reader
+// of it as leave would learn its kind from overlap's shares or the holiday
+// account's arithmetic. The seeds are judged by seed_immutable instead.
+func judgeHROnlyFlags(flags absenceTypeFlags, f *fieldErrors) {
+	if flags.Visibility != visibilityHROnly {
+		return
+	}
+	if flags.AllowsPercent {
+		f.add("allowsPercent", "An HR-only type takes no percentage: its share would tell those who read it as leave what it is")
+	}
+	if flags.DrawsHoliday {
+		f.add("drawsHoliday", "An HR-only type does not draw on the holiday account, which every reader of the account sees")
+	}
+}
+
 // GetStaffAbsenceTypes List absence types
 // (GET /api/v1/staff/absence-types)
 //
@@ -202,6 +218,7 @@ func (s *server) PostStaffAbsenceTypes(ctx context.Context, req gen.PostStaffAbs
 		Paid: body.Paid, DrawsHoliday: body.DrawsHoliday, AllowsPercent: body.AllowsPercent, NeedsDecision: body.NeedsDecision,
 		Visibility: string(body.Visibility), AmeldingLeave: stringOf(body.AmeldingLeave), Hidden: hidden, Sort: body.Sort,
 	}, &f)
+	judgeHROnlyFlags(flags, &f)
 	if f.failed() {
 		return gen.PostStaffAbsenceTypes400ApplicationProblemPlusJSONResponse(invalid(invalidAbsenceTypeTitle, f)), nil
 	}
@@ -282,6 +299,12 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 		if row.Seeded && !seedChangeAllowed(row, flags) {
 			return refuseConflict(conflict(codeSeedImmutable, "Seeded absence type",
 				fmt.Sprintf("%s is one of the types every installation starts with: its names, its place and whether it is hidden change, nothing else.", row.NameEn)))
+		}
+		if !row.Seeded {
+			judgeHROnlyFlags(flags, &f)
+			if f.failed() {
+				return refuseInvalid(invalidAbsenceTypeTitle, f)
+			}
 		}
 		if row.Visibility == visibilityHROnly && flags.Visibility == visibilityAbsent {
 			inUse, err := txq.AbsenceTypeInUse(ctx, row.ID)

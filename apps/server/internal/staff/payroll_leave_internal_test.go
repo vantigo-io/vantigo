@@ -393,3 +393,31 @@ func TestPayrollTotals_CareDaysBeyondOnTheMainEmployment(t *testing.T) {
 		t.Errorf("child sick, beyond per employment = %v; want both days on each, the two beyond on %s (60 %%) alone", got, side.EmploymentNumber)
 	}
 }
+
+// The days beyond the employer's ten go no further than the person's
+// entitlement (whole-branch review): with ten care days recorded, twelve
+// used leave none for NAV to refund; with none recorded the file does not
+// cap them.
+func TestPayrollTotals_BeyondEmployerCappedAtTheEntitlement(t *testing.T) {
+	t.Parallel()
+	m := september(t)
+	e := payrollEmployment(t, 1, "2024-01-01", "")
+	var rows []store.AbsencesBetweenRow
+	for _, a := range []payrollAbsence{
+		{id: 6, typeID: 10, kind: "child_sick", first: "2026-08-17", last: "2026-08-27"},
+		{id: 7, typeID: 10, kind: "child_sick", first: "2026-09-21", last: "2026-09-23"},
+	} {
+		rows = append(rows, a.row(t))
+	}
+	ten := 10
+	out := payrollRows(payrollInput{
+		People:      map[int64]payrollPerson{1: {EmployeeNumber: "K-1", GivenName: "Kari", FamilyName: "Nordmann", CareDays: &ten}},
+		Employments: []store.StaffEmployment{e},
+		Terms:       map[int64][]store.StaffEmploymentTerm{1: {payrollTermsRow(t, 1, "2024-01-01", 100)}},
+		Absences:    rows,
+		LeaveID:     testLeaveID,
+	}, m)
+	if got := out[0].ChildSickBeyondEmployer; got != "" {
+		t.Errorf("beyond the employer = %q with an entitlement of ten, want none", got)
+	}
+}

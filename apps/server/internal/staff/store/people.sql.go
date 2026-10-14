@@ -736,19 +736,24 @@ func (q *Queries) ListPeopleForExport(ctx context.Context, maxRows int32) ([]Lis
 }
 
 const listPeopleForPayroll = `-- name: ListPeopleForPayroll :many
-SELECT id, employee_number, given_name, family_name FROM staff.people ORDER BY id
+SELECT id, employee_number, given_name, family_name, children_under_12, sole_carer, chronically_ill_children
+FROM staff.people ORDER BY id
 `
 
 type ListPeopleForPayrollRow struct {
-	ID             int64
-	EmployeeNumber string
-	GivenName      string
-	FamilyName     string
+	ID                     int64
+	EmployeeNumber         string
+	GivenName              string
+	FamilyName             string
+	ChildrenUnder12        *int16
+	SoleCarer              *bool
+	ChronicallyIllChildren *int16
 }
 
 // ListPeopleForPayroll is what the payroll file reads of every person: the
 // employee number and the names, erased people included — never a sealed
-// column, which payroll already holds (design reading 9).
+// column, which payroll already holds (design reading 9) — and the care-day
+// fields, which cap the days beyond the employer's ten and are never written.
 func (q *Queries) ListPeopleForPayroll(ctx context.Context) ([]ListPeopleForPayrollRow, error) {
 	rows, err := q.db.Query(ctx, listPeopleForPayroll)
 	if err != nil {
@@ -763,6 +768,9 @@ func (q *Queries) ListPeopleForPayroll(ctx context.Context) ([]ListPeopleForPayr
 			&i.EmployeeNumber,
 			&i.GivenName,
 			&i.FamilyName,
+			&i.ChildrenUnder12,
+			&i.SoleCarer,
+			&i.ChronicallyIllChildren,
 		); err != nil {
 			return nil, err
 		}

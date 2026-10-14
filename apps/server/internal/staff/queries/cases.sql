@@ -165,11 +165,13 @@ UPDATE staff.documents SET case_id = sqlc.narg('case_id')::bigint WHERE id = @id
 
 -- name: SetSelfCertWithdrawal :exec
 -- SetSelfCertWithdrawal records or lifts the withdrawal of a person's right
--- to egenmelding (ftrl. § 8-27).
+-- to egenmelding (ftrl. § 8-27), a change of the person: their revision
+-- moves (whole-branch review).
 UPDATE staff.people SET
     self_cert_withdrawn_until = @until,
     self_cert_withdrawn_reason = @reason,
     self_cert_withdrawn_from = @from_day,
+    revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = @id;
 

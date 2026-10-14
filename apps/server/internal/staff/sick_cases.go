@@ -63,7 +63,12 @@ var milestoneOffsets = map[string]int{
 // arbeidsgiverperiode ends on, the week a milestone is due within, and the
 // 52-week estimate's 364.
 const (
-	caseJoinDays       = 16
+	caseJoinDays = 16
+	// caseClosesAfter is the days from a case's last day to the first day
+	// it is closed by itself: the sixteen a row may still join in, and the
+	// next (last_day + 17) — the bound DueCasesE, PersonCaseExists and the
+	// orphaned events' cutoff all read (whole-branch review: one bound).
+	caseClosesAfter    = caseJoinDays + 1
 	employerPeriodDays = 16
 	milestoneDueWithin = 7
 	maxBenefitDays     = 364
@@ -109,7 +114,10 @@ func bridged(from, to time.Time) bool {
 
 // sickDays walks the days a case counts, in order, calling count for each
 // until it answers false: every day of a row once, and every day of a
-// bridged gap between two rows.
+// bridged gap between two rows. A run of sickness that does not continue the
+// one before — the case's first row, or a row after worked days — starts on
+// its first working day (worksOn): the arbeidsgiverperiode does not begin on
+// a day off (NAV; whole-branch review).
 func sickDays(spans []sickSpan, count func(d time.Time) bool) {
 	sorted := slices.Clone(spans)
 	slices.SortStableFunc(sorted, func(a, b sickSpan) int { return a.First.Compare(b.First) })
@@ -118,6 +126,10 @@ func sickDays(spans []sickSpan, count func(d time.Time) bool) {
 		start := s.First
 		if i > 0 && (!start.After(cursor) || bridged(cursor, start)) {
 			start = cursor.AddDate(0, 0, 1)
+		} else {
+			for !start.After(s.Last) && !worksOn(start) {
+				start = start.AddDate(0, 0, 1)
+			}
 		}
 		for d := start; !d.After(s.Last); d = d.AddDate(0, 0, 1) {
 			if !count(d) {

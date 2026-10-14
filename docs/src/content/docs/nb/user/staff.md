@@ -666,7 +666,7 @@ Reglene bak skjermbildene over:
   har brukt de siste tolv månedene.
 - **Sykefraværssaken din.** Sykefraværene dine samles i en sak — en ny når det har gått
   mer enn seksten dager siden forrige. Oppfølgingen — slutten på arbeidsgiverens
-  seksten dager, oppfølgingsplanen etter fire uker, dialogmøtene etter sju og tjueseks,
+  seksten dager (regnet fra din første arbeidsdag borte), oppfølgingsplanen etter fire uker, dialogmøtene etter sju og tjueseks,
   NAVs aktivitetskrav etter åtte — markerer lederen din og HR. En sak har aldri
   en diagnose: det finnes ikke noe sted å skrive en.
 - **Omsorgsdager** for sykt barn teller mot dagene dine for året — 10 for ett eller to

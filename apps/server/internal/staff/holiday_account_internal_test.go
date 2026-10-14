@@ -82,6 +82,13 @@ func TestHolidayAccount(t *testing.T) {
 		{"the year one turns sixty adds the extra days, un-prorated",
 			accountInput{Employments: since2019, BirthDate: born("1966-12-31")},
 			2026, holidayAccount{Year: 2026, Entitlement: days(26), Remaining: days(26)}},
+		// Ferieloven § 5 nr. 2 sets no start condition for the extra week,
+		// and nr. 3 limits only the feriefritid (checked on Lovdata
+		// 2026-10-14): a start after 30 September in the sixtieth year earns
+		// both.
+		{"a start after 30 September in the year one turns sixty keeps the extra days",
+			accountInput{Employments: []accountEmployment{{Start: day(t, "2026-10-01"), Scheme: statutory}}, BirthDate: born("1966-12-31")},
+			2026, holidayAccount{Year: 2026, Entitlement: days(10), Remaining: days(10)}},
 		{"fifty-nine is not sixty",
 			accountInput{Employments: since2019, BirthDate: born("1967-01-01")},
 			2026, holidayAccount{Year: 2026, Entitlement: days(21), Remaining: days(21)}},

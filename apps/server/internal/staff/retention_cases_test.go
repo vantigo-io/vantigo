@@ -213,12 +213,12 @@ func TestRetention_TheWithdrawal(t *testing.T) {
 	}
 }
 
-// The person's health schedule leaves what a case owns to the case's: a
-// leaver whose employments all ended more than healthRetentionDays ago, but
-// whose last case closed since, keeps that case's rows' types, its events'
-// health fields and the document filed under it until the case's own time
-// has run; a health document filed under no case goes on the person's.
-func TestRetention_ThePersonsHealthEraseLeavesTheCase(t *testing.T) {
+// What a case owns goes on whichever schedule comes first (whole-branch
+// review): a leaver whose employments all ended more than healthRetentionDays
+// ago, but whose last case closed since, loses that case's rows' types, its
+// events' health fields and the document filed under it with the rest of
+// their health data — the person's own cutoff caps the case's.
+func TestRetention_ThePersonsHealthCutoffCapsTheCase(t *testing.T) {
 	t.Parallel()
 	w := newAbsenceWorld(t)
 	h := w.h
@@ -230,17 +230,16 @@ func TestRetention_ThePersonsHealthEraseLeavesTheCase(t *testing.T) {
 	loose := seedDocument(t, h, p.Id, "health")
 
 	runCycle(t, h)
-	if n := h.Count(t, `SELECT count(*) FROM staff.documents WHERE id = $1`, loose); n != 0 {
-		t.Error("the leaver's unattached health document is kept past healthRetentionDays")
+	for name, id := range map[string]int64{"unattached": loose, "filed under the case": filed} {
+		if n := h.Count(t, `SELECT count(*) FROM staff.documents WHERE id = $1`, id); n != 0 {
+			t.Errorf("the leaver's %s health document is kept past their health cutoff", name)
+		}
 	}
-	if n := h.Count(t, `SELECT count(*) FROM staff.documents WHERE id = $1`, filed); n != 1 {
-		t.Error("the person's health erase deleted a document the case owns, whose case closed under a year ago")
+	if f := eventFields(t, h, "absence_registered", "absenceId", sick.Id); f["type"] != "changed" {
+		t.Error("the case's event kept its health fields past the person's health cutoff")
 	}
-	if f := eventFields(t, h, "absence_registered", "absenceId", sick.Id); f["type"] == "changed" {
-		t.Error("the person's health erase blanked an event the case owns")
-	}
-	if got := modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, sick.Id); got != typeID(t, h, "sykmelding") {
-		t.Errorf("the recent case's row's type = %d, want sykmelding", got)
+	if got := modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, sick.Id); got != typeID(t, h, "absent") {
+		t.Errorf("the case's row's type = %d, want absent", got)
 	}
 }
 
@@ -306,7 +305,16 @@ func TestRetention_OrphanedSickEventsGoByTheirInstant(t *testing.T) {
 	if f := eventFields(t, h, "absence_registered", "absenceId", sick.Id); f["type"] == "changed" {
 		t.Fatal("an orphaned event recorded today was erased")
 	}
-	setClock(t, h, h.Now().AddDate(0, 0, 365+16+1))
+	// The bound is the case's own (whole-branch review): the latest a case
+	// can close is its last day + 17 (caseClosesAfter), so an orphan waits
+	// healthRetentionDays and seventeen days, not sixteen.
+	start := h.Now()
+	setClock(t, h, start.AddDate(0, 0, 365+17))
+	runCycle(t, h)
+	if f := eventFields(t, h, "absence_registered", "absenceId", sick.Id); f["type"] == "changed" {
+		t.Fatal("an orphaned event was erased on the seventeenth day, before the case's own bound")
+	}
+	setClock(t, h, start.AddDate(0, 0, 365+17+1))
 	runCycle(t, h)
 	for _, c := range []struct {
 		kind, key string
@@ -353,5 +361,30 @@ func TestRetention_TheWithdrawalsEventsByTheirInstant(t *testing.T) {
 	}
 	if got := reason(recent); got == `"changed"` {
 		t.Error("an event recorded an hour ago was erased")
+	}
+}
+
+// A leaver's owned health content goes on their own health schedule when it
+// comes first (whole-branch review): healthRetentionDays after their last
+// employment ended, a child-sick row of a year not yet past the cutoff and a
+// withdrawal of egenmelding still in force are erased with the rest of
+// their health data.
+func TestRetention_ALeaversOwnedHealthGoesWithTheirs(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	leaver, job := employed(t, w.hr, "Leaver", "2020-01-01", terms())
+	child := register(t, w.hr, leaver.Id, absence(t, h, "sykt_barn", "2025-05-05", "2025-05-05"))
+	do(t, w.hr, http.MethodPost, endPath(job.Id), map[string]any{"endDate": "2025-06-30", "endReason": "employee_resigned"}, http.StatusOK, nil)
+	h.Exec(t, `UPDATE staff.people SET self_cert_withdrawn_until = '2027-01-31', self_cert_withdrawn_from = '2025-05-01',
+		self_cert_withdrawn_reason = 'Gjentatt fravær' WHERE id = $1`, leaver.Id)
+
+	runCycle(t, h)
+
+	if typ := modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, child.Id); typ != typeID(t, h, "absent") {
+		t.Errorf("the leaver's child-sick row kept its type %d past their health cutoff", typ)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.people WHERE id = $1 AND self_cert_withdrawn_until IS NULL AND self_cert_withdrawn_reason IS NULL`, leaver.Id); n != 1 {
+		t.Error("the leaver's withdrawal outlived their health cutoff")
 	}
 }

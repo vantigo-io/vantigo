@@ -309,7 +309,8 @@ stops every erase for the person). The `staff-retention` worker runs daily: for 
 person whose last employment ended more than `retentionGraceDays` ago (default 90),
 not held, it blanks the D columns, deletes the D rows and queues the D objects; for
 every **closed case** older than `healthRetentionDays` (default 365), whatever the
-employment state, it blanks the E content and queues the health objects (**B's**: the case does not exist before B; A2's health schedule is the one below); for every
+employment state — or with the person's other health data, when their last employment
+ended more than `healthRetentionDays` ago and that comes first (amended 2026-10-14) — it blanks the E content and queues the health objects (**B's**: the case does not exist before B; A2's health schedule is the one below); for every
 A item older than five years after its year, it blanks. Objects go through
 `object_deletions` (object key, attempts, next attempt), retried every cycle until the
 store confirms, so a legal erase is never best-effort (M7). It writes an `erased`
@@ -699,7 +700,11 @@ allowed beside it.
 `staff.sick_cases` — `person_id`, `first_day`, `closed_at`, `accommodation_note`
 varchar(2000) (manager read-write), `max_benefit_estimate` date (editable). The case
 and its milestones are class **E** whole; after the E erase the case keeps only its
-id and that it existed between two dates.
+id and that it existed between two dates. *(Amended 2026-10-14, the whole-branch
+review; as built, open question 12 in the absence plan:)* it keeps its id, its first
+and last day and is marked closed, and its milestones keep their kinds and dates —
+the facts (done, waived, who, notes) are erased; its rows keep their days as the
+reserved `absent` type.
 `staff.sick_case_milestones` — `case_id`, `kind` (`employer_period_end`,
 `follow_up_plan`, `dialogue_1`, `nav_activity`, `dialogue_2`), `due_date` (stored,
 recomputed when the case's rows change), `done_at`, `done_by_user_id`, `waived`,

@@ -36,7 +36,7 @@ func selfCertRefusal(code, title, reason string) error {
 	return refuseConflict(conflict(code, title, reason+" Register a sykmelding from a doctor for these days instead."))
 }
 
-// personEgenmelding is the person's registered sick rows but exclude, as
+// personSickSpans is the person's registered sick rows but exclude, as
 // spans, and their egenmelding rows as days.
 func personSickSpans(ctx context.Context, txq *store.Queries, personID, exclude int64) ([]sickSpan, []daySpan, error) {
 	rows, err := txq.PersonSickRows(ctx, personID)

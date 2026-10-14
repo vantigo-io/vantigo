@@ -664,22 +664,35 @@ func (s *server) readHolidayAttention(ctx context.Context, q *store.Queries, c *
 			byPerson[a.PersonID] = append(byPerson[a.PersonID], a)
 		}
 	}
+	jan1, dec31 := time.Date(year, time.January, 1, 0, 0, 0, 0, time.UTC), time.Date(year, time.December, 31, 0, 0, 0, 0, time.UTC)
 	for _, id := range ids {
-		var owed *int
-		for _, e := range in.employments {
-			if e.PersonID != id || !inForce(e, today) || !civil(e.StartDate).Before(june1) {
+		// Owed by someone employed today since before 1 June; the main
+		// period is that of the scheme the holiday account reads — the
+		// earliest employment's in the year (whole-branch review).
+		eligible := false
+		var earliest *store.StaffEmployment
+		for i, e := range in.employments {
+			if e.PersonID != id {
 				continue
 			}
-			days := fallback
-			if e.HolidaySchemeID != nil {
-				days = mainPeriod[*e.HolidaySchemeID]
+			if inForce(e, today) && civil(e.StartDate).Before(june1) {
+				eligible = true
 			}
-			owed = &days
-			break
+			if civil(e.StartDate).After(dec31) || (e.EndDate.Valid && e.EndDate.Time.Before(jan1)) {
+				continue
+			}
+			if earliest == nil || civil(e.StartDate).Before(civil(earliest.StartDate)) {
+				earliest = &in.employments[i]
+			}
 		}
-		if owed == nil {
+		if !eligible || earliest == nil {
 			continue
 		}
+		days := fallback
+		if earliest.HolidaySchemeID != nil {
+			days = mainPeriod[*earliest.HolidaySchemeID]
+		}
+		owed := &days
 		var taken int64
 		for d := june1; !d.After(sep30); d = d.AddDate(0, 0, 1) {
 			if worksOn(d) {

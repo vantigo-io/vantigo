@@ -52,8 +52,11 @@ const (
 	extendedDaysPerYear       = 24
 )
 
-// rollingYear is the days a rolling year looks back over, today included.
-const rollingYear = 365
+// windowFrom is the first day of the twelve months ending on to, to
+// included (ftrl. § 8-23 "i løpet av 12 måneder"; whole-branch review): the
+// day after the same date a year earlier, so a window across 29 February is
+// 366 days long.
+func windowFrom(to time.Time) time.Time { return to.AddDate(-1, 0, 1) }
 
 // limitsOf is what policy p allows, by its name.
 func limitsOf(p selfCertPolicy) selfCertLimits {
@@ -142,9 +145,10 @@ func judgeSelfCert(l selfCertLimits, existing []daySpan, candidate daySpan, sick
 	if daysWithin(own, own.First, own.Last, sick) > l.DaysPerOccurrence {
 		return selfCertOverOccurrence
 	}
-	// Every rolling year holding a day of the candidate.
-	for from := candidate.First.AddDate(0, 0, 1-rollingYear); !from.After(candidate.Last); from = from.AddDate(0, 0, 1) {
-		to := from.AddDate(0, 0, rollingYear-1)
+	// Every twelve months holding a day of the candidate: each window ends
+	// on a day from the candidate's first to twelve months after its last.
+	for to := candidate.First; !windowFrom(to).After(candidate.Last); to = to.AddDate(0, 0, 1) {
+		from := windowFrom(to)
 		occurrences, total := 0, 0
 		for _, r := range runs {
 			if n := daysWithin(r, from, to, sick); n > 0 {
@@ -166,7 +170,7 @@ func judgeSelfCert(l selfCertLimits, existing []daySpan, candidate daySpan, sick
 // rolling year ending today: an occurrence touching it counts, and its days
 // within it.
 func selfCertUsed(rows, sick []daySpan, today time.Time) (occurrences, days int) {
-	from := today.AddDate(0, 0, 1-rollingYear)
+	from := windowFrom(today)
 	for _, r := range occurrencesOf(rows, sick) {
 		if n := daysWithin(r, from, today, sick); n > 0 {
 			occurrences++

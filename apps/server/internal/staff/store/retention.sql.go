@@ -99,7 +99,11 @@ FROM staff.sick_cases c
 JOIN staff.people p ON p.id = c.person_id
 WHERE NOT p.legal_hold
   AND ($1::bigint IS NULL OR c.person_id = $1::bigint)
-  AND least(coalesce((c.closed_at AT TIME ZONE $2::text)::date, c.last_day + 17), c.last_day + 17) < $3::date
+  AND (least(coalesce((c.closed_at AT TIME ZONE $2::text)::date, c.last_day + 17), c.last_day + 17) < $3::date
+       -- or the person's own health cutoff, when it comes first: every
+       -- employment ended before @cutoff (whole-branch review)
+       OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = c.person_id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = c.person_id AND (ge.end_date IS NULL OR ge.end_date >= $3::date))))
   AND (
       EXISTS (
           SELECT 1 FROM jsonb_each(to_jsonb(c)) j
@@ -148,8 +152,9 @@ type DueCasesERow struct {
 }
 
 // DueCasesE is the sick-leave cases whose health content is due (design
-// S15, delivery B Task 6): closed — by HR, or sixteen days after their last
-// day, whichever came first — before @cutoff (today minus
+// S15, delivery B Task 6): closed — by HR, or on the day after the sixteen
+// that follow their last day (last_day + 17, caseClosesAfter), whichever
+// came first — before @cutoff (today minus
 // healthRetentionDays), whatever the person's employment, of a person not
 // held, with something of class E left: a value of the case's or its
 // milestones' class E columns (@case_columns, @milestone_columns, from
@@ -188,7 +193,9 @@ func (q *Queries) DueCasesE(ctx context.Context, arg DueCasesEParams) ([]DueCase
 const dueChildSickRows = `-- name: DueChildSickRows :many
 SELECT a.id FROM staff.absences a
 JOIN staff.absence_types t ON t.id = a.type_id AND t.kind = 'child_sick'
-WHERE a.person_id = $1 AND make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $2::date
+WHERE a.person_id = $1
+  AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $2::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id AND (ge.end_date IS NULL OR ge.end_date >= $2::date))))
 ORDER BY a.id
 `
 
@@ -361,7 +368,8 @@ JOIN staff.absence_types t ON t.id = a.type_id AND t.kind = 'child_sick'
 JOIN staff.people p ON p.id = a.person_id
 WHERE NOT p.legal_hold
   AND ($1::bigint IS NULL OR a.person_id = $1::bigint)
-  AND make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $2::date
+  AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $2::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id AND (ge.end_date IS NULL OR ge.end_date >= $2::date))))
 GROUP BY a.person_id
 ORDER BY min(a.last_day), a.person_id
 LIMIT $3
@@ -397,7 +405,6 @@ func (q *Queries) DuePeopleChildSick(ctx context.Context, arg DuePeopleChildSick
 }
 
 const duePeopleD = `-- name: DuePeopleD :many
-
 SELECT p.id
 FROM staff.people p
 WHERE p.erased_at IS NULL
@@ -417,14 +424,6 @@ type DuePeopleDParams struct {
 	RowLimit int32
 }
 
-// The retention run (design S15 as amended by the A2 pre-flight, plan Task 5):
-// three due queries over what remains, the erases' reads and writes, the
-// deletion ledger and the retention block of GET /settings. Each due query
-// takes an optional person (or employment) so the erase judges it again on
-// the row its lock holds — one predicate, asked twice — and none crosses the
-// schema. The columns an erase nulls are not named here: they are the
-// module's columnClasses (retention.go), and the statements that null them
-// are built from it.
 // DuePeopleD is the people whose personnel administration (class D) is due
 // for erasure: not erased yet, not held, with at least one employment and
 // every one ended before @cutoff (today minus retentionGraceDays) — a person
@@ -540,7 +539,8 @@ FROM staff.events ev
 JOIN staff.people p ON p.id = ev.person_id
 WHERE NOT p.legal_hold
   AND ($1::bigint IS NULL OR ev.person_id = $1::bigint)
-  AND 'E' = ANY(ev.payload_classes) AND ev.at < $2::timestamptz
+  AND 'E' = ANY(ev.payload_classes) AND (ev.at < $2::timestamptz OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = ev.person_id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = ev.person_id AND (ge.end_date IS NULL OR ge.end_date >= $3::date))))
   AND (ev.payload ? 'absenceId' OR ev.payload ? 'caseId' OR ev.payload ? 'rowCaseId' OR ev.payload ? 'sickAbsenceId')
   AND NOT ev.payload ? 'selfCertWithdrawal'
   AND NOT (
@@ -557,19 +557,20 @@ WHERE NOT p.legal_hold
   AND (
       EXISTS (
           SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
-          WHERE f.value <> to_jsonb($3::text)
+          WHERE f.value <> to_jsonb($4::text)
             AND coalesce(ev.payload -> 'classes' ->> f.key, 'E') = 'E')
       OR EXISTS (
           SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
           WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
-            AND ti.id::bigint <> $4::bigint))
+            AND ti.id::bigint <> $5::bigint))
 ORDER BY person_id
-LIMIT $5
+LIMIT $6
 `
 
 type DuePeopleOrphanedSickEventsParams struct {
 	PersonID *int64
 	CutoffAt time.Time
+	Cutoff   pgtype.Date
 	Blanked  string
 	AbsentID int64
 	RowLimit int32
@@ -585,6 +586,7 @@ func (q *Queries) DuePeopleOrphanedSickEvents(ctx context.Context, arg DuePeople
 	rows, err := q.db.Query(ctx, duePeopleOrphanedSickEvents,
 		arg.PersonID,
 		arg.CutoffAt,
+		arg.Cutoff,
 		arg.Blanked,
 		arg.AbsentID,
 		arg.RowLimit,
@@ -614,10 +616,15 @@ WHERE NOT p.legal_hold
   AND ($1::bigint IS NULL OR p.id = $1::bigint)
   AND (
       p.self_cert_withdrawn_until < $2::date
-      OR ((p.self_cert_withdrawn_until IS NULL OR p.self_cert_withdrawn_until < $2::date)
+      OR (p.self_cert_withdrawn_until IS NOT NULL AND (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= $2::date))))
+      OR ((p.self_cert_withdrawn_until IS NULL OR p.self_cert_withdrawn_until < $2::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= $2::date))))
           AND EXISTS (
               SELECT 1 FROM staff.events ev, jsonb_each(ev.payload -> 'fields') f
-              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal' AND ev.at < $3::timestamptz
+              WHERE ev.person_id = p.id AND ev.payload ? 'selfCertWithdrawal'
+                AND (ev.at < $3::timestamptz OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+           AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= $2::date))))
                 AND f.value <> to_jsonb($4::text))))
 ORDER BY p.id
 LIMIT $5
@@ -945,6 +952,36 @@ func (q *Queries) PersonEventsOfClass(ctx context.Context, arg PersonEventsOfCla
 		return nil, err
 	}
 	return items, nil
+}
+
+const personHealthGone = `-- name: PersonHealthGone :one
+
+SELECT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = $1)
+   AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = $1 AND (ge.end_date IS NULL OR ge.end_date >= $2::date))
+`
+
+type PersonHealthGoneParams struct {
+	PersonID int64
+	Cutoff   pgtype.Date
+}
+
+// The retention run (design S15 as amended by the A2 pre-flight, plan Task 5):
+// three due queries over what remains, the erases' reads and writes, the
+// deletion ledger and the retention block of GET /settings. Each due query
+// takes an optional person (or employment) so the erase judges it again on
+// the row its lock holds — one predicate, asked twice — and none crosses the
+// schema. The columns an erase nulls are not named here: they are the
+// module's columnClasses (retention.go), and the statements that null them
+// are built from it.
+// PersonHealthGone is whether the person's own health cutoff has passed:
+// at least one employment, and every one ended before @cutoff (today minus
+// healthRetentionDays) — DuePeopleHealth's bound, which the schedules a case,
+// a child-sick row and a withdrawal own meet too when it comes first.
+func (q *Queries) PersonHealthGone(ctx context.Context, arg PersonHealthGoneParams) (*bool, error) {
+	row := q.db.QueryRow(ctx, personHealthGone, arg.PersonID, arg.Cutoff)
+	var column_1 *bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const retentionLedgerState = `-- name: RetentionLedgerState :one

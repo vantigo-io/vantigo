@@ -31,8 +31,9 @@ import (
 // The classes are S15's: A pay and contract documentation, kept five years
 // after the year the employment ended; C who was employed when, kept; D
 // personnel administration, erased a grace period after the last employment
-// ended; E health, erased healthRetentionDays after it (until delivery B
-// gives health documents a sick case's schedule); F the hold, which stops
+// ended; E health, erased healthRetentionDays after it — or, for what a
+// sick-leave case, a child-sick row or a withdrawal owns, after their own
+// close, year or lapse when that comes first; F the hold, which stops
 // every erase and is erased by none. columnClasses is the erase's one source:
 // the statements that null a class's columns are built from it, a test walks
 // the database's columns against it, and another holds fieldClasses — what
@@ -405,7 +406,7 @@ func (s *server) planRetention(ctx context.Context, q *store.Queries) (retention
 		aFields:          fieldsOfClass("A"),
 		zone:             zoneOf(row).String(),
 		healthCutoffAt:   now.AddDate(0, 0, -int(row.HealthRetentionDays)),
-		orphanCutoffAt:   now.AddDate(0, 0, -int(row.HealthRetentionDays)-caseJoinDays),
+		orphanCutoffAt:   now.AddDate(0, 0, -int(row.HealthRetentionDays)-caseClosesAfter),
 		absentID:         absentID,
 		caseColumns:      columnsOf("sick_cases", healthClass),
 		milestoneColumns: columnsOf("sick_case_milestones", healthClass),
@@ -429,7 +430,7 @@ func (p retentionPlan) dueCases(person *int64, limit int32) store.DueCasesEParam
 
 func (p retentionPlan) dueOrphans(person *int64, limit int32) store.DuePeopleOrphanedSickEventsParams {
 	return store.DuePeopleOrphanedSickEventsParams{
-		PersonID: person, CutoffAt: p.orphanCutoffAt, Blanked: changed, AbsentID: p.absentID, RowLimit: limit,
+		PersonID: person, CutoffAt: p.orphanCutoffAt, Cutoff: dayParam(p.healthCutoff), Blanked: changed, AbsentID: p.absentID, RowLimit: limit,
 	}
 }
 
@@ -744,6 +745,13 @@ func (s *server) eraseAbsenceHealth(ctx context.Context, tx pgx.Tx, txq *store.Q
 		}
 		count += n
 	}
+	// The person's own health cutoff, when it comes first, reaches what a
+	// case, a child-sick row and a withdrawal own too (whole-branch review).
+	past, err := txq.PersonHealthGone(ctx, store.PersonHealthGoneParams{PersonID: personID, Cutoff: dayParam(plan.healthCutoff)})
+	if err != nil {
+		return nil, fmt.Errorf("staff: judge person %d's health cutoff: %w", personID, err)
+	}
+	gone := past != nil && *past
 	orphans, err := txq.DuePeopleOrphanedSickEvents(ctx, plan.dueOrphans(&personID, 1))
 	if err != nil {
 		return nil, fmt.Errorf("staff: judge person %d's orphaned sick events: %w", personID, err)
@@ -754,7 +762,7 @@ func (s *server) eraseAbsenceHealth(ctx context.Context, tx pgx.Tx, txq *store.Q
 			return nil, err
 		}
 		n, err := s.blankEvents(ctx, txq, personID, healthClass, func(ids eventIDs) bool {
-			return ids.sickFamily() && !owned(ids) && ids.At.Before(plan.orphanCutoffAt)
+			return ids.sickFamily() && !owned(ids) && (gone || ids.At.Before(plan.orphanCutoffAt))
 		})
 		if err != nil {
 			return nil, err
@@ -789,13 +797,13 @@ func (s *server) eraseAbsenceHealth(ctx context.Context, tx pgx.Tx, txq *store.Q
 			return nil, fmt.Errorf("staff: read person %d's withdrawal: %w", personID, err)
 		}
 		var n int64
-		if w.SelfCertWithdrawnUntil.Valid && w.SelfCertWithdrawnUntil.Time.Before(plan.healthCutoff) {
+		if w.SelfCertWithdrawnUntil.Valid && (gone || w.SelfCertWithdrawnUntil.Time.Before(plan.healthCutoff)) {
 			if n, err = eraseColumns(ctx, tx, "people", healthClass, "id = $1", personID, now); err != nil {
 				return nil, err
 			}
 		}
 		e, err := s.blankEvents(ctx, txq, personID, healthClass, func(ids eventIDs) bool {
-			return ids.Withdrawal && ids.At.Before(plan.healthCutoffAt)
+			return ids.Withdrawal && (gone || ids.At.Before(plan.healthCutoffAt))
 		})
 		if err != nil {
 			return nil, err

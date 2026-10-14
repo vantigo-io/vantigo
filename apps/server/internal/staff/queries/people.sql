@@ -360,5 +360,7 @@ LIMIT @max_rows;
 -- name: ListPeopleForPayroll :many
 -- ListPeopleForPayroll is what the payroll file reads of every person: the
 -- employee number and the names, erased people included — never a sealed
--- column, which payroll already holds (design reading 9).
-SELECT id, employee_number, given_name, family_name FROM staff.people ORDER BY id;
+-- column, which payroll already holds (design reading 9) — and the care-day
+-- fields, which cap the days beyond the employer's ten and are never written.
+SELECT id, employee_number, given_name, family_name, children_under_12, sole_carer, chronically_ill_children
+FROM staff.people ORDER BY id;

@@ -190,7 +190,9 @@ Gjennom API-et, som en bruker med `staff:manage`:
    kolleger og ledere (`absence_type_in_use`): legg heller til en ny type. Å gjøre en
    type som er i bruk til bare for HR virker bakover: fra da av viser radene som alt er
    lagt inn, bare *permisjon* for ledere, og søknadene, avslagene og historikken deres
-   skjules også for dem.
+   skjules også for dem. En egen HR-type tillater verken prosent eller trekk fra
+   feriekontoen: skjemaet avviser begge, siden en andel eller et feriefradrag ville
+   fortelle ledere hva slags permisjon det er.
 4. Kontroller: `GET /api/v1/staff/meta` lister typene folk kan velge — uten de skjulte.
 
 **Velg a-meldingskoden etter permisjonens rettsgrunnlag.** A-meldingen tar imot seks
@@ -281,6 +283,10 @@ standard.
 
 ## Overfør ferie
 
+Ferie tatt på forskudd før året den opptjenes i (*forskuddsferie*, inntil 12 virkedager
+etter skriftlig avtale, ferieloven § 7 nr. 3), modelleres ikke: kontoen fører ingen forskudd. Når forskudd avtales, registrerer du det
+som en **Retting** med en merknad, i året den tas og tilbake i året den opptjenes.
+
 Ferie som står igjen ved årsskiftet, forsvinner ikke. HR overfører den til neste år. På
 skjermen: åpne personens **Fravær**-fane, bla til året med **Forrige år**, og trykk
 **Overfør fra** *år*. Velg **Type** — *Avtalt* eller *Tvungen* (med en **Merknad**) — la
@@ -368,8 +374,9 @@ notatet** på hver milepæl. Et helsedokument arkiveres under saken fra personen
 **Dokumenter**-fane: endre dokumentet og velg **Sykefraværssak**.
 
 1. **Arbeidsgiverperioden.** Milepælen `employer_period_end` er sakens sekstende
-   sykedag, der helger og helligdager mellom to sykefravær telles med; før det har den
-   ingen dato. Arbeidsgiveren betaler de dagene når den ansatte har arbeidet der i fire
+   sykedag, der helger og helligdager mellom to sykefravær telles med, og tellingen
+   begynner på en arbeidsdag (et sykefravær fra en lørdag telles fra mandagen); før
+   det har den ingen dato. Arbeidsgiveren betaler de dagene når den ansatte har arbeidet der i fire
    uker.
 2. **Oppfølgingen.** Oppfølgingsplanen forfaller fire uker etter første dag, første
    dialogmøte etter sju, NAVs aktivitetskrav etter åtte og andre dialogmøte etter
@@ -448,7 +455,8 @@ Telleren er `GET /api/v1/staff/people/{id}/care-days?year` (den ansatte, HR og
 barn (20 for den som er alene). Årets arbeidsdager med sykt barn telles mot den; de
 første ti betaler arbeidsgiveren selv, resten refunderer NAV — fra første dag når de
 eneste barna som gir rett, er over tolv med utvidet rett, noe lønn bruker for hånd. Mer
-enn retten vises, men avvises aldri. Retten krever fire ukers ansettelse — regnet fra
+enn retten vises, men avvises aldri; dagene som regnes som refundert, stopper ved retten
+når feltene er registrert, i telleren og i lønnsfilen. Retten krever fire ukers ansettelse — regnet fra
 starten av en sammenhengende rekke ansettelser, der en som begynner dagen etter at en
 annen sluttet, fortsetter den: før det sier svaret `eligible: false` og fra hvilken
 dag, og en dag med sykt barn før det telles for seg (`ineligibleDays`), ikke som
@@ -706,8 +714,11 @@ er blitt forfalt. Hva som forfaller, og hva hver sletting fjerner, står i
   grad, dokumentene som er lagt på saken, og det historikken sier om sykdommen, slettes
   **`healthRetentionDays`** (standard 365) dager etter at saken ble avsluttet — av deg,
   eller seksten dager etter siste dag. En sykt barn-rads type slettes like lenge etter
-  slutten av året, og en tilbaketrekking av egenmelding like lenge etter at den løp ut.
-  Dagene står: hvem som var borte når, beholdes.
+  slutten av året, og en tilbaketrekking av egenmelding like lenge etter at den løp ut —
+  eller alt sammen med personens øvrige helseopplysninger, når siste arbeidsforhold
+  sluttet for mer enn `healthRetentionDays` dager siden og det kommer først. Dagene står:
+  hvem som var borte når, beholdes, og en slettet sak beholder datoene sine og
+  milepælenes navn og datoer (et åpent spørsmål til eieren).
 - **Andre helsedokumenter** — de i en begrenset kategori som ikke er lagt på en sak —
   slettes **`healthRetentionDays`** dager etter at det siste arbeidsforholdet sluttet.
 - **Lønn** — et arbeidsforholds lønnsvilkår, ansiennitetsdato og lønnstrinn,

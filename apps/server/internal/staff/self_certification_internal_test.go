@@ -65,6 +65,16 @@ func TestJudgeSelfCert(t *testing.T) {
 		{"the fifth, a year and more after the first", minimum,
 			[]daySpan{selfDays(t, "2025-09-01", "2025-09-01"), selfDays(t, "2026-03-02", "2026-03-02"), selfDays(t, "2026-05-04", "2026-05-04"), selfDays(t, "2026-07-06", "2026-07-06")},
 			selfDays(t, "2026-10-05", "2026-10-05"), "", nil},
+		// Twelve months, not 365 days (ftrl. § 8-23 "i løpet av 12
+		// måneder"; whole-branch review): across 29 February 2028 the window
+		// ending 15 March 2028 opens 16 March 2027, a day earlier than 365
+		// days would.
+		{"the fifth in twelve months across a leap day", minimum,
+			[]daySpan{selfDays(t, "2027-03-16", "2027-03-16"), selfDays(t, "2027-06-01", "2027-06-01"), selfDays(t, "2027-09-01", "2027-09-01"), selfDays(t, "2027-12-01", "2027-12-01")},
+			selfDays(t, "2028-03-15", "2028-03-15"), selfCertOverOccurrences, nil},
+		{"twelve months and a day later it is the fourth", minimum,
+			[]daySpan{selfDays(t, "2027-03-15", "2027-03-15"), selfDays(t, "2027-06-01", "2027-06-01"), selfDays(t, "2027-09-01", "2027-09-01"), selfDays(t, "2027-12-01", "2027-12-01")},
+			selfDays(t, "2028-03-15", "2028-03-15"), "", nil},
 		{"eight days under extended", extended, nil, selfDays(t, "2026-10-05", "2026-10-12"), "", nil},
 		{"nine days under extended", extended, nil, selfDays(t, "2026-10-05", "2026-10-13"), selfCertOverOccurrence, nil},
 		{"the 24th day under extended", extended,

@@ -3,6 +3,7 @@ package staff_test
 import (
 	"math"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -271,5 +272,25 @@ func TestAttention_SelfApprovedNamesNoHROnlyType(t *testing.T) {
 	items := ofType(getAttention(t, w.hr), gen.SelfApproved)
 	if len(items) != 1 || items[0].Id != "selfApproved/"+idString(plain.Id) {
 		t.Errorf("selfApproved = %+v, want the ferie alone", items)
+	}
+}
+
+// mainPeriodShort reads the scheme the holiday account reads — the earliest
+// employment's in the year (whole-branch review), not the first one in
+// force today: Kari's 2018 employment, ended on 31 March, follows a scheme
+// with a 24-virkedager main period (20 days), so sixteen days taken in the
+// summer are short though her 2020 employment's scheme asks fifteen.
+func TestAttention_MainPeriodShortReadsTheEarliestScheme(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	long := addScheme(t, w.hr, "Long summer", 30, "mainPeriodVirkedager", 24)
+	early := createEmployment(t, w.hr, w.kari.Id, newEmployment("2018-01-01", terms(), "holidaySchemeId", long.Id))
+	do(t, w.hr, http.MethodPost, endPath(early.Id), map[string]any{"endDate": "2026-03-31", "endReason": "employee_resigned"}, http.StatusOK, nil)
+	summer := register(t, w.hr, w.kari.Id, absence(t, h, "ferie", "2026-07-06", "2026-07-27"))
+	approveRow(t, h, summer.Id)
+	items := ofType(getAttention(t, w.hr), gen.MainPeriodShort)
+	if !slices.ContainsFunc(items, func(i gen.StaffStatsAttentionItem) bool { return i.EntityId == idString(w.kari.Id) }) {
+		t.Errorf("mainPeriodShort = %v, want Kari's: 16 of the earliest scheme's 20 days", entities(items))
 	}
 }
