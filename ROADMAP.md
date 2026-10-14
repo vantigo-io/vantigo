@@ -1137,8 +1137,13 @@ Decisions taken while building it that change the design:
   question 9 in the plan: no manager, Approver or HR without that permission sees
   such a request, its mail or its history; the alternative (svangerskapskontroll
   approved automatically, managers deciding the rest) waits for the owner.
-- **Colleagues read dates only**: "absent", with no type, percentage, hours or note,
-  and none of the row's events.
+- **Colleagues read dates only**: a person's days away as coalesced spans with no row
+  id — "absent", with no type, status, percentage, note or hour row, and none of the
+  row's events — so a sykmelding over ferie is never seen.
+- **The payroll export needs `staff:personal-data` as well as `staff:manage`**
+  (interim, open question 10): its leave rows name HR-only leave by its description.
+  Its Leave ID is a stable surrogate, and ferie counts as holiday under any sickness
+  until a postponement is recorded.
 - **The a-melding codes follow Skatteetaten's guide and NAV's kodeverk** — six leave
   descriptions plus `permittering`, the expired `velferdspermisjon` and unsplit
   `utdanningspermisjon` not used; leave reported over fourteen days, omsorgsdager
