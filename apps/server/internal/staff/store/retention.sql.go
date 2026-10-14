@@ -774,6 +774,23 @@ func (q *Queries) LastErasedAt(ctx context.Context) (time.Time, error) {
 	return at, err
 }
 
+const markCaseErased = `-- name: MarkCaseErased :exec
+UPDATE staff.sick_cases SET closed_at = $1::timestamptz WHERE id = $2 AND closed_at IS NULL
+`
+
+type MarkCaseErasedParams struct {
+	Now time.Time
+	ID  int64
+}
+
+// MarkCaseErased closes an erased case where HR had not (its derived close
+// already lies past the health period), so it is never derived away or
+// removed with its rows: its dates and milestone kinds stay.
+func (q *Queries) MarkCaseErased(ctx context.Context, arg MarkCaseErasedParams) error {
+	_, err := q.db.Exec(ctx, markCaseErased, arg.Now, arg.ID)
+	return err
+}
+
 const markPersonErased = `-- name: MarkPersonErased :exec
 UPDATE staff.people SET
     erased_at = $1::timestamptz,

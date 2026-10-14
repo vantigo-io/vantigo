@@ -826,6 +826,9 @@ func (s *server) eraseCase(ctx context.Context, tx pgx.Tx, txq *store.Queries, p
 		count += n
 	}
 	id := caseID
+	if err := txq.MarkCaseErased(ctx, store.MarkCaseErasedParams{Now: now, ID: caseID}); err != nil {
+		return 0, fmt.Errorf("staff: mark case %d erased: %w", caseID, err)
+	}
 	n, err := txq.SetCaseRowsAbsent(ctx, store.SetCaseRowsAbsentParams{AbsentID: plan.absentID, Now: now, CaseID: &id})
 	if err != nil {
 		return 0, fmt.Errorf("staff: erase case %d's rows' type: %w", caseID, err)

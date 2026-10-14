@@ -88,7 +88,9 @@ func dayValue(d pgtype.Date) json.RawMessage {
 // case took, else one is opened (case_opened); its days stored — a row that
 // joined after HR closed it opens it again — its rows named, its milestones
 // dated. A case no row names any more is removed, its documents moving to
-// the case that took its rows, else to none.
+// the case that took its rows, else to none — unless HR closed it or the
+// retention run erased it (which closes it too), or some absence still names
+// it: those keep their dates, milestones and notes (whole-branch review).
 func (s *server) reconcileCases(ctx context.Context, txq *store.Queries, who actor, personID int64) error {
 	spans, _, err := personSickSpans(ctx, txq, personID, 0)
 	if err != nil {
@@ -157,6 +159,17 @@ func (s *server) reconcileCases(ctx context.Context, txq *store.Queries, who act
 	}
 	for _, c := range stored {
 		if claimed[c.ID] {
+			continue
+		}
+		_, merged := heir[c.ID]
+		if c.ClosedAt != nil && !merged {
+			continue
+		}
+		named, err := txq.CaseNamed(ctx, c.ID)
+		if err != nil {
+			return fmt.Errorf("staff: read whether case %d is named: %w", c.ID, err)
+		}
+		if named {
 			continue
 		}
 		var to *int64

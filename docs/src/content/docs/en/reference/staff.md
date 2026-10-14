@@ -1563,7 +1563,10 @@ stores the result (plan reading 13):
   case (`case_opened`).
 - **Its days**: `first_day` the first row's, `last_day` the last row's, stored. A case
   keeps its id while its rows do; a case whose rows are all gone is removed, its
-  documents leaving it.
+  documents leaving it — unless HR closed it, or the retention run erased it (which
+  closes it, keeping its dates and milestone kinds), or an absence still names it.
+  A row changed or corrected into a type that is not sick leaves its case and its
+  degree in the same write.
 - **A merge** (plan Revision 3, M3): a row that fills the gap between two cases merges
   them into the older. The younger's documents move with its rows; each of its
   milestones' done day or waiver is carried onto the older's where that has neither;
@@ -2210,7 +2213,8 @@ since the cycle chose the person is seen there:
 - **health** deletes their documents in restricted categories filed under no case and
   replaces the class E values of the events no other schedule owns.
 - **cases**, for each due case, erases its class E columns and its milestones' (the
-  case keeps its id, its days and when HR closed it; a milestone its kind and date),
+  case keeps its id and its days, and is marked closed when HR had not closed it; a
+  milestone its kind and date),
   writes the reserved `absent` type in place of its rows' sick type and nulls their
   degree, deletes the documents filed under it, and replaces the health fields — and
   the `typeIds` of class E — of the events it owns: its own, those of the cases it took

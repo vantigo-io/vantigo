@@ -100,14 +100,17 @@ RETURNING *;
 
 -- name: UpdateAbsence :one
 -- UpdateAbsence replaces an absence's type, days, hours, percent, degree,
--- note and status.
+-- note and status. A row whose new type is not sick (@sick false) leaves its
+-- case and its degree in the same statement (whole-branch review), so the
+-- case it leaves can be derived again without it.
 UPDATE staff.absences SET
     type_id = @type_id,
     first_day = @first_day,
     last_day = @last_day,
     hours = @hours,
     percent = @percent,
-    degree_percent = @degree_percent,
+    degree_percent = CASE WHEN @sick::boolean THEN sqlc.narg(degree_percent)::numeric END,
+    case_id = CASE WHEN @sick::boolean THEN case_id END,
     note = @note,
     status = @status,
     revision = revision + 1,

@@ -49,6 +49,11 @@ DELETE FROM staff.sick_case_milestones WHERE case_id = @case_id;
 -- name: DeleteSickCase :exec
 DELETE FROM staff.sick_cases WHERE id = @id;
 
+-- name: CaseNamed :one
+-- CaseNamed says whether any absence still names the case — a row of the
+-- reserved absent type the erase left included.
+SELECT EXISTS (SELECT 1 FROM staff.absences WHERE case_id = @case_id::bigint);
+
 -- name: SetMilestoneDue :exec
 -- SetMilestoneDue stores a milestone's date, creating it when missing; its
 -- done day, waiver and note are never touched.

@@ -1180,12 +1180,13 @@ UPDATE staff.absences SET
     last_day = $3,
     hours = $4,
     percent = $5,
-    degree_percent = $6,
-    note = $7,
-    status = $8,
+    degree_percent = CASE WHEN $6::boolean THEN $7::numeric END,
+    case_id = CASE WHEN $6::boolean THEN case_id END,
+    note = $8,
+    status = $9,
     revision = revision + 1,
-    updated_at = $9::timestamptz
-WHERE id = $10
+    updated_at = $10::timestamptz
+WHERE id = $11
 RETURNING id, person_id, type_id, first_day, last_day, hours, percent, status, note, case_id, degree_percent, requested_by_user_id, decided_by_user_id, decided_at, decision_note, self_approved, revision, created_at, updated_at
 `
 
@@ -1195,6 +1196,7 @@ type UpdateAbsenceParams struct {
 	LastDay       pgtype.Date
 	Hours         pgtype.Numeric
 	Percent       pgtype.Numeric
+	Sick          bool
 	DegreePercent pgtype.Numeric
 	Note          *string
 	Status        string
@@ -1203,7 +1205,9 @@ type UpdateAbsenceParams struct {
 }
 
 // UpdateAbsence replaces an absence's type, days, hours, percent, degree,
-// note and status.
+// note and status. A row whose new type is not sick (@sick false) leaves its
+// case and its degree in the same statement (whole-branch review), so the
+// case it leaves can be derived again without it.
 func (q *Queries) UpdateAbsence(ctx context.Context, arg UpdateAbsenceParams) (StaffAbsence, error) {
 	row := q.db.QueryRow(ctx, updateAbsence,
 		arg.TypeID,
@@ -1211,6 +1215,7 @@ func (q *Queries) UpdateAbsence(ctx context.Context, arg UpdateAbsenceParams) (S
 		arg.LastDay,
 		arg.Hours,
 		arg.Percent,
+		arg.Sick,
 		arg.DegreePercent,
 		arg.Note,
 		arg.Status,
