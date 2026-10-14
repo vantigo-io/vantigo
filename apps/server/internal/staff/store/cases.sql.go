@@ -52,6 +52,19 @@ func (q *Queries) CaseMilestones(ctx context.Context, caseIds []int64) ([]StaffS
 	return items, nil
 }
 
+const caseNamed = `-- name: CaseNamed :one
+SELECT EXISTS (SELECT 1 FROM staff.absences WHERE case_id = $1::bigint)
+`
+
+// CaseNamed says whether any absence still names the case — a row of the
+// reserved absent type the erase left included.
+func (q *Queries) CaseNamed(ctx context.Context, caseID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, caseNamed, caseID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const caseTypeIDs = `-- name: CaseTypeIDs :many
 SELECT DISTINCT type_id FROM staff.absences WHERE case_id = $1 ORDER BY type_id
 `

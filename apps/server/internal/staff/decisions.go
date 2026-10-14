@@ -417,7 +417,7 @@ func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostS
 		}
 		row, err := txq.UpdateAbsence(ctx, store.UpdateAbsenceParams{
 			ID: before.ID, TypeID: t.ID, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last), Hours: p.Hours,
-			Percent: p.Percent, DegreePercent: p.Degree, Note: p.Note, Status: before.Status, Now: s.deps.Clock(),
+			Percent: p.Percent, DegreePercent: p.Degree, Sick: sickKind(t.Kind), Note: p.Note, Status: before.Status, Now: s.deps.Clock(),
 		})
 		if err != nil {
 			return err

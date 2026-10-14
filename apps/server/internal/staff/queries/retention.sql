@@ -125,6 +125,12 @@ LIMIT @row_limit;
 -- name one of them.
 SELECT id FROM staff.absences WHERE case_id = @case_id ORDER BY id;
 
+-- name: MarkCaseErased :exec
+-- MarkCaseErased closes an erased case where HR had not (its derived close
+-- already lies past the health period), so it is never derived away or
+-- removed with its rows: its dates and milestone kinds stay.
+UPDATE staff.sick_cases SET closed_at = @now::timestamptz WHERE id = @id AND closed_at IS NULL;
+
 -- name: SetCaseRowsAbsent :execrows
 -- SetCaseRowsAbsent writes the reserved absent type in place of the sick
 -- type of a case's rows (plan reading 12): the days stay, class C.

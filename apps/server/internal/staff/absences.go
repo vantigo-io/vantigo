@@ -493,17 +493,24 @@ func (s *server) createAbsence(ctx context.Context, caller *callerContext, who a
 		if err != nil {
 			return fmt.Errorf("staff: write person %d's absence: %w", personID, err)
 		}
+		if sickKind(t.Kind) {
+			if err := s.afterSickWrite(ctx, txq, who, personID, &row, t); err != nil {
+				return err
+			}
+			// Read again after the case is derived, so the registration
+			// names the row's case (rowCaseId) and is erased with it.
+			again, err := txq.GetAbsence(ctx, row.ID)
+			if err != nil {
+				return fmt.Errorf("staff: read absence %d again: %w", row.ID, err)
+			}
+			row = again.StaffAbsence
+		}
 		kind := eventAbsenceRegistered
 		if row.Status == absenceRequested {
 			kind = eventAbsenceRequested
 		}
 		if err := s.recordAbsence(ctx, txq, personID, kind, who, row.ID, nil, &row, t); err != nil {
 			return err
-		}
-		if sickKind(t.Kind) {
-			if err := s.afterSickWrite(ctx, txq, who, personID, &row, t); err != nil {
-				return err
-			}
 		}
 		out = absenceWrite{row: row, typ: t}
 		if out.accounts, err = s.accountsAfter(ctx, txq, caller.Settings, t, row); err != nil {
@@ -824,7 +831,7 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 		}
 		row, err := txq.UpdateAbsence(ctx, store.UpdateAbsenceParams{
 			ID: before.ID, TypeID: t.ID, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last), Hours: p.Hours,
-			Percent: p.Percent, DegreePercent: p.Degree, Note: p.Note, Status: statusFor(t), Now: s.deps.Clock(),
+			Percent: p.Percent, DegreePercent: p.Degree, Sick: sickKind(t.Kind), Note: p.Note, Status: statusFor(t), Now: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("staff: change absence %d: %w", before.ID, err)
