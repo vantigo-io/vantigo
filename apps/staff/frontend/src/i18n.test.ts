@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import staffYaml from "../../../../openapi/staff.yaml?raw";
 import eventsGo from "../../../server/internal/staff/events.go?raw";
+import retentionGo from "../../../server/internal/staff/retention.go?raw";
 import { staffCatalog } from "./i18n";
 import { eventFieldLabelKey, eventFields, eventKinds } from "./lib/events";
 import { staffNavItems } from "./lib/navigation";
@@ -111,6 +112,21 @@ describe("the staff catalog", () => {
     const written = [...eventsGo.matchAll(/^\s*event\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]).sort();
     expect(written.length).toBeGreaterThan(0);
     expect([...eventKinds].sort()).toEqual(written);
+  });
+
+  it("names every kind of erase the server reports and the contract lists, in both languages", () => {
+    const reported = [...retentionGo.matchAll(/^\s*eraseKind\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]);
+    const schema = staffYaml.slice(staffYaml.indexOf("        StaffErasedKind:"));
+    const enumBlock = schema.slice(schema.indexOf("enum:"), schema.indexOf("type:", schema.indexOf("enum:")));
+    const listed = [...enumBlock.matchAll(/^\s*-\s*(\w+)\s*$/gm)].map((m) => m[1]);
+    expect(reported.length).toBeGreaterThan(0);
+    expect([...listed].sort()).toEqual([...reported].sort());
+    for (const kind of reported)
+      for (const [language, catalog] of Object.entries(staffCatalog))
+        expect(
+          (catalog as Record<string, string>)[`erasedKind_${kind}`],
+          `${language} erasedKind_${kind}`,
+        ).toBeDefined();
   });
 
   it("names every field a history entry can name", () => {

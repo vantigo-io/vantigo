@@ -757,6 +757,9 @@ export const staffCatalog = {
     erasedKind_D: "personnel administration",
     erasedKind_health: "health documents",
     erasedKind_A: "pay and contract",
+    erasedKind_cases: "sick-leave cases",
+    erasedKind_childSick: "sick-child days",
+    erasedKind_withdrawal: "withdrawals of egenmelding",
     retentionBusy: "The retention worker is running right now. Try again in a moment.",
     couldNotRunRetention: "Could not run retention",
 
@@ -2005,6 +2008,9 @@ export const staffCatalog = {
     erasedKind_D: "personaladministrasjon",
     erasedKind_health: "helsedokumenter",
     erasedKind_A: "lønn og avtale",
+    erasedKind_cases: "sykefraværssaker",
+    erasedKind_childSick: "dager med sykt barn",
+    erasedKind_withdrawal: "tilbaketrekkinger av egenmelding",
     retentionBusy: "Oppbevaringsarbeideren kjører akkurat nå. Prøv igjen om et øyeblikk.",
     couldNotRunRetention: "Kunne ikke kjøre sletting",
 
