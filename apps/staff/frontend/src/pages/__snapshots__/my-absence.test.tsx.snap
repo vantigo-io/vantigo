@@ -1,0 +1,35 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`My page — the request sheet on a phone > is a bottom sheet whose fields follow the type 1`] = `
+{
+  "Certified sick leave": [
+    "Type *",
+    "First day *",
+    "Last day",
+    "Degree",
+    "Register",
+  ],
+  "Doctor or dentist": [
+    "Type *",
+    "Day *",
+    "Hours *",
+    "Note",
+    "Register",
+  ],
+  "Holiday": [
+    "Type *",
+    "First day *",
+    "Last day",
+    "Note",
+    "Send request",
+  ],
+  "Parental leave": [
+    "Type *",
+    "First day *",
+    "Last day",
+    "Percentage of each day",
+    "Note",
+    "Send request",
+  ],
+}
+`;

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import staffYaml from "../../../../openapi/staff.yaml?raw";
 import eventsGo from "../../../server/internal/staff/events.go?raw";
 import { staffCatalog } from "./i18n";
 import { eventFieldLabelKey, eventFields, eventKinds } from "./lib/events";
 import { staffNavItems } from "./lib/navigation";
-import { personTabs } from "./lib/search";
+import { myPageTabs, personTabs } from "./lib/search";
 import {
   appointmentFormsFor,
   bankAccountKinds,
@@ -70,9 +71,36 @@ describe("the staff catalog", () => {
       ...contractCheckItems.map((value) => `contractItem_${value}`),
       ...["present", "missing", "not_applicable"].map((value) => `contractState_${value}`),
       ...personTabs.map((value) => `tab_${value}`),
+      ...myPageTabs.map((value) => `tab_${value}`),
       ...eventKinds.map((value) => `event_${value}`),
     ];
     for (const key of keys) expect(en[key], `no label for ${key}`).toBeDefined();
+  });
+
+  it("words every refusal of absence the contract names, in both languages", () => {
+    const codes = [
+      "absence_overlap",
+      "absence_note_on_sick",
+      "absence_not_requested",
+      "absence_not_cancellable",
+      "absence_status_change",
+      "percent_not_allowed",
+      "hours_on_day_type",
+      "carry_over_recorded",
+      "own_request",
+      "self_certification_exhausted",
+      "self_certification_too_early",
+      "self_certification_withdrawn",
+      "holiday_postponement_not_applicable",
+      "holiday_postponement_too_late",
+      "revision_conflict",
+      "person_erased",
+    ];
+    for (const code of codes) {
+      expect(staffYaml, `the contract names ${code}`).toContain(code);
+      for (const [language, catalog] of Object.entries(staffCatalog))
+        expect((catalog as Record<string, string>)[`refusal.${code}`], `${language} refusal.${code}`).toBeDefined();
+    }
   });
 
   it("knows every kind of event the server writes, and no other", () => {

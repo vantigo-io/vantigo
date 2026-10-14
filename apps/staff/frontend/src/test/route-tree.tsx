@@ -12,7 +12,7 @@ import {
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH, PERSON_ROUTE_PATH, STAFF_SETTINGS_ROUTE_PATH } from "../lib/routes";
-import { validatePeopleSearch, validatePersonSearch } from "../lib/search";
+import { validateMyPageSearch, validatePeopleSearch, validatePersonSearch } from "../lib/search";
 import { MyPage } from "../pages/my-page";
 import { PeoplePage } from "../pages/people";
 import { PersonPage } from "../pages/person";
@@ -47,7 +47,7 @@ export const makeRouteTree = () => {
       getParentRoute: () => rootRoute,
       path: MY_PAGE_ROUTE_PATH,
       component: MyPage,
-      validateSearch: validatePersonSearch,
+      validateSearch: validateMyPageSearch,
     }),
     createRoute({ getParentRoute: () => rootRoute, path: STAFF_SETTINGS_ROUTE_PATH, component: SettingsPage }),
   ]);

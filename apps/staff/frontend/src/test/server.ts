@@ -12,7 +12,17 @@ import type { StaffAssignableUser, StaffEvent, StaffPerson, StaffPersonInput } f
 import type { StaffRetentionRun } from "../api/retention";
 import type { StaffSettings, StaffSettingsInput, StaffThreshold } from "../api/settings";
 import type { StaffBusinessUnit, StaffDepartment, StaffLegalEntity, StaffLocation } from "../api/structure";
+import type { components } from "../api-schema";
 import { defaultFullTimeHours, fullTimeHoursMismatch } from "../lib/terms";
+import {
+  approvals as defaultApprovals,
+  calendarPeople as defaultCalendarPeople,
+  careDays as defaultCareDays,
+  cases as defaultCases,
+  holidayAccount as defaultHolidayAccount,
+  myAbsences as defaultMyAbsences,
+  selfCertification as defaultSelfCertification,
+} from "./absence-fixtures";
 import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
 import {
@@ -67,11 +77,37 @@ export interface StaffServer {
   importTally?: Omit<StaffImportResult, "dryRun">;
   /** What `POST /retention/run` answers. */
   retentionRun?: StaffRetentionRun;
+  /** Absence as the server answers it for the caller (delivery B): the fake hands it out as it is. */
+  absence?: AbsenceServer;
   pageSize?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
   /** Answers a read instead of the fake's own, as `write` does a write. */
   read?: (path: string) => Response | undefined;
+}
+
+type Schemas = components["schemas"];
+
+/**
+ * Absence (delivery B), already shaped for the caller: the fake keeps the
+ * rows and the figures the test gives and answers them as they are — the
+ * server's judgment of who reads what is its own, and these tests prove the
+ * pages draw what it sends.
+ */
+export interface AbsenceServer {
+  /** The caller's holiday accounts, one per year; a year not here is the fixture's with that year. */
+  holidayAccounts?: Schemas["StaffHolidayAccount"][];
+  /** The caller's own absences, newest first, as `GET /me/absences` answers them. */
+  myAbsences?: Schemas["StaffAbsence"][];
+  selfCertification?: Schemas["StaffSelfCertification"];
+  careDays?: Schemas["StaffCareDays"];
+  /** The public holidays `GET /calendar` answers for any range, each kept when it falls in the range. */
+  publicHolidays?: string[];
+  calendarPeople?: Schemas["StaffCalendarPerson"][];
+  /** The requests the caller decides, oldest first. */
+  approvals?: Schemas["StaffApproval"][];
+  /** The open cases the caller reads. */
+  cases?: Schemas["StaffCase"][];
 }
 
 /** What the fake holds after the writes, for a test to read back. */
@@ -87,6 +123,9 @@ export interface StaffState {
   events: Record<number, StaffEvent[]>;
   documents: StaffDocument[];
   documentCategories: StaffDocumentCategory[];
+  myAbsences: Schemas["StaffAbsence"][];
+  approvals: Schemas["StaffApproval"][];
+  cases: Schemas["StaffCase"][];
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -388,12 +427,26 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     events: server.events ?? defaultEvents(),
     documents: server.documents ?? defaultDocuments(),
     documentCategories: server.documentCategories ?? defaultDocumentCategories(),
+    myAbsences: server.absence?.myAbsences ?? defaultMyAbsences(),
+    approvals: server.absence?.approvals ?? defaultApprovals(),
+    cases: server.absence?.cases ?? defaultCases(),
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
 
   const metaOf = (): StaffMeta => {
-    const base = defaultMeta(role);
+    const meta = defaultMeta(role);
+    // Being a manager is not a role but the terms: the caller manages
+    // anyone when their linked person is somebody's manager today.
+    const managesAnyone = server.me !== undefined && state.people.some((one) => managerToday(one)?.id === server.me);
+    const base = {
+      ...meta,
+      capabilities: {
+        ...meta.capabilities,
+        managesAnyone,
+        canDecide: meta.capabilities.canDecide || managesAnyone,
+      },
+    };
     return base.structure
       ? {
           ...base,
@@ -1580,6 +1633,177 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     return undefined;
   };
 
+  /**
+   * Absence (delivery B): the caller's own rows, account, standing and care
+   * days; the calendar's public holidays and people; the approvals and the
+   * decisions on them; the open cases and their milestones. A write is
+   * judged as far as a page shows it — the If-Match the row carries (its
+   * revision, or its etag quoted), a reason on a rejection — and anything
+   * the server would refuse further is staged with `write`.
+   */
+  const absenceRoutes = (
+    method: string,
+    path: string,
+    url: URL,
+    init: RequestInit | undefined,
+    body: Record<string, unknown> | undefined,
+  ): Response | undefined => {
+    const year = Number(url.searchParams.get("year")) || Number(TODAY.slice(0, 4));
+    const types = defaultMeta(role).absenceTypes;
+    const holidays = server.absence?.publicHolidays ?? ["2026-12-25", "2026-12-26"];
+    const inRange = (day: string, from: string, to: string) => day >= from && day <= to;
+    const weekdays = (from: string, to: string) => {
+      let count = 0;
+      for (
+        let day = new Date(`${from}T00:00:00Z`);
+        day <= new Date(`${to}T00:00:00Z`);
+        day.setUTCDate(day.getUTCDate() + 1)
+      ) {
+        const iso = day.toISOString().slice(0, 10);
+        if (day.getUTCDay() % 6 !== 0 && !holidays.includes(iso)) count += 1;
+      }
+      return count;
+    };
+    const ifMatchOf = () => new Headers(init?.headers).get("If-Match");
+    const tokenOf = (row: Schemas["StaffAbsence"]) => (row.etag ? `"${row.etag}"` : String(row.revision));
+    const changed = () =>
+      staffProblem(409, {
+        code: "revision_conflict",
+        title: "Revision conflict",
+        detail: "The absence has changed since it was read.",
+      });
+    const accountOf = (wanted: number) => {
+      const found = server.absence?.holidayAccounts?.find((one) => one.year === wanted);
+      return found ?? defaultHolidayAccount({ year: wanted });
+    };
+
+    if (path === "/api/v1/staff/me/holiday-account" && method === "GET") return jsonResponse(200, accountOf(year));
+    if (path === "/api/v1/staff/me/self-certification" && method === "GET")
+      return jsonResponse(200, server.absence?.selfCertification ?? defaultSelfCertification());
+    if (path === "/api/v1/staff/me/care-days" && method === "GET")
+      return jsonResponse(200, { ...(server.absence?.careDays ?? defaultCareDays()), year });
+    if (path === "/api/v1/staff/me/absences") {
+      if (server.me === undefined) return meProblem();
+      if (method === "GET")
+        return jsonResponse(
+          200,
+          page(state.myAbsences, Math.max(1, Number(url.searchParams.get("page")) || 1), pageSize),
+        );
+      if (method === "POST") {
+        const input = body as Schemas["StaffAbsenceChangeRequest"];
+        const type = types.find((one) => one.id === input.typeId);
+        if (!type) return staffProblem(400, { title: "Invalid absence", errors: { typeId: ["No such type"] } });
+        const lastDay = input.lastDay ?? input.firstDay;
+        const row: Schemas["StaffAbsence"] = {
+          ...input,
+          id: nextId++,
+          personId: server.me,
+          status: type.needsDecision ? "requested" : "registered",
+          lastDay,
+          workingDays: type.unit === "hours" ? 0 : weekdays(input.firstDay, lastDay),
+          shownAs: "type",
+          percent: input.percent ?? 100,
+          revision: 1,
+        };
+        state.myAbsences.unshift(row);
+        if (type.drawsHoliday) {
+          const account = accountOf(Number(input.firstDay.slice(0, 4)));
+          const pending = account.pending + (row.workingDays ?? 0);
+          const after = { ...account, pending, overdrawn: account.remaining - pending < 0 };
+          return jsonResponse(201, { ...row, accounts: [after], overdrawn: after.overdrawn });
+        }
+        return jsonResponse(201, row);
+      }
+    }
+
+    if (path === "/api/v1/staff/calendar" && method === "GET") {
+      const from = url.searchParams.get("from") ?? "";
+      const to = url.searchParams.get("to") ?? "";
+      const people = (server.absence?.calendarPeople ?? defaultCalendarPeople()).map((one) => ({
+        ...one,
+        absences: one.absences.filter((absence) => absence.firstDay <= to && absence.lastDay >= from),
+      }));
+      return jsonResponse(200, {
+        from,
+        to,
+        publicHolidays: holidays.filter((day) => inRange(day, from, to)),
+        people,
+      });
+    }
+
+    if (path === "/api/v1/staff/approvals" && method === "GET")
+      return jsonResponse(200, page(state.approvals, 1, pageSize));
+
+    const absence = /^\/api\/v1\/staff\/absences\/(\d+)\/?(approve|reject|cancel)?$/.exec(path);
+    if (absence) {
+      const id = Number(absence[1]);
+      const action = absence[2];
+      if (action === "approve" || action === "reject") {
+        const waiting = state.approvals.find((one) => one.absence.id === id);
+        if (!waiting) return notFound();
+        if (action === "reject" && !String((body as { note?: unknown })?.note ?? "").trim())
+          return staffProblem(400, { title: "Invalid decision", errors: { note: ["A rejection says why"] } });
+        state.approvals = state.approvals.filter((one) => one !== waiting);
+        return jsonResponse(200, { ...waiting.absence, status: action === "approve" ? "approved" : "rejected" });
+      }
+      const row = state.myAbsences.find((one) => one.id === id);
+      if (!row) return notFound();
+      if (action === "cancel" && method === "POST") {
+        if (row.status !== "requested")
+          return staffProblem(409, {
+            code: "absence_not_cancellable",
+            title: "Absence not cancellable",
+            detail: "This absence cannot be cancelled by you.",
+          });
+        row.status = "cancelled";
+        row.revision = (row.revision ?? 1) + 1;
+        return jsonResponse(200, row);
+      }
+      if (!action && method === "PUT") {
+        if (ifMatchOf() !== tokenOf(row)) return changed();
+        const input = body as Schemas["StaffAbsenceChangeRequest"];
+        for (const key of ["percent", "hours", "degreePercent", "note"] as const) delete row[key];
+        Object.assign(row, input, { lastDay: input.lastDay ?? input.firstDay, revision: (row.revision ?? 1) + 1 });
+        return jsonResponse(200, row);
+      }
+    }
+
+    if (path === "/api/v1/staff/cases" && method === "GET") return jsonResponse(200, page(state.cases, 1, pageSize));
+    const sickCase = /^\/api\/v1\/staff\/cases\/(\d+)(?:\/milestones\/(\w+)\/(done|waive))?$/.exec(path);
+    if (sickCase) {
+      const found = state.cases.find((one) => one.id === Number(sickCase[1]));
+      if (!found) return notFound();
+      if (sickCase[2] && method === "POST") {
+        const milestone = found.milestones.find((one) => one.kind === sickCase[2]);
+        if (!milestone || milestone.kind === "employer_period_end")
+          return staffProblem(400, { title: "Invalid milestone", errors: { kind: ["Not a milestone to mark"] } });
+        if (sickCase[3] === "done") {
+          milestone.doneAt = (body as { doneAt?: string } | undefined)?.doneAt ?? TODAY;
+          milestone.waived = false;
+          delete milestone.waivedReason;
+        } else {
+          const reason = String((body as { reason?: unknown })?.reason ?? "").trim();
+          if (!reason) return staffProblem(400, { title: "Invalid waiver", errors: { reason: ["Say why"] } });
+          milestone.waived = true;
+          delete milestone.doneAt;
+        }
+        milestone.due = false;
+        milestone.revision += 1;
+        return jsonResponse(200, found);
+      }
+      if (method === "PUT") {
+        const stale = staleRevision(init, found.revision, "case");
+        if (stale) return stale;
+        const note = (body as { accommodationNote?: string | null }).accommodationNote;
+        if (note) found.accommodationNote = note;
+        else delete found.accommodationNote;
+        found.revision += 1;
+        return jsonResponse(200, found);
+      }
+    }
+    return undefined;
+  };
+
   const stub = stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     const path = url.pathname;
@@ -1720,6 +1944,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const employments = /^\/api\/v1\/staff\/people\/(\d+)\/employments$/.exec(path);
     if (employments && method === "POST")
       return Promise.resolve(manages(role) ? createEmployment(Number(employments[1]), body) : forbidden());
+
+    const absenceAnswer = absenceRoutes(method, path, url, init, body);
+    if (absenceAnswer) return Promise.resolve(absenceAnswer);
 
     const dataAnswer = dataRoutes(method, path, url);
     if (dataAnswer) return Promise.resolve(dataAnswer);

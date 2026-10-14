@@ -62,3 +62,21 @@ export interface PersonSearch {
 export const validatePersonSearch = (search: Record<string, unknown>): PersonSearch => ({
   tab: personTabs.includes(search.tab as PersonTab) && search.tab !== "profile" ? (search.tab as PersonTab) : undefined,
 });
+
+/**
+ * My page's tabs: a person's, then my absence and — for a caller who manages
+ * anyone — My team (plan reading 6: a section of My page, since the host's
+ * sidebar is gated by permission and cannot know who manages anyone).
+ */
+export const myPageTabs = [...personTabs, "absence", "team"] as const;
+export type MyPageTab = (typeof myPageTabs)[number];
+
+/** My page's URL search: the tab. */
+export interface MyPageSearch {
+  tab?: MyPageTab;
+}
+
+/** The host route's `validateSearch` for My page; an unknown tab is the profile. */
+export const validateMyPageSearch = (search: Record<string, unknown>): MyPageSearch => ({
+  tab: myPageTabs.includes(search.tab as MyPageTab) && search.tab !== "profile" ? (search.tab as MyPageTab) : undefined,
+});

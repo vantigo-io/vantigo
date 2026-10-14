@@ -442,7 +442,8 @@ avviser vilkår uten dem.
 
 **Min side** (`staff:access`) er din egen oppføring i Ansatte, funnet gjennom brukeren
 HR koblet den til, og viser det du ser av deg selv — uansett hvilke andre rettigheter du
-har. Den har de samme fire fanene som en persons side:
+har. Den har de fire fanene en persons side har, og så **Fravær** og, når du er leder for
+noen, **Mitt team**:
 
 - **Profil** — jobbopplysningene, de private opplysningene, fødselsnummeret som
   **Registrert** og de fire siste sifrene i bankkontoen, de pårørende, rollene og hvor
@@ -461,18 +462,82 @@ har. Den har de samme fire fanene som en persons side:
   forseglet (hele fødselsnummeret og bankkontoen) og uten HRs notater. Filen lister
   dokumentene uten innholdet: last ned hvert av dem fra listen. Å laste ned dataene
   dine registrerer ingenting.
+- **Fravær** — feriekontoen din, egenmeldingsstatusen, omsorgsdagene og fraværene
+  dine, med **Be om fravær** (se [Be om fravær](#be-om-fravær-fra-mobilen) nedenfor).
+- **Mitt team** — bare når du er leder for noen i dag: søknadene du avgjør, fraværet
+  denne måneden til dem du er leder for, og de åpne sykefraværssakene deres (se
+  [Mitt team](#mitt-team) nedenfor).
 
 Har HR ikke koblet brukeren din til en oppføring ennå, sier Min side *Du har ingen
 oppføring i Ansatte ennå* og forklarer hvordan den kommer på plass; spør HR hvis du
 mener din mangler.
 
-Min side er laget for mobilen først: på en smal skjerm står alt i én kolonne, og
-skjemaet fyller hele skjermen.
+Min side er laget for mobilen først: på en smal skjerm står alt i én kolonne, skjemaet
+fyller hele skjermen, og søknadsarket åpnes nedenfra.
+
+### Fraværet ditt
+
+Fanen **Fravær** på Min side viser, slik Ansatte teller dem:
+
+- **Feriekonto** for i år, i arbeidsdager: **Ferierett**, **Overført** (og **Overført
+  automatisk**, når selskapet overfører ubrukte dager av seg selv), **Tatt ut**,
+  **Søkt om, venter** og **Igjen**. Vil det du har søkt om, ta mer enn det som står igjen,
+  sier kortet fra — søknadene sendes likevel.
+- **Egenmelding** — selskapets regler (*Lovens minimum*, *Utvidet ordning* eller
+  selskapets egne grenser), hvor mange kalenderdager du kan melde selv om gangen, hva du
+  har brukt de siste 12 månedene mot grensen, og fra når du kan. Har HR trukket tilbake
+  retten din til egenmelding, står det til når og hvorfor.
+- **Omsorgsdager** for i år — **Rett**, **Brukt** og **Igjen** — ut fra opplysningene HR
+  har registrert om barna dine; er de ikke registrert ennå, står det.
+- **Mine fravær**, nyeste først, hvert med type, dager, status (*Søkt om*, *Godkjent*,
+  *Avslått*, *Trukket tilbake* eller *Registrert*), arbeidsdager eller timer, merknaden
+  din og merknaden til avgjørelsen. En søknad som venter, har **Endre** og **Trekk
+  tilbake**; en søknad som er trukket tilbake, blir stående i listen.
+
+### Be om fravær fra mobilen
+
+1. På Min side åpner du **Fravær** og trykker **Be om fravær**. På mobilen åpnes arket
+   fra bunnen av skjermen.
+2. Velg **Type**. Arket spør etter det typen tar:
+   - en dagtype: **Første dag** og, for mer enn én dag, **Siste dag**;
+   - en timetype, som lege- eller tannlegebesøk: **Dag** og **Timer**;
+   - en type som tillater det: **Prosent av hver dag** (står den tom, hele dagen);
+   - en sykmelding: **Grad** (står den tom, 100 %);
+   - en **Merknad**, unntatt på sykefravær og sykt barn, som ikke har noen.
+3. For en dagtype anslår arket arbeidsdagene — mandag til fredag, uten helligdagene —
+   og, for ferie, omtrent hvor mange dager du har igjen etterpå. For en egenmelding
+   viser det hva reglene tillater deg i dag før du sender.
+4. Trykk **Send søknad** for en type som trenger en avgjørelse, eller **Registrer** for en
+   som er en melding. Bekreftelsen gir arbeidsdagene og feriekontoen slik Ansatte talte
+   dem.
+
+Avviser Ansatte det, sier arket hvorfor ved feltet det gjelder — et annet fravær på en av
+dagene ved **Første dag**; en egenmelding utover det reglene tillater, før du har vært
+ansatt lenge nok, eller mens retten din er trukket tilbake ved **Type**, med beskjed om å
+registrere en sykmelding i stedet. For å endre en søknad som venter, trykker du **Endre**,
+retter og trykker **Lagre**; har noen endret den imens, lastes den inn på nytt, og siden
+sier fra.
+
+### Mitt team
+
+**Mitt team** er en fane på Min side for alle som er leder for noen i dag etter vilkårene —
+en teamleder trenger ingen annen rettighet for dem hen er leder for. Den viser:
+
+- **Godkjenninger** — søknadene du avgjør, eldste først, hver med personen, typen
+  (*Permisjon* for en type som røper helse eller familieforhold), dagene, arbeidsdagene
+  og personens merknad. Trykk **Godkjenn**, eller **Avslå**, skriv **Begrunnelse** og
+  trykk **Avslå søknaden**: et avslag sier alltid hvorfor. Har noen andre avgjort søknaden
+  først, eller personen trukket den tilbake, sier siden fra og leser innboksen på nytt.
+- **Fravær i** inneværende måned — fraværet til hver av dem du er leder for, slik du kan
+  se det.
+- **Åpne sykefraværssaker** for dem du er leder for — oppfølgingsmilepælene med datoene:
+  **Marker som gjort**, eller **Frafall** med hvorfor den ikke trengs (aldri en diagnose);
+  slutten på arbeidsgiverperioden følger av fraværene og er ingen av delene. **Endre
+  tilretteleggingsnotatet** skriver notatene om tilrettelegging, som personen også leser.
 
 ## Fravær og ferien din
 
-Fravær bygges inn i Ansatte i flere steg; skjermbildene for det kommer i et senere steg.
-Dette gjelder i dag, gjennom Ansatte-API-et:
+Reglene bak skjermbildene over:
 
 - **Å be om fri.** En type som trenger en avgjørelse — ferie, en permisjon, avspasering —
   blir *søkt om*; en type som er en melding — egenmelding, sykmelding, sykt barn, lege-
@@ -493,7 +558,7 @@ Dette gjelder i dag, gjennom Ansatte-API-et:
   av lederen din, og lederen din får ikke e-post om den; lederen ser den først når den er
   godkjent, som *permisjon*.
 - **Å avgjøre, for ledere.** Søknadene du avgjør, venter i godkjenningsinnboksen din,
-  eldste først; fraværskalenderen viser en måned for teamet ditt — eller, med tilgang
+  eldste først — under [Mitt team](#mitt-team); fraværskalenderen viser en måned for teamet ditt — eller, med tilgang
   til personoversikten, for alle, der kolleger bare ser dagene noen er borte.
 - **To fravær samme dag** kan stå sammen bare når begge typene tillater en prosent og
   prosentene til sammen er høyst 100 % — men en sykmelding av hvilken som helst grad kan

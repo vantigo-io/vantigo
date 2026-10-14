@@ -442,7 +442,7 @@ refuses the terms without them.
 
 **My page** (`staff:access`) is your own record in Staff, found through the user HR
 linked it to, and shows what you see of yourself — whatever else you may hold. It has
-the same four tabs as a person's page:
+a person's four tabs, then **Absence** and, when you manage anyone, **My team**:
 
 - **Profile** — your work details, your private details, your national identity number
   as **On file** and your bank account's last four digits, your next of kin, your roles
@@ -461,17 +461,83 @@ the same four tabs as a person's page:
   your history — without the values HR keeps sealed (your national identity number and
   bank account in full) and without HR's notes. The file lists your documents without
   their contents: download each from the list. Downloading your data records nothing.
+- **Absence** — your holiday account, your egenmelding standing, your care days and
+  your absences, with **Request absence** (see
+  [Request absence](#request-absence-from-your-phone) below).
+- **My team** — only when you manage someone today: the requests you decide, your
+  reports' absence this month and their open sick-leave cases (see
+  [My team](#my-team) below).
 
 If HR has not linked your user to a record yet, My page says *You have no record in
 Staff yet* and explains how it comes to be; ask HR if you think yours is missing.
 
-My page is made for a phone first: on a narrow screen everything is one column and the
-form takes the whole screen.
+My page is made for a phone first: on a narrow screen everything is one column, the
+form takes the whole screen and the request sheet opens from the bottom.
+
+### Your absence
+
+The **Absence** tab of My page shows, as Staff counts them:
+
+- **Holiday account** for this year, in working days: **Entitlement**, **Carried in**
+  (and **Carried in automatically**, when the company carries untaken days over by
+  itself), **Taken**, **Requested, waiting** and **Remaining**. When what you have asked
+  for would take more than remains, the card says so — the requests are still sent.
+- **Egenmelding** — the company's policy (*The statutory minimum*, *The extended
+  policy* or the company's own limits), how many calendar days you may self-certify at
+  a time, what you have used in the last 12 months against the policy's limit, and from
+  when you may. If HR has withdrawn your right to egenmelding, it says until when and
+  why.
+- **Care days** for this year — **Entitlement**, **Used** and **Remaining** — from the
+  details HR recorded about your children; if they are not recorded yet, it says so.
+- **My absences**, newest first, each with its type, days, status (*Requested*,
+  *Approved*, *Rejected*, *Cancelled* or *Registered*), working days or hours, your
+  note and the decider's note. A request still waiting has **Change** and **Cancel
+  request**; a cancelled request stays in the list.
+
+### Request absence from your phone
+
+1. On My page, open **Absence** and press **Request absence**. On a phone the sheet
+   opens from the bottom of the screen.
+2. Choose the **Type**. The sheet asks for what that type takes:
+   - a day type: **First day** and, for more than one day, **Last day**;
+   - an hour type, such as a doctor's or dentist's visit: the **Day** and the **Hours**;
+   - a type that allows it: the **Percentage of each day** (left empty, the whole day);
+   - a sykmelding: its **Degree** (left empty, 100 %);
+   - a **Note**, except on a sick or child-sick type, which carries none.
+3. For a day type the sheet estimates the working days — Monday to Friday, without
+   the public holidays — and, for holiday, about how many days you have left after it.
+   For an egenmelding it shows what the policy allows you today before you send it.
+4. Press **Send request** for a type that needs a decision, or **Register** for one
+   that is a notification. The confirmation gives the working days and your holiday
+   account as Staff counted them.
+
+If Staff refuses, the sheet says why on the field it is about — another absence on one
+of the days on **First day**; an egenmelding beyond what the policy allows, before you
+have been employed long enough, or while your right is withdrawn on **Type**, telling
+you to register a sykmelding instead. To change a waiting request, press **Change**,
+adjust it and **Save**; if somebody changed it meanwhile, it is reloaded and the page
+says so.
+
+### My team
+
+**My team** is a tab of My page for anyone who manages someone today by the terms — a
+team lead needs no other permission for their own reports. It shows:
+
+- **Approvals** — the requests you decide, oldest first, each with the person, the
+  type (*Leave* for a type that reveals health or family matters), the days, the
+  working days and the person's note. Press **Approve**, or **Reject**, write the
+  **Reason** and press **Reject request**: a rejection always says why. If somebody else
+  decided the request first, or the person withdrew it, the page says so and reads the
+  inbox again.
+- **Absence in** the current month — each report's absences as you may see them.
+- **Open sick-leave cases** of your reports — the follow-up milestones with their dates:
+  **Mark done**, or **Waive** with why it is not needed (never a diagnosis); the end of
+  the employer's period follows from the absences and is neither. **Change the
+  accommodation note** writes the notes about tilrettelegging that the person reads too.
 
 ## Absence and your holiday
 
-Absence is being built into Staff in steps; the screens for it arrive with a later
-step. What stands today, through the Staff API, is this:
+The rules behind the screens above:
 
 - **Asking for time off.** A type that needs a decision — ferie, a leave, time off in
   lieu — is *requested*; a type that is a notification — egenmelding, sykmelding, a sick
@@ -523,7 +589,7 @@ step. What stands today, through the Staff API, is this:
   leave) is decided by whoever holds the personal-data permission, not by your manager,
   and your manager is not mailed about it; they see it only once approved, as *leave*.
 - **Deciding, for managers.** The requests you decide wait in your approvals inbox,
-  oldest first; the absence calendar shows a month of your team — or, with the
+  oldest first — on [My team](#my-team); the absence calendar shows a month of your team — or, with the
   directory, of everyone, where colleagues see only the days someone is away.
 - **Your holiday account** counts in working days, Monday to Friday without public
   holidays: your entitlement under the company's holiday scheme (25 virkedager are
