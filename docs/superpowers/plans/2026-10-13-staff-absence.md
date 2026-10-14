@@ -280,6 +280,7 @@ Each is a choice the spec leaves open, or a place where it no longer fits the co
 
 - **(Task 6 review) An absence naming its employment.** An absence is the person's, not an employment's, so for a person with two employments in force the payroll file repeats a leave's row on each and puts the day totals on each (the days beyond the employer's ten on the main one alone); the admin guide tells payroll to check such leave rows by hand. An `employment_id` on the absence — chosen in the request sheet when the person has more than one — would let the file report each leave once, on its own arbeidsforhold. Out of scope for B.
 - **(Task 6 review) Bounding the payroll file's absence read** to the leaves that can reach the month; today it reads every approved and registered absence of the installation.
+- **(Task 7a review, L6) A holidays-only read for the request sheet's estimate.** The sheet reads `GET /calendar` for the range to learn its public holidays, and with it the people and absences the caller may see — more than the estimate needs, and up to four reads for a long range. A read of the public holidays alone (a `GET /public-holidays?from&to`, or a `fields` switch on the calendar) would serve it.
 
 ## Open questions for the coordinator
 

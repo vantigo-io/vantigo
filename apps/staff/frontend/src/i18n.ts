@@ -1872,7 +1872,7 @@ export const staffCatalog = {
     holidayRemaining: "Igjen",
     holidayOverdrawn:
       "Det du har søkt om, vil ta mer ferie enn du har igjen. Søknadene sendes likevel; den som avgjør dem, ser det.",
-    myAbsences: "Mine fravær",
+    myAbsences: "Mitt fravær",
     noAbsences: "Du har ikke noe fravær ennå",
     absenceStatus_requested: "Søkt om",
     absenceStatus_approved: "Godkjent",
@@ -1880,7 +1880,7 @@ export const staffCatalog = {
     absenceStatus_cancelled: "Trukket tilbake",
     absenceStatus_registered: "Registrert",
     shownAs_leave: "Permisjon",
-    shownAs_absent: "Borte",
+    shownAs_absent: "Fraværende",
     absenceUnnamed: "Fravær",
     absenceLabel: "{{name}}, {{days}}",
     workingDayCount: "{{count}} arbeidsdager",

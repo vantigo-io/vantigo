@@ -497,8 +497,8 @@ The **Absence** tab of My page shows, as Staff counts them:
 
 ### Request absence from your phone
 
-1. On My page, open **Absence** and press **Request absence**. On a phone the sheet
-   opens from the bottom of the screen.
+1. On My page, open **Absence** and press **Request absence**. On a phone — a screen
+   narrower than 768 pixels — the sheet opens from the bottom; wider, it is a dialog.
 2. Choose the **Type**. The sheet asks for what that type takes:
    - a day type: **First day** and, for more than one day, **Last day**;
    - an hour type, such as a doctor's or dentist's visit: the **Day** and the **Hours**;

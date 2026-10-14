@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { cases } from "../test/absence-fixtures";
 import { region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -150,5 +151,93 @@ describe("My page — My team", () => {
     expect(put.ifMatch).toBe("2");
     expect(put.body).toEqual({ accommodationNote: "Four-hour days" });
     expect(await within(sickCase).findByText("Four-hour days")).toBeInTheDocument();
+  });
+
+  it("puts the cursor in the reason when a request is rejected", async () => {
+    stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me?tab=team");
+
+    const request = await screen.findByRole("article", { name: "Grace Hopper: Holiday, Nov 2, 2026 – Nov 6, 2026" });
+    await userEvent.click(within(request).getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(within(request).getByRole("textbox", { name: "Reason" })).toHaveFocus());
+  });
+
+  it("closes the accommodation note on what the other writer saved, and never sends it twice", async () => {
+    const fetchMock = stubStaffApi({
+      role: "access",
+      me: 101,
+      write: (method, path) =>
+        method === "PUT" && path === "/api/v1/staff/cases/701"
+          ? staffProblem(409, {
+              code: "revision_conflict",
+              title: "Revision conflict",
+              detail: "The case has revision 3; the supplied revision was 2.",
+            })
+          : undefined,
+    });
+    renderRoute("/staff/me?tab=team");
+
+    const sickCase = await screen.findByRole("article", { name: "Grace Hopper, from Sep 28, 2026" });
+    await userEvent.click(within(sickCase).getByRole("button", { name: "Change the accommodation note" }));
+    const dialog = await screen.findByRole("dialog", { name: "Accommodation note" });
+    await retype(within(dialog).getByRole("textbox", { name: "Accommodation note" }), "Four-hour days");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Somebody else saved this; it has been reloaded")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Accommodation note" })).not.toBeInTheDocument());
+    expect(sent(fetchMock, "PUT", /\/cases\/701$/)).toHaveLength(1);
+    expect(screen.queryByText(/supplied revision/)).not.toBeInTheDocument();
+  });
+
+  it("leaves out a case of somebody who is not my report", async () => {
+    stubStaffApi({
+      role: "access",
+      me: 101,
+      absence: { cases: [...cases(), { ...cases()[0], id: 702, personId: 104, firstDay: "2026-10-05" }] },
+    });
+    renderRoute("/staff/me?tab=team");
+
+    const open = await region("Open sick-leave cases");
+    await within(open).findByRole("article", { name: "Grace Hopper, from Sep 28, 2026" });
+    expect(within(open).getAllByRole("article")).toHaveLength(1);
+  });
+
+  it("shows a milestone's note and a waiver's reason only when the case carries them", async () => {
+    const [carried] = cases();
+    carried.milestones = carried.milestones.map((one) =>
+      one.kind === "dialogue_1"
+        ? { ...one, waived: true, waivedReason: "Back at work full time" }
+        : one.kind === "follow_up_plan"
+          ? { ...one, note: "Plan agreed by phone" }
+          : one,
+    );
+    stubStaffApi({ role: "access", me: 101, absence: { cases: [carried] } });
+    renderRoute("/staff/me?tab=team");
+
+    const sickCase = await screen.findByRole("article", { name: "Grace Hopper, from Sep 28, 2026" });
+    expect(
+      within(within(sickCase).getByRole("group", { name: "First dialogue meeting" })).getByText(
+        "Back at work full time",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(within(sickCase).getByRole("group", { name: "Follow-up plan" })).getByText("Plan agreed by phone"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no milestone note or waiver reason the case does not carry", async () => {
+    stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me?tab=team");
+
+    const sickCase = await screen.findByRole("article", { name: "Grace Hopper, from Sep 28, 2026" });
+    for (const name of ["Follow-up plan", "First dialogue meeting", "Second dialogue meeting"]) {
+      const group = within(sickCase).getByRole("group", { name });
+      // The label and the date, nothing else in writing.
+      expect(
+        within(group)
+          .getAllByText(/./, { selector: "p" })
+          .map((one) => one.textContent),
+      ).toHaveLength(2);
+    }
   });
 });

@@ -95,6 +95,7 @@ const ApprovalRow = ({ approval, types }: { approval: StaffApproval; types: read
                 label={t("rejectReason")}
                 description={t("rejectReasonDescription")}
                 withAsterisk
+                autoFocus
                 rows={3}
                 maxLength={500}
                 {...form.getInputProps("reason")}
