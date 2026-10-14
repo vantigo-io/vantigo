@@ -738,7 +738,7 @@ func (q *Queries) NextAbsenceTypeSort(ctx context.Context) (int32, error) {
 }
 
 const overlappingAbsences = `-- name: OverlappingAbsences :many
-SELECT a.id, a.person_id, a.type_id, a.first_day, a.last_day, a.hours, a.percent, a.status, a.note, a.case_id, a.degree_percent, a.requested_by_user_id, a.decided_by_user_id, a.decided_at, a.decision_note, a.self_approved, a.revision, a.created_at, a.updated_at, t.kind, t.unit, t.allows_percent
+SELECT a.id, a.person_id, a.type_id, a.first_day, a.last_day, a.hours, a.percent, a.status, a.note, a.case_id, a.degree_percent, a.requested_by_user_id, a.decided_by_user_id, a.decided_at, a.decision_note, a.self_approved, a.revision, a.created_at, a.updated_at, t.kind, t.unit, t.allows_percent, t.visibility
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE a.person_id = $1 AND a.id <> $2::bigint
   AND a.status IN ('requested', 'approved', 'registered')
@@ -757,6 +757,7 @@ type OverlappingAbsencesRow struct {
 	Kind          string
 	Unit          string
 	AllowsPercent bool
+	Visibility    string
 }
 
 // OverlappingAbsences is the person's requested, approved and registered rows
@@ -799,6 +800,7 @@ func (q *Queries) OverlappingAbsences(ctx context.Context, arg OverlappingAbsenc
 			&i.Kind,
 			&i.Unit,
 			&i.AllowsPercent,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}

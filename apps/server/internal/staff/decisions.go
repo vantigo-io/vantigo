@@ -140,7 +140,7 @@ func (s *server) decide(ctx context.Context, caller *callerContext, who actor, p
 		if status == absenceApproved {
 			p := parsedAbsence{TypeID: t.ID, First: civil(before.FirstDay), Last: civil(before.LastDay),
 				Percent: before.Percent, Hours: before.Hours, Degree: before.DegreePercent}
-			if err := judgeOverlap(ctx, txq, personID, before.ID, p, t); err != nil {
+			if err := judgeOverlap(ctx, txq, personID, before.ID, p, t, readsHROnlyOf(caller, personID)); err != nil {
 				return err
 			}
 		}
@@ -404,7 +404,7 @@ func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostS
 		if before.Status != absenceApproved && before.Status != absenceRegistered {
 			return notCancellable("Only an approved or a registered absence is corrected; a request is changed, and a rejected or cancelled one stays as it was.")
 		}
-		p, t, err := judgeAbsence(ctx, txq, personID, before.ID, p)
+		p, t, err := judgeAbsence(ctx, txq, personID, before.ID, p, readsHROnlyOf(caller, personID))
 		if err != nil {
 			return err
 		}

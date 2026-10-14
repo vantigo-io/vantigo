@@ -826,7 +826,8 @@ bestemt seg): en søknad om en HR-type — svangerskapspermisjon, en religiøs h
 egen type merket som HR-type — går ikke til noen leder, ingen med `staff:approve` og ingen
 HR uten `staff:personal-data`, og ingen av dem får e-post om den. Alle med
 `staff:personal-data` unntatt personen selv avgjør den i godkjenningsinnboksen sin, og bare
-HR med `staff:personal-data` endrer, trekker tilbake eller retter en slik rad. Gi den
+HR med `staff:personal-data` registrerer, endrer, trekker tilbake eller retter en slik rad —
+HR uten den får samme svar som for en type som ikke finnes. Gi den
 rettigheten til den som skal avgjøre slik permisjon; finnes ingen andre med den, venter
 søknaden. For alle andre vises permisjonen først når den er godkjent, som *permisjon*.
 
