@@ -68,7 +68,7 @@ Hver operasjon i Ansatte krever `staff:access`, og fire rettigheter ligger over 
 | --- | --- |
 | `staff:access` | Alle som skal se sine egne opplysninger. |
 | `staff:view` | Kolleger som skal se katalogen og bedriftens struktur. |
-| `staff:approve` | Den som avgjør alles fravær: godkjenner, avslår og kansellerer søknader, ser alles arbeidsopplysninger og fravær (en HR-type som permisjon), godkjenningsinnboksen og kalenderen — ikke lønn, private opplysninger eller historikk. |
+| `staff:approve` | Den som avgjør alles fravær: godkjenner, avslår og trekker tilbake søknader, ser alles arbeidsopplysninger og fravær (en HR-type som permisjon), godkjenningsinnboksen og kalenderen — ikke lønn, private opplysninger eller historikk. |
 | `staff:manage` | HR: personer, arbeidsforhold, dokumenter unntatt helsedokumenter, dokumentkategoriene, strukturen og innstillingene. Sensitiv. |
 | `staff:personal-data` | Den som får vise fødselsnumre og kontonumre, og lese og arkivere helsedokumenter. Sensitiv. |
 
@@ -405,7 +405,7 @@ dekker den helt.
 
 En sykmelding over innvilget ferie endrer ikke ferien av seg selv: om ferien utsettes,
 er den ansattes krav, med legeerklæring (ferieloven § 9). Imens viser dashbordet ditt
-ferien under *ferie berørt av sykdom*. På skjermen har sykmeldingens rad på personens
+det: *… var sykmeldt i godkjent ferie*. På skjermen har sykmeldingens rad på personens
 **Fravær**-fane **Utsett ferie**: sett **Krevd den** og trykk **Registrer kravet**; en
 avvisning står i dialogen.
 
@@ -825,7 +825,7 @@ bestemt seg): en søknad om en HR-type — svangerskapspermisjon, en religiøs h
 egen type merket som HR-type — går ikke til noen leder, ingen med `staff:approve` og ingen
 HR uten `staff:personal-data`, og ingen av dem får e-post om den. Alle med
 `staff:personal-data` unntatt personen selv avgjør den i godkjenningsinnboksen sin, og bare
-HR med `staff:personal-data` endrer, kansellerer eller retter en slik rad. Gi den
+HR med `staff:personal-data` endrer, trekker tilbake eller retter en slik rad. Gi den
 rettigheten til den som skal avgjøre slik permisjon; finnes ingen andre med den, venter
 søknaden. For alle andre vises permisjonen først når den er godkjent, som *permisjon*.
 
@@ -839,7 +839,7 @@ det gir du personen en leder i arbeidsvilkårene, koblet til en aktiv bruker.
 HR retter et godkjent eller registrert fravær — dagene, typen, prosenten eller
 graderingen — med **Rett** (et godkjent) eller **Endre** (et registrert) på personens
 **Fravær**-fane; rettingen lagres med hva det var før, og personen
-får e-post. Et avgjort fravær som har begynt, kanselleres bare av HR.
+får e-post om en retting. Et avgjort fravær som har begynt, trekkes bare tilbake av HR.
 
 ## E-postene om fravær
 
@@ -848,7 +848,7 @@ jobb-e-post, ellers den private — på personens språk:
 
 - en **søknad** eller en **registrering** går til personens ledere som avgjør den
   (lederen i dag, koblet til en aktiv bruker);
-- en **godkjenning**, et **avslag**, en leders **kansellering** og HRs **retting** går
+- en **godkjenning**, et **avslag**, en **tilbaketrekking** av et godkjent fravær gjort av den som avgjør det, og HRs **retting** går
   til personen.
 
 De med `staff:approve` og `staff:manage` får **ikke** e-post — Ansatte kjenner ikke

@@ -496,7 +496,8 @@ always set: `User`, `Users`, `SearchUsers`) for names — whoever writes a histo
 the user a self-service link names — and the picker HR links a person with; the
 platform's mail seam (`Deps.SMTPSend`, or `mail.SendOutbound` when unset) for the mails
 it sends — the notice of a changed bank account, and the absence notices (a request or
-a registration to the person's managers, a decision or a correction to the person) —
+a registration to the person's managers, none for an HR-only type; a decision, a
+decider's cancel or a correction to the person) —
 each only to an address in its own register, a person's work or private email, never
 one the user directory would have to name; and the object store
 (`Deps.ObjectStore` when a harness sets one, else its own `staff`-scoped store built

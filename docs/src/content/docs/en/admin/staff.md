@@ -404,7 +404,7 @@ it whole.
 
 A sykmelding over approved ferie does not change the ferie by itself: whether the
 holiday is postponed is the employee's demand, with a legeerklæring (ferieloven § 9).
-Meanwhile your dashboard lists the ferie under *ferie affected by sickness*. On the
+Meanwhile your dashboard lists it: *… was on sick leave during approved holiday*. On the
 screen, the sykmelding's row on the person's **Absence** tab has **Postpone holiday**:
 set **Demanded on** and press **Record the demand**; a refusal is said in the dialog.
 
@@ -832,7 +832,7 @@ avoid it, give that person a manager in their terms, linked to an active user.
 HR corrects an approved or registered absence — its days, type, percentage or degree —
 with **Correct** (an approved one) or **Change** (a registered one) on the person's
 **Absence** tab; the correction is recorded with what it was before, and the
-person is mailed. A decided absence that has begun is cancelled by HR only.
+person is mailed about a correction. A decided absence that has begun is cancelled by HR only.
 
 ## The absence mails
 
@@ -841,7 +841,7 @@ their private one — in that person's language:
 
 - a **request** or a **registration** goes to the person's managers who decide it (the
   manager today, linked to an active user);
-- an **approval**, a **rejection**, a manager's **cancel** and HR's **correction** go to
+- an **approval**, a **rejection**, a **cancel** of an approved absence by its decider and HR's **correction** go to
   the person.
 
 Holders of `staff:approve` and `staff:manage` are **not** mailed — Staff does not know
