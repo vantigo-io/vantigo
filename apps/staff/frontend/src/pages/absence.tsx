@@ -293,7 +293,7 @@ const MonthTable = ({
                 >
                   {absences.map((absence) => (
                     <AbsenceBar
-                      key={absence.id}
+                      key={absence.id ?? `${absence.firstDay}/${absence.lastDay}`}
                       absence={absence}
                       person={person.displayName}
                       days={days}

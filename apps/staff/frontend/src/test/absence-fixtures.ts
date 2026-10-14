@@ -207,13 +207,13 @@ export const colleagueCalendarPeople = (): Schemas["StaffCalendarPerson"][] => [
   {
     person: grace,
     absences: [
-      { id: 611, personId: 102, firstDay: "2026-10-19", lastDay: "2026-10-23", shownAs: "absent" },
-      { id: 612, personId: 102, firstDay: "2026-10-26", lastDay: "2026-10-27", shownAs: "absent" },
+      { personId: 102, firstDay: "2026-10-19", lastDay: "2026-10-23", shownAs: "absent" },
+      { personId: 102, firstDay: "2026-10-26", lastDay: "2026-10-27", shownAs: "absent" },
     ],
   },
   {
     person: alan,
-    absences: [{ id: 621, personId: 103, firstDay: "2026-10-05", lastDay: "2026-10-05", shownAs: "absent" }],
+    absences: [{ personId: 103, firstDay: "2026-10-05", lastDay: "2026-10-05", shownAs: "absent" }],
   },
 ];
 

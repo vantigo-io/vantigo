@@ -616,8 +616,9 @@ de av dem som er aktive i dag; en leder uten disse, dem hen er leder for og seg 
 
 Hver stolpe viser bare det du har lov til å se: typen og statusen, en prosent av dagen
 eller timene for HR og personens leder; *Permisjon* for en type som røper helse eller
-familieforhold, når den er godkjent; og *Fraværende* — bare dagene, uten type eller status —
-for en kollega som ser ansattoversikten. Pek på en stolpe, eller les den med skjermleser,
+familieforhold, når den er godkjent; og *Fraværende* — bare dagene, uten type eller status,
+en persons dager samlet i én stolpe og ingen besøk på noen timer — for en kollega som ser
+ansattoversikten. Pek på en stolpe, eller les den med skjermleser,
 for dagene og detaljene. På mobilen ruller måneden sidelengs inne i rammen sin.
 
 ### Godkjenninger
@@ -700,11 +701,14 @@ Reglene bak skjermbildene over:
 
 Hvem ser fraværet ditt: du, lederen din og HR ser datoene, statusen, typen og detaljene;
 kolleger med tilgang til ansattoversikten ser bare dagene du er borte — aldri om det var
-en søknad eller en registrering, typen, en prosent, timer eller en merknad, så en
-sykedag ser ut som en fridag. En type som avslører helse eller familieforhold (som
-svangerskapspermisjon, svangerskapskontroll eller en religiøs høytid) viser lederen din
-bare *permisjon*, uten timene, som all annen permisjon — og historikken for den vises
-ikke for lederen i det hele tatt, så ingenting ved hvordan den ble lagt inn, røper den.
+en søknad eller en registrering, typen, en prosent eller en merknad, og dagene dine
+flyter sammen til ett spenn, så en sykedag ser ut som en fridag og en sykmelding over en
+ferie aldri synes. Et besøk på noen timer vises ikke for kolleger i det hele tatt. En
+type som avslører helse eller familieforhold (som svangerskapspermisjon eller en
+religiøs høytid) viser lederen din bare *permisjon*, som all annen permisjon — en
+svangerskapskontroll, som er timer, vises ikke for lederen i det hele tatt — og
+historikken for den vises ikke for lederen, så ingenting ved hvordan den ble lagt inn,
+røper den.
 
 ## Dashbordet
 

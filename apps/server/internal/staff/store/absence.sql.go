@@ -107,6 +107,52 @@ func (q *Queries) CalendarAbsences(ctx context.Context, arg CalendarAbsencesPara
 	return items, nil
 }
 
+const colleagueAbsenceDays = `-- name: ColleagueAbsenceDays :many
+SELECT a.person_id, a.first_day, a.last_day
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.person_id = ANY($1::bigint[])
+  AND a.status IN ('approved', 'registered') AND t.unit = 'days'
+  AND ($2::date IS NULL OR a.last_day >= $2::date)
+  AND ($3::date IS NULL OR a.first_day <= $3::date)
+ORDER BY a.person_id, a.first_day, a.last_day
+`
+
+type ColleagueAbsenceDaysParams struct {
+	PersonIds []int64
+	FromDay   pgtype.Date
+	ToDay     pgtype.Date
+}
+
+type ColleagueAbsenceDaysRow struct {
+	PersonID int64
+	FirstDay pgtype.Date
+	LastDay  pgtype.Date
+}
+
+// ColleagueAbsenceDays is the approved and registered day rows of
+// @person_ids' people touching the optional range, by person and first day:
+// what a colleague reads, coalesced into spans (whole-branch review) — never
+// a row id, a request or an hour row.
+func (q *Queries) ColleagueAbsenceDays(ctx context.Context, arg ColleagueAbsenceDaysParams) ([]ColleagueAbsenceDaysRow, error) {
+	rows, err := q.db.Query(ctx, colleagueAbsenceDays, arg.PersonIds, arg.FromDay, arg.ToDay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ColleagueAbsenceDaysRow
+	for rows.Next() {
+		var i ColleagueAbsenceDaysRow
+		if err := rows.Scan(&i.PersonID, &i.FirstDay, &i.LastDay); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countAbsences = `-- name: CountAbsences :one
 SELECT count(*) FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
@@ -115,23 +161,20 @@ WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
   AND ($4::text IS NULL OR $4::text =
        CASE WHEN $5::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM $6::bigint
                  AND a.status = 'registered' THEN 'approved' ELSE a.status END)
-  AND ($7::boolean OR a.person_id = ANY($8::bigint[])
-       OR (a.person_id = ANY($9::bigint[]) AND a.status IN ('approved', 'registered')
-           AND $4::text IS NULL))
+  AND ($7::boolean OR a.person_id = ANY($8::bigint[]))
   AND NOT ($5::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM $6::bigint
-           AND a.status NOT IN ('approved', 'registered'))
+           AND (a.status NOT IN ('approved', 'registered') OR t.unit = 'hours'))
 `
 
 type CountAbsencesParams struct {
-	PersonID     *int64
-	FromDay      pgtype.Date
-	ToDay        pgtype.Date
-	Status       *string
-	Neutral      bool
-	SelfID       *int64
-	Everyone     bool
-	FullIds      []int64
-	ColleagueIds []int64
+	PersonID *int64
+	FromDay  pgtype.Date
+	ToDay    pgtype.Date
+	Status   *string
+	Neutral  bool
+	SelfID   *int64
+	Everyone bool
+	FullIds  []int64
 }
 
 // CountAbsences counts what ListAbsences pages through.
@@ -145,7 +188,6 @@ func (q *Queries) CountAbsences(ctx context.Context, arg CountAbsencesParams) (i
 		arg.SelfID,
 		arg.Everyone,
 		arg.FullIds,
-		arg.ColleagueIds,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -563,27 +605,24 @@ WHERE ($1::bigint IS NULL OR a.person_id = $1::bigint)
   AND ($4::text IS NULL OR $4::text =
        CASE WHEN $5::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM $6::bigint
                  AND a.status = 'registered' THEN 'approved' ELSE a.status END)
-  AND ($7::boolean OR a.person_id = ANY($8::bigint[])
-       OR (a.person_id = ANY($9::bigint[]) AND a.status IN ('approved', 'registered')
-           AND $4::text IS NULL))
+  AND ($7::boolean OR a.person_id = ANY($8::bigint[]))
   AND NOT ($5::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM $6::bigint
-           AND a.status NOT IN ('approved', 'registered'))
+           AND (a.status NOT IN ('approved', 'registered') OR t.unit = 'hours'))
 ORDER BY a.first_day DESC, a.id DESC
-LIMIT $11 OFFSET $10
+LIMIT $10 OFFSET $9
 `
 
 type ListAbsencesParams struct {
-	PersonID     *int64
-	FromDay      pgtype.Date
-	ToDay        pgtype.Date
-	Status       *string
-	Neutral      bool
-	SelfID       *int64
-	Everyone     bool
-	FullIds      []int64
-	ColleagueIds []int64
-	PageOffset   int32
-	PageSize     int32
+	PersonID   *int64
+	FromDay    pgtype.Date
+	ToDay      pgtype.Date
+	Status     *string
+	Neutral    bool
+	SelfID     *int64
+	Everyone   bool
+	FullIds    []int64
+	PageOffset int32
+	PageSize   int32
 }
 
 type ListAbsencesRow struct {
@@ -593,18 +632,17 @@ type ListAbsencesRow struct {
 	Unit         string
 }
 
-// ListAbsences is one page of the absences the caller may see, newest first:
-// everyone's (@everyone), every row of @full_ids' people, and the approved
-// and registered rows of @colleague_ids' — a colleague is shown that a
-// person is away, never a request or a refusal — and those never under a
-// status filter: a colleague reads no status, and asking for the registered
-// rows must not pick out who was sick (review C1). With @neutral — a caller
+// ListAbsences is one page of the absences the caller may see as rows,
+// newest first: everyone's (@everyone) or every row of @full_ids' people. A
+// colleague's people are read as spans instead (ColleagueAbsenceDays). With
+// @neutral — a caller
 // who reads an HR-only type as leave, on every row but their own
 // (@self_id) — a status filter matches such a row by the status it is shown
 // as, a registration as an approval (leak 2), and an HR-only row that is not
 // approved or registered — a request, a refusal, a cancel — is not listed
 // at all: to its leave-reader every HR-only row is an approved leave they
-// never saw asked for (review H4, interim option b).
+// never saw asked for (review H4, interim option b) — and an HR-only hour
+// row never (whole-branch review).
 func (q *Queries) ListAbsences(ctx context.Context, arg ListAbsencesParams) ([]ListAbsencesRow, error) {
 	rows, err := q.db.Query(ctx, listAbsences,
 		arg.PersonID,
@@ -615,7 +653,6 @@ func (q *Queries) ListAbsences(ctx context.Context, arg ListAbsencesParams) ([]L
 		arg.SelfID,
 		arg.Everyone,
 		arg.FullIds,
-		arg.ColleagueIds,
 		arg.PageOffset,
 		arg.PageSize,
 	)

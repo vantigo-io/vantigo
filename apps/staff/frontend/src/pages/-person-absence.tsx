@@ -34,6 +34,7 @@ import {
   personHolidayAccountQueryOptions,
   personSelfCertificationQueryOptions,
   postponeHoliday,
+  rowIdOf,
   type StaffAbsence,
   type StaffHolidayAdjustment,
   type StaffSelfCertification,
@@ -247,7 +248,7 @@ const AbsenceRow = ({
     // leave to postpone holiday for.
     status === "registered";
   const cancel = useMutation({
-    mutationFn: () => cancelAbsence(absence.id),
+    mutationFn: () => cancelAbsence(rowIdOf(absence)),
     onSuccess: async () => {
       notifications.show({ color: "teal", title: t("absenceCancelled"), message: "" });
       await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
@@ -719,7 +720,8 @@ const PostponeForm = ({ absence, today, onDone }: { absence: StaffAbsence; today
     validate: { demandedOn: (value) => (value && value > today ? t("demandedOnAfterToday") : null) },
   });
   const save = useMutation({
-    mutationFn: (values: { demandedOn: string | null }) => postponeHoliday(absence.id, values.demandedOn ?? undefined),
+    mutationFn: (values: { demandedOn: string | null }) =>
+      postponeHoliday(rowIdOf(absence), values.demandedOn ?? undefined),
     onSuccess: async () => {
       notifications.show({ color: "teal", title: t("holidayPostponed"), message: "" });
       await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });

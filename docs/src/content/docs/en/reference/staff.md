@@ -1281,15 +1281,18 @@ row they cannot write, whatever its status, before any status is judged; so a wr
 first, the rows the caller may see: everyone's to `staff:manage`, `staff:approve` and
 `staff:personal-data`; otherwise their own, their reports' today (the
 [one manager rule](#managers-and-the-org-view)), and — with `staff:view` — the
-`approved` and `registered` rows of every person active today, never a request or a
+days every person active today is away, as **spans** (below), never a request or a
 refusal — and those never under a `status` filter: a colleague reads no status, so
-asking for the registered rows cannot pick out who was sick. `GET /absences/{id}` answers one, the 404 of an unknown id to anyone who may
-not see it. `GET /me/absences` lists the caller's own. Each row is shaped by three
+asking for the registered rows cannot pick out who was sick. `GET /absences/{id}`
+answers one row, the 404 of an unknown id to anyone who may not see it — a colleague
+included, who is told no row ids. With spans among them the page is cut from all the
+caller's rows and spans, newest first. `GET /me/absences` lists the caller's own. Each row is shaped by three
 groups (design §5):
 
 | Group | Fields | Self | Colleague | Manager | Approver | `staff:manage` | `staff:personal-data` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Absence | `firstDay`, `lastDay` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Absence | `id` | ✓ | — (a span) | ✓ | ✓ | ✓ | ✓ |
+| Absence | `firstDay`, `lastDay` | ✓ | ✓ (a span) | ✓ | ✓ | ✓ | ✓ |
 | Absence | `status`, `workingDays` | ✓ | — | ✓ | ✓ | ✓ | ✓ |
 | Absence type | `typeId` (`shownAs: type`) | ✓ | — (`shownAs: absent`) | ✓; an `hr_only` type `shownAs: leave` | ✓; an `hr_only` type `shownAs: leave` | ✓; an `hr_only` type `shownAs: leave` | ✓ |
 | Absence detail | `percent`, `hours`, `degreePercent`; `note` and `decisionNote` never on a row shown as leave | ✓ | — | ✓ | ✓ | ✓ | ✓ |
@@ -1297,14 +1300,21 @@ groups (design §5):
 **A colleague cannot tell one absence from another.** Only the notification types —
 the sick kinds among them — start `registered`, and only an hour type counts no
 working day, so a colleague is shown neither the status nor the working days: a
-sykmelding, a sick child, a doctor's visit and a holiday are the same dates, shown
-`absent`.
+sykmelding, a sick child and a holiday are the same dates, shown `absent`. Nor is a
+colleague shown the rows themselves (whole-branch review): a person's `approved` and
+`registered` day rows are coalesced into **spans** — a row that overlaps or adjoins the
+span before it extends it — answered with no `id`, so a sykmelding over ferie, or a
+row registered afterwards beside another, reads as one span.
+
+**Hour rows** go only to the person, to `staff:personal-data` and, for a type that is
+not HR-only, to the readers of the type (the manager, the Approver, HR): never to a
+colleague, and an HR-only hour row — svangerskapskontroll — never to a reader of it as
+leave, in a list, on the calendar or by id. `onLeaveToday` counts no hour row either.
 
 **A row shown as leave looks like any other leave.** To the manager and HR without
 `staff:personal-data`, a row of an HR-only type carries no `hours`, the working days of
-its days whatever its unit, and `approved` in place of `registered` — so
-svangerskapskontroll, an HR-only hour registration, is not told apart from the other
-HR-only leave. It carries no `note` (review M1), and it is shown only while `approved`
+its days, and `approved` in place of `registered` — and an HR-only hour row, such as
+svangerskapskontroll, is not shown to them at all (above). It carries no `note` (review M1), and it is shown only while `approved`
 or `registered`: a request of an HR-only type, a refusal and a cancel are
 `staff:personal-data`'s ([decisions](#decisions)), so a list, a calendar and a read by
 id leave them out to these readers. A status filter matches it by the status it is shown as — asking for
@@ -1497,8 +1507,8 @@ holidays in it from the platform calendar (`internal/calendar`) and a row per pe
 with their requested, approved and registered absences touching it, shaped as
 `GET /absences` shapes them. `staff:approve`, `staff:manage` and `staff:personal-data`
 see everyone with an employment in the range; `staff:view` the people among them active
-today, as the directory lists them, each bar the dates alone and only for approved and
-registered rows; anyone else their reports today and themselves. `departmentId` keeps
+today, as the directory lists them, each bar a span of approved and registered days
+with no row id and no hour row (as `GET /absences` answers a colleague); anyone else their reports today and themselves. `departmentId` keeps
 the people whose terms place them in that department on the day judged — today, held
 inside the range.
 

@@ -873,7 +873,7 @@ type PaginatedResponseOfStaffPersonListItem struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
-// StaffAbsence An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, no note, the working days of its days, a registered row as approved (a status filter matches it so too), no revision, only while approved or registered — staff:personal-data alone decides it, so a request, a refusal or a cancel is not shown to them — and none of its events listed to them — they read its dates already, and the events' count and kinds would tell a notification from a request. A write of a type drawing on the holiday account answers the accounts of the years it touches after it.
+// StaffAbsence An absence as the caller may read it (design §5). A colleague (staff:view alone) reads spans of dates and nothing else — no row id, no status, no working days, no type (shownAs absent), no hour row, a person's approved and registered day rows coalesced — so a sickness looks like any other absence. An hour row is read by the person, staff:personal-data and, for a type that is not HR-only, the readers of the type; never as leave. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, no note, the working days of its days, a registered row as approved (a status filter matches it so too), no revision, only while approved or registered — staff:personal-data alone decides it, so a request, a refusal or a cancel is not shown to them — and none of its events listed to them — they read its dates already, and the events' count and kinds would tell a notification from a request. A write of a type drawing on the holiday account answers the accounts of the years it touches after it.
 type StaffAbsence struct {
 	// Accounts On a write of a type drawing on the holiday account: the account of each year the row touches, after the write.
 	Accounts *[]StaffHolidayAccount `json:"accounts,omitempty"`
@@ -892,7 +892,9 @@ type StaffAbsence struct {
 
 	// Hours The hours of an hour type's one day.
 	Hours *float64 `json:"hours,omitempty"`
-	Id    int64    `json:"id"`
+
+	// Id The row. Absent from a colleague's span, which is no row: a colleague (staff:view alone) reads a person's approved and registered days coalesced into spans, so a sykmelding over ferie or a row registered afterwards beside another reads as one span, and no hour row.
+	Id int64 `json:"id,omitempty"`
 
 	// LastDay The last day.
 	LastDay openapi_types.Date `json:"lastDay"`
@@ -1107,7 +1109,7 @@ type StaffAppointmentForm string
 
 // StaffApproval A request the caller decides, with its person.
 type StaffApproval struct {
-	// Absence An absence as the caller may read it (design §5). A colleague (staff:view alone) reads the dates and nothing else — no status, no working days, no type (shownAs absent) — so a sickness looks like any other absence. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, no note, the working days of its days, a registered row as approved (a status filter matches it so too), no revision, only while approved or registered — staff:personal-data alone decides it, so a request, a refusal or a cancel is not shown to them — and none of its events listed to them — they read its dates already, and the events' count and kinds would tell a notification from a request. A write of a type drawing on the holiday account answers the accounts of the years it touches after it.
+	// Absence An absence as the caller may read it (design §5). A colleague (staff:view alone) reads spans of dates and nothing else — no row id, no status, no working days, no type (shownAs absent), no hour row, a person's approved and registered day rows coalesced — so a sickness looks like any other absence. An hour row is read by the person, staff:personal-data and, for a type that is not HR-only, the readers of the type; never as leave. The person, their manager and HR read the status, the working days, the type and the detail; an HR-only type is shown as leave (shownAs leave, no typeId) to all but the person and staff:personal-data, and such a row then looks like any other leave: no hours, no note, the working days of its days, a registered row as approved (a status filter matches it so too), no revision, only while approved or registered — staff:personal-data alone decides it, so a request, a refusal or a cancel is not shown to them — and none of its events listed to them — they read its dates already, and the events' count and kinds would tell a notification from a request. A write of a type drawing on the holiday account answers the accounts of the years it touches after it.
 	Absence StaffAbsence `json:"absence"`
 
 	// Person A person as the work group names them.

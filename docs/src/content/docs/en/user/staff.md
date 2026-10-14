@@ -616,7 +616,8 @@ without those, their reports and themselves.
 Each bar shows only what you may see of it: the type and its status, a percentage of
 the day or the hours for HR and the person's manager; *Leave* for a type that reveals
 health or family matters, once it is approved; and *Absent* — the days alone, without
-a type or a status — to a colleague who sees the directory. Point at a bar, or read it
+a type or a status, a person's days run together into one bar and no visit of a few
+hours shown — to a colleague who sees the directory. Point at a bar, or read it
 with a screen reader, for its days and details. On a phone the month scrolls sideways
 inside its frame.
 
@@ -699,11 +700,13 @@ The rules behind the screens above:
 
 Who sees your absence: you, your manager and HR see the dates, the status, the type and
 the details; colleagues with access to the directory see only the days you are away —
-never whether it was a request or a registration, the type, a percentage, hours or a
-note, so a sick day looks like a day off. A type that reveals health or family matters
-(such as pregnancy leave, an antenatal check-up or a religious holiday) shows your
-manager only *leave*, without its hours, like any other leave — and its history is not
-shown to them at all, so nothing in how it was entered gives it away.
+never whether it was a request or a registration, the type, a percentage or a note,
+and your days run together into one span, so a sick day looks like a day off and a
+sykmelding over a holiday is never seen. A visit of a few hours is not shown to
+colleagues at all. A type that reveals health or family matters (such as pregnancy
+leave or a religious holiday) shows your manager only *leave*, like any other leave —
+an antenatal check-up, which is hours, is not shown to them at all — and its history is
+not shown to them, so nothing in how it was entered gives it away.
 
 ## The dashboard
 

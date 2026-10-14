@@ -21,8 +21,9 @@ import (
 // the range — a colleague (staff:view alone) only those active today too, as
 // the directory lists them (plan reading 15); anyone else their reports
 // today and themselves. Each bar is shaped as GET /absences shapes the row:
-// a colleague's carries the dates alone and only for approved and
-// registered rows, so a sickness looks like any other absence.
+// a colleague's is a span of the person's approved and registered days,
+// coalesced, with no row id and no hour row (whole-branch review), so a
+// sickness looks like any other absence.
 
 // maxCalendarDays is the longest range the calendar answers.
 const maxCalendarDays = 93
@@ -92,11 +93,26 @@ func (s *server) GetStaffCalendar(ctx context.Context, req gen.GetStaffCalendarR
 			return err
 		}
 		bars := map[int64][]gen.StaffAbsence{}
+		var colleagues []int64
+		for _, pid := range people {
+			if caller.audienceOn(pid, slices.Contains(reports, pid), slices.Contains(active, pid)).onlyColleague() {
+				colleagues = append(colleagues, pid)
+			}
+		}
 		for _, r := range rows {
 			pid := r.StaffAbsence.PersonID
 			a := caller.audienceOn(pid, slices.Contains(reports, pid), slices.Contains(active, pid))
-			if a.seesAbsence(r.StaffAbsence.Status, r.Visibility) {
+			if !a.onlyColleague() && a.seesAbsence(r.StaffAbsence.Status, r.Visibility, r.Unit) {
 				bars[pid] = append(bars[pid], absenceResponse(r.StaffAbsence, r.Kind, r.Visibility, r.Unit, a, s.absenceTag))
+			}
+		}
+		if len(colleagues) > 0 {
+			spans, err := colleagueSpans(ctx, q, colleagues, dayParam(from), dayParam(to))
+			if err != nil {
+				return err
+			}
+			for _, sp := range spans {
+				bars[sp.PersonId] = append(bars[sp.PersonId], sp)
 			}
 		}
 		for _, pid := range people {

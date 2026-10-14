@@ -5,7 +5,7 @@ import { IconAlertCircle, IconCheck, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, useLocale } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { approvalsQueryOptions, approveAbsence, rejectAbsence, type StaffApproval } from "../api/absence";
+import { approvalsQueryOptions, approveAbsence, rejectAbsence, rowIdOf, type StaffApproval } from "../api/absence";
 import type { StaffAbsenceType } from "../api/meta";
 import { STAFF_QUERY_KEY } from "../api/request";
 import "../i18n";
@@ -72,12 +72,12 @@ const ApprovalRow = ({ approval, types }: { approval: StaffApproval; types: read
     await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY, "approvals"] });
   };
   const approve = useMutation({
-    mutationFn: () => approveAbsence(absence.id),
+    mutationFn: () => approveAbsence(rowIdOf(absence)),
     onSuccess: () => decided(t("requestApproved")),
     onError: failed,
   });
   const reject = useMutation({
-    mutationFn: (reason: string) => rejectAbsence(absence.id, reason),
+    mutationFn: (reason: string) => rejectAbsence(rowIdOf(absence), reason),
     onSuccess: () => decided(t("requestRejected")),
     onError: failed,
   });

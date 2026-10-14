@@ -21,6 +21,16 @@ export type StaffCalendar = Schemas["StaffCalendar"];
 export type StaffCalendarPerson = Schemas["StaffCalendarPerson"];
 export type StaffApproval = Schemas["StaffApproval"];
 
+/**
+ * A row's id. A colleague reads a person's days as spans, which are no rows
+ * and carry none (design §5); every screen that writes a row reads it as
+ * one of its writers, who are always sent the id.
+ */
+export const rowIdOf = (absence: StaffAbsence): number => {
+  if (absence.id === undefined) throw new Error("A colleague's span of days is not a row");
+  return absence.id;
+};
+
 /** The most rows a page of this module's lists holds. */
 const MAX_PAGE_SIZE = 100;
 
