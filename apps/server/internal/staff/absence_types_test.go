@@ -340,3 +340,24 @@ func TestAbsenceTypes_VisibilityIsNotWidenedUnderRows(t *testing.T) {
 		t.Errorf("renamed = %+v, want hr_only still", renamed)
 	}
 }
+
+// A company type's a-melding mapping is cleared by a change that leaves it
+// out: the type is then reported as no leave, and reads back without one.
+func TestAbsenceTypes_ClearingTheMapping(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+
+	var mapped gen.StaffAbsenceType
+	do(t, hr, http.MethodPost, absenceTypesPath, companyType("own_mapped", map[string]any{"ameldingLeave": "andreLovfestedePermisjoner"}), http.StatusCreated, &mapped)
+	cleared := changeOf(mapped)
+	delete(cleared, "ameldingLeave")
+	var out gen.StaffAbsenceType
+	do(t, hr, http.MethodPut, absenceTypePath(mapped.Id), cleared, http.StatusOK, &out, ifMatch(mapped.Revision))
+	if out.AmeldingLeave != nil {
+		t.Errorf("answered ameldingLeave = %v, want none", *out.AmeldingLeave)
+	}
+	if got := absenceTypeByKey(t, absenceTypesAs(t, h, "staff:manage"), "own_mapped").AmeldingLeave; got != nil {
+		t.Errorf("stored ameldingLeave = %v, want none", *got)
+	}
+}

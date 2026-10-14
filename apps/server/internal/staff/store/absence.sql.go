@@ -837,6 +837,45 @@ func (q *Queries) PeopleActiveOn(ctx context.Context, today pgtype.Date) ([]int6
 	return items, nil
 }
 
+const peopleAwayOn = `-- name: PeopleAwayOn :many
+SELECT DISTINCT a.person_id
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.person_id = ANY($1::bigint[])
+  AND a.status IN ('approved', 'registered')
+  AND a.first_day <= $2::date AND a.last_day >= $2::date
+  AND t.unit <> 'hours'
+ORDER BY a.person_id
+`
+
+type PeopleAwayOnParams struct {
+	PersonIds []int64
+	Today     pgtype.Date
+}
+
+// PeopleAwayOn is which of @person_ids — one page of the directory — have an
+// approved or registered absence of whole or part days covering @today, of
+// any type: People's "on leave today" (design §7, plan M3), the rows GET
+// /stats counts. Scoped to the page, by the (person_id, first_day) index.
+func (q *Queries) PeopleAwayOn(ctx context.Context, arg PeopleAwayOnParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, peopleAwayOn, arg.PersonIds, arg.Today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var person_id int64
+		if err := rows.Scan(&person_id); err != nil {
+			return nil, err
+		}
+		items = append(items, person_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const peopleEmployedBetween = `-- name: PeopleEmployedBetween :many
 SELECT DISTINCT e.person_id FROM staff.employments e
 WHERE e.start_date <= $1::date AND (e.end_date IS NULL OR e.end_date >= $2::date)

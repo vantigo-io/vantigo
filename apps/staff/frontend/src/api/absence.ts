@@ -143,14 +143,18 @@ export type StaffHolidayPostponement = Schemas["StaffHolidayPostponement"];
 export type StaffSelfCertWithdrawalInput = Schemas["StaffSelfCertWithdrawalRequest"];
 export type StaffAbsenceRegistration = Schemas["StaffAbsenceRequest"];
 
-/** A person's absences as the caller may see them, newest first (`GET /absences?personId=`). */
-export const personAbsencesQueryOptions = (personId: number) =>
+/**
+ * A person's absences that touch a year, as the caller may see them, newest
+ * first and a page at a time (`GET /absences?personId=&from=&to=`).
+ */
+export const personAbsencesQueryOptions = (personId: number, year: number, page: number) =>
   queryOptions({
-    queryKey: [STAFF_QUERY_KEY, "absences", "person", personId],
+    queryKey: [STAFF_QUERY_KEY, "absences", "person", personId, year, page],
     queryFn: ({ signal }) =>
-      request<Paginated<StaffAbsence>>(`/api/v1/staff/absences?personId=${personId}&pageSize=${MAX_PAGE_SIZE}`, {
-        signal,
-      }),
+      request<Paginated<StaffAbsence>>(
+        `/api/v1/staff/absences?personId=${personId}&from=${year}-01-01&to=${year}-12-31&page=${page}&pageSize=${MAX_PAGE_SIZE}`,
+        { signal },
+      ),
   });
 
 /**

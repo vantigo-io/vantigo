@@ -7,6 +7,7 @@ import {
   Group,
   Modal,
   NumberInput,
+  Pagination,
   Select,
   Stack,
   Text,
@@ -50,6 +51,7 @@ import { RequestSheet } from "../components/request-sheet";
 import { SelfCertificationCard } from "../components/self-certification";
 import "../i18n";
 import { absenceDays, absenceName, refusalText, useAbsenceDetails } from "../lib/absence";
+import { fieldRefusals } from "../lib/errors";
 import { useDecimalSeparator, useStaffFormat } from "../lib/format";
 
 export interface PersonAbsenceProps {
@@ -69,6 +71,8 @@ interface Offers {
   decides: boolean;
   /** The person looking at their own page: reads, changes nothing here. */
   self: boolean;
+  /** A manager of the person today, by the server's one manager rule. */
+  manager: boolean;
 }
 
 /**
@@ -88,13 +92,19 @@ export const PersonAbsence = ({ person, today, types, capabilities }: PersonAbse
   const offers: Offers = {
     hr: person.capabilities.canEdit,
     decides: person.capabilities.canDecide,
-    self: person.capabilities.canSeeHealth && !capabilities.canSeeHealth,
+    self: person.capabilities.self,
+    manager: person.capabilities.isManager,
   };
   const account = useQuery(personHolidayAccountQueryOptions(person.id, year));
   const standing = useQuery(personSelfCertificationQueryOptions(person.id));
   const careDays = useQuery(personCareDaysQueryOptions(person.id, thisYear));
   const cases = useQuery(personCasesQueryOptions(person.id));
-  const absences = useQuery(personAbsencesQueryOptions(person.id));
+  const [absencePage, setAbsencePage] = useState(1);
+  const absences = useQuery(personAbsencesQueryOptions(person.id, year, absencePage));
+  const changeYear = (next: number) => {
+    setYear(next);
+    setAbsencePage(1);
+  };
   const [sheet, setSheet] = useState<{ absence?: StaffAbsence; correct?: boolean } | undefined>();
   const [carrying, setCarrying] = useState(false);
   const [postponing, setPostponing] = useState<StaffAbsence | undefined>();
@@ -103,11 +113,11 @@ export const PersonAbsence = ({ person, today, types, capabilities }: PersonAbse
     <Stack gap="md">
       <Group justify="space-between" wrap="wrap" gap="xs">
         <Group gap={4}>
-          <ActionIcon variant="subtle" aria-label={t("previousYear")} onClick={() => setYear(year - 1)}>
+          <ActionIcon variant="subtle" aria-label={t("previousYear")} onClick={() => changeYear(year - 1)}>
             <IconChevronLeft size={16} />
           </ActionIcon>
           <Text fw={500}>{year}</Text>
-          <ActionIcon variant="subtle" aria-label={t("nextYear")} onClick={() => setYear(year + 1)}>
+          <ActionIcon variant="subtle" aria-label={t("nextYear")} onClick={() => changeYear(year + 1)}>
             <IconChevronRight size={16} />
           </ActionIcon>
         </Group>
@@ -138,13 +148,7 @@ export const PersonAbsence = ({ person, today, types, capabilities }: PersonAbse
           sickCase={sickCase}
           title={t("caseFrom", { date: date(sickCase.firstDay) })}
           canTick={!offers.self}
-          canChangeNote={
-            !offers.self &&
-            (offers.hr ||
-              capabilities.canSeeHealth ||
-              sickCase.accommodationNote !== undefined ||
-              (offers.decides && capabilities.managesAnyone))
-          }
+          canChangeNote={!offers.self && (offers.hr || offers.manager || capabilities.canSeeHealth)}
           hr={offers.hr}
           canWriteNotes={capabilities.canSeeHealth}
         />
@@ -177,6 +181,16 @@ export const PersonAbsence = ({ person, today, types, capabilities }: PersonAbse
             onPostpone={() => setPostponing(absence)}
           />
         ))}
+        {absences.data && absences.data.pagination.totalPages > 1 && (
+          <Group justify="center">
+            <Pagination
+              total={absences.data.pagination.totalPages}
+              value={absencePage}
+              onChange={setAbsencePage}
+              size="sm"
+            />
+          </Group>
+        )}
       </FieldGroup>
       <RequestSheet
         opened={sheet !== undefined}
@@ -229,7 +243,9 @@ const AbsenceRow = ({
     offers.hr &&
     type?.kind === "sick_certified" &&
     (absence.degreePercent ?? 100) === 100 &&
-    (status === "registered" || status === "approved");
+    // A sykmelding is a registration: a row in any other status is no sick
+    // leave to postpone holiday for.
+    status === "registered";
   const cancel = useMutation({
     mutationFn: () => cancelAbsence(absence.id),
     onSuccess: async () => {
@@ -644,7 +660,17 @@ const WithdrawalForm = ({
       await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
       onDone();
     },
-    onError: (error) => form.setErrors({ reason: refusalText(error, t) }),
+    onError: (error) => {
+      // A field refusal lands on its field; anything else, in the reader's words, on the reason.
+      if (error instanceof ApiValidationError) {
+        const { fields, rest } = fieldRefusals(error, ["until", "reason"]);
+        form.setErrors(
+          rest.length > 0 ? { ...fields, reason: [fields.reason, ...rest].filter(Boolean).join(" ") } : fields,
+        );
+        return;
+      }
+      form.setErrors({ reason: refusalText(error, t) });
+    },
   });
   return (
     <form onSubmit={form.onSubmit((values) => save.mutate(values))}>

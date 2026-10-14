@@ -261,3 +261,16 @@ SELECT sqlc.embed(a), t.kind, t.visibility, t.unit
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE a.person_id = @person_id
 ORDER BY a.first_day DESC, a.id DESC;
+
+-- name: PeopleAwayOn :many
+-- PeopleAwayOn is which of @person_ids — one page of the directory — have an
+-- approved or registered absence of whole or part days covering @today, of
+-- any type: People's "on leave today" (design §7, plan M3), the rows GET
+-- /stats counts. Scoped to the page, by the (person_id, first_day) index.
+SELECT DISTINCT a.person_id
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.person_id = ANY(@person_ids::bigint[])
+  AND a.status IN ('approved', 'registered')
+  AND a.first_day <= @today::date AND a.last_day >= @today::date
+  AND t.unit <> 'hours'
+ORDER BY a.person_id;

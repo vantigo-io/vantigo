@@ -1104,7 +1104,7 @@ export const staffCatalog = {
     withdrawalLifted: "Withdrawal lifted",
     nextYear: "Next year",
     previousYear: "Previous year",
-    noPersonAbsences: "No absence yet",
+    noPersonAbsences: "No absence this year",
     personAbsences: "Absences",
     sayWhy: "Say why",
     selfCertWithdrawn: "Egenmelding withdrawn",
@@ -1249,6 +1249,7 @@ export const staffCatalog = {
     holidaySchemeDescription:
       "The holiday rule the account counts by. Left on the default, it follows whichever scheme is the default.",
     holidaySchemeDefault: "The default ({{name}})",
+    clearAmelding: "Clear the a-melding description",
   },
   nb: {
     staff: "Ansatte",
@@ -2352,7 +2353,7 @@ export const staffCatalog = {
     withdrawalLifted: "Tilbaketrekkingen er opphevet",
     nextYear: "Neste år",
     previousYear: "Forrige år",
-    noPersonAbsences: "Ikke noe fravær ennå",
+    noPersonAbsences: "Ikke noe fravær dette året",
     personAbsences: "Fravær",
     sayWhy: "Si hvorfor",
     selfCertWithdrawn: "Egenmelding er trukket tilbake",
@@ -2497,6 +2498,7 @@ export const staffCatalog = {
     holidaySchemeDescription:
       "Ferieregelen kontoen telles etter. Står den på standard, følger den den ordningen som til enhver tid er standard.",
     holidaySchemeDefault: "Standard ({{name}})",
+    clearAmelding: "Fjern permisjonsbeskrivelsen",
   },
 } satisfies CatalogResources;
 

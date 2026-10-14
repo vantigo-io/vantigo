@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { holidaySchemes, settings } from "../test/fixtures";
+import { allAbsenceTypes } from "../test/absence-fixtures";
+import { absenceTypes, holidaySchemes, settings } from "../test/fixtures";
 import { choose, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -116,6 +117,26 @@ describe("Settings — absence types", () => {
     await choose(again, "Who sees the type", /Colleagues see/);
     await userEvent.click(within(again).getByRole("button", { name: "Save" }));
     expect(await within(again).findByText(/while an absence names it/)).toBeInTheDocument();
+  });
+
+  it("clears a company type's a-melding mapping, sending none", async () => {
+    const types = allAbsenceTypes(absenceTypes()).map((one) =>
+      one.id === 2001 ? { ...one, ameldingLeave: "andreIkkeLovfestedePermisjoner" as const } : one,
+    );
+    const fetchMock = stubStaffApi({ role: "manage", absence: { types } });
+    renderRoute("/staff/settings");
+
+    expect(await tableRow("Absence types", "Study day")).toHaveTextContent("andreIkkeLovfestedePermisjoner");
+    await userEvent.click(await screen.findByRole("button", { name: "Change Study day" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change Study day" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Clear the a-melding description" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /absence-types\/2001$/)).toHaveLength(1));
+    expect(sent(fetchMock, "PUT", /absence-types\/2001$/)[0].body).not.toHaveProperty("ameldingLeave");
+    await waitFor(async () =>
+      expect(await tableRow("Absence types", "Study day")).not.toHaveTextContent("andreIkkeLovfestedePermisjoner"),
+    );
   });
 
   it("adds a company type", async () => {
