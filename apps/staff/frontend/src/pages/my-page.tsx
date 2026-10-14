@@ -23,7 +23,9 @@ import {
   myDetailsFormValuesOf,
   myDetailsValidation,
 } from "../lib/person-form";
-import type { PersonSearch, PersonTab } from "../lib/search";
+import type { MyPageSearch, MyPageTab } from "../lib/search";
+import { MyAbsence } from "./-my-absence";
+import { MyTeam } from "./-my-team";
 import { NextOfKinFields } from "./-next-of-kin-fields";
 import { PersonEmployments } from "./-person-employments";
 import { PersonHistory } from "./-person-history";
@@ -34,13 +36,14 @@ import { PersonProfile } from "./-person-profile";
  * self-service link, read as themselves — whatever else they hold — with the
  * private group theirs to edit (`PUT /me`), their employments and terms with
  * the pay (it is their contract), their history, and their documents with
- * the copy of their data they may take (design S16). A caller HR has not
+ * the copy of their data they may take (design S16), their absence with the
+ * request sheet, and — for a caller who manages anyone — My team. A caller HR has not
  * linked yet gets a plain explanation, not an error: `no_person` is the
  * expected state of somebody new. Laid out for a phone first.
  */
 export const MyPage = () => {
   const { t } = useI18n("staff");
-  const { tab = "profile" } = useSearch({ strict: false }) as PersonSearch;
+  const { tab = "profile" } = useSearch({ strict: false }) as MyPageSearch;
   const navigate = useNavigate() as (options: unknown) => void;
   const meta = useQuery(staffMetaQueryOptions());
   const me = useQuery(meQueryOptions());
@@ -66,7 +69,9 @@ export const MyPage = () => {
     );
   if (!me.data || !meta.data) return <ContentSkeleton rows={6} rowHeight={44} />;
   const person = me.data;
-  const current: PersonTab = tab;
+  const managesAnyone = meta.data.capabilities.managesAnyone;
+  // My team is there only for a caller who manages anyone (plan reading 6).
+  const current: MyPageTab = tab === "team" && !managesAnyone ? "profile" : tab;
 
   return (
     <Stack gap="lg">
@@ -78,6 +83,8 @@ export const MyPage = () => {
           { value: "employments", label: t("tab_employments") },
           { value: "history", label: t("tab_history") },
           { value: "documents", label: t("tab_documents") },
+          { value: "absence", label: t("tab_absence") },
+          ...(managesAnyone ? [{ value: "team", label: t("tab_team") }] : []),
         ]}
         value={current}
         onChange={(next) => navigate({ search: { tab: next === "profile" ? undefined : next }, replace: true })}
@@ -102,6 +109,14 @@ export const MyPage = () => {
         <Tabs.Panel value="documents" pt="lg">
           {current === "documents" && <MyDocuments today={meta.data.today} />}
         </Tabs.Panel>
+        <Tabs.Panel value="absence" pt="lg">
+          {current === "absence" && <MyAbsence today={meta.data.today} types={meta.data.absenceTypes} />}
+        </Tabs.Panel>
+        {managesAnyone && (
+          <Tabs.Panel value="team" pt="lg">
+            {current === "team" && <MyTeam person={person} today={meta.data.today} types={meta.data.absenceTypes} />}
+          </Tabs.Panel>
+        )}
       </PageTabs>
       <MyDetailsModal person={person} opened={editing} onClose={() => setEditing(false)} />
     </Stack>

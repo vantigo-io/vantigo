@@ -7,6 +7,7 @@ import {
   STAFF_HOME_PATH,
   STAFF_SETTINGS_ROUTE_PATH,
   staffNavItems,
+  validateMyPageSearch,
   validatePeopleSearch,
   validatePersonSearch,
 } from "@vantigo/staff-ui";
@@ -121,7 +122,11 @@ describe("the staff routes", () => {
 
   it("validates the person page's and My page's tab with the package's validator", () => {
     expect(StaffPersonRoute.options.validateSearch).toBe(validatePersonSearch);
-    expect(StaffMeRoute.options.validateSearch).toBe(validatePersonSearch);
+    // My page has its own tabs besides a person's: Absence, and My team.
+    expect(StaffMeRoute.options.validateSearch).toBe(validateMyPageSearch);
+    expect(validateMyPageSearch({ tab: "absence" })).toEqual({ tab: "absence" });
+    expect(validateMyPageSearch({ tab: "team" })).toEqual({ tab: "team" });
+    expect(validatePersonSearch({ tab: "team" })).toEqual({ tab: undefined });
   });
 
   // A person's id is a positive whole number: anything else in the path never
