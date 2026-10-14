@@ -1708,9 +1708,11 @@ pre-flight I2):
   arbeidsgiverperiode a sykmelding is needed.
 - **Employment**: the first day at least `self_cert_after_months` after the start of
   the employment in force on it (`self_certification_too_early`).
-- **The withdrawal**: no egenmelding whose first day lies from the day HR decided to
-  withdraw it until its last day (`self_certification_withdrawn`); an egenmelding that
-  began before the decision stands whole (review L1).
+- **The withdrawal**: no egenmelding with any day from the day HR decided to withdraw
+  it until its last day (`self_certification_withdrawn`). Days before the decision stand
+  (review L1), but every day of a row is judged: a row that begins before the decision
+  and runs into the withdrawal is refused whole, and the person registers the days
+  before it as a row of their own.
 
 Past a limit is `self_certification_exhausted`; each refusal is a 409 whose detail says
 why and tells the person to register a sykmelding.

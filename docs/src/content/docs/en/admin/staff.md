@@ -344,7 +344,8 @@ may withdraw the right for a period. On the screen: the person's **Absence** tab
    `withdrawnReason` are there.
 3. From today until that day, an egenmelding for the person is refused
    (`self_certification_withdrawn`); they register a sykmelding instead. Egenmelding for
-   days before you recorded the withdrawal still stands. Extending a withdrawal still in
+   days before you recorded the withdrawal still stands, as a row of its own: one that
+   runs into the withdrawal is refused whole. Extending a withdrawal still in
    force keeps the day you first recorded it.
 
 To lift it early, send `{"until": null}`. The withdrawal and its lifting are in the

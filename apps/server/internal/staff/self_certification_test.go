@@ -161,6 +161,12 @@ func TestSelfCertification_TheWithdrawal(t *testing.T) {
 		t.Errorf("re-issued: from %s until %s, want from 2026-09-02 until 2027-01-31", civilOf(standing.WithdrawnFrom), civilOf(standing.WithdrawnUntil))
 	}
 	refused(t, w.kariC.Do(http.MethodPost, meAbsencesPath, absence(t, h, "egenmelding", "2026-09-07", "2026-09-07")), http.StatusConflict, "self_certification_withdrawn")
+	// Every day of the row is judged: an egenmelding that begins before the
+	// day the withdrawal was decided and runs into it is refused whole; the
+	// days before stand as a row of their own.
+	h.Exec(t, `UPDATE staff.people SET self_cert_withdrawn_from = '2026-09-16' WHERE id = $1`, w.kari.Id)
+	refused(t, w.kariC.Do(http.MethodPost, meAbsencesPath, absence(t, h, "egenmelding", "2026-09-15", "2026-09-16")), http.StatusConflict, "self_certification_withdrawn")
+	requestOwn(t, w.kariC, absence(t, h, "egenmelding", "2026-09-14", "2026-09-15"))
 	standing = gen.StaffSelfCertification{}
 	do(t, w.hr, http.MethodPut, withdrawalPath(w.kari.Id), map[string]any{"until": nil}, http.StatusOK, &standing)
 	if standing.WithdrawnUntil != nil {

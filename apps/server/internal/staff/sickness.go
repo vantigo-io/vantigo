@@ -100,9 +100,12 @@ func judgeSelfCertification(ctx context.Context, txq *store.Queries, settings st
 	if err != nil {
 		return fmt.Errorf("staff: read person %d's withdrawal: %w", personID, err)
 	}
-	// From the day the withdrawal was decided (review L1) until its last day.
+	// Any day of the row from the day the withdrawal was decided (review L1)
+	// until its last day: a row that begins before the decision and runs
+	// into the withdrawal is refused whole — the days before it are a row of
+	// their own.
 	if w.SelfCertWithdrawnUntil.Valid && !w.SelfCertWithdrawnUntil.Time.Before(p.First) &&
-		(!w.SelfCertWithdrawnFrom.Valid || !p.First.Before(w.SelfCertWithdrawnFrom.Time)) {
+		(!w.SelfCertWithdrawnFrom.Valid || !p.Last.Before(w.SelfCertWithdrawnFrom.Time)) {
 		return selfCertRefusal(codeSelfCertWithdrawn, "Egenmelding withdrawn",
 			fmt.Sprintf("HR has withdrawn the right to egenmelding until %s.", w.SelfCertWithdrawnUntil.Time.Format(time.DateOnly)))
 	}
