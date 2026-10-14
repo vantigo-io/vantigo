@@ -1133,15 +1133,16 @@ Decisions taken while building it that change the design:
   sykmelding stands beside approved ferie and splits it only when HR records the
   employee's demand, with the § 9 (1) deadline judged; spec S9 and its reading 29
   amended ([the reference](docs/src/content/docs/en/reference/staff.md#a-sykmelding-over-other-rows)).
-- **HR-only types are decided by `staff:personal-data` alone** — provisional, open
-  question 9 in the plan: no manager, Approver or HR without that permission sees
-  such a request, its mail or its history; the alternative (svangerskapskontroll
-  approved automatically, managers deciding the rest) waits for the owner.
+- **HR-only types are decided by `staff:personal-data` alone** — decided by the owner
+  (2026-10-14, open question 9 in the plan): no manager, Approver or HR without that
+  permission sees such a request, its mail or its history, and nobody decides their
+  own; the sole holder's own self-approval comes with C.
 - **Colleagues read dates only**: a person's days away as coalesced spans with no row
   id — "absent", with no type, status, percentage, note or hour row, and none of the
   row's events — so a sykmelding over ferie is never seen.
 - **The payroll export needs `staff:personal-data` as well as `staff:manage`**
-  (interim, open question 10): its leave rows name HR-only leave by its description.
+  (decided by the owner, 2026-10-14, open question 10): its leave rows name HR-only
+  leave by its description.
   Its Leave ID is a stable surrogate, and ferie counts as holiday under any sickness
   until a postponement is recorded.
 - **The a-melding codes follow Skatteetaten's guide and NAV's kodeverk** — six leave
@@ -1155,7 +1156,12 @@ Decisions taken while building it that change the design:
 role; the authority mode; the flag on the person and its dates, the account created
 disabled ahead of the start, enabled on the day and disabled after the end, never
 deleted; the managed link; the accounts worker; the adoption of existing users; the
-Account tab.
+Account tab. With identity's contract work, `contracts.UserDirectory` gains "active
+users holding permission K", and with it two absence rules B could not judge: the
+**sole active holder of `staff:personal-data`** approves their own HR-only request
+(`absence_self_approved`, an attention item for `staff:personal-data` alone; decided by
+the owner 2026-10-14, B's open question 9), and mail can reach holders of
+`staff:approve` and `staff:manage` (B's open question 1).
 
 *Unblocks:* a hire who exists before their first day and can sign in on it, a leaver
 who cannot sign in the day after, and an employee who requests holiday from a phone.
