@@ -346,7 +346,8 @@ trekke tilbake retten for en periode. På skjermen: personens **Fravær**-fane, 
    `withdrawnReason` står der.
 3. Fra i dag og fram til den dagen avvises egenmelding for personen
    (`self_certification_withdrawn`); vedkommende registrerer sykmelding i stedet.
-   Egenmelding for dager før du registrerte tilbaketrekkingen, står seg. Å forlenge en
+   Egenmelding for dager før du registrerte tilbaketrekkingen, står seg som en egen rad:
+   en som går inn i tilbaketrekkingen, avvises i sin helhet. Å forlenge en
    tilbaketrekking som gjelder, beholder dagen du først registrerte den.
 
 For å oppheve den før tiden, send `{"until": null}`. Tilbaketrekkingen og opphevingen
