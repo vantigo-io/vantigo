@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -135,10 +136,28 @@ var (
 	allDaysTo   = time.Date(9999, time.December, 31, 0, 0, 0, 0, time.UTC)
 )
 
+// purposeLeaveID is the secrets box's purpose for a leave's Leave ID.
+const purposeLeaveID = "staff/leave-id"
+
+// leaveID is the Leave ID of the leave chain whose first row is id: "L-"
+// and a keyed MAC of the id under the installation's secret, so a leave
+// keeps one id in every month's file and the file tells no id of the
+// register (whole-branch review). The box's only error is its key
+// derivation's; the cell is then blank.
+func (s *server) leaveID(id int64) string {
+	mac, err := s.deps.Secrets.MAC(purposeLeaveID, []byte(fmt.Sprintf("leave:%d", id)))
+	if err != nil {
+		return ""
+	}
+	return "L-" + strings.ToUpper(hex.EncodeToString(mac[:6]))
+}
+
 // GetStaffPayrollExport Export a month for payroll
 // (GET /api/v1/staff/payroll/export)
 //
-// The contract asks staff:manage. Order: (1) the parameters and the actor,
+// The contract asks staff:manage with staff:personal-data (whole-branch
+// review, open question 10's interim): the leave rows name HR-only leave by
+// its a-melding description. Order: (1) the parameters and the actor,
 // before anything is read; (2) one REPEATABLE READ snapshot; (3) the rows and
 // the file, built in memory; (4) the export recorded after the snapshot in a
 // transaction of its own, with the hash of the bytes about to be answered — a
@@ -180,6 +199,7 @@ func (s *server) GetStaffPayrollExport(ctx context.Context, req gen.GetStaffPayr
 	}); err != nil {
 		return nil, err
 	}
+	in.LeaveID = s.leaveID
 	rows := payrollRows(in, month)
 	contentType, body, err := exporter.Export(ctx, month.Name, rows)
 	if err != nil {

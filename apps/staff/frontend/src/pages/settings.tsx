@@ -76,7 +76,8 @@ export const SettingsPage = () => {
           <HolidaySchemesTable />
           {settings.data && <SelfCertPolicyForm settings={settings.data} />}
           <RegisterDataCard sealedAllowed={capabilities.canRevealIdentifiers} />
-          <PayrollExportCard today={meta.data.today} />
+          {/* The payroll file names HR-only leave by its description: HR with staff:personal-data's (interim). */}
+          {capabilities.canRevealIdentifiers && <PayrollExportCard today={meta.data.today} />}
           {settings.data && <RetentionPanel settings={settings.data} />}
           {settings.data && <ThresholdsPanel acknowledged={settings.data.thresholdsAcknowledged} />}
         </>

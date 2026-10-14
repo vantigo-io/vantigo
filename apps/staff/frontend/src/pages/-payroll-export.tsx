@@ -20,7 +20,7 @@ const previousMonth = (today: string): string => {
 };
 
 /**
- * The payroll export (design S18), `staff:manage`'s: a month — the one
+ * The payroll export (design S18), `staff:manage`'s with `staff:personal-data` (its leave rows name HR-only leave): a month — the one
  * before the business zone's today unless another is picked, payroll being
  * run for the month just closed — sent as `YYYY-MM` and saved under the
  * server's name, `staff-payroll-YYYY-MM.csv`. The file carries no sealed

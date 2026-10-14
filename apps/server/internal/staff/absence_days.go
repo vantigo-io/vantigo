@@ -15,11 +15,11 @@ import (
 //     — and, beside leave the same day, degree × (100 − the leaves'
 //     percent) / 100, the leaves summed and capped at a whole day, so a day of
 //     100 % leave counts no sickness (Revision 3 M1).
-//   - Approved ferie is a holiday day and counts no sickness — no
-//     sykepenger are paid on a holiday day, and an egenmelding cannot
-//     interrupt one — except under a 100 % sykmelding, which counts the day
-//     once, as sick, and not as holiday, until a recorded postponement splits
-//     the ferie (Revision 3 H1).
+//   - Approved ferie is a holiday day and counts no sickness, whatever
+//     sickness covers it — no sykepenger are paid on a holiday day, and the
+//     ferie stands until the employee demands to postpone it (ferieloven § 9,
+//     Revision 3 H1); a recorded postponement splits the ferie, and the
+//     split rows then decide the days.
 //   - Child-sick days, leave and other day rows by their percent.
 
 // dayShares is one working day's absence, per kind.
@@ -39,7 +39,7 @@ func covers(r store.AbsencesBetweenRow, d time.Time) bool {
 // rows; rows not covering d count nothing.
 func sharesOn(rows []store.AbsencesBetweenRow, d time.Time) dayShares {
 	var beside int64
-	wholeSick, holiday := false, false
+	holiday := false
 	var on []store.AbsencesBetweenRow
 	for _, r := range rows {
 		if !covers(r, d) {
@@ -48,8 +48,6 @@ func sharesOn(rows []store.AbsencesBetweenRow, d time.Time) dayShares {
 		on = append(on, r)
 		share := shareOf(r.Kind, r.Percent, r.DegreePercent)
 		switch {
-		case r.Kind == kindSickCertified && share >= wholeDay:
-			wholeSick = true
 		case r.Kind == kindHoliday:
 			holiday = true
 		case !healthKind(r.Kind):
@@ -57,16 +55,14 @@ func sharesOn(rows []store.AbsencesBetweenRow, d time.Time) dayShares {
 		}
 	}
 	beside = min(beside, wholeDay)
-	// A holiday day under less than a 100 % sykmelding is a holiday day.
-	sickCounts := wholeSick || !holiday
+	// A holiday day is a holiday day, under any sickness.
+	sickCounts := !holiday
 	var out dayShares
 	for _, r := range on {
 		share := shareOf(r.Kind, r.Percent, r.DegreePercent)
 		switch r.Kind {
 		case kindHoliday:
-			if !wholeSick {
-				out.Holiday += share
-			}
+			out.Holiday += share
 		case kindSickSelf:
 			if sickCounts {
 				out.SelfSick += share * (wholeDay - beside) / wholeDay

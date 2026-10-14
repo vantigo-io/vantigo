@@ -608,7 +608,10 @@ the row is refused `person_erased`.
 ## Export a month for payroll
 
 The payroll file hands a month's employments to your payroll system. You need
-`staff:manage`.
+`staff:manage` **and** `staff:personal-data`: the file's leave rows name HR-only leave,
+such as pregnancy leave, by its a-melding description. Payroll is done by someone who
+holds both (an interim rule; the owner may instead choose to leave HR-only leave out of
+the file for HR without `staff:personal-data`).
 
 1. In **Staff settings**, under **Payroll export**, pick the **Month** — the month
    before today is chosen to begin with — and press **Export for payroll**
@@ -642,10 +645,11 @@ the **Child sick days beyond employer** — beyond the ten the employer bears in
 year, what NAV refunds — **Leave days**, **Time off hours** and **Other days**. Only
 approved and registered absence counts. Two rules to know: a sick day beside a
 percentage leave counts degree × (100 − the leave's percent) / 100, and approved ferie
-under a 100 % sykmelding counts once, **as sick**, until you record the employee's
-demand to postpone it ([Postpone holiday for sickness](#postpone-holiday-for-sickness));
-a graded sykmelding or an egenmelding over ferie counts as holiday alone, since no
-sykepenger are paid on a holiday day. Child-sick days count by their percent.
+counts **as holiday** under any sickness — a sykmelding of any degree or an egenmelding
+— since the holiday stands until the employee demands to postpone it and no sykepenger
+are paid on a holiday day; once you record the demand
+([Postpone holiday for sickness](#postpone-holiday-for-sickness)) the ferie is split and
+the sick days count as sick. Child-sick days count by their percent.
 
 **A person with two employments at once**: the day totals are on each employment's
 row, the child-sick days beyond the employer's ten on the main one alone (the highest
@@ -657,9 +661,11 @@ After an employment's row come its **leave rows**: one per leave the a-melding r
 (Skatteetaten's *Permisjon*), with **Leave ID**, **Leave start**, **Leave end**,
 **Leave description** and **Leave percent**. A leave is reported when it lasts more than
 fourteen days, or when the person's leaves in the last twelve months together pass
-fourteen days; permittering always; a child's sickness never. A leave extended by a
-new row — the next day, or after a weekend or public holiday — stays one leave
-under the lowest id of its rows, the id the a-melding knows it by. Before you wire
+fourteen days; permittering always; a child's sickness and a leave counted in hours
+(*ammefri*) never. A leave extended by a new row — the next day, or after a weekend or
+public holiday — stays one leave under one **Leave ID**, the id the a-melding knows it
+by: a code such as `L-C098AE873961`, the same in every month's file and never an id of
+the register. Before you wire
 the file to a payroll system, check the seven description values against the
 kodeliste that system uses: they were checked against NAV's sources on 2026-10-14,
 but Skatteetaten's own kodeliste could not be reached ([the

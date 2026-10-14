@@ -1638,6 +1638,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         "staff-people-import-template.csv",
       );
     if (path === "/api/v1/staff/payroll/export" && method === "GET") {
+      if (!manages(role) || !holdsPersonalData(role)) return forbidden();
       const month = url.searchParams.get("month") ?? "";
       if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
         return staffProblem(400, {
