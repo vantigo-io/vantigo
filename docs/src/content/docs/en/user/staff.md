@@ -193,9 +193,9 @@ With `staff:manage` the tab and the cards offer:
 - **Delete** on the latest row only, never the first, after asking. The row before it
   is in force again.
 - **Edit employment** — the **Start date** (the first terms move with it), the
-  **Business unit**, the kind of relationship and **Contract signed**. The employment
-  number never changes. The employment's holiday scheme is not on the form yet; saving
-  keeps it as it is ([holiday schemes](/en/admin/staff/#holiday-schemes)).
+  **Business unit**, the kind of relationship, **Contract signed** and the **Holiday
+  scheme** ([holiday schemes](/en/admin/staff/#holiday-schemes)). The employment number
+  never changes.
 - **End employment** — the **Last day worked**, today in the business time zone unless
   you change it and allowed in the future, and the **End reason**, one of the
   a-melding's six; the form asks for the reason before it sends anything. **Reopen**
@@ -235,13 +235,13 @@ see the tab. From top to bottom:
   egenmelding**: choose **Until** — a day after today, at most a year ahead — give the
   **Reason** and press **Withdraw**. **Lift the withdrawal** ends it early. A withdrawal
   is shown only to the person, HR and `staff:personal-data`.
-- **Care days** for the year, to the person, HR and `staff:personal-data`.
+- **Care days** for this year (the year buttons do not change it), to the person, HR and `staff:personal-data`.
 - **Sick-leave case from** *date* — the open case: its last day so far, the 52-week end,
   the milestones and the accommodation note. A manager, an Approver and HR **Mark done**
   and **Waive** a milestone; the manager and HR **Change the accommodation note** (an
   Approver is not shown it). HR also has **Change the estimate** — or **Reset to first
   day + 364** — and **Close the case**. A milestone's note, and why one was waived, are
-  shown to `staff:personal-data` only, who has **Change the note** on each milestone.
+  shown only to the person and `staff:personal-data`, who has **Change the note** on each milestone.
 - **Absences** — the person's rows that touch the year shown, as you may see them, a
   page at a time when there are many. A type that reveals health or
   family matters shows a manager and HR without `staff:personal-data` as an approved
@@ -609,8 +609,9 @@ the same requests as on [My team](#my-team).
 days, weekends and public holidays shaded. Move with **Previous month** and **Next
 month**; with the directory or HR's permission, narrow it with **Department** (or
 **All departments**). A dashed bar is a request still waiting. Who appears follows your
-permissions: with the directory, HR's, the Approver's or the personal-data permission,
-everyone employed in the month; a manager without those, their reports and themselves.
+permissions: with HR's, the Approver's or the personal-data permission, everyone
+employed in the month; with the directory alone, those of them active today; a manager
+without those, their reports and themselves.
 
 Each bar shows only what you may see of it: the type and its status, a percentage of
 the day or the hours for HR and the person's manager; *Leave* for a type that reveals
@@ -645,7 +646,9 @@ The rules behind the screens above:
   and the percentages add up to at most 100 % — but a sykmelding of any degree stands
   beside a leave that leaves part of your day, as the doctor grades it against the
   work that is left. A request you have made counts as if it were
-  approved, so you cannot ask twice for the same day.
+  approved, so you cannot ask twice for the same day. A visit of a few hours, such as
+  a doctor's, stands beside any day absence; visits on one day add up to at most 24
+  hours.
 - **Sick during your holiday.** A sykmelding does not change your approved ferie by
   itself. If you are wholly unable to work (a 100 % sykmelding), you may demand that the
   holiday be postponed — with a legeerklæring, and by your last working day before the
@@ -665,19 +668,18 @@ The rules behind the screens above:
   when more than sixteen days have passed since the last. Its follow-up — the end of
   the employer's sixteen days, the follow-up plan at four weeks, the dialogue meetings
   at seven and twenty-six, NAV's activity requirement at eight — is your manager's and
-  HR's to mark; you see it, and the accommodation notes, but never a diagnosis: there
-  is nowhere to write one.
+  HR's to mark. A case never holds a diagnosis: there is nowhere to write one.
 - **Care days** for a sick child count against your days for the year — 10 for one or
   two children, 15 for three or more, more as a sole carer or with a chronically ill
   child — from the details HR has recorded. Going over is shown, never refused.
-- **Changing your mind.** While a request waits, you change it, remove it or cancel it
-  (a cancelled request stays in your history); to turn it into a registration — or
-  the other way round — remove it and enter the other. A registered absence — a sick one
+- **Changing your mind.** While a request waits, you change it or cancel it (a
+  cancelled request stays in your history); to turn it into a registration — or the
+  other way round — cancel it and enter the other. A registered absence — a sick one
   included — is HR's to change or remove: if your sykmelding ends early, tell HR.
-- **Who decides.** Your manager — or, if you have none, whoever decides absence for
-  everyone — approves or rejects your request; a rejection says why. Nobody approves
-  their own: a manager's request goes to their own manager. Once approved, only the one
-  who decided it (or HR, once it has begun) cancels it; HR corrects a decided or
+- **Who decides.** Your manager, the Approver or HR approves or rejects your request; a
+  rejection says why. Nobody approves their own: a manager's request goes to their own
+  manager. Once approved, whoever decides your absence may cancel it until it begins,
+  and after that only HR; HR corrects a decided or
   registered absence when the days were wrong. You are mailed when your request is
   decided, cancelled or corrected, and your manager when you ask for or register an
   absence — the mail never names a sickness, an HR-only type, a percentage or a note.
@@ -708,7 +710,8 @@ shown to them at all, so nothing in how it was entered gives it away.
 **Home**, the dashboard, has a **Staff** card for those with `staff:view` or
 `staff:manage`: the number of people employed today, and below it the full-time
 equivalents in force today, how many start and how many end within 30 days, how many
-people are away today — on any approved or registered absence, whatever its type —
+people are away today — on any approved or registered absence of whole or part days, whatever its type (a
+visit of a few hours does not count) —
 and, when there are any, the records with no employment at all. Press the card to open
 Staff. With `staff:access` alone you have the Staff app under **Modules** and no card.
 The open sick-leave cases and the sick-leave rate over the last twelve months are
@@ -924,7 +927,9 @@ identity numbers and no bank accounts. Every export is recorded in the history w
 your name and the file's SHA-256 hash, so the file payroll received can be recognised
 later. The codes of the three appointment forms added in 2025 (hired out, and on call)
 are not verified against Skatteetaten's code list — the card says so: check them with
-your payroll system before you rely on them.
+your payroll system before you rely on them. Likewise, check the seven leave
+descriptions the absence columns carry against the code list your payroll system
+validates with.
 
 To the right of the employment columns the file carries the month's absence: holiday,
 egenmelding, sykmelding, child-sick (and the days of it beyond the employer's ten),
@@ -942,7 +947,9 @@ rest on its own every hour; what each erase removes is in the
 - **Grace period (days)** — how long after a person's last employment ended their
   personnel administration is erased: 0 to 3650 days, 90 unless changed.
 - **Health documents (days)** — how long after the last employment ended their health
-  documents are deleted: 30 to 3650 days, 365 unless changed.
+  documents are deleted: 30 to 3650 days, 365 unless changed. The same period after a
+  sick-leave case closed erases its sick-leave data, whatever the employment ([the
+  administration guide](/en/admin/staff/#retention)).
 
   Change either and press **Save periods**. A period outside its bounds is refused on
   its field before anything is saved. If somebody else saved the settings since you
@@ -956,8 +963,9 @@ rest on its own every hour; what each erase removes is in the
 
 **Run retention now** runs the hourly erase now, after asking: it erases for good what
 is due, and cannot be undone. People under a legal hold are passed over. The card then
-says what was erased — the personnel administration, health documents, and pay and
-contract, each with a count — and how many files were deleted from the store. The
+says what was erased — the personnel administration, health documents, pay and
+contract, sick-leave cases, sick-child days and withdrawals of egenmelding, each with a
+count — and how many files were deleted from the store. The
 deletions stop after 30 seconds: what is not finished, the worker finishes on its next
 look. While the worker is running already, the page says so: try again in a moment.
 

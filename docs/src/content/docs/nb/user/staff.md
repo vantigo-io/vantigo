@@ -194,9 +194,9 @@ Med `staff:manage` tilbyr fanen og kortene:
 - **Slett** bare på den siste raden, aldri den første, etter at du har bekreftet. Raden
   før gjelder da igjen.
 - **Endre arbeidsforholdet** — **Startdato** (de første vilkårene flyttes med),
-  **Virksomhet**, typen arbeidsforhold og **Avtale signert**. Arbeidsforholdsnummeret
-  endres aldri. Arbeidsforholdets ferieordning er ikke på skjemaet ennå; når du lagrer,
-  beholdes den som den er ([ferieordninger](/nb/admin/staff/#ferieordninger)).
+  **Virksomhet**, typen arbeidsforhold, **Avtale signert** og **Ferieordning**
+  ([ferieordninger](/nb/admin/staff/#ferieordninger)). Arbeidsforholdsnummeret endres
+  aldri.
 - **Avslutt arbeidsforholdet** — **Siste arbeidsdag**, i dag i virksomhetens tidssone
   med mindre du endrer den, og gjerne fram i tid, og **Sluttårsak**, en av
   a-meldingens seks; skjemaet ber om årsaken før noe sendes. **Gjenåpne** fjerner en
@@ -236,14 +236,14 @@ Ovenfra og ned:
   egenmelding**: velg **Til og med** — en dag etter i dag, høyst ett år frem — skriv
   **Grunn** og trykk **Trekk tilbake**. **Opphev tilbaketrekkingen** avslutter den
   tidligere. En tilbaketrekking vises bare for personen, HR og `staff:personal-data`.
-- **Omsorgsdager** for året, for personen, HR og `staff:personal-data`.
+- **Omsorgsdager** for i år (årsknappene endrer det ikke), for personen, HR og `staff:personal-data`.
 - **Sykefraværssak fra** *dato* — den åpne saken: siste dag så langt, 52-ukersgrensen,
   milepælene og tilretteleggingsnotatet. En leder, en godkjenner og HR har **Marker som
   gjort** og **Frafall** på en milepæl; lederen og HR har **Endre
   tilretteleggingsnotatet** (en godkjenner får ikke se det). HR har også **Endre
   anslaget** — eller **Tilbakestill til første dag + 364** — og **Lukk saken**. En
-  milepæls notat, og hvorfor en ble frafalt, vises bare for `staff:personal-data`, som har
-  **Endre notatet** på hver milepæl.
+  milepæls notat, og hvorfor en ble frafalt, vises bare for personen og `staff:personal-data`, som
+  har **Endre notatet** på hver milepæl.
 - **Fravær** — personens rader i året som vises, slik du har lov til å se dem, en side
   om gangen når de er mange. En type som avslører helse-
   eller familieforhold, vises for en leder og for HR uten `staff:personal-data` som en
@@ -610,9 +610,9 @@ samme søknadene som under [Mitt team](#mitt-team).
 dagene, med helger og helligdager skyggelagt. Bla med **Forrige måned** og **Neste
 måned**; med tilgang til ansattoversikten eller HR-rettigheten kan du avgrense med
 **Avdeling** (eller **Alle avdelinger**). En stiplet stolpe er en søknad som venter. Hvem
-som vises, følger rettighetene dine: med ansattoversikten, HR-rettigheten,
-godkjennerrettigheten eller personopplysningsrettigheten alle som er ansatt i måneden;
-en leder uten disse, dem hen er leder for og seg selv.
+som vises, følger rettighetene dine: med HR-rettigheten, godkjennerrettigheten eller
+personopplysningsrettigheten alle som er ansatt i måneden; med bare ansattoversikten
+de av dem som er aktive i dag; en leder uten disse, dem hen er leder for og seg selv.
 
 Hver stolpe viser bare det du har lov til å se: typen og statusen, en prosent av dagen
 eller timene for HR og personens leder; *Permisjon* for en type som røper helse eller
@@ -642,27 +642,13 @@ Reglene bak skjermbildene over:
   inn på dine vegne. Lederen din legger ikke inn for deg. Et legebesøk er timer på én
   dag; alt annet er hele dager, noen typer som en prosent av hver dag. Sykefravær har
   ingen merknad.
-- **Hvem som avgjør.** Lederen din — eller, hvis du ikke har noen, den som avgjør fravær
-  for alle — godkjenner eller avslår søknaden din; et avslag sier hvorfor. Ingen
-  godkjenner sitt eget: en leders søknad går til lederens egen leder. Når den er
-  godkjent, er det bare den som avgjorde den (eller HR, når fraværet har begynt) som
-  kansellerer den; HR retter et avgjort eller registrert fravær når dagene var feil. Du
-  får e-post når søknaden din er avgjort, kansellert eller rettet, og lederen din når du
-  søker om eller registrerer fravær — e-posten nevner aldri sykdom, en HR-type, en
-  prosent eller en merknad.
-- **Permisjon som røper helse eller familieforhold** (en HR-type, som
-  svangerskapspermisjon) avgjøres av den som har rettigheten for personopplysninger, ikke
-  av lederen din, og lederen din får ikke e-post om den; lederen ser den først når den er
-  godkjent, som *permisjon*.
-- **Å avgjøre, for ledere.** Søknadene du avgjør, venter i godkjenningsinnboksen din,
-  eldste først — under [Mitt team](#mitt-team), og på [fraværssiden](#fraværssiden) for
-  dem som avgjør i kraft av rettighet; fraværskalenderen viser en måned for teamet ditt —
-  eller, med tilgang til personoversikten, for alle, der kolleger bare ser dagene noen er borte.
 - **To fravær samme dag** kan stå sammen bare når begge typene tillater en prosent og
   prosentene til sammen er høyst 100 % — men en sykmelding av hvilken som helst grad kan
   stå ved siden av en permisjon som lar en del av dagen stå igjen, siden legen graderer
   den mot arbeidet som er igjen. En søknad du har sendt teller som om den var
-  innvilget, så du kan ikke søke to ganger om samme dag.
+  innvilget, så du kan ikke søke to ganger om samme dag. Et besøk på noen timer, som
+  hos legen, kan stå ved siden av hvilket som helst dagfravær; besøk samme dag kan til
+  sammen være høyst 24 timer.
 - **Syk i ferien.** En sykmelding endrer ikke den innvilgede ferien din av seg selv. Er
   du helt arbeidsufør (100 % sykmelding), kan du kreve at ferien utsettes — med
   legeerklæring, og senest siste arbeidsdag før ferien når du blir syk før den, og uten
@@ -680,17 +666,32 @@ Reglene bak skjermbildene over:
 - **Sykefraværssaken din.** Sykefraværene dine samles i en sak — en ny når det har gått
   mer enn seksten dager siden forrige. Oppfølgingen — slutten på arbeidsgiverens
   seksten dager, oppfølgingsplanen etter fire uker, dialogmøtene etter sju og tjueseks,
-  NAVs aktivitetskrav etter åtte — markerer lederen din og HR; du ser den og
-  tilretteleggingsnotatene, men aldri en diagnose: det finnes ikke noe sted å skrive en.
+  NAVs aktivitetskrav etter åtte — markerer lederen din og HR. En sak har aldri
+  en diagnose: det finnes ikke noe sted å skrive en.
 - **Omsorgsdager** for sykt barn teller mot dagene dine for året — 10 for ett eller to
   barn, 15 for tre eller flere, flere når du er alene om omsorgen eller har et kronisk
   sykt barn — ut fra opplysningene HR har registrert. Går du over, vises det, men det
   avvises aldri.
-- **Når du ombestemmer deg.** Mens en søknad venter, kan du endre den, fjerne den eller
-  trekke den tilbake (en tilbaketrukket søknad blir stående i historikken); for å gjøre
-  den om til en registrering — eller omvendt — fjern den og legg inn den andre. Et registrert
+- **Når du ombestemmer deg.** Mens en søknad venter, kan du endre den eller trekke den
+  tilbake (en tilbaketrukket søknad blir stående i historikken); for å gjøre den om til
+  en registrering — eller omvendt — trekk den tilbake og legg inn den andre. Et registrert
   fravær — også sykefravær — er HRs å endre eller fjerne: slutter sykmeldingen tidligere,
   si fra til HR.
+- **Hvem som avgjør.** Lederen din, godkjenneren eller HR godkjenner eller avslår
+  søknaden din; et avslag sier hvorfor. Ingen godkjenner sitt eget: en leders søknad går
+  til lederens egen leder. Når den er godkjent, kan den som avgjør fraværet ditt, trekke
+  den tilbake til fraværet begynner, og deretter bare HR; HR retter et avgjort eller registrert fravær når dagene var feil. Du
+  får e-post når søknaden din er avgjort, trukket tilbake eller rettet, og lederen din når du
+  søker om eller registrerer fravær — e-posten nevner aldri sykdom, en HR-type, en
+  prosent eller en merknad.
+- **Permisjon som røper helse eller familieforhold** (en HR-type, som
+  svangerskapspermisjon) avgjøres av den som har rettigheten for personopplysninger, ikke
+  av lederen din, og lederen din får ikke e-post om den; lederen ser den først når den er
+  godkjent, som *permisjon*.
+- **Å avgjøre, for ledere.** Søknadene du avgjør, venter i godkjenningsinnboksen din,
+  eldste først — under [Mitt team](#mitt-team), og på [fraværssiden](#fraværssiden) for
+  dem som avgjør i kraft av rettighet; fraværskalenderen viser en måned for teamet ditt —
+  eller, med tilgang til ansattoversikten, for alle, der kolleger bare ser dagene noen er borte.
 - **Feriekontoen din** teller i arbeidsdager, mandag til fredag uten helligdager:
   retten din etter selskapets ferieordning (25 virkedager er 21 arbeidsdager; mer fra
   året du fyller 60; færre når du begynner etter 30. september), det HR overførte fra i
@@ -698,7 +699,7 @@ Reglene bak skjermbildene over:
   deg forbi det som står igjen, sendes likevel — kontoen viser den som overtrukket.
 
 Hvem ser fraværet ditt: du, lederen din og HR ser datoene, statusen, typen og detaljene;
-kolleger med tilgang til personoversikten ser bare dagene du er borte — aldri om det var
+kolleger med tilgang til ansattoversikten ser bare dagene du er borte — aldri om det var
 en søknad eller en registrering, typen, en prosent, timer eller en merknad, så en
 sykedag ser ut som en fridag. En type som avslører helse eller familieforhold (som
 svangerskapspermisjon, svangerskapskontroll eller en religiøs høytid) viser lederen din
@@ -710,7 +711,8 @@ ikke for lederen i det hele tatt, så ingenting ved hvordan den ble lagt inn, r�
 **Hjem**, dashbordet, har et **Ansatte**-kort for den som har `staff:view` eller
 `staff:manage`: hvor mange som er ansatt i dag, og under det årsverkene i dag, hvor
 mange som begynner og hvor mange som slutter innen 30 dager, hvor mange som er borte i
-dag — på godkjent eller registrert fravær, uansett type — og, når det finnes noen,
+dag — på godkjent eller registrert fravær i hele eller deler av dager, uansett type (et
+besøk på noen timer teller ikke) — og, når det finnes noen,
 oppføringene uten noe arbeidsforhold. Trykk på kortet for å åpne Ansatte. Med bare
 `staff:access` har du Ansatte-appen under **Moduler** og ikke noe kort. De åpne
 sykefraværssakene og sykefraværet de siste tolv månedene leses gjennom API-et bare av
@@ -924,7 +926,8 @@ fødselsnumre og ingen kontonumre. Hver eksport føres i historikken med navnet 
 filens SHA-256-sjekksum, så filen lønn fikk, kan kjennes igjen senere. Kodene for de tre
 ansettelsesformene som kom i 2025 (utleid, og tilkallingsvikar) er ikke kontrollert mot
 Skatteetatens kodeliste — kortet sier fra: sjekk dem med lønnssystemet før du stoler på
-dem.
+dem. Sjekk på samme måte de sju permisjonsbeskrivelsene fraværskolonnene har, mot
+kodelisten lønnssystemet ditt validerer med.
 
 Til høyre for kolonnene om arbeidsforholdet har filen månedens fravær: ferie,
 egenmelding, sykmelding, sykt barn (og dagene av det utover arbeidsgiverens ti),
@@ -942,7 +945,9 @@ sletter resten av seg selv hver time; hva hver sletting fjerner, står i
 - **Frist (dager)** — hvor lenge etter at en persons siste arbeidsforhold sluttet
   personaladministrasjonen slettes: 0 til 3650 dager, 90 om ikke annet er satt.
 - **Helsedokumenter (dager)** — hvor lenge etter at siste arbeidsforhold sluttet
-  helsedokumentene slettes: 30 til 3650 dager, 365 om ikke annet er satt.
+  helsedokumentene slettes: 30 til 3650 dager, 365 om ikke annet er satt. Like lenge
+  etter at en sykefraværssak ble avsluttet, slettes sykefraværsopplysningene, uansett
+  arbeidsforhold ([administrasjonsveiledningen](/nb/admin/staff/#oppbevaring)).
 
   Endre en av dem og trykk **Lagre fristene**. En frist utenfor grensene avvises på
   feltet før noe lagres. Har noen andre lagret innstillingene siden du åpnet siden,
@@ -956,8 +961,9 @@ sletter resten av seg selv hver time; hva hver sletting fjerner, står i
 
 **Kjør sletting nå** kjører timeslettingen nå, etter å ha spurt: den sletter for godt
 det som er forfalt, og kan ikke angres. Personer med slettesperre hoppes over. Kortet
-sier så hva som ble slettet — personaladministrasjon, helsedokumenter, og lønn og
-avtale, hver med et antall — og hvor mange filer som ble slettet fra lageret.
+sier så hva som ble slettet — personaladministrasjon, helsedokumenter, lønn og
+avtale, sykefraværssaker, dager med sykt barn og tilbaketrekkinger av egenmelding, hver
+med et antall — og hvor mange filer som ble slettet fra lageret.
 Slettingene stopper etter 30 sekunder: det som ikke er ferdig, gjør
 oppbevaringsarbeideren ferdig neste gang den ser etter. Kjører arbeideren allerede, sier
 siden fra: prøv igjen om et øyeblikk.
