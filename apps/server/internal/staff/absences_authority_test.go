@@ -130,21 +130,17 @@ func TestAbsences_HROnlyRowsArePersonalDatasToDecide(t *testing.T) {
 		t.Error("the manager was mailed about an HR-only registration or decision")
 	}
 	for name, c := range readers {
-		a := raw(t, c.Do(http.MethodGet, absencePath(check.Id), nil))
+		// The HR-only hour row is not read by a leave-reader at all
+		// (whole-branch review); the leave is, without its note.
+		if r := c.Do(http.MethodGet, absencePath(check.Id), nil); r.Status != http.StatusNotFound {
+			t.Errorf("%s reads the check: %d, want 404", name, r.Status)
+		}
 		b := raw(t, c.Do(http.MethodGet, absencePath(perm.Id), nil))
-		if !slices.Equal(keysOf(a), keysOf(b)) {
-			t.Errorf("%s: the check's keys %v, the leave's %v, want the same", name, keysOf(a), keysOf(b))
-		}
-		for _, k := range []string{"shownAs", "status", "percent", "note", "decisionNote", "hours", "revision"} {
-			if a[k] != b[k] {
-				t.Errorf("%s: %s = %v for the check, %v for the leave, want the same", name, k, a[k], b[k])
-			}
-		}
 		if _, ok := b["note"]; ok {
 			t.Errorf("%s reads the leave's note", name)
 		}
-		if a["status"] != "approved" {
-			t.Errorf("%s reads the check as %v, want approved", name, a["status"])
+		if b["status"] != "approved" || b["shownAs"] != "leave" {
+			t.Errorf("%s reads the leave as %v, want approved leave", name, b)
 		}
 		if c != w.approver {
 			if e := eventsAbout(t, c, w.kari.Id, perm.Id); len(e) != 0 {

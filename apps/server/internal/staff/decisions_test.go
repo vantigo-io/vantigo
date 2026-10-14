@@ -476,11 +476,11 @@ func TestCalendar_PerAudience(t *testing.T) {
 		t.Error("a colleague's calendar leaves out an active person")
 	}
 	bars := cal[w.kari.Id]
-	if len(bars) != 3 {
-		t.Fatalf("a colleague sees %d of Kari's bars, want the three approved and registered", len(bars))
+	if len(bars) != 2 {
+		t.Fatalf("a colleague sees %d of Kari's bars, want the two spans of approved and registered days — no hour row", len(bars))
 	}
 	for _, b := range bars {
-		if got := keysOf(b); !slices.Equal(got, []string{"firstDay", "id", "lastDay", "personId", "shownAs"}) || b["shownAs"] != "absent" {
+		if got := keysOf(b); !slices.Equal(got, []string{"firstDay", "lastDay", "personId", "shownAs"}) || b["shownAs"] != "absent" {
 			t.Errorf("a colleague's bar %v, want the dates alone, absent", b)
 		}
 	}
@@ -493,11 +493,12 @@ func TestCalendar_PerAudience(t *testing.T) {
 	for _, b := range cal[w.kari.Id] {
 		byID[b["id"].(float64)] = b
 	}
-	if len(byID) != 4 || byID[float64(no.Id)] != nil || byID[float64(pending.Id)] == nil {
-		t.Errorf("the manager's bars %v, want the four but the rejected one", byID)
+	if len(byID) != 3 || byID[float64(no.Id)] != nil || byID[float64(pending.Id)] == nil {
+		t.Errorf("the manager's bars %v, want the three but the rejected one", byID)
 	}
-	if b := byID[float64(check.Id)]; b["shownAs"] != "leave" || b["hours"] != nil || b["status"] != "approved" || b["revision"] != nil {
-		t.Errorf("the manager reads the check as %v, want leave, approved, no hours, no revision", b)
+	// An HR-only hour row is no bar to a leave-reader (whole-branch review).
+	if b, ok := byID[float64(check.Id)]; ok {
+		t.Errorf("the manager reads the check as %v, want no bar", b)
 	}
 	if b := byID[float64(sick.Id)]; b["shownAs"] != "type" {
 		t.Errorf("the manager reads the sykmelding as %v, want its type", b)
@@ -516,8 +517,8 @@ func TestCalendar_PerAudience(t *testing.T) {
 		t.Errorf("a caller linked to nobody sees %v, want nobody", cal)
 	}
 	cal, _ = calendarAs(t, w.approver, december)
-	if b := cal[w.kari.Id]; len(b) != 4 {
-		t.Errorf("the Approver sees %d of Kari's bars, want 4", len(b))
+	if b := cal[w.kari.Id]; len(b) != 3 {
+		t.Errorf("the Approver sees %d of Kari's bars, want 3 — no HR-only hour row", len(b))
 	}
 	cal, _ = calendarAs(t, w.hr, december+fmt.Sprintf("&departmentId=%d", w.ledelse.Id))
 	if len(cal) != 1 || cal[w.olav.Id] == nil {

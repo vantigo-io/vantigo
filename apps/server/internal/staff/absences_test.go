@@ -3,6 +3,7 @@ package staff_test
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -415,7 +416,8 @@ func TestAbsences_ShapingMatrix(t *testing.T) {
 		{"personal-data", w.pd, map[int64]shown{
 			ferie.Id: {gen.StaffAbsenceShownAsType, ferieType, true, true}, hrOnly.Id: {gen.StaffAbsenceShownAsType, hrOnlyType, true, true}, leave.Id: {gen.StaffAbsenceShownAsType, 0, true, true}}},
 		{"a colleague", w.viewer, map[int64]shown{
-			ferie.Id: {visible: false}, hrOnly.Id: {gen.StaffAbsenceShownAsAbsent, 0, false, true}, leave.Id: {gen.StaffAbsenceShownAsAbsent, 0, false, true}}},
+			// A colleague reads spans, never rows (whole-branch review).
+			ferie.Id: {visible: false}, hrOnly.Id: {visible: false}, leave.Id: {visible: false}}},
 		{"a stranger", w.nobody, map[int64]shown{ferie.Id: {}, hrOnly.Id: {}, leave.Id: {}}},
 	} {
 		var list gen.PaginatedResponseOfStaffAbsence
@@ -639,29 +641,95 @@ func TestAbsences_AColleagueSeesNoKindOfAbsence(t *testing.T) {
 	t.Parallel()
 	w := newAbsenceWorld(t)
 	h := w.h
-	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-10-05", "2026-10-09", "degreePercent", 50))
+	sick := register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-10-05", "2026-10-09", "degreePercent", 50))
 	register(t, w.hr, w.kari.Id, absence(t, h, "sykt_barn", "2026-10-12", "2026-10-12"))
 	register(t, w.hr, w.kari.Id, absence(t, h, "helse", "2026-10-13", "2026-10-13", "hours", 2))
 	ferie := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-10-19", "2026-10-23"))
 	h.Exec(t, `UPDATE staff.absences SET status = 'approved' WHERE id = $1`, ferie.Id)
 
+	// Spans of days, not rows (whole-branch review): no id, and no hour row.
 	rows := rowsAs(t, w.viewer, fmt.Sprintf("?personId=%d", w.kari.Id))
-	if len(rows) != 4 {
-		t.Fatalf("a colleague lists %d rows, want 4", len(rows))
+	if len(rows) != 3 {
+		t.Fatalf("a colleague lists %d spans (%v), want 3 — the hour row unseen", len(rows), rows)
 	}
-	want := []string{"firstDay", "id", "lastDay", "personId", "shownAs"}
+	want := []string{"firstDay", "lastDay", "personId", "shownAs"}
 	for _, r := range rows {
 		if got := keysOf(r); !slices.Equal(got, want) || r["shownAs"] != "absent" {
 			t.Errorf("a colleague reads %v, want only %v and shownAs absent", r, want)
 		}
-		one := raw(t, w.viewer.Do(http.MethodGet, absencePath(int64(r["id"].(float64))), nil))
-		if got := keysOf(one); !slices.Equal(got, want) {
-			t.Errorf("a colleague reads row %v as %v, want only %v", r["id"], one, want)
+	}
+	for _, id := range []int64{sick.Id, ferie.Id} {
+		if r := w.viewer.Do(http.MethodGet, absencePath(id), nil); r.Status != http.StatusNotFound {
+			t.Errorf("a colleague reading row %d by id: %d, want 404 — a colleague is told no row ids", id, r.Status)
 		}
 	}
 	for _, status := range []string{"registered", "approved", "requested"} {
 		if rows := rowsAs(t, w.viewer, fmt.Sprintf("?personId=%d&status=%s", w.kari.Id, status)); len(rows) != 0 {
 			t.Errorf("a colleague filtering on %s lists %d rows, want none", status, len(rows))
+		}
+	}
+}
+
+// A colleague reads a person's absence as coalesced spans of days, in the
+// list and on the calendar (whole-branch review): a sykmelding over ferie,
+// or a row registered after the fact beside another, reads as one span. Hour
+// rows go only to the person, to staff:personal-data and — for a type that
+// is not HR-only — to the readers of the type; an HR-only hour row never to
+// one who reads it as leave.
+func TestAbsences_ColleagueSpansAndHourRows(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	ferie := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-10-05", "2026-10-09"))
+	approveRow(t, h, ferie.Id)
+	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-10-07", "2026-10-08"))
+	register(t, w.hr, w.kari.Id, absence(t, h, "velferdspermisjon", "2026-10-10", "2026-10-11"))
+	h.Exec(t, `UPDATE staff.absences SET status = 'approved' WHERE person_id = $1 AND first_day = '2026-10-10'`, w.kari.Id)
+	visit := register(t, w.hr, w.kari.Id, absence(t, h, "helse", "2026-10-13", "2026-10-13", "hours", 2))
+	control := requestOwn(t, w.kariC, absence(t, h, "svangerskapskontroll", "2026-10-14", "2026-10-14", "hours", 1))
+
+	span := map[string]any{"personId": float64(w.kari.Id), "firstDay": "2026-10-05", "lastDay": "2026-10-11", "shownAs": "absent"}
+	rows := rowsAs(t, w.viewer, fmt.Sprintf("?personId=%d", w.kari.Id))
+	if len(rows) != 1 || !reflect.DeepEqual(rows[0], span) {
+		t.Errorf("a colleague lists %v, want the one span %v", rows, span)
+	}
+	cal, _ := calendarAs(t, w.viewer, "?from=2026-10-01&to=2026-10-31")
+	if bars := cal[w.kari.Id]; len(bars) != 1 || !reflect.DeepEqual(bars[0], span) {
+		t.Errorf("a colleague's calendar shows %v, want the one span %v", bars, span)
+	}
+
+	ids := func(rows []map[string]any) []int64 {
+		var out []int64
+		for _, r := range rows {
+			if id, ok := r["id"].(float64); ok {
+				out = append(out, int64(id))
+			}
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name          string
+		c             *modtest.Client
+		visit, contrl bool
+	}{
+		{"the person", w.kariC, true, true},
+		{"personal-data", w.pd, true, true},
+		{"her manager", w.bossC, true, false},
+		{"HR without personal-data", w.hr, true, false},
+	} {
+		listed := ids(rowsAs(t, c.c, fmt.Sprintf("?personId=%d", w.kari.Id)))
+		cal, _ := calendarAs(t, c.c, "?from=2026-10-01&to=2026-10-31")
+		barred := ids(cal[w.kari.Id])
+		for _, x := range []struct {
+			id   int64
+			want bool
+		}{{visit.Id, c.visit}, {control.Id, c.contrl}} {
+			if slices.Contains(listed, x.id) != x.want || slices.Contains(barred, x.id) != x.want {
+				t.Errorf("%s: hour row %d listed %v, on the calendar %v; want %v", c.name, x.id, slices.Contains(listed, x.id), slices.Contains(barred, x.id), x.want)
+			}
+			if r := c.c.Do(http.MethodGet, absencePath(x.id), nil); (r.Status == http.StatusOK) != x.want {
+				t.Errorf("%s reading hour row %d: %d, want it read %v", c.name, x.id, r.Status, x.want)
+			}
 		}
 	}
 }

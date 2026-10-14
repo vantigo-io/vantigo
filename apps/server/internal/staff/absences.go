@@ -1,17 +1,20 @@
 package staff
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
@@ -62,8 +65,16 @@ func (a audience) onlyColleague() bool {
 // interim option b): staff:personal-data alone decides such a row, so to
 // anyone else it is an approved leave they never saw asked for, refused or
 // withdrawn.
-func (a audience) seesAbsence(status, visibility string) bool {
+//
+// An hour row (unit) is read only by the person, staff:personal-data and —
+// for a type that is not HR-only — the readers of the type (whole-branch
+// review): a colleague never, and a reader of an HR-only type as leave never
+// an HR-only one, since an hour of leave is a kind of absence of its own.
+func (a audience) seesAbsence(status, visibility, unit string) bool {
 	if !a.reads(groupAbsence) {
+		return false
+	}
+	if unit == unitHours && !a.Self && !a.PersonalData && (visibility != visibilityAbsent || !a.reads(groupAbsenceType)) {
 		return false
 	}
 	if a.onlyColleague() || leaveShaped(visibility, a) {
@@ -624,11 +635,13 @@ func parseAbsenceList(personID *int64, from, to *openapi_types.Date, status *gen
 }
 
 // listAbsences is one page of the absences the audiences allow: everyone's
-// rows when everyone, else full's people's every row and colleagues' people's
-// approved and registered ones; audienceOf shapes each row.
+// rows when everyone, else full's people's every row and — never under a
+// status filter — colleagues' people's days as spans (colleagueSpans);
+// audienceOf shapes each row. With spans the page is cut here, newest first
+// as the rows are, from all the caller's rows and spans.
 func (s *server) listAbsences(ctx context.Context, q *store.Queries, filter absenceListFilter, everyone bool, full, colleagues []int64, audienceOf func(personID int64) audience) (gen.PaginatedResponseOfStaffAbsence, error) {
 	params := store.ListAbsencesParams{
-		PersonID: filter.personID, Status: filter.status, Everyone: everyone, FullIds: full, ColleagueIds: colleagues,
+		PersonID: filter.personID, Status: filter.status, Everyone: everyone, FullIds: full,
 		Neutral: filter.neutral, SelfID: filter.self, PageSize: filter.pageSize, PageOffset: (filter.page - 1) * filter.pageSize,
 	}
 	if filter.from != nil {
@@ -637,9 +650,40 @@ func (s *server) listAbsences(ctx context.Context, q *store.Queries, filter abse
 	if filter.to != nil {
 		params.ToDay = dayParam(filter.to.Time)
 	}
+	var others []int64
+	if !everyone && filter.status == nil {
+		for _, p := range colleagues {
+			if !slices.Contains(full, p) && (filter.personID == nil || *filter.personID == p) {
+				others = append(others, p)
+			}
+		}
+	}
+	if len(others) > 0 {
+		spans, err := colleagueSpans(ctx, q, others, params.FromDay, params.ToDay)
+		if err != nil {
+			return gen.PaginatedResponseOfStaffAbsence{}, err
+		}
+		params.PageSize, params.PageOffset = math.MaxInt32, 0
+		rows, err := q.ListAbsences(ctx, params)
+		if err != nil {
+			return gen.PaginatedResponseOfStaffAbsence{}, fmt.Errorf("staff: list the absences: %w", err)
+		}
+		all := mapRows(rows, func(r store.ListAbsencesRow) gen.StaffAbsence {
+			return absenceResponse(r.StaffAbsence, r.Kind, r.Visibility, r.Unit, audienceOf(r.StaffAbsence.PersonID), s.absenceTag)
+		})
+		all = append(all, spans...)
+		slices.SortStableFunc(all, func(a, b gen.StaffAbsence) int {
+			return cmp.Or(b.FirstDay.Compare(a.FirstDay.Time), cmp.Compare(b.Id, a.Id))
+		})
+		from := min(int((filter.page-1)*filter.pageSize), len(all))
+		to := min(from+int(filter.pageSize), len(all))
+		return gen.PaginatedResponseOfStaffAbsence{
+			Data: all[from:to], Pagination: apicommon.Pagination(filter.page, filter.pageSize, int32(len(all))),
+		}, nil
+	}
 	total, err := q.CountAbsences(ctx, store.CountAbsencesParams{
 		PersonID: params.PersonID, FromDay: params.FromDay, ToDay: params.ToDay, Status: params.Status,
-		Everyone: everyone, FullIds: full, ColleagueIds: colleagues, Neutral: filter.neutral, SelfID: filter.self,
+		Everyone: everyone, FullIds: full, Neutral: filter.neutral, SelfID: filter.self,
 	})
 	if err != nil {
 		return gen.PaginatedResponseOfStaffAbsence{}, fmt.Errorf("staff: count the absences: %w", err)
@@ -654,6 +698,50 @@ func (s *server) listAbsences(ctx context.Context, q *store.Queries, filter abse
 		}),
 		Pagination: apicommon.Pagination(filter.page, filter.pageSize, int32(total)),
 	}, nil
+}
+
+// awaySpan is a run of one person's days away, as a colleague reads it.
+type awaySpan struct {
+	personID    int64
+	first, last time.Time
+}
+
+// coalesceDays folds rows, ordered by person and first day, into spans: a
+// row that overlaps or adjoins the span before it extends it.
+func coalesceDays(rows []store.ColleagueAbsenceDaysRow) []awaySpan {
+	var out []awaySpan
+	for _, r := range rows {
+		first, last := civil(r.FirstDay), civil(r.LastDay)
+		if n := len(out); n > 0 && out[n-1].personID == r.PersonID && !first.After(out[n-1].last.AddDate(0, 0, 1)) {
+			if last.After(out[n-1].last) {
+				out[n-1].last = last
+			}
+			continue
+		}
+		out = append(out, awaySpan{personID: r.PersonID, first: first, last: last})
+	}
+	return out
+}
+
+// spanResponse is a colleague's span: the person and the days, no row id,
+// shown as absent.
+func spanResponse(sp awaySpan) gen.StaffAbsence {
+	return gen.StaffAbsence{
+		PersonId: sp.personID, FirstDay: openapi_types.Date{Time: sp.first}, LastDay: openapi_types.Date{Time: sp.last},
+		ShownAs: gen.StaffAbsenceShownAsAbsent,
+	}
+}
+
+// colleagueSpans is what a colleague reads of people's absence (whole-branch
+// review): their approved and registered day rows touching from..to,
+// coalesced into spans with no row id — so a sykmelding over ferie, or a row
+// registered afterwards beside another, reads as one span — and no hour row.
+func colleagueSpans(ctx context.Context, q *store.Queries, people []int64, from, to pgtype.Date) ([]gen.StaffAbsence, error) {
+	rows, err := q.ColleagueAbsenceDays(ctx, store.ColleagueAbsenceDaysParams{PersonIds: people, FromDay: from, ToDay: to})
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the colleagues' absence: %w", err)
+	}
+	return mapRows(coalesceDays(rows), spanResponse), nil
 }
 
 // GetStaffAbsences List absences
@@ -725,7 +813,8 @@ func readAbsenceFor(ctx context.Context, q *store.Queries, caller *callerContext
 	if err != nil {
 		return row, a, err
 	}
-	if !a.seesAbsence(row.StaffAbsence.Status, row.Visibility) {
+	// A colleague is told no row ids: they read spans (colleagueSpans).
+	if a.onlyColleague() || !a.seesAbsence(row.StaffAbsence.Status, row.Visibility, row.Unit) {
 		return row, a, notFound()
 	}
 	return row, a, nil

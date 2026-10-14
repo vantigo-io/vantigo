@@ -12,6 +12,7 @@ import {
   myCareDaysQueryOptions,
   myHolidayAccountQueryOptions,
   mySelfCertificationQueryOptions,
+  rowIdOf,
   type StaffAbsence,
 } from "../api/absence";
 import type { StaffAbsenceType } from "../api/meta";
@@ -111,7 +112,7 @@ const MyAbsenceRow = ({
   // neither is not mine to change here.
   const changeable = absence.shownAs === "type" && absenceIfMatch(absence) !== undefined;
   const cancel = useMutation({
-    mutationFn: () => cancelAbsence(absence.id),
+    mutationFn: () => cancelAbsence(rowIdOf(absence)),
     onSuccess: async () => {
       notifications.show({ color: "teal", title: t("requestCancelled"), message: "" });
       await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });

@@ -44,7 +44,10 @@ func TestAbsences_RevisionOnlyToItsWriters(t *testing.T) {
 	h.Exec(t, `UPDATE staff.absences SET status = 'approved', revision = revision + 1 WHERE id = $1`, ferie.Id)
 
 	for _, id := range []int64{ferie.Id, sick.Id} {
-		for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "personal-data alone": w.pd, "a colleague": w.viewer} {
+		if r := w.viewer.Do(http.MethodGet, absencePath(id), nil); r.Status != http.StatusNotFound {
+			t.Errorf("a colleague reads row %d by id: %d, want 404 — a colleague reads spans", id, r.Status)
+		}
+		for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "personal-data alone": w.pd} {
 			body := raw(t, c.Do(http.MethodGet, absencePath(id), nil))
 			if _, ok := body["revision"]; ok {
 				t.Errorf("%s reads row %d's revision: %v", name, id, body)
@@ -121,15 +124,13 @@ func TestAbsences_LeaveReadersCannotTellTheHROnlyNotification(t *testing.T) {
 	}
 
 	for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "HR without personal-data": w.hr} {
-		a := raw(t, c.Do(http.MethodGet, absencePath(check.Id), nil))
-		b := raw(t, c.Do(http.MethodGet, absencePath(perm.Id), nil))
-		if !slices.Equal(keysOf(a), keysOf(b)) {
-			t.Errorf("%s: the check's keys %v, the leave's %v, want the same", name, keysOf(a), keysOf(b))
+		// An HR-only hour row is not read by a leave-reader at all
+		// (whole-branch review); the leave is, as leave.
+		if r := c.Do(http.MethodGet, absencePath(check.Id), nil); r.Status != http.StatusNotFound {
+			t.Errorf("%s reads the check: %d, want 404", name, r.Status)
 		}
-		for _, k := range []string{"shownAs", "status", "percent", "decisionNote"} {
-			if a[k] != b[k] {
-				t.Errorf("%s: %s = %v for the check, %v for the leave, want the same", name, k, a[k], b[k])
-			}
+		if b := raw(t, c.Do(http.MethodGet, absencePath(perm.Id), nil)); b["shownAs"] != "leave" || b["status"] != "approved" {
+			t.Errorf("%s reads the leave as %v, want approved leave", name, b)
 		}
 		if e := eventsAbout(t, c, w.kari.Id, check.Id); len(e) != 0 {
 			t.Errorf("%s is listed the check's events: %v", name, e)
@@ -147,8 +148,8 @@ func TestAbsences_LeaveReadersCannotTellTheHROnlyNotification(t *testing.T) {
 		if got := ids("registered"); slices.Contains(got, check.Id) || slices.Contains(got, perm.Id) {
 			t.Errorf("%s filtering on registered lists %v", name, got)
 		}
-		if got := ids("approved"); !slices.Contains(got, check.Id) || !slices.Contains(got, perm.Id) {
-			t.Errorf("%s filtering on approved lists %v, want both", name, got)
+		if got := ids("approved"); slices.Contains(got, check.Id) || !slices.Contains(got, perm.Id) {
+			t.Errorf("%s filtering on approved lists %v, want the leave alone", name, got)
 		}
 	}
 	for name, c := range map[string]*modtest.Client{"personal-data": w.pd, "the person": w.kariC} {

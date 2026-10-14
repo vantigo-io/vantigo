@@ -135,25 +135,22 @@ WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person
   AND (sqlc.narg('status')::text IS NULL OR sqlc.narg('status')::text =
        CASE WHEN @neutral::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint
                  AND a.status = 'registered' THEN 'approved' ELSE a.status END)
-  AND (@everyone::boolean OR a.person_id = ANY(@full_ids::bigint[])
-       OR (a.person_id = ANY(@colleague_ids::bigint[]) AND a.status IN ('approved', 'registered')
-           AND sqlc.narg('status')::text IS NULL))
+  AND (@everyone::boolean OR a.person_id = ANY(@full_ids::bigint[]))
   AND NOT (@neutral::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint
-           AND a.status NOT IN ('approved', 'registered'));
+           AND (a.status NOT IN ('approved', 'registered') OR t.unit = 'hours'));
 
 -- name: ListAbsences :many
--- ListAbsences is one page of the absences the caller may see, newest first:
--- everyone's (@everyone), every row of @full_ids' people, and the approved
--- and registered rows of @colleague_ids' — a colleague is shown that a
--- person is away, never a request or a refusal — and those never under a
--- status filter: a colleague reads no status, and asking for the registered
--- rows must not pick out who was sick (review C1). With @neutral — a caller
+-- ListAbsences is one page of the absences the caller may see as rows,
+-- newest first: everyone's (@everyone) or every row of @full_ids' people. A
+-- colleague's people are read as spans instead (ColleagueAbsenceDays). With
+-- @neutral — a caller
 -- who reads an HR-only type as leave, on every row but their own
 -- (@self_id) — a status filter matches such a row by the status it is shown
 -- as, a registration as an approval (leak 2), and an HR-only row that is not
 -- approved or registered — a request, a refusal, a cancel — is not listed
 -- at all: to its leave-reader every HR-only row is an approved leave they
--- never saw asked for (review H4, interim option b).
+-- never saw asked for (review H4, interim option b) — and an HR-only hour
+-- row never (whole-branch review).
 SELECT sqlc.embed(a), t.kind, t.visibility, t.unit
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person_id')::bigint)
@@ -162,11 +159,9 @@ WHERE (sqlc.narg('person_id')::bigint IS NULL OR a.person_id = sqlc.narg('person
   AND (sqlc.narg('status')::text IS NULL OR sqlc.narg('status')::text =
        CASE WHEN @neutral::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint
                  AND a.status = 'registered' THEN 'approved' ELSE a.status END)
-  AND (@everyone::boolean OR a.person_id = ANY(@full_ids::bigint[])
-       OR (a.person_id = ANY(@colleague_ids::bigint[]) AND a.status IN ('approved', 'registered')
-           AND sqlc.narg('status')::text IS NULL))
+  AND (@everyone::boolean OR a.person_id = ANY(@full_ids::bigint[]))
   AND NOT (@neutral::boolean AND t.visibility <> 'absent' AND a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint
-           AND a.status NOT IN ('approved', 'registered'))
+           AND (a.status NOT IN ('approved', 'registered') OR t.unit = 'hours'))
 ORDER BY a.first_day DESC, a.id DESC
 LIMIT @page_size OFFSET @page_offset;
 
@@ -226,6 +221,19 @@ WHERE a.status = 'requested'
   AND ((t.visibility = 'absent' AND (@everyone::boolean OR a.person_id = ANY(@person_ids::bigint[])))
        OR (t.visibility <> 'absent' AND @personal_data::boolean))
   AND (a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint OR (t.visibility = 'absent' AND @self_approves::boolean));
+
+-- name: ColleagueAbsenceDays :many
+-- ColleagueAbsenceDays is the approved and registered day rows of
+-- @person_ids' people touching the optional range, by person and first day:
+-- what a colleague reads, coalesced into spans (whole-branch review) — never
+-- a row id, a request or an hour row.
+SELECT a.person_id, a.first_day, a.last_day
+FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+WHERE a.person_id = ANY(@person_ids::bigint[])
+  AND a.status IN ('approved', 'registered') AND t.unit = 'days'
+  AND (sqlc.narg('from_day')::date IS NULL OR a.last_day >= sqlc.narg('from_day')::date)
+  AND (sqlc.narg('to_day')::date IS NULL OR a.first_day <= sqlc.narg('to_day')::date)
+ORDER BY a.person_id, a.first_day, a.last_day;
 
 -- name: CalendarAbsences :many
 -- CalendarAbsences is the requested, approved and registered rows of
