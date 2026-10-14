@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page with its documents, the legal hold, an erased record and its rehire, New person, My page, absence and the holiday account, and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention and the thresholds.
+description: The people register — People, a person's page with its documents, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, absence and the holiday account, and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention and the thresholds.
 sidebar:
   order: 45
 sources:
@@ -23,6 +23,7 @@ permissions give you:
 | --- | --- |
 | **My page** | everyone with `staff:access` |
 | **Staff directory** (the People screen) | `staff:view`, or `staff:manage` — an HR role without `staff:view` still lists people and reads the structure |
+| **Absence** (the calendar and the approvals) | `staff:view`, `staff:approve`, `staff:manage` or `staff:personal-data`; a manager without those opens it from the dashboard's link, and decides on [My team](#my-team) |
 | **Staff settings** | `staff:manage` |
 
 What a screen offers follows what the server says you may do: the **New person**
@@ -511,6 +512,9 @@ The **Absence** tab of My page shows, as Staff counts them:
    that is a notification. The confirmation gives the working days and your holiday
    account as Staff counted them.
 
+You can also start from anywhere: search for **Request absence** (Ctrl+K or ⌘K) and
+the sheet opens on My page's **Absence** tab.
+
 If Staff refuses, the sheet says why on the field it is about — another absence on one
 of the days on **First day**; an egenmelding beyond what the policy allows, before you
 have been employed long enough, or while your right is withdrawn on **Type**, telling
@@ -524,8 +528,7 @@ says so.
 team lead needs no other permission for their own reports. It shows:
 
 - **Approvals** — the requests you decide, oldest first, each with the person, the
-  type (*Leave* for a type that reveals health or family matters), the days, the
-  working days and the person's note. Press **Approve**, or **Reject**, write the
+  type, the days, the working days and the person's note. Press **Approve**, or **Reject**, write the
   **Reason** and press **Reject request**: a rejection always says why. If somebody else
   decided the request first, or the person withdrew it, the page says so and reads the
   inbox again.
@@ -534,6 +537,39 @@ team lead needs no other permission for their own reports. It shows:
   **Mark done**, or **Waive** with why it is not needed (never a diagnosis); the end of
   the employer's period follows from the absences and is neither. **Change the
   accommodation note** writes the notes about tilrettelegging that the person reads too.
+
+## The Absence page
+
+**Absence** in the sidebar has two tabs. It opens on **Approvals** when you decide
+requests, and on **Calendar** otherwise; the dashboard's request items open it too.
+
+### Calendar
+
+**Calendar** shows a month: a row per person and their absences as bars across the
+days, weekends and public holidays shaded. Move with **Previous month** and **Next
+month**; with the directory or HR's permission, narrow it with **Department** (or
+**All departments**). A dashed bar is a request still waiting. Who appears follows your
+permissions: with the directory, HR's, the Approver's or the personal-data permission,
+everyone employed in the month; a manager without those, their reports and themselves.
+
+Each bar shows only what you may see of it: the type and its status, a percentage of
+the day or the hours for HR and the person's manager; *Leave* for a type that reveals
+health or family matters, once it is approved; and *Absent* — the days alone, without
+a type or a status — to a colleague who sees the directory. Point at a bar, or read it
+with a screen reader, for its days and details. On a phone the month scrolls sideways
+inside its frame.
+
+### Approvals
+
+**Approvals** lists the requests you decide, oldest first — the same inbox as on
+[My team](#my-team), for whoever decides by right: the Approver (`staff:approve`) and HR
+(`staff:manage`) decide everyone's requests of an ordinary type, and a holder of
+`staff:personal-data` the requests of a type that reveals health or family matters,
+which reach nobody else's inbox. Each shows the person, the type, the days, the working
+days and the person's note. Press **Approve**, or **Reject**, write the **Reason** and
+press **Reject request**. If somebody else decided it first or the person withdrew it,
+the page says so and reads the inbox again; if the person already has an absence on one
+of the days, the request cannot be approved as it stands.
 
 ## Absence and your holiday
 
@@ -589,8 +625,9 @@ The rules behind the screens above:
   leave) is decided by whoever holds the personal-data permission, not by your manager,
   and your manager is not mailed about it; they see it only once approved, as *leave*.
 - **Deciding, for managers.** The requests you decide wait in your approvals inbox,
-  oldest first — on [My team](#my-team); the absence calendar shows a month of your team — or, with the
-  directory, of everyone, where colleagues see only the days someone is away.
+  oldest first — on [My team](#my-team), and on the [Absence page](#the-absence-page)
+  for those who decide by right; the absence calendar shows a month of your team — or,
+  with the directory, of everyone, where colleagues see only the days someone is away.
 - **Your holiday account** counts in working days, Monday to Friday without public
   holidays: your entitlement under the company's holiday scheme (25 virkedager are
   21 working days; more from the year you turn 60; fewer when you start after

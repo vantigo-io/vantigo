@@ -5,6 +5,7 @@ import {
   IconBook,
   IconBriefcase,
   IconBuildingBank,
+  IconCalendarEvent,
   IconCashBanknote,
   IconCategory,
   IconChecklist,
@@ -117,6 +118,7 @@ const moduleApp = (
 const staffNavPresentation: Record<StaffNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   myPage: { label: "navigation.staffMyPage", icon: IconId },
   people: { label: "navigation.staffPeople", icon: IconUsersGroup },
+  absence: { label: "navigation.staffAbsence", icon: IconCalendarEvent },
   settings: { label: "navigation.staffSettings", icon: IconAdjustments },
 };
 

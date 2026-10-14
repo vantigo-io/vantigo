@@ -194,3 +194,83 @@ export const cases = (): Schemas["StaffCase"][] => [
     ],
   },
 ];
+
+const alan = { id: 103, displayName: "Alan Turing", employeeNumber: "E-3" };
+
+/**
+ * The absence calendar's people as a colleague (`staff:view` alone) reads
+ * them for October: the dates of each approved or registered row and
+ * nothing else — no status, no type, no working days, no share of the day
+ * (`shownAs` absent). Grace's HR-only leave is a bar like any other.
+ */
+export const colleagueCalendarPeople = (): Schemas["StaffCalendarPerson"][] => [
+  {
+    person: grace,
+    absences: [
+      { id: 611, personId: 102, firstDay: "2026-10-19", lastDay: "2026-10-23", shownAs: "absent" },
+      { id: 612, personId: 102, firstDay: "2026-10-26", lastDay: "2026-10-27", shownAs: "absent" },
+    ],
+  },
+  {
+    person: alan,
+    absences: [{ id: 621, personId: 103, firstDay: "2026-10-05", lastDay: "2026-10-05", shownAs: "absent" }],
+  },
+];
+
+/**
+ * The calendar as HR reads it for October: Grace's ferie and her HR-only
+ * leave shown as approved "leave" (HR without `staff:personal-data`), Alan's
+ * request at half days waiting, and a doctor's visit of two hours.
+ */
+export const hrCalendarPeople = (): Schemas["StaffCalendarPerson"][] => [
+  ...calendarPeople(),
+  {
+    person: alan,
+    absences: [
+      {
+        id: 622,
+        personId: 103,
+        status: "requested",
+        firstDay: "2026-10-12",
+        lastDay: "2026-10-16",
+        workingDays: 5,
+        shownAs: "type",
+        typeId: 1007,
+        percent: 50,
+      },
+      {
+        id: 623,
+        personId: 103,
+        status: "registered",
+        firstDay: "2026-10-21",
+        lastDay: "2026-10-21",
+        workingDays: 0,
+        shownAs: "type",
+        typeId: 1020,
+        hours: 2,
+      },
+    ],
+  },
+];
+
+/**
+ * The inbox of a holder of `staff:personal-data` alone, who decides the
+ * HR-only types (plan reading 33): Grace's pregnancy leave, by its name.
+ */
+export const hrOnlyApprovals = (): Schemas["StaffApproval"][] => [
+  {
+    person: grace,
+    absence: {
+      id: 605,
+      personId: 102,
+      status: "requested",
+      firstDay: "2027-02-01",
+      lastDay: "2027-04-30",
+      workingDays: 64,
+      shownAs: "type",
+      typeId: 1005,
+      percent: 100,
+      revision: 1,
+    },
+  },
+];

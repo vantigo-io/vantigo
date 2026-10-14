@@ -71,12 +71,37 @@ export const validatePersonSearch = (search: Record<string, unknown>): PersonSea
 export const myPageTabs = [...personTabs, "absence", "team"] as const;
 export type MyPageTab = (typeof myPageTabs)[number];
 
-/** My page's URL search: the tab. */
+/** My page's URL search: the tab, and the request sheet to open on arrival (the host's spotlight action). */
 export interface MyPageSearch {
   tab?: MyPageTab;
+  create?: "absence";
 }
 
 /** The host route's `validateSearch` for My page; an unknown tab is the profile. */
 export const validateMyPageSearch = (search: Record<string, unknown>): MyPageSearch => ({
   tab: myPageTabs.includes(search.tab as MyPageTab) && search.tab !== "profile" ? (search.tab as MyPageTab) : undefined,
+  create: search.create === "absence" ? "absence" : undefined,
 });
+
+/** The Absence page's tabs (design §7): the calendar, and the inbox of what the caller decides. */
+export const absenceTabs = ["calendar", "approvals"] as const;
+export type AbsenceTab = (typeof absenceTabs)[number];
+
+/** The Absence page's URL search: the tab, the month shown (`YYYY-MM`) and the department it is narrowed to. */
+export interface AbsenceSearch {
+  tab?: AbsenceTab;
+  month?: string;
+  departmentId?: number;
+}
+
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** The host route's `validateSearch` for Absence; what a hand-edited link invents is left out. */
+export const validateAbsenceSearch = (search: Record<string, unknown>): AbsenceSearch => {
+  const out: AbsenceSearch = {};
+  if (absenceTabs.includes(search.tab as AbsenceTab)) out.tab = search.tab as AbsenceTab;
+  if (typeof search.month === "string" && MONTH.test(search.month)) out.month = search.month;
+  const departmentId = positiveId(search.departmentId);
+  if (departmentId !== undefined) out.departmentId = departmentId;
+  return out;
+};

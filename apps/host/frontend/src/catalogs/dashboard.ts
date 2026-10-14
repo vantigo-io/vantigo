@@ -158,6 +158,7 @@ const en = {
   "dashboard.newExpense": "New expense",
   "dashboard.newTravelClaim": "New travel claim",
   "dashboard.newPerson": "New person",
+  "dashboard.requestAbsence": "Request absence",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -315,6 +316,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.newExpense": "Nytt utlegg",
   "dashboard.newTravelClaim": "Ny reiseregning",
   "dashboard.newPerson": "Ny person",
+  "dashboard.requestAbsence": "Be om fravær",
 };
 
 export const dashboardCatalog = { en, nb } as const satisfies CatalogResources;

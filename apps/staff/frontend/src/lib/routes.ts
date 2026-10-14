@@ -11,6 +11,8 @@ export const MY_PAGE_ROUTE_PATH = "/staff/me";
 export const PEOPLE_ROUTE_PATH = "/staff/people";
 export const PERSON_ROUTE_PATH = "/staff/people/$id";
 export const STAFF_SETTINGS_ROUTE_PATH = "/staff/settings";
+/** The absence calendar and the approvals inbox; the dashboard's approval items open it. */
+export const ABSENCE_ROUTE_PATH = "/staff/absence";
 
 /** What `navigate` and `Link` take to reach one person. */
 export const personLinkOptions = (personId: number) => ({

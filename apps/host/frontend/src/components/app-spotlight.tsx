@@ -5,6 +5,7 @@ import {
   IconBolt,
   IconBriefcase,
   IconBuilding,
+  IconCalendarPlus,
   IconClock,
   IconListCheck,
   IconMail,
@@ -24,7 +25,7 @@ import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
-import { PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/routes";
+import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/routes";
 import { useState } from "react";
 import "../i18n";
 import { spotlightNavSections } from "../apps";
@@ -136,6 +137,18 @@ export const AppSpotlight = ({
     hasPermissions(permissions, ["staff:access"]) &&
     hasPermissions(permissions, ["staff:manage"])
       ? [{ label: t("dashboard.newPerson"), icon: IconUserPlus, path: PEOPLE_ROUTE_PATH, search: { create: "person" } }]
+      : []),
+    // Request absence is everyone's in the app, for themselves: My page's
+    // Absence tab opens the request sheet on arrival (`create=absence`).
+    ...(enabledModules?.includes("staff") && hasPermissions(permissions, ["staff:access"])
+      ? [
+          {
+            label: t("dashboard.requestAbsence"),
+            icon: IconCalendarPlus,
+            path: MY_PAGE_ROUTE_PATH,
+            search: { tab: "absence", create: "absence" },
+          },
+        ]
       : []),
   ];
 

@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden med dokumentene, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fravær og feriekontoen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring og tersklene.
+description: Personregisteret — Personer, personsiden med dokumentene, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, fravær og feriekontoen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring og tersklene.
 sidebar:
   order: 45
 sources:
@@ -24,6 +24,7 @@ deg:
 | --- | --- |
 | **Min side** | alle med `staff:access` |
 | **Ansattoversikt** (skjermbildet Personer) | `staff:view`, eller `staff:manage` — en HR-rolle uten `staff:view` ser også listen og strukturen |
+| **Fravær** (kalenderen og godkjenningene) | `staff:view`, `staff:approve`, `staff:manage` eller `staff:personal-data`; en leder uten disse åpner den fra lenken på dashbordet, og avgjør under [Mitt team](#mitt-team) |
 | **Ansatteinnstillinger** | `staff:manage` |
 
 Hva et skjermbilde tilbyr, følger det serveren sier at du kan gjøre: knappen **Ny
@@ -511,6 +512,9 @@ Fanen **Fravær** på Min side viser, slik Ansatte teller dem:
    som er en melding. Bekreftelsen gir arbeidsdagene og feriekontoen slik Ansatte talte
    dem.
 
+Du kan også begynne hvor som helst: søk etter **Be om fravær** (Ctrl+K eller ⌘K), så
+åpnes arket på fanen **Fravær** på Min side.
+
 Avviser Ansatte det, sier arket hvorfor ved feltet det gjelder — et annet fravær på en av
 dagene ved **Første dag**; en egenmelding utover det reglene tillater, før du har vært
 ansatt lenge nok, eller mens retten din er trukket tilbake ved **Type**, med beskjed om å
@@ -523,9 +527,8 @@ sier fra.
 **Mitt team** er en fane på Min side for alle som er leder for noen i dag etter vilkårene —
 en teamleder trenger ingen annen rettighet for dem hen er leder for. Den viser:
 
-- **Godkjenninger** — søknadene du avgjør, eldste først, hver med personen, typen
-  (*Permisjon* for en type som røper helse eller familieforhold), dagene, arbeidsdagene
-  og personens merknad. Trykk **Godkjenn**, eller **Avslå**, skriv **Begrunnelse** og
+- **Godkjenninger** — søknadene du avgjør, eldste først, hver med personen, typen,
+  dagene, arbeidsdagene og personens merknad. Trykk **Godkjenn**, eller **Avslå**, skriv **Begrunnelse** og
   trykk **Avslå søknaden**: et avslag sier alltid hvorfor. Har noen andre avgjort søknaden
   først, eller personen trukket den tilbake, sier siden fra og leser innboksen på nytt.
 - **Fravær i** inneværende måned — fraværet til hver av dem du er leder for, slik du kan
@@ -534,6 +537,39 @@ en teamleder trenger ingen annen rettighet for dem hen er leder for. Den viser:
   **Marker som gjort**, eller **Frafall** med hvorfor den ikke trengs (aldri en diagnose);
   slutten på arbeidsgiverperioden følger av fraværene og er ingen av delene. **Endre
   tilretteleggingsnotatet** skriver notatene om tilrettelegging, som personen også leser.
+
+## Fraværssiden
+
+**Fravær** i sidemenyen har to faner. Den åpner på **Godkjenninger** når du avgjør
+søknader, og ellers på **Kalender**; søknadspunktene på dashbordet åpner den også.
+
+### Kalender
+
+**Kalender** viser en måned: en rad per person og fraværene deres som stolper over
+dagene, med helger og helligdager skyggelagt. Bla med **Forrige måned** og **Neste
+måned**; med tilgang til ansattoversikten eller HR-rettigheten kan du avgrense med
+**Avdeling** (eller **Alle avdelinger**). En stiplet stolpe er en søknad som venter. Hvem
+som vises, følger rettighetene dine: med ansattoversikten, HR-rettigheten,
+godkjennerrettigheten eller personopplysningsrettigheten alle som er ansatt i måneden;
+en leder uten disse, dem hen er leder for og seg selv.
+
+Hver stolpe viser bare det du har lov til å se: typen og statusen, en prosent av dagen
+eller timene for HR og personens leder; *Permisjon* for en type som røper helse eller
+familieforhold, når den er godkjent; og *Borte* — bare dagene, uten type eller status —
+for en kollega som ser ansattoversikten. Pek på en stolpe, eller les den med skjermleser,
+for dagene og detaljene. På mobilen ruller måneden sidelengs inne i rammen sin.
+
+### Godkjenninger
+
+**Godkjenninger** viser søknadene du avgjør, eldste først — den samme innboksen som under
+[Mitt team](#mitt-team), for dem som avgjør i kraft av rettighet: godkjenneren
+(`staff:approve`) og HR (`staff:manage`) avgjør alles søknader av en vanlig type, og den
+som har `staff:personal-data`, søknadene av en type som røper helse eller
+familieforhold, som ikke når noen andres innboks. Hver viser personen, typen, dagene,
+arbeidsdagene og personens merknad. Trykk **Godkjenn**, eller **Avslå**, skriv
+**Begrunnelse** og trykk **Avslå søknaden**. Har noen andre avgjort den først, eller
+personen trukket den tilbake, sier siden fra og leser innboksen på nytt; har personen
+allerede fravær på en av dagene, kan søknaden ikke godkjennes slik den er.
 
 ## Fravær og ferien din
 
@@ -558,8 +594,9 @@ Reglene bak skjermbildene over:
   av lederen din, og lederen din får ikke e-post om den; lederen ser den først når den er
   godkjent, som *permisjon*.
 - **Å avgjøre, for ledere.** Søknadene du avgjør, venter i godkjenningsinnboksen din,
-  eldste først — under [Mitt team](#mitt-team); fraværskalenderen viser en måned for teamet ditt — eller, med tilgang
-  til personoversikten, for alle, der kolleger bare ser dagene noen er borte.
+  eldste først — under [Mitt team](#mitt-team), og på [fraværssiden](#fraværssiden) for
+  dem som avgjør i kraft av rettighet; fraværskalenderen viser en måned for teamet ditt —
+  eller, med tilgang til personoversikten, for alle, der kolleger bare ser dagene noen er borte.
 - **To fravær samme dag** kan stå sammen bare når begge typene tillater en prosent og
   prosentene til sammen er høyst 100 % — men en sykmelding av hvilken som helst grad kan
   stå ved siden av en permisjon som lar en del av dagen stå igjen, siden legen graderer

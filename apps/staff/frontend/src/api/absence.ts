@@ -18,6 +18,7 @@ export type StaffSelfCertification = Schemas["StaffSelfCertification"];
 export type StaffSelfCertPolicy = Schemas["StaffSelfCertPolicy"];
 export type StaffCareDays = Schemas["StaffCareDays"];
 export type StaffCalendar = Schemas["StaffCalendar"];
+export type StaffCalendarPerson = Schemas["StaffCalendarPerson"];
 export type StaffApproval = Schemas["StaffApproval"];
 
 /** The most rows a page of this module's lists holds. */
@@ -88,12 +89,23 @@ export const myCareDaysQueryOptions = (year: number) =>
     retry: false,
   });
 
-/** The absence calendar of at most 93 days, with the public holidays in it (`internal/calendar`). */
-export const calendarQueryOptions = (from: string, to: string) =>
+/**
+ * The absence calendar of at most 93 days, with the public holidays in it
+ * (`internal/calendar`), narrowed to a department when one is named — the
+ * server judges who is in it.
+ */
+export const calendarQueryOptions = (from: string, to: string, departmentId?: number) =>
   queryOptions({
-    queryKey: [STAFF_QUERY_KEY, "calendar", from, to],
+    queryKey: [STAFF_QUERY_KEY, "calendar", from, to, departmentId],
     queryFn: ({ signal }) =>
-      request<StaffCalendar>(`/api/v1/staff/calendar?${new URLSearchParams({ from, to })}`, { signal }),
+      request<StaffCalendar>(
+        `/api/v1/staff/calendar?${new URLSearchParams({
+          from,
+          to,
+          ...(departmentId === undefined ? {} : { departmentId: String(departmentId) }),
+        })}`,
+        { signal },
+      ),
     staleTime: 5 * 60 * 1000,
   });
 
