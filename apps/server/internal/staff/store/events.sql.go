@@ -14,13 +14,16 @@ import (
 
 const countPersonEvents = `-- name: CountPersonEvents :one
 SELECT count(*) FROM staff.events
-WHERE person_id = $1
+WHERE staff.events.person_id = $1
   AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[])
        OR ($4::boolean AND kind = ANY($5::text[])))
   AND ($6::boolean OR NOT (kind = ANY($7::text[])))
   AND NOT ($8::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
            THEN payload->'typeIds' <@ to_jsonb($9::bigint[]) END, false))
+  AND NOT ($8::boolean AND kind = ANY($3::text[])
+           AND (payload->>'absenceId')::bigint IN (
+               SELECT ab.id FROM staff.absences ab WHERE NOT (ab.type_id = ANY($9::bigint[]))))
 `
 
 type CountPersonEventsParams struct {
@@ -144,13 +147,16 @@ func (q *Queries) ListAllPersonEvents(ctx context.Context, personID *int64) ([]L
 const listPersonEvents = `-- name: ListPersonEvents :many
 SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
 FROM staff.events
-WHERE person_id = $1
+WHERE staff.events.person_id = $1
   AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[])
        OR ($4::boolean AND kind = ANY($5::text[])))
   AND ($6::boolean OR NOT (kind = ANY($7::text[])))
   AND NOT ($8::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
            THEN payload->'typeIds' <@ to_jsonb($9::bigint[]) END, false))
+  AND NOT ($8::boolean AND kind = ANY($3::text[])
+           AND (payload->>'absenceId')::bigint IN (
+               SELECT ab.id FROM staff.absences ab WHERE NOT (ab.type_id = ANY($9::bigint[]))))
 ORDER BY at DESC, id DESC
 LIMIT $11 OFFSET $10
 `
@@ -192,7 +198,9 @@ type ListPersonEventsRow struct {
 // a reader of HR-only types as leave (@hide_leave_rows), an absence event
 // whose types are not all @plain_type_ids (the types shown as themselves) is
 // not listed at all, an event naming no types included (fail closed): its
-// count and its kinds would tell the HR-only notification from a request.
+// count and its kinds would tell the HR-only notification from a request —
+// nor one whose row is of such a type now, recorded while it was a plain
+// one (whole-branch review).
 // The withdrawal of egenmelding and its restoring (@care_kinds), class E,
 // are listed to the readers of the care-day fields (@with_care) — the
 // person, staff:manage, staff:personal-data — and never to a manager (plan

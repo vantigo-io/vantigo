@@ -121,13 +121,16 @@ func (s *server) notifyAbsence(ctx context.Context, today time.Time, n absenceNo
 }
 
 // mailLabel is how a mail names an absence of type t in language: the type's
-// own name only when it is neither a sick kind nor HR-only (reading 15).
-func mailLabel(t store.StaffAbsenceType, language string) string {
+// own name only when it is neither a sick kind nor HR-only (reading 15) —
+// and never in a registration's notice to a manager (registered), where
+// only the notification types arrive, so a doctor's visit named would tell
+// the rest apart as sickness (whole-branch review).
+func mailLabel(t store.StaffAbsenceType, language string, registered bool) string {
 	en := language == "en"
 	switch {
-	case healthKind(t.Kind) && en:
+	case (healthKind(t.Kind) || registered) && en:
 		return "an absence"
-	case healthKind(t.Kind):
+	case healthKind(t.Kind) || registered:
 		return "fravær"
 	case t.Visibility != visibilityAbsent && en:
 		return "leave"
@@ -143,7 +146,7 @@ func mailLabel(t store.StaffAbsenceType, language string) string {
 // for anything else — about person's absence, linking to the app when link
 // is set.
 func absenceMail(n absenceNotice, language, recipient, person, link string) (string, string) {
-	label := mailLabel(n.typ, language)
+	label := mailLabel(n.typ, language, n.kind == noticeRegistered)
 	from, to := n.first.Format(time.DateOnly), n.last.Format(time.DateOnly)
 	if language == "en" {
 		var subject, line string

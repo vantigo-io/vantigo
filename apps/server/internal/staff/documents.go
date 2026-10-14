@@ -547,13 +547,16 @@ func (s *server) PutStaffDocumentsById(ctx context.Context, req gen.PutStaffDocu
 			caseID = nil
 		}
 		if caseID != nil && body.CaseId != nil {
-			found, err := txq.PersonCaseExists(ctx, store.PersonCaseExistsParams{CaseID: *caseID, PersonID: d.PersonID})
+			found, err := txq.PersonCaseExists(ctx, store.PersonCaseExistsParams{
+				CaseID: *caseID, PersonID: d.PersonID, Zone: zoneOf(caller.Settings).String(),
+				Cutoff: dayParam(caller.Today.AddDate(0, 0, -int(caller.Settings.HealthRetentionDays))),
+			})
 			if err != nil {
 				return fmt.Errorf("staff: read case %d: %w", *caseID, err)
 			}
 			if !found {
 				return refuseInvalid(invalidDocumentTitle, fieldErrors{errs: fieldError("caseId",
-					fmt.Sprintf("Case %d is not one of this person's", *caseID))})
+					fmt.Sprintf("Case %d is not one of this person's open or recent cases: an erased one, or one due for the erase, takes no document", *caseID))})
 			}
 		}
 		saved, err = txq.UpdateDocument(ctx, store.UpdateDocumentParams{

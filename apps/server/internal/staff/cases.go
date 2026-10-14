@@ -2,6 +2,7 @@ package staff
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -316,8 +318,62 @@ func (s *server) dateMilestones(ctx context.Context, txq *store.Queries, id int6
 
 // ---- Responses -------------------------------------------------------------
 
-// caseResponse is case c with its milestones as a reads it on today.
-func caseResponse(c store.StaffSickCase, milestones []store.StaffSickCaseMilestone, a audience, today time.Time) gen.StaffCase {
+// caseTagger is a case's opaque etag for its id and revision.
+type caseTagger func(id int64, revision int32) string
+
+// purposeCaseTag is the secrets box's purpose for a case's etag.
+const purposeCaseTag = "staff/case-etag"
+
+// caseTagPrefix starts every case etag, so If-Match tells one from a bare
+// revision.
+const caseTagPrefix = "c1-"
+
+// caseTag is case id's etag at revision, as absenceTag is an absence's.
+func (s *server) caseTag(id int64, revision int32) string {
+	mac, err := s.deps.Secrets.MAC(purposeCaseTag, []byte(fmt.Sprintf("case:%d:%d", id, revision)))
+	if err != nil {
+		return ""
+	}
+	return caseTagPrefix + base64.RawURLEncoding.EncodeToString(mac[:18])
+}
+
+// checkCaseIfMatch judges raw, an If-Match on case c from a reader a: the
+// health group's readers send the revision; a writer without it the etag
+// they were sent — a bare revision from them, which would tell when a note
+// they do not read was written, is a conflict naming no revision.
+func (s *server) checkCaseIfMatch(c store.StaffSickCase, raw string, a audience) error {
+	v := strings.TrimPrefix(strings.TrimSpace(raw), "W/")
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		v = v[1 : len(v)-1]
+	}
+	tagged := strings.HasPrefix(v, caseTagPrefix)
+	if a.reads(groupHealth) {
+		if tagged {
+			return caseChanged()
+		}
+		revision, _ := parseIfMatch(raw)
+		return checkRevision("case", c.Revision, revision)
+	}
+	want := s.caseTag(c.ID, c.Revision)
+	if !tagged || want == "" || !secrets.MACEqual([]byte(v), []byte(want)) {
+		return caseChanged()
+	}
+	return nil
+}
+
+// caseChanged is the conflict of a case's If-Match that no longer matches,
+// in words that name no revision.
+func caseChanged() error {
+	return refuseConflict(conflict(codeRevisionConflict, "Revision conflict", "The case has changed since it was read."))
+}
+
+// caseResponse is case c with its milestones as a reads it on today. Its
+// revision and its milestones' go to the health group alone (whole-branch
+// review): a milestone's moves with its note, a case's with its
+// accommodation note. A writer of the case without the health group — the
+// manager, HR — is sent an etag (tag) in place of the case's; the Approver,
+// who writes no note, neither.
+func caseResponse(c store.StaffSickCase, milestones []store.StaffSickCaseMilestone, a audience, today time.Time, tag caseTagger) gen.StaffCase {
 	last := civil(c.LastDay)
 	open := !caseClosed(c.ClosedAt != nil, last, today)
 	out := gen.StaffCase{
@@ -326,7 +382,14 @@ func caseResponse(c store.StaffSickCase, milestones []store.StaffSickCaseMilesto
 		MaxBenefitEstimate:       openapi_types.Date{Time: benefitEstimate(civil(c.FirstDay), civilPtr(c.MaxBenefitEstimate))},
 		MaxBenefitEstimateEdited: c.MaxBenefitEstimate.Valid,
 		Milestones:               []gen.StaffCaseMilestone{},
-		Revision:                 c.Revision,
+	}
+	health := a.reads(groupHealth)
+	switch {
+	case health:
+		out.Revision = c.Revision
+	case a.reads(groupAccommodation):
+		etag := tag(c.ID, c.Revision)
+		out.Etag = &etag
 	}
 	if a.reads(groupAccommodation) {
 		out.AccommodationNote = c.AccommodationNote
@@ -339,7 +402,10 @@ func caseResponse(c store.StaffSickCase, milestones []store.StaffSickCaseMilesto
 			due := civilPtr(m.DueDate)
 			item := gen.StaffCaseMilestone{
 				Kind: gen.StaffMilestoneKind(m.Kind), Due: milestoneDue(open, m.DoneAt != nil || m.Waived, last, due), Waived: m.Waived,
-				Revision: m.Revision, DueDate: dateOf(m.DueDate),
+				DueDate: dateOf(m.DueDate),
+			}
+			if health {
+				item.Revision = m.Revision
 			}
 			if m.DoneAt != nil {
 				y, mo, d := m.DoneAt.UTC().Date()
@@ -357,7 +423,7 @@ func caseResponse(c store.StaffSickCase, milestones []store.StaffSickCaseMilesto
 }
 
 // readCases is cases with their milestones as a reads them.
-func readCases(ctx context.Context, q *store.Queries, cases []store.StaffSickCase, audienceOf func(personID int64) audience, today time.Time) ([]gen.StaffCase, error) {
+func readCases(ctx context.Context, q *store.Queries, cases []store.StaffSickCase, audienceOf func(personID int64) audience, today time.Time, tag caseTagger) ([]gen.StaffCase, error) {
 	ids := make([]int64, 0, len(cases))
 	for _, c := range cases {
 		ids = append(ids, c.ID)
@@ -368,7 +434,7 @@ func readCases(ctx context.Context, q *store.Queries, cases []store.StaffSickCas
 	}
 	out := make([]gen.StaffCase, 0, len(cases))
 	for _, c := range cases {
-		out = append(out, caseResponse(c, milestones, audienceOf(c.PersonID), today))
+		out = append(out, caseResponse(c, milestones, audienceOf(c.PersonID), today, tag))
 	}
 	return out, nil
 }
@@ -398,7 +464,8 @@ func (s *server) GetStaffCases(ctx context.Context, req gen.GetStaffCasesRequest
 	}
 	var out gen.PaginatedResponseOfStaffCase
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
-		everyone := caller.Approve || caller.Manage || caller.PersonalData
+		// The Approver reads everyone's open cases only (§5); HR every case.
+		everyone, openEveryone := caller.Manage || caller.PersonalData, caller.Approve
 		var reports, people []int64
 		if !everyone && caller.Person != nil {
 			g, err := loadManagerGraph(ctx, q, nil)
@@ -408,12 +475,12 @@ func (s *server) GetStaffCases(ctx context.Context, req gen.GetStaffCasesRequest
 			reports = g.reportsOf(*caller.Person, caller.Today)
 			people = append(slices.Clone(reports), *caller.Person)
 		}
-		total, err := q.CountCases(ctx, store.CountCasesParams{PersonID: prm.PersonId, Everyone: everyone, PersonIds: people, Status: *status, Today: dayParam(caller.Today)})
+		total, err := q.CountCases(ctx, store.CountCasesParams{PersonID: prm.PersonId, Everyone: everyone, OpenEveryone: openEveryone, PersonIds: people, Status: *status, Today: dayParam(caller.Today)})
 		if err != nil {
 			return fmt.Errorf("staff: count the cases: %w", err)
 		}
 		rows, err := q.ListCases(ctx, store.ListCasesParams{
-			PersonID: prm.PersonId, Everyone: everyone, PersonIds: people, Status: *status, Today: dayParam(caller.Today),
+			PersonID: prm.PersonId, Everyone: everyone, OpenEveryone: openEveryone, PersonIds: people, Status: *status, Today: dayParam(caller.Today),
 			PageOffset: (page - 1) * pageSize, PageSize: pageSize,
 		})
 		if err != nil {
@@ -421,7 +488,7 @@ func (s *server) GetStaffCases(ctx context.Context, req gen.GetStaffCasesRequest
 		}
 		data, err := readCases(ctx, q, rows, func(personID int64) audience {
 			return caller.audienceOn(personID, slices.Contains(reports, personID), false)
-		}, caller.Today)
+		}, caller.Today, s.caseTag)
 		if err != nil {
 			return err
 		}
@@ -450,6 +517,10 @@ func caseFor(ctx context.Context, q *store.Queries, caller *callerContext, id in
 	if !a.readsCase() {
 		return c, a, notFound()
 	}
+	// The Approver alone reads open cases only (§5).
+	if a.Approver && !a.Self && !a.Manager && !a.Manage && !a.PersonalData && caseClosed(c.ClosedAt != nil, civil(c.LastDay), caller.Today) {
+		return c, a, notFound()
+	}
 	return c, a, nil
 }
 
@@ -466,7 +537,7 @@ func (s *server) GetStaffCasesById(ctx context.Context, req gen.GetStaffCasesByI
 		if err != nil {
 			return err
 		}
-		cases, err := readCases(ctx, q, []store.StaffSickCase{c}, func(int64) audience { return a }, caller.Today)
+		cases, err := readCases(ctx, q, []store.StaffSickCase{c}, func(int64) audience { return a }, caller.Today, s.caseTag)
 		if err != nil {
 			return err
 		}
@@ -537,7 +608,7 @@ func (s *server) writeCase(ctx context.Context, caller *callerContext, id int64,
 		if err != nil {
 			return fmt.Errorf("staff: read case %d: %w", id, err)
 		}
-		cases, err := readCases(ctx, txq, []store.StaffSickCase{after}, func(int64) audience { return a }, caller.Today)
+		cases, err := readCases(ctx, txq, []store.StaffSickCase{after}, func(int64) audience { return a }, caller.Today, s.caseTag)
 		if err != nil {
 			return err
 		}
@@ -585,8 +656,7 @@ func (s *server) PutStaffCasesById(ctx context.Context, req gen.PutStaffCasesByI
 	if req.Body != nil {
 		body = *req.Body
 	}
-	revision, ok := parseIfMatch(req.Params.IfMatch)
-	if !ok {
+	if _, ok := parseIfMatch(req.Params.IfMatch); !ok && !strings.HasPrefix(strings.Trim(strings.TrimPrefix(strings.TrimSpace(req.Params.IfMatch), "W/"), `"`), caseTagPrefix) {
 		return gen.PutStaffCasesById400ApplicationProblemPlusJSONResponse(invalid(invalidCaseTitle, badIfMatch())), nil
 	}
 	if f := s.unknownProperties(ctx, "StaffCaseChangeRequest"); f.failed() {
@@ -605,7 +675,7 @@ func (s *server) PutStaffCasesById(ctx context.Context, req gen.PutStaffCasesByI
 		return nil, err
 	}
 	out, err := s.writeCase(ctx, caller, req.Id, caseWriteNotes, func(ctx context.Context, txq *store.Queries, c store.StaffSickCase, a audience, who actor) error {
-		if err := checkRevision("case", c.Revision, revision); err != nil {
+		if err := s.checkCaseIfMatch(c, req.Params.IfMatch, a); err != nil {
 			return err
 		}
 		estimate := c.MaxBenefitEstimate

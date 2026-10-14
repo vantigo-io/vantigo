@@ -68,7 +68,7 @@ Hver operasjon i Ansatte krever `staff:access`, og fire rettigheter ligger over 
 | --- | --- |
 | `staff:access` | Alle som skal se sine egne opplysninger. |
 | `staff:view` | Kolleger som skal se katalogen og bedriftens struktur. |
-| `staff:approve` | Den som avgjør alles fravær: godkjenner, avslår og trekker tilbake søknader, ser alles arbeidsopplysninger og fravær (en HR-type som permisjon), godkjenningsinnboksen og kalenderen — ikke lønn, private opplysninger eller historikk. |
+| `staff:approve` | Den som avgjør alles fravær: godkjenner, avslår og trekker tilbake søknader, ser alles arbeidsopplysninger og fravær (en HR-type som permisjon), godkjenningsinnboksen og kalenderen, og åpne sykefraværssaker (milepælene, ikke notatene) — ikke lønn, private opplysninger eller historikk. |
 | `staff:manage` | HR: personer, arbeidsforhold, dokumenter unntatt helsedokumenter, dokumentkategoriene, strukturen og innstillingene. Sensitiv. |
 | `staff:personal-data` | Den som får vise fødselsnumre og kontonumre, og lese og arkivere helsedokumenter. Sensitiv. |
 

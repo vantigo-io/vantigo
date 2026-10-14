@@ -162,17 +162,19 @@ func (q *Queries) CloseSickCase(ctx context.Context, arg CloseSickCaseParams) (S
 const countCases = `-- name: CountCases :one
 SELECT count(*) FROM staff.sick_cases c
 WHERE ($1::bigint IS NULL OR c.person_id = $1::bigint)
-  AND ($2::boolean OR c.person_id = ANY($3::bigint[]))
-  AND ($4::text = 'all'
-       OR ($4::text = 'open') = (c.closed_at IS NULL AND c.last_day + 16 >= $5::date))
+  AND ($2::boolean OR c.person_id = ANY($3::bigint[])
+       OR ($4::boolean AND c.closed_at IS NULL AND c.last_day + 16 >= $5::date))
+  AND ($6::text = 'all'
+       OR ($6::text = 'open') = (c.closed_at IS NULL AND c.last_day + 16 >= $5::date))
 `
 
 type CountCasesParams struct {
-	PersonID  *int64
-	Everyone  bool
-	PersonIds []int64
-	Status    string
-	Today     pgtype.Date
+	PersonID     *int64
+	Everyone     bool
+	PersonIds    []int64
+	OpenEveryone bool
+	Today        pgtype.Date
+	Status       string
 }
 
 // CountCases counts what ListCases pages through.
@@ -181,8 +183,9 @@ func (q *Queries) CountCases(ctx context.Context, arg CountCasesParams) (int64, 
 		arg.PersonID,
 		arg.Everyone,
 		arg.PersonIds,
-		arg.Status,
+		arg.OpenEveryone,
 		arg.Today,
+		arg.Status,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -368,25 +371,28 @@ func (q *Queries) InsertSplitAbsence(ctx context.Context, arg InsertSplitAbsence
 const listCases = `-- name: ListCases :many
 SELECT id, person_id, first_day, last_day, closed_at, accommodation_note, max_benefit_estimate, revision, created_at, updated_at FROM staff.sick_cases c
 WHERE ($1::bigint IS NULL OR c.person_id = $1::bigint)
-  AND ($2::boolean OR c.person_id = ANY($3::bigint[]))
-  AND ($4::text = 'all'
-       OR ($4::text = 'open') = (c.closed_at IS NULL AND c.last_day + 16 >= $5::date))
+  AND ($2::boolean OR c.person_id = ANY($3::bigint[])
+       OR ($4::boolean AND c.closed_at IS NULL AND c.last_day + 16 >= $5::date))
+  AND ($6::text = 'all'
+       OR ($6::text = 'open') = (c.closed_at IS NULL AND c.last_day + 16 >= $5::date))
 ORDER BY c.first_day DESC, c.id DESC
-LIMIT $7 OFFSET $6
+LIMIT $8 OFFSET $7
 `
 
 type ListCasesParams struct {
-	PersonID   *int64
-	Everyone   bool
-	PersonIds  []int64
-	Status     string
-	Today      pgtype.Date
-	PageOffset int32
-	PageSize   int32
+	PersonID     *int64
+	Everyone     bool
+	PersonIds    []int64
+	OpenEveryone bool
+	Today        pgtype.Date
+	Status       string
+	PageOffset   int32
+	PageSize     int32
 }
 
 // ListCases is one page of the cases the caller reads, newest first:
-// everyone's (@everyone) or @person_ids' people's. Open is a case HR has not
+// everyone's (@everyone), @person_ids' people's, and — for the Approver
+// (@open_everyone, §5) — everyone's open ones. Open is a case HR has not
 // closed whose last day is at most sixteen days before @today (the join's
 // bound, plan reading 5).
 func (q *Queries) ListCases(ctx context.Context, arg ListCasesParams) ([]StaffSickCase, error) {
@@ -394,8 +400,9 @@ func (q *Queries) ListCases(ctx context.Context, arg ListCasesParams) ([]StaffSi
 		arg.PersonID,
 		arg.Everyone,
 		arg.PersonIds,
-		arg.Status,
+		arg.OpenEveryone,
 		arg.Today,
+		arg.Status,
 		arg.PageOffset,
 		arg.PageSize,
 	)
@@ -582,17 +589,32 @@ func (q *Queries) MoveCaseDocuments(ctx context.Context, arg MoveCaseDocumentsPa
 }
 
 const personCaseExists = `-- name: PersonCaseExists :one
-SELECT EXISTS (SELECT 1 FROM staff.sick_cases WHERE id = $1 AND person_id = $2) AS found
+SELECT EXISTS (
+    SELECT 1 FROM staff.sick_cases
+    WHERE id = $1 AND person_id = $2
+      AND least(coalesce((closed_at AT TIME ZONE $3::text)::date, last_day + 17), last_day + 17) >= $4::date
+) AS found
 `
 
 type PersonCaseExistsParams struct {
 	CaseID   int64
 	PersonID int64
+	Zone     string
+	Cutoff   pgtype.Date
 }
 
-// PersonCaseExists is whether case_id is one of the person's.
+// PersonCaseExists is whether case_id is one of the person's that a health
+// document may still be filed under: not one whose close — HR's, or sixteen
+// days after its last day — lies before @cutoff (today minus
+// healthRetentionDays in @zone), which the retention run has erased or is
+// due to (DueCasesE's bound; whole-branch review).
 func (q *Queries) PersonCaseExists(ctx context.Context, arg PersonCaseExistsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, personCaseExists, arg.CaseID, arg.PersonID)
+	row := q.db.QueryRow(ctx, personCaseExists,
+		arg.CaseID,
+		arg.PersonID,
+		arg.Zone,
+		arg.Cutoff,
+	)
 	var found bool
 	err := row.Scan(&found)
 	return found, err

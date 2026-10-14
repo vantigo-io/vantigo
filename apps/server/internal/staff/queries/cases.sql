@@ -127,26 +127,37 @@ RETURNING *;
 -- CountCases counts what ListCases pages through.
 SELECT count(*) FROM staff.sick_cases c
 WHERE (sqlc.narg('person_id')::bigint IS NULL OR c.person_id = sqlc.narg('person_id')::bigint)
-  AND (@everyone::boolean OR c.person_id = ANY(@person_ids::bigint[]))
+  AND (@everyone::boolean OR c.person_id = ANY(@person_ids::bigint[])
+       OR (@open_everyone::boolean AND c.closed_at IS NULL AND c.last_day + 16 >= @today::date))
   AND (@status::text = 'all'
        OR (@status::text = 'open') = (c.closed_at IS NULL AND c.last_day + 16 >= @today::date));
 
 -- name: ListCases :many
 -- ListCases is one page of the cases the caller reads, newest first:
--- everyone's (@everyone) or @person_ids' people's. Open is a case HR has not
+-- everyone's (@everyone), @person_ids' people's, and — for the Approver
+-- (@open_everyone, §5) — everyone's open ones. Open is a case HR has not
 -- closed whose last day is at most sixteen days before @today (the join's
 -- bound, plan reading 5).
 SELECT * FROM staff.sick_cases c
 WHERE (sqlc.narg('person_id')::bigint IS NULL OR c.person_id = sqlc.narg('person_id')::bigint)
-  AND (@everyone::boolean OR c.person_id = ANY(@person_ids::bigint[]))
+  AND (@everyone::boolean OR c.person_id = ANY(@person_ids::bigint[])
+       OR (@open_everyone::boolean AND c.closed_at IS NULL AND c.last_day + 16 >= @today::date))
   AND (@status::text = 'all'
        OR (@status::text = 'open') = (c.closed_at IS NULL AND c.last_day + 16 >= @today::date))
 ORDER BY c.first_day DESC, c.id DESC
 LIMIT @page_size OFFSET @page_offset;
 
 -- name: PersonCaseExists :one
--- PersonCaseExists is whether case_id is one of the person's.
-SELECT EXISTS (SELECT 1 FROM staff.sick_cases WHERE id = @case_id AND person_id = @person_id) AS found;
+-- PersonCaseExists is whether case_id is one of the person's that a health
+-- document may still be filed under: not one whose close — HR's, or sixteen
+-- days after its last day — lies before @cutoff (today minus
+-- healthRetentionDays in @zone), which the retention run has erased or is
+-- due to (DueCasesE's bound; whole-branch review).
+SELECT EXISTS (
+    SELECT 1 FROM staff.sick_cases
+    WHERE id = @case_id AND person_id = @person_id
+      AND least(coalesce((closed_at AT TIME ZONE @zone::text)::date, last_day + 17), last_day + 17) >= @cutoff::date
+) AS found;
 
 -- name: SetDocumentCase :exec
 -- SetDocumentCase files a document under a case, or none.

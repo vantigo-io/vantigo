@@ -234,7 +234,9 @@ func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSeal
 		}),
 		HolidayAdjustments: mapRows(f.adjustments, adjustmentResponse),
 		Cases: mapRows(f.cases, func(c store.StaffSickCase) gen.StaffCase {
-			return caseResponse(c, f.milestones, a, today)
+			// Both exports' readers — the person, staff:personal-data — read
+			// the health group, so a case's revision, never an etag.
+			return caseResponse(c, f.milestones, a, today, func(int64, int32) string { return "" })
 		}),
 		CareDays:          f.careDays,
 		SelfCertification: f.selfCert,

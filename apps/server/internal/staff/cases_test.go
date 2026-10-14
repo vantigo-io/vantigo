@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,23 @@ import (
 const casesPath = "/api/v1/staff/cases"
 
 func casePath(id int64) string { return rowPath(casesPath, id) }
+
+// caseMatch is If-Match for case c as its reader was sent it: the etag of a
+// writer without the health group, else the revision.
+func caseMatch(c gen.StaffCase) modtest.RequestOption {
+	if c.Etag != nil {
+		return modtest.Header("If-Match", strconv.Quote(*c.Etag))
+	}
+	return ifMatch(c.Revision)
+}
+
+// caseMatchAs is If-Match for case id as cl reads it now.
+func caseMatchAs(t *testing.T, cl *modtest.Client, id int64) modtest.RequestOption {
+	t.Helper()
+	var c gen.StaffCase
+	do(t, cl, http.MethodGet, casePath(id), nil, http.StatusOK, &c)
+	return caseMatch(c)
+}
 func milestonePath(id int64, kind, action string) string {
 	return fmt.Sprintf("%s/milestones/%s/%s", casePath(id), kind, action)
 }
@@ -322,16 +340,16 @@ func TestCases_WhoReadsAndWritesWhat(t *testing.T) {
 	// The accommodation note: the manager writes it; the estimate is not his,
 	// not even to reset it.
 	var out gen.StaffCase
-	do(t, w.bossC, http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": "Lighter tasks"}, http.StatusOK, &out, ifMatch(c.Revision))
+	do(t, w.bossC, http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": "Lighter tasks"}, http.StatusOK, &out, caseMatchAs(t, w.bossC, c.Id))
 	if out.AccommodationNote == nil || *out.AccommodationNote != "Lighter tasks" {
 		t.Errorf("after the manager's PUT: note %v", out.AccommodationNote)
 	}
 	for _, estimate := range []any{"2027-06-01", nil} {
-		refused(t, w.bossC.Do(http.MethodPut, casePath(c.Id), map[string]any{"maxBenefitEstimate": estimate}, ifMatch(out.Revision)),
+		refused(t, w.bossC.Do(http.MethodPut, casePath(c.Id), map[string]any{"maxBenefitEstimate": estimate}, caseMatch(out)),
 			http.StatusBadRequest, "")
 	}
 	for name, cl := range map[string]*modtest.Client{"the Approver": w.approver, "Kari": w.kariC, "a colleague": w.viewer} {
-		if r := cl.Do(http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": "x"}, ifMatch(out.Revision)); r.Status != http.StatusNotFound {
+		if r := cl.Do(http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": "x"}, caseMatch(out)); r.Status != http.StatusNotFound {
 			t.Errorf("%s writing the case: %d, want 404", name, r.Status)
 		}
 	}
@@ -344,17 +362,18 @@ func TestCases_WhoReadsAndWritesWhat(t *testing.T) {
 	// A field left out is kept; null resets it (review L6). The estimate is
 	// HR's; null returns it to the derived day.
 	out = gen.StaffCase{}
-	do(t, w.hr, http.MethodPut, casePath(c.Id), map[string]any{"maxBenefitEstimate": "2027-06-01"}, http.StatusOK, &out, ifMatch(c.Revision+1))
+	stale := caseMatchAs(t, w.hr, c.Id)
+	do(t, w.hr, http.MethodPut, casePath(c.Id), map[string]any{"maxBenefitEstimate": "2027-06-01"}, http.StatusOK, &out, stale)
 	if civilOf(&out.MaxBenefitEstimate) != "2027-06-01" || !out.MaxBenefitEstimateEdited || out.AccommodationNote == nil {
 		t.Errorf("edited estimate = %s edited %v note %v, want the note kept", civilOf(&out.MaxBenefitEstimate), out.MaxBenefitEstimateEdited, out.AccommodationNote)
 	}
-	refused(t, w.hr.Do(http.MethodPut, casePath(c.Id), map[string]any{}, ifMatch(out.Revision-1)), http.StatusConflict, "revision_conflict")
+	refused(t, w.hr.Do(http.MethodPut, casePath(c.Id), map[string]any{}, stale), http.StatusConflict, "revision_conflict")
 	out = gen.StaffCase{}
-	do(t, w.hr, http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": nil}, http.StatusOK, &out, ifMatch(c.Revision+2))
+	do(t, w.hr, http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": nil}, http.StatusOK, &out, caseMatchAs(t, w.hr, c.Id))
 	if out.AccommodationNote != nil || civilOf(&out.MaxBenefitEstimate) != "2027-06-01" {
 		t.Errorf("after the note's null: note %v estimate %s, want no note and the estimate kept", out.AccommodationNote, civilOf(&out.MaxBenefitEstimate))
 	}
-	do(t, w.hr, http.MethodPut, casePath(c.Id), map[string]any{"maxBenefitEstimate": nil}, http.StatusOK, &out, ifMatch(out.Revision))
+	do(t, w.hr, http.MethodPut, casePath(c.Id), map[string]any{"maxBenefitEstimate": nil}, http.StatusOK, &out, caseMatch(out))
 	if civilOf(&out.MaxBenefitEstimate) != "2027-08-02" || out.MaxBenefitEstimateEdited {
 		t.Errorf("reset estimate = %s edited %v, want the derived 2027-08-02", civilOf(&out.MaxBenefitEstimate), out.MaxBenefitEstimateEdited)
 	}
@@ -391,7 +410,9 @@ func TestCases_WhoReadsAndWritesWhat(t *testing.T) {
 
 	// The milestone's note and the waiver's reason: health data, read by Kari
 	// and staff:personal-data alone (L5).
-	m := milestoneOf(t, out, "dialogue_1")
+	var pdView gen.StaffCase
+	do(t, w.pd, http.MethodGet, casePath(c.Id), nil, http.StatusOK, &pdView)
+	m := milestoneOf(t, pdView, "dialogue_1")
 	do(t, w.pd, http.MethodPut, milestonePath(c.Id, "dialogue_1", "note"), map[string]any{"note": "Talked about the back"}, http.StatusOK, &out, ifMatch(m.Revision))
 	if r := w.hr.Do(http.MethodPut, milestonePath(c.Id, "dialogue_1", "note"), map[string]any{"note": "x"}, ifMatch(m.Revision+1)); r.Status != http.StatusForbidden {
 		t.Errorf("HR without personal-data writing a note: %d, want 403", r.Status)
@@ -535,7 +556,7 @@ func TestCases_AMergeCarriesTheMilestones(t *testing.T) {
 	var out gen.StaffCase
 	do(t, w.hr, http.MethodPost, milestonePath(younger.Id, "follow_up_plan", "done"), map[string]any{"doneAt": "2026-09-01"}, http.StatusOK, &out)
 	do(t, w.hr, http.MethodPost, milestonePath(younger.Id, "nav_activity", "waive"), map[string]any{"reason": "Back at work"}, http.StatusOK, &out)
-	do(t, w.hr, http.MethodPut, casePath(younger.Id), map[string]any{"accommodationNote": "Lighter tasks"}, http.StatusOK, &out, ifMatch(out.Revision))
+	do(t, w.hr, http.MethodPut, casePath(younger.Id), map[string]any{"accommodationNote": "Lighter tasks"}, http.StatusOK, &out, caseMatchAs(t, w.hr, younger.Id))
 	for _, c := range []gen.StaffCase{older, younger} {
 		do(t, w.pd, http.MethodGet, casePath(c.Id), nil, http.StatusOK, &out)
 		note := fmt.Sprintf("Note of %d", c.Id)
@@ -587,7 +608,7 @@ func TestCases_AMergeLosesNoNote(t *testing.T) {
 		do(t, w.pd, http.MethodGet, casePath(c.Id), nil, http.StatusOK, &out)
 		do(t, w.pd, http.MethodPut, milestonePath(c.Id, "dialogue_1", "note"), map[string]any{"note": notes[c.Id]}, http.StatusOK, &out,
 			ifMatch(milestoneOf(t, out, "dialogue_1").Revision))
-		do(t, w.hr, http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": notes[c.Id]}, http.StatusOK, &out, ifMatch(out.Revision))
+		do(t, w.hr, http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": notes[c.Id]}, http.StatusOK, &out, caseMatchAs(t, w.hr, c.Id))
 	}
 
 	register(t, w.hr, w.kari.Id, absence(t, h, "sykmelding", "2026-08-12", "2026-08-13"))
@@ -660,9 +681,10 @@ func TestCases_CaseWritesRaceANewSickRow(t *testing.T) {
 		w := newDecisionWorld(t, modtest.WithPoolMaxConns(2))
 		register(t, w.hr, w.kari.Id, absence(t, w.h, "sykmelding", "2026-10-05", "2026-10-30"))
 		c := onlyCase(t, w.hr, w.kari.Id)
+		tag := caseMatchAs(t, w.bossC, c.Id)
 		r := raceOn(t, w, `UPDATE staff.sick_cases SET last_day = '2026-11-04', revision = revision + 1 WHERE id = $1`, []any{c.Id},
 			func(ctx context.Context) *modtest.Response {
-				return w.bossC.Do(http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": "Lighter tasks"}, ifMatch(c.Revision), modtest.Context(ctx))
+				return w.bossC.Do(http.MethodPut, casePath(c.Id), map[string]any{"accommodationNote": "Lighter tasks"}, tag, modtest.Context(ctx))
 			})
 		refused(t, r, http.StatusConflict, "revision_conflict")
 	})

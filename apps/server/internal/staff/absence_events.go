@@ -119,7 +119,9 @@ const (
 // Constraints "Event classes"): the note and the decision note D; the type
 // and the degree E when the row is health data (a sick or child-sick type,
 // on either side of a change), else C; the dates, the percent, the hours and
-// the status C.
+// the status C. A name it does not know is E (whole-branch review): a field
+// added later is erased by every erase and shaped by the health group until
+// it is classed here on purpose.
 func absenceFieldClass(name string, health bool) string {
 	switch name {
 	case "note", "decisionNote":
@@ -132,8 +134,11 @@ func absenceFieldClass(name string, health bool) string {
 		if health {
 			return "E"
 		}
+		return "C"
+	case "firstDay", "lastDay", "status", "percent", "hours", "selfApproved":
+		return "C"
 	}
-	return "C"
+	return "E"
 }
 
 // adjustmentFieldClass is the class of an adjustment event's field: its note

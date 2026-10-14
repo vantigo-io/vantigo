@@ -978,8 +978,10 @@ person never writes their own documents, and anyone else gets the uniform 403.
 - **`PUT /documents/{id}`** files a document of a restricted category under one of the
   person's [sick-leave cases](#sick-leave-cases) with `caseId` (`staff:personal-data`;
   replaced only when named, null clearing it), so the case's own erase reaches it
-  (S15); `caseId` on another category, or a case not the person's, is a 400, and a
-  document moved out of a restricted category leaves its case.
+  (S15); `caseId` on another category, a case not the person's, or a case the
+  retention run has erased or is due to erase (its close more than
+  `healthRetentionDays` ago) is a 400, and a document moved out of a restricted
+  category leaves its case.
 - **`PUT /documents/{id}`** replaces `categoryId`, `validTo` and `signedAt` under
   `If-Match` — a date left out is cleared; the file never changes. `employmentId` is
   replaced only when the body names it: `null` clears it, and left out the document
@@ -1488,6 +1490,9 @@ address: reading 4, open question 1), **on an approval, a rejection, a decider's
 and a correction to the person**. A recipient without an address is skipped with a log
 line naming the person's id. A mail names the type only when it is neither a sick kind
 nor HR-only — an HR-only type is "leave", a sick or child-sick one "an absence" — and
+never in a registration's notice to a manager, which always reads "an absence" (only
+the notification types are registered, so a doctor's visit named would tell the rest
+apart as sickness; whole-branch review) — and
 never a degree, the hours, a note or a decision's reason (reading 15); it carries the
 dates and a link to My page.
 
@@ -1536,7 +1541,9 @@ table: the erase blanks such an event **by its own map** — a leaver's D erase 
 the note and keeps the dates and the type, a sykmelding's type and degree included;
 the health erase blanks a sick row's type and degree and leaves a ferie row's alone. A
 field the map does not class, and every field of an absence event without a map, is
-blanked by every erase: what cannot be placed is erased rather than kept.
+blanked by every erase: what cannot be placed is erased rather than kept. The module
+writes a name it has not classed as E too (whole-branch review), so a field added
+later is shaped by the health group until it is classed on purpose.
 
 They are shaped by the three groups above, field by field — an adjustment's figures
 by the detail group, so a manager reads them in the history as they read the account
@@ -1551,7 +1558,9 @@ none, the event is not listed at all to a reader of `"leave"`** — the manager 
 without `staff:personal-data` (reading 32): its count and its
 kinds, one `absence_registered` against an `absence_requested` and its decision, would
 tell svangerskapskontroll from the other HR-only leave. They read the row's dates on the
-row itself. (Were one listed, its shaping would still be the row's — the neutral kind
+row itself. Nor is one listed whose row is of an HR-only type **now**, recorded while
+it was a plain one (whole-branch review): a correction into such a type takes the
+row's history from them. (Were one listed, its shaping would still be the row's — the neutral kind
 `absence_changed`, no `hours`, `registered` read as `approved`.) The erase treats
 `typeIds` by `typeClasses` as it treats the fields by `classes`: the health erase
 replaces a sick type's id with the reserved `absent` type's (leak 3), so neither the
@@ -1621,7 +1630,9 @@ stores the result (plan reading 13):
 
 `GET /cases?personId&status&page&pageSize` lists the cases the caller reads, newest
 first — `status` `open` (the default), `closed` or `all` — and `GET /cases/{id}` one
-case with its milestones. A case and its milestones are class **E** whole.
+case with its milestones. A case and its milestones are class **E** whole. The
+Approver reads **open** cases only (§5): a closed case is no `staff:approve` holder's
+unless they read it otherwise (the person, their manager, HR).
 
 | | Self | Manager | Approver | `staff:manage` | `staff:personal-data` | Colleague |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1633,7 +1644,13 @@ case with its milestones. A case and its milestones are class **E** whole.
 A caller who may not write what a write asks for gets the 404 of a case they cannot
 write, whatever its state (authority before status); a case they may not read is a 404
 on every operation. `PUT /cases/{id}` and `PUT /cases/{id}/milestones/{kind}/note`
-take `If-Match` (the case's and the milestone's revision). On `PUT /cases/{id}` a field
+take `If-Match` (the case's and the milestone's revision). **The revisions go to the
+health group alone** — the person and `staff:personal-data` — since a milestone's
+moves with its note and a case's with its accommodation note (whole-branch review): a
+writer of the case without that group, the manager or HR, is sent an opaque `etag` in
+place of the case's revision and sends it back (a bare revision from them is
+`revision_conflict`, naming none); the Approver, who writes neither note, is sent
+neither. On `PUT /cases/{id}` a field
 left out is kept and one sent is written, null clearing the note and returning the
 estimate to the derived day (review L6); the estimate sent by anyone but
 `staff:manage` — null included — is a 400. A milestone's note left out or empty clears

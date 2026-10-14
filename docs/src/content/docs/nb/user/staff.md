@@ -684,7 +684,7 @@ Reglene bak skjermbildene over:
   den tilbake til fraværet begynner, og deretter bare HR; HR retter et avgjort eller registrert fravær når dagene var feil. Du
   får e-post når søknaden din er avgjort, trukket tilbake eller rettet, og lederen din når du
   søker om eller registrerer fravær — e-posten nevner aldri sykdom, en HR-type, en
-  prosent eller en merknad.
+  prosent eller en merknad, og en registrering når lederen din bare som «fravær».
 - **Permisjon som røper helse eller familieforhold** (en HR-type, som
   svangerskapspermisjon) avgjøres av den som har rettigheten for personopplysninger, ikke
   av lederen din, og lederen din får ikke e-post om den; lederen ser den først når den er

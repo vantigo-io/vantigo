@@ -1282,6 +1282,9 @@ type StaffCase struct {
 	// ClosedAt When HR closed it. Absent when HR has not.
 	ClosedAt *time.Time `json:"closedAt,omitempty"`
 
+	// Etag In place of the revision, to a reader who writes the case but does not read its health group (the manager, staff:manage without staff:personal-data): an opaque tag that changes with every write, sent back as If-Match (quoted) on PUT /cases/{id}. A bare revision from such a reader is revision_conflict.
+	Etag *string `json:"etag,omitempty"`
+
 	// FirstDay The first day of its first row.
 	FirstDay openapi_types.Date `json:"firstDay"`
 	Id       int64              `json:"id"`
@@ -1300,8 +1303,8 @@ type StaffCase struct {
 	Open     bool  `json:"open"`
 	PersonId int64 `json:"personId"`
 
-	// Revision Send it back as If-Match on PUT /cases/{id}.
-	Revision int32 `json:"revision"`
+	// Revision Send it back as If-Match on PUT /cases/{id}. Read by the health group alone — the person and staff:personal-data — since it moves with the accommodation note; the Approver, who writes no note, reads neither it nor etag.
+	Revision int32 `json:"revision,omitempty"`
 }
 
 // StaffCaseChangeRequest A case's notes: a field left out is kept, one sent is written, null clearing it — the accommodation note by the manager and HR, the estimate by staff:manage alone (sent by anyone else, a 400), null returning it to the derived first day + 364.
@@ -1330,8 +1333,8 @@ type StaffCaseMilestone struct {
 	// Note Its note, class E: to the person and staff:personal-data only.
 	Note *string `json:"note,omitempty"`
 
-	// Revision Send it back as If-Match on PUT /cases/{id}/milestones/{kind}/note.
-	Revision int32 `json:"revision"`
+	// Revision Send it back as If-Match on PUT /cases/{id}/milestones/{kind}/note. Read by the health group alone — the person and staff:personal-data — since it moves with the note.
+	Revision int32 `json:"revision,omitempty"`
 	Waived   bool  `json:"waived"`
 
 	// WaivedReason Why it was waived as plainly unnecessary — never a diagnosis; class E, to the person and staff:personal-data only. Absent when not waived.
