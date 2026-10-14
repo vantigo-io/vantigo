@@ -326,6 +326,35 @@ describe("My page — the request sheet", () => {
     expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
   });
 
+  it("is a dialog on a desktop", async () => {
+    stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me?tab=absence");
+
+    const dialog = await openSheet();
+    expect(dialog.closest(".mantine-Modal-content") ?? dialog.querySelector(".mantine-Modal-content")).not.toBeNull();
+  });
+
+  it("takes an hour type whatever last day a day type held before", async () => {
+    const fetchMock = stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me?tab=absence");
+
+    const dialog = await openSheet();
+    await choose(dialog, "Type", "Holiday");
+    await typeDate(within(dialog).getByRole("textbox", { name: "First day" }), "Oct 13, 2026");
+    await typeDate(within(dialog).getByRole("textbox", { name: "Last day" }), "Oct 16, 2026");
+    await typeDate(within(dialog).getByRole("textbox", { name: "First day" }), "Oct 20, 2026");
+    await choose(dialog, "Type", "Doctor or dentist");
+    await retype(within(dialog).getByRole("textbox", { name: "Hours" }), "1");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Register" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/me\/absences$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/me\/absences$/)[0].body).toEqual({
+      typeId: 1020,
+      firstDay: "2026-10-20",
+      hours: 1,
+    });
+  });
+
   it("puts an overlap on the first day, in words", async () => {
     stubStaffApi({
       role: "access",
@@ -406,5 +435,30 @@ describe("My page — the request sheet opened from elsewhere", () => {
   it("keeps the asked-for view in the URL's own words", () => {
     expect(validateMyPageSearch({ tab: "absence", create: "absence" })).toEqual({ tab: "absence", create: "absence" });
     expect(validateMyPageSearch({ tab: "absence", create: "person" })).toEqual({ tab: "absence" });
+  });
+
+  it("is a dialog from Mantine's sm up, 768 pixels included", async () => {
+    // At 768 px every max-width query of 768 px or more matches, and nothing narrower.
+    window.innerWidth = 768;
+    window.matchMedia = vi.fn((query: string) => {
+      const width = /max-width:\s*([\d.]+)(em|px)/.exec(query);
+      const pixels = width === null ? 0 : Number(width[1]) * (width[2] === "em" ? 16 : 1);
+      return {
+        matches: width !== null && pixels >= 768,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      };
+    });
+    stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me?tab=absence");
+
+    const dialog = await openSheet();
+    expect(dialog.closest(".mantine-Drawer-content") ?? dialog.querySelector(".mantine-Drawer-content")).toBeNull();
+    expect(dialog.closest(".mantine-Modal-content") ?? dialog.querySelector(".mantine-Modal-content")).not.toBeNull();
   });
 });

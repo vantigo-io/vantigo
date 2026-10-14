@@ -16,6 +16,7 @@ import { MilestoneList } from "../components/milestone-list";
 import "../i18n";
 import { absenceDays, absenceName, refusalText } from "../lib/absence";
 import { toUtc } from "../lib/dates";
+import { isRevisionConflict } from "../lib/errors";
 import { useStaffFormat } from "../lib/format";
 import { monthOf } from "../lib/workdays";
 
@@ -184,6 +185,14 @@ const AccommodationNoteForm = ({ sickCase, onDone }: { sickCase: StaffCase; onDo
       onDone();
     },
     onError: async (error) => {
+      if (isRevisionConflict(error)) {
+        // Somebody saved the case meanwhile: close on what is there now, so a
+        // second Save never overwrites what the other writer wrote.
+        notifications.show({ color: "yellow", title: t("revisionConflict"), message: t("revisionConflictHint") });
+        await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY] });
+        onDone();
+        return;
+      }
       notifications.show({ color: "red", title: t("couldNotSave"), message: refusalText(error, t) });
       await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY, "cases"] });
     },

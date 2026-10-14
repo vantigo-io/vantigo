@@ -490,15 +490,15 @@ Fanen **Fravær** på Min side viser, slik Ansatte teller dem:
   retten din til egenmelding, står det til når og hvorfor.
 - **Omsorgsdager** for i år — **Rett**, **Brukt** og **Igjen** — ut fra opplysningene HR
   har registrert om barna dine; er de ikke registrert ennå, står det.
-- **Mine fravær**, nyeste først, hvert med type, dager, status (*Søkt om*, *Godkjent*,
+- **Mitt fravær**, nyeste først, hvert med type, dager, status (*Søkt om*, *Godkjent*,
   *Avslått*, *Trukket tilbake* eller *Registrert*), arbeidsdager eller timer, merknaden
   din og merknaden til avgjørelsen. En søknad som venter, har **Endre** og **Trekk
   tilbake**; en søknad som er trukket tilbake, blir stående i listen.
 
 ### Be om fravær fra mobilen
 
-1. På Min side åpner du **Fravær** og trykker **Be om fravær**. På mobilen åpnes arket
-   fra bunnen av skjermen.
+1. På Min side åpner du **Fravær** og trykker **Be om fravær**. På mobilen — en skjerm
+   smalere enn 768 piksler — åpnes arket fra bunnen; bredere er det en dialog.
 2. Velg **Type**. Arket spør etter det typen tar:
    - en dagtype: **Første dag** og, for mer enn én dag, **Siste dag**;
    - en timetype, som lege- eller tannlegebesøk: **Dag** og **Timer**;
@@ -555,7 +555,7 @@ en leder uten disse, dem hen er leder for og seg selv.
 
 Hver stolpe viser bare det du har lov til å se: typen og statusen, en prosent av dagen
 eller timene for HR og personens leder; *Permisjon* for en type som røper helse eller
-familieforhold, når den er godkjent; og *Borte* — bare dagene, uten type eller status —
+familieforhold, når den er godkjent; og *Fraværende* — bare dagene, uten type eller status —
 for en kollega som ser ansattoversikten. Pek på en stolpe, eller les den med skjermleser,
 for dagene og detaljene. På mobilen ruller måneden sidelengs inne i rammen sin.
 

@@ -1,4 +1,4 @@
-import { Button, Drawer, Group, Modal, NumberInput, Select, Stack, Text, Textarea } from "@mantine/core";
+import { Button, Drawer, em, Group, Modal, NumberInput, Select, Stack, Text, Textarea } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
@@ -40,7 +40,8 @@ export interface RequestSheetProps {
  */
 export const RequestSheet = ({ opened, onClose, types, today, absence }: RequestSheetProps) => {
   const { t } = useStaffFormat();
-  const phone = useMediaQuery("(max-width: 48em)");
+  // Strictly below Mantine's `sm` (48em): at 768 px the sheet is already a dialog.
+  const phone = useMediaQuery(`(max-width: ${em(767.98)})`);
   const title = absence ? t("changeAbsence") : t("requestAbsence");
   const form = opened && <RequestForm types={types} today={today} absence={absence} onDone={onClose} />;
   return phone ? (
@@ -114,8 +115,14 @@ const RequestForm = ({
     validate: {
       typeId: (value) => (value ? null : t("typeRequired")),
       firstDay: (value) => (value ? null : t("firstDayRequired")),
+      // An hour type is one day: a last day a day type left behind is neither shown nor sent.
       lastDay: (value, values) =>
-        value && values.firstDay && value < values.firstDay ? t("lastDayBeforeFirst") : null,
+        offered.find((one) => String(one.id) === values.typeId)?.unit !== "hours" &&
+        value &&
+        values.firstDay &&
+        value < values.firstDay
+          ? t("lastDayBeforeFirst")
+          : null,
       hours: (value, values) =>
         offered.find((one) => String(one.id) === values.typeId)?.unit === "hours" && value === ""
           ? t("hoursRequired")
