@@ -166,3 +166,55 @@ func TestAbsences_HROnlyRowsArePersonalDatasToDecide(t *testing.T) {
 	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
 	do(t, hrPD, http.MethodPost, cancelAbsencePath(perm.Id), nil, http.StatusOK, nil)
 }
+
+// An HR-only type is a target only for the person and staff:personal-data
+// (whole-branch review): HR without staff:personal-data, who reads such a
+// type as leave, cannot register, change or correct a row into one — the
+// answer is the one an unknown type gets, so the attempt tells nothing.
+func TestAbsences_HROnlyTargetTypesAreThePersonsAndPersonalDatas(t *testing.T) {
+	t.Parallel()
+	w := newDecisionWorld(t)
+	h := w.h
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	unknown := func(what string, r *modtest.Response, key string) {
+		t.Helper()
+		p := refused(t, r, http.StatusBadRequest, "")
+		if want := fmt.Sprintf("No absence type has id %d", typeID(t, h, key)); !bytes.Contains(r.Body, []byte(want)) {
+			t.Errorf("%s: %+v, want the unknown type's answer %q", what, p, want)
+		}
+	}
+	unknown("HR registering svangerskapspermisjon", w.hr.Do(http.MethodPost, absencesPath,
+		with(absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"), "personId", w.kari.Id)), "svangerskapspermisjon")
+	visit := register(t, w.hr, w.kari.Id, absence(t, h, "helse", "2026-09-01", "2026-09-01", "hours", 2))
+	unknown("HR changing helse into svangerskapskontroll", w.hr.Do(http.MethodPut, absencePath(visit.Id),
+		absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2), ifMatchAs(t, w.hr, visit.Id)), "svangerskapskontroll")
+	unknown("HR correcting helse into svangerskapskontroll", w.hr.Do(http.MethodPost, correctPath(visit.Id),
+		absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2), ifMatchAs(t, w.hr, visit.Id)), "svangerskapskontroll")
+
+	requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
+	register(t, hrPD, w.kari.Id, absence(t, h, "religios_hoytid", "2026-12-01", "2026-12-01"))
+	do(t, hrPD, http.MethodPut, absencePath(visit.Id), absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2),
+		http.StatusOK, nil, ifMatchAs(t, hrPD, visit.Id))
+}
+
+// Overlap tells a writer who reads HR-only types as leave nothing they may
+// not read (whole-branch review): to them an approved or registered HR-only
+// row is one whole day of leave — its hours and share unread — and an
+// HR-only request is not there at all, so neither a 24-hour probe beside a
+// svangerskapskontroll nor a day row over a hidden request is refused.
+func TestAbsences_OverlapProbesNoHROnlyRow(t *testing.T) {
+	t.Parallel()
+	w := newDecisionWorld(t)
+	h := w.h
+	requestOwn(t, w.kariC, absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2))
+	if r := w.hr.Do(http.MethodPost, absencesPath, with(absence(t, h, "helse", "2026-09-01", "2026-09-01", "hours", 24), "personId", w.kari.Id)); r.Status != http.StatusCreated {
+		t.Errorf("HR's 24 hours beside a svangerskapskontroll: %d %s, want 201 — the refusal would tell its hours", r.Status, r.Body)
+	}
+	requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
+	if r := w.hr.Do(http.MethodPost, absencesPath, with(absence(t, h, "velferdspermisjon", "2026-11-03", "2026-11-03"), "personId", w.kari.Id)); r.Status != http.StatusCreated {
+		t.Errorf("HR's day row over a hidden HR-only request: %d %s, want 201", r.Status, r.Body)
+	}
+	if r := w.hr.Do(http.MethodPost, absencesPath, with(absence(t, h, "velferdspermisjon", "2026-11-03", "2026-11-03"), "personId", w.kari.Id)); r.Status != http.StatusConflict {
+		t.Errorf("a second day row over HR's own: %d, want 409 — rows the writer reads still overlap", r.Status)
+	}
+}

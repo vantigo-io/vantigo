@@ -57,7 +57,8 @@ func TestStats_TheAbsenceFigures(t *testing.T) {
 	register(t, w.hr, w.boss.Id, absence(t, h, "sykmelding", "2026-09-11", "2026-09-14"))
 	other, _ := employed(t, w.hr, "Annen", "2020-01-01", terms())
 	register(t, w.hr, other.Id, absence(t, h, "velferdspermisjon", "2026-09-11", "2026-09-14")) // requested
-	register(t, w.hr, other.Id, absence(t, h, "svangerskapspermisjon", "2026-09-15", "2026-09-30"))
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	register(t, hrPD, other.Id, absence(t, h, "svangerskapspermisjon", "2026-09-15", "2026-09-30"))
 
 	from := time.Date(2025, time.September, 13, 0, 0, 0, 0, time.UTC)
 	agreed := 0
@@ -263,7 +264,8 @@ func TestAttention_SelfApprovedNamesNoHROnlyType(t *testing.T) {
 	w := newAbsenceWorld(t)
 	h := w.h
 	plain := register(t, w.hr, w.kari.Id, absence(t, h, "ferie", "2026-10-05", "2026-10-09"))
-	hrOnly := register(t, w.hr, w.kari.Id, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-30"))
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	hrOnly := register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-30"))
 	h.Exec(t, `UPDATE staff.absences SET status = 'approved', self_approved = true, decided_at = $2 WHERE id = ANY($1)`,
 		[]int64{plain.Id, hrOnly.Id}, h.Now())
 	items := ofType(getAttention(t, w.hr), gen.SelfApproved)

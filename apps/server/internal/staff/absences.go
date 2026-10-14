@@ -373,10 +373,13 @@ type absenceWrite struct {
 // judgeAbsence reads the type p names under the person's lock and judges
 // every rule of an absence of it for personID: the type's (judgeType), the
 // days inside one of the person's employments, and overlap with the person's
-// other rows — exclude is the row being changed, 0 for a new one.
-func judgeAbsence(ctx context.Context, txq *store.Queries, personID, exclude int64, p parsedAbsence) (parsedAbsence, store.StaffAbsenceType, error) {
+// other rows — exclude is the row being changed, 0 for a new one. hrOnly is
+// whether the writer reads HR-only types (the person, staff:personal-data):
+// for anyone else an HR-only type is no target — the answer an unknown type
+// gets (whole-branch review) — and overlap reads HR-only rows as they may.
+func judgeAbsence(ctx context.Context, txq *store.Queries, personID, exclude int64, p parsedAbsence, hrOnly bool) (parsedAbsence, store.StaffAbsenceType, error) {
 	t, err := txq.ShareAbsenceType(ctx, p.TypeID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && hrOnlyType(t.Visibility) && !hrOnly) {
 		return p, t, refuseInvalid(invalidAbsenceTitle, fieldErrors{errs: fieldError("typeId", fmt.Sprintf("No absence type has id %d", p.TypeID))})
 	} else if err != nil {
 		return p, t, fmt.Errorf("staff: read absence type %d: %w", p.TypeID, err)
@@ -393,14 +396,25 @@ func judgeAbsence(ctx context.Context, txq *store.Queries, personID, exclude int
 	if f.failed() {
 		return p, t, refuseInvalid(invalidAbsenceTitle, f)
 	}
-	return p, t, judgeOverlap(ctx, txq, personID, exclude, p, t)
+	return p, t, judgeOverlap(ctx, txq, personID, exclude, p, t, hrOnly)
+}
+
+// readsHROnlyOf is whether caller reads personID's HR-only types: the person
+// themselves, or staff:personal-data.
+func readsHROnlyOf(caller *callerContext, personID int64) bool {
+	return caller.PersonalData || (caller.Person != nil && *caller.Person == personID)
 }
 
 // judgeOverlap judges p, of type t, against personID's other requested,
 // approved and registered rows but exclude, read under the person's lock:
 // absence_overlap when it may not stand beside them. An approval judges its
-// row again here (plan reading 17).
-func judgeOverlap(ctx context.Context, txq *store.Queries, personID, exclude int64, p parsedAbsence, t store.StaffAbsenceType) error {
+// row again here (plan reading 17). A writer who does not read HR-only types
+// (hrOnly false) judges an approved or registered HR-only row as one whole
+// day of leave that shares nothing — its hours and share unread — and does
+// not judge an HR-only request at all, which they never see (whole-branch
+// review): a refusal must not tell them what the row is. The residual: a
+// day row over an HR-only hour row is still refused, as over any leave.
+func judgeOverlap(ctx context.Context, txq *store.Queries, personID, exclude int64, p parsedAbsence, t store.StaffAbsenceType, hrOnly bool) error {
 	rows, err := txq.OverlappingAbsences(ctx, store.OverlappingAbsencesParams{
 		PersonID: personID, Exclude: exclude, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last),
 	})
@@ -409,6 +423,13 @@ func judgeOverlap(ctx context.Context, txq *store.Queries, personID, exclude int
 	}
 	existing := make([]overlapRow, 0, len(rows))
 	for _, r := range rows {
+		if !hrOnly && hrOnlyType(r.Visibility) {
+			if r.StaffAbsence.Status == absenceRequested {
+				continue
+			}
+			existing = append(existing, overlapRow{First: civil(r.StaffAbsence.FirstDay), Last: civil(r.StaffAbsence.LastDay), Share: wholeDay, Kind: kindLeave, Status: r.StaffAbsence.Status})
+			continue
+		}
 		existing = append(existing, overlapOf(r.StaffAbsence, r.Kind, r.Unit, r.AllowsPercent))
 	}
 	candidate := overlapRow{First: p.First, Last: p.Last, AllowsPercent: t.AllowsPercent, Share: shareOf(t.Kind, p.Percent, p.Degree), Kind: t.Kind}
@@ -478,7 +499,7 @@ func (s *server) respondWrite(w absenceWrite, personID int64) gen.StaffAbsence {
 func (s *server) createAbsence(ctx context.Context, caller *callerContext, who actor, personID int64, p parsedAbsence) (absenceWrite, error) {
 	var out absenceWrite
 	err := s.withPersonLock(ctx, personID, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		p, t, err := judgeAbsence(ctx, txq, personID, 0, p)
+		p, t, err := judgeAbsence(ctx, txq, personID, 0, p, readsHROnlyOf(caller, personID))
 		if err != nil {
 			return err
 		}
@@ -818,7 +839,7 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 		if !undecidedFor(before.Status, caller.Manage) {
 			return notRequested()
 		}
-		p, t, err := judgeAbsence(ctx, txq, personID, before.ID, p)
+		p, t, err := judgeAbsence(ctx, txq, personID, before.ID, p, readsHROnlyOf(caller, personID))
 		if err != nil {
 			return err
 		}

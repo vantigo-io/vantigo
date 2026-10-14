@@ -82,7 +82,7 @@ SELECT * FROM staff.absences WHERE id = @id FOR NO KEY UPDATE;
 -- OverlappingAbsences is the person's requested, approved and registered rows
 -- touching first..last, but exclude — the rows overlap is judged against
 -- (plan reading 17), read under the person's lock.
-SELECT sqlc.embed(a), t.kind, t.unit, t.allows_percent
+SELECT sqlc.embed(a), t.kind, t.unit, t.allows_percent, t.visibility
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE a.person_id = @person_id AND a.id <> @exclude::bigint
   AND a.status IN ('requested', 'approved', 'registered')

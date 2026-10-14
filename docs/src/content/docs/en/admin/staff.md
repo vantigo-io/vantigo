@@ -819,7 +819,8 @@ word): a request of an HR-only type — pregnancy leave, a religious holiday, an
 type marked HR-only — goes to no manager, no holder of `staff:approve` and no HR without
 `staff:personal-data`, and none of them is mailed about it. Anyone holding
 `staff:personal-data` but the person decides it in their approvals inbox, and only HR
-with `staff:personal-data` changes, cancels or corrects such a row. Give that
+with `staff:personal-data` registers, changes, cancels or corrects such a row — HR
+without it is answered as for a type that does not exist. Give that
 permission to whoever should decide such leave; with no other holder, the person's
 request waits. To everyone else the leave appears only once approved, as *leave*.
 

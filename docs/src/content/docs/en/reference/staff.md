@@ -1344,6 +1344,16 @@ grades the sick leave against the work that is left, so the day's sick share is
 (plan Revision 3, M1; the payroll export and the sick-leave rate read that share). Two
 sykmeldinger never share a day.
 
+**What a writer may not read, overlap does not tell** (whole-branch review; plan
+reading 35). A writer who reads HR-only types as leave — HR without
+`staff:personal-data`, a manager deciding — judges an approved or registered HR-only row
+as one whole day of leave that shares nothing, its hours and share unread, and does not
+judge an HR-only request at all: a 24-hour probe beside a svangerskapskontroll, or a day
+row over a pending svangerskapspermisjon, is not refused for them. The person and
+`staff:personal-data` judge every row as it is, so such a row is refused at the HR-only
+request's approval. What remains: a day row over an HR-only hour row is refused, as over
+any approved leave.
+
 ### The holiday account
 
 `GET /people/{id}/holiday-account?year` — the person, a manager of theirs today, the
@@ -1424,6 +1434,11 @@ delete and correction are the person's (as for any row) and HR's with
 leave, every HR-only row, requested-then-approved or registered, is one approved leave
 they never saw asked for, refused or withdrawn: no note, no decision field, no history —
 svangerskapskontroll reads as any other.
+
+**An HR-only type is a target only for the person and `staff:personal-data`**
+(whole-branch review): HR without that permission cannot register, change or correct
+a row into one; the answer is the 400 an unknown type gets (`typeId`: "No absence type
+has id …"), so the attempt tells nothing.
 
 The decider is judged before the person's lock — it reads the user directory, which no
 transaction may — and the row under it, so the second of two deciders, or a decider
