@@ -1,7 +1,7 @@
 /// <reference types="vitest/config" />
 import tanstackRouter from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
 
 const apiTarget = "http://localhost:8080";
 
@@ -22,7 +22,13 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom", "@mantine/core", "@mantine/dates", "@mantine/hooks"],
   },
-  server: { port: 10011, proxy: { "/api": { target: apiTarget, changeOrigin: true, secure: false } } },
+  server: {
+    port: 10011,
+    proxy: { "/api": { target: apiTarget, changeOrigin: true, secure: false } },
+    fs: {
+      allow: [searchForWorkspaceRoot(process.cwd())],
+    },
+  },
   build: { outDir: "dist", emptyOutDir: true },
   // testTimeout: Vitest's five-second default has flaked on slow, loaded CI
   // runners. The limit exists to catch a hang, not to race the runner.

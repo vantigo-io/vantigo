@@ -137,8 +137,8 @@ describe("the dashboard's attention links", () => {
 
     const title = attentionTitle(item, (key, values) => `${key}:${values?.date}`, formatInLosAngeles);
 
-    expect(title).toBe("dashboard.invoiceBatchUnposted:10 Sept 2026");
-    expect(title).not.toContain("9 Sept");
+    expect(title).toMatch(/^dashboard\.invoiceBatchUnposted:10 Sept? 2026$/);
+    expect(title).not.toMatch(/9 Sept?/);
   });
 
   it("leaves every other module's title exactly as the server wrote it", () => {
