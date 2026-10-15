@@ -65,10 +65,15 @@ const isProjectTypeFilter = (value: string): value is ProjectTypeFilter =>
  * CustomerProjectsPanel takes it. No page in this package reads permissions
  * itself.
  */
+type ProjectsPageNavigate = (options: {
+  search?: ProjectsSearch | ((current: ProjectsSearch) => ProjectsSearch) | ProjectListParams;
+  replace?: boolean;
+}) => void | Promise<void>;
+
 export const ProjectsPage = ({ canCreate }: { canCreate: boolean }) => {
   const { t, formatters } = useI18n("projects");
   const { create, ...params } = useSearch({ strict: false }) as ProjectsSearch;
-  const navigate = useNavigate() as (options: unknown) => void;
+  const navigate = useNavigate() as unknown as ProjectsPageNavigate;
 
   const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
     currentSearch: params.search,
@@ -78,17 +83,18 @@ export const ProjectsPage = ({ canCreate }: { canCreate: boolean }) => {
   // The intent is consumed: it must not reopen the form on refresh or back.
   const dropCreateIntent = () => navigate({ search: params, replace: true });
 
-  const [modalState, setModalState] = useState<ProjectModalState | null>(null);
-  // Open the create form when `create` arrives in the URL, once per arrival:
-  // state adjusted during render from the previous render's value, the way
-  // React documents, rather than an effect that would flash the closed form.
+  // Open the create form when `create` arrives in the URL. Initialized directly
+  // from the URL to avoid an immediate re-render on mount, and tracked across
+  // search param changes using React's documented previous-value state adjustment.
   // A caller who may not create never sees it; the intent is dropped instead.
-  const [createSeen, setCreateSeen] = useState(false);
-  if (create && !createSeen) {
-    setCreateSeen(true);
-    if (canCreate) setModalState({ mode: "create" });
+  const [modalState, setModalState] = useState<ProjectModalState | null>(() =>
+    create && canCreate ? { mode: "create" } : null,
+  );
+  const [prevCreate, setPrevCreate] = useState(create);
+  if (create !== prevCreate) {
+    setPrevCreate(create);
+    if (create && canCreate) setModalState({ mode: "create" });
   }
-  if (!create && createSeen) setCreateSeen(false);
   useEffect(() => {
     if (create && !canCreate) dropCreateIntent();
     // eslint-disable-next-line react-hooks/exhaustive-deps

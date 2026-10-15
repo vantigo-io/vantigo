@@ -117,6 +117,13 @@ const SortableHeader = ({ column, label, sortBy, sortDirection, onSort }: Sortab
   );
 };
 
+type CustomersPageNavigate = (options: {
+  to?: string;
+  href?: string;
+  search?: CustomersSearch | ((current: CustomersSearch) => CustomersSearch);
+  replace?: boolean;
+}) => void | Promise<void>;
+
 export const CustomersPage = ({
   canEdit,
   canExport,
@@ -135,7 +142,7 @@ export const CustomersPage = ({
   const { page, search, status, type, ownerId, tagId, groupId, sortBy, sortDirection, create } = useSearch({
     strict: false,
   }) as CustomersSearch;
-  const navigate = useNavigate() as (options: unknown) => void;
+  const navigate = useNavigate() as unknown as CustomersPageNavigate;
 
   // The filter/sort half of the URL, kept apart from `create`: typing in the
   // search box or turning a page must never resurrect a consumed create
@@ -199,16 +206,15 @@ export const CustomersPage = ({
     navigate({ search: { ...listSearch, ...next, page: 1 } });
   };
 
-  const [modalState, setModalState] = useState<CustomerModalState | null>(null);
-  // Open the create form when `create` arrives in the URL, once per arrival:
-  // state adjusted during render from the previous render's value, the way
-  // React documents, rather than an effect that would flash the closed form.
-  const [createSeen, setCreateSeen] = useState(false);
-  if (create && !createSeen) {
-    setCreateSeen(true);
-    setModalState({ mode: "create" });
+  // Open the create form when `create` arrives in the URL. Initialized directly
+  // from the URL to avoid an immediate re-render on mount, and tracked across
+  // search param changes using React's documented previous-value state adjustment.
+  const [modalState, setModalState] = useState<CustomerModalState | null>(() => (create ? { mode: "create" } : null));
+  const [prevCreate, setPrevCreate] = useState(create);
+  if (create !== prevCreate) {
+    setPrevCreate(create);
+    if (create) setModalState({ mode: "create" });
   }
-  if (!create && createSeen) setCreateSeen(false);
   const closeModal = () => {
     setModalState(null);
     // The intent is consumed: closing the form must not reopen it on refresh or back.

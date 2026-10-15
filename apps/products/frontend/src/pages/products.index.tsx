@@ -33,28 +33,31 @@ interface ProductsSearch {
   create?: boolean;
 }
 
+type ProductsPageNavigate = (options: {
+  to?: string;
+  href?: string;
+  search?: ProductsSearch | ((current: ProductsSearch) => ProductsSearch);
+  replace?: boolean;
+}) => void | Promise<void>;
+
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
 const nokPrice = (product: ProductResponse) => product.effectivePrices.find((price) => price.currency === "NOK");
 export const ProductsPage = () => {
   const { t, formatters } = useI18n("products");
   const { page, search, status, categoryId, create } = useSearch({ strict: false }) as ProductsSearch;
-  const navigate = useNavigate() as (options: unknown) => void;
+  const navigate = useNavigate() as unknown as ProductsPageNavigate;
   const [searchInput, setSearchInput] = useState(search);
   const [debouncedSearch] = useDebouncedValue(searchInput, 300);
-  const [modalState, setModalState] = useState<ProductModalState | null>(null);
+  const [modalState, setModalState] = useState<ProductModalState | null>(() => (create ? { mode: "create" } : null));
+  const [prevCreate, setPrevCreate] = useState(create);
+  if (create !== prevCreate) {
+    setPrevCreate(create);
+    if (create) setModalState({ mode: "create" });
+  }
   useEffect(() => {
     if (debouncedSearch !== search)
       void navigate({ search: { page: 1, search: debouncedSearch, status, categoryId }, replace: true });
   }, [debouncedSearch, search, status, categoryId, navigate]);
-  // Open the create form when `create` arrives in the URL, once per arrival:
-  // state adjusted during render from the previous render's value, the way
-  // React documents, rather than an effect that would flash the closed form.
-  const [createSeen, setCreateSeen] = useState(false);
-  if (create && !createSeen) {
-    setCreateSeen(true);
-    setModalState({ mode: "create" });
-  }
-  if (!create && createSeen) setCreateSeen(false);
   const closeModal = () => {
     setModalState(null);
     // The intent is consumed: closing the form must not reopen it on refresh or back.
