@@ -109,9 +109,13 @@ The image is one binary with a dispatch table; the command is the first argument
 | `migrate` | Applies migrations and exits 0 or 1. | The one-shot job before the application starts, on first start and on every upgrade. |
 | `healthcheck` | Probes this container's own `/health/ready` on `127.0.0.1:$PORT` and exits 0 or 1. It constructs nothing, so a probe never fails on a bad `DATABASE_URL` — reporting that is `/health/ready`'s job. | The container `HEALTHCHECK` and any liveness or readiness probe. |
 
-`seed` also exists but is development-only (`APP_ENV=development`; it exits 2 outside
-it). No command, or an unknown one, prints usage on stderr and exits 2, so a typo in a
-job definition fails loudly rather than quietly becoming a web server.
+`seed` also exists for local development and demo environments (`APP_ENV=development`; it
+exits 2 outside it): it applies migrations and populates an idempotent Norwegian demo
+dataset across all modules (20 users across 7 permission roles, 200 companies with 400
+contacts, 50 products, 75 projects, time entries, expenses, invoices, energy metering
+points, and customer conversations). No command, or an unknown one, prints usage on
+stderr and exits 2, so a typo in a job definition fails loudly rather than quietly
+becoming a web server.
 
 ## First sign-in
 

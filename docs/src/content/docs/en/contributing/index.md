@@ -17,6 +17,8 @@ The pages here cover the rules a change is held to:
 
 - [Module boundaries](/en/contributing/module-boundaries/) — implementation ownership
   and the conventions every module follows.
+- [Frontend architecture](/en/contributing/frontend-architecture/) — workspace layout,
+  module manifests, OpenAPI client generation, TanStack Query patterns, and i18n parity.
 - [Documentation](/en/contributing/documentation/) — how this site is organised, how to
   run it, and the rule that a change to behaviour lands together with the change to
   its documentation.

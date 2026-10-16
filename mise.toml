@@ -66,6 +66,16 @@ dir = "apps/server"
 env = { APP_ENV = "development", APP_URL = "http://localhost:8080", LOG_LEVEL = "debug", DATABASE_URL = "postgres://vantigo:vantigo@127.0.0.1:55433/vantigo?sslmode=disable", APP_SECRET = "dev-only-app-secret-not-for-production-use" }
 run = "go run ./cmd/vantigo api"
 
+[tasks."server:seed"]
+description = "Populate docker-compose.dev.yml with the idempotent development and demo dataset"
+dir = "apps/server"
+env = { APP_ENV = "development", APP_URL = "http://localhost:8080", LOG_LEVEL = "info", DATABASE_URL = "postgres://vantigo:vantigo@127.0.0.1:55433/vantigo?sslmode=disable", APP_SECRET = "dev-only-app-secret-not-for-production-use" }
+run = "go run ./cmd/vantigo seed"
+
+[tasks."frontend:dev"]
+description = "Run the Vite frontend dev server on http://localhost:5173 (proxying /api to :8080)"
+run = "bun run --cwd apps/host/frontend dev"
+
 [tasks."ehf:validate"]
 description = "The EHF oracle: the official UBL XSD and the EN 16931 and Peppol Schematron over the goldens and the invalid fixtures"
 run = "bash tools/ehf/validate.sh"
