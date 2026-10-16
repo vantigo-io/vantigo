@@ -17,6 +17,8 @@ Sidene her dekker reglene en endring holdes til, og vedlikeholdes på engelsk:
 
 - [Modulgrenser](/en/contributing/module-boundaries/) — eierskap til implementasjon
   og konvensjonene hver modul følger.
+- [Frontend-arkitektur](/en/contributing/frontend-architecture/) — arbeidsområde,
+  modulmanifester, generert OpenAPI-klient, TanStack Query-mønstre og språkparitet.
 - [Dokumentasjon](/en/contributing/documentation/) — hvordan denne siden er organisert,
   hvordan du kjører den, og regelen om at en endring i oppførsel lander sammen med
   endringen i dokumentasjonen.

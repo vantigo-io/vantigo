@@ -109,10 +109,13 @@ Imaget er én binær med en kommandotabell; kommandoen er det første argumentet
 | `migrate` | Kjører migreringer og avslutter med 0 eller 1. | Engangsjobben før applikasjonen starter, ved første oppstart og ved hver oppgradering. |
 | `healthcheck` | Prober denne containerens eget `/health/ready` på `127.0.0.1:$PORT` og avslutter med 0 eller 1. Den konstruerer ingenting, så en probe feiler aldri på en feil `DATABASE_URL` — å rapportere det er `/health/ready` sin jobb. | Containerens `HEALTHCHECK` og enhver liveness- eller readiness-probe. |
 
-`seed` finnes også, men er bare for utvikling (`APP_ENV=development`; den avslutter
-med 2 utenfor det). Ingen kommando, eller en ukjent en, skriver bruksanvisning til
-stderr og avslutter med 2, så en skrivefeil i en jobbdefinisjon feiler høylytt i
-stedet for stille å bli en webserver.
+`seed` finnes også for lokal utvikling og demomiljøer (`APP_ENV=development`; den
+avslutter med 2 utenfor det): den kjører migreringer og fyller inn et idempotent norsk
+demodatasett på tvers av alle moduler (20 brukere fordelt på 7 tilgangsroller, 200
+bedrifter med 400 kontakter, 50 produkter, 75 prosjekter, timeregistreringer, utlegg,
+fakturaer, målepunkter og kundesamtaler). Ingen kommando, eller en ukjent en, skriver
+bruksanvisning til stderr og avslutter med 2, så en skrivefeil i en jobbdefinisjon
+feiler høylytt i stedet for stille å bli en webserver.
 
 ## Første innlogging
 

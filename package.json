@@ -59,6 +59,7 @@
     }
   },
   "scripts": {
+    "dev": "bun run --cwd apps/host/frontend dev",
     "frontend:lint": "bun run --filter '*' lint",
     "frontend:typecheck": "bun run --filter '*' typecheck",
     "frontend:test": "for d in apps/*/frontend packages/*; do bun run --cwd \"$d\" test || exit 1; done",

@@ -160,12 +160,16 @@ mise install                          # Go, Bun and the lint/release tools
 bun install --frozen-lockfile         # frontend workspace dependencies
 
 mise run server:db                    # PostgreSQL for tests (55432) and development (55433)
+mise run server:seed                  # optional: populate the showcase demo dataset (owner@vantigo.local / vantigo)
 mise run server:dev                   # the api command on http://localhost:8080
 ```
 
 `mise run server:dev` runs the `api` command against the development database with a
-development-only `APP_SECRET`, so it migrates and then serves. Open `/setup` to create
-the first Owner.
+development-only `APP_SECRET`, so it migrates and then serves. Either run
+`mise run server:seed` to populate the demo dataset (20 users across 7 permission roles,
+200 companies, 400 contacts, 50 products, 75 projects — see the
+[demo test accounts table in CONTRIBUTING.md](CONTRIBUTING.md#demo-dataset-and-test-accounts)),
+or open `/setup` to create the first Owner manually.
 
 If `bun` or `go` is not on your `PATH`, prefix the command with `mise exec --`
 (`mise exec -- bun install --frozen-lockfile`).
@@ -176,7 +180,7 @@ The SPA runs against the Go server through the Vite dev server, which proxies `/
 to <http://localhost:8080>:
 
 ```bash
-bun run --cwd apps/host/frontend dev   # http://localhost:10011
+mise run frontend:dev                  # http://localhost:10011 (or: bun run dev)
 ```
 
 The root convenience scripts validate every frontend package:
@@ -211,7 +215,7 @@ fails loudly instead of quietly becoming a web server that never completes.
 | `server` | Serves only: never migrates and never runs workers, regardless of `WORKERS_IN_PROCESS`. This is what a fleet of stateless replicas runs. |
 | `worker` | Runs every enabled module's background workers, plus the health endpoints for probes. |
 | `migrate` | Applies all migrations and exits 0 or 1. Uses `MIGRATIONS_DATABASE_URL` when set, otherwise `DATABASE_URL`. |
-| `seed` | Development-only (`APP_ENV=development`; exits 2 outside it). It currently does nothing — it logs `nothing to seed: identity has no development seed` and exits 0. |
+| `seed` | Development-only (`APP_ENV=development`; exits 2 outside it). Applies pending migrations and populates an idempotent showcase dataset across every module. |
 | `healthcheck` | Probes this container's own `/health/ready` on `127.0.0.1:$PORT` and exits 0 or 1. It constructs nothing and reads no database configuration, so a liveness probe never fails because of a misconfigured `DATABASE_URL`. |
 
 Because the image has no shell, container and orchestrator probes must use the exec

@@ -14,17 +14,21 @@ mise install              # Go, Bun, lint and release tools, and Java (only for 
 bun install --frozen-lockfile
 
 mise run server:db        # PostgreSQL for tests (55432) and development (55433)
+mise run server:seed      # populate the showcase demo dataset (20 users, 200 companies, 75 projects, ...)
 mise run server:test      # go test against a real PostgreSQL
 mise run server:check     # golangci-lint, govulncheck, shellcheck, actionlint, goreleaser check
 mise run frontend:check   # format, lint, typecheck and tests for every frontend workspace
 mise run ehf:validate     # the official EHF XSD and Schematron over the invoice goldens
 mise run server:dev       # the api command on http://localhost:8080
+mise run frontend:dev     # the Vite dev server on http://localhost:10011 (or: bun run dev)
 mise run smoke            # build the image and smoke-test it end to end
 ```
 
 `mise run server:dev` runs the `api` command, which applies migrations under the
 advisory lock and then serves. It sets a development-only `APP_SECRET`; development
-needs no SMTP configuration.
+needs no SMTP configuration. If you launch the server from an IDE debugger or directly
+with `go run ./cmd/vantigo api`, copy [`apps/server/.env.example`](apps/server/.env.example)
+into your run configuration.
 
 Java (Temurin 21) is there for the EHF oracle alone — see
 [E-invoice validation](https://docs.vantigo.io/en/contributing/e-invoice-validation/).
@@ -41,10 +45,61 @@ The binary is one image with a dispatch table — the command is the first argum
 | `server` | Serves only: never migrates, never runs workers, regardless of `WORKERS_IN_PROCESS`. What a fleet of stateless replicas runs. |
 | `worker` | Every enabled module's background workers, plus health for probes. |
 | `migrate` | Applies migrations and exits 0/1. |
-| `seed` | Development-only (`APP_ENV=development`; exits 2 outside it). Today it does nothing but log `nothing to seed: identity has no development seed`. |
+| `seed` | Development-only (`APP_ENV=development`; exits 2 outside it). Applies pending migrations and populates an idempotent showcase dataset across every module. |
 | `healthcheck` | Probes this container's own `/health/ready` on `127.0.0.1:$PORT` and exits 0/1. It constructs nothing, so a probe never fails on a bad `DATABASE_URL` — that is `/health/ready`'s job to report. |
 
 No command, or an unknown one, prints usage on stderr and exits 2.
+
+### Demo dataset and test accounts
+
+Running `mise run server:seed` populates a rich, idempotent showcase dataset (`Vantigo Demo AS`) across every module:
+
+- **20 users & staff records** across 4 departments (`LEAD`, `ENG`, `CONS`, `OPS`) and 7 RBAC role personas
+- **200 customer companies** (with realistic Norwegian organization numbers, industries, and credit limits) and **400 contacts** (2 contacts per company)
+- **50 products** across consulting, cloud, energy, software, and training categories
+- **75 projects** with tasks, member allocations, and billable rate overrides
+- **240 time entries** and **30 expenses** (mix of approved and submitted)
+- **30 invoices** across paid, partially paid, open, overdue, and draft states
+- **10 energy metering points** (`NO1`–`NO5`) and **10 customer support conversations**
+
+All 20 seeded accounts share the password **`vantigo`** and have verified emails with MFA disabled so you can immediately sign in and test different permission boundaries:
+
+#### Role Personas
+
+| Role Persona | Assigned Permissions Summary |
+| --- | --- |
+| **Owner (`SystemAdmin`)** | Built-in `Owner` + `SystemAdmin` roles. Full administrative and operational access across all modules, `/settings`, and `/admin`. |
+| **Practice Lead** | Creates and manages projects, tasks, and allocations; approves team time entries, expenses, and absences; views project costs and financials. |
+| **Finance & Billing** | Creates, issues, and sends invoices; records payments; manages billing profiles, products, and price lists; audits and exports time and expenses. |
+| **HR & People Manager** | Manages staff directory, employments, compensation terms, and sensitive personal data (`staff.sensitive.read/write`); approves absences and time. |
+| **Customer Success** | Manages customer companies, contacts, merges, and imports; handles support inbox conversations and channels; manages energy metering points. |
+| **Consultant** | Logs own time entries and expenses; views and works on assigned projects; read-only access to customers, products, and energy metering points. |
+| **Read-Only Auditor** | Read-only access across customers, products, projects, time, expenses, invoices, staff, energy, and communications; no write or approval permissions. |
+
+#### Seeded Users (`password: vantigo`)
+
+| # | Email | Name | Title | Dept | Role Persona |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `owner@vantigo.local` | Astrid Lindqvist | Managing Partner | `LEAD` | **Owner (`SystemAdmin`)** |
+| 2 | `henrik.solberg@vantigo.local` | Henrik Solberg | Practice Director | `LEAD` | **Practice Lead** |
+| 3 | `ingrid.nygaard@vantigo.local` | Ingrid Nygård | Principal Architect | `ENG` | **Practice Lead** |
+| 4 | `magnus.bakken@vantigo.local` | Magnus Bakken | Delivery Lead | `CONS` | **Practice Lead** |
+| 5 | `sofie.haugen@vantigo.local` | Sofie Haugen | Finance & Operations Manager | `OPS` | **Finance & Billing** |
+| 6 | `erik.johansen@vantigo.local` | Erik Johansen | Regional Lead West | `CONS` | **Practice Lead** |
+| 7 | `nora.berg@vantigo.local` | Nora Berg | Senior Cloud Consultant | `ENG` | **Consultant** |
+| 8 | `jakob.dahl@vantigo.local` | Jakob Dahl | Senior Billing Controller | `OPS` | **Finance & Billing** |
+| 9 | `emilie.lund@vantigo.local` | Emilie Lund | Lead Product Designer | `ENG` | **Consultant** |
+| 10 | `jonas.moen@vantigo.local` | Jonas Moen | Senior Platform Engineer | `ENG` | **Consultant** |
+| 11 | `thea.hagen@vantigo.local` | Thea Hagen | Energy Domain Specialist | `CONS` | **Customer Success** |
+| 12 | `sander.lie@vantigo.local` | Sander Lie | Senior Backend Engineer | `ENG` | **Consultant** |
+| 13 | `frida.eide@vantigo.local` | Frida Eide | Management Consultant | `CONS` | **Consultant** |
+| 14 | `tobias.strand@vantigo.local` | Tobias Strand | HR & Compliance Lead | `OPS` | **HR & People Manager** |
+| 15 | `maja.holm@vantigo.local` | Maja Holm | Customer Success Lead | `OPS` | **Customer Success** |
+| 16 | `oliver.aas@vantigo.local` | Oliver Aas | Data & Analytics Engineer | `ENG` | **Consultant** |
+| 17 | `amalie.vik@vantigo.local` | Amalie Vik | Project Consultant | `CONS` | **Consultant** |
+| 18 | `kasper.myhre@vantigo.local` | Kasper Myhre | Fullstack Engineer | `ENG` | **Consultant** |
+| 19 | `hedda.bo@vantigo.local` | Hedda Bø | People & Culture Partner | `OPS` | **HR & People Manager** |
+| 20 | `mathias.rask@vantigo.local` | Mathias Rask | Internal Auditor | `OPS` | **Read-Only Auditor** |
 
 Rules the code relies on:
 
