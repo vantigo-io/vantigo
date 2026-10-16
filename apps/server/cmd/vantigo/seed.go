@@ -235,6 +235,9 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 			return fmt.Errorf("check existing seed state: %w", err)
 		}
 		if alreadySeeded {
+			if err := backfillDemoAvatarsIfMissing(ctx, tx, now); err != nil {
+				return fmt.Errorf("backfill demo avatars: %w", err)
+			}
 			skipped = true
 			return nil
 		}
@@ -426,6 +429,10 @@ func seedIdentityAndStaff(ctx context.Context, tx pgx.Tx, now time.Time, pwHash 
 				return nil, false, err
 			}
 		}
+	}
+
+	if err := seedDemoAvatars(ctx, tx, now, userIDs); err != nil {
+		return nil, false, err
 	}
 
 	// Seed Staff organisation structure and 20 employee records.

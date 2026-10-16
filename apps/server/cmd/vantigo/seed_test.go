@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"image/png"
 	"strings"
 	"testing"
 
@@ -9,6 +11,27 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
+
+func TestRenderDemoAvatarPNG_AllPersonasDecodeAs256x256PNG(t *testing.T) {
+	seen := make(map[string]int, len(demoStaffMembers))
+	for i := range demoStaffMembers {
+		data, err := renderDemoAvatarPNG(i)
+		if err != nil {
+			t.Fatalf("renderDemoAvatarPNG(%d) failed: %v", i, err)
+		}
+		cfg, err := png.DecodeConfig(bytes.NewReader(data))
+		if err != nil {
+			t.Fatalf("persona %d invalid PNG: %v", i, err)
+		}
+		if cfg.Width != 256 || cfg.Height != 256 {
+			t.Errorf("persona %d dimensions = %dx%d, want 256x256", i, cfg.Width, cfg.Height)
+		}
+		if prev, dup := seen[string(data)]; dup {
+			t.Errorf("persona %d produced identical PNG bytes as persona %d", i, prev)
+		}
+		seen[string(data)] = i
+	}
+}
 
 func TestDemoCustomRoles_AllPermissionsExistInModuleCatalog(t *testing.T) {
 	known := make(map[string]bool)
@@ -56,6 +79,7 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		want  int
 	}{
 		{"identity.users", "SELECT count(*) FROM identity.users", demoUserCount},
+		{"identity.profile_avatars", "SELECT count(*) FROM identity.profile_avatars", demoUserCount},
 		{"staff.people", "SELECT count(*) FROM staff.people", demoUserCount},
 		{"customers.customers", "SELECT count(*) FROM customers.customers", demoCustomerCount},
 		{"customers.contacts", "SELECT count(*) FROM customers.contacts", demoCustomerCount * demoContactsPerCustomer},

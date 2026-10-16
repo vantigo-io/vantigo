@@ -54,7 +54,7 @@ No command, or an unknown one, prints usage on stderr and exits 2.
 
 Running `mise run server:seed` populates a rich, idempotent showcase dataset (`Vantigo Demo AS`) across every module:
 
-- **20 users & staff records** across 4 departments (`LEAD`, `ENG`, `CONS`, `OPS`) and 7 RBAC role personas
+- **20 users & staff records** (each with a unique 256×256 illustrated portrait avatar) across 4 departments (`LEAD`, `ENG`, `CONS`, `OPS`) and 7 RBAC role personas
 - **200 customer companies** (with realistic Norwegian organization numbers, industries, and credit limits) and **400 contacts** (2 contacts per company)
 - **50 products** across consulting, cloud, energy, software, and training categories
 - **75 projects** with tasks, member allocations, and billable rate overrides
