@@ -254,8 +254,10 @@ en invitasjon som har gått ut, erstattes ved neste aktivering til tre er levert
 melder Ansatte den som ubesvart. En eiers tilbaketrekking av invitasjonen står — Ansatte
 sender ingen ny — til noen kjører personens konto for hånd i Ansatte (*Kjør nå*), som
 starter en ny runde. *Kjør nå* sender aldri på nytt en invitasjon som fortsatt kan
-godtas, og starter en runde høyst én gang hvert tiende minutt: innen ti minutter etter
-forrige invitasjon er det en vanlig kjøring. En e-post som ikke kan sendes, trekker invitasjonen tilbake
+godtas. Ingen invitasjon sendes innen ti minutter etter den forrige som navnga brukeren
+— verken ved *Kjør nå*, etter en adresseendring eller ved neste planlagte kjøring — så
+å trykke *Kjør nå* igjen og igjen, eller å endre en adresse fram og tilbake, sender
+høyst én invitasjon hvert tiende minutt. En e-post som ikke kan sendes, trekker invitasjonen tilbake
 `delivery_failed` og teller ikke; neste aktivering prøver igjen.
 
 Ansattes klargjøring rører aldri en eier eller en SystemAdmin, aktiverer aldri igjen en
@@ -264,7 +266,10 @@ mister tilgangen uansett hva katalogen sier: Ansatte deaktiverer dem i
 identitetsmodulen også når katalogen allerede melder dem inaktive (SCIM deaktiverer
 aldri en bruker i identitetsmodulen, og deaktiveringen der teller bare mens SCIM er
 konfigurert), så en katalog som aktiverer dem igjen senere, eller SCIM slått av, slipper
-dem ikke inn. En ny ansettelse aktiverer igjen det Ansatte deaktiverte; så lenge
+dem ikke inn. En deaktivering fra Ansatte fjerner ingen
+rolle, så en ny ansettelse beholder rollene en eier har gitt brukeren tidligere i
+tillegg til ansattrollene; en eier fjerner roller for hånd når det ikke er ønsket. En ny
+ansettelse aktiverer igjen det Ansatte deaktiverte; så lenge
 katalogen fortsatt melder personen inaktiv, holder den dem ute, og Ansatte melder
 kontoen som deaktivert av katalogen. Dette avviser den:
 

@@ -482,6 +482,7 @@ func TestProvisioning_InvitationsAreReissuedUpToThreeDelivered(t *testing.T) {
 	if got := accountOf(t, p, ref.UserID, ""); got.Invitation.Issued != 1 {
 		t.Errorf("issued = %d after a failed delivery, want 1", got.Invitation.Issued)
 	}
+	h.advance(11 * time.Minute) // past the ten minutes since the undelivered one
 	if got := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{}); got.Invitation != (contracts.Invitation{State: contracts.InvitationActive, Issued: 2}) {
 		t.Errorf("the retry = %+v, want active, two", got.Invitation)
 	}
@@ -574,6 +575,39 @@ func TestProvisioning_AFreshInvitationNeverResendsAnOpenOne(t *testing.T) {
 	}
 }
 
+// Every invitation, not only a fresh one, waits ten minutes after the last
+// naming the user: a pending user moved from A to B and back within ten
+// minutes, activated after each move, is mailed once; after ten minutes the
+// next Activate invites again.
+func TestProvisioning_AddressChangesSendOneInvitationPerTenMinutes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	employeeRole(t, h)
+	p := h.accounts(t)
+	const a, b = "a@example.test", "b@example.test"
+	ref := mustPrepare(t, p, spec(a, "A-1"))
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	h.advance(time.Hour)
+	update := func(email string) {
+		t.Helper()
+		if _, err := p.Update(context.Background(), systemActor, ref.UserID, spec(email, "A-1")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	update(b)
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	h.advance(2 * time.Minute)
+	update(a)
+	got := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	if n := len(h.mailTo(a)) + len(h.mailTo(b)); n != 2 || got.Invitation.State != contracts.InvitationNone {
+		t.Errorf("%d mails in all and ref %+v, want the first and one for B only, none open", n, got.Invitation)
+	}
+	h.advance(10 * time.Minute)
+	if again := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{}); again.Invitation.State != contracts.InvitationActive || len(h.mailTo(a)) != 2 {
+		t.Errorf("after ten minutes = %+v and %d mails to A, want an open invitation and a second mail", again.Invitation, len(h.mailTo(a)))
+	}
+}
+
 // Activate gives the roles only on the call that enables the user: a
 // pending user Staff has already enabled is given nothing again, so an
 // Owner's removal of a role before they accept is not undone.
@@ -639,6 +673,7 @@ func TestProvisioning_DeactivateDisablesEndsSessionsAndRevokes(t *testing.T) {
 		t.Errorf("Deactivate again wrote: %s → %s", before, after)
 	}
 
+	h.advance(11 * time.Minute) // past the ten minutes since the last invitation
 	if back := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{}); back.DisabledBy != "" || back.Invitation.State != contracts.InvitationActive {
 		t.Errorf("re-activated ref = %+v, want enabled and invited again", back)
 	}
@@ -688,7 +723,7 @@ func TestProvisioning_UpdateWritesTheAddressOnlyWhilePending(t *testing.T) {
 	p := h.accounts(t)
 	ref := mustPrepare(t, p, spec("first@example.test", "U-1"))
 	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
-	h.advance(time.Minute)
+	h.advance(11 * time.Minute) // past the ten minutes since the first invitation
 
 	got, err := p.Update(context.Background(), systemActor, ref.UserID,
 		contracts.AccountSpec{Email: "second@example.test", DisplayName: "Renamed", PreferredLanguage: "en", EmployeeNumber: "U-2"})
@@ -945,12 +980,30 @@ func TestProvisioning_ActivateReenablesUnderAnInactiveDirectory(t *testing.T) {
 	}
 	h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
 	        VALUES ($1, $2, $3, $3, false, 1, 'etag', $4, $4)`, uuid.New(), id, id.String(), h.now())
+	old := h.session(t, id, false)
 	got := mustActivate(t, p, id, contracts.ActivateOpts{})
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND NOT is_disabled AND disabled_by IS NULL`, id); n != 1 {
 		t.Errorf("the Staff-disabled user was not re-enabled: %s", userState(t, h, id))
 	}
 	if got.State != contracts.AccountStateDisabled || got.DisabledBy != contracts.DisabledByDirectory {
 		t.Errorf("ref = %+v, want disabled by the directory while it says inactive", got)
+	}
+	// Re-enabled in identity, but the directory keeps them out while it
+	// says inactive: no password sign-in, no session admitted, old or fresh.
+	login := func() int {
+		return h.client(t).do(http.MethodPost, "/api/v1/identity/login", map[string]string{"email": "rehire@example.test", "password": userPassword}).status
+	}
+	if status := login(); status == http.StatusOK {
+		t.Error("the rehire signed in while the directory says inactive")
+	}
+	for name, tok := range map[string]string{"old": old, "fresh": h.session(t, id, false)} {
+		if _, o := check(t, h, tok, "session"); o == allowed {
+			t.Errorf("the rehire's %s session is admitted while the directory says inactive", name)
+		}
+	}
+	h.exec(t, `UPDATE identity.scim_user_mappings SET upstream_active = true WHERE user_id = $1`, id)
+	if status := login(); status != http.StatusOK {
+		t.Errorf("after the directory reactivated the rehire, sign-in = %d, want 200", status)
 	}
 }
 

@@ -238,8 +238,10 @@ lapsed invitation is replaced at the next activation until three have been deliv
 then Staff reports it unanswered. An Owner's revoke of the invitation stands — Staff
 does not send another — until someone runs the person's account in Staff by hand
 (*Run now*), which starts a new spell. *Run now* never re-sends an invitation that can
-still be accepted, and starts a spell at most once every ten minutes: within ten
-minutes of the last invitation it is an ordinary run. A mail that cannot be sent revokes its
+still be accepted. No invitation is sent within ten minutes of the last one naming the
+user — whether by *Run now*, after an address change or on the next scheduled run — so
+pressing *Run now* again and again, or changing an address back and forth, sends at
+most one invitation every ten minutes. A mail that cannot be sent revokes its
 invitation `delivery_failed` and does not count; the next activation tries again.
 
 Staff's provisioning never touches an Owner or a SystemAdmin, never re-enables a user
@@ -247,7 +249,9 @@ an Owner disabled and never deactivates the last active Owner. A leaver loses ac
 whatever the directory says: Staff disables them in identity even when the directory
 already reports them inactive (SCIM never disables a user in identity, and its
 deactivation counts only while SCIM is configured), so a directory that reactivates
-them later, or SCIM turned off, does not let them back in. A rehire re-enables what
+them later, or SCIM turned off, does not let them back in. A Staff deactivation removes no role, so
+a rehire keeps the roles an Owner gave the user earlier as well as the employee roles;
+an Owner removes roles by hand when that is not wanted. A rehire re-enables what
 Staff disabled; while the directory still reports the person inactive, it keeps them
 out and Staff reports their account disabled by the directory. What it refuses:
 

@@ -269,7 +269,8 @@ type AccountProvisioning interface {
 	// Activate enables a managed user. In local mode the call that enables
 	// them assigns the provisioning roles (ErrEmployeeRoleMissing when there
 	// are none), and it invites a pending user who has no credential and no
-	// acceptable invitation, delivering after its commit; in federated mode it only
+	// acceptable invitation — never within ten minutes of the last invitation
+	// naming them — delivering after its commit; in federated mode it only
 	// re-enables a user Staff disabled. ErrAccountNotManaged,
 	// ErrAccountPrivileged, ErrBlockedByOwner, ErrEmployeeRoleMissing,
 	// ErrEmployeeRoleUnsafe, ErrUserGone.

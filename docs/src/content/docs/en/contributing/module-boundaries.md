@@ -236,8 +236,8 @@ Communications' outbox is the working example.
     carries no roles: identity assigns the set an Owner named, only on the `Activate`
     that enables a user Staff disabled, so `staff:manage` can never mint an account
     holding a role it chose, nor give back one an Owner removed.
-    `ActivateOpts.FreshInvitation` never re-sends an open invitation and starts a new
-    spell at most once per ten minutes. The employee number decides whose
+    `ActivateOpts.FreshInvitation` never re-sends an open invitation, and no
+    `Activate` invites within ten minutes of the last invitation naming the user. The employee number decides whose
     account a user is: `Prepare` finds by it, and a caller acts on a user only when
     identity's number is the same as its record's by `contracts.SameEmployeeNumber`
     — the same `contracts.NormalizeEmployeeNumber` key (trimmed, NFC-normalised,
