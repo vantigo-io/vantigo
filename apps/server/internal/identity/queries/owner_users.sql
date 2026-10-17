@@ -6,8 +6,11 @@
 -- user is linked to the configured workforce OIDC provider: a link under
 -- oidc_issuer, the configured authority normalized, which is null while
 -- OIDC is off (EA/AuthAccountEndpoints.cs:406-408, :425-426). A link left
--- behind by a previously configured provider does not count.
+-- behind by a previously configured provider does not count. managed_by,
+-- employee_number, pending (pending_since set) and disabled_by are the
+-- Staff-managed state (delivery C).
 SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled,
+       u.managed_by, u.employee_number, (u.pending_since IS NOT NULL)::boolean AS pending, u.disabled_by,
        EXISTS (
            SELECT 1
            FROM identity.user_roles ur
@@ -66,9 +69,25 @@ SET display_name = @display_name,
 WHERE id = @id;
 
 -- name: SetUserDisabled :exec
+-- SetUserDisabled is an Owner's disable or enable: disabled_by records who
+-- disabled the user ('owner'), and an enable clears it (null).
 UPDATE identity.users
-SET is_disabled = @is_disabled, version = @version, updated_at = @now::timestamptz
+SET is_disabled = @is_disabled, disabled_by = sqlc.narg(disabled_by), version = @version, updated_at = @now::timestamptz
 WHERE id = @id;
+
+-- name: SetUserStaffManaged :exec
+-- SetUserStaffManaged is an Owner's adoption of a user for Staff (managed_by
+-- 'staff' and the employee number) or its end (both null). pending_since is
+-- left as it is: a pending user an Owner unmanages is the Owner's to finish.
+UPDATE identity.users
+SET managed_by = sqlc.narg(managed_by), employee_number = sqlc.narg(employee_number),
+    version = @version, updated_at = @now::timestamptz
+WHERE id = @id;
+
+-- name: GetUserIDByEmployeeNumber :one
+-- GetUserIDByEmployeeNumber is the user holding an employee number, compared
+-- as ux_users_employee_number compares it: however it is cased.
+SELECT id FROM identity.users WHERE upper(employee_number) = upper(@employee_number::text);
 
 -- name: DeleteUser :exec
 -- DeleteUser removes the user and, by cascade, their roles, sessions,

@@ -63,6 +63,19 @@ func (q *Queries) GetUserAuthorizationSnapshot(ctx context.Context, id uuid.UUID
 	return i, err
 }
 
+const getUserIDByEmployeeNumber = `-- name: GetUserIDByEmployeeNumber :one
+SELECT id FROM identity.users WHERE upper(employee_number) = upper($1::text)
+`
+
+// GetUserIDByEmployeeNumber is the user holding an employee number, compared
+// as ux_users_employee_number compares it: however it is cased.
+func (q *Queries) GetUserIDByEmployeeNumber(ctx context.Context, employeeNumber string) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getUserIDByEmployeeNumber, employeeNumber)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getUserRoleNames = `-- name: GetUserRoleNames :many
 SELECT r.name
 FROM identity.user_roles ur
@@ -134,6 +147,7 @@ func (q *Queries) IsLastActiveOwner(ctx context.Context, arg IsLastActiveOwnerPa
 
 const listManagedUsers = `-- name: ListManagedUsers :many
 SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled,
+       u.managed_by, u.employee_number, (u.pending_since IS NOT NULL)::boolean AS pending, u.disabled_by,
        EXISTS (
            SELECT 1
            FROM identity.user_roles ur
@@ -156,15 +170,19 @@ type ListManagedUsersParams struct {
 }
 
 type ListManagedUsersRow struct {
-	ID          uuid.UUID
-	Email       string
-	DisplayName string
-	IsDisabled  bool
-	LockoutEnd  *time.Time
-	TotpEnabled bool
-	IsOwner     bool
-	HasAvatar   bool
-	SsoEnabled  bool
+	ID             uuid.UUID
+	Email          string
+	DisplayName    string
+	IsDisabled     bool
+	LockoutEnd     *time.Time
+	TotpEnabled    bool
+	ManagedBy      *string
+	EmployeeNumber *string
+	Pending        bool
+	DisabledBy     *string
+	IsOwner        bool
+	HasAvatar      bool
+	SsoEnabled     bool
 }
 
 // ListManagedUsers is owner user management's view of every user, or only
@@ -174,7 +192,9 @@ type ListManagedUsersRow struct {
 // user is linked to the configured workforce OIDC provider: a link under
 // oidc_issuer, the configured authority normalized, which is null while
 // OIDC is off (EA/AuthAccountEndpoints.cs:406-408, :425-426). A link left
-// behind by a previously configured provider does not count.
+// behind by a previously configured provider does not count. managed_by,
+// employee_number, pending (pending_since set) and disabled_by are the
+// Staff-managed state (delivery C).
 func (q *Queries) ListManagedUsers(ctx context.Context, arg ListManagedUsersParams) ([]ListManagedUsersRow, error) {
 	rows, err := q.db.Query(ctx, listManagedUsers, arg.OidcIssuer, arg.ID)
 	if err != nil {
@@ -191,6 +211,10 @@ func (q *Queries) ListManagedUsers(ctx context.Context, arg ListManagedUsersPara
 			&i.IsDisabled,
 			&i.LockoutEnd,
 			&i.TotpEnabled,
+			&i.ManagedBy,
+			&i.EmployeeNumber,
+			&i.Pending,
+			&i.DisabledBy,
 			&i.IsOwner,
 			&i.HasAvatar,
 			&i.SsoEnabled,
@@ -222,20 +246,53 @@ func (q *Queries) RemoveUserRoles(ctx context.Context, arg RemoveUserRolesParams
 
 const setUserDisabled = `-- name: SetUserDisabled :exec
 UPDATE identity.users
-SET is_disabled = $1, version = $2, updated_at = $3::timestamptz
-WHERE id = $4
+SET is_disabled = $1, disabled_by = $2, version = $3, updated_at = $4::timestamptz
+WHERE id = $5
 `
 
 type SetUserDisabledParams struct {
 	IsDisabled bool
+	DisabledBy *string
 	Version    uuid.UUID
 	Now        time.Time
 	ID         uuid.UUID
 }
 
+// SetUserDisabled is an Owner's disable or enable: disabled_by records who
+// disabled the user ('owner'), and an enable clears it (null).
 func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams) error {
 	_, err := q.db.Exec(ctx, setUserDisabled,
 		arg.IsDisabled,
+		arg.DisabledBy,
+		arg.Version,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
+const setUserStaffManaged = `-- name: SetUserStaffManaged :exec
+UPDATE identity.users
+SET managed_by = $1, employee_number = $2,
+    version = $3, updated_at = $4::timestamptz
+WHERE id = $5
+`
+
+type SetUserStaffManagedParams struct {
+	ManagedBy      *string
+	EmployeeNumber *string
+	Version        uuid.UUID
+	Now            time.Time
+	ID             uuid.UUID
+}
+
+// SetUserStaffManaged is an Owner's adoption of a user for Staff (managed_by
+// 'staff' and the employee number) or its end (both null). pending_since is
+// left as it is: a pending user an Owner unmanages is the Owner's to finish.
+func (q *Queries) SetUserStaffManaged(ctx context.Context, arg SetUserStaffManagedParams) error {
+	_, err := q.db.Exec(ctx, setUserStaffManaged,
+		arg.ManagedBy,
+		arg.EmployeeNumber,
 		arg.Version,
 		arg.Now,
 		arg.ID,

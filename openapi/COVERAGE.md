@@ -2,7 +2,7 @@
 
 Operations no recorded .NET exchange exercises. Their contract comes from the endpoint code alone; review them by hand. Regenerate with `go run ./internal/openapi/cmd/contract coverage` from apps/server.
 
-## identity (38 uncovered)
+## identity (42 uncovered)
 
 - `DELETE /api/v1/identity/access/groups/{groupId}/members/{userId}` (deleteIdentityAccessGroupsByGroupIdMembersByUserId)
 - `DELETE /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId}` (deleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId)
@@ -16,6 +16,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/identity/account/mfa` (getIdentityAccountMfa)
 - `GET /api/v1/identity/account/passkeys` (getIdentityAccountPasskeys)
 - `GET /api/v1/identity/invitations/validate` (getIdentityInvitationsValidate)
+- `GET /api/v1/identity/owner/provisioning-roles` (getIdentityOwnerProvisioningRoles)
 - `GET /api/v1/identity/scim/v2/Groups/{id}` (getIdentityScimV2GroupsById)
 - `GET /api/v1/identity/scim/v2/Groups` (getIdentityScimV2Groups)
 - `GET /api/v1/identity/scim/v2/ResourceTypes` (getIdentityScimV2ResourceTypes)
@@ -34,13 +35,16 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/identity/owner/mfa/disable` (postIdentityOwnerMfaDisable)
 - `POST /api/v1/identity/owner/mfa/recovery-codes` (postIdentityOwnerMfaRecoveryCodes)
 - `POST /api/v1/identity/owner/users/{id}/enable` (postIdentityOwnerUsersByIdEnable)
+- `POST /api/v1/identity/owner/users/{id}/manage` (postIdentityOwnerUsersByIdManage)
 - `POST /api/v1/identity/owner/users/{id}/password-reset` (postIdentityOwnerUsersByIdPasswordReset)
 - `POST /api/v1/identity/owner/users/{id}/password` (postIdentityOwnerUsersByIdPassword)
+- `POST /api/v1/identity/owner/users/{id}/unmanage` (postIdentityOwnerUsersByIdUnmanage)
 - `PUT /api/v1/identity/access/groups/{groupId}/members/{userId}` (putIdentityAccessGroupsByGroupIdMembersByUserId)
 - `PUT /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId}` (putIdentityAccessGroupsByGroupIdRoleMappingsByRoleId)
 - `PUT /api/v1/identity/access/groups/{id}` (putIdentityAccessGroupsById)
 - `PUT /api/v1/identity/access/roles/{id}/permissions` (putIdentityAccessRolesByIdPermissions)
 - `PUT /api/v1/identity/account` (putIdentityAccount)
+- `PUT /api/v1/identity/owner/provisioning-roles` (putIdentityOwnerProvisioningRoles)
 - `PUT /api/v1/identity/scim/v2/Users/{id}` (putIdentityScimV2UsersById)
 
 ## customers (50 uncovered)
@@ -471,4 +475,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/staff/settings` (putStaffSettings)
 - `PUT /api/v1/staff/terms/{id}` (putStaffTermsById)
 
-Total: 439 of 574 operations have no recorded exchange.
+Total: 443 of 578 operations have no recorded exchange.

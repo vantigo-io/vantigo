@@ -88,6 +88,8 @@ type IdentityInvitation struct {
 	ExpiresAt       time.Time
 	RevokedAt       *time.Time
 	AcceptedAt      *time.Time
+	UserID          *uuid.UUID
+	RevokedReason   *string
 }
 
 type IdentityLoginTicket struct {
@@ -146,6 +148,11 @@ type IdentityProfileAvatar struct {
 	UpdatedAt   time.Time
 }
 
+type IdentityProvisioningRole struct {
+	RoleID    uuid.UUID
+	CreatedAt time.Time
+}
+
 type IdentityRecoveryCode struct {
 	UserID   uuid.UUID
 	CodeHash []byte
@@ -202,6 +209,8 @@ type IdentitySystemSetting struct {
 	MaintenanceMessage *string
 	UpdatedAt          time.Time
 	UpdatedByUserID    *uuid.UUID
+	AuthorityMode      *string
+	AuthorityModeAt    *time.Time
 }
 
 type IdentityUser struct {
@@ -221,6 +230,10 @@ type IdentityUser struct {
 	Version           uuid.UUID
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	ManagedBy         *string
+	EmployeeNumber    *string
+	PendingSince      *time.Time
+	DisabledBy        *string
 }
 
 type IdentityUserRole struct {

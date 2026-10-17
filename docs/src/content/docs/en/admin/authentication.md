@@ -1,6 +1,6 @@
 ---
 title: "Identity, authentication and deployment"
-description: "Local accounts, the environment-configured OIDC provider, email, proxy trust, APP_SECRET-derived key material and migrations."
+description: "Local accounts, users Staff manages and the roles it may give, the environment-configured OIDC provider, email, proxy trust, APP_SECRET-derived key material and migrations."
 sidebar:
   order: 20
 sources:
@@ -111,6 +111,109 @@ startup.
 Password recovery answers generically so it never discloses whether an address
 exists, and password-policy detail is reported only after the token validates.
 
+## Staff-managed users
+
+A user is **Staff-managed** when identity marks them managed by Staff, with the
+employee number that ties them to a person in the [Staff](/en/admin/staff/) register.
+Staff's account provisioning may then enable, disable and update that user; it never
+acts on a user who is not Staff-managed. The marking, the employee number and who
+disabled a user are identity's own columns (`identity.users`): Staff reaches them only
+through identity, never through its own tables.
+
+`GET /api/v1/identity/owner/users` shows the state on each user: `pending` (always
+sent: a user Staff created who has not chosen a credential yet, listed `disabled` and
+not `active` until they do), and, only when set, `managedBy` (`staff`),
+`employeeNumber` and `disabledBy` (`owner` or `staff`).
+
+What an Owner may still do with a Staff-managed user:
+
+- **Edit, reset the password or MFA, and enable** the user as any other.
+- **Disable** the user. An Owner's disable is recorded as the Owner's
+  (`disabledBy: owner`), also over a user Staff had disabled, and Staff never
+  re-enables a user an Owner disabled. Enabling clears it.
+- **Promote** the user to Owner. Staff never manages an Owner, so the promotion stops
+  Staff managing them in the same change, audited `user.staff-unmanaged` with the
+  reason `promoted`.
+- **Not delete** the user: the delete answers 409 `account_managed`. Stop Staff managing
+  them first (below), then delete.
+
+Users disabled before this version are recorded as disabled by an Owner, since only an
+Owner could disable one.
+
+### Adopt an existing user for Staff
+
+Adoption brings a user who already exists — a colleague with an account before Staff's
+accounts were turned on — under Staff's management.
+
+Preconditions: you are an Owner, signed in with MFA when `OWNERS_REQUIRE_MFA` is on;
+the person exists in Staff's register with an employee number; the user is neither an
+Owner nor a SystemAdmin.
+
+1. Find the user's id in `GET /api/v1/identity/owner/users`.
+2. Adopt them with the person's employee number:
+
+   ```bash
+   curl -X POST https://vantigo.example.com/api/v1/identity/owner/users/<id>/manage \
+     -H 'Content-Type: application/json' \
+     -d '{"module":"staff","employeeNumber":"1042"}'
+   ```
+
+3. Verify: the answer, and the user in the list, show `managedBy: staff` and the
+   employee number. The audit records `user.staff-managed`.
+
+Adopting a managed user again with another number changes the number. A user SCIM
+provisions may be adopted: in a federated installation the managed user is the
+identity provider's.
+
+What can go wrong:
+
+| Answer | Meaning |
+| --- | --- |
+| 409 `account_privileged` | The user is an Owner or a SystemAdmin; Staff never manages them, and an Owner handles Owners by hand |
+| 409 `employee_number_taken` | Another user already holds the number, however it is cased |
+| 400 `invalid_request` | The module is not `staff`, or the number is blank or longer than 16 characters, or the user is you |
+
+### Stop Staff managing a user
+
+`POST /api/v1/identity/owner/users/<id>/unmanage` clears the marking and the employee
+number, audited `user.staff-unmanaged`. A user Staff does not manage is left as it is.
+A pending user stays pending: finishing or deleting that user is then the Owner's.
+
+### The employee roles
+
+The built-in `User` role carries no permissions, so the users Staff provisions get the
+**roles Staff may give**: custom roles an Owner names, typically one "Employee" role
+with `staff:access`, `time:access` and `expenses:access`. Identity holds the set, and
+only an Owner (with MFA when required) changes it, so `staff:manage` can never give an
+account a role it chooses.
+
+1. Create the role under the workspace's roles, if it does not exist.
+2. Name the set, whole:
+
+   ```bash
+   curl -X PUT https://vantigo.example.com/api/v1/identity/owner/provisioning-roles \
+     -H 'Content-Type: application/json' \
+     -d '{"roleIds":["<role id>"]}'
+   ```
+
+3. Verify: `GET /api/v1/identity/owner/provisioning-roles` lists the roles by name. The
+   audit records `provisioning-roles.replaced` with the set before and after.
+
+The request replaces the set; an empty `roleIds` empties it. A built-in, system or
+unknown role is refused 400 `role_not_assignable` and nothing changes. Deleting a role
+removes it from the set.
+
+### Why an invitation was revoked
+
+Every revoked invitation records why (`identity.invitations.revoked_reason`):
+
+| Reason | Revoked by |
+| --- | --- |
+| `owner` | An Owner's revoke; also every invitation revoked before this version |
+| `replaced` | A new invitation to the same address (an invite or a resend), an account created for the address, or a corrected `BOOTSTRAP_OWNER_EMAIL` |
+| `delivery_failed` | The invitation's mail could not be sent |
+| `email_changed` | An Owner changed a user's email to, or from, the invitation's address |
+
 ## MFA
 
 MFA is a six-digit TOTP authenticator plus one-use recovery codes, and passkeys
@@ -192,7 +295,7 @@ restarts** rather than per process. The limit is applied before the access check
 | `PasswordRecovery` | 10 / 15 minutes | Recovery request, reset and account password change |
 | `Invitations` | 30 / minute | Owner invitation management |
 | `InvitationAcceptance` | 20 / minute | Invitation validate and accept |
-| `UserManagement` | 30 / minute | Owner user management |
+| `UserManagement` | 30 / minute | Owner user management, adoption for Staff and the employee roles |
 | `OwnerAvatarRead` | 300 / minute | Owner avatar reads |
 
 Every policy except `login-attempts` keys on the client address, which is why

@@ -1,6 +1,6 @@
 ---
 title: "Identitet, autentisering og utrulling"
-description: "Lokale kontoer, OIDC-leverandøren som konfigureres i miljøet, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
+description: "Lokale kontoer, brukere Ansatte styrer og rollene Ansatte kan gi, OIDC-leverandøren som konfigureres i miljøet, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
 sidebar:
   order: 20
 sources:
@@ -118,6 +118,112 @@ oppstarten feiler.
 Passordgjenoppretting svarer generisk, slik at den aldri avslører om en adresse finnes,
 og detaljer om passordpolicyen rapporteres først etter at tokenet er validert.
 
+## Brukere som Ansatte styrer
+
+En bruker er **styrt av Ansatte** når identitetsmodulen merker brukeren som styrt av
+Ansatte, med ansattnummeret som knytter brukeren til en person i
+[Ansatte](/nb/admin/staff/)-registeret. Kontoklargjøringen i Ansatte kan da aktivere,
+deaktivere og oppdatere den brukeren; den rører aldri en bruker som ikke er styrt av
+Ansatte. Merkingen, ansattnummeret og hvem som deaktiverte en bruker er
+identitetsmodulens egne kolonner (`identity.users`): Ansatte når dem bare gjennom
+identitetsmodulen, aldri gjennom sine egne tabeller.
+
+`GET /api/v1/identity/owner/users` viser tilstanden på hver bruker: `pending` (sendes
+alltid: en bruker Ansatte har opprettet som ennå ikke har valgt en innloggingsmetode,
+vist som `disabled` og ikke `active` til det skjer), og, bare når de er satt,
+`managedBy` (`staff`), `employeeNumber` og `disabledBy` (`owner` eller `staff`).
+
+Dette kan en eier fortsatt gjøre med en bruker som Ansatte styrer:
+
+- **Redigere, tilbakestille passordet eller MFA, og aktivere** brukeren som enhver annen.
+- **Deaktivere** brukeren. En eiers deaktivering registreres som eierens
+  (`disabledBy: owner`), også over en bruker Ansatte hadde deaktivert, og Ansatte
+  aktiverer aldri igjen en bruker en eier har deaktivert. Aktivering fjerner den.
+- **Forfremme** brukeren til eier. Ansatte styrer aldri en eier, så forfremmelsen
+  slutter å la Ansatte styre brukeren i samme endring, logget som
+  `user.staff-unmanaged` med årsaken `promoted`.
+- **Ikke slette** brukeren: slettingen svarer 409 `account_managed`. Slutt å la Ansatte
+  styre brukeren først (nedenfor), og slett deretter.
+
+Brukere som var deaktivert før denne versjonen, er registrert som deaktivert av en eier,
+siden bare en eier kunne deaktivere en bruker.
+
+### Ta en eksisterende bruker inn under Ansatte
+
+Å ta inn en bruker legger en bruker som allerede finnes — en kollega som hadde konto før
+kontoene i Ansatte ble slått på — under styringen til Ansatte.
+
+Forutsetninger: du er eier, innlogget med MFA når `OWNERS_REQUIRE_MFA` er på; personen
+finnes i Ansatte-registeret med et ansattnummer; brukeren er verken eier eller
+SystemAdmin.
+
+1. Finn brukerens id i `GET /api/v1/identity/owner/users`.
+2. Ta inn brukeren med personens ansattnummer:
+
+   ```bash
+   curl -X POST https://vantigo.example.com/api/v1/identity/owner/users/<id>/manage \
+     -H 'Content-Type: application/json' \
+     -d '{"module":"staff","employeeNumber":"1042"}'
+   ```
+
+3. Kontroller: svaret, og brukeren i listen, viser `managedBy: staff` og
+   ansattnummeret. Revisjonsloggen registrerer `user.staff-managed`.
+
+Å ta inn en styrt bruker på nytt med et annet nummer endrer nummeret. En bruker som
+SCIM klargjør, kan tas inn: i en føderert installasjon er den styrte brukeren
+identitetsleverandørens.
+
+Dette kan gå galt:
+
+| Svar | Betydning |
+| --- | --- |
+| 409 `account_privileged` | Brukeren er eier eller SystemAdmin; Ansatte styrer dem aldri, og en eier håndterer eiere for hånd |
+| 409 `employee_number_taken` | En annen bruker har allerede nummeret, uansett store eller små bokstaver |
+| 400 `invalid_request` | Modulen er ikke `staff`, nummeret er tomt eller lengre enn 16 tegn, eller brukeren er deg selv |
+
+### Slutte å la Ansatte styre en bruker
+
+`POST /api/v1/identity/owner/users/<id>/unmanage` fjerner merkingen og ansattnummeret,
+logget som `user.staff-unmanaged`. En bruker som Ansatte ikke styrer, blir som den er.
+En ventende bruker forblir ventende: å fullføre eller slette den brukeren er da eierens
+sak.
+
+### Ansattrollene
+
+Den innebygde rollen `User` har ingen rettigheter, så brukerne Ansatte klargjør, får
+**rollene Ansatte kan gi**: egendefinerte roller en eier utpeker, typisk én
+«Ansatt»-rolle med `staff:access`, `time:access` og `expenses:access`.
+Identitetsmodulen holder settet, og bare en eier (med MFA når det kreves) endrer det,
+slik at `staff:manage` aldri kan gi en konto en rolle den selv velger.
+
+1. Opprett rollen blant arbeidsområdets roller, hvis den ikke finnes.
+2. Angi hele settet:
+
+   ```bash
+   curl -X PUT https://vantigo.example.com/api/v1/identity/owner/provisioning-roles \
+     -H 'Content-Type: application/json' \
+     -d '{"roleIds":["<rolle-id>"]}'
+   ```
+
+3. Kontroller: `GET /api/v1/identity/owner/provisioning-roles` lister rollene etter
+   navn. Revisjonsloggen registrerer `provisioning-roles.replaced` med settet før og
+   etter.
+
+Forespørselen erstatter settet; en tom `roleIds` tømmer det. En innebygd rolle, en
+systemrolle eller en ukjent rolle avvises med 400 `role_not_assignable`, og ingenting
+endres. Å slette en rolle fjerner den fra settet.
+
+### Hvorfor en invitasjon ble trukket tilbake
+
+Hver tilbaketrukket invitasjon registrerer hvorfor (`identity.invitations.revoked_reason`):
+
+| Årsak | Trukket tilbake av |
+| --- | --- |
+| `owner` | En eiers tilbaketrekking; også hver invitasjon som ble trukket tilbake før denne versjonen |
+| `replaced` | En ny invitasjon til samme adresse (en invitasjon eller en ny sending), en konto opprettet for adressen, eller en rettet `BOOTSTRAP_OWNER_EMAIL` |
+| `delivery_failed` | E-posten med invitasjonen kunne ikke sendes |
+| `email_changed` | En eier endret en brukers e-post til, eller fra, invitasjonens adresse |
+
 ## MFA
 
 MFA er en sekssifret TOTP-autentisator pluss engangs gjenopprettingskoder, og
@@ -203,7 +309,7 @@ tilgangskontrollen.
 | `PasswordRecovery` | 10 / 15 minutter | Forespørsel om gjenoppretting, tilbakestilling og endring av kontopassord |
 | `Invitations` | 30 / minutt | Eiers administrasjon av invitasjoner |
 | `InvitationAcceptance` | 20 / minutt | Validering og aksept av invitasjon |
-| `UserManagement` | 30 / minutt | Eiers brukeradministrasjon |
+| `UserManagement` | 30 / minutt | Eiers brukeradministrasjon, å ta inn brukere under Ansatte og ansattrollene |
 | `OwnerAvatarRead` | 300 / minutt | Lesing av eieres avatarer |
 
 Alle policyer unntatt `login-attempts` bruker klientadressen som nøkkel, og det er

@@ -21,6 +21,39 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for OwnerUserResponseDisabledBy.
+const (
+	OwnerUserResponseDisabledByOwner OwnerUserResponseDisabledBy = "owner"
+	OwnerUserResponseDisabledByStaff OwnerUserResponseDisabledBy = "staff"
+)
+
+// Valid indicates whether the value is a known member of the OwnerUserResponseDisabledBy enum.
+func (e OwnerUserResponseDisabledBy) Valid() bool {
+	switch e {
+	case OwnerUserResponseDisabledByOwner:
+		return true
+	case OwnerUserResponseDisabledByStaff:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OwnerUserResponseManagedBy.
+const (
+	OwnerUserResponseManagedByStaff OwnerUserResponseManagedBy = "staff"
+)
+
+// Valid indicates whether the value is a known member of the OwnerUserResponseManagedBy enum.
+func (e OwnerUserResponseManagedBy) Valid() bool {
+	switch e {
+	case OwnerUserResponseManagedByStaff:
+		return true
+	default:
+		return false
+	}
+}
+
 // AccessGroupRequest defines model for AccessGroupRequest.
 type AccessGroupRequest struct {
 	ConcurrencyStamp *string `json:"concurrencyStamp,omitempty"`
@@ -350,6 +383,15 @@ type OwnerUserCreateRequest struct {
 	TemporaryPassword *string `json:"temporaryPassword,omitempty"`
 }
 
+// OwnerUserManageRequest defines model for OwnerUserManageRequest.
+type OwnerUserManageRequest struct {
+	// EmployeeNumber The person's employee number in Staff's register, 1 to 16 characters once trimmed; unique among users however it is cased.
+	EmployeeNumber *string `json:"employeeNumber"`
+
+	// Module The module that manages the user; staff is the only one.
+	Module *string `json:"module"`
+}
+
 // OwnerUserPasswordRequest defines model for OwnerUserPasswordRequest.
 type OwnerUserPasswordRequest struct {
 	Password *string `json:"password"`
@@ -357,18 +399,36 @@ type OwnerUserPasswordRequest struct {
 
 // OwnerUserResponse defines model for OwnerUserResponse.
 type OwnerUserResponse struct {
-	Active           bool               `json:"active"`
-	AvatarUrl        *string            `json:"avatarUrl"`
-	Disabled         bool               `json:"disabled"`
-	DisplayName      string             `json:"displayName"`
-	Email            *string            `json:"email"`
-	Id               openapi_types.UUID `json:"id"`
-	LockedOut        bool               `json:"lockedOut"`
-	LockoutEnd       *time.Time         `json:"lockoutEnd"`
-	Role             string             `json:"role"`
-	SsoEnabled       bool               `json:"ssoEnabled"`
-	TwoFactorEnabled bool               `json:"twoFactorEnabled"`
+	Active    bool    `json:"active"`
+	AvatarUrl *string `json:"avatarUrl"`
+	Disabled  bool    `json:"disabled"`
+
+	// DisabledBy Who disabled the user, owner or staff; absent while the user is enabled. An Owner's disable wins over Staff's, and Staff never re-enables a user an Owner disabled.
+	DisabledBy  *OwnerUserResponseDisabledBy `json:"disabledBy,omitempty"`
+	DisplayName string                       `json:"displayName"`
+	Email       *string                      `json:"email"`
+
+	// EmployeeNumber The employee number of a user Staff manages; absent otherwise.
+	EmployeeNumber *string            `json:"employeeNumber,omitempty"`
+	Id             openapi_types.UUID `json:"id"`
+	LockedOut      bool               `json:"lockedOut"`
+	LockoutEnd     *time.Time         `json:"lockoutEnd"`
+
+	// ManagedBy staff for a user Staff's provisioning manages (created by Staff or adopted by an Owner); absent otherwise.
+	ManagedBy *OwnerUserResponseManagedBy `json:"managedBy,omitempty"`
+
+	// Pending A user Staff created who has not yet chosen a credential through their invitation. A pending user is listed disabled and not active. Always sent; optional only because the recorded .NET exchanges predate it.
+	Pending          *bool  `json:"pending,omitempty"`
+	Role             string `json:"role"`
+	SsoEnabled       bool   `json:"ssoEnabled"`
+	TwoFactorEnabled bool   `json:"twoFactorEnabled"`
 }
+
+// OwnerUserResponseDisabledBy Who disabled the user, owner or staff; absent while the user is enabled. An Owner's disable wins over Staff's, and Staff never re-enables a user an Owner disabled.
+type OwnerUserResponseDisabledBy string
+
+// OwnerUserResponseManagedBy staff for a user Staff's provisioning manages (created by Staff or adopted by an Owner); absent otherwise.
+type OwnerUserResponseManagedBy string
 
 // OwnerUserUpdateRequest defines model for OwnerUserUpdateRequest.
 type OwnerUserUpdateRequest struct {
@@ -462,6 +522,23 @@ type PermissionReplacementRequest struct {
 	DisplayName      *string   `json:"displayName"`
 	Name             *string   `json:"name"`
 	PermissionKeys   *[]string `json:"permissionKeys"`
+}
+
+// ProvisioningRole defines model for ProvisioningRole.
+type ProvisioningRole struct {
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+}
+
+// ProvisioningRolesRequest defines model for ProvisioningRolesRequest.
+type ProvisioningRolesRequest struct {
+	RoleIds *[]openapi_types.UUID `json:"roleIds"`
+}
+
+// ProvisioningRolesResponse defines model for ProvisioningRolesResponse.
+type ProvisioningRolesResponse struct {
+	Roles []ProvisioningRole `json:"roles"`
 }
 
 // RoleAssignmentRequest defines model for RoleAssignmentRequest.
@@ -922,11 +999,17 @@ type PostIdentityOwnerMfaResetByUserIdJSONBody = map[string]interface{}
 // PostIdentityOwnerMfaSetupJSONBody defines parameters for PostIdentityOwnerMfaSetup.
 type PostIdentityOwnerMfaSetupJSONBody = MfaCodeRequest
 
+// PutIdentityOwnerProvisioningRolesJSONBody defines parameters for PutIdentityOwnerProvisioningRoles.
+type PutIdentityOwnerProvisioningRolesJSONBody = ProvisioningRolesRequest
+
 // PostIdentityOwnerUsersJSONBody defines parameters for PostIdentityOwnerUsers.
 type PostIdentityOwnerUsersJSONBody = OwnerUserCreateRequest
 
 // PutIdentityOwnerUsersByIdJSONBody defines parameters for PutIdentityOwnerUsersById.
 type PutIdentityOwnerUsersByIdJSONBody = OwnerUserUpdateRequest
+
+// PostIdentityOwnerUsersByIdManageJSONBody defines parameters for PostIdentityOwnerUsersByIdManage.
+type PostIdentityOwnerUsersByIdManageJSONBody = OwnerUserManageRequest
 
 // PostIdentityOwnerUsersByIdPasswordJSONBody defines parameters for PostIdentityOwnerUsersByIdPassword.
 type PostIdentityOwnerUsersByIdPasswordJSONBody = OwnerUserPasswordRequest
@@ -1118,11 +1201,17 @@ type PostIdentityOwnerMfaResetByUserIdJSONRequestBody = PostIdentityOwnerMfaRese
 // PostIdentityOwnerMfaSetupJSONRequestBody defines body for PostIdentityOwnerMfaSetup for application/json ContentType.
 type PostIdentityOwnerMfaSetupJSONRequestBody = PostIdentityOwnerMfaSetupJSONBody
 
+// PutIdentityOwnerProvisioningRolesJSONRequestBody defines body for PutIdentityOwnerProvisioningRoles for application/json ContentType.
+type PutIdentityOwnerProvisioningRolesJSONRequestBody = PutIdentityOwnerProvisioningRolesJSONBody
+
 // PostIdentityOwnerUsersJSONRequestBody defines body for PostIdentityOwnerUsers for application/json ContentType.
 type PostIdentityOwnerUsersJSONRequestBody = PostIdentityOwnerUsersJSONBody
 
 // PutIdentityOwnerUsersByIdJSONRequestBody defines body for PutIdentityOwnerUsersById for application/json ContentType.
 type PutIdentityOwnerUsersByIdJSONRequestBody = PutIdentityOwnerUsersByIdJSONBody
+
+// PostIdentityOwnerUsersByIdManageJSONRequestBody defines body for PostIdentityOwnerUsersByIdManage for application/json ContentType.
+type PostIdentityOwnerUsersByIdManageJSONRequestBody = PostIdentityOwnerUsersByIdManageJSONBody
 
 // PostIdentityOwnerUsersByIdPasswordJSONRequestBody defines body for PostIdentityOwnerUsersByIdPassword for application/json ContentType.
 type PostIdentityOwnerUsersByIdPasswordJSONRequestBody = PostIdentityOwnerUsersByIdPasswordJSONBody
@@ -1673,6 +1762,12 @@ type ServerInterface interface {
 
 	// (POST /api/v1/identity/owner/mfa/setup)
 	PostIdentityOwnerMfaSetup(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/identity/owner/provisioning-roles)
+	GetIdentityOwnerProvisioningRoles(w http.ResponseWriter, r *http.Request)
+
+	// (PUT /api/v1/identity/owner/provisioning-roles)
+	PutIdentityOwnerProvisioningRoles(w http.ResponseWriter, r *http.Request)
 	// GetIdentityOwnerSystemStatus Get non-sensitive static identity and account status
 	// (GET /api/v1/identity/owner/system-status)
 	GetIdentityOwnerSystemStatus(w http.ResponseWriter, r *http.Request)
@@ -1698,11 +1793,17 @@ type ServerInterface interface {
 	// (POST /api/v1/identity/owner/users/{id}/enable)
 	PostIdentityOwnerUsersByIdEnable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 
+	// (POST /api/v1/identity/owner/users/{id}/manage)
+	PostIdentityOwnerUsersByIdManage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+
 	// (POST /api/v1/identity/owner/users/{id}/password)
 	PostIdentityOwnerUsersByIdPassword(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 
 	// (POST /api/v1/identity/owner/users/{id}/password-reset)
 	PostIdentityOwnerUsersByIdPasswordReset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+
+	// (POST /api/v1/identity/owner/users/{id}/unmanage)
+	PostIdentityOwnerUsersByIdUnmanage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 
 	// (POST /api/v1/identity/passkeys/login/begin)
 	PostIdentityPasskeysLoginBegin(w http.ResponseWriter, r *http.Request)
@@ -3106,6 +3207,34 @@ func (siw *ServerInterfaceWrapper) PostIdentityOwnerMfaSetup(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// GetIdentityOwnerProvisioningRoles operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityOwnerProvisioningRoles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityOwnerProvisioningRoles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityOwnerProvisioningRoles operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityOwnerProvisioningRoles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityOwnerProvisioningRoles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetIdentityOwnerSystemStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetIdentityOwnerSystemStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -3278,6 +3407,32 @@ func (siw *ServerInterfaceWrapper) PostIdentityOwnerUsersByIdEnable(w http.Respo
 	handler.ServeHTTP(w, r)
 }
 
+// PostIdentityOwnerUsersByIdManage operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityOwnerUsersByIdManage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityOwnerUsersByIdManage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostIdentityOwnerUsersByIdPassword operation middleware
 func (siw *ServerInterfaceWrapper) PostIdentityOwnerUsersByIdPassword(w http.ResponseWriter, r *http.Request) {
 
@@ -3321,6 +3476,32 @@ func (siw *ServerInterfaceWrapper) PostIdentityOwnerUsersByIdPasswordReset(w htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityOwnerUsersByIdPasswordReset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityOwnerUsersByIdUnmanage operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityOwnerUsersByIdUnmanage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityOwnerUsersByIdUnmanage(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4194,6 +4375,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/mfa/reset/{userId}", wrapper.PostIdentityOwnerMfaResetByUserId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/mfa/setup", wrapper.GetIdentityOwnerMfaSetup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/mfa/setup", wrapper.PostIdentityOwnerMfaSetup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/provisioning-roles", wrapper.GetIdentityOwnerProvisioningRoles)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/owner/provisioning-roles", wrapper.PutIdentityOwnerProvisioningRoles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/system-status", wrapper.GetIdentityOwnerSystemStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/users", wrapper.GetIdentityOwnerUsers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users", wrapper.PostIdentityOwnerUsers)
@@ -4202,8 +4385,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/avatar", wrapper.GetIdentityOwnerUsersByIdAvatar)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/disable", wrapper.PostIdentityOwnerUsersByIdDisable)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/enable", wrapper.PostIdentityOwnerUsersByIdEnable)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/manage", wrapper.PostIdentityOwnerUsersByIdManage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/password", wrapper.PostIdentityOwnerUsersByIdPassword)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/password-reset", wrapper.PostIdentityOwnerUsersByIdPasswordReset)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/unmanage", wrapper.PostIdentityOwnerUsersByIdUnmanage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/passkeys/login/begin", wrapper.PostIdentityPasskeysLoginBegin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/passkeys/login/complete", wrapper.PostIdentityPasskeysLoginComplete)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/password-recovery/request", wrapper.PostIdentityPasswordRecoveryRequest)
@@ -9237,6 +9422,181 @@ func (response PostIdentityOwnerMfaSetup429JSONResponse) VisitPostIdentityOwnerM
 	return err
 }
 
+type GetIdentityOwnerProvisioningRolesRequestObject struct {
+}
+
+type GetIdentityOwnerProvisioningRolesResponseObject interface {
+	VisitGetIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityOwnerProvisioningRoles200JSONResponse ProvisioningRolesResponse
+
+func (response GetIdentityOwnerProvisioningRoles200JSONResponse) VisitGetIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerProvisioningRoles401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerProvisioningRoles401JSONResponse) VisitGetIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerProvisioningRoles403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerProvisioningRoles403JSONResponse) VisitGetIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerProvisioningRoles429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetIdentityOwnerProvisioningRoles429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetIdentityOwnerProvisioningRoles429ResponseHeaders
+}
+
+func (response GetIdentityOwnerProvisioningRoles429JSONResponse) VisitGetIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerProvisioningRolesRequestObject struct {
+	Body *PutIdentityOwnerProvisioningRolesJSONRequestBody
+}
+
+type PutIdentityOwnerProvisioningRolesResponseObject interface {
+	VisitPutIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityOwnerProvisioningRoles200JSONResponse ProvisioningRolesResponse
+
+func (response PutIdentityOwnerProvisioningRoles200JSONResponse) VisitPutIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerProvisioningRoles400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerProvisioningRoles400JSONResponse) VisitPutIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerProvisioningRoles401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerProvisioningRoles401JSONResponse) VisitPutIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerProvisioningRoles403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerProvisioningRoles403JSONResponse) VisitPutIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerProvisioningRoles409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerProvisioningRoles409JSONResponse) VisitPutIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerProvisioningRoles429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PutIdentityOwnerProvisioningRoles429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PutIdentityOwnerProvisioningRoles429ResponseHeaders
+}
+
+func (response PutIdentityOwnerProvisioningRoles429JSONResponse) VisitPutIdentityOwnerProvisioningRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetIdentityOwnerSystemStatusRequestObject struct {
 }
 
@@ -10004,6 +10364,117 @@ func (response PostIdentityOwnerUsersByIdEnable429JSONResponse) VisitPostIdentit
 	return err
 }
 
+type PostIdentityOwnerUsersByIdManageRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PostIdentityOwnerUsersByIdManageJSONRequestBody
+}
+
+type PostIdentityOwnerUsersByIdManageResponseObject interface {
+	VisitPostIdentityOwnerUsersByIdManageResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityOwnerUsersByIdManage200JSONResponse OwnerUserResponse
+
+func (response PostIdentityOwnerUsersByIdManage200JSONResponse) VisitPostIdentityOwnerUsersByIdManageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdManage400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdManage400JSONResponse) VisitPostIdentityOwnerUsersByIdManageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdManage401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdManage401JSONResponse) VisitPostIdentityOwnerUsersByIdManageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdManage403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdManage403JSONResponse) VisitPostIdentityOwnerUsersByIdManageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdManage404Response struct {
+}
+
+func (response PostIdentityOwnerUsersByIdManage404Response) VisitPostIdentityOwnerUsersByIdManageResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostIdentityOwnerUsersByIdManage409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdManage409JSONResponse) VisitPostIdentityOwnerUsersByIdManageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdManage429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityOwnerUsersByIdManage429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityOwnerUsersByIdManage429ResponseHeaders
+}
+
+func (response PostIdentityOwnerUsersByIdManage429JSONResponse) VisitPostIdentityOwnerUsersByIdManageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostIdentityOwnerUsersByIdPasswordRequestObject struct {
 	Id   openapi_types.UUID `json:"id"`
 	Body *PostIdentityOwnerUsersByIdPasswordJSONRequestBody
@@ -10211,6 +10682,102 @@ type PostIdentityOwnerUsersByIdPasswordReset429JSONResponse struct {
 }
 
 func (response PostIdentityOwnerUsersByIdPasswordReset429JSONResponse) VisitPostIdentityOwnerUsersByIdPasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdUnmanageRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type PostIdentityOwnerUsersByIdUnmanageResponseObject interface {
+	VisitPostIdentityOwnerUsersByIdUnmanageResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityOwnerUsersByIdUnmanage200JSONResponse OwnerUserResponse
+
+func (response PostIdentityOwnerUsersByIdUnmanage200JSONResponse) VisitPostIdentityOwnerUsersByIdUnmanageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdUnmanage400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdUnmanage400JSONResponse) VisitPostIdentityOwnerUsersByIdUnmanageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdUnmanage401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdUnmanage401JSONResponse) VisitPostIdentityOwnerUsersByIdUnmanageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdUnmanage403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdUnmanage403JSONResponse) VisitPostIdentityOwnerUsersByIdUnmanageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdUnmanage404Response struct {
+}
+
+func (response PostIdentityOwnerUsersByIdUnmanage404Response) VisitPostIdentityOwnerUsersByIdUnmanageResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostIdentityOwnerUsersByIdUnmanage429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityOwnerUsersByIdUnmanage429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityOwnerUsersByIdUnmanage429ResponseHeaders
+}
+
+func (response PostIdentityOwnerUsersByIdUnmanage429JSONResponse) VisitPostIdentityOwnerUsersByIdUnmanageResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12210,6 +12777,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/v1/identity/owner/mfa/setup)
 	PostIdentityOwnerMfaSetup(ctx context.Context, request PostIdentityOwnerMfaSetupRequestObject) (PostIdentityOwnerMfaSetupResponseObject, error)
+
+	// (GET /api/v1/identity/owner/provisioning-roles)
+	GetIdentityOwnerProvisioningRoles(ctx context.Context, request GetIdentityOwnerProvisioningRolesRequestObject) (GetIdentityOwnerProvisioningRolesResponseObject, error)
+
+	// (PUT /api/v1/identity/owner/provisioning-roles)
+	PutIdentityOwnerProvisioningRoles(ctx context.Context, request PutIdentityOwnerProvisioningRolesRequestObject) (PutIdentityOwnerProvisioningRolesResponseObject, error)
 	// GetIdentityOwnerSystemStatus Get non-sensitive static identity and account status
 	// (GET /api/v1/identity/owner/system-status)
 	GetIdentityOwnerSystemStatus(ctx context.Context, request GetIdentityOwnerSystemStatusRequestObject) (GetIdentityOwnerSystemStatusResponseObject, error)
@@ -12235,11 +12808,17 @@ type StrictServerInterface interface {
 	// (POST /api/v1/identity/owner/users/{id}/enable)
 	PostIdentityOwnerUsersByIdEnable(ctx context.Context, request PostIdentityOwnerUsersByIdEnableRequestObject) (PostIdentityOwnerUsersByIdEnableResponseObject, error)
 
+	// (POST /api/v1/identity/owner/users/{id}/manage)
+	PostIdentityOwnerUsersByIdManage(ctx context.Context, request PostIdentityOwnerUsersByIdManageRequestObject) (PostIdentityOwnerUsersByIdManageResponseObject, error)
+
 	// (POST /api/v1/identity/owner/users/{id}/password)
 	PostIdentityOwnerUsersByIdPassword(ctx context.Context, request PostIdentityOwnerUsersByIdPasswordRequestObject) (PostIdentityOwnerUsersByIdPasswordResponseObject, error)
 
 	// (POST /api/v1/identity/owner/users/{id}/password-reset)
 	PostIdentityOwnerUsersByIdPasswordReset(ctx context.Context, request PostIdentityOwnerUsersByIdPasswordResetRequestObject) (PostIdentityOwnerUsersByIdPasswordResetResponseObject, error)
+
+	// (POST /api/v1/identity/owner/users/{id}/unmanage)
+	PostIdentityOwnerUsersByIdUnmanage(ctx context.Context, request PostIdentityOwnerUsersByIdUnmanageRequestObject) (PostIdentityOwnerUsersByIdUnmanageResponseObject, error)
 
 	// (POST /api/v1/identity/passkeys/login/begin)
 	PostIdentityPasskeysLoginBegin(ctx context.Context, request PostIdentityPasskeysLoginBeginRequestObject) (PostIdentityPasskeysLoginBeginResponseObject, error)
@@ -14447,6 +15026,64 @@ func (sh *strictHandler) PostIdentityOwnerMfaSetup(w http.ResponseWriter, r *htt
 	}
 }
 
+// GetIdentityOwnerProvisioningRoles operation middleware
+func (sh *strictHandler) GetIdentityOwnerProvisioningRoles(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityOwnerProvisioningRolesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityOwnerProvisioningRoles(ctx, request.(GetIdentityOwnerProvisioningRolesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityOwnerProvisioningRoles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityOwnerProvisioningRolesResponseObject); ok {
+		if err := validResponse.VisitGetIdentityOwnerProvisioningRolesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityOwnerProvisioningRoles operation middleware
+func (sh *strictHandler) PutIdentityOwnerProvisioningRoles(w http.ResponseWriter, r *http.Request) {
+	var request PutIdentityOwnerProvisioningRolesRequestObject
+
+	var body PutIdentityOwnerProvisioningRolesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityOwnerProvisioningRoles(ctx, request.(PutIdentityOwnerProvisioningRolesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityOwnerProvisioningRoles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityOwnerProvisioningRolesResponseObject); ok {
+		if err := validResponse.VisitPutIdentityOwnerProvisioningRolesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetIdentityOwnerSystemStatus operation middleware
 func (sh *strictHandler) GetIdentityOwnerSystemStatus(w http.ResponseWriter, r *http.Request) {
 	var request GetIdentityOwnerSystemStatusRequestObject
@@ -14669,6 +15306,42 @@ func (sh *strictHandler) PostIdentityOwnerUsersByIdEnable(w http.ResponseWriter,
 	}
 }
 
+// PostIdentityOwnerUsersByIdManage operation middleware
+func (sh *strictHandler) PostIdentityOwnerUsersByIdManage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityOwnerUsersByIdManageRequestObject
+
+	request.Id = id
+
+	var body PostIdentityOwnerUsersByIdManageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityOwnerUsersByIdManage(ctx, request.(PostIdentityOwnerUsersByIdManageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityOwnerUsersByIdManage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityOwnerUsersByIdManageResponseObject); ok {
+		if err := validResponse.VisitPostIdentityOwnerUsersByIdManageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostIdentityOwnerUsersByIdPassword operation middleware
 func (sh *strictHandler) PostIdentityOwnerUsersByIdPassword(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	var request PostIdentityOwnerUsersByIdPasswordRequestObject
@@ -14724,6 +15397,32 @@ func (sh *strictHandler) PostIdentityOwnerUsersByIdPasswordReset(w http.Response
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityOwnerUsersByIdPasswordResetResponseObject); ok {
 		if err := validResponse.VisitPostIdentityOwnerUsersByIdPasswordResetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityOwnerUsersByIdUnmanage operation middleware
+func (sh *strictHandler) PostIdentityOwnerUsersByIdUnmanage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityOwnerUsersByIdUnmanageRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityOwnerUsersByIdUnmanage(ctx, request.(PostIdentityOwnerUsersByIdUnmanageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityOwnerUsersByIdUnmanage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityOwnerUsersByIdUnmanageResponseObject); ok {
+		if err := validResponse.VisitPostIdentityOwnerUsersByIdUnmanageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

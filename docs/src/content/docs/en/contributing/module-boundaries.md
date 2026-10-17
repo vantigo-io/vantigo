@@ -351,6 +351,18 @@ config check, an optional one leaves the `Deps` field nil and **the consumer mus
 handle nil**. The one exception is `contracts.UserDirectory`: identity is always
 mounted, so `Deps.Users` is always set once composed.
 
+**Identity owns the state of the users Staff manages.** `identity.users.managed_by`
+(`staff` or null), `employee_number`, `pending_since` and `disabled_by`,
+`identity.invitations.user_id` and `revoked_reason`, the recorded
+`system_settings.authority_mode` and the set of roles Staff may give
+(`identity.provisioning_roles`) are identity's columns, in identity's migration
+(`00050_identity_accounts.sql`), written by identity's own handlers — an Owner's
+adoption, unmanage, disable and employee-role endpoints — and read by nobody else's
+SQL. Staff reaches them only through a contract identity provides, never through its
+own queries, and Staff's register keeps only the opaque user id of the link. In
+identity's Go code these are `staffManaged` names: "managed" there already means an
+Owner's User/Owner role management (`isManagedRole`, `ListManagedUsers`).
+
 `contracts.ProjectActuals` is the second optional contract, and the first to run in
 the *opposite* direction from the module that needs it: **Time provides it, Projects
 optionally consumes it.** Time's own dependency on Projects is required — it hangs
