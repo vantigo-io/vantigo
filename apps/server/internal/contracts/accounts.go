@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/unicode/norm"
 )
 
 // The authority modes AccountProvisioning.Mode answers.
@@ -246,14 +247,16 @@ type AccountProvisioning interface {
 }
 
 // SameEmployeeNumber reports whether a and b are the same employee number as
-// identity compares them: trimmed of surrounding white space and case-folded
-// as PostgreSQL's upper() does (identity's unique index is on
+// identity compares them: trimmed of surrounding white space, NFC-normalised
+// (identity stores every number so, and a caller's record need not be), and
+// case-folded as PostgreSQL's upper() does (identity's unique index is on
 // upper(employee_number)). An empty number is the same as no other.
 func SameEmployeeNumber(a, b string) bool {
-	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	a, b = norm.NFC.String(strings.TrimSpace(a)), norm.NFC.String(strings.TrimSpace(b))
 	// Upper-cased and compared, deliberately not strings.EqualFold: simple
-	// folding calls more strings equal than upper() does (the Kelvin sign K
-	// and k), and two numbers identity's index tells apart must stay apart.
+	// folding is not upper(), and two numbers identity's index tells apart
+	// must stay apart. (The Kelvin sign, which folding alone would call k, is
+	// K already once NFC-normalised, as identity stores it.)
 	upperA, upperB := strings.ToUpper(a), strings.ToUpper(b)
 	return a != "" && upperA == upperB
 }

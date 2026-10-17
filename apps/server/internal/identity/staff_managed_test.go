@@ -1051,3 +1051,25 @@ func TestProvisioningRoles_AnEditOutsideTheCallersAuthorityIsRefusedForThatFirst
 		t.Errorf("the outsider's edit: status %d body %s, want 403 role_edit_denied", r.status, r.body)
 	}
 }
+
+// Employee numbers are compared and stored NFC-normalised: "Å-17" with a
+// precomposed Å and with A and a combining ring are one number, so the
+// second adoption is refused employee_number_taken, and a decomposed number
+// is stored composed.
+func TestStaffManaged_EmployeeNumbersAreNFCNormalised(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	first := h.createUser(t, owner, "nfc-first@example.test", identity.RoleUser)
+	second := h.createUser(t, owner, "nfc-second@example.test", identity.RoleUser)
+	third := h.createUser(t, owner, "nfc-third@example.test", identity.RoleUser)
+
+	mustManage(t, owner, first, "\u00c5-17")
+	if r := manage(owner, second, "A\u030a-17"); r.status != http.StatusConflict || r.code() != "employee_number_taken" {
+		t.Errorf("the decomposed Å-17: status %d body %s, want 409 employee_number_taken", r.status, r.body)
+	}
+	got := mustManage(t, owner, third, " A\u0308-18 ")
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND employee_number = $2`, third, "\u00c4-18"); n != 1 || strOr(got.EmployeeNumber) != "\u00c4-18" {
+		t.Errorf("the number %q was not stored composed as Ä-18", strOr(got.EmployeeNumber))
+	}
+}
