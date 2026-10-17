@@ -222,10 +222,10 @@ one it does nothing but deactivate.
 
 | Step | Local mode | Federated mode | Audited |
 | --- | --- | --- | --- |
-| Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's invitation to that address is revoked `replaced`. | Finds the Staff-managed user with the number; creates nothing | `user.staff-prepared` |
+| Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's open invitation to that address is revoked `replaced` and named in the audit — but an open invitation to become an Owner keeps the address for its invitee. | Finds the Staff-managed user with the number; creates nothing | `user.staff-prepared` |
 | Activate | Enables a user Staff disabled — a prepared user among them — giving them the [employee roles](#the-employee-roles) on that call only, so a role an Owner removes later stays removed; invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | `user.staff-activated` |
 | Deactivate | Disables the user as Staff's (`disabledBy: staff`) — also one the directory already deactivated — ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | `user.staff-deactivated` |
-| Update | Writes the display name, the language and the employee number; the address only while the user is pending, which revokes their invitations `email_changed` | Writes the language and the employee number only | `user.staff-updated` |
+| Update | Writes the display name, the language and the employee number; the address only while the user is pending, which revokes their invitations `email_changed` and an Owner's open invitations to the new address `replaced` (named in the audit) | Writes the language and the employee number only | `user.staff-updated` |
 
 An activated pending user is enabled but still cannot sign in: password, passkey and
 OIDC sign-in refuse them — OIDC's first sign-in by their address answers
@@ -254,11 +254,11 @@ out and Staff reports their account disabled by the directory. What it refuses:
 | Refusal | Meaning | What to do |
 | --- | --- | --- |
 | Not managed | The user is not Staff-managed | Adopt them, or leave them to an Owner |
-| Privileged | The user is an Owner or a SystemAdmin | Handle the account by hand |
+| Privileged | The user is an Owner or a SystemAdmin (refused for every step, an update included) | Handle the account by hand |
 | Blocked by an Owner | An Owner disabled the user | Enable them here if Staff should manage them again |
 | Employee role missing | No employee role is named | Name the [employee roles](#the-employee-roles) |
 | Employee role unsafe | A role in the set carries a permission that grants administration — possible only by a change outside identity's checks | Take the permission off the role, or the role out of the set |
-| Address taken | Another user holds the person's address | Give the person another address in Staff, or resolve the other account |
+| Address taken | Another user holds the person's address, or an Owner has invited someone to become an Owner at it and the invitation is still open | Give the person another address in Staff, or resolve the other account or the invitation |
 | Employee number taken | A user Staff does not manage holds the number | Adopt that user, or correct the number in Staff |
 | Not found | Federated mode: no Staff-managed user holds the number yet | Let the identity provider create the account, then adopt it |
 | Mode mismatch | This process's `OIDC_*`/`SCIM_TOKEN` derive another mode than the API recorded (refused for every step but deactivation) | Give the worker the API's settings ([Installation](/en/admin/installation/#background-workers-and-scaling)) |

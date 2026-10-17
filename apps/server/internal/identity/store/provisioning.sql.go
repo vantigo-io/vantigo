@@ -184,6 +184,41 @@ func (q *Queries) IsProvisioningRole(ctx context.Context, roleID uuid.UUID) (boo
 	return column_1, err
 }
 
+const listOpenInvitationsForEmail = `-- name: ListOpenInvitationsForEmail :many
+SELECT id, role, expires_at FROM identity.invitations
+WHERE normalized_email = $1 AND accepted_at IS NULL AND revoked_at IS NULL
+ORDER BY id
+`
+
+type ListOpenInvitationsForEmailRow struct {
+	ID        uuid.UUID
+	Role      string
+	ExpiresAt time.Time
+}
+
+// ListOpenInvitationsForEmail is every invitation to the address neither
+// accepted nor revoked — what RevokeActiveInvitationsForEmail would revoke —
+// by id, with its role and expiry.
+func (q *Queries) ListOpenInvitationsForEmail(ctx context.Context, normalizedEmail string) ([]ListOpenInvitationsForEmailRow, error) {
+	rows, err := q.db.Query(ctx, listOpenInvitationsForEmail, normalizedEmail)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOpenInvitationsForEmailRow
+	for rows.Next() {
+		var i ListOpenInvitationsForEmailRow
+		if err := rows.Scan(&i.ID, &i.Role, &i.ExpiresAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProvisioningRoles = `-- name: ListProvisioningRoles :many
 SELECT r.id, r.name, r.display_name,
        array(SELECT rp.permission_key FROM identity.role_permissions rp

@@ -261,11 +261,46 @@ func (p *provisioning) Mode(ctx context.Context) (string, error) {
 	return authorityMode(ctx, store.New(p.deps.Pool), p.deps.Config)
 }
 
+// replacedInvitation is one invitation a provider revoked replaced, as its
+// audit row names it.
+type replacedInvitation struct {
+	ID   uuid.UUID `json:"id"`
+	Role string    `json:"role"`
+}
+
+// replaceInvitationsTo revokes, replaced, the open invitations to the
+// normalized address an account for it replaces, and returns them for the
+// audit. An Owner-role invitation still acceptable at now is an Owner's to
+// accept, so the address is refused ErrAccountEmailTaken and nothing is
+// revoked: staff:manage may not take the address an Owner invited an Owner
+// to.
+func replaceInvitationsTo(ctx context.Context, q *store.Queries, normalized string, now time.Time) ([]replacedInvitation, error) {
+	open, err := q.ListOpenInvitationsForEmail(ctx, normalized)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]replacedInvitation, 0, len(open))
+	for _, inv := range open {
+		if inv.Role == RoleOwner && inv.ExpiresAt.After(now) {
+			return nil, contracts.ErrAccountEmailTaken
+		}
+		out = append(out, replacedInvitation{ID: inv.ID, Role: inv.Role})
+	}
+	if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{
+		NormalizedEmail: normalized, Now: now, RevokedReason: revokedReplaced,
+	}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // staffPreparedAudit is user.staff-prepared's after beside the user's
-// snapshot: the employee number the user was created for.
+// snapshot: the employee number the user was created for, and the
+// invitations to the address the account replaced.
 type staffPreparedAudit struct {
 	userSnapshot
-	EmployeeNumber string `json:"employeeNumber"`
+	EmployeeNumber      string               `json:"employeeNumber"`
+	ReplacedInvitations []replacedInvitation `json:"replacedInvitations"`
 }
 
 // Prepare finds the managed user holding spec's employee number, by its key,
@@ -276,9 +311,10 @@ type staffPreparedAudit struct {
 // ErrAccountNotFound. In local mode another user holding the address,
 // compared normalized, is ErrAccountEmailTaken; otherwise the user is
 // created Staff-managed, pending, disabled by Staff, without a credential or
-// a confirmed email, with the built-in User role (plan reading 5); an
-// Owner's unnamed invitations to the address are revoked replaced, as an
-// Owner's create does; audited user.staff-prepared. A concurrent writer of
+// a confirmed email, with the built-in User role (plan reading 5); the open
+// invitations to the address are revoked replaced, as an Owner's create does,
+// and named in the audit, user.staff-prepared — but an open Owner-role
+// invitation to it refuses the address (replaceInvitationsTo). A concurrent writer of
 // the number or the address, seen only by the unique index, is answered as
 // the same refusal.
 func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec contracts.AccountSpec) (contracts.AccountRef, error) {
@@ -313,9 +349,8 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 		if _, taken, err := emailTaken(ctx, q, s.email); err != nil || taken {
 			return cmpOr(err, contracts.ErrAccountEmailTaken)
 		}
-		if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{
-			NormalizedEmail: normalizeEmail(s.email), Now: now, RevokedReason: revokedReplaced,
-		}); err != nil {
+		replaced, err := replaceInvitationsTo(ctx, q, normalizeEmail(s.email), now)
+		if err != nil {
 			return err
 		}
 		id := uuid.New()
@@ -345,7 +380,7 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 		if err := writeAudit(ctx, q, nil, now, auditEvent{
 			actor: by, system: system, targetUser: &id, action: "user.staff-prepared",
 			before: bootstrapAuditState{Roles: []string{}, PermissionKeys: []string{}},
-			after:  staffPreparedAudit{userSnapshot: after, EmployeeNumber: s.number},
+			after:  staffPreparedAudit{userSnapshot: after, EmployeeNumber: s.number, ReplacedInvitations: replaced},
 		}); err != nil {
 			return err
 		}
@@ -612,6 +647,9 @@ type staffUpdatedAudit struct {
 	PreferredLanguage *string `json:"preferredLanguage"`
 	EmployeeNumber    *string `json:"employeeNumber"`
 	EmailChanged      bool    `json:"emailChanged"`
+	// ReplacedInvitations, on the after only, are the invitations to the new
+	// address the change revoked replaced.
+	ReplacedInvitations []replacedInvitation `json:"replacedInvitations,omitempty"`
 }
 
 // Update writes a managed user (ErrAccountNotManaged) to spec. In local mode
@@ -619,8 +657,10 @@ type staffUpdatedAudit struct {
 // the user is pending (the owner's answer 1) — the address: another user
 // holding it is ErrAccountEmailTaken; the new address revokes the user's
 // acceptable invitations email_changed and an Owner's unnamed ones to the new
-// address replaced, and starts a new invitation spell (the next Activate
-// invites at the new address). In federated mode the language and the
+// address replaced (named in the audit; an open Owner-role one refuses the
+// address, replaceInvitationsTo), and starts a new invitation spell (the next
+// Activate invites at the new address). A managed Owner or SystemAdmin is
+// ErrAccountPrivileged. In federated mode the language and the
 // employee number only. A number another user holds, by its key, is
 // ErrEmployeeNumberTaken. A change is audited user.staff-updated; the same
 // values again change nothing.
@@ -639,11 +679,15 @@ func (p *provisioning) Update(ctx context.Context, actor contracts.Actor, userID
 		if u.ManagedBy == nil {
 			return contracts.ErrAccountNotManaged
 		}
+		if u.Privileged {
+			return contracts.ErrAccountPrivileged
+		}
 		next := store.UpdateProvisionedUserParams{
 			ID: userID, DisplayName: u.DisplayName, PreferredLanguage: s.language, Email: u.Email,
 			NormalizedEmail: u.NormalizedEmail, InvitationsSince: u.InvitationsSince, Version: uuid.New(), Now: now,
 		}
 		emailChanged := false
+		var replaced []replacedInvitation
 		if local {
 			next.DisplayName = s.displayName
 			if u.PendingSince != nil && normalizeEmail(s.email) != u.NormalizedEmail {
@@ -655,9 +699,7 @@ func (p *provisioning) Update(ctx context.Context, actor contracts.Actor, userID
 				if err := q.RevokeUserInvitations(ctx, store.RevokeUserInvitationsParams{UserID: &userID, Now: now, RevokedReason: revokedEmailChanged}); err != nil {
 					return err
 				}
-				if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{
-					NormalizedEmail: next.NormalizedEmail, Now: now, RevokedReason: revokedReplaced,
-				}); err != nil {
+				if replaced, err = replaceInvitationsTo(ctx, q, next.NormalizedEmail, now); err != nil {
 					return err
 				}
 			}
@@ -693,7 +735,10 @@ func (p *provisioning) Update(ctx context.Context, actor contracts.Actor, userID
 			if err := writeAudit(ctx, q, nil, now, auditEvent{
 				actor: by, system: system, targetUser: &userID, action: "user.staff-updated",
 				before: staffUpdatedAudit{DisplayName: u.DisplayName, PreferredLanguage: u.PreferredLanguage, EmployeeNumber: u.EmployeeNumber},
-				after:  staffUpdatedAudit{DisplayName: next.DisplayName, PreferredLanguage: next.PreferredLanguage, EmployeeNumber: &s.number, EmailChanged: emailChanged},
+				after: staffUpdatedAudit{
+					DisplayName: next.DisplayName, PreferredLanguage: next.PreferredLanguage, EmployeeNumber: &s.number,
+					EmailChanged: emailChanged, ReplacedInvitations: replaced,
+				},
 			}); err != nil {
 				return err
 			}

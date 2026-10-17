@@ -238,10 +238,10 @@ registrerte, gjør den ingenting annet enn å deaktivere.
 
 | Steg | Lokal modus | Føderert modus | Revisjonslogg |
 | --- | --- | --- | --- |
-| Klargjør | Finner brukeren Ansatte styrer med ansattnummeret, ellers oppretter den en: styrt av Ansatte, ventende, deaktivert av Ansatte, med den innebygde rollen `User`, uten innloggingsmetode og med ubekreftet adresse. En eiers invitasjon til adressen trekkes tilbake `replaced`. | Finner brukeren Ansatte styrer med nummeret; oppretter ingenting | `user.staff-prepared` |
+| Klargjør | Finner brukeren Ansatte styrer med ansattnummeret, ellers oppretter den en: styrt av Ansatte, ventende, deaktivert av Ansatte, med den innebygde rollen `User`, uten innloggingsmetode og med ubekreftet adresse. En eiers åpne invitasjon til adressen trekkes tilbake `replaced` og navngis i revisjonsloggen — men en åpen invitasjon til å bli eier holder adressen for den inviterte. | Finner brukeren Ansatte styrer med nummeret; oppretter ingenting | `user.staff-prepared` |
 | Aktiver | Aktiverer en bruker Ansatte har deaktivert — også en klargjort bruker — og gir dem [ansattrollene](#ansattrollene) bare ved det kallet, så en rolle en eier fjerner senere, forblir fjernet; inviterer en ventende bruker uten innloggingsmetode ved navn | Aktiverer igjen en bruker Ansatte deaktiverte; gir ingen rolle og sender ingen invitasjon | `user.staff-activated` |
 | Deaktiver | Deaktiverer brukeren som Ansattes (`disabledBy: staff`) — også en katalogen allerede har deaktivert — avslutter øktene og tilbakestillingslenkene, og trekker tilbake de åpne invitasjonene `deactivated` | Det samme | `user.staff-deactivated` |
-| Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter, og da trekkes invitasjonene tilbake `email_changed` | Skriver bare språket og ansattnummeret | `user.staff-updated` |
+| Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter, og da trekkes invitasjonene tilbake `email_changed` og en eiers åpne invitasjoner til den nye adressen `replaced` (navngitt i revisjonsloggen) | Skriver bare språket og ansattnummeret | `user.staff-updated` |
 
 En aktivert ventende bruker er aktivert, men kan fortsatt ikke logge inn: innlogging med
 passord, passnøkkel og OIDC avviser dem — OIDCs første innlogging med adressen deres
@@ -271,11 +271,11 @@ kontoen som deaktivert av katalogen. Dette avviser den:
 | Avvisning | Betydning | Hva du gjør |
 | --- | --- | --- |
 | Ikke styrt | Brukeren styres ikke av Ansatte | Ta dem inn, eller overlat dem til en eier |
-| Privilegert | Brukeren er eier eller SystemAdmin | Håndter kontoen for hånd |
+| Privilegert | Brukeren er eier eller SystemAdmin (avvist for hvert steg, også en oppdatering) | Håndter kontoen for hånd |
 | Sperret av en eier | En eier deaktiverte brukeren | Aktiver dem her hvis Ansatte skal styre dem igjen |
 | Ansattrolle mangler | Ingen ansattrolle er valgt | Velg [ansattrollene](#ansattrollene) |
 | Usikker ansattrolle | En rolle i settet har en tillatelse som gir administrasjon — bare mulig ved en endring utenom identitetsmodulens kontroller | Ta tillatelsen av rollen, eller rollen ut av settet |
-| Adressen er tatt | En annen bruker har personens adresse | Gi personen en annen adresse i Ansatte, eller rydd i den andre kontoen |
+| Adressen er tatt | En annen bruker har personens adresse, eller en eier har invitert noen til å bli eier på den og invitasjonen er fortsatt åpen | Gi personen en annen adresse i Ansatte, eller rydd i den andre kontoen eller invitasjonen |
 | Ansattnummeret er tatt | En bruker Ansatte ikke styrer, har nummeret | Ta inn den brukeren, eller rett nummeret i Ansatte |
 | Ikke funnet | Føderert modus: ingen bruker Ansatte styrer, har nummeret ennå | La identitetsleverandøren opprette kontoen, og ta den inn |
 | Ulik modus | Denne prosessens `OIDC_*`/`SCIM_TOKEN` gir en annen modus enn API-et registrerte (avvist for hvert steg unntatt deaktivering) | Gi workeren API-ets innstillinger ([Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)) |
