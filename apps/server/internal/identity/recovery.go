@@ -57,7 +57,8 @@ func (s *server) sendPasswordReset(ctx context.Context, u store.IdentityUser) er
 
 // PostIdentityPasswordRecoveryRequest starts a password recovery
 // (EA/AuthAccountEndpoints.cs:1370-1403): the account with that email is
-// sent a reset link when it has a password and a confirmed email. The
+// sent a reset link when it has a password and a confirmed email and is not
+// pending (a pending user's only way to a password is their invitation). The
 // answer is always {accepted:true}, for an unknown email and a failed send
 // alike, so it never tells a caller which emails have accounts.
 func (s *server) PostIdentityPasswordRecoveryRequest(ctx context.Context, req gen.PostIdentityPasswordRecoveryRequestRequestObject) (gen.PostIdentityPasswordRecoveryRequestResponseObject, error) {
@@ -67,7 +68,8 @@ func (s *server) PostIdentityPasswordRecoveryRequest(ctx context.Context, req ge
 		case errors.Is(err, pgx.ErrNoRows):
 		case err != nil:
 			return nil, fmt.Errorf("identity: password recovery: %w", err)
-		case u.PasswordHash != nil && u.EmailConfirmed:
+		case u.PasswordHash != nil && u.EmailConfirmed && !isPending(u):
+			// A pending user's only way to a password is their invitation.
 			if err := s.sendPasswordReset(ctx, u); err != nil {
 				return nil, err
 			}

@@ -165,6 +165,7 @@ func catalogModule(name string, perms []contracts.Permission) module.Module {
 func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	t.Helper()
 	pool, databaseURL := testdb.Migrated(t)
+	t.Cleanup(func() { assertEmployeeNumberKeys(t, pool) })
 
 	// The installation answers as harnessOrigin, a real domain: a WebAuthn
 	// relying party ID is the APP_URL host and may not be an IP address, so
@@ -263,6 +264,36 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 		t.Fatalf("harness: %v", err)
 	}
 	return h
+}
+
+// assertEmployeeNumberKeys fails t when any user's employee number is held
+// with a key other than contracts.NormalizeEmployeeNumber's: every writer
+// derives the key in Go through one wrapper, and a test that wrote a number
+// any other way would have proved nothing about identity's comparison.
+func assertEmployeeNumberKeys(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), fixtureTimeout)
+	defer cancel()
+	rows, err := pool.Query(ctx, `SELECT id, employee_number, employee_number_key FROM identity.users WHERE employee_number IS NOT NULL`)
+	if err != nil {
+		t.Errorf("harness: employee number keys: %v", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var number, key string
+		if err := rows.Scan(&id, &number, &key); err != nil {
+			t.Errorf("harness: employee number keys: %v", err)
+			return
+		}
+		if want := contracts.NormalizeEmployeeNumber(number); key != want {
+			t.Errorf("user %s holds the number %q under the key %q, want %q", id, number, key, want)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Errorf("harness: employee number keys: %v", err)
+	}
 }
 
 // now is the harness clock, identity's Deps.Clock.

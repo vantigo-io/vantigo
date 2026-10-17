@@ -188,6 +188,12 @@ func TestStaffManaged_AdoptionRefusals(t *testing.T) {
 		{"a byte-order mark", plain, map[string]string{"module": "staff", "employeeNumber": "\ufeffA17"}, http.StatusBadRequest, "invalid_request"},
 		{"a bidi override", plain, map[string]string{"module": "staff", "employeeNumber": "A\u202e17"}, http.StatusBadRequest, "invalid_request"},
 		{"a no-break space", plain, map[string]string{"module": "staff", "employeeNumber": "A\u00a017"}, http.StatusBadRequest, "invalid_request"},
+		{"a letter beyond a–z", plain, map[string]string{"module": "staff", "employeeNumber": "\u0264-1"}, http.StatusBadRequest, "invalid_request"},
+		{"a dotless i", plain, map[string]string{"module": "staff", "employeeNumber": "\u0131-1"}, http.StatusBadRequest, "invalid_request"},
+		{"a full-width digit", plain, map[string]string{"module": "staff", "employeeNumber": "\uff11-1"}, http.StatusBadRequest, "invalid_request"},
+		{"a Norwegian letter", plain, map[string]string{"module": "staff", "employeeNumber": "\u00c5-17"}, http.StatusBadRequest, "invalid_request"},
+		{"a space inside", plain, map[string]string{"module": "staff", "employeeNumber": "E 7"}, http.StatusBadRequest, "invalid_request"},
+		{"an underscore", plain, map[string]string{"module": "staff", "employeeNumber": "E_7"}, http.StatusBadRequest, "invalid_request"},
 		{"no body", plain, nil, http.StatusBadRequest, "invalid_request"},
 		{"the caller", ownerID, map[string]string{"module": "staff", "employeeNumber": "S-1"}, http.StatusBadRequest, "invalid_request"},
 	} {
@@ -1055,24 +1061,24 @@ func TestProvisioningRoles_AnEditOutsideTheCallersAuthorityIsRefusedForThatFirst
 	}
 }
 
-// Employee numbers are compared and stored NFC-normalised: "Å-17" with a
-// precomposed Å and with A and a combining ring are one number, so the
-// second adoption is refused employee_number_taken, and a decomposed number
-// is stored composed.
-func TestStaffManaged_EmployeeNumbersAreNFCNormalised(t *testing.T) {
+// Employee numbers are Staff's alphabet — a–z in either case, digits and
+// the hyphen — trimmed, and compared by their upper-cased key: " a-17 " is
+// stored "a-17", and "A-17" is then the same number, refused
+// employee_number_taken.
+func TestStaffManaged_EmployeeNumbersAreTrimmedAndCompareCaseBlind(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	owner, _ := h.bootstrapOwner(t)
-	first := h.createUser(t, owner, "nfc-first@example.test", identity.RoleUser)
-	second := h.createUser(t, owner, "nfc-second@example.test", identity.RoleUser)
-	third := h.createUser(t, owner, "nfc-third@example.test", identity.RoleUser)
+	first := h.createUser(t, owner, "case-first@example.test", identity.RoleUser)
+	second := h.createUser(t, owner, "case-second@example.test", identity.RoleUser)
 
-	mustManage(t, owner, first, "\u00c5-17")
-	if r := manage(owner, second, "A\u030a-17"); r.status != http.StatusConflict || r.code() != "employee_number_taken" {
-		t.Errorf("the decomposed Å-17: status %d body %s, want 409 employee_number_taken", r.status, r.body)
+	if got := mustManage(t, owner, first, " a-17 "); strOr(got.EmployeeNumber) != "a-17" {
+		t.Errorf("the number %q was not stored trimmed as a-17", strOr(got.EmployeeNumber))
 	}
-	got := mustManage(t, owner, third, " A\u0308-18 ")
-	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND employee_number = $2`, third, "\u00c4-18"); n != 1 || strOr(got.EmployeeNumber) != "\u00c4-18" {
-		t.Errorf("the number %q was not stored composed as Ä-18", strOr(got.EmployeeNumber))
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND employee_number = 'a-17' AND employee_number_key = 'A-17'`, first); n != 1 {
+		t.Error("the number and its key are not a-17 and A-17")
+	}
+	if r := manage(owner, second, "A-17"); r.status != http.StatusConflict || r.code() != "employee_number_taken" {
+		t.Errorf("A-17 after a-17: status %d body %s, want 409 employee_number_taken", r.status, r.body)
 	}
 }
