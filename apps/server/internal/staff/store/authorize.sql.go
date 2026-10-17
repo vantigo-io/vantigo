@@ -27,7 +27,7 @@ func (q *Queries) NamedAsManager(ctx context.Context, personID int64) (bool, err
 
 const personForUser = `-- name: PersonForUser :one
 SELECT person_id FROM staff.identity_links
-WHERE provider = 'identity' AND external_id = $1
+WHERE provider = 'identity' AND external_id = $1::text
 `
 
 // PersonForUser is the person a signed-in user is, through the self-service

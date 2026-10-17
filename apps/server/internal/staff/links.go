@@ -50,7 +50,9 @@ func linkWriteError(err error) error {
 }
 
 // personLink is a person's link under the identity provider on q, nil when
-// they are linked to nobody.
+// they have none. A link may name no user — the accounts worker's preparing
+// link, before identity has created one (00051) — which every reader takes
+// as linked to nobody.
 func personLink(ctx context.Context, q *store.Queries, personID int64) (*store.PersonLinkRow, error) {
 	row, err := q.PersonLink(ctx, personID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -65,7 +67,7 @@ func personLink(ctx context.Context, q *store.Queries, personID int64) (*store.P
 // linkResponse is a link as the contract answers it; user is the linked user
 // as the directory named them, read outside any transaction.
 func linkResponse(row *store.PersonLinkRow, user *gen.StaffPersonUser) gen.StaffPersonLink {
-	if row == nil {
+	if row == nil || row.ExternalID == nil {
 		return gen.StaffPersonLink{Linked: false}
 	}
 	state, managed := row.State, row.Managed
@@ -77,18 +79,18 @@ type linkName struct{ id, name string }
 
 // currentLinkName is the user a person is linked to now, read on the pool and
 // named through the directory — never inside a transaction — and nil when
-// the person is linked to nobody. A user the directory no longer knows is
-// "Unknown user".
+// the person is linked to nobody (no link, or one naming no user yet). A user
+// the directory no longer knows is "Unknown user".
 func (s *server) currentLinkName(ctx context.Context, personID int64) (*linkName, error) {
 	current, err := personLink(ctx, store.New(s.deps.Pool), personID)
-	if err != nil || current == nil {
+	if err != nil || current == nil || current.ExternalID == nil {
 		return nil, err
 	}
-	user, err := s.linkedUser(ctx, &current.ExternalID)
+	user, err := s.linkedUser(ctx, current.ExternalID)
 	if err != nil {
 		return nil, err
 	}
-	return &linkName{id: current.ExternalID, name: user.DisplayName}, nil
+	return &linkName{id: *current.ExternalID, name: user.DisplayName}, nil
 }
 
 // GetStaffPeopleByIdUser Get a person's self-service link
@@ -124,7 +126,7 @@ func (s *server) GetStaffPeopleByIdUser(ctx context.Context, req gen.GetStaffPeo
 	}
 	var user *gen.StaffPersonUser
 	if row != nil {
-		if user, err = s.linkedUser(ctx, &row.ExternalID); err != nil {
+		if user, err = s.linkedUser(ctx, row.ExternalID); err != nil {
 			return nil, err
 		}
 	}
@@ -181,11 +183,11 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		return nil, err
 	}
 	from := func(current *store.PersonLinkRow) any {
-		if current == nil {
+		if current == nil || current.ExternalID == nil {
 			return nil
 		}
-		out := map[string]any{"id": current.ExternalID}
-		if was != nil && was.id == current.ExternalID {
+		out := map[string]any{"id": *current.ExternalID}
+		if was != nil && was.id == *current.ExternalID {
 			out["displayName"] = was.name
 		}
 		return out
@@ -213,7 +215,7 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 			return s.recordChanges(ctx, txq, req.Id, eventUserUnlinked, who, changes{"user": fieldChange{From: from(current)}})
 		}
 		id := target.ID.String()
-		if current != nil && current.ExternalID == id {
+		if current != nil && current.ExternalID != nil && *current.ExternalID == id {
 			row = current
 			return nil
 		}

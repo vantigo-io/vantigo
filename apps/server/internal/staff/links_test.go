@@ -236,3 +236,45 @@ func TestLink_ABodyWithoutUserIdUnlinksNothing(t *testing.T) {
 		t.Errorf("user_unlinked events = %d, want none", n)
 	}
 }
+
+// preparingLink writes the accounts worker's preparing link directly: the
+// identity provider, no user yet (00051), managed. A test whose subject is how
+// a reader takes a link naming nobody needs no worker to write it.
+func preparingLink(t *testing.T, h *harness, personID int64) {
+	t.Helper()
+	h.Exec(t, `
+		INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
+		VALUES ($1, 'identity', NULL, 'preparing', true, $2, $2)`, personID, h.Now())
+}
+
+// A link naming no user — the accounts worker's preparing link, before
+// identity has created the user (plan M3) — is a person linked to nobody to
+// every reader of the link: the link itself reads linked false, the person
+// and the personal-data export carry no user, and no signed-in user is the
+// person through it.
+func TestLink_APreparingLinkNamesNobody(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	p := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	preparingLink(t, h, p.Id)
+
+	var got gen.StaffPersonLink
+	do(t, hr, http.MethodGet, userPath(p.Id), nil, http.StatusOK, &got)
+	if got.Linked || got.User != nil {
+		t.Errorf("a preparing link reads %+v, want linked false and no user", got)
+	}
+	var person gen.StaffPerson
+	do(t, hr, http.MethodGet, personPath(p.Id), nil, http.StatusOK, &person)
+	if person.User != nil {
+		t.Errorf("the person with a preparing link names user %+v, want none", person.User)
+	}
+	export := exportOf(t, hr.Do(http.MethodGet, personalDataPath(p.Id), nil))
+	if export.Link.Linked || export.Link.User != nil {
+		t.Errorf("the export's link = %+v, want linked false and no user", export.Link)
+	}
+	nobody, _ := signIn(t, h)
+	if r := nobody.Do(http.MethodGet, "/api/v1/staff/me", nil); r.Status != http.StatusNotFound {
+		t.Errorf("an unlinked user's /me: %d %s, want the 404 of a user who is nobody", r.Status, r.Body)
+	}
+}

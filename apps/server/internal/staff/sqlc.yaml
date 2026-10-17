@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00042_staff_foundation.sql
       - ../db/migrations/00043_staff_records.sql
       - ../db/migrations/00047_staff_absence.sql
+      - ../db/migrations/00051_staff_accounts.sql
     queries: queries
     gen:
       go:

@@ -912,6 +912,10 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   `nextEmployeeNumber`, 1). En person som opprettes uten ansattnummer får prefikset og
   det neste nummeret, uten utfylling: `EMP-` og 7 blir `EMP-7`. Prefikset er opptil
   åtte bokstaver, sifre eller bindestreker, og de to sammen kan bli høyst 16 tegn.
+  To ansattnumre som bare skiller seg i store og små bokstaver er samme nummer
+  (`emp-7` avvises ved siden av `EMP-7`), og det avgjøres likt uansett hvilken locale
+  databasen ble opprettet med — også en tyrkisk — og likt med hvordan identity
+  vurderer ansattnummeret den holder på en bruker.
 - **Pensjonsleverandør** og **yrkesskadeforsikrer** (`pensionProvider`,
   `injuryInsurer`). Leverandøren av obligatorisk tjenestepensjon (OTP) og
   yrkesskadeforsikringen, som kontrollen av arbeidsavtalen leser.

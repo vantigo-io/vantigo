@@ -16,7 +16,7 @@ WHERE person_id = @person_id AND provider = 'identity';
 -- user_linked_elsewhere. A replaced link starts over as a self-service link:
 -- whatever delivery C's worker recorded about the old user is not this one's.
 INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
-VALUES (@person_id, 'identity', @external_id, 'linked', false, @now::timestamptz, @now::timestamptz)
+VALUES (@person_id, 'identity', @external_id::text, 'linked', false, @now::timestamptz, @now::timestamptz)
 ON CONFLICT (person_id, provider) DO UPDATE SET
     external_id = EXCLUDED.external_id,
     state = 'linked',
