@@ -747,7 +747,10 @@ func (s *server) PostIdentityOwnerUsersByIdPassword(ctx context.Context, req gen
 // reset has spent it already, the change is refused with
 // invalid_reset_token. A user deleted since the caller looked them up
 // changes nothing and is refused too: the bare 404 for an Owner, and
-// invalid_reset_token for a reset, whose contract has no 404.
+// invalid_reset_token for a reset, whose contract has no 404. The write is
+// guarded on the row (UpdateAccountPassword), so a user made pending while
+// it waits keeps no password either: 409 account_pending for an Owner, the
+// user still there.
 func (s *server) setPassword(ctx context.Context, userID uuid.UUID, password string, resetToken []byte) error {
 	hash, err := hashPassword(password)
 	if err != nil {
@@ -772,6 +775,11 @@ func (s *server) setPassword(ctx context.Context, userID uuid.UUID, password str
 		if changed == 0 {
 			if resetToken != nil {
 				return invalidResetToken
+			}
+			if _, err := q.GetUserByID(ctx, userID); err == nil {
+				return accountPending
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return err
 			}
 			return notFound
 		}

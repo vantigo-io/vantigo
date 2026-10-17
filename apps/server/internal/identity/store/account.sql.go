@@ -62,7 +62,7 @@ func (q *Queries) HasProfileAvatar(ctx context.Context, userID uuid.UUID) (bool,
 const updateAccountPassword = `-- name: UpdateAccountPassword :execrows
 UPDATE identity.users
 SET password_hash = $1, version = $2, updated_at = $3::timestamptz
-WHERE id = $4
+WHERE id = $4 AND pending_since IS NULL
 `
 
 type UpdateAccountPasswordParams struct {
@@ -74,7 +74,10 @@ type UpdateAccountPasswordParams struct {
 
 // UpdateAccountPassword stores the new hash and bumps version, the
 // concurrency-stamp analogue (EA/AccountSettingsEndpoints.cs:157). It
-// affects no row when the user has been deleted.
+// affects no row when the user has been deleted, or is pending: a pending
+// user's only way to a password is accepting their invitation, and the
+// guard is on the row written, so a pending mark committed while this waits
+// on the row is seen.
 func (q *Queries) UpdateAccountPassword(ctx context.Context, arg UpdateAccountPasswordParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateAccountPassword,
 		arg.PasswordHash,

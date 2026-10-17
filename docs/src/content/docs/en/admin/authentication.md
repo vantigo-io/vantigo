@@ -131,7 +131,10 @@ What an Owner may still do with a Staff-managed user:
   a **pending** user can neither be enabled nor given a password: both answer 409
   `account_pending`, since the account becomes usable only by accepting its invitation.
   Should a pending user hold a credential all the same, password, passkey and OIDC
-  sign-in refuse them as they refuse a disabled account.
+  sign-in refuse them as they refuse a disabled account, and a session they already
+  hold ends on its next request. No password is ever written to a pending user, by an
+  Owner, a reset or the user: the write itself checks, so a user made pending while a
+  password set waits still keeps none (409 `account_pending`).
 - **Disable** the user. An Owner's disable is recorded as the Owner's
   (`disabledBy: owner`), also over a user Staff had disabled, and Staff never
   re-enables a user an Owner disabled. Enabling clears it. Overriding Staff's disable —

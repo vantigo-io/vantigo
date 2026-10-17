@@ -14,10 +14,13 @@ RETURNING id, display_name, email, preferred_language;
 -- name: UpdateAccountPassword :execrows
 -- UpdateAccountPassword stores the new hash and bumps version, the
 -- concurrency-stamp analogue (EA/AccountSettingsEndpoints.cs:157). It
--- affects no row when the user has been deleted.
+-- affects no row when the user has been deleted, or is pending: a pending
+-- user's only way to a password is accepting their invitation, and the
+-- guard is on the row written, so a pending mark committed while this waits
+-- on the row is seen.
 UPDATE identity.users
 SET password_hash = @password_hash, version = @version, updated_at = @now::timestamptz
-WHERE id = @id;
+WHERE id = @id AND pending_since IS NULL;
 
 -- name: DeleteUserPasswordResetTokens :exec
 -- DeleteUserPasswordResetTokens keeps a changed password from being

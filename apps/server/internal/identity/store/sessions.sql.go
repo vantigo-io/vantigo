@@ -42,6 +42,7 @@ LEFT JOIN identity.scim_user_mappings m ON m.user_id = s.user_id
 WHERE s.token_hash = $1
   AND s.revoked_at IS NULL
   AND NOT u.is_disabled
+  AND u.pending_since IS NULL
   AND (NOT $2::boolean OR m.upstream_active IS NOT FALSE OR r.is_owner)
   -- sqlc.arg, not @: PostgreSQL parses @ as a prefix operator that binds
   -- looser than -, which would swallow the whole subtraction.
@@ -77,7 +78,8 @@ type GetSessionByTokenHashRow struct {
 // rejects every state that ends a session: a revoked row; an idle or
 // absolute bound that has elapsed (the privileged pair applies while the
 // user currently holds Owner or SystemAdmin, decided here per request); a
-// disabled user; and, while SCIM is configured, a user the directory
+// disabled or pending user (a pending user's only way in is their
+// invitation); and, while SCIM is configured, a user the directory
 // deactivated unless they hold Owner (SV/ScimLifecycleService.cs:21-44).
 // Lockout does not end a session. Every bound is measured against the now
 // parameter, the caller's clock, never the database's: a session is rejected once
