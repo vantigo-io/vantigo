@@ -2,9 +2,10 @@ package contracts
 
 import "testing"
 
-// TestSameEmployeeNumber pins identity's comparison: trimmed, case-folded as
-// upper(), and an empty number the same as no other — not even another empty
-// one, so an unnumbered record never matches an unnumbered user.
+// TestSameEmployeeNumber pins identity's comparison: trimmed, NFC-normalised,
+// case-folded as upper(), and an empty number the same as no other — not
+// even another empty one, so an unnumbered record never matches an
+// unnumbered user.
 func TestSameEmployeeNumber(t *testing.T) {
 	for _, tc := range []struct {
 		a, b string
@@ -19,7 +20,9 @@ func TestSameEmployeeNumber(t *testing.T) {
 		{"", "", false},
 		{"  ", "", false},
 		{"E-1", "", false},
-		{"\u212a-1", "k-1", false}, // the Kelvin sign: equal by folding, not by upper()
+		{"\u00c5-17", "A\u030a-17", true}, // Å precomposed and decomposed: one number once NFC
+		{"\u00e5-17", "A\u030a-17", true},
+		{"\u212a-1", "k-1", true}, // the Kelvin sign is K under NFC, as identity stores it
 	} {
 		if got := SameEmployeeNumber(tc.a, tc.b); got != tc.want {
 			t.Errorf("SameEmployeeNumber(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)

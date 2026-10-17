@@ -215,8 +215,10 @@ SystemAdmin.
 3. Kontroller: svaret, og brukeren i listen, viser `managedBy: staff` og
    ansattnummeret. Revisjonsloggen registrerer `user.staff-managed`.
 
-Ansattnumre sammenlignes uansett store eller små bokstaver (`upper()` på begge sider),
-så `a-17` og `A-17` er samme nummer. Å ta inn en styrt bruker på nytt med et annet
+Ansattnumre lagres og sammenlignes i Unicode normalform C (NFC), så en `Å` skrevet som
+ett tegn og en skrevet som `A` med en kombinerende ring er samme nummer, og de
+sammenlignes uansett store eller små bokstaver (`upper()` på begge sider), så `a-17` og
+`A-17` er samme nummer. Å ta inn en styrt bruker på nytt med et annet
 nummer endrer nummeret. En bruker som
 SCIM klargjør, kan tas inn: i en føderert installasjon er den styrte brukeren
 identitetsleverandørens.

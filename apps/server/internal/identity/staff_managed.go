@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -57,6 +58,19 @@ var (
 	// accountManaged refuses deleting a user Staff manages.
 	accountManaged = refuse(http.StatusConflict, "account_managed", "This user is managed by Staff and cannot be deleted; stop Staff managing them first.", nil)
 )
+
+// normalizeEmployeeNumber is how identity takes an employee number, from an
+// Owner's adoption or from Staff's provisioning alike: trimmed, then
+// NFC-normalised, so two spellings of one number (a precomposed Å and A with
+// a combining ring) are stored and compared as one, then judged — 1 to 16
+// characters, each printable (unprintable). It returns the number to store
+// and compare, and whether it is valid. contracts.SameEmployeeNumber
+// normalises the same way.
+func normalizeEmployeeNumber(raw string) (string, bool) {
+	number := norm.NFC.String(strings.TrimSpace(raw))
+	valid := number != "" && utf8.RuneCountInString(number) <= maxEmployeeNumberLength && !strings.ContainsFunc(number, unprintable)
+	return number, valid
+}
 
 // unprintable reports whether r has no place in an employee number: a
 // control character, a format character (Unicode Cf: zero-width characters,
@@ -111,7 +125,8 @@ func privileged(ctx context.Context, q *store.Queries, id uuid.UUID) (bool, erro
 // PostIdentityOwnerUsersByIdManage adopts another user for Staff for an
 // Owner: managed_by staff and the employee number. After validation (400
 // invalid_request: the module is staff, the number 1–16 characters once
-// trimmed, each printable — see unprintable) and the self check, one serializable transaction under the owner
+// trimmed and NFC-normalised, each printable — see normalizeEmployeeNumber)
+// and the self check, one serializable transaction under the owner
 // lock: an unknown user is 404; an Owner or a SystemAdmin is 409
 // account_privileged; a number another user holds, however it is cased, is
 // 409 employee_number_taken, also when only the unique index sees a
@@ -124,12 +139,12 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 	if req.Body != nil {
 		body = *req.Body
 	}
-	number := strings.TrimSpace(deref(body.EmployeeNumber))
+	number, numberValid := normalizeEmployeeNumber(deref(body.EmployeeNumber))
 	fields := map[string][]string{}
 	if deref(body.Module) != staffModule {
 		fields["module"] = []string{"Module must be staff."}
 	}
-	if number == "" || utf8.RuneCountInString(number) > maxEmployeeNumberLength || strings.ContainsFunc(number, unprintable) {
+	if !numberValid {
 		fields["employeeNumber"] = []string{"An employee number of at most 16 characters, each a printable one, is required."}
 	}
 	if len(fields) > 0 {

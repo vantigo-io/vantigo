@@ -201,8 +201,10 @@ Owner nor a SystemAdmin.
 3. Verify: the answer, and the user in the list, show `managedBy: staff` and the
    employee number. The audit records `user.staff-managed`.
 
-Employee numbers are compared however they are cased (`upper()` on both sides), so
-`a-17` and `A-17` are one number. Adopting a managed user again with another number
+Employee numbers are stored and compared in Unicode normal form C (NFC), so an `Å`
+typed as one character and one typed as `A` with a combining ring are one number, and
+compared however they are cased (`upper()` on both sides), so `a-17` and `A-17` are one
+number. Adopting a managed user again with another number
 changes the number. A user SCIM
 provisions may be adopted: in a federated installation the managed user is the
 identity provider's.
