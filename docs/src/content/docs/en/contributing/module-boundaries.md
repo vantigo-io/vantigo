@@ -233,8 +233,11 @@ Communications' outbox is the working example.
     known system actor (`system:staff-accounts`), which identity writes to its audit;
     a provider refuses an actor that is not `Actor.Valid` with `ErrInvalidActor`
     before it writes anything. The spec
-    carries no roles: identity assigns the set an Owner named, so `staff:manage` can
-    never mint an account holding a role it chose. The employee number decides whose
+    carries no roles: identity assigns the set an Owner named, only on the `Activate`
+    that enables a user Staff disabled, so `staff:manage` can never mint an account
+    holding a role it chose, nor give back one an Owner removed.
+    `ActivateOpts.FreshInvitation` never re-sends an open invitation and starts a new
+    spell at most once per ten minutes. The employee number decides whose
     account a user is: `Prepare` finds by it, and a caller acts on a user only when
     identity's number is the same as its record's by `contracts.SameEmployeeNumber`
     — the same `contracts.NormalizeEmployeeNumber` key (trimmed, NFC-normalised,
