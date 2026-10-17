@@ -3,15 +3,14 @@ package module
 import (
 	"context"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/vantigo-io/vantigo/server/internal/config"
-	"github.com/vantigo-io/vantigo/server/internal/contracts"
-	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 // fakeWorker is a minimal worker.Worker: these tests only need a distinct,
@@ -209,5 +208,81 @@ func TestWorkers_HandTheWorkersTheCustomerDirectory(t *testing.T) {
 		reader, Module{Name: "owner", Directory: func(Deps) contracts.CustomerDirectory { return disabled }})
 	if seen != preset {
 		t.Errorf("the workers saw Deps.Directory = %v, want the caller's, the owner being disabled", seen)
+	}
+}
+
+// Worker mode never composes, yet a worker writes identity's accounts and
+// reads its users (the staff-accounts worker): Workers resolves the Users
+// and Accounts slots itself, from the enabled providers, Users first so the
+// accounts provider may read it while it is built, before any module builds
+// its workers.
+func TestWorkers_ResolveTheUsersAndAccountsSlots(t *testing.T) {
+	users := &fakeUserDirectory{}
+	accounts := &fakeAccounts{name: "identity"}
+	var sawUsers contracts.UserDirectory
+	var seen Deps
+	Workers(Deps{Config: &config.Config{Modules: []string{"alpha"}}},
+		Module{Name: "identity", Users: func(Deps) contracts.UserDirectory { return users },
+			Accounts: func(d Deps) contracts.AccountProvisioning {
+				sawUsers = d.Users
+				return accounts
+			}},
+		Module{Name: "alpha", Workers: func(d Deps) []worker.Worker {
+			seen = d
+			return nil
+		}},
+	)
+	if seen.Users != users || seen.Accounts != accounts {
+		t.Errorf("alpha's workers saw Users %v and Accounts %v, want identity's", seen.Users, seen.Accounts)
+	}
+	if sawUsers != users {
+		t.Errorf("the accounts provider saw Deps.Users = %v, want the user directory resolved first", sawUsers)
+	}
+}
+
+// A disabled module's provider fills no slot in worker mode either, and a
+// value preset on Deps survives when no enabled module provides one.
+func TestWorkers_LeaveAPresetSlotWhenNoEnabledModuleProvides(t *testing.T) {
+	preset := &fakeAccounts{name: "preset"}
+	var seen Deps
+	Workers(Deps{Config: &config.Config{Modules: []string{"alpha"}}, Accounts: preset},
+		Module{Name: "alpha", Workers: func(d Deps) []worker.Worker {
+			seen = d
+			return nil
+		}},
+		Module{Name: "beta", Accounts: func(Deps) contracts.AccountProvisioning { return &fakeAccounts{name: "beta"} }},
+	)
+	if seen.Accounts != preset {
+		t.Errorf("Deps.Accounts = %v, want the preset (beta is disabled)", seen.Accounts)
+	}
+}
+
+// Workers has no error to return, so two enabled modules providing one
+// single-provider slot — a bug in the binary's module list, which Compose
+// refuses at startup — panics naming both, as a kind claimed twice does.
+func TestWorkers_PanicsOnTwoProvidersOfASlot(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mods []Module
+		want string
+	}{
+		{"users", []Module{
+			{Name: "alpha", Users: func(Deps) contracts.UserDirectory { return &fakeUserDirectory{} }},
+			{Name: "beta", Users: func(Deps) contracts.UserDirectory { return &fakeUserDirectory{} }},
+		}, "a user directory"},
+		{"accounts", []Module{
+			{Name: "alpha", Accounts: func(Deps) contracts.AccountProvisioning { return &fakeAccounts{} }},
+			{Name: "beta", Accounts: func(Deps) contracts.AccountProvisioning { return &fakeAccounts{} }},
+		}, "account provisioning"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				r := fmt.Sprint(recover())
+				if !strings.Contains(r, tc.want) || !strings.Contains(r, "alpha") || !strings.Contains(r, "beta") {
+					t.Errorf("recover() = %v, want a panic naming %s, alpha and beta", r, tc.want)
+				}
+			}()
+			Workers(Deps{}, tc.mods...)
+		})
 	}
 }

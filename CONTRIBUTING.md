@@ -197,6 +197,9 @@ own deployable without a rewrite.
   an HTTP client implementation and consumers stay unchanged. A contract whose
   provider may be disabled is **optional**: its `Deps` field is nil and the consumer
   handles that (Projects answers 409 on billing lines when products is off).
+  `contracts.AccountProvisioning` is the one contract that writes: Staff prepares,
+  enables and disables identity's users through it, on identity's own transactions,
+  and never calls it inside one of its own.
 - **Asynchronous notifications** ("something happened, others may care") use a
   transactional outbox: the publishing module stores the event in the same
   transaction as its state change, and a background worker dispatches it with

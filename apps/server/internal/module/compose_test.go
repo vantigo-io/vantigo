@@ -834,6 +834,40 @@ func (*fakeUserDirectory) SearchUsers(context.Context, string, int) ([]contracts
 	return nil, nil
 }
 
+func (*fakeUserDirectory) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+	return nil, nil
+}
+
+// fakeAccounts is a minimal contracts.AccountProvisioning: the slot's tests
+// only need a distinct, comparable value to inject and assert on.
+type fakeAccounts struct{ name string }
+
+func (*fakeAccounts) Mode(context.Context) (string, error) { return contracts.AccountModeLocal, nil }
+
+func (*fakeAccounts) Prepare(context.Context, contracts.Actor, contracts.AccountSpec) (contracts.AccountRef, error) {
+	return contracts.AccountRef{}, nil
+}
+
+func (*fakeAccounts) Activate(context.Context, contracts.Actor, uuid.UUID, contracts.ActivateOpts) (contracts.AccountRef, error) {
+	return contracts.AccountRef{}, nil
+}
+
+func (*fakeAccounts) Deactivate(context.Context, contracts.Actor, uuid.UUID) (contracts.AccountRef, error) {
+	return contracts.AccountRef{}, nil
+}
+
+func (*fakeAccounts) Update(context.Context, contracts.Actor, uuid.UUID, contracts.AccountSpec) (contracts.AccountRef, error) {
+	return contracts.AccountRef{}, nil
+}
+
+func (*fakeAccounts) Account(context.Context, uuid.UUID) (*contracts.AccountRef, error) {
+	return nil, nil
+}
+
+func (*fakeAccounts) ProvisioningRoles(context.Context) ([]contracts.RoleRef, error) {
+	return nil, nil
+}
+
 type fakeProductCatalog struct{}
 
 func (*fakeProductCatalog) Variant(context.Context, int32) (*contracts.VariantEntry, error) {
@@ -2031,5 +2065,70 @@ func TestCompose_PersonalDataIsPartitionedTheSameWay(t *testing.T) {
 	}
 	if !slices.Equal(log, want) {
 		t.Errorf("the anonymisation walked the data as %v, want %v", log, want)
+	}
+}
+
+// The Accounts slot (contracts.AccountProvisioning) resolves the way Users
+// does — before any Mount runs, after Users, so its provider may read
+// deps.Users while it is built — and reaches every module's Deps, a module
+// providing none included.
+func TestCompose_InjectsTheAccountsProviderAfterUsers(t *testing.T) {
+	users := &fakeUserDirectory{}
+	accounts := &fakeAccounts{name: "beta"}
+	var sawUsers contracts.UserDirectory
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Users: func(Deps) contracts.UserDirectory { return users },
+			Accounts: func(d Deps) contracts.AccountProvisioning {
+				sawUsers = d.Users
+				return accounts
+			}, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Accounts != accounts {
+		t.Errorf("Deps.Accounts = %v, want the provider's", got.Accounts)
+	}
+	if sawUsers != users {
+		t.Errorf("the accounts provider saw Deps.Users = %v, want the user directory resolved first", sawUsers)
+	}
+}
+
+// Two modules both declaring Accounts is a compose error naming both.
+func TestCompose_DuplicateAccountsProvider_Fails(t *testing.T) {
+	provide := func(Deps) contracts.AccountProvisioning { return &fakeAccounts{} }
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Accounts: provide, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Accounts: provide, Mount: staticHandler("beta")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "account provisioning") ||
+		!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("compose = %v, want an error naming account provisioning, alpha and beta", err)
+	}
+}
+
+// A disabled provider fills no slot: Deps.Accounts stays nil, which a
+// consumer answers as "accounts are unavailable".
+func TestCompose_DisabledAccountsProvider_LeavesNil(t *testing.T) {
+	var got Deps
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", Accounts: func(Deps) contracts.AccountProvisioning { return &fakeAccounts{} }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Accounts != nil {
+		t.Errorf("Deps.Accounts = %v, want nil: beta (the provider) is disabled", got.Accounts)
 	}
 }

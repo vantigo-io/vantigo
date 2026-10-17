@@ -11,6 +11,88 @@ import (
 	"github.com/google/uuid"
 )
 
+const directoryPermissionHolders = `-- name: DirectoryPermissionHolders :many
+SELECT u.id, u.display_name, u.email, coalesce(u.preferred_language, '')::text AS preferred_language
+FROM identity.users u
+CROSS JOIN LATERAL (
+    SELECT EXISTS (
+        SELECT 1
+        FROM identity.user_roles ur
+        JOIN identity.roles r ON r.id = ur.role_id
+        WHERE ur.user_id = u.id AND r.name = 'Owner'
+    ) AS is_owner
+) o
+LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
+WHERE NOT u.is_disabled
+  AND u.pending_since IS NULL
+  AND (NOT $1::boolean OR m.upstream_active IS NOT FALSE OR o.is_owner)
+  AND (o.is_owner OR EXISTS (
+      SELECT 1
+      FROM identity.role_permissions rp
+      WHERE rp.permission_key = $2
+        AND rp.role_id IN (
+            SELECT ur.role_id
+            FROM identity.user_roles ur
+            WHERE ur.user_id = u.id
+            UNION
+            SELECT gm_map.role_id
+            FROM identity.access_group_memberships gm
+            JOIN identity.access_groups g ON g.id = gm.group_id AND g.is_active
+            JOIN identity.access_group_role_mappings gm_map ON gm_map.group_id = g.id AND gm_map.source = g.source
+            WHERE gm.user_id = u.id
+              AND (gm.membership_override = 'force_member'
+                   OR (gm.membership_override IS NULL AND gm.is_upstream_present))
+        )
+  ))
+ORDER BY u.display_name, u.id
+`
+
+type DirectoryPermissionHoldersParams struct {
+	ScimEnabled   bool
+	PermissionKey string
+}
+
+type DirectoryPermissionHoldersRow struct {
+	ID                uuid.UUID
+	DisplayName       string
+	Email             string
+	PreferredLanguage string
+}
+
+// DirectoryPermissionHolders is contracts.UserDirectory.PermissionHolders:
+// the active users holding permission_key. Active is what a session needs
+// (sessions.sql's GetSessionByTokenHash): not disabled, not pending, and,
+// while SCIM is configured, not deactivated by the directory unless an
+// Owner; a lockout is ignored. A user holds the key as an Owner (every key,
+// access.go's permitted), or through a role among their direct roles and the
+// roles mapped to every active access group they are effectively a member of
+// — exactly EffectivePermissionForUser's rule (roles.sql). A delegation
+// grants no key.
+func (q *Queries) DirectoryPermissionHolders(ctx context.Context, arg DirectoryPermissionHoldersParams) ([]DirectoryPermissionHoldersRow, error) {
+	rows, err := q.db.Query(ctx, directoryPermissionHolders, arg.ScimEnabled, arg.PermissionKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryPermissionHoldersRow
+	for rows.Next() {
+		var i DirectoryPermissionHoldersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.Email,
+			&i.PreferredLanguage,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const directorySearchUsers = `-- name: DirectorySearchUsers :many
 SELECT id, display_name, is_disabled FROM identity.users
 WHERE NOT is_disabled AND display_name ILIKE '%' || $1::text || '%' ESCAPE '\'

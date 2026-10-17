@@ -13,7 +13,8 @@ import "github.com/vantigo-io/vantigo/server/internal/worker"
 // HTTP API, so cmd/vantigo calls Workers directly instead of reaching it
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
-// Deps.InvoicedWork and Deps.Directory, which it resolves the way Compose does — the same base Deps Compose
+// Deps.InvoicedWork, Deps.Directory, and Deps.Users and Deps.Accounts, which it
+// resolves from the enabled modules the way Compose does — the same base Deps Compose
 // resolves Directory from, before any Mount runs, with no per-module Doc or
 // Catalog — since a background worker is a data-layer concern (Pool, Config,
 // Clock, Mail, Secrets, ...), not a contract one.
@@ -45,6 +46,10 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if provider != nil {
 		deps.Directory = provider.Directory(deps)
 	}
+	deps, err = withUsersAndAccounts(deps, enabled)
+	if err != nil {
+		panic(err.Error())
+	}
 	var out []worker.Worker
 	for _, mod := range enabled {
 		if mod.Workers == nil {
@@ -53,4 +58,28 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 		out = append(out, mod.Workers(deps)...)
 	}
 	return out
+}
+
+// withUsersAndAccounts resolves the two single-provider slots a worker needs
+// from the enabled modules, in Compose's order — Users, then Accounts, whose
+// provider may read deps.Users while it is built — keeping a preset value
+// when no enabled module provides one (the seam a test harness fills). The
+// staff-accounts worker writes identity's accounts and reads its users, and
+// worker mode never composes, so nothing else would set them.
+func withUsersAndAccounts(deps Deps, enabled []Module) (Deps, error) {
+	usersProvider, err := soleProvider(enabled, "a user directory", func(m Module) bool { return m.Users != nil })
+	if err != nil {
+		return deps, err
+	}
+	if usersProvider != nil {
+		deps.Users = usersProvider.Users(deps)
+	}
+	accountsProvider, err := soleProvider(enabled, "account provisioning", func(m Module) bool { return m.Accounts != nil })
+	if err != nil {
+		return deps, err
+	}
+	if accountsProvider != nil {
+		deps.Accounts = accountsProvider.Accounts(deps)
+	}
+	return deps, nil
 }

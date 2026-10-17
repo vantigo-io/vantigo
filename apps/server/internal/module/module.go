@@ -56,6 +56,15 @@ type Deps struct {
 	// Module.Users; unlike Directory, it is always set once composed —
 	// identity, the one module always mounted, is the one that provides it.
 	Users contracts.UserDirectory
+	// Accounts is account provisioning, the one sanctioned way a module
+	// writes identity's users (see contracts.AccountProvisioning): staff →
+	// identity, never called inside a caller's transaction. Compose sets it,
+	// on every module's Deps copy, from whichever enabled module declares
+	// Module.Accounts, after Users; Workers sets it too, because worker mode
+	// never composes and the accounts worker writes through it. It is nil
+	// when no enabled module provides one, which a caller answers as
+	// "accounts are unavailable".
+	Accounts contracts.AccountProvisioning
 	// Products is the product catalog, the one sanctioned way a module
 	// reads products' catalog data (see contracts.ProductCatalog). Compose
 	// sets it, on every module's Deps copy, from whichever enabled module
@@ -206,6 +215,12 @@ type Module struct {
 	// it before any Mount runs and puts the result on every module's Deps,
 	// including the provider's own, the same way it resolves Directory.
 	Users func(Deps) contracts.UserDirectory
+	// Accounts builds this module's contracts.AccountProvisioning
+	// implementation, if it provides one. At most one enabled module may set
+	// it; Compose and Workers call it before anything they build runs —
+	// after they have resolved Users, so a provider built here may read
+	// deps.Users — and put the result on every module's Deps.
+	Accounts func(Deps) contracts.AccountProvisioning
 	// Products builds this module's contracts.ProductCatalog
 	// implementation, if it provides one. At most one enabled module may
 	// set it; Compose calls it before any Mount runs and puts the result on
