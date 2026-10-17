@@ -411,11 +411,11 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 // who could complete an invitation (canComplete's conditions: no password,
 // passkey or OIDC link) is then issued one naming them, unless the latest of
 // their spell is open, revoked by an Owner or the third delivered
-// (invitationState). opts.FreshInvitation never re-sends an open invitation:
-// otherwise it starts a new spell, so an Owner's revoke and the count are
-// behind it — but only when no invitation naming the user was made in the
-// last ten minutes (freshInvitationInterval); within them it is an ordinary
-// call. The invitation is mailed after the commit; a failed delivery revokes
+// (invitationState), and unless one naming them, of any spell, was made in
+// the last ten minutes (invitationInterval). opts.FreshInvitation never
+// re-sends an open invitation: otherwise, outside those ten minutes, it
+// starts a new spell, so an Owner's revoke and the count are behind it;
+// within them it is an ordinary call. The invitation is mailed after the commit; a failed delivery revokes
 // it delivery_failed, uncounted, and fails the call.
 //
 // In federated mode, a user disabled by Staff is re-enabled; nothing else is
@@ -500,7 +500,7 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 		}
 		state := invitationState(invs, now).State
 		if opts.FreshInvitation && state != contracts.InvitationActive {
-			fresh, err := freshAllowed(ctx, q, userID, now)
+			fresh, err := noRecentInvitation(ctx, q, userID, now)
 			if err != nil {
 				return err
 			}
@@ -515,6 +515,9 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 		case contracts.InvitationNone, contracts.InvitationExpired:
 		default:
 			return nil
+		}
+		if quiet, err := noRecentInvitation(ctx, q, userID, now); err != nil || !quiet {
+			return err
 		}
 		displayName := u.DisplayName
 		inv, tok, err := issueInvitation(ctx, q, p.deps.Config.InvitationLifetime, store.InsertInvitationParams{
@@ -538,21 +541,22 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 	return p.reread(ctx, store.New(p.deps.Pool), userID, p.deps.Clock())
 }
 
-// freshInvitationInterval bounds ActivateOpts.FreshInvitation: a fresh
-// spell starts only when no invitation naming the user was made in the last
-// ten minutes, so a person pressing Run now again and again sends at most one
-// invitation per ten minutes.
-const freshInvitationInterval = 10 * time.Minute
+// invitationInterval is the least time between two invitations naming one
+// user: Activate issues none, and FreshInvitation starts no spell, while one
+// was made in the last ten minutes — so neither Run now pressed again and
+// again nor an address changed back and forth sends more than one invitation
+// per ten minutes.
+const invitationInterval = 10 * time.Minute
 
-// freshAllowed reports whether a fresh spell may start for the user at now:
-// no invitation naming them was made within freshInvitationInterval.
-func freshAllowed(ctx context.Context, q *store.Queries, userID uuid.UUID, now time.Time) (bool, error) {
+// noRecentInvitation reports whether no invitation naming the user was made
+// within invitationInterval of now.
+func noRecentInvitation(ctx context.Context, q *store.Queries, userID uuid.UUID, now time.Time) (bool, error) {
 	all, err := q.ListUserInvitationsSince(ctx, store.ListUserInvitationsSinceParams{UserID: &userID, Since: time.Time{}})
 	if err != nil {
 		return false, err
 	}
 	for _, inv := range all {
-		if inv.CreatedAt.Add(freshInvitationInterval).After(now) {
+		if inv.CreatedAt.Add(invitationInterval).After(now) {
 			return false, nil
 		}
 	}
