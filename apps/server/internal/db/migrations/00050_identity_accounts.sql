@@ -11,13 +11,18 @@
 -- by that key, as normalized_email is for addresses, so no database
 -- collation's upper() decides which two numbers are one;
 -- pending_since marks a user Staff created who has not yet chosen a
--- credential; disabled_by records who disabled the user, so Staff never
--- re-enables what an Owner disabled.
+-- credential; invitations_since starts their current invitation spell — the
+-- invitations named for them since count toward the three Staff's
+-- provisioning delivers before it stops, and a fresh invitation, or a
+-- pending user's new address, starts another (null reads as pending_since);
+-- disabled_by records who disabled the user, so Staff never re-enables what
+-- an Owner disabled.
 ALTER TABLE identity.users
     ADD COLUMN managed_by      varchar(20) CHECK (managed_by IN ('staff')),
     ADD COLUMN employee_number varchar(16),
     ADD COLUMN employee_number_key text,
     ADD COLUMN pending_since   timestamptz,
+    ADD COLUMN invitations_since timestamptz,
     ADD COLUMN disabled_by     varchar(10) CHECK (disabled_by IN ('owner', 'staff')),
     ADD CONSTRAINT users_employee_number_key_check CHECK ((employee_number IS NULL) = (employee_number_key IS NULL));
 CREATE UNIQUE INDEX ux_users_employee_number ON identity.users (employee_number_key) WHERE employee_number_key IS NOT NULL;
@@ -64,6 +69,7 @@ DROP INDEX identity.ux_users_employee_number;
 ALTER TABLE identity.users
     DROP COLUMN disabled_by,
     DROP CONSTRAINT users_employee_number_key_check,
+    DROP COLUMN invitations_since,
     DROP COLUMN pending_since,
     DROP COLUMN employee_number_key,
     DROP COLUMN employee_number,
