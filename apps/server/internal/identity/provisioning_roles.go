@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -22,12 +23,37 @@ import (
 
 var (
 	// roleNotAssignable refuses a provisioning role that is not a custom
-	// role: built in, system, or unknown.
+	// role: built in, system, or unknown. A custom role granting
+	// administration is refused with the same code by deniedRoleRefusal.
 	roleNotAssignable = refuse(http.StatusBadRequest, "role_not_assignable", "Only custom roles can be roles Staff may give.", nil)
 	// provisioningRolesConflict answers a replacement that lost a race on
 	// every attempt.
 	provisioningRolesConflict = refuse(http.StatusConflict, "account_conflict", "The roles Staff may give were changed at the same time; try again.", nil)
 )
+
+// staffDeniedPermissionKeys are the permissions a role Staff may give must
+// not carry: each grants administration — of identity (identity:manage), or
+// over Staff's own register and its decisions (staff:manage,
+// staff:personal-data, staff:approve) — that staff:manage must never be able
+// to hand an account it provisions. PUT /owner/provisioning-roles checks the
+// set against it; the provider's Activate re-checks at assignment time,
+// since a role's permissions can change after it joined the set.
+var staffDeniedPermissionKeys = []string{"identity:manage", "staff:approve", "staff:manage", "staff:personal-data"}
+
+// deniedProvisioningPermission reports the first of roleIDs, by name, that
+// carries a key of staffDeniedPermissionKeys, as a refusal naming the role
+// and the key, or nil when none does.
+func deniedProvisioningPermission(ctx context.Context, q *store.Queries, roleIDs []uuid.UUID) error {
+	row, err := q.FirstDeniedRolePermission(ctx, store.FirstDeniedRolePermissionParams{RoleIds: roleIDs, Keys: staffDeniedPermissionKeys})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return refuse(http.StatusBadRequest, "role_not_assignable",
+		fmt.Sprintf("The role %s carries %s, which grants administration; Staff may not give it.", row.Name, row.PermissionKey), nil)
+}
 
 // provisioningRolesAudit is provisioning-roles.replaced's before and after:
 // the set's role ids in ordinal order.
@@ -49,7 +75,8 @@ func (s *server) GetIdentityOwnerProvisioningRoles(ctx context.Context, _ gen.Ge
 // roleIds, whole, for an Owner (400 invalid_request without roleIds). In one
 // serializable transaction the named roles are taken FOR KEY SHARE, so none
 // is deleted before the set commits; any that is not a custom role is 400
-// role_not_assignable and nothing changes. A change is audited
+// role_not_assignable and nothing changes, as is one carrying a permission of
+// staffDeniedPermissionKeys (the message naming it). A change is audited
 // provisioning-roles.replaced with the set before and after. 200 with the
 // set.
 func (s *server) PutIdentityOwnerProvisioningRoles(ctx context.Context, req gen.PutIdentityOwnerProvisioningRolesRequestObject) (gen.PutIdentityOwnerProvisioningRolesResponseObject, error) {
@@ -75,6 +102,9 @@ func (s *server) PutIdentityOwnerProvisioningRoles(ctx context.Context, req gen.
 		}
 		if len(locked) != len(ids) {
 			return roleNotAssignable
+		}
+		if err := deniedProvisioningPermission(ctx, q, ids); err != nil {
+			return err
 		}
 		before, err := q.ListProvisioningRoles(ctx)
 		if err != nil {
@@ -120,7 +150,7 @@ func provisioningRoles(ctx context.Context, q *store.Queries) (gen.ProvisioningR
 	}
 	out := gen.ProvisioningRolesResponse{Roles: make([]gen.ProvisioningRole, len(rows))}
 	for i, role := range rows {
-		out.Roles[i] = gen.ProvisioningRole{Id: role.ID, Name: role.Name, DisplayName: role.DisplayName}
+		out.Roles[i] = gen.ProvisioningRole{Id: role.ID, Name: role.Name, DisplayName: role.DisplayName, PermissionKeys: nonNil(role.PermissionKeys)}
 	}
 	return out, nil
 }

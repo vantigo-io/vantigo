@@ -23,6 +23,34 @@ func (q *Queries) DeleteProvisioningRolesExcept(ctx context.Context, roleIds []u
 	return err
 }
 
+const firstDeniedRolePermission = `-- name: FirstDeniedRolePermission :one
+SELECT r.name, rp.permission_key
+FROM identity.role_permissions rp
+JOIN identity.roles r ON r.id = rp.role_id
+WHERE rp.role_id = ANY ($1::uuid[]) AND rp.permission_key = ANY ($2::text[])
+ORDER BY r.name COLLATE "C", rp.permission_key COLLATE "C"
+LIMIT 1
+`
+
+type FirstDeniedRolePermissionParams struct {
+	RoleIds []uuid.UUID
+	Keys    []string
+}
+
+type FirstDeniedRolePermissionRow struct {
+	Name          string
+	PermissionKey string
+}
+
+// FirstDeniedRolePermission is the first of @role_ids, by name, carrying a
+// key of @keys, and that key: the roles Staff may never give.
+func (q *Queries) FirstDeniedRolePermission(ctx context.Context, arg FirstDeniedRolePermissionParams) (FirstDeniedRolePermissionRow, error) {
+	row := q.db.QueryRow(ctx, firstDeniedRolePermission, arg.RoleIds, arg.Keys)
+	var i FirstDeniedRolePermissionRow
+	err := row.Scan(&i.Name, &i.PermissionKey)
+	return i, err
+}
+
 const insertProvisioningRoles = `-- name: InsertProvisioningRoles :exec
 INSERT INTO identity.provisioning_roles (role_id, created_at)
 SELECT unnest($1::uuid[]), $2::timestamptz
@@ -42,20 +70,24 @@ func (q *Queries) InsertProvisioningRoles(ctx context.Context, arg InsertProvisi
 }
 
 const listProvisioningRoles = `-- name: ListProvisioningRoles :many
-SELECT r.id, r.name, r.display_name
+SELECT r.id, r.name, r.display_name,
+       array(SELECT rp.permission_key FROM identity.role_permissions rp
+             WHERE rp.role_id = r.id ORDER BY rp.permission_key COLLATE "C")::text[] AS permission_keys
 FROM identity.provisioning_roles p
 JOIN identity.roles r ON r.id = p.role_id
 ORDER BY r.name COLLATE "C", r.id
 `
 
 type ListProvisioningRolesRow struct {
-	ID          uuid.UUID
-	Name        string
-	DisplayName string
+	ID             uuid.UUID
+	Name           string
+	DisplayName    string
+	PermissionKeys []string
 }
 
 // ListProvisioningRoles is the set of roles Staff may give the users it
-// provisions, by name ordinally, then by id.
+// provisions, by name ordinally, then by id, each with the permission keys
+// it carries in ordinal order.
 func (q *Queries) ListProvisioningRoles(ctx context.Context) ([]ListProvisioningRolesRow, error) {
 	rows, err := q.db.Query(ctx, listProvisioningRoles)
 	if err != nil {
@@ -65,7 +97,12 @@ func (q *Queries) ListProvisioningRoles(ctx context.Context) ([]ListProvisioning
 	var items []ListProvisioningRolesRow
 	for rows.Next() {
 		var i ListProvisioningRolesRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.DisplayName); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.DisplayName,
+			&i.PermissionKeys,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

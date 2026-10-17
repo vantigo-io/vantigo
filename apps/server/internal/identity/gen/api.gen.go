@@ -529,6 +529,9 @@ type ProvisioningRole struct {
 	DisplayName string             `json:"displayName"`
 	Id          openapi_types.UUID `json:"id"`
 	Name        string             `json:"name"`
+
+	// PermissionKeys The permission keys the role carries, in ordinal order. Every user Staff provisions is given them.
+	PermissionKeys []string `json:"permissionKeys"`
 }
 
 // ProvisioningRolesRequest defines model for ProvisioningRolesRequest.
