@@ -38,3 +38,7 @@ DELETE FROM identity.provisioning_roles WHERE role_id <> ALL (@role_ids::uuid[])
 INSERT INTO identity.provisioning_roles (role_id, created_at)
 SELECT unnest(@role_ids::uuid[]), @now::timestamptz
 ON CONFLICT (role_id) DO NOTHING;
+
+-- name: IsProvisioningRole :one
+-- IsProvisioningRole reports whether the role is in the set Staff may give.
+SELECT EXISTS (SELECT 1 FROM identity.provisioning_roles WHERE role_id = @role_id)::boolean;

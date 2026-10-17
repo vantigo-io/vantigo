@@ -140,23 +140,23 @@ func withEnv(k, v string) harnessOption {
 	return func(s *harnessSetup) { s.env[k] = v }
 }
 
-// withPermissions adds perms, each a customers: key, to the composed
-// catalog through catalogModule, for tests that give roles keys beyond
-// identity:manage.
+// withPermissions adds perms, each a customers: or staff: key, to the
+// composed catalog through a catalogModule per prefix, for tests that give
+// roles keys beyond identity:manage.
 func withPermissions(perms ...contracts.Permission) harnessOption {
 	return func(s *harnessSetup) { s.permissions = append(s.permissions, perms...) }
 }
 
-// catalogModule stands in for the customers module, contributing only
-// permissions. RBAC tests need catalog keys beyond identity:manage, and a
+// catalogModule stands in for the module name (customers or staff),
+// contributing only permissions. RBAC tests need catalog keys beyond identity:manage, and a
 // key must belong to a module Compose knows: openapi.Load must find the
 // module's contract, and ValidatePermission requires the key's prefix to be
 // the module's name. Its Mount serves nothing and builds no module.Router,
-// which would report every customers operation as never registered; only
+// which would report every operation of the module as never registered; only
 // its Permissions matter, and they reach identity through Deps.Catalog.
-func catalogModule(perms []contracts.Permission) module.Module {
+func catalogModule(name string, perms []contracts.Permission) module.Module {
 	return module.Module{
-		Name:        "customers",
+		Name:        name,
 		Permissions: perms,
 		Mount:       func(module.Deps) (http.Handler, error) { return http.NotFoundHandler(), nil },
 	}
@@ -222,8 +222,16 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 		setup.oidc.attach(h.access, h.now) // before Compose mounts identity
 	}
 	mods := []module.Module{identity.Module(h.access)}
-	if len(setup.permissions) > 0 {
-		mods = append(mods, catalogModule(setup.permissions))
+	for _, name := range []string{"customers", "staff"} {
+		var perms []contracts.Permission
+		for _, p := range setup.permissions {
+			if strings.HasPrefix(p.Key, name+":") {
+				perms = append(perms, p)
+			}
+		}
+		if len(perms) > 0 {
+			mods = append(mods, catalogModule(name, perms))
+		}
 	}
 	api, err := module.Compose(h.deps, mods...)
 	if err != nil {

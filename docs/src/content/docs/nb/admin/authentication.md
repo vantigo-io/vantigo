@@ -217,7 +217,7 @@ Dette kan gå galt:
 | --- | --- |
 | 409 `account_privileged` | Brukeren er eier eller SystemAdmin; Ansatte styrer dem aldri, og en eier håndterer eiere for hånd |
 | 409 `employee_number_taken` | En annen bruker har allerede nummeret, uansett store eller små bokstaver |
-| 400 `invalid_request` | Modulen er ikke `staff`, nummeret er tomt, lengre enn 16 tegn eller inneholder et kontrolltegn, eller brukeren er deg selv |
+| 400 `invalid_request` | Modulen er ikke `staff`, nummeret er tomt, lengre enn 16 tegn eller inneholder et tegn som ikke skrives ut — et kontrolltegn, et usynlig tegn som et mellomrom med null bredde, et retningstegn eller et byte-rekkefølgemerke, eller et annet mellomrom enn det vanlige — eller brukeren er deg selv |
 
 ### Slutte å la Ansatte styre en bruker
 
@@ -251,14 +251,19 @@ Forespørselen erstatter settet; en tom `roleIds` tømmer det. Å slette en roll
 den fra settet. 400 `role_not_assignable` avviser, og ingenting endres, for:
 
 - en innebygd rolle, en systemrolle eller en ukjent rolle;
-- en rolle med en rettighet som gir administrasjon — `identity:manage`,
-  `staff:manage`, `staff:personal-data` eller `staff:approve`. Meldingen navngir rollen
-  og nøkkelen.
+- en rolle med en rettighet som gir administrasjon — `identity:manage` og enhver annen
+  rettighet som ikke kan delegeres, `staff:manage`, `staff:personal-data` eller
+  `staff:approve`. Meldingen navngir rollen og nøkkelen.
 
 **Forsiktig:** en rolle i settet gis til hver bruker Ansatte klargjør, og å endre
 rettighetene til den rollen senere endrer det alle de brukerne holder, på én gang. Gi
 rollen bare det hver ansatt trenger, og gå gjennom settet før du utvider en av rollene
-i det.
+i det. En endring som ville gi en rolle i settet en av rettighetene ovenfor — av en eier
+eller av en delegert som forvalter rollen, gjennom
+`PUT /api/v1/identity/access/roles/{id}` eller dens `/permissions` — avvises med 403
+`role_provisioning_protected`, og ingenting endres; ta rollen ut av settet først. Å
+navngi settet og å endre en av rollene i det venter på hverandre, så ingen av dem
+slipper forbi den andres kontroll.
 
 ### Hvorfor en invitasjon ble trukket tilbake
 

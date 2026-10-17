@@ -205,7 +205,7 @@ What can go wrong:
 | --- | --- |
 | 409 `account_privileged` | The user is an Owner or a SystemAdmin; Staff never manages them, and an Owner handles Owners by hand |
 | 409 `employee_number_taken` | Another user already holds the number, however it is cased |
-| 400 `invalid_request` | The module is not `staff`, or the number is blank, longer than 16 characters or holds a control character, or the user is you |
+| 400 `invalid_request` | The module is not `staff`, or the number is blank, longer than 16 characters or holds a character that does not print — a control character, an invisible one such as a zero-width space, a bidi control or a byte-order mark, or a space other than the ordinary one — or the user is you |
 
 ### Stop Staff managing a user
 
@@ -238,13 +238,18 @@ The request replaces the set; an empty `roleIds` empties it. Deleting a role rem
 from the set. 400 `role_not_assignable` refuses, and nothing changes, for:
 
 - a built-in, system or unknown role;
-- a role carrying a permission that grants administration — `identity:manage`,
-  `staff:manage`, `staff:personal-data` or `staff:approve`. The message names the role
-  and the key.
+- a role carrying a permission that grants administration — `identity:manage` and any
+  other permission that cannot be delegated, `staff:manage`, `staff:personal-data` or
+  `staff:approve`. The message names the role and the key.
 
 **Caution:** a role in the set is given to every user Staff provisions, and editing
 that role's permissions later changes what all of them hold at once. Give the role only
-what every employee needs, and review the set before widening one of its roles.
+what every employee needs, and review the set before widening one of its roles. An edit
+that would give a role in the set one of the permissions above — by an Owner or by a
+delegate stewarding the role, through `PUT /api/v1/identity/access/roles/{id}` or its
+`/permissions` — is refused 403 `role_provisioning_protected`, and nothing changes;
+take the role out of the set first. Naming the set and editing one of its roles wait
+for each other, so neither passes the other's check.
 
 ### Why an invitation was revoked
 

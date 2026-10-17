@@ -26,25 +26,59 @@ var (
 	// role: built in, system, or unknown. A custom role granting
 	// administration is refused with the same code by deniedRoleRefusal.
 	roleNotAssignable = refuse(http.StatusBadRequest, "role_not_assignable", "Only custom roles can be roles Staff may give.", nil)
+	// roleProvisioningProtected refuses an edit giving a role in the set
+	// Staff may give a key the set refuses (provisioningDeniedKeys).
+	roleProvisioningProtected = refuseFlat(http.StatusForbidden, "role_provisioning_protected", "A role Staff may give cannot receive a permission that grants administration.")
 	// provisioningRolesConflict answers a replacement that lost a race on
 	// every attempt.
 	provisioningRolesConflict = refuse(http.StatusConflict, "account_conflict", "The roles Staff may give were changed at the same time; try again.", nil)
 )
 
-// staffDeniedPermissionKeys are the permissions a role Staff may give must
-// not carry: each grants administration — of identity (identity:manage), or
-// over Staff's own register and its decisions (staff:manage,
-// staff:personal-data, staff:approve) — that staff:manage must never be able
-// to hand an account it provisions. PUT /owner/provisioning-roles checks the
-// set against it; the provider's Activate re-checks at assignment time,
-// since a role's permissions can change after it joined the set.
-var staffDeniedPermissionKeys = []string{"identity:manage", "staff:approve", "staff:manage", "staff:personal-data"}
+// staffAdministrativeKeys are Staff's keys that grant administration over
+// its register and its decisions, delegable or not.
+var staffAdministrativeKeys = []string{"staff:approve", "staff:manage", "staff:personal-data"}
+
+// provisioningDeniedKeys are the permissions a role Staff may give must not
+// carry, in ordinal order: each grants administration that staff:manage
+// must never be able to hand an account it provisions — every non-delegable
+// key of the catalog (identity:manage and any added later; protectedPermission)
+// and Staff's administrative keys. PUT /owner/provisioning-roles checks the
+// set against it, and a role edit may not give a role in the set one
+// (guardProvisioningRole); the provider's Activate re-checks at assignment
+// time.
+func (s *server) provisioningDeniedKeys() []string {
+	keys := append([]string{"identity:manage"}, staffAdministrativeKeys...)
+	for key := range s.deps.Catalog {
+		if s.protectedPermission(key) {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	return slices.Compact(keys)
+}
+
+// guardProvisioningRole refuses keys, the permissions a role is to have,
+// when the role is in the set Staff may give and keys hold one the set
+// refuses: 403 role_provisioning_protected. The caller holds the role's
+// lock, which PUT /owner/provisioning-roles also takes for each role it
+// names, so the set and the edit cannot pass each other.
+func (s *server) guardProvisioningRole(ctx context.Context, q *store.Queries, roleID uuid.UUID, keys []string) error {
+	inSet, err := q.IsProvisioningRole(ctx, roleID)
+	if err != nil || !inSet {
+		return err
+	}
+	denied := s.provisioningDeniedKeys()
+	if slices.ContainsFunc(keys, func(key string) bool { return slices.Contains(denied, key) }) {
+		return roleProvisioningProtected
+	}
+	return nil
+}
 
 // deniedProvisioningPermission reports the first of roleIDs, by name, that
-// carries a key of staffDeniedPermissionKeys, as a refusal naming the role
-// and the key, or nil when none does.
-func deniedProvisioningPermission(ctx context.Context, q *store.Queries, roleIDs []uuid.UUID) error {
-	row, err := q.FirstDeniedRolePermission(ctx, store.FirstDeniedRolePermissionParams{RoleIds: roleIDs, Keys: staffDeniedPermissionKeys})
+// carries a key of provisioningDeniedKeys, as a refusal naming the role and
+// the key, or nil when none does.
+func (s *server) deniedProvisioningPermission(ctx context.Context, q *store.Queries, roleIDs []uuid.UUID) error {
+	row, err := q.FirstDeniedRolePermission(ctx, store.FirstDeniedRolePermissionParams{RoleIds: roleIDs, Keys: s.provisioningDeniedKeys()})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -73,10 +107,11 @@ func (s *server) GetIdentityOwnerProvisioningRoles(ctx context.Context, _ gen.Ge
 
 // PutIdentityOwnerProvisioningRoles replaces the roles Staff may give with
 // roleIds, whole, for an Owner (400 invalid_request without roleIds). In one
-// serializable transaction the named roles are taken FOR KEY SHARE, so none
-// is deleted before the set commits; any that is not a custom role is 400
-// role_not_assignable and nothing changes, as is one carrying a permission of
-// staffDeniedPermissionKeys (the message naming it). A change is audited
+// serializable transaction each named role's lock is taken in ordinal order,
+// so no role edit passes the check below, then the roles FOR KEY SHARE, so
+// none is deleted before the set commits; any that is not a custom role is
+// 400 role_not_assignable and nothing changes, as is one carrying a
+// permission of provisioningDeniedKeys (the message naming it). A change is audited
 // provisioning-roles.replaced with the set before and after. 200 with the
 // set.
 func (s *server) PutIdentityOwnerProvisioningRoles(ctx context.Context, req gen.PutIdentityOwnerProvisioningRolesRequestObject) (gen.PutIdentityOwnerProvisioningRolesResponseObject, error) {
@@ -96,6 +131,11 @@ func (s *server) PutIdentityOwnerProvisioningRoles(ctx context.Context, req gen.
 	var out gen.ProvisioningRolesResponse
 	err = s.serializable(ctx, provisioningRolesConflict, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		for _, id := range ids {
+			if err := lockRole(ctx, q, id); err != nil {
+				return err
+			}
+		}
 		locked, err := q.LockAssignableRoles(ctx, ids)
 		if err != nil {
 			return err
@@ -103,7 +143,7 @@ func (s *server) PutIdentityOwnerProvisioningRoles(ctx context.Context, req gen.
 		if len(locked) != len(ids) {
 			return roleNotAssignable
 		}
-		if err := deniedProvisioningPermission(ctx, q, ids); err != nil {
+		if err := s.deniedProvisioningPermission(ctx, q, ids); err != nil {
 			return err
 		}
 		before, err := q.ListProvisioningRoles(ctx)

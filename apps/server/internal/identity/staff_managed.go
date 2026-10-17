@@ -58,6 +58,15 @@ var (
 	accountManaged = refuse(http.StatusConflict, "account_managed", "This user is managed by Staff and cannot be deleted; stop Staff managing them first.", nil)
 )
 
+// unprintable reports whether r has no place in an employee number: a
+// control character, a format character (Unicode Cf: zero-width characters,
+// bidi controls, the byte-order mark) or anything else that does not print,
+// spaces other than U+0020 included — each would make two numbers that look
+// alike differ.
+func unprintable(r rune) bool {
+	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || !unicode.IsPrint(r)
+}
+
 // staffManaged reports whether Staff manages u.
 func staffManaged(u store.IdentityUser) bool {
 	return u.ManagedBy != nil
@@ -102,7 +111,7 @@ func privileged(ctx context.Context, q *store.Queries, id uuid.UUID) (bool, erro
 // PostIdentityOwnerUsersByIdManage adopts another user for Staff for an
 // Owner: managed_by staff and the employee number. After validation (400
 // invalid_request: the module is staff, the number 1–16 characters once
-// trimmed, none a control character) and the self check, one serializable transaction under the owner
+// trimmed, each printable — see unprintable) and the self check, one serializable transaction under the owner
 // lock: an unknown user is 404; an Owner or a SystemAdmin is 409
 // account_privileged; a number another user holds, however it is cased, is
 // 409 employee_number_taken, also when only the unique index sees a
@@ -120,8 +129,8 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 	if deref(body.Module) != staffModule {
 		fields["module"] = []string{"Module must be staff."}
 	}
-	if number == "" || utf8.RuneCountInString(number) > maxEmployeeNumberLength || strings.ContainsFunc(number, unicode.IsControl) {
-		fields["employeeNumber"] = []string{"An employee number of at most 16 characters, none of them a control character, is required."}
+	if number == "" || utf8.RuneCountInString(number) > maxEmployeeNumberLength || strings.ContainsFunc(number, unprintable) {
+		fields["employeeNumber"] = []string{"An employee number of at most 16 characters, each a printable one, is required."}
 	}
 	if len(fields) > 0 {
 		return refuse(http.StatusBadRequest, "invalid_request", userInvalidMessage, fields), nil
