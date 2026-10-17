@@ -360,7 +360,12 @@ Communications' outbox is the working example.
   module's contract. A module's collaborators are composed for real or replaced by
   contract fakes through its `With*` options — `WithProjects`, `WithBillableHours`,
   `WithInvoicedWork` and the rest — and `WithPoolMaxConns` sets the size of the
-  installation's database pool, which the races above hold at two.
+  installation's database pool, which the races above hold at two. Identity is always
+  composed and always provides `Accounts`, and Compose overwrites a preset
+  `Deps.Accounts`, so `WithAccounts(p)` replaces identity's `Module.Accounts` in the
+  composition — `p` is what every module's `Deps.Accounts` resolves to — and
+  `WithoutAccounts()` drops it, for the "accounts are unavailable" path; a test of
+  identity's real provider uses neither.
 
 ## Turning a module off
 
