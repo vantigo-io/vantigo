@@ -46,8 +46,11 @@ type personalDataSnapshot struct {
 	employments []store.StaffEmployment
 	chains      map[int64][]store.StaffEmploymentTerm
 	link        *store.PersonLinkRow
-	documents   []store.ListPersonDocumentsRow
-	events      []store.ListAllPersonEventsRow
+	// account is the account flag (delivery C), carried with the link's
+	// state: both files' readers read the links group.
+	account   accountPerson
+	documents []store.ListPersonDocumentsRow
+	events    []store.ListAllPersonEventsRow
 	// Delivery B (Task 6): every absence, the adjustments, the cases with
 	// their milestones, this year's care days and the standing of
 	// egenmelding today — the withdrawal with it, which both files' readers
@@ -106,6 +109,9 @@ func readPersonalData(ctx context.Context, q *store.Queries, id int64, today tim
 		out.chains[t.EmploymentID] = append(out.chains[t.EmploymentID], t)
 	}
 	if out.link, err = personLink(ctx, q, id); err != nil {
+		return out, err
+	}
+	if out.account, err = readAccountPerson(ctx, q, id); err != nil {
 		return out, err
 	}
 	if out.documents, err = q.ListPersonDocuments(ctx, store.ListPersonDocumentsParams{PersonID: id, WithRestricted: true}); err != nil {
@@ -248,12 +254,29 @@ func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSeal
 			chain := f.chains[e.ID]
 			return gen.StaffPersonalDataEmployment{Employment: employmentResponse(e, chain, today, a), Terms: termsListResponse(chain, a)}
 		}),
-		Link: linkResponse(f.link, user),
+		Link:    linkResponse(f.link, user),
+		Account: personalDataAccount(f),
 		Documents: mapRows(f.documents, func(r store.ListPersonDocumentsRow) gen.StaffDocument {
 			return documentResponse(r.StaffDocument, r.StaffDocumentCategory)
 		}),
 		Events: mapRows(f.events, event),
 	}
+}
+
+// personalDataAccount is the account flag as the file carries it, with the
+// link's state when the person has a link — a preparing one, naming no user,
+// included.
+func personalDataAccount(f personalDataSnapshot) gen.StaffPersonalDataAccount {
+	out := gen.StaffPersonalDataAccount{
+		ProvisionAccount: f.account.ProvisionAccount,
+		ProvisionFrom:    dateOf(f.account.ProvisionFrom),
+		AccountEmailKind: gen.StaffAccountEmailKind(accountEmailKindOf(f.account)),
+	}
+	if f.link != nil {
+		state := f.link.State
+		out.LinkState = &state
+	}
+	return out
 }
 
 // wholeEvent is an event as the complete file carries it: its payload as

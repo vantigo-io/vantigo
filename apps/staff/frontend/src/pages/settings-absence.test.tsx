@@ -238,7 +238,11 @@ describe("Settings — holiday schemes", () => {
 
 describe("Settings — the self-certification policy and carry-over", () => {
   it("saves custom numbers with every other setting sent back as it was", async () => {
-    const fetchMock = stubStaffApi({ role: "manage", settings: settings({ injuryInsurer: "If" }) });
+    // The account settings (delivery C) are sent back as read, too.
+    const fetchMock = stubStaffApi({
+      role: "manage",
+      settings: settings({ injuryInsurer: "If", createBeforeDays: 21, deleteExternalAfterDays: 400 }),
+    });
     renderRoute("/staff/settings");
 
     const card = await screen.findByRole("region", { name: "Egenmelding and carry-over" });
@@ -264,6 +268,8 @@ describe("Settings — the self-certification policy and carry-over", () => {
       selfCertDaysPerYear: 20,
       selfCertAfterMonths: 2,
       autoCarryOver: true,
+      createBeforeDays: 21,
+      deleteExternalAfterDays: 400,
     });
   });
 

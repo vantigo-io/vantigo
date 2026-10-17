@@ -153,8 +153,11 @@ UPDATE staff.settings SET
     self_cert_after_months = $12,
     auto_carry_over = $13,
     auto_carry_over_since = $14,
+    create_before_days = coalesce($15::smallint, create_before_days),
+    delete_external_after_days = CASE WHEN $16::boolean
+        THEN $17::smallint ELSE delete_external_after_days END,
     revision = revision + 1,
-    updated_at = $15::timestamptz
+    updated_at = $18::timestamptz
 WHERE id = 1
 RETURNING id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since
 `
@@ -174,14 +177,19 @@ type UpdateSettingsParams struct {
 	SelfCertAfterMonths        int16
 	AutoCarryOver              bool
 	AutoCarryOverSince         pgtype.Date
+	CreateBeforeDays           *int16
+	SetDeleteExternalAfterDays bool
+	DeleteExternalAfterDays    *int16
 	Now                        time.Time
 }
 
 // UpdateSettings replaces the settings the contract exposes and moves the
 // revision on; a retention period left out (NULL) keeps its value. The
 // self-certification policy and the carry-over (delivery B) are written as
-// the caller resolved them from the row it locked. The account columns,
-// delivery C's, are left as they are.
+// the caller resolved them from the row it locked. The account settings
+// (delivery C) keep their values when left out: create_before_days when
+// NULL, delete_external_after_days unless @set_delete_external_after_days —
+// its NULL is a value, "never".
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (StaffSetting, error) {
 	row := q.db.QueryRow(ctx, updateSettings,
 		arg.TimeZone,
@@ -198,6 +206,9 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.SelfCertAfterMonths,
 		arg.AutoCarryOver,
 		arg.AutoCarryOverSince,
+		arg.CreateBeforeDays,
+		arg.SetDeleteExternalAfterDays,
+		arg.DeleteExternalAfterDays,
 		arg.Now,
 	)
 	var i StaffSetting

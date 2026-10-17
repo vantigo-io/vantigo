@@ -10,13 +10,16 @@ VALUES (@person_id, @kind, @actor_kind, @actor_user_id, @actor_display, @at::tim
 -- CountPersonEvents counts what ListPersonEvents pages through, health events
 -- (those whose payload touches class E) — but the absence family's — and the
 -- hold's kinds only when asked for, the withdrawal of egenmelding
--- (@care_kinds) to the readers of the care-day fields (@with_care), and an
--- absence event of a row shown as leave never to its leave-reader.
+-- (@care_kinds) to the readers of the care-day fields (@with_care), the
+-- account events (@link_kinds) to the readers of the links group
+-- (@with_links), and an absence event of a row shown as leave never to its
+-- leave-reader.
 SELECT count(*) FROM staff.events
 WHERE staff.events.person_id = @person_id
   AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY(@absence_kinds::text[])
        OR (@with_care::boolean AND kind = ANY(@care_kinds::text[])))
   AND (@with_hold::boolean OR NOT (kind = ANY(@hold_kinds::text[])))
+  AND (@with_links::boolean OR NOT (kind = ANY(@link_kinds::text[])))
   AND NOT (@hide_leave_rows::boolean AND kind = ANY(@absence_kinds::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
            THEN payload->'typeIds' <@ to_jsonb(@plain_type_ids::bigint[]) END, false))
@@ -43,13 +46,16 @@ WHERE staff.events.person_id = @person_id
 -- The withdrawal of egenmelding and its restoring (@care_kinds), class E,
 -- are listed to the readers of the care-day fields (@with_care) — the
 -- person, staff:manage, staff:personal-data — and never to a manager (plan
--- pre-flight I6).
+-- pre-flight I6). The account events (@link_kinds, delivery C) are listed
+-- the same way to the readers of the links group (@with_links) — the same
+-- three — and never to a manager, an Approver or a colleague.
 SELECT id, kind, actor_kind, actor_user_id, actor_display, at, payload, payload_classes
 FROM staff.events
 WHERE staff.events.person_id = @person_id
   AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY(@absence_kinds::text[])
        OR (@with_care::boolean AND kind = ANY(@care_kinds::text[])))
   AND (@with_hold::boolean OR NOT (kind = ANY(@hold_kinds::text[])))
+  AND (@with_links::boolean OR NOT (kind = ANY(@link_kinds::text[])))
   AND NOT (@hide_leave_rows::boolean AND kind = ANY(@absence_kinds::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
            THEN payload->'typeIds' <@ to_jsonb(@plain_type_ids::bigint[]) END, false))

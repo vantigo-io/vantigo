@@ -1238,6 +1238,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a person's account flag
+         * @description A person's account flag, the dates it derives, the address it would use and the link it drives, with the authority mode and the pending account's invitation as identity reports them (design S22, S27). The person themselves, staff:manage and staff:personal-data read it; anyone else gets a 404 identical to an unknown id. identity is asked before the person is read, never while their record is held: mode is absent when accounts are unavailable or this process's configuration disagrees with the recorded mode, and the invitation when identity knows no such user.
+         */
+        get: operations["getStaffPeopleByIdAccount"];
+        /**
+         * Change a person's account flag
+         * @description Replaces the account flag's three fields (design S22): provisionAccount, provisionFrom and accountEmailKind, guarded by the person's revision. A change is one account_flag_updated event naming each field that changed; a replace that changes nothing writes nothing. Turning the flag on for a person without the chosen address is accepted — the worker waits, and HR is told (accountEmailMissing). Nothing is asked of identity until the accounts worker acts.
+         */
+        put: operations["putStaffPeopleByIdAccount"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/{id}/bank-account": {
         parameters: {
             query?: never;
@@ -1652,7 +1676,7 @@ export interface paths {
         get: operations["getStaffPeopleByIdUser"];
         /**
          * Link a person to a user
-         * @description Links the person to an existing, active user for self-service (design S24 as amended), or unlinks them with null. The link makes the user the person themselves — My page, the Self audience — and nothing else; it never makes the user managed. The user is read from the user directory before anything is written. A change is a user_linked event, an unlink a user_unlinked one; linking the person to the user they are already linked to changes nothing.
+         * @description Links the person to an existing, active user for self-service (design S24 as amended), or unlinks them with null. The link makes the user the person themselves — My page, the Self audience — and nothing else; it never makes the user managed. The user is read from the user directory, and whether Staff manages them from identity, before anything is written. A change is a user_linked event, an unlink a user_unlinked one; linking the person to the user they are already linked to changes nothing.
          */
         put: operations["putStaffPeopleByIdUser"];
         post?: never;
@@ -2060,6 +2084,55 @@ export interface components {
          */
         StaffAbsenceVisibility: "absent" | "hr_only";
         /**
+         * @description Which of the person's addresses Staff gives identity for their account: work (the work email) or private (the private email).
+         * @enum {string}
+         */
+        StaffAccountEmailKind: "work" | "private";
+        /** @description A pending account's invitation to choose a password, as identity reports it. */
+        StaffAccountInvitation: {
+            /**
+             * Format: int32
+             * @description The invitations delivered in the account's current pending spell.
+             */
+            issued: number;
+            /**
+             * @description none — none, or none needed; active — one can be accepted; expired — the latest lapsed unanswered; revoked_by_owner — an Owner revoked it, and only Run now issues another; exhausted — three went unanswered, and only Run now issues another.
+             * @enum {string}
+             */
+            state: "none" | "active" | "expired" | "revoked_by_owner" | "exhausted";
+        };
+        /** @description The person's link to a user under the identity provider, as the accounts worker and HR left it (design S27, §3.6). Codes only: the reason and the invitation never carry an address or a driver's words. */
+        StaffAccountLink: {
+            /**
+             * Format: int32
+             * @description The worker's failed attempts at its last step; 0 after a success.
+             */
+            attempts: number;
+            invitation?: components["schemas"]["StaffAccountInvitation"];
+            /**
+             * Format: date-time
+             * @description When the worker last brought the account in line with the record. Absent when it never has.
+             */
+            lastSyncedAt?: string;
+            /** @description Whether Staff manages the user (the accounts worker's link), as opposed to HR's self-service link to an existing user. */
+            managed: boolean;
+            /**
+             * Format: date-time
+             * @description When the worker next looks at the link. Absent when it has no attempt planned.
+             */
+            nextAttemptAt?: string;
+            /** @description Why the worker is blocked on the link, a code (blocked_reason). Absent when it is not. */
+            reason?: string;
+            /** @description preparing (the worker is creating or finding the user — no user yet), linked (HR's self-service link), pending, active, disabled, failed or blocked. */
+            state: string;
+            user?: components["schemas"]["StaffPersonUser"];
+        };
+        /**
+         * @description The installation's authority mode as identity records it: local (identity holds the passwords, so Staff creates and invites) or federated (an identity provider owns the accounts, so Staff only finds, re-enables what it disabled and disables).
+         * @enum {string}
+         */
+        StaffAccountMode: "local" | "federated";
+        /**
          * @description The a-melding's permisjonsOgPermitteringsBeskrivelse a leave of the type is reported as — the six leave descriptions and permittering, in NAV's spellings. Absent when the type is not reported as leave. The codes velferdspermisjon and utdanningspermisjon expired on 31 December 2022 and are not among them.
          * @enum {string}
          */
@@ -2143,6 +2216,8 @@ export interface components {
             canViewDirectory: boolean;
             /** @description The caller's linked person manages anyone today by the one manager rule — a manager who has left manages nobody. Drives My team. */
             managesAnyone: boolean;
+            /** @description staff:manage — runs the accounts worker by hand and disables an account now (delivery C). */
+            canRunAccounts: boolean;
         };
         /** @description A person's care days (omsorgsdager) for a year (design S11, ftrl. § 9-6 and § 9-8). Using more than the entitlement is shown (exceeded), never refused. */
         StaffCareDays: {
@@ -3012,13 +3087,16 @@ export interface components {
             /** @description Up to 200 characters. */
             street?: string;
         };
-        /** @description What the Staff app needs before it draws anything. */
+        /** @description What the Staff app needs before it draws anything. accountMode is staff:manage's — the authority mode identity records — and absent to anyone else, when no module provides accounts, and when this process's configuration derives another mode than the recorded one. */
         StaffMeta: {
             /** @description The absence types that are not hidden, in their order, names in both languages — every caller's. */
             absenceTypes: components["schemas"]["StaffAbsenceType"][];
+            accountMode?: components["schemas"]["StaffAccountMode"];
             capabilities: components["schemas"]["StaffCapabilities"];
             /** @description Every holiday scheme, archived ones included, with its figures converted to working days. */
             holidaySchemes: components["schemas"]["StaffHolidayScheme"][];
+            /** @description staff:manage only — whether an Owner has named the roles Staff may give (identity's employee roles), without which a local account cannot be enabled. Absent to anyone else, and when accounts are unavailable. */
+            provisioningRolesSet?: boolean;
             structure?: components["schemas"]["StaffStructure"];
             /** @description The installation's business time zone, an IANA name. Every date of this module — a start, an end, "today" — is a calendar day in it. */
             timeZone: string;
@@ -3203,7 +3281,7 @@ export interface components {
             canEdit: boolean;
             /** @description staff:personal-data — set and lift the legal hold, record a reassessment and export the person's data. */
             canHold: boolean;
-            /** @description staff:manage — the self-service link to a user. */
+            /** @description staff:manage — the self-service link to a user and the account flag (PUT /people/{id}/account). */
             canManageAccount: boolean;
             /** @description staff:personal-data — reveal and write the national identity number and the bank account. */
             canRevealIdentifiers: boolean;
@@ -3215,6 +3293,50 @@ export interface components {
             isManager: boolean;
             /** @description The caller's self-service link names the person — the person themselves. */
             self: boolean;
+        };
+        /** @description A person's account flag (design S22) with the dates it derives and the link it drives: whether Staff provides the person with a user, from when, at which of their addresses, the authority mode, and the link's state. The person themselves, staff:manage and staff:personal-data read it (the links group); anyone else gets the unknown id's 404. */
+        StaffPersonAccount: {
+            accountEmailKind: components["schemas"]["StaffAccountEmailKind"];
+            address: components["schemas"]["StaffPersonAccountAddress"];
+            link?: components["schemas"]["StaffAccountLink"];
+            mode?: components["schemas"]["StaffAccountMode"];
+            /** @description Whether Staff provides the person with a user. */
+            provisionAccount: boolean;
+            /**
+             * Format: date
+             * @description The day the account is to be enabled, as HR set it. Absent when HR set none.
+             */
+            provisionFrom?: string;
+            /**
+             * Format: date
+             * @description The day the account is enabled: provisionFrom when set, else the first day of the earliest employment that has not ended by today. Absent when there is neither. The account is prepared, disabled, createBeforeDays before it.
+             */
+            provisionFromEffective?: string;
+            /**
+             * Format: int32
+             * @description The person's revision, which a change of the flag sends back in If-Match.
+             */
+            revision: number;
+        };
+        /** @description The address the account would be given — never the address itself, only which and whether the person has it. */
+        StaffPersonAccountAddress: {
+            kind: components["schemas"]["StaffAccountEmailKind"];
+            /** @description Whether the person has that address on file. A flag turned on without it waits (accountEmailMissing). */
+            present: boolean;
+        };
+        /** @description A full replace of the account flag's three fields: what is left out is cleared — provisionFrom to none, accountEmailKind to work. */
+        StaffPersonAccountRequest: {
+            /**
+             * @description work or private; null or left out reads work.
+             * @enum {string|null}
+             */
+            accountEmailKind?: "work" | "private" | null;
+            provisionAccount: boolean;
+            /**
+             * Format: date
+             * @description The day to enable the account from; null or left out derives it from the employments.
+             */
+            provisionFrom?: string | null;
         };
         /** @description A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody. */
         StaffPersonLink: {
@@ -3397,6 +3519,7 @@ export interface components {
         StaffPersonalData: {
             /** @description Every absence of the person, in any status, newest first. */
             absences: components["schemas"]["StaffAbsence"][];
+            account: components["schemas"]["StaffPersonalDataAccount"];
             careDays: components["schemas"]["StaffCareDays"];
             /** @description Every sick-leave case of the person with its milestones, newest first. */
             cases: components["schemas"]["StaffCase"][];
@@ -3419,6 +3542,15 @@ export interface components {
             kind: components["schemas"]["StaffBankAccountKind"];
             last4: string;
             value?: string;
+        };
+        /** @description The account flag and the link's state, as the person's file carries them. */
+        StaffPersonalDataAccount: {
+            accountEmailKind: components["schemas"]["StaffAccountEmailKind"];
+            /** @description The link's state (StaffAccountLink's). Absent when the person has no link. */
+            linkState?: string;
+            provisionAccount: boolean;
+            /** Format: date */
+            provisionFrom?: string;
         };
         /** @description One employment and its terms, oldest first. */
         StaffPersonalDataEmployment: {
@@ -3476,7 +3608,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), link_managed (409: the user is Staff-managed, or the link is the accounts worker's) and accounts_busy (409: the accounts worker holds the person's link right now). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -3611,6 +3743,16 @@ export interface components {
              * @description The day autoCarryOver was last turned on; the derived carry-over reaches no year before it. Absent when it never was.
              */
             autoCarryOverSince?: string;
+            /**
+             * Format: int32
+             * @description How many days before the account's effective date the accounts worker prepares it, disabled (design S22); 0 to 90, 14 by default.
+             */
+            createBeforeDays: number;
+            /**
+             * Format: int32
+             * @description How many days after a person's last employment ended an external directory's account is deleted; 1 to 3650, or absent for never. Inert: no module reads it yet (the Entra module will).
+             */
+            deleteExternalAfterDays?: number;
             /** @description What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none. */
             employeeNumberPrefix: string;
             /**
@@ -3663,10 +3805,20 @@ export interface components {
             /** @description The business time zone, an IANA name. */
             timeZone: string;
         };
-        /** @description A replace of the settings. The two retention periods left out keep the values they have; everything else is replaced. */
+        /** @description A replace of the settings. The two retention periods, the self-certification policy, the carry-over and the two account settings left out keep the values they have; everything else is replaced. */
         StaffSettingsRequest: {
             /** @description Left out, it keeps its value. Turning it on records today as autoCarryOverSince. */
             autoCarryOver?: boolean;
+            /**
+             * Format: int32
+             * @description 0 to 90 days. Left out, it keeps its value.
+             */
+            createBeforeDays?: number;
+            /**
+             * Format: int32
+             * @description 1 to 3650 days, or null for never. Left out, it keeps its value.
+             */
+            deleteExternalAfterDays?: number | null;
             /** @description Up to eight letters, digits or hyphens. Left out, there is none. */
             employeeNumberPrefix?: string;
             /**
@@ -8409,7 +8561,126 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — person_erased; legal_hold when the person is under a legal hold (judged before anything else names them); person_in_use. */
+            /** @description Conflict — person_erased; legal_hold when the person is under a legal hold (judged before anything else names them); person_in_use (a link naming a user is a use; the accounts worker's preparing link, naming none, is deleted with the person); accounts_busy while the accounts worker holds that preparing link. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffPeopleByIdAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or not one whose account the caller may read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffPeopleByIdAccount: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the person was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffPersonAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonAccount"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or a property the request does not name. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict; person_erased when the person has been erased. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -9948,8 +10219,17 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire); an unlink (userId null) is allowed. */
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire); an unlink (userId null) is allowed. link_managed when the user to link, or the user linked now, is Staff-managed, or when the person's link is the accounts worker's (preparing, pending, active, disabled, failed or blocked) — a managed account is reached only through the accounts worker. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Service Unavailable — accounts_unavailable when identity could not say whether the user is Staff-managed. Nothing was changed. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

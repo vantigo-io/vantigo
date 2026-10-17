@@ -194,3 +194,48 @@ func TestSettings_EachBadFieldIsA400OnThatField(t *testing.T) {
 		t.Errorf("after the refusals revision = %d, want nothing saved", got.Revision)
 	}
 }
+
+// The two account settings (delivery C): createBeforeDays 0 to 90, 14 by
+// default; deleteExternalAfterDays 1 to 3650 or null for never, absent by
+// default. Each keeps its value when a replace leaves it out (plan M8); a
+// null deleteExternalAfterDays clears it.
+func TestSettings_TheAccountSettings(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	fresh := raw(t, hr.Do(http.MethodGet, settingsPath, nil))
+	if fresh["createBeforeDays"] != float64(14) {
+		t.Errorf("createBeforeDays = %v, want 14", fresh["createBeforeDays"])
+	}
+	if _, ok := fresh["deleteExternalAfterDays"]; ok {
+		t.Errorf("deleteExternalAfterDays = %v, want absent", fresh["deleteExternalAfterDays"])
+	}
+	for _, body := range []map[string]any{
+		{"createBeforeDays": -1}, {"createBeforeDays": 91},
+		{"deleteExternalAfterDays": 0}, {"deleteExternalAfterDays": 3651},
+	} {
+		pr := refused(t, hr.Do(http.MethodPut, settingsPath, settingsBody(body), ifMatch(1)), http.StatusBadRequest, "")
+		for field := range body {
+			if len(pr.Errors[field]) == 0 {
+				t.Errorf("%v: errors = %v, want %s named", body, pr.Errors, field)
+			}
+		}
+	}
+	var saved gen.StaffSettings
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"createBeforeDays": 0, "deleteExternalAfterDays": 3650}), http.StatusOK, &saved, ifMatch(1))
+	if saved.CreateBeforeDays != 0 || saved.DeleteExternalAfterDays == nil || *saved.DeleteExternalAfterDays != 3650 {
+		t.Errorf("saved %d / %v, want 0 / 3650", saved.CreateBeforeDays, saved.DeleteExternalAfterDays)
+	}
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(nil), http.StatusOK, &saved, ifMatch(saved.Revision))
+	if saved.CreateBeforeDays != 0 || saved.DeleteExternalAfterDays == nil || *saved.DeleteExternalAfterDays != 3650 {
+		t.Errorf("left out: %d / %v, want both kept, 0 / 3650", saved.CreateBeforeDays, saved.DeleteExternalAfterDays)
+	}
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"createBeforeDays": 90}), http.StatusOK, &saved, ifMatch(saved.Revision))
+	body := settingsBody(nil)
+	body["deleteExternalAfterDays"] = nil
+	var cleared gen.StaffSettings
+	do(t, hr, http.MethodPut, settingsPath, body, http.StatusOK, &cleared, ifMatch(saved.Revision))
+	if cleared.CreateBeforeDays != 90 || cleared.DeleteExternalAfterDays != nil {
+		t.Errorf("a null deleteExternalAfterDays: %d / %v, want 90 kept and it cleared", cleared.CreateBeforeDays, cleared.DeleteExternalAfterDays)
+	}
+}

@@ -21,6 +21,13 @@ import (
 // the events table's append-only rule, and it leaves one installation-level
 // event behind carrying the employee number and nothing else. Anything that names the person keeps
 // them; the retention run (A2) is the only other way a person's data leaves.
+//
+// The accounts worker's preparing link (delivery C) names no user yet, so it
+// does not keep the person: it is deleted with them (plan reading 9) — but
+// not while the worker holds it (lease_until in the future), when identity
+// may be creating the user that link is for: accounts_busy (pre-flight I4).
+// The link is locked last, after the person and the manager graph (design
+// §4 Locking).
 
 // personInUse is the 409 a person something names answers. reasons are what
 // names them, in words; nothing about another person is said.
@@ -92,6 +99,18 @@ func (s *server) DeleteStaffPeopleById(ctx context.Context, req gen.DeleteStaffP
 		}
 		if len(reasons) > 0 {
 			return personInUse(reasons)
+		}
+		link, err := txq.LockPersonAccountLink(ctx, req.Id)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+		case err != nil:
+			return fmt.Errorf("staff: lock person %d's link: %w", req.Id, err)
+		case link.LeaseUntil != nil && link.LeaseUntil.After(s.deps.Clock()):
+			return accountsBusy()
+		default:
+			if err := txq.DeletePersonLink(ctx, req.Id); err != nil {
+				return fmt.Errorf("staff: delete person %d's preparing link: %w", req.Id, err)
+			}
 		}
 		for name, del := range map[string]func(context.Context, int64) error{
 			"next of kin": txq.DeleteNextOfKin,

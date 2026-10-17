@@ -361,7 +361,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-## staff (111 uncovered)
+## staff (113 uncovered)
 
 - `DELETE /api/v1/staff/absences/{id}` (deleteStaffAbsencesById)
 - `DELETE /api/v1/staff/documents/{id}` (deleteStaffDocumentsById)
@@ -398,6 +398,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/staff/payroll/export` (getStaffPayrollExport)
 - `GET /api/v1/staff/people/export.csv` (getStaffPeopleExportCsv)
 - `GET /api/v1/staff/people/import-template.csv` (getStaffPeopleImportTemplateCsv)
+- `GET /api/v1/staff/people/{id}/account` (getStaffPeopleByIdAccount)
 - `GET /api/v1/staff/people/{id}/care-days` (getStaffPeopleByIdCareDays)
 - `GET /api/v1/staff/people/{id}/documents` (getStaffPeopleByIdDocuments)
 - `GET /api/v1/staff/people/{id}/employments` (getStaffPeopleByIdEmployments)
@@ -464,6 +465,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/staff/legal-entities/{id}` (putStaffLegalEntitiesById)
 - `PUT /api/v1/staff/locations/{id}` (putStaffLocationsById)
 - `PUT /api/v1/staff/me` (putStaffMe)
+- `PUT /api/v1/staff/people/{id}/account` (putStaffPeopleByIdAccount)
 - `PUT /api/v1/staff/people/{id}/bank-account` (putStaffPeopleByIdBankAccount)
 - `PUT /api/v1/staff/people/{id}/legal-hold` (putStaffPeopleByIdLegalHold)
 - `PUT /api/v1/staff/people/{id}/national-id` (putStaffPeopleByIdNationalId)
@@ -475,4 +477,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/staff/settings` (putStaffSettings)
 - `PUT /api/v1/staff/terms/{id}` (putStaffTermsById)
 
-Total: 443 of 578 operations have no recorded exchange.
+Total: 445 of 580 operations have no recorded exchange.

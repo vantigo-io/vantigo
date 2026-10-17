@@ -123,6 +123,13 @@ var fieldGroups = map[string]fieldGroup{
 	"bankAccount": groupBankAccount,
 	"user":        groupLinks,
 
+	// The account flag (design §5's "Account flag, links" row, delivery C):
+	// the person's own and HR's, as the link is. The accounts worker's events
+	// name no field of this table (account_flag.go).
+	"provisionAccount": groupLinks,
+	"provisionFrom":    groupLinks,
+	"accountEmailKind": groupLinks,
+
 	// The person's place today, from their terms in force and their
 	// employment: the manager, the department, the business unit and the
 	// location are the work group's (§5's Work row), where they stand its

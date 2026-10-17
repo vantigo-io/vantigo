@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien og oppbevaringstidene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, slå på konto for en person, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien, oppbevaringstidene og kontoinnstillingene.
 sidebar:
   order: 44
 sources:
@@ -29,6 +29,8 @@ sources:
   - apps/server/internal/staff/cases.go
   - apps/server/internal/staff/sickness.go
   - apps/server/internal/staff/care_days.go
+  - apps/server/internal/staff/account_flag.go
+  - apps/server/internal/staff/account_settings.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -98,6 +100,42 @@ aktiv bruker kan kobles, også Owner.
 
 En bruker kan bare kobles til én person, og en person til én bruker; å koble en person
 til en annen bruker erstatter koblingen. En deaktivert bruker kan ikke kobles.
+
+En bruker som Ansattes kontoer forvalter, kobles ikke til eller fra her: forespørselen
+svarer `link_managed` (409), og det samme gjør en person hvis kobling er kontoarbeiderens
+(`GET /api/v1/staff/people/{id}/account` viser tilstanden). Kan ikke identity spørres om
+brukeren forvaltes, svarer forespørselen `accounts_unavailable` (503) og endrer ingenting;
+prøv igjen.
+
+## Slå på konto for en person
+
+Ansatte kan gi en person en bruker i identity, klargjort før de begynner og aktivert på
+første arbeidsdag (leveranse C). Kontoflagget settes her; kontoarbeideren som handler på
+det, kommer med neste del av leveransen.
+
+1. Før den første kontoen navngir en Owner rollene Ansatte kan gi i identity
+   (ansattrollene). `GET /api/v1/staff/meta` svarer `provisioningRolesSet` til
+   `staff:manage`: `false` til en Owner har navngitt minst én. `accountMode` sier om
+   identity holder passordene (`local`) eller en identitetsleverandør eier kontoene
+   (`federated`); den mangler når denne prosessens OIDC- eller SCIM-innstillinger er
+   uenige med API-ets.
+2. Som en bruker med `staff:manage` leser du personens flagg:
+   `GET /api/v1/staff/people/{id}/account`, og merker deg `revision`.
+3. Slå det på: `PUT /api/v1/staff/people/{id}/account` med `If-Match` satt til den
+   revisjonen og `{"provisionAccount": true, "provisionFrom": null, "accountEmailKind": "work"}`.
+   La `provisionFrom` være null for å aktivere kontoen på første dag i personens
+   tidligste arbeidsforhold som ikke har sluttet; sett en dato for å velge en annen dag.
+   Velg `private` for å gi identity personens private e-post i stedet for jobb-e-posten.
+   Forespørselen er en full erstatning: send alle tre feltene.
+4. Kontroller: svarets `provisionFromEffective` er dagen kontoen aktiveres, og
+   `address.present` er `true`. Et flagg som slås på uten den valgte adressen godtas, men
+   ingen konto lages før personen har den. Personens historikk viser
+   `account_flag_updated`.
+
+Hvor mange dager før den dagen kontoen klargjøres, deaktivert, er innstillingen
+`createBeforeDays` ([Innstillingene](#innstillingene)). En slettet persons flagg kan ikke
+endres (`person_erased`). Har noen andre lagret personen først, svarer forespørselen
+`revision_conflict`; les flagget på nytt.
 
 ## Rettigheten for personopplysninger
 
@@ -928,6 +966,13 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   `selfCertAfterMonths`) og **automatisk overføring** (`autoCarryOver`, av, med den
   skrivebeskyttede `autoCarryOverSince`): [Reglene for egenmelding](#reglene-for-egenmelding).
   Utelatt fra en erstatning beholder hver sin verdi.
+- **Kontoer** (`createBeforeDays`, 14, fra 0 til 90, og `deleteExternalAfterDays`,
+  ingen, fra 1 til 3650 eller `null` for aldri): hvor mange dager før kontoens
+  virkningsdato den klargjøres, deaktivert ([Slå på konto for en
+  person](#slå-på-konto-for-en-person)), og når en ekstern katalogs konto slettes etter
+  at det siste arbeidsforholdet sluttet — lagret, men ikke brukt ennå; Entra-modulen
+  vil lese den. Utelatt fra en erstatning beholder hver sin verdi; `null` setter
+  `deleteExternalAfterDays` til aldri.
 - **Oppbevaringsstatus** (`retention`, skrivebeskyttet): sletteloggens ventende og
   avviste filer, den eldste ventende, og den siste slettingen
   ([Sletteloggen](#sletteloggen)). Filer lageret har avvist minst én gang, og som ble

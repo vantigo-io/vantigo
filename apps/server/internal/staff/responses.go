@@ -38,6 +38,9 @@ func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState)
 		SelfCertAfterMonths:        int32(row.SelfCertAfterMonths),
 		AutoCarryOver:              row.AutoCarryOver,
 		AutoCarryOverSince:         dateOf(row.AutoCarryOverSince),
+
+		CreateBeforeDays:        int32(row.CreateBeforeDays),
+		DeleteExternalAfterDays: int32Of(row.DeleteExternalAfterDays),
 	}, nil
 }
 

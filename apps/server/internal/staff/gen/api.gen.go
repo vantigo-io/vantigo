@@ -138,6 +138,69 @@ func (e StaffAbsenceVisibility) Valid() bool {
 	}
 }
 
+// Defines values for StaffAccountEmailKind.
+const (
+	StaffAccountEmailKindPrivate StaffAccountEmailKind = "private"
+	StaffAccountEmailKindWork    StaffAccountEmailKind = "work"
+)
+
+// Valid indicates whether the value is a known member of the StaffAccountEmailKind enum.
+func (e StaffAccountEmailKind) Valid() bool {
+	switch e {
+	case StaffAccountEmailKindPrivate:
+		return true
+	case StaffAccountEmailKindWork:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffAccountInvitationState.
+const (
+	StaffAccountInvitationStateActive         StaffAccountInvitationState = "active"
+	StaffAccountInvitationStateExhausted      StaffAccountInvitationState = "exhausted"
+	StaffAccountInvitationStateExpired        StaffAccountInvitationState = "expired"
+	StaffAccountInvitationStateNone           StaffAccountInvitationState = "none"
+	StaffAccountInvitationStateRevokedByOwner StaffAccountInvitationState = "revoked_by_owner"
+)
+
+// Valid indicates whether the value is a known member of the StaffAccountInvitationState enum.
+func (e StaffAccountInvitationState) Valid() bool {
+	switch e {
+	case StaffAccountInvitationStateActive:
+		return true
+	case StaffAccountInvitationStateExhausted:
+		return true
+	case StaffAccountInvitationStateExpired:
+		return true
+	case StaffAccountInvitationStateNone:
+		return true
+	case StaffAccountInvitationStateRevokedByOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffAccountMode.
+const (
+	Federated StaffAccountMode = "federated"
+	Local     StaffAccountMode = "local"
+)
+
+// Valid indicates whether the value is a known member of the StaffAccountMode enum.
+func (e StaffAccountMode) Valid() bool {
+	switch e {
+	case Federated:
+		return true
+	case Local:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffAmeldingLeave.
 const (
 	AndreIkkeLovfestedePermisjoner   StaffAmeldingLeave = "andreIkkeLovfestedePermisjoner"
@@ -579,6 +642,24 @@ func (e StaffPayPeriod) Valid() bool {
 	case StaffPayPeriodOnce:
 		return true
 	case StaffPayPeriodYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StaffPersonAccountRequestAccountEmailKind.
+const (
+	StaffPersonAccountRequestAccountEmailKindPrivate StaffPersonAccountRequestAccountEmailKind = "private"
+	StaffPersonAccountRequestAccountEmailKindWork    StaffPersonAccountRequestAccountEmailKind = "work"
+)
+
+// Valid indicates whether the value is a known member of the StaffPersonAccountRequestAccountEmailKind enum.
+func (e StaffPersonAccountRequestAccountEmailKind) Valid() bool {
+	switch e {
+	case StaffPersonAccountRequestAccountEmailKindPrivate:
+		return true
+	case StaffPersonAccountRequestAccountEmailKindWork:
 		return true
 	default:
 		return false
@@ -1101,6 +1182,51 @@ type StaffAbsenceUnit string
 // StaffAbsenceVisibility absent — colleagues see "absent", the manager and HR the type; hr_only — the manager sees "leave", the type is staff:personal-data's (and the person's own).
 type StaffAbsenceVisibility string
 
+// StaffAccountEmailKind Which of the person's addresses Staff gives identity for their account: work (the work email) or private (the private email).
+type StaffAccountEmailKind string
+
+// StaffAccountInvitation A pending account's invitation to choose a password, as identity reports it.
+type StaffAccountInvitation struct {
+	// Issued The invitations delivered in the account's current pending spell.
+	Issued int32 `json:"issued"`
+
+	// State none — none, or none needed; active — one can be accepted; expired — the latest lapsed unanswered; revoked_by_owner — an Owner revoked it, and only Run now issues another; exhausted — three went unanswered, and only Run now issues another.
+	State StaffAccountInvitationState `json:"state"`
+}
+
+// StaffAccountInvitationState none — none, or none needed; active — one can be accepted; expired — the latest lapsed unanswered; revoked_by_owner — an Owner revoked it, and only Run now issues another; exhausted — three went unanswered, and only Run now issues another.
+type StaffAccountInvitationState string
+
+// StaffAccountLink The person's link to a user under the identity provider, as the accounts worker and HR left it (design S27, §3.6). Codes only: the reason and the invitation never carry an address or a driver's words.
+type StaffAccountLink struct {
+	// Attempts The worker's failed attempts at its last step; 0 after a success.
+	Attempts int32 `json:"attempts"`
+
+	// Invitation A pending account's invitation to choose a password, as identity reports it.
+	Invitation *StaffAccountInvitation `json:"invitation,omitempty"`
+
+	// LastSyncedAt When the worker last brought the account in line with the record. Absent when it never has.
+	LastSyncedAt *time.Time `json:"lastSyncedAt,omitempty"`
+
+	// Managed Whether Staff manages the user (the accounts worker's link), as opposed to HR's self-service link to an existing user.
+	Managed bool `json:"managed"`
+
+	// NextAttemptAt When the worker next looks at the link. Absent when it has no attempt planned.
+	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
+
+	// Reason Why the worker is blocked on the link, a code (blocked_reason). Absent when it is not.
+	Reason *string `json:"reason,omitempty"`
+
+	// State preparing (the worker is creating or finding the user — no user yet), linked (HR's self-service link), pending, active, disabled, failed or blocked.
+	State string `json:"state"`
+
+	// User The user the person is linked to for self-service, as the user directory names them. Present for the person themselves, staff:manage and staff:personal-data, when a link exists. A user the directory no longer knows is "Unknown user", not active.
+	User *StaffPersonUser `json:"user,omitempty"`
+}
+
+// StaffAccountMode The installation's authority mode as identity records it: local (identity holds the passwords, so Staff creates and invites) or federated (an identity provider owns the accounts, so Staff only finds, re-enables what it disabled and disables).
+type StaffAccountMode string
+
 // StaffAmeldingLeave The a-melding's permisjonsOgPermitteringsBeskrivelse a leave of the type is reported as — the six leave descriptions and permittering, in NAV's spellings. Absent when the type is not reported as leave. The codes velferdspermisjon and utdanningspermisjon expired on 31 December 2022 and are not among them.
 type StaffAmeldingLeave string
 
@@ -1206,6 +1332,9 @@ type StaffCapabilities struct {
 
 	// CanRevealIdentifiers staff:personal-data — reveal and write the national identity number and the bank account.
 	CanRevealIdentifiers bool `json:"canRevealIdentifiers"`
+
+	// CanRunAccounts staff:manage — runs the accounts worker by hand and disables an account now (delivery C).
+	CanRunAccounts bool `json:"canRunAccounts"`
 
 	// CanSeeHealth staff:personal-data — everyone's health documents. The person reads their own whatever this says.
 	CanSeeHealth bool `json:"canSeeHealth"`
@@ -1983,16 +2112,22 @@ type StaffMeRequest struct {
 	Street *string `json:"street,omitempty"`
 }
 
-// StaffMeta What the Staff app needs before it draws anything.
+// StaffMeta What the Staff app needs before it draws anything. accountMode is staff:manage's — the authority mode identity records — and absent to anyone else, when no module provides accounts, and when this process's configuration derives another mode than the recorded one.
 type StaffMeta struct {
 	// AbsenceTypes The absence types that are not hidden, in their order, names in both languages — every caller's.
 	AbsenceTypes []StaffAbsenceType `json:"absenceTypes"`
+
+	// AccountMode The installation's authority mode as identity records it: local (identity holds the passwords, so Staff creates and invites) or federated (an identity provider owns the accounts, so Staff only finds, re-enables what it disabled and disables).
+	AccountMode *StaffAccountMode `json:"accountMode,omitempty"`
 
 	// Capabilities What the caller may do in Staff, so the app never re-derives a rule this module owns. The access layer still decides every request.
 	Capabilities StaffCapabilities `json:"capabilities"`
 
 	// HolidaySchemes Every holiday scheme, archived ones included, with its figures converted to working days.
 	HolidaySchemes []StaffHolidayScheme `json:"holidaySchemes"`
+
+	// ProvisioningRolesSet staff:manage only — whether an Owner has named the roles Staff may give (identity's employee roles), without which a local account cannot be enabled. Absent to anyone else, and when accounts are unavailable.
+	ProvisioningRolesSet *bool `json:"provisioningRolesSet,omitempty"`
 
 	// Structure The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out.
 	Structure *StaffStructure `json:"structure,omitempty"`
@@ -2204,6 +2339,55 @@ type StaffPerson struct {
 	WorkEmail *string `json:"workEmail,omitempty"`
 }
 
+// StaffPersonAccount A person's account flag (design S22) with the dates it derives and the link it drives: whether Staff provides the person with a user, from when, at which of their addresses, the authority mode, and the link's state. The person themselves, staff:manage and staff:personal-data read it (the links group); anyone else gets the unknown id's 404.
+type StaffPersonAccount struct {
+	// AccountEmailKind Which of the person's addresses Staff gives identity for their account: work (the work email) or private (the private email).
+	AccountEmailKind StaffAccountEmailKind `json:"accountEmailKind"`
+
+	// Address The address the account would be given — never the address itself, only which and whether the person has it.
+	Address StaffPersonAccountAddress `json:"address"`
+
+	// Link The person's link to a user under the identity provider, as the accounts worker and HR left it (design S27, §3.6). Codes only: the reason and the invitation never carry an address or a driver's words.
+	Link *StaffAccountLink `json:"link,omitempty"`
+
+	// Mode The installation's authority mode as identity records it: local (identity holds the passwords, so Staff creates and invites) or federated (an identity provider owns the accounts, so Staff only finds, re-enables what it disabled and disables).
+	Mode *StaffAccountMode `json:"mode,omitempty"`
+
+	// ProvisionAccount Whether Staff provides the person with a user.
+	ProvisionAccount bool `json:"provisionAccount"`
+
+	// ProvisionFrom The day the account is to be enabled, as HR set it. Absent when HR set none.
+	ProvisionFrom *openapi_types.Date `json:"provisionFrom,omitempty"`
+
+	// ProvisionFromEffective The day the account is enabled: provisionFrom when set, else the first day of the earliest employment that has not ended by today. Absent when there is neither. The account is prepared, disabled, createBeforeDays before it.
+	ProvisionFromEffective *openapi_types.Date `json:"provisionFromEffective,omitempty"`
+
+	// Revision The person's revision, which a change of the flag sends back in If-Match.
+	Revision int32 `json:"revision"`
+}
+
+// StaffPersonAccountAddress The address the account would be given — never the address itself, only which and whether the person has it.
+type StaffPersonAccountAddress struct {
+	// Kind Which of the person's addresses Staff gives identity for their account: work (the work email) or private (the private email).
+	Kind StaffAccountEmailKind `json:"kind"`
+
+	// Present Whether the person has that address on file. A flag turned on without it waits (accountEmailMissing).
+	Present bool `json:"present"`
+}
+
+// StaffPersonAccountRequest A full replace of the account flag's three fields: what is left out is cleared — provisionFrom to none, accountEmailKind to work.
+type StaffPersonAccountRequest struct {
+	// AccountEmailKind work or private; null or left out reads work.
+	AccountEmailKind *StaffPersonAccountRequestAccountEmailKind `json:"accountEmailKind,omitempty"`
+	ProvisionAccount bool                                       `json:"provisionAccount"`
+
+	// ProvisionFrom The day to enable the account from; null or left out derives it from the employments.
+	ProvisionFrom *openapi_types.Date `json:"provisionFrom,omitempty"`
+}
+
+// StaffPersonAccountRequestAccountEmailKind work or private; null or left out reads work.
+type StaffPersonAccountRequestAccountEmailKind string
+
 // StaffPersonBankAccount The bank account on file, as its kind and its last four digits. Present for the person themselves, staff:manage and staff:personal-data, when one is on file.
 type StaffPersonBankAccount struct {
 	Kind  StaffBankAccountKind `json:"kind"`
@@ -2221,7 +2405,7 @@ type StaffPersonCapabilities struct {
 	// CanHold staff:personal-data — set and lift the legal hold, record a reassessment and export the person's data.
 	CanHold bool `json:"canHold"`
 
-	// CanManageAccount staff:manage — the self-service link to a user.
+	// CanManageAccount staff:manage — the self-service link to a user and the account flag (PUT /people/{id}/account).
 	CanManageAccount bool `json:"canManageAccount"`
 
 	// CanRevealIdentifiers staff:personal-data — reveal and write the national identity number and the bank account.
@@ -2430,6 +2614,9 @@ type StaffPersonalData struct {
 	// Absences Every absence of the person, in any status, newest first.
 	Absences []StaffAbsence `json:"absences"`
 
+	// Account The account flag and the link's state, as the person's file carries them.
+	Account StaffPersonalDataAccount `json:"account"`
+
 	// CareDays A person's care days (omsorgsdager) for a year (design S11, ftrl. § 9-6 and § 9-8). Using more than the entitlement is shown (exceeded), never refused.
 	CareDays StaffCareDays `json:"careDays"`
 
@@ -2455,6 +2642,17 @@ type StaffPersonalData struct {
 
 	// SelfCertification A person's standing under the self-certification policy today (design S10, §4 Egenmelding): the limits by the policy's name, the occurrences and calendar days used in the rolling year ending today — a run of contiguous egenmelding days, days off between included, being one occurrence — and the withdrawal.
 	SelfCertification StaffSelfCertification `json:"selfCertification"`
+}
+
+// StaffPersonalDataAccount The account flag and the link's state, as the person's file carries them.
+type StaffPersonalDataAccount struct {
+	// AccountEmailKind Which of the person's addresses Staff gives identity for their account: work (the work email) or private (the private email).
+	AccountEmailKind StaffAccountEmailKind `json:"accountEmailKind"`
+
+	// LinkState The link's state (StaffAccountLink's). Absent when the person has no link.
+	LinkState        *string             `json:"linkState,omitempty"`
+	ProvisionAccount bool                `json:"provisionAccount"`
+	ProvisionFrom    *openapi_types.Date `json:"provisionFrom,omitempty"`
 }
 
 // StaffPersonalDataBankAccount The bank account on file. value, the whole number, is in the complete file only.
@@ -2528,7 +2726,7 @@ type StaffPersonalDataPerson struct {
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy and threshold_unknown. errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), link_managed (409: the user is Staff-managed, or the link is the accounts worker's) and accounts_busy (409: the accounts worker holds the person's link right now). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -2630,6 +2828,12 @@ type StaffSettings struct {
 	// AutoCarryOverSince The day autoCarryOver was last turned on; the derived carry-over reaches no year before it. Absent when it never was.
 	AutoCarryOverSince *openapi_types.Date `json:"autoCarryOverSince,omitempty"`
 
+	// CreateBeforeDays How many days before the account's effective date the accounts worker prepares it, disabled (design S22); 0 to 90, 14 by default.
+	CreateBeforeDays int32 `json:"createBeforeDays"`
+
+	// DeleteExternalAfterDays How many days after a person's last employment ended an external directory's account is deleted; 1 to 3650, or absent for never. Inert: no module reads it yet (the Entra module will).
+	DeleteExternalAfterDays *int32 `json:"deleteExternalAfterDays,omitempty"`
+
 	// EmployeeNumberPrefix What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none.
 	EmployeeNumberPrefix string `json:"employeeNumberPrefix"`
 
@@ -2676,10 +2880,16 @@ type StaffSettings struct {
 	TimeZone string `json:"timeZone"`
 }
 
-// StaffSettingsRequest A replace of the settings. The two retention periods left out keep the values they have; everything else is replaced.
+// StaffSettingsRequest A replace of the settings. The two retention periods, the self-certification policy, the carry-over and the two account settings left out keep the values they have; everything else is replaced.
 type StaffSettingsRequest struct {
 	// AutoCarryOver Left out, it keeps its value. Turning it on records today as autoCarryOverSince.
 	AutoCarryOver *bool `json:"autoCarryOver,omitempty"`
+
+	// CreateBeforeDays 0 to 90 days. Left out, it keeps its value.
+	CreateBeforeDays *int32 `json:"createBeforeDays,omitempty"`
+
+	// DeleteExternalAfterDays 1 to 3650 days, or null for never. Left out, it keeps its value.
+	DeleteExternalAfterDays *int32 `json:"deleteExternalAfterDays,omitempty"`
 
 	// EmployeeNumberPrefix Up to eight letters, digits or hyphens. Left out, there is none.
 	EmployeeNumberPrefix *string `json:"employeeNumberPrefix,omitempty"`
@@ -3231,6 +3441,12 @@ type PutStaffPeopleByIdParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// PutStaffPeopleByIdAccountParams defines parameters for PutStaffPeopleByIdAccount.
+type PutStaffPeopleByIdAccountParams struct {
+	// IfMatch The revision the person was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
 // GetStaffPeopleByIdCareDaysParams defines parameters for GetStaffPeopleByIdCareDays.
 type GetStaffPeopleByIdCareDaysParams struct {
 	// Year The year, 2000 to 2100; this year in the business time zone when left out.
@@ -3382,6 +3598,9 @@ type PostStaffPeopleSimilarErasedJSONRequestBody = StaffSimilarErasedRequest
 
 // PutStaffPeopleByIdJSONRequestBody defines body for PutStaffPeopleById for application/json ContentType.
 type PutStaffPeopleByIdJSONRequestBody = StaffPersonRequest
+
+// PutStaffPeopleByIdAccountJSONRequestBody defines body for PutStaffPeopleByIdAccount for application/json ContentType.
+type PutStaffPeopleByIdAccountJSONRequestBody = StaffPersonAccountRequest
 
 // PutStaffPeopleByIdBankAccountJSONRequestBody defines body for PutStaffPeopleByIdBankAccount for application/json ContentType.
 type PutStaffPeopleByIdBankAccountJSONRequestBody = StaffBankAccountRequest
@@ -3655,6 +3874,12 @@ type ServerInterface interface {
 	// PutStaffPeopleById Change a person
 	// (PUT /api/v1/staff/people/{id})
 	PutStaffPeopleById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdParams)
+	// GetStaffPeopleByIdAccount Get a person's account flag
+	// (GET /api/v1/staff/people/{id}/account)
+	GetStaffPeopleByIdAccount(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffPeopleByIdAccount Change a person's account flag
+	// (PUT /api/v1/staff/people/{id}/account)
+	PutStaffPeopleByIdAccount(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdAccountParams)
 	// PutStaffPeopleByIdBankAccount Set a person's bank account
 	// (PUT /api/v1/staff/people/{id}/bank-account)
 	PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request, id int64)
@@ -6291,6 +6516,86 @@ func (siw *ServerInterfaceWrapper) PutStaffPeopleById(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffPeopleByIdAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffPeopleByIdAccount operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffPeopleByIdAccountParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffPeopleByIdAccount(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutStaffPeopleByIdBankAccount operation middleware
 func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request) {
 
@@ -7488,6 +7793,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.DeleteStaffPeopleById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.GetStaffPeopleById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.PutStaffPeopleById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/account", wrapper.GetStaffPeopleByIdAccount)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/account", wrapper.PutStaffPeopleByIdAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account", wrapper.PutStaffPeopleByIdBankAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account/reveal", wrapper.PostStaffPeopleByIdBankAccountReveal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/care-days", wrapper.GetStaffPeopleByIdCareDays)
@@ -13081,6 +13388,152 @@ func (response PutStaffPeopleById409ApplicationProblemPlusJSONResponse) VisitPut
 	return err
 }
 
+type GetStaffPeopleByIdAccountRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdAccountResponseObject interface {
+	VisitGetStaffPeopleByIdAccountResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdAccount200JSONResponse StaffPersonAccount
+
+func (response GetStaffPeopleByIdAccount200JSONResponse) VisitGetStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdAccount401JSONResponse) VisitGetStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdAccount403JSONResponse) VisitGetStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdAccount404Response struct {
+}
+
+func (response GetStaffPeopleByIdAccount404Response) VisitGetStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdAccountRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutStaffPeopleByIdAccountParams
+	Body   *PutStaffPeopleByIdAccountJSONRequestBody
+}
+
+type PutStaffPeopleByIdAccountResponseObject interface {
+	VisitPutStaffPeopleByIdAccountResponse(w http.ResponseWriter) error
+}
+
+type PutStaffPeopleByIdAccount200JSONResponse StaffPersonAccount
+
+func (response PutStaffPeopleByIdAccount200JSONResponse) VisitPutStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdAccount400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdAccount400ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdAccount401JSONResponse) VisitPutStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdAccount403JSONResponse) VisitPutStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdAccount404Response struct {
+}
+
+func (response PutStaffPeopleByIdAccount404Response) VisitPutStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdAccount409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdAccount409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutStaffPeopleByIdBankAccountRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PutStaffPeopleByIdBankAccountJSONRequestBody
@@ -15027,6 +15480,20 @@ func (response PutStaffPeopleByIdUser409ApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type PutStaffPeopleByIdUser503ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdUser503ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostStaffRetentionRunRequestObject struct {
 }
 
@@ -15767,6 +16234,12 @@ type StrictServerInterface interface {
 	// PutStaffPeopleById Change a person
 	// (PUT /api/v1/staff/people/{id})
 	PutStaffPeopleById(ctx context.Context, request PutStaffPeopleByIdRequestObject) (PutStaffPeopleByIdResponseObject, error)
+	// GetStaffPeopleByIdAccount Get a person's account flag
+	// (GET /api/v1/staff/people/{id}/account)
+	GetStaffPeopleByIdAccount(ctx context.Context, request GetStaffPeopleByIdAccountRequestObject) (GetStaffPeopleByIdAccountResponseObject, error)
+	// PutStaffPeopleByIdAccount Change a person's account flag
+	// (PUT /api/v1/staff/people/{id}/account)
+	PutStaffPeopleByIdAccount(ctx context.Context, request PutStaffPeopleByIdAccountRequestObject) (PutStaffPeopleByIdAccountResponseObject, error)
 	// PutStaffPeopleByIdBankAccount Set a person's bank account
 	// (PUT /api/v1/staff/people/{id}/bank-account)
 	PutStaffPeopleByIdBankAccount(ctx context.Context, request PutStaffPeopleByIdBankAccountRequestObject) (PutStaffPeopleByIdBankAccountResponseObject, error)
@@ -18119,6 +18592,66 @@ func (sh *strictHandler) PutStaffPeopleById(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffPeopleByIdResponseObject); ok {
 		if err := validResponse.VisitPutStaffPeopleByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdAccount operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdAccount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdAccountRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdAccount(ctx, request.(GetStaffPeopleByIdAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdAccountResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffPeopleByIdAccount operation middleware
+func (sh *strictHandler) PutStaffPeopleByIdAccount(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdAccountParams) {
+	var request PutStaffPeopleByIdAccountRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutStaffPeopleByIdAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffPeopleByIdAccount(ctx, request.(PutStaffPeopleByIdAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffPeopleByIdAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffPeopleByIdAccountResponseObject); ok {
+		if err := validResponse.VisitPutStaffPeopleByIdAccountResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

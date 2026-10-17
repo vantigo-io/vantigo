@@ -43,6 +43,24 @@ func (silentUsers) PermissionHolders(context.Context, string) ([]contracts.Holde
 
 func silentMail(context.Context, config.MailConfig, mail.Outbound) error { return nil }
 
+// silentAccounts is contracts.AccountProvisioning answering nothing, and
+// recording the address each Account call was given to compare.
+type silentAccounts struct {
+	contracts.AccountProvisioning
+	wanted []string
+}
+
+func (silentAccounts) Mode(context.Context) (string, error) { return contracts.AccountModeLocal, nil }
+
+func (a *silentAccounts) Account(_ context.Context, _ uuid.UUID, wantEmail string) (*contracts.AccountRef, error) {
+	a.wanted = append(a.wanted, wantEmail)
+	return nil, nil
+}
+
+func (silentAccounts) ProvisioningRoles(context.Context) ([]contracts.RoleRef, error) {
+	return nil, nil
+}
+
 // silentStore is an object store that keeps nothing and refuses nothing.
 type silentStore struct{}
 
@@ -73,7 +91,7 @@ func (silentStore) Delete(context.Context, string) error { return nil }
 func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
-	s := &server{deps: module.Deps{Pool: pool, Users: silentUsers{}, SMTPSend: silentMail}, objects: silentStore{}}
+	s := &server{deps: module.Deps{Pool: pool, Users: silentUsers{}, Accounts: &silentAccounts{}, SMTPSend: silentMail}, objects: silentStore{}}
 
 	var outside, inside []string
 	previous := contractCallHook
@@ -98,9 +116,13 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 			_ = body.Close()
 		}
 		e7 := s.objectDelete(ctx, "people/1/a")
-		return []error{e1, e2, e3, e4, e5, e6, e7}
+		_, e8 := s.accountsMode(ctx)
+		_, e9 := s.accountsAccount(ctx, user, nil)
+		_, e10 := s.accountsProvisioningRoles(ctx)
+		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10}
 	}
-	want := []string{"Users.User", "Users.Users", "Users.SearchUsers", "SMTPSend", "ObjectStore.Put", "ObjectStore.Get", "ObjectStore.Delete"}
+	want := []string{"Users.User", "Users.Users", "Users.SearchUsers", "SMTPSend", "ObjectStore.Put", "ObjectStore.Get", "ObjectStore.Delete",
+		"Accounts.Mode", "Accounts.Account", "Accounts.ProvisioningRoles"}
 
 	for _, err := range call(ctx) {
 		if err != nil {
@@ -162,5 +184,41 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 	}
 	if len(outside) != 0 {
 		t.Errorf("an empty batch of names reported %v, want no call at all", outside)
+	}
+}
+
+// The accounts accessors answer errAccountsUnavailable when no module
+// provides account provisioning, each still reported; and Account is handed
+// the person's own stored address by their choice — the work or the private
+// email, none when they have none or no person is named — never one a caller
+// typed, since the accessor takes no address at all.
+func TestContractCalls_TheAccountsAccessors(t *testing.T) {
+	ctx := context.Background()
+	none := &server{deps: module.Deps{}}
+	if _, err := none.accountsMode(ctx); !errors.Is(err, errAccountsUnavailable) {
+		t.Errorf("Mode without a provider = %v, want errAccountsUnavailable", err)
+	}
+	if _, err := none.accountsAccount(ctx, uuid.New(), nil); !errors.Is(err, errAccountsUnavailable) {
+		t.Errorf("Account without a provider = %v, want errAccountsUnavailable", err)
+	}
+	if _, err := none.accountsProvisioningRoles(ctx); !errors.Is(err, errAccountsUnavailable) {
+		t.Errorf("ProvisioningRoles without a provider = %v, want errAccountsUnavailable", err)
+	}
+
+	fake := &silentAccounts{}
+	s := &server{deps: module.Deps{Accounts: fake}}
+	work, private, kind := "kari@work.example", "kari@home.example", "private"
+	for _, p := range []*accountPerson{
+		nil,
+		{WorkEmail: &work, PrivateEmail: &private},
+		{WorkEmail: &work, PrivateEmail: &private, AccountEmailKind: &kind},
+		{WorkEmail: &work, AccountEmailKind: &kind},
+	} {
+		if _, err := s.accountsAccount(ctx, uuid.New(), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if want := []string{"", work, private, ""}; !slices.Equal(fake.wanted, want) {
+		t.Errorf("identity was asked to compare %q, want %q", fake.wanted, want)
 	}
 }

@@ -32,7 +32,10 @@ const choose = async (scope: HTMLElement, label: string, option: RegExp | string
 
 describe("SettingsPage — the settings", () => {
   it("shows the next generated number and its length, and saves with the revision it read", async () => {
-    const fetchMock = stubStaffApi({ settings: settings({ employeeNumberPrefix: "E-", nextEmployeeNumber: 8 }) });
+    // The account settings (delivery C) are sent back as read; "never" is null.
+    const fetchMock = stubStaffApi({
+      settings: settings({ employeeNumberPrefix: "E-", nextEmployeeNumber: 8, createBeforeDays: 0 }),
+    });
     renderRoute("/staff/settings");
 
     expect(await screen.findByText(/The next generated number is E-8/)).toHaveTextContent("3 of at most 16 characters");
@@ -49,6 +52,8 @@ describe("SettingsPage — the settings", () => {
       nextEmployeeNumber: 8,
       pensionProvider: "Storebrand",
       injuryInsurer: "If Skadeforsikring",
+      createBeforeDays: 0,
+      deleteExternalAfterDays: null,
     });
   });
 
