@@ -24,12 +24,13 @@ const ownerInvitationsPath = "/api/v1/identity/owner/invitations"
 // Why an invitation was revoked (identity.invitations.revoked_reason): an
 // Owner revoked it; another invitation or an account for its address
 // replaced it; its mail could not be sent; the email of the user it was
-// addressed to changed.
+// addressed to changed; Staff's provisioning deactivated the user it named.
 const (
 	revokedByOwner        = "owner"
 	revokedReplaced       = "replaced"
 	revokedDeliveryFailed = "delivery_failed"
 	revokedEmailChanged   = "email_changed"
+	revokedDeactivated    = "deactivated"
 )
 
 // Invitation messages (EA/AuthAccountEndpoints.cs:1076-1368).

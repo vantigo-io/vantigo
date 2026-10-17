@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
@@ -19,8 +20,8 @@ import (
 // TestWorkerModeDeps_CarryIdentitysUserDirectory proves worker mode — which
 // never composes — hands every module's workers identity's user directory,
 // built from the same Deps serve builds (moduleDeps) over the same module
-// list (businessModules), and resolving a real user on the pool. Accounts
-// stays nil until identity provides it.
+// list (businessModules), and resolving a real user on the pool — and
+// identity's account provisioning beside it, reading the pool's recorded mode.
 func TestWorkerModeDeps_CarryIdentitysUserDirectory(t *testing.T) {
 	_, databaseURL := testdb.Migrated(t)
 	cfg, err := config.Load(map[string]string{
@@ -63,7 +64,10 @@ func TestWorkerModeDeps_CarryIdentitysUserDirectory(t *testing.T) {
 	if err != nil || user == nil || user.DisplayName != "Kari Nordmann" {
 		t.Errorf("Users.User = %+v, %v, want Kari Nordmann from the pool", user, err)
 	}
-	if seen.Accounts != nil {
-		t.Errorf("worker-mode Deps.Accounts = %v, want nil until identity provides account provisioning", seen.Accounts)
+	if seen.Accounts == nil {
+		t.Fatal("worker-mode Deps.Accounts = nil, want identity's account provisioning")
+	}
+	if mode, err := seen.Accounts.Mode(ctx); err != nil || mode != contracts.AccountModeLocal {
+		t.Errorf("Accounts.Mode = %q, %v, want local from the pool", mode, err)
 	}
 }

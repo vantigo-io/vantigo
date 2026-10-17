@@ -197,6 +197,12 @@ var (
 	// ErrEmployeeRoleMissing: no Owner has named the roles Staff may give, so
 	// a local Activate cannot give the user any.
 	ErrEmployeeRoleMissing = errors.New("contracts: no employee role is named for Staff")
+	// ErrEmployeeRoleUnsafe: a role an Owner named for Staff now carries a
+	// permission that grants administration (identity:manage, any other
+	// non-delegable key, staff:manage, staff:personal-data or staff:approve —
+	// only possible by a write outside identity's own checks), so a local
+	// Activate gives none of the set until an Owner takes it out.
+	ErrEmployeeRoleUnsafe = errors.New("contracts: a role named for Staff grants administration")
 	// ErrAccountNotFound: in federated mode, no managed user holds the
 	// employee number — the identity provider has not created one yet.
 	ErrAccountNotFound = errors.New("contracts: no account holds the employee number")
@@ -258,7 +264,8 @@ type AccountProvisioning interface {
 	// invites a pending user who has no credential and no acceptable
 	// invitation, delivering after its commit; in federated mode it only
 	// re-enables a user Staff disabled. ErrAccountNotManaged,
-	// ErrAccountPrivileged, ErrBlockedByOwner, ErrUserGone.
+	// ErrAccountPrivileged, ErrBlockedByOwner, ErrEmployeeRoleMissing,
+	// ErrEmployeeRoleUnsafe, ErrUserGone.
 	Activate(ctx context.Context, actor Actor, userID uuid.UUID, opts ActivateOpts) (AccountRef, error)
 	// Deactivate disables a managed user (DisabledByStaff unless already
 	// disabled), ends their sessions and revokes their acceptable

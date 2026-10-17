@@ -212,7 +212,8 @@ innloggingsmetodene, så den oppretter brukerne Ansatte ber om, aktiverer dem og
 inviterer dem til å velge et passord. **Føderert**: en identitetsleverandør eier
 kontoene — OIDC for arbeidsstyrken (`OIDC_*`) eller SCIM (`SCIM_TOKEN`) er
 konfigurert — så den bare finner en bruker etter ansattnummer, aktiverer igjen en bruker
-Ansatte deaktiverte og deaktiverer; den oppretter og inviterer aldri.
+Ansatte deaktiverte og deaktiverer; den oppretter og inviterer aldri (se
+[SSO- og SCIM-drift](/nb/admin/sso-scim/#ansatte-i-en-føderert-installasjon)).
 
 Modusen utledes av konfigurasjonen til prosessen som serverer API-et, og registreres når
 identitetsmodulen starter der (`identity.system_settings.authority_mode`, med
@@ -223,6 +224,53 @@ modusen i stedet for å stole på sine egne innstillinger: når dens egne `OIDC_
 eller SCIM av eller på endrer derfor modusen ved API-ets neste oppstart; endringen
 revisjonslogges `authority-mode.changed` med modusene før og etter, uten aktør og uten
 korrelasjons-ID. En oppstart med samme modus endrer ingenting.
+
+### Hva Ansattes klargjøring gjør i identitetsmodulen
+
+Ansatte når identitetsmodulens brukere bare gjennom identitetsmodulens klargjøring, som
+kjører hver endring i en egen transaksjon — under eierlåsen, deretter brukerens
+invitasjoner, deretter brukeren — revisjonslogger den med aktøren (personen som trykket
+på en knapp i Ansatte, eller `system:staff-accounts`), og sender e-post først når
+endringen er lagret. Den avviser alt uten en gyldig aktør, og gjør ingenting så lenge
+[autoritetsmodusen](#autoritetsmodusen) prosessen utleder, er en annen enn den
+registrerte.
+
+| Steg | Lokal modus | Føderert modus | Revisjonslogg |
+| --- | --- | --- | --- |
+| Klargjør | Finner brukeren Ansatte styrer med ansattnummeret, ellers oppretter den en: styrt av Ansatte, ventende, deaktivert av Ansatte, med den innebygde rollen `User`, uten innloggingsmetode og med ubekreftet adresse. En eiers invitasjon til adressen trekkes tilbake `replaced`. | Finner brukeren Ansatte styrer med nummeret; oppretter ingenting | `user.staff-prepared` |
+| Aktiver | Gir en ventende bruker, eller en Ansatte har deaktivert, [ansattrollene](#ansattrollene) og aktiverer dem; inviterer en ventende bruker uten innloggingsmetode ved navn | Aktiverer igjen en bruker Ansatte deaktiverte; gir ingen rolle og sender ingen invitasjon | `user.staff-activated` |
+| Deaktiver | Deaktiverer brukeren som Ansattes (`disabledBy: staff`), avslutter øktene og tilbakestillingslenkene, og trekker tilbake de åpne invitasjonene `deactivated` | Det samme | `user.staff-deactivated` |
+| Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter, og da trekkes invitasjonene tilbake `email_changed` | Skriver bare språket og ansattnummeret | `user.staff-updated` |
+
+En aktivert ventende bruker er aktivert, men kan fortsatt ikke logge inn: innlogging med
+passord, passnøkkel og OIDC avviser dem — OIDCs første innlogging med adressen deres
+svarer `account_locked` og kobler ingenting — til de godtar invitasjonen. En bruker som
+har godtatt, beholder adressen identitetsmodulen har; når Ansattes register har en
+annen, melder Ansatte det for en eier å endre her.
+
+Invitasjonene følger den ventende brukerens [invitasjonsrunde](#brukere-som-ansatte-styrer):
+en invitasjon som har gått ut, erstattes ved neste aktivering til tre er levert; deretter
+melder Ansatte den som ubesvart. En eiers tilbaketrekking av invitasjonen står — Ansatte
+sender ingen ny — til noen kjører personens konto for hånd i Ansatte (*Kjør nå*), som
+starter en ny runde. En e-post som ikke kan sendes, trekker invitasjonen tilbake
+`delivery_failed` og teller ikke; neste aktivering prøver igjen.
+
+Ansattes klargjøring rører aldri en eier eller en SystemAdmin, aktiverer aldri igjen en
+bruker en eier deaktiverte, deaktiverer aldri den siste aktive eieren, og overlater en
+bruker katalogen har deaktivert (mens SCIM er konfigurert) til katalogen. Dette avviser
+den:
+
+| Avvisning | Betydning | Hva du gjør |
+| --- | --- | --- |
+| Ikke styrt | Brukeren styres ikke av Ansatte | Ta dem inn, eller overlat dem til en eier |
+| Privilegert | Brukeren er eier eller SystemAdmin | Håndter kontoen for hånd |
+| Sperret av en eier | En eier deaktiverte brukeren | Aktiver dem her hvis Ansatte skal styre dem igjen |
+| Ansattrolle mangler | Ingen ansattrolle er valgt | Velg [ansattrollene](#ansattrollene) |
+| Usikker ansattrolle | En rolle i settet har en tillatelse som gir administrasjon — bare mulig ved en endring utenom identitetsmodulens kontroller | Ta tillatelsen av rollen, eller rollen ut av settet |
+| Adressen er tatt | En annen bruker har personens adresse | Gi personen en annen adresse i Ansatte, eller rydd i den andre kontoen |
+| Ansattnummeret er tatt | En bruker Ansatte ikke styrer, har nummeret | Ta inn den brukeren, eller rett nummeret i Ansatte |
+| Ikke funnet | Føderert modus: ingen bruker Ansatte styrer, har nummeret ennå | La identitetsleverandøren opprette kontoen, og ta den inn |
+| Ulik modus | Denne prosessens `OIDC_*`/`SCIM_TOKEN` gir en annen modus enn API-et registrerte | Gi workeren API-ets innstillinger ([Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)) |
 
 ### Ta en eksisterende bruker inn under Ansatte
 
@@ -323,7 +371,8 @@ Hver tilbaketrukket invitasjon registrerer hvorfor (`identity.invitations.revoke
 | `owner` | En eiers tilbaketrekking; også hver invitasjon som ble trukket tilbake før denne versjonen |
 | `replaced` | En ny invitasjon til samme adresse (en invitasjon eller en ny sending), en konto opprettet for adressen, eller en rettet `BOOTSTRAP_OWNER_EMAIL` |
 | `delivery_failed` | E-posten med invitasjonen kunne ikke sendes |
-| `email_changed` | En eier endret en brukers e-post til, eller fra, invitasjonens adresse |
+| `email_changed` | En eier endret en brukers e-post til, eller fra, invitasjonens adresse; eller Ansattes klargjøring ga den ventende brukeren den navnga en annen adresse |
+| `deactivated` | Ansattes klargjøring deaktiverte brukeren den navnga |
 
 Eierens liste over invitasjoner (`GET /api/v1/identity/owner/invitations`, og svarene på
 tilbaketrekking og ny sending) viser årsaken som `revokedReason` på hver tilbaketrukket

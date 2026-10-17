@@ -197,7 +197,7 @@ credentials, so it creates the users Staff asks for, enables them and invites th
 choose a password. **Federated**: an identity provider owns the accounts — workforce
 OIDC (`OIDC_*`) or SCIM (`SCIM_TOKEN`) is configured — so it only finds a user by
 employee number, re-enables a user Staff disabled and disables; it never creates or
-invites.
+invites (see [SSO and SCIM operations](/en/admin/sso-scim/#staff-in-a-federated-installation)).
 
 The mode is derived from the configuration of the process serving the API and recorded
 when identity starts there (`identity.system_settings.authority_mode`, with
@@ -208,6 +208,52 @@ refuses to act at all until the two agree (see
 or SCIM on or off therefore changes the mode at the API's next start; the change is
 audited `authority-mode.changed` with the modes before and after, no actor and no
 correlation id. Starting with the same mode changes nothing.
+
+### What Staff's provisioning does in identity
+
+Staff reaches identity's users only through identity's provisioning, which runs each
+change in a transaction of its own — under the owner lock, then the user's
+invitations, then the user — audits it with its actor (the person who pressed a button
+in Staff, or `system:staff-accounts`), and sends mail only once the change is
+committed. It refuses anything with no valid actor, and does nothing at all while the
+[authority mode](#the-authority-mode) the process derives differs from the recorded
+one.
+
+| Step | Local mode | Federated mode | Audited |
+| --- | --- | --- | --- |
+| Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's invitation to that address is revoked `replaced`. | Finds the Staff-managed user with the number; creates nothing | `user.staff-prepared` |
+| Activate | Gives a pending user, or one Staff disabled, the [employee roles](#the-employee-roles) and enables them; invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | `user.staff-activated` |
+| Deactivate | Disables the user as Staff's (`disabledBy: staff`), ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | `user.staff-deactivated` |
+| Update | Writes the display name, the language and the employee number; the address only while the user is pending, which revokes their invitations `email_changed` | Writes the language and the employee number only | `user.staff-updated` |
+
+An activated pending user is enabled but still cannot sign in: password, passkey and
+OIDC sign-in refuse them — OIDC's first sign-in by their address answers
+`account_locked` and links nothing — until they accept their invitation. A user who has
+accepted keeps the address identity holds; when Staff's record holds another, Staff
+reports it for an Owner to change here.
+
+Invitations follow the pending user's [invitation spell](#staff-managed-users): a
+lapsed invitation is replaced at the next activation until three have been delivered;
+then Staff reports it unanswered. An Owner's revoke of the invitation stands — Staff
+does not send another — until someone runs the person's account in Staff by hand
+(*Run now*), which starts a new spell. A mail that cannot be sent revokes its
+invitation `delivery_failed` and does not count; the next activation tries again.
+
+Staff's provisioning never touches an Owner or a SystemAdmin, never re-enables a user
+an Owner disabled, never deactivates the last active Owner, and leaves a user the
+directory deactivated (while SCIM is configured) to the directory. What it refuses:
+
+| Refusal | Meaning | What to do |
+| --- | --- | --- |
+| Not managed | The user is not Staff-managed | Adopt them, or leave them to an Owner |
+| Privileged | The user is an Owner or a SystemAdmin | Handle the account by hand |
+| Blocked by an Owner | An Owner disabled the user | Enable them here if Staff should manage them again |
+| Employee role missing | No employee role is named | Name the [employee roles](#the-employee-roles) |
+| Employee role unsafe | A role in the set carries a permission that grants administration — possible only by a change outside identity's checks | Take the permission off the role, or the role out of the set |
+| Address taken | Another user holds the person's address | Give the person another address in Staff, or resolve the other account |
+| Employee number taken | A user Staff does not manage holds the number | Adopt that user, or correct the number in Staff |
+| Not found | Federated mode: no Staff-managed user holds the number yet | Let the identity provider create the account, then adopt it |
+| Mode mismatch | This process's `OIDC_*`/`SCIM_TOKEN` derive another mode than the API recorded | Give the worker the API's settings ([Installation](/en/admin/installation/#background-workers-and-scaling)) |
 
 ### Adopt an existing user for Staff
 
@@ -305,7 +351,8 @@ Every revoked invitation records why (`identity.invitations.revoked_reason`):
 | `owner` | An Owner's revoke; also every invitation revoked before this version |
 | `replaced` | A new invitation to the same address (an invite or a resend), an account created for the address, or a corrected `BOOTSTRAP_OWNER_EMAIL` |
 | `delivery_failed` | The invitation's mail could not be sent |
-| `email_changed` | An Owner changed a user's email to, or from, the invitation's address |
+| `email_changed` | An Owner changed a user's email to, or from, the invitation's address; or Staff's provisioning gave the pending user it named another address |
+| `deactivated` | Staff's provisioning deactivated the user it named |
 
 The Owner's invitation list (`GET /api/v1/identity/owner/invitations`, and the revoke
 and resend answers) shows the reason as `revokedReason` on each revoked invitation, and

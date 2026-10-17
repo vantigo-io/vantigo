@@ -292,6 +292,29 @@ SCIM-operasjon til en mislykket en. Endepunktet returnerer aldri bærertokener,
 klienthemmeligheter eller navn på hemmelighetsreferanser. Behandle null-tidsstempler
 som «ingen vellykket bruk er registrert ennå».
 
+## Ansatte i en føderert installasjon
+
+Med OIDC eller SCIM konfigurert er [autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen)
+føderert: identitetsleverandøren eier kontoene, og Ansattes kontoklargjøring kobler seg
+bare til dem. Den oppretter aldri en bruker og sender aldri en invitasjon. For hver
+person Ansatte styrer kontoen til, finner den brukeren Ansatte styrer som har personens
+ansattnummer — en bruker identitetsleverandøren opprettet og en eier
+[tok inn](/nb/admin/authentication/#ta-en-eksisterende-bruker-inn-under-ansatte) med det
+nummeret — aktiverer den igjen når Ansatte deaktiverte den (en ny ansettelse),
+deaktiverer den etter at ansettelsen er slutt, og holder språket og ansattnummeret i
+takt. Den endrer verken navnet eller adressen, og gir ingen rolle: de er leverandørens
+og eierens. En bruker en eier deaktiverte, forblir deaktivert, og en bruker katalogen
+har deaktivert, er katalogens å aktivere eller deaktivere. Til leverandøren har opprettet
+kontoen og en eier har tatt den inn, melder Ansatte personens konto som ikke funnet.
+
+En ventende bruker — en Ansatte opprettet i lokal modus, før OIDC eller SCIM ble slått
+på, og som ikke har godtatt invitasjonen — blir aldri identitetsleverandørens konto bare
+ved adressen: OIDCs første innlogging med den adressen svarer `account_locked` og
+kobler ingenting, og SCIMs opprettelse av en User med den adressen avvises
+`DuplicateEmail`, uten noen ny bruker. La den ventende brukeren godta invitasjonen,
+eller la en eier slutte å la Ansatte styre den og slette den, før leverandørens konto
+tar adressen.
+
 ## Lokal Eier for nødtilgang og MFA
 
 Behold minst én lokal Eier-konto som nødtilgangsvei selv når OIDC er aktivert. Opprett

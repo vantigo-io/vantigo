@@ -122,8 +122,9 @@ func Module(a *Access) module.Module {
 			Sensitive:   true,
 			Delegable:   false,
 		}},
-		Mount: func(d module.Deps) (http.Handler, error) { return mount(a, d) },
-		Users: newUserDirectory,
+		Mount:    func(d module.Deps) (http.Handler, error) { return mount(a, d) },
+		Users:    newUserDirectory,
+		Accounts: func(d module.Deps) contracts.AccountProvisioning { return newProvisioning(a, d) },
 	}
 }
 

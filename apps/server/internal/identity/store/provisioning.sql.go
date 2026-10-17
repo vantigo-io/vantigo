@@ -51,6 +51,109 @@ func (q *Queries) FirstDeniedRolePermission(ctx context.Context, arg FirstDenied
 	return i, err
 }
 
+const getProvisioningUser = `-- name: GetProvisioningUser :one
+SELECT u.id, u.email, u.normalized_email, u.display_name, u.preferred_language, u.is_disabled,
+       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since,
+       (u.password_hash IS NOT NULL)::boolean AS has_password,
+       EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
+       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
+       EXISTS (SELECT 1 FROM identity.user_roles ur JOIN identity.roles ro ON ro.id = ur.role_id
+               WHERE ur.user_id = u.id AND ro.name = 'Owner')::boolean AS is_owner,
+       EXISTS (SELECT 1 FROM identity.user_roles ur JOIN identity.roles ro ON ro.id = ur.role_id
+               WHERE ur.user_id = u.id AND ro.name IN ('Owner', 'SystemAdmin'))::boolean AS privileged,
+       EXISTS (SELECT 1 FROM identity.scim_user_mappings m WHERE m.user_id = u.id AND m.upstream_active IS FALSE)::boolean AS scim_inactive
+FROM identity.users u
+WHERE u.id = $1
+`
+
+type GetProvisioningUserRow struct {
+	ID                uuid.UUID
+	Email             string
+	NormalizedEmail   string
+	DisplayName       string
+	PreferredLanguage *string
+	IsDisabled        bool
+	ManagedBy         *string
+	EmployeeNumber    *string
+	PendingSince      *time.Time
+	DisabledBy        *string
+	InvitationsSince  *time.Time
+	HasPassword       bool
+	HasPasskey        bool
+	HasOidcLink       bool
+	IsOwner           bool
+	Privileged        bool
+	ScimInactive      bool
+}
+
+// GetProvisioningUser is a user as the account provisioning provider judges
+// and reports them (contracts.AccountRef): whether they hold a password, a
+// passkey or an OIDC link (a credential), Owner, SystemAdmin, and whether the
+// directory deactivated them (scim_inactive: a mapping whose upstream is
+// inactive; the caller counts it only while SCIM is configured and the user
+// is no Owner).
+func (q *Queries) GetProvisioningUser(ctx context.Context, id uuid.UUID) (GetProvisioningUserRow, error) {
+	row := q.db.QueryRow(ctx, getProvisioningUser, id)
+	var i GetProvisioningUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.NormalizedEmail,
+		&i.DisplayName,
+		&i.PreferredLanguage,
+		&i.IsDisabled,
+		&i.ManagedBy,
+		&i.EmployeeNumber,
+		&i.PendingSince,
+		&i.DisabledBy,
+		&i.InvitationsSince,
+		&i.HasPassword,
+		&i.HasPasskey,
+		&i.HasOidcLink,
+		&i.IsOwner,
+		&i.Privileged,
+		&i.ScimInactive,
+	)
+	return i, err
+}
+
+const insertProvisionedUser = `-- name: InsertProvisionedUser :exec
+INSERT INTO identity.users (
+    id, email, normalized_email, email_confirmed, display_name, preferred_language,
+    is_disabled, disabled_by, pending_since, invitations_since, version, created_at, updated_at
+) VALUES (
+    $1, $2, $3, false, $4, $5::text,
+    true, 'staff', $6::timestamptz, $6::timestamptz, $7, $6::timestamptz, $6::timestamptz
+)
+`
+
+type InsertProvisionedUserParams struct {
+	ID                uuid.UUID
+	Email             string
+	NormalizedEmail   string
+	DisplayName       string
+	PreferredLanguage *string
+	Now               time.Time
+	Version           uuid.UUID
+}
+
+// InsertProvisionedUser creates the user Staff's provisioning prepares: no
+// credential, the email unconfirmed, disabled by Staff and pending since
+// @now, which also starts their first invitation spell. The employee number
+// and the management are setStaffManaged's to write.
+func (q *Queries) InsertProvisionedUser(ctx context.Context, arg InsertProvisionedUserParams) error {
+	_, err := q.db.Exec(ctx, insertProvisionedUser,
+		arg.ID,
+		arg.Email,
+		arg.NormalizedEmail,
+		arg.DisplayName,
+		arg.PreferredLanguage,
+		arg.Now,
+		arg.Version,
+	)
+	return err
+}
+
 const insertProvisioningRoles = `-- name: InsertProvisioningRoles :exec
 INSERT INTO identity.provisioning_roles (role_id, created_at)
 SELECT unnest($1::uuid[]), $2::timestamptz
@@ -125,6 +228,56 @@ func (q *Queries) ListProvisioningRoles(ctx context.Context) ([]ListProvisioning
 	return items, nil
 }
 
+const listUserInvitationsSince = `-- name: ListUserInvitationsSince :many
+SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at, user_id, revoked_reason FROM identity.invitations
+WHERE user_id = $1 AND created_at >= $2::timestamptz
+ORDER BY (revoked_at IS NULL AND accepted_at IS NULL) DESC, created_at DESC, id DESC
+`
+
+type ListUserInvitationsSinceParams struct {
+	UserID *uuid.UUID
+	Since  time.Time
+}
+
+// ListUserInvitationsSince is every invitation naming the user made at or
+// after @since — the user's current invitation spell — the latest first:
+// one still open (neither revoked nor accepted; at most one is, by
+// ux_invitations_active_email) before any other, then newest first, so two
+// made at one instant are never ordered by chance.
+func (q *Queries) ListUserInvitationsSince(ctx context.Context, arg ListUserInvitationsSinceParams) ([]IdentityInvitation, error) {
+	rows, err := q.db.Query(ctx, listUserInvitationsSince, arg.UserID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IdentityInvitation
+	for rows.Next() {
+		var i IdentityInvitation
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.NormalizedEmail,
+			&i.Role,
+			&i.DisplayName,
+			&i.TokenHash,
+			&i.InvitedByUserID,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+			&i.AcceptedAt,
+			&i.UserID,
+			&i.RevokedReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockAssignableRoles = `-- name: LockAssignableRoles :many
 SELECT id FROM identity.roles
 WHERE id = ANY ($1::uuid[]) AND NOT is_system AND NOT is_built_in
@@ -155,4 +308,185 @@ func (q *Queries) LockAssignableRoles(ctx context.Context, ids []uuid.UUID) ([]u
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockProvisioningRoleIDs = `-- name: LockProvisioningRoleIDs :many
+SELECT r.id FROM identity.provisioning_roles p
+JOIN identity.roles r ON r.id = p.role_id
+ORDER BY r.id
+FOR SHARE OF r
+`
+
+// LockProvisioningRoleIDs is the set of roles Staff may give, each role
+// taken FOR SHARE as PUT /owner/provisioning-roles takes them
+// (LockAssignableRoles): no edit or delete of a role commits while an
+// Activate assigns it, and an edit committed meanwhile makes the
+// serializable caller retry and judge the role as edited.
+func (q *Queries) LockProvisioningRoleIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockProvisioningRoleIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockProvisioningUser = `-- name: LockProvisioningUser :one
+SELECT u.id, u.email, u.normalized_email, u.display_name, u.preferred_language, u.is_disabled,
+       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since,
+       (u.password_hash IS NOT NULL)::boolean AS has_password,
+       EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
+       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
+       EXISTS (SELECT 1 FROM identity.user_roles ur JOIN identity.roles ro ON ro.id = ur.role_id
+               WHERE ur.user_id = u.id AND ro.name = 'Owner')::boolean AS is_owner,
+       EXISTS (SELECT 1 FROM identity.user_roles ur JOIN identity.roles ro ON ro.id = ur.role_id
+               WHERE ur.user_id = u.id AND ro.name IN ('Owner', 'SystemAdmin'))::boolean AS privileged,
+       EXISTS (SELECT 1 FROM identity.scim_user_mappings m WHERE m.user_id = u.id AND m.upstream_active IS FALSE)::boolean AS scim_inactive
+FROM identity.users u
+WHERE u.id = $1
+FOR UPDATE OF u
+`
+
+type LockProvisioningUserRow struct {
+	ID                uuid.UUID
+	Email             string
+	NormalizedEmail   string
+	DisplayName       string
+	PreferredLanguage *string
+	IsDisabled        bool
+	ManagedBy         *string
+	EmployeeNumber    *string
+	PendingSince      *time.Time
+	DisabledBy        *string
+	InvitationsSince  *time.Time
+	HasPassword       bool
+	HasPasskey        bool
+	HasOidcLink       bool
+	IsOwner           bool
+	Privileged        bool
+	ScimInactive      bool
+}
+
+// LockProvisioningUser is GetProvisioningUser holding the user's row FOR
+// UPDATE, taken after the owner lock and the user's invitations' locks
+// (LockUserInvitations), as acceptance orders them. Its columns are
+// GetProvisioningUser's, in the same order.
+func (q *Queries) LockProvisioningUser(ctx context.Context, id uuid.UUID) (LockProvisioningUserRow, error) {
+	row := q.db.QueryRow(ctx, lockProvisioningUser, id)
+	var i LockProvisioningUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.NormalizedEmail,
+		&i.DisplayName,
+		&i.PreferredLanguage,
+		&i.IsDisabled,
+		&i.ManagedBy,
+		&i.EmployeeNumber,
+		&i.PendingSince,
+		&i.DisabledBy,
+		&i.InvitationsSince,
+		&i.HasPassword,
+		&i.HasPasskey,
+		&i.HasOidcLink,
+		&i.IsOwner,
+		&i.Privileged,
+		&i.ScimInactive,
+	)
+	return i, err
+}
+
+const lockUserInvitations = `-- name: LockUserInvitations :exec
+SELECT id FROM identity.invitations WHERE user_id = $1 ORDER BY id FOR UPDATE
+`
+
+// LockUserInvitations takes the row lock of every invitation naming the
+// user, before the user's own (LockProvisioningUser): acceptance locks the
+// invitation, then the user, and a provider's write takes them in the same
+// order.
+func (q *Queries) LockUserInvitations(ctx context.Context, userID *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockUserInvitations, userID)
+	return err
+}
+
+const revokeUserInvitations = `-- name: RevokeUserInvitations :exec
+UPDATE identity.invitations
+SET revoked_at = $1::timestamptz, revoked_reason = $2::text
+WHERE user_id = $3 AND accepted_at IS NULL AND revoked_at IS NULL
+`
+
+type RevokeUserInvitationsParams struct {
+	Now           time.Time
+	RevokedReason string
+	UserID        *uuid.UUID
+}
+
+// RevokeUserInvitations revokes every invitation naming the user that could
+// still be accepted, recording why (deactivated, email_changed).
+func (q *Queries) RevokeUserInvitations(ctx context.Context, arg RevokeUserInvitationsParams) error {
+	_, err := q.db.Exec(ctx, revokeUserInvitations, arg.Now, arg.RevokedReason, arg.UserID)
+	return err
+}
+
+const setInvitationsSince = `-- name: SetInvitationsSince :exec
+UPDATE identity.users SET invitations_since = $1::timestamptz WHERE id = $2
+`
+
+type SetInvitationsSinceParams struct {
+	Now time.Time
+	ID  uuid.UUID
+}
+
+// SetInvitationsSince starts a new invitation spell for the user at @now
+// (ActivateOpts.FreshInvitation).
+func (q *Queries) SetInvitationsSince(ctx context.Context, arg SetInvitationsSinceParams) error {
+	_, err := q.db.Exec(ctx, setInvitationsSince, arg.Now, arg.ID)
+	return err
+}
+
+const updateProvisionedUser = `-- name: UpdateProvisionedUser :exec
+UPDATE identity.users
+SET display_name = $1, preferred_language = $2::text,
+    email = $3, normalized_email = $4, invitations_since = $5::timestamptz,
+    version = $6, updated_at = $7::timestamptz
+WHERE id = $8
+`
+
+type UpdateProvisionedUserParams struct {
+	DisplayName       string
+	PreferredLanguage *string
+	Email             string
+	NormalizedEmail   string
+	InvitationsSince  *time.Time
+	Version           uuid.UUID
+	Now               time.Time
+	ID                uuid.UUID
+}
+
+// UpdateProvisionedUser writes what Staff's Update may change on a managed
+// user: the display name, the language, and the email with its spell (only
+// while pending; the caller passes the stored ones otherwise).
+func (q *Queries) UpdateProvisionedUser(ctx context.Context, arg UpdateProvisionedUserParams) error {
+	_, err := q.db.Exec(ctx, updateProvisionedUser,
+		arg.DisplayName,
+		arg.PreferredLanguage,
+		arg.Email,
+		arg.NormalizedEmail,
+		arg.InvitationsSince,
+		arg.Version,
+		arg.Now,
+		arg.ID,
+	)
+	return err
 }
