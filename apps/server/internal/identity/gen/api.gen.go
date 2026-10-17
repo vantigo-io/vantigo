@@ -21,6 +21,33 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for InvitationResponseRevokedReason.
+const (
+	InvitationResponseRevokedReasonDeactivated    InvitationResponseRevokedReason = "deactivated"
+	InvitationResponseRevokedReasonDeliveryFailed InvitationResponseRevokedReason = "delivery_failed"
+	InvitationResponseRevokedReasonEmailChanged   InvitationResponseRevokedReason = "email_changed"
+	InvitationResponseRevokedReasonOwner          InvitationResponseRevokedReason = "owner"
+	InvitationResponseRevokedReasonReplaced       InvitationResponseRevokedReason = "replaced"
+)
+
+// Valid indicates whether the value is a known member of the InvitationResponseRevokedReason enum.
+func (e InvitationResponseRevokedReason) Valid() bool {
+	switch e {
+	case InvitationResponseRevokedReasonDeactivated:
+		return true
+	case InvitationResponseRevokedReasonDeliveryFailed:
+		return true
+	case InvitationResponseRevokedReasonEmailChanged:
+		return true
+	case InvitationResponseRevokedReasonOwner:
+		return true
+	case InvitationResponseRevokedReasonReplaced:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OwnerUserResponseDisabledBy.
 const (
 	OwnerUserResponseDisabledByOwner OwnerUserResponseDisabledBy = "owner"
@@ -308,8 +335,14 @@ type InvitationResponse struct {
 	ExpiresAt   time.Time          `json:"expiresAt"`
 	Id          openapi_types.UUID `json:"id"`
 	RevokedAt   *time.Time         `json:"revokedAt"`
-	Role        string             `json:"role"`
+
+	// RevokedReason Why a revoked invitation was revoked — owner (an Owner revoked it), replaced (a newer invitation or an account for the address replaced it), delivery_failed (its mail could not be sent), email_changed (the address of the user it named changed), deactivated (Staff's provisioning deactivated the user it named); absent while the invitation is not revoked.
+	RevokedReason *InvitationResponseRevokedReason `json:"revokedReason,omitempty"`
+	Role          string                           `json:"role"`
 }
+
+// InvitationResponseRevokedReason Why a revoked invitation was revoked — owner (an Owner revoked it), replaced (a newer invitation or an account for the address replaced it), delivery_failed (its mail could not be sent), email_changed (the address of the user it named changed), deactivated (Staff's provisioning deactivated the user it named); absent while the invitation is not revoked.
+type InvitationResponseRevokedReason string
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {

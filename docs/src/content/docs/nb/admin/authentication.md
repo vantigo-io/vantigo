@@ -156,6 +156,34 @@ Dette kan en eier fortsatt gjøre med en bruker som Ansatte styrer:
 Brukere som var deaktivert før denne versjonen, er registrert som deaktivert av en eier,
 siden bare en eier kunne deaktivere en bruker.
 
+### En ventende bruker godtar invitasjonen sin
+
+Invitasjonen kontoklargjøringen i Ansatte sender en ventende bruker, navngir den
+brukeren (`identity.invitations.user_id`). Når den godtas, fullføres den eksisterende
+kontoen i stedet for at en ny opprettes: under eierlåsen, så invitasjonens radlås, så
+brukerens, må brukeren fortsatt ha invitasjonens adresse, være styrt av Ansatte, være
+ventende, ikke være deaktivert (av en eier eller av Ansatte) og ikke ha passord,
+passnøkkel eller OIDC-kobling. Passordet må oppfylle reglene; brukeren får det, en
+bekreftet e-post og ingen ventemerking, beholder visningsnavnet sitt (det som skrives på
+siden, brukes ikke) og rollene brukeren har — en invitasjon som navngir en bruker, gir
+ingen rolle og gjør aldri noen til første eier. Revisjonsloggen registrerer
+`invitation.accepted-completing-user`, og brukeren blir logget inn. Alt annet svarer
+samme 400 `invitation_invalid` som en ukjent eller utløpt lenke, og ingenting skrives.
+En ny sending beholder brukeren invitasjonen navngir.
+
+En eier kan ikke invitere adressen til en ventende bruker for hånd: kontoen finnes, så
+invitasjonen svarer 409 `account_exists`. Det er Ansatte som sender invitasjonen til en
+ventende bruker; en eier kan sende en som allerede er sendt, på nytt.
+
+### Revisjonsloggens systemaktør
+
+En endring kontoklargjøringen i Ansatte gjør i identitetsmodulen, logges som en eiers, i
+`identity.authorization_audit_events`, men aktøren er et system, ikke en bruker:
+`actor_user_id` er tom, `details` er
+`{"action":"…","actor":"system:staff-accounts"}`, og det er ingen korrelasjons-id, siden
+ingen forespørsel gjorde endringen. Alle andre raders `details` er `{"action":"…"}` som
+før.
+
 ### Ta en eksisterende bruker inn under Ansatte
 
 Å ta inn en bruker legger en bruker som allerede finnes — en kollega som hadde konto før
@@ -242,6 +270,10 @@ Hver tilbaketrukket invitasjon registrerer hvorfor (`identity.invitations.revoke
 | `replaced` | En ny invitasjon til samme adresse (en invitasjon eller en ny sending), en konto opprettet for adressen, eller en rettet `BOOTSTRAP_OWNER_EMAIL` |
 | `delivery_failed` | E-posten med invitasjonen kunne ikke sendes |
 | `email_changed` | En eier endret en brukers e-post til, eller fra, invitasjonens adresse |
+
+Eierens liste over invitasjoner (`GET /api/v1/identity/owner/invitations`, og svarene på
+tilbaketrekking og ny sending) viser årsaken som `revokedReason` på hver tilbaketrukket
+invitasjon, og utelater den på en som ikke er trukket tilbake.
 
 ## MFA
 

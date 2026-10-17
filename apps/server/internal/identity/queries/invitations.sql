@@ -8,10 +8,12 @@ SET revoked_at = @now::timestamptz, revoked_reason = @revoked_reason::text
 WHERE normalized_email = @normalized_email AND accepted_at IS NULL AND revoked_at IS NULL;
 
 -- name: InsertInvitation :one
+-- InsertInvitation stores an invitation; user_id names the pending user it
+-- completes, null for one that creates an account.
 INSERT INTO identity.invitations (
-    id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at
+    id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, user_id, created_at, expires_at
 ) VALUES (
-    @id, @email, @normalized_email, @role, @display_name, @token_hash, @invited_by_user_id,
+    @id, @email, @normalized_email, @role, @display_name, @token_hash, @invited_by_user_id, sqlc.narg(user_id)::uuid,
     @created_at::timestamptz, @expires_at::timestamptz
 )
 RETURNING *;
@@ -74,3 +76,25 @@ WHERE role = 'Owner' AND normalized_email != @normalized_email AND accepted_at I
 SELECT count(*)::int
 FROM identity.invitations
 WHERE role = 'Owner' AND normalized_email = @normalized_email AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz;
+
+-- name: LockInvitedUser :one
+-- LockInvitedUser reads the user a named invitation completes and holds
+-- their row FOR UPDATE, taken after the invitation's lock, with whether they
+-- hold a passkey or an OIDC link: acceptance completes only a pending user
+-- without any credential.
+SELECT u.id, u.email, u.normalized_email, u.display_name, u.password_hash, u.is_disabled,
+       u.totp_enabled, u.managed_by, u.pending_since,
+       EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
+       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link
+FROM identity.users u
+WHERE u.id = @id
+FOR UPDATE OF u;
+
+-- name: CompletePendingUser :exec
+-- CompletePendingUser gives a pending user the password they chose on
+-- accepting their invitation: the email counts as confirmed, the pending
+-- mark is cleared and the security stamp rotated.
+UPDATE identity.users
+SET password_hash = @password_hash, email_confirmed = true, pending_since = NULL,
+    version = @version, updated_at = @now::timestamptz
+WHERE id = @id;

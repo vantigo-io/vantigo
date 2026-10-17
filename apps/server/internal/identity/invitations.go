@@ -202,6 +202,7 @@ func (s *server) PostIdentityOwnerInvitationsByIdResend(ctx context.Context, req
 			Role:            orig.Role,
 			DisplayName:     orig.DisplayName,
 			InvitedByUserID: orig.InvitedByUserID,
+			UserID:          orig.UserID,
 		}, s.deps.Clock())
 		return err
 	})
@@ -251,7 +252,9 @@ type invitationAcceptedAudit struct {
 // an existing account), with a confirmed email, the invitation's role, and
 // the display name from the request, else the invitation, else the email.
 // The invitation is marked accepted, invitation.accepted-with-role is
-// audited, and a new session starts: 201 with Location /session.
+// audited, and a new session starts: 201 with Location /session. An
+// invitation naming a user completes that user instead of creating one
+// (completePendingUser).
 func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.PostIdentityInvitationsAcceptRequestObject) (gen.PostIdentityInvitationsAcceptResponseObject, error) {
 	var body gen.InvitationAcceptanceRequest
 	if req.Body != nil {
@@ -278,8 +281,21 @@ func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.Post
 	userID := uuid.New()
 	var user gen.AuthUserResponse
 	var session string
+	enrolled := false // a new account has no TOTP
 	err = s.serializable(ctx, invitationInvalid, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		now := s.deps.Clock()
+		// An invitation naming a user completes them under the owner lock,
+		// taken before the invitation's row lock (completePendingUser). The
+		// name is fixed when the invitation is made, so reading it unlocked
+		// first is safe; the locked read below judges the rest.
+		if peek, err := q.GetActiveInvitationByTokenHash(ctx, store.GetActiveInvitationByTokenHashParams{TokenHash: tokenHash, Now: now}); err == nil && peek.UserID != nil {
+			if err := lockOwners(ctx, q); err != nil {
+				return err
+			}
+		} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
 		inv, err := q.LockInvitationByTokenHash(ctx, tokenHash)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return invitationInvalid
@@ -287,9 +303,13 @@ func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.Post
 		if err != nil {
 			return err
 		}
-		now := s.deps.Clock()
 		if inv.RevokedAt != nil || inv.AcceptedAt != nil || !inv.ExpiresAt.After(now) {
 			return invitationInvalid
+		}
+		if inv.UserID != nil {
+			// Never the invitation's role, never the first Owner's bootstrap.
+			user, enrolled, session, err = s.completePendingUser(ctx, tx, q, r, inv, password, now)
+			return err
 		}
 		// The first Owner of an installation is its administrator however
 		// they were created: /setup and an accepted invitation grant the same
@@ -374,9 +394,72 @@ func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.Post
 			User:                  &user,
 			RequiresTwoFactor:     false,
 			TwoFactorEnabled:      false,
-			MfaEnrollmentRequired: s.mfaEnrollmentRequired(user.Roles, false), // a new account has no TOTP
+			MfaEnrollmentRequired: s.mfaEnrollmentRequired(user.Roles, enrolled),
 		},
 	}, nil
+}
+
+// completePendingUser accepts inv, an invitation naming a pending user
+// (staff foundation design S25; staff accounts plan, pre-flight I7), in
+// acceptance's transaction, under the owner lock, the invitation's lock and
+// then the user's FOR UPDATE, in that order. It assigns no role: not the
+// invitation's, and never the first Owner's bootstrap. The user must exist and be the invitation's address, managed
+// by Staff, pending, not disabled, and hold no password, passkey or OIDC
+// link; anything else is acceptance's uniform 400 invitation_invalid and
+// writes nothing. The password must pass the policy (400
+// identity_validation_failed, as for a new account); the user's own address
+// is not a duplicate. The user gets the password, a confirmed email and the
+// pending mark cleared, and keeps their display name (the request's is
+// ignored) and their roles. The invitation is marked accepted,
+// invitation.accepted-completing-user is audited, and a session starts. It
+// returns the user as acceptance answers them, whether they have TOTP, and
+// the session's token.
+func (s *server) completePendingUser(ctx context.Context, tx pgx.Tx, q *store.Queries, r *http.Request, inv store.IdentityInvitation, password string, now time.Time) (gen.AuthUserResponse, bool, string, error) {
+	u, err := q.LockInvitedUser(ctx, *inv.UserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.AuthUserResponse{}, false, "", invitationInvalid
+	}
+	if err != nil {
+		return gen.AuthUserResponse{}, false, "", err
+	}
+	if u.NormalizedEmail != inv.NormalizedEmail || deref(u.ManagedBy) != staffModule || u.PendingSince == nil ||
+		u.IsDisabled || u.PasswordHash != nil || u.HasPasskey || u.HasOidcLink {
+		return gen.AuthUserResponse{}, false, "", invitationInvalid
+	}
+	if err := s.checkPasswordPolicy(password); err != nil {
+		return gen.AuthUserResponse{}, false, "", err
+	}
+	before, err := captureUser(ctx, q, u.ID)
+	if err != nil {
+		return gen.AuthUserResponse{}, false, "", err
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return gen.AuthUserResponse{}, false, "", err
+	}
+	if err := q.CompletePendingUser(ctx, store.CompletePendingUserParams{ID: u.ID, PasswordHash: &hash, Version: uuid.New(), Now: now}); err != nil {
+		return gen.AuthUserResponse{}, false, "", err
+	}
+	if err := q.MarkInvitationAccepted(ctx, store.MarkInvitationAcceptedParams{ID: inv.ID, Now: now}); err != nil {
+		return gen.AuthUserResponse{}, false, "", err
+	}
+	after, err := captureUser(ctx, q, u.ID)
+	if err != nil {
+		return gen.AuthUserResponse{}, false, "", err
+	}
+	if err := writeAudit(ctx, q, r, now, auditEvent{
+		targetUser: &u.ID,
+		action:     "invitation.accepted-completing-user",
+		before:     invitationAcceptedAudit{InvitationID: inv.ID, Roles: before.Roles},
+		after:      after,
+	}); err != nil {
+		return gen.AuthUserResponse{}, false, "", err
+	}
+	session, err := s.access.createSession(ctx, tx, u.ID, false, false, r)
+	if err != nil {
+		return gen.AuthUserResponse{}, false, "", err
+	}
+	return authUser(u.ID, u.DisplayName, u.Email, orderRoles(after.Roles)), u.TotpEnabled, session, nil
 }
 
 // checkNewAccount refuses an invited account ASP.NET's CreateAsync would
@@ -384,8 +467,8 @@ func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.Post
 // email some account already has (the same checks and codes bootstrap
 // makes). It returns nil for an account it may create.
 func (s *server) checkNewAccount(ctx context.Context, q *store.Queries, email, password string) error {
-	if problems := validatePassword(password, s.deps.Config.IsDevelopment()); problems != nil {
-		return refuse(http.StatusBadRequest, "identity_validation_failed", invitationNotCreatedMessage, problems)
+	if err := s.checkPasswordPolicy(password); err != nil {
+		return err
 	}
 	if !emailAddressValid(email) {
 		return refuse(http.StatusBadRequest, "identity_validation_failed", invitationNotCreatedMessage,
@@ -400,6 +483,15 @@ func (s *server) checkNewAccount(ctx context.Context, q *store.Queries, email, p
 			"DuplicateUserName": {fmt.Sprintf("Username '%s' is already taken.", email)},
 			"DuplicateEmail":    {fmt.Sprintf("Email '%s' is already taken.", email)},
 		})
+	}
+	return nil
+}
+
+// checkPasswordPolicy refuses an invitee's password the policy fails, as
+// ASP.NET's CreateAsync would.
+func (s *server) checkPasswordPolicy(password string) error {
+	if problems := validatePassword(password, s.deps.Config.IsDevelopment()); problems != nil {
+		return refuse(http.StatusBadRequest, "identity_validation_failed", invitationNotCreatedMessage, problems)
 	}
 	return nil
 }
@@ -434,6 +526,8 @@ func invitationResponse(inv store.IdentityInvitation) gen.InvitationResponse {
 		ExpiresAt:   inv.ExpiresAt,
 		RevokedAt:   inv.RevokedAt,
 		AcceptedAt:  inv.AcceptedAt,
+		// Only a revoked invitation says why; the column has no other value.
+		RevokedReason: (*gen.InvitationResponseRevokedReason)(inv.RevokedReason),
 	}
 }
 

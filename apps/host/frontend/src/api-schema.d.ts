@@ -1477,6 +1477,11 @@ export interface components {
             id: string;
             /** Format: date-time */
             revokedAt: string | null;
+            /**
+             * @description Why a revoked invitation was revoked — owner (an Owner revoked it), replaced (a newer invitation or an account for the address replaced it), delivery_failed (its mail could not be sent), email_changed (the address of the user it named changed), deactivated (Staff's provisioning deactivated the user it named); absent while the invitation is not revoked.
+             * @enum {string}
+             */
+            revokedReason?: "owner" | "replaced" | "delivery_failed" | "email_changed" | "deactivated";
             role: string;
         };
         LoginRequest: {

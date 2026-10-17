@@ -34,6 +34,20 @@ invalid or expired** means the link has expired, was revoked, or has already bee
 used; ask the person who invited you to send it again. An address that already has
 an account cannot be invited.
 
+### When your account was set up from the staff register
+
+When your workplace registers you in Staff, your account may already exist before you
+are invited: HR has set it up with your name, and the invitation only lets you choose
+how to sign in. The link opens the same **Join Vantigo** page; choose a **Password**
+and **Create account**, and you are signed in to the account that was made for you,
+with the roles it was given. Your name stays the one HR registered, whatever you type
+under **Display name**; change it later under
+[your profile](#edit-your-profile).
+
+Such an invitation works only while the account is still waiting for you. If the
+account has been disabled or completed in the meantime, the page says **This
+invitation is invalid or expired**; ask HR or the workspace's Owner.
+
 An administrator can also create your account with a password they choose and give
 it to you directly. In that case, change the password under
 [Security](#change-your-password) the first time you sign in.

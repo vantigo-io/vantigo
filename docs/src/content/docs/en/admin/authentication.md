@@ -146,6 +146,32 @@ What an Owner may still do with a Staff-managed user:
 Users disabled before this version are recorded as disabled by an Owner, since only an
 Owner could disable one.
 
+### A pending user accepts their invitation
+
+The invitation Staff's provisioning sends a pending user names that user
+(`identity.invitations.user_id`). Accepting it completes the existing account instead
+of creating one: under the owner lock, then the invitation's row lock, then the user's,
+the user must still be the invitation's address, managed by Staff, pending, not
+disabled (by an Owner or by Staff), and hold no password, passkey or OIDC link. The
+password must meet the policy; the user then has it, a confirmed email and no pending
+mark, keeps their display name (the one typed on the page is ignored) and the roles they
+hold — an invitation naming a user grants no role and never makes the first Owner. The
+audit records `invitation.accepted-completing-user`, and the user is signed in. Anything
+else answers the same 400 `invitation_invalid` as an unknown or expired token, and
+nothing is written. A resend keeps the user the invitation names.
+
+An Owner cannot invite a pending user's address by hand: the account exists, so the
+invite answers 409 `account_exists`. A pending user's invitation is Staff's to send; an
+Owner may resend one already sent.
+
+### The audit's system actor
+
+A change Staff's provisioning makes in identity is audited like an Owner's, in
+`identity.authorization_audit_events`, but its actor is a system, not a user:
+`actor_user_id` is empty, the `details` read
+`{"action":"…","actor":"system:staff-accounts"}`, and there is no correlation id, since
+no request made the change. Every other row's `details` are `{"action":"…"}` as before.
+
 ### Adopt an existing user for Staff
 
 Adoption brings a user who already exists — a colleague with an account before Staff's
@@ -230,6 +256,10 @@ Every revoked invitation records why (`identity.invitations.revoked_reason`):
 | `replaced` | A new invitation to the same address (an invite or a resend), an account created for the address, or a corrected `BOOTSTRAP_OWNER_EMAIL` |
 | `delivery_failed` | The invitation's mail could not be sent |
 | `email_changed` | An Owner changed a user's email to, or from, the invitation's address |
+
+The Owner's invitation list (`GET /api/v1/identity/owner/invitations`, and the revoke
+and resend answers) shows the reason as `revokedReason` on each revoked invitation, and
+leaves it out on one that is not revoked.
 
 ## MFA
 
