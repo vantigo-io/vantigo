@@ -1,14 +1,17 @@
 package identity_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 )
@@ -178,6 +181,8 @@ func TestStaffManaged_AdoptionRefusals(t *testing.T) {
 		{"another module", plain, map[string]string{"module": "entra", "employeeNumber": "P-1"}, http.StatusBadRequest, "invalid_request"},
 		{"no number", plain, map[string]string{"module": "staff", "employeeNumber": "  "}, http.StatusBadRequest, "invalid_request"},
 		{"a number too long", plain, map[string]string{"module": "staff", "employeeNumber": strings.Repeat("9", 17)}, http.StatusBadRequest, "invalid_request"},
+		{"a control character", plain, map[string]string{"module": "staff", "employeeNumber": "E\x007"}, http.StatusBadRequest, "invalid_request"},
+		{"a tab inside", plain, map[string]string{"module": "staff", "employeeNumber": "E\t7"}, http.StatusBadRequest, "invalid_request"},
 		{"no body", plain, nil, http.StatusBadRequest, "invalid_request"},
 		{"the caller", ownerID, map[string]string{"module": "staff", "employeeNumber": "S-1"}, http.StatusBadRequest, "invalid_request"},
 	} {
@@ -301,6 +306,15 @@ func TestStaffManaged_DeleteRefusesAManagedUser(t *testing.T) {
 	if n := len(h.auditEvents(t, "user.deleted")); n != 0 {
 		t.Errorf("user.deleted rows = %d, want 0", n)
 	}
+	// A managed user SCIM also provisioned is refused for being managed,
+	// the refusal an Owner can act on, not provenance_conflict.
+	scim := h.insertUser(t, "managed-scim@example.test", identity.RoleUserID)
+	h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+	          VALUES ($1, $2, $3, $3, true, 1, 'etag', $4, $4)`, uuid.New(), scim, scim.String(), h.now())
+	mustManage(t, owner, scim, "D-2")
+	if r := owner.do(http.MethodDelete, userPath(scim, ""), nil); r.status != http.StatusConflict || r.code() != "account_managed" {
+		t.Errorf("delete a managed SCIM user: status %d code %q, want 409 account_managed", r.status, r.code())
+	}
 	if r := owner.do(http.MethodPost, userPath(id, "/unmanage"), nil); r.status != http.StatusOK {
 		t.Fatalf("unmanage: status %d body %s", r.status, r.body)
 	}
@@ -344,12 +358,32 @@ func TestStaffManaged_DisableAndEnableRecordWhoDisabled(t *testing.T) {
 	if n := len(h.auditEvents(t, "user.disabled")); n != before+1 {
 		t.Errorf("user.disabled rows = %d, want %d", n, before+1)
 	}
+	// The override of Staff's disable is audited on its own row; the
+	// Owner's plain disable and enable above wrote none.
+	changed := h.auditEvents(t, "user.disabled-by-changed")
+	if len(changed) != 1 || *changed[0].TargetUser != id || changed[0].Before != `{"disabledBy":"staff"}` || changed[0].After != `{"disabledBy":"owner"}` {
+		t.Errorf("user.disabled-by-changed = %+v, want one row staff → owner", changed)
+	}
 	// Disabling it again changes nothing.
 	if r := owner.do(http.MethodPost, userPath(id, "/disable"), nil); r.status != http.StatusOK {
 		t.Fatalf("disable again: status %d body %s", r.status, r.body)
 	}
 	if n := len(h.auditEvents(t, "user.disabled")); n != before+1 {
 		t.Errorf("user.disabled rows after a second disable = %d, want %d", n, before+1)
+	}
+
+	// The Owner's enable of a user Staff disabled overrides Staff's disable:
+	// user.enabled as before, and the override on its own row.
+	h.exec(t, `UPDATE identity.users SET disabled_by = 'staff' WHERE id = $1`, id)
+	if r := owner.do(http.MethodPost, userPath(id, "/enable"), nil); r.status != http.StatusOK {
+		t.Fatalf("enable a Staff-disabled user: status %d body %s", r.status, r.body)
+	}
+	changed = h.auditEvents(t, "user.disabled-by-changed")
+	if len(changed) != 2 || changed[1].Before != `{"disabledBy":"staff"}` || changed[1].After != `{"disabledBy":null}` {
+		t.Errorf("user.disabled-by-changed = %+v, want a second row staff → null", changed)
+	}
+	if got := staffColumns(t, h, id); got != "-:-:false:-" {
+		t.Errorf("columns after the Owner's enable over Staff's disable = %s", got)
 	}
 }
 
@@ -668,5 +702,104 @@ func TestProvisioningRoles_RefuseAdministrativePermissionsAndListKeys(t *testing
 	}
 	if n := len(h.auditEvents(t, "provisioning-roles.replaced")); n != 1 {
 		t.Errorf("provisioning-roles.replaced rows = %d, want 1", n)
+	}
+}
+
+// A SystemAdmin who is not an Owner, and a delegate who manages
+// authorization, are refused the four operations: they are an Owner's.
+func TestStaffManaged_SystemAdminsAndDelegatesAreRefused(t *testing.T) {
+	t.Parallel()
+	h, owner, _ := rbacHarness(t)
+	target := h.insertUser(t, "target@example.test", identity.RoleUserID)
+	admin := h.signIn(t, h.insertUser(t, "admin-only@example.test", identity.RoleSystemAdminID), true)
+	const delegateEmail = "delegate@example.test"
+	delegateID := h.createUser(t, owner, delegateEmail, identity.RoleUser)
+	delegate(t, h, owner, delegateID, nil)
+	delegated := h.login(t, delegateEmail, userPassword)
+
+	for _, op := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodPost, userPath(target, "/manage"), map[string]string{"module": "staff", "employeeNumber": "E-1"}},
+		{http.MethodPost, userPath(target, "/unmanage"), nil},
+		{http.MethodGet, provisioningRolesPath, nil},
+		{http.MethodPut, provisioningRolesPath, map[string]any{"roleIds": []uuid.UUID{}}},
+	} {
+		for name, c := range map[string]*client{"a SystemAdmin": admin, "a delegate": delegated} {
+			if r := c.do(op.method, op.path, op.body); r.status != http.StatusForbidden || r.code() != "forbidden" {
+				t.Errorf("%s %s %s: status %d code %q, want 403", name, op.method, op.path, r.status, r.code())
+			}
+		}
+	}
+	if got := staffColumns(t, h, target); got != "-:-:false:-" {
+		t.Errorf("the target after the refusals = %s", got)
+	}
+}
+
+// Two Owners adopting two users with one employee number, cased
+// differently, at once: both wait on the owner lock a raw connection holds
+// (shown parked by pg_blocking_pids); released, one adoption wins and the
+// other is refused employee_number_taken — never a deadlock, never a bare
+// conflict.
+func TestStaffManaged_ConcurrentAdoptionsOfOneNumber(t *testing.T) {
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	other := h.signIn(t, h.createUser(t, owner, "second-owner@example.test", identity.RoleOwner), true)
+	first := h.createUser(t, owner, "first@example.test", identity.RoleUser)
+	second := h.createUser(t, owner, "second@example.test", identity.RoleUser)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	holder, err := pgx.Connect(ctx, h.cfg.DatabaseURL)
+	if err != nil {
+		t.Fatalf("connect the lock holder: %v", err)
+	}
+	defer func() { _ = holder.Close(context.Background()) }()
+	tx, err := holder.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, int64(0x56414e54)); err != nil {
+		t.Fatalf("take the owner lock: %v", err)
+	}
+	var holderPID int
+	if err := tx.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&holderPID); err != nil {
+		t.Fatalf("holder pid: %v", err)
+	}
+
+	results := make(chan *resp, 2)
+	go func() { results <- manage(owner, first, "R-1") }()
+	go func() { results <- manage(other, second, "r-1") }()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if n := h.count(t, `SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid))`, holderPID); n == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the two adoptions never both waited on the owner lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("release the owner lock: %v", err)
+	}
+
+	codes := []string{}
+	for range 2 {
+		r := <-results
+		switch r.status {
+		case http.StatusOK:
+			codes = append(codes, "200")
+		default:
+			codes = append(codes, r.code())
+		}
+	}
+	slices.Sort(codes)
+	if !slices.Equal(codes, []string{"200", "employee_number_taken"}) {
+		t.Errorf("the two adoptions answered %v, want one 200 and one employee_number_taken", codes)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE upper(employee_number) = 'R-1'`); n != 1 {
+		t.Errorf("users holding R-1 = %d, want 1", n)
 	}
 }

@@ -501,7 +501,8 @@ func (s *server) PostIdentityOwnerUsersByIdEnable(ctx context.Context, req gen.P
 // serializable transaction under the owner lock. A disable records
 // disabled_by = owner, also over a user Staff disabled (audited
 // user.disabled, the sessions already ended), so Staff never re-enables
-// them; an enable clears it. Enabling a pending user is 409
+// them; an enable clears it. Overriding Staff's disable either way is also
+// audited user.disabled-by-changed. Enabling a pending user is 409
 // account_pending: the account becomes usable only by accepting its
 // invitation.
 func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled bool) (gen.OwnerUserResponse, error) {
@@ -570,6 +571,17 @@ func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled boo
 				actor: &p.UserID, targetUser: &id, action: action, before: before, after: after, mfa: p.MFAVerified,
 			}); err != nil {
 				return err
+			}
+			// An Owner overriding Staff's disable — disabling over it, or
+			// enabling — is recorded on a row of its own, so user.disabled
+			// and user.enabled keep .NET's shape.
+			if target.DisabledBy != nil && *target.DisabledBy == disabledByStaffValue {
+				if err := writeAudit(ctx, q, r, now, auditEvent{
+					actor: &p.UserID, targetUser: &id, action: "user.disabled-by-changed",
+					before: disabledByAudit{DisabledBy: target.DisabledBy}, after: disabledByAudit{DisabledBy: by}, mfa: p.MFAVerified,
+				}); err != nil {
+					return err
+				}
 			}
 		}
 		out, err = s.managedUser(ctx, q, id, now)
