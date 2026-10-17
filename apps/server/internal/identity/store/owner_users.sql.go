@@ -64,13 +64,14 @@ func (q *Queries) GetUserAuthorizationSnapshot(ctx context.Context, id uuid.UUID
 }
 
 const getUserIDByEmployeeNumber = `-- name: GetUserIDByEmployeeNumber :one
-SELECT id FROM identity.users WHERE upper(employee_number) = upper($1::text)
+SELECT id FROM identity.users WHERE employee_number_key = $1::text
 `
 
-// GetUserIDByEmployeeNumber is the user holding an employee number, compared
-// as ux_users_employee_number compares it: however it is cased.
-func (q *Queries) GetUserIDByEmployeeNumber(ctx context.Context, employeeNumber string) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getUserIDByEmployeeNumber, employeeNumber)
+// GetUserIDByEmployeeNumber is the user holding an employee number, by its
+// key (contracts.NormalizeEmployeeNumber), as ux_users_employee_number
+// compares it.
+func (q *Queries) GetUserIDByEmployeeNumber(ctx context.Context, employeeNumberKey string) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getUserIDByEmployeeNumber, employeeNumberKey)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -276,25 +277,28 @@ func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams
 const setUserStaffManaged = `-- name: SetUserStaffManaged :exec
 UPDATE identity.users
 SET managed_by = $1, employee_number = $2,
-    version = $3, updated_at = $4::timestamptz
-WHERE id = $5
+    employee_number_key = $3,
+    version = $4, updated_at = $5::timestamptz
+WHERE id = $6
 `
 
 type SetUserStaffManagedParams struct {
-	ManagedBy      *string
-	EmployeeNumber *string
-	Version        uuid.UUID
-	Now            time.Time
-	ID             uuid.UUID
+	ManagedBy         *string
+	EmployeeNumber    *string
+	EmployeeNumberKey *string
+	Version           uuid.UUID
+	Now               time.Time
+	ID                uuid.UUID
 }
 
 // SetUserStaffManaged is an Owner's adoption of a user for Staff (managed_by
-// 'staff' and the employee number) or its end (both null). pending_since is
+// 'staff', the employee number and its key) or its end (all null). pending_since is
 // left as it is: a pending user an Owner unmanages is the Owner's to finish.
 func (q *Queries) SetUserStaffManaged(ctx context.Context, arg SetUserStaffManagedParams) error {
 	_, err := q.db.Exec(ctx, setUserStaffManaged,
 		arg.ManagedBy,
 		arg.EmployeeNumber,
+		arg.EmployeeNumberKey,
 		arg.Version,
 		arg.Now,
 		arg.ID,

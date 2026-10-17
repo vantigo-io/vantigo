@@ -31,6 +31,7 @@ var identityAccountsColumns = []string{
 	"system_settings.authority_mode_at:timestamp with time zone::YES:",
 	"users.disabled_by:character varying:10:YES:",
 	"users.employee_number:character varying:16:YES:",
+	"users.employee_number_key:text::YES:",
 	"users.managed_by:character varying:20:YES:",
 	"users.pending_since:timestamp with time zone::YES:",
 }
@@ -42,7 +43,7 @@ const identityAccountsColumnsQuery = `
 	FROM information_schema.columns
 	WHERE table_schema = 'identity' AND (table_name = 'provisioning_roles'
 	   OR (table_name, column_name) IN (
-	       ('users', 'managed_by'), ('users', 'employee_number'), ('users', 'pending_since'), ('users', 'disabled_by'),
+	       ('users', 'managed_by'), ('users', 'employee_number'), ('users', 'employee_number_key'), ('users', 'pending_since'), ('users', 'disabled_by'),
 	       ('invitations', 'user_id'), ('invitations', 'revoked_reason'),
 	       ('system_settings', 'authority_mode'), ('system_settings', 'authority_mode_at')))
 	ORDER BY 1`
@@ -50,8 +51,10 @@ const identityAccountsColumnsQuery = `
 // TestIdentityAccounts_AppliesBackfillsAndIsIdempotent proves
 // 00050_identity_accounts.sql applies over an installation with users and
 // invitations, rolls back and re-applies cleanly, and pins what delivery C's
-// identity rests on: every column it adds; the employee number unique however
-// it is cased, and only where set; the invitations' user index; the values
+// identity rests on: every column it adds; the employee number unique by its
+// key — written by identity's one Go normaliser, never by a collation's
+// upper() — and only where set, the key present exactly with the number; the
+// invitations' user index; the values
 // the four enumerated columns admit (identity's baseline style: a CHECK per
 // column); provisioning_roles cascading with its role; and the backfills —
 // a user disabled before 00050 was disabled by an Owner (only an Owner could
@@ -125,7 +128,7 @@ func TestIdentityAccounts_AppliesBackfillsAndIsIdempotent(t *testing.T) {
 	wantIndexes := []string{
 		"CREATE INDEX ix_invitations_user ON identity.invitations USING btree (user_id) WHERE (user_id IS NOT NULL)",
 		"CREATE UNIQUE INDEX provisioning_roles_pkey ON identity.provisioning_roles USING btree (role_id)",
-		"CREATE UNIQUE INDEX ux_users_employee_number ON identity.users USING btree (upper((employee_number)::text)) WHERE (employee_number IS NOT NULL)",
+		"CREATE UNIQUE INDEX ux_users_employee_number ON identity.users USING btree (employee_number_key) WHERE (employee_number_key IS NOT NULL)",
 	}
 	if !equalStrings(indexes, wantIndexes) {
 		t.Errorf("indexes =\n%s\nwant\n%s", strings.Join(indexes, "\n"), strings.Join(wantIndexes, "\n"))
@@ -141,32 +144,49 @@ func TestIdentityAccounts_AppliesBackfillsAndIsIdempotent(t *testing.T) {
 	checks := staffCollect(t, ctx, pool, "checks", `
 		SELECT conname || ':' || pg_get_constraintdef(oid) FROM pg_constraint
 		WHERE connamespace = 'identity'::regnamespace AND contype = 'c'
-		  AND conname IN ('users_managed_by_check', 'users_disabled_by_check', 'invitations_revoked_reason_check', 'system_settings_authority_mode_check')
+		  AND conname IN ('users_managed_by_check', 'users_disabled_by_check', 'users_employee_number_key_check', 'invitations_revoked_reason_check', 'system_settings_authority_mode_check')
 		ORDER BY 1`)
 	wantChecks := []string{
 		"invitations_revoked_reason_check:CHECK (((revoked_reason)::text = ANY ((ARRAY['owner'::character varying, 'replaced'::character varying, 'delivery_failed'::character varying, 'email_changed'::character varying, 'deactivated'::character varying])::text[])))",
 		"system_settings_authority_mode_check:CHECK (((authority_mode)::text = ANY ((ARRAY['local'::character varying, 'federated'::character varying])::text[])))",
 		"users_disabled_by_check:CHECK (((disabled_by)::text = ANY ((ARRAY['owner'::character varying, 'staff'::character varying])::text[])))",
+		"users_employee_number_key_check:CHECK (((employee_number IS NULL) = (employee_number_key IS NULL)))",
 		"users_managed_by_check:CHECK (((managed_by)::text = 'staff'::text))",
 	}
 	if !equalStrings(checks, wantChecks) {
 		t.Errorf("checks =\n%s\nwant\n%s", strings.Join(checks, "\n"), strings.Join(wantChecks, "\n"))
 	}
 
-	// The employee number is unique however it is cased, and only where set.
-	number := func(id uuid.UUID, n *string) error {
-		_, err := pool.Exec(ctx, `UPDATE identity.users SET managed_by = 'staff', employee_number = $2 WHERE id = $1`, id, n)
+	// The employee number is unique by its key, the key exactly where the
+	// number is, and the key is what identity's normaliser wrote: the database
+	// never folds it (two numbers with keys that differ only as a collation's
+	// upper() would fold them are both admitted).
+	number := func(id uuid.UUID, n, key *string) error {
+		_, err := pool.Exec(ctx, `UPDATE identity.users SET managed_by = 'staff', employee_number = $2, employee_number_key = $3 WHERE id = $1`, id, n, key)
 		return err
 	}
-	lower, upper := "a-17", "A-17"
-	if err := number(enabled, &lower); err != nil {
+	lower, upper, key := "a-17", "A-17", "A-17"
+	if err := number(enabled, &lower, &key); err != nil {
 		t.Fatalf("number a user: %v", err)
 	}
-	if err := number(disabled, &upper); !uniqueViolationOf(err, "ux_users_employee_number") {
-		t.Errorf("a second user numbered %q: %v, want the unique index to refuse it", upper, err)
+	if err := number(disabled, &upper, &key); !uniqueViolationOf(err, "ux_users_employee_number") {
+		t.Errorf("a second user keyed %q: %v, want the unique index to refuse it", key, err)
 	}
-	if err := number(disabled, nil); err != nil {
+	capitalSharp, sharp := "ẞ-17", "ß-17"
+	if err := number(enabled, &capitalSharp, &capitalSharp); err != nil {
+		t.Fatalf("renumber the first user: %v", err)
+	}
+	if err := number(disabled, &sharp, &sharp); err != nil {
+		t.Errorf("a second user keyed %q beside %q: %v, want it written (only the normaliser folds)", sharp, capitalSharp, err)
+	}
+	if err := number(disabled, nil, nil); err != nil {
 		t.Errorf("a second user with no number: %v, want it written", err)
+	}
+	if err := number(disabled, &upper, nil); !checkViolationOf(err, "users_employee_number_key_check") {
+		t.Errorf("a number without its key: %v, want the check to refuse it", err)
+	}
+	if err := number(disabled, nil, &key); !checkViolationOf(err, "users_employee_number_key_check") {
+		t.Errorf("a key without its number: %v, want the check to refuse it", err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE identity.users SET managed_by = 'entra' WHERE id = $1`, enabled); !checkViolationOf(err, "users_managed_by_check") {
 		t.Errorf("managed_by = 'entra': %v, want the check to refuse it", err)

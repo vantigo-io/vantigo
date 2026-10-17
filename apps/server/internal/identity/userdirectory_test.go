@@ -266,7 +266,7 @@ func newHoldersFixture(t *testing.T, opts ...harnessOption) *holdersFixture {
 
 	h.exec(t, `UPDATE identity.users SET is_disabled = true, disabled_by = 'owner' WHERE id = $1`, add("x-disabled", approver))
 	// Activated by Staff, so enabled, but the invitation not yet accepted.
-	h.exec(t, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'E-1', pending_since = $2 WHERE id = $1`,
+	h.exec(t, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'E-1', employee_number_key = 'E-1', pending_since = $2 WHERE id = $1`,
 		add("x-pending", approver), h.now())
 	h.exec(t, `UPDATE identity.users SET lockout_end = $2 WHERE id = $1`, add("e-locked-out", approver), h.now().Add(time.Hour))
 

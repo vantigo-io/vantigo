@@ -79,17 +79,19 @@ WHERE id = @id;
 
 -- name: SetUserStaffManaged :exec
 -- SetUserStaffManaged is an Owner's adoption of a user for Staff (managed_by
--- 'staff' and the employee number) or its end (both null). pending_since is
+-- 'staff', the employee number and its key) or its end (all null). pending_since is
 -- left as it is: a pending user an Owner unmanages is the Owner's to finish.
 UPDATE identity.users
 SET managed_by = sqlc.narg(managed_by), employee_number = sqlc.narg(employee_number),
+    employee_number_key = sqlc.narg(employee_number_key),
     version = @version, updated_at = @now::timestamptz
 WHERE id = @id;
 
 -- name: GetUserIDByEmployeeNumber :one
--- GetUserIDByEmployeeNumber is the user holding an employee number, compared
--- as ux_users_employee_number compares it: however it is cased.
-SELECT id FROM identity.users WHERE upper(employee_number) = upper(@employee_number::text);
+-- GetUserIDByEmployeeNumber is the user holding an employee number, by its
+-- key (contracts.NormalizeEmployeeNumber), as ux_users_employee_number
+-- compares it.
+SELECT id FROM identity.users WHERE employee_number_key = @employee_number_key::text;
 
 -- name: DeleteUser :exec
 -- DeleteUser removes the user and, by cascade, their roles, sessions,
