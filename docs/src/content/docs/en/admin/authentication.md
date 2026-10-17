@@ -190,6 +190,25 @@ A change Staff's provisioning makes in identity is audited like an Owner's, in
 `{"action":"…","actor":"system:staff-accounts"}`, and there is no correlation id, since
 no request made the change. Every other row's `details` are `{"action":"…"}` as before.
 
+### The authority mode
+
+Staff's provisioning acts in one of two modes. **Local**: identity holds the
+credentials, so it creates the users Staff asks for, enables them and invites them to
+choose a password. **Federated**: an identity provider owns the accounts — workforce
+OIDC (`OIDC_*`) or SCIM (`SCIM_TOKEN`) is configured — so it only finds a user by
+employee number, re-enables a user Staff disabled and disables; it never creates or
+invites.
+
+The mode is derived from the configuration of the process serving the API and recorded
+when identity starts there (`identity.system_settings.authority_mode`, with
+`authority_mode_at`). A worker-only process reads the recorded mode instead of trusting
+its own settings: when its own `OIDC_*` and `SCIM_TOKEN` derive another, provisioning
+refuses to act at all until the two agree (see
+[Installation](/en/admin/installation/#background-workers-and-scaling)). Turning OIDC
+or SCIM on or off therefore changes the mode at the API's next start; the change is
+audited `authority-mode.changed` with the modes before and after, no actor and no
+correlation id. Starting with the same mode changes nothing.
+
 ### Adopt an existing user for Staff
 
 Adoption brings a user who already exists — a colleague with an account before Staff's

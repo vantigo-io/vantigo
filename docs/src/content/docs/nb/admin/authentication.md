@@ -205,6 +205,25 @@ En endring kontoklargjøringen i Ansatte gjør i identitetsmodulen, logges som e
 ingen forespørsel gjorde endringen. Alle andre raders `details` er `{"action":"…"}` som
 før.
 
+### Autoritetsmodusen
+
+Ansattes klargjøring arbeider i én av to moduser. **Lokal**: identitetsmodulen har
+innloggingsmetodene, så den oppretter brukerne Ansatte ber om, aktiverer dem og
+inviterer dem til å velge et passord. **Føderert**: en identitetsleverandør eier
+kontoene — OIDC for arbeidsstyrken (`OIDC_*`) eller SCIM (`SCIM_TOKEN`) er
+konfigurert — så den bare finner en bruker etter ansattnummer, aktiverer igjen en bruker
+Ansatte deaktiverte og deaktiverer; den oppretter og inviterer aldri.
+
+Modusen utledes av konfigurasjonen til prosessen som serverer API-et, og registreres når
+identitetsmodulen starter der (`identity.system_settings.authority_mode`, med
+`authority_mode_at`). En prosess som bare kjører bakgrunnsjobber, leser den registrerte
+modusen i stedet for å stole på sine egne innstillinger: når dens egne `OIDC_*` og
+`SCIM_TOKEN` gir en annen, nekter klargjøringen å gjøre noe til de to stemmer overens
+(se [Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)). Å slå OIDC
+eller SCIM av eller på endrer derfor modusen ved API-ets neste oppstart; endringen
+revisjonslogges `authority-mode.changed` med modusene før og etter, uten aktør og uten
+korrelasjons-ID. En oppstart med samme modus endrer ingenting.
+
 ### Ta en eksisterende bruker inn under Ansatte
 
 Å ta inn en bruker legger en bruker som allerede finnes — en kollega som hadde konto før

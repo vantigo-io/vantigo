@@ -284,7 +284,12 @@ HTTP replica does not multiply the pollers:
 3. Give the worker container the same `SCIM_TOKEN` and `OIDC_*` settings as the API.
    Who holds a permission (a directory's deactivation counts only while SCIM is
    configured) and the accounts mode (local or federated) both follow them, so a
-   worker without them would judge differently from the API.
+   worker without them would judge differently from the API. The API records the mode
+   it derives when it starts (see
+   [the authority mode](/en/admin/authentication/#the-authority-mode)); a worker whose
+   own settings derive another does no account provisioning at all — Staff's accounts
+   wait, reported as a mode mismatch — until its settings match the API's and it is
+   restarted.
 
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
