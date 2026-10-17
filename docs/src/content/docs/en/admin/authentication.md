@@ -128,8 +128,10 @@ not `active` until they do), and, only when set, `managedBy` (`staff`),
 What an Owner may still do with a Staff-managed user:
 
 - **Edit, reset the password or MFA, and enable** the user as any other — except that
-  a **pending** user cannot be enabled: the enable answers 409 `account_pending`, since
-  the account becomes usable only by accepting its invitation.
+  a **pending** user can neither be enabled nor given a password: both answer 409
+  `account_pending`, since the account becomes usable only by accepting its invitation.
+  Should a pending user hold a credential all the same, password, passkey and OIDC
+  sign-in refuse them as they refuse a disabled account.
 - **Disable** the user. An Owner's disable is recorded as the Owner's
   (`disabledBy: owner`), also over a user Staff had disabled, and Staff never
   re-enables a user an Owner disabled. Enabling clears it. Overriding Staff's disable —

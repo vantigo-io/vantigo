@@ -27,8 +27,9 @@ WHERE id = $1;
 -- with normalized_email: its credential, TOTP and lockout state, its roles,
 -- and whether it is "effectively disabled" beyond is_disabled: while SCIM
 -- is configured, a non-Owner the directory deactivated
--- (SV/ScimLifecycleService.cs:21-44).
-SELECT u.id, u.email, u.display_name, u.password_hash, u.is_disabled, u.lockout_end, u.totp_enabled,
+-- (SV/ScimLifecycleService.cs:21-44). A pending user reads as disabled: their
+-- only way in is accepting their invitation.
+SELECT u.id, u.email, u.display_name, u.password_hash, (u.is_disabled OR u.pending_since IS NOT NULL)::boolean AS is_disabled, u.lockout_end, u.totp_enabled,
        r.role_names,
        (@scim_enabled::boolean AND m.upstream_active IS FALSE AND NOT r.is_owner)::boolean AS scim_inactive
 FROM identity.users u

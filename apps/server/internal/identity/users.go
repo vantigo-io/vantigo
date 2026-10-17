@@ -703,7 +703,8 @@ func isDelegationCreatorViolation(err error) bool {
 // PostIdentityOwnerUsersByIdPassword sets another user's password for an
 // Owner (EA/AuthAccountEndpoints.cs:711-747): 400 invalid_request for a
 // missing or oversized password, the self check, 404 for an unknown user,
-// 400 identity_validation_failed for the policy. The new password ends
+// 409 account_pending for a pending user (their way in is their
+// invitation), 400 identity_validation_failed for the policy. The new password ends
 // every session of the user and spends every password-reset token they
 // hold, in one transaction.
 func (s *server) PostIdentityOwnerUsersByIdPassword(ctx context.Context, req gen.PostIdentityOwnerUsersByIdPasswordRequestObject) (gen.PostIdentityOwnerUsersByIdPasswordResponseObject, error) {
@@ -723,8 +724,12 @@ func (s *server) PostIdentityOwnerUsersByIdPassword(ctx context.Context, req gen
 	if err := rejectSelf(p.UserID, req.Id); err != nil {
 		return refusalOr[gen.PostIdentityOwnerUsersByIdPasswordResponseObject](err)
 	}
-	if _, err := managedTarget(ctx, s.q, req.Id); err != nil {
+	target, err := managedTarget(ctx, s.q, req.Id)
+	if err != nil {
 		return refusalOr[gen.PostIdentityOwnerUsersByIdPasswordResponseObject](err)
+	}
+	if isPending(target) {
+		return accountPending, nil
 	}
 	if problems := validatePassword(password, s.deps.Config.IsDevelopment()); problems != nil {
 		return refuse(http.StatusBadRequest, "identity_validation_failed", userPasswordNotChangedMessage, problems), nil

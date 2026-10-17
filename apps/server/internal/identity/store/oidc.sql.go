@@ -13,7 +13,7 @@ import (
 )
 
 const getOidcLinkedUser = `-- name: GetOidcLinkedUser :one
-SELECT u.id, u.is_disabled, u.lockout_end, u.totp_enabled
+SELECT u.id, (u.is_disabled OR u.pending_since IS NOT NULL)::boolean AS is_disabled, u.lockout_end, u.totp_enabled
 FROM identity.oidc_links l
 JOIN identity.users u ON u.id = l.user_id
 WHERE l.issuer = $1 AND l.subject = $2
@@ -35,7 +35,8 @@ type GetOidcLinkedUserRow struct {
 // (EA/WorkforceOidcEndpoints.cs:85): the local account a federated identity
 // is linked to, keyed on the normalized issuer and the case-sensitive
 // subject, with what completion decides on: whether the account is
-// unavailable (disabled, or locked out) and whether TOTP is enrolled.
+// unavailable (disabled — a pending user reads as disabled —, or locked out)
+// and whether TOTP is enrolled.
 func (q *Queries) GetOidcLinkedUser(ctx context.Context, arg GetOidcLinkedUserParams) (GetOidcLinkedUserRow, error) {
 	row := q.db.QueryRow(ctx, getOidcLinkedUser, arg.Issuer, arg.Subject)
 	var i GetOidcLinkedUserRow

@@ -89,8 +89,8 @@ RETURNING user_id, session_data;
 -- name: GetPasskeyLoginCandidate :one
 -- GetPasskeyLoginCandidate is the account a passkey sign-in for
 -- normalized_email may be bound to. It always answers one row, whose
--- user_id is null unless the account exists, is neither disabled nor locked
--- out at now, holds a passkey, and (while SCIM is configured) is not a
+-- user_id is null unless the account exists, is neither disabled, pending
+-- nor locked out at now, holds a passkey, and (while SCIM is configured) is not a
 -- non-Owner the directory deactivated. Every email therefore takes the same
 -- path, one query, whether or not it names such an account.
 SELECT u.id AS user_id
@@ -98,6 +98,7 @@ FROM (SELECT 1) AS probe
 LEFT JOIN identity.users u
   ON u.normalized_email = @normalized_email
  AND NOT u.is_disabled
+ AND u.pending_since IS NULL
  AND (u.lockout_end IS NULL OR u.lockout_end <= @now::timestamptz)
  AND EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)
  AND NOT (
@@ -111,10 +112,10 @@ LEFT JOIN identity.users u
 -- name: LockPasskeyLoginUser :one
 -- LockPasskeyLoginUser reads what a passkey sign-in's completion decides on
 -- for the account its ceremony was begun for, as GetTwoFactorCandidate
--- reads it, and locks the account's row: completions for one account take
+-- reads it (a pending user as disabled), and locks the account's row: completions for one account take
 -- turns, so each checks and advances the signature counter the previous
 -- one stored, and a lockout written meanwhile is seen.
-SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled,
+SELECT u.id, u.email, u.display_name, (u.is_disabled OR u.pending_since IS NOT NULL)::boolean AS is_disabled, u.lockout_end, u.totp_enabled,
        r.role_names,
        (@scim_enabled::boolean AND m.upstream_active IS FALSE AND NOT r.is_owner)::boolean AS scim_inactive
 FROM identity.users u
