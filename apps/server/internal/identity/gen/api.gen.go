@@ -315,8 +315,10 @@ type InvitationAcceptanceRequest struct {
 type InvitationAcceptanceResponse struct {
 	Email     *string    `json:"email,omitempty"`
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
-	Role      *string    `json:"role,omitempty"`
-	Valid     bool       `json:"valid"`
+
+	// Role The role the account will have; absent for an invitation that completes an account which already exists, which keeps its own roles.
+	Role  *string `json:"role,omitempty"`
+	Valid bool    `json:"valid"`
 }
 
 // InvitationRequest defines model for InvitationRequest.

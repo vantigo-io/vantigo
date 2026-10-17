@@ -15,6 +15,7 @@ import (
 const completePendingUser = `-- name: CompletePendingUser :exec
 UPDATE identity.users
 SET password_hash = $1, email_confirmed = true, pending_since = NULL,
+    lockout_end = NULL, failed_login_count = 0,
     version = $2, updated_at = $3::timestamptz
 WHERE id = $4
 `
@@ -28,7 +29,8 @@ type CompletePendingUserParams struct {
 
 // CompletePendingUser gives a pending user the password they chose on
 // accepting their invitation: the email counts as confirmed, the pending
-// mark is cleared and the security stamp rotated.
+// mark is cleared, any lockout and failure count from before are cleared,
+// and the security stamp rotated.
 func (q *Queries) CompletePendingUser(ctx context.Context, arg CompletePendingUserParams) error {
 	_, err := q.db.Exec(ctx, completePendingUser,
 		arg.PasswordHash,
@@ -120,6 +122,54 @@ func (q *Queries) GetInvitation(ctx context.Context, id uuid.UUID) (IdentityInvi
 		&i.AcceptedAt,
 		&i.UserID,
 		&i.RevokedReason,
+	)
+	return i, err
+}
+
+const getInvitedUser = `-- name: GetInvitedUser :one
+SELECT u.id, u.email, u.normalized_email, u.display_name, u.password_hash, u.is_disabled,
+       u.totp_enabled, u.managed_by, u.pending_since,
+       EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
+       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
+       EXISTS (SELECT 1 FROM identity.user_roles ur JOIN identity.roles ro ON ro.id = ur.role_id
+               WHERE ur.user_id = u.id AND ro.name IN ('Owner', 'SystemAdmin'))::boolean AS privileged
+FROM identity.users u
+WHERE u.id = $1
+`
+
+type GetInvitedUserRow struct {
+	ID              uuid.UUID
+	Email           string
+	NormalizedEmail string
+	DisplayName     string
+	PasswordHash    *string
+	IsDisabled      bool
+	TotpEnabled     bool
+	ManagedBy       *string
+	PendingSince    *time.Time
+	HasPasskey      bool
+	HasOidcLink     bool
+	Privileged      bool
+}
+
+// GetInvitedUser is LockInvitedUser without the lock, for a resend and a
+// validation, which judge the same thing and change no user.
+func (q *Queries) GetInvitedUser(ctx context.Context, id uuid.UUID) (GetInvitedUserRow, error) {
+	row := q.db.QueryRow(ctx, getInvitedUser, id)
+	var i GetInvitedUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.NormalizedEmail,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.IsDisabled,
+		&i.TotpEnabled,
+		&i.ManagedBy,
+		&i.PendingSince,
+		&i.HasPasskey,
+		&i.HasOidcLink,
+		&i.Privileged,
 	)
 	return i, err
 }
@@ -254,7 +304,9 @@ const lockInvitedUser = `-- name: LockInvitedUser :one
 SELECT u.id, u.email, u.normalized_email, u.display_name, u.password_hash, u.is_disabled,
        u.totp_enabled, u.managed_by, u.pending_since,
        EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
-       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link
+       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
+       EXISTS (SELECT 1 FROM identity.user_roles ur JOIN identity.roles ro ON ro.id = ur.role_id
+               WHERE ur.user_id = u.id AND ro.name IN ('Owner', 'SystemAdmin'))::boolean AS privileged
 FROM identity.users u
 WHERE u.id = $1
 FOR UPDATE OF u
@@ -272,12 +324,14 @@ type LockInvitedUserRow struct {
 	PendingSince    *time.Time
 	HasPasskey      bool
 	HasOidcLink     bool
+	Privileged      bool
 }
 
 // LockInvitedUser reads the user a named invitation completes and holds
-// their row FOR UPDATE, taken after the invitation's lock, with whether they
-// hold a passkey or an OIDC link: acceptance completes only a pending user
-// without any credential.
+// their row FOR UPDATE, taken after the invitation's lock, with what
+// completion judges (canComplete): whether they hold a passkey or an OIDC
+// link, and whether they hold Owner or SystemAdmin. Its columns are
+// GetInvitedUser's, in the same order.
 func (q *Queries) LockInvitedUser(ctx context.Context, id uuid.UUID) (LockInvitedUserRow, error) {
 	row := q.db.QueryRow(ctx, lockInvitedUser, id)
 	var i LockInvitedUserRow
@@ -293,6 +347,7 @@ func (q *Queries) LockInvitedUser(ctx context.Context, id uuid.UUID) (LockInvite
 		&i.PendingSince,
 		&i.HasPasskey,
 		&i.HasOidcLink,
+		&i.Privileged,
 	)
 	return i, err
 }

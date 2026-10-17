@@ -79,22 +79,39 @@ WHERE role = 'Owner' AND normalized_email = @normalized_email AND accepted_at IS
 
 -- name: LockInvitedUser :one
 -- LockInvitedUser reads the user a named invitation completes and holds
--- their row FOR UPDATE, taken after the invitation's lock, with whether they
--- hold a passkey or an OIDC link: acceptance completes only a pending user
--- without any credential.
+-- their row FOR UPDATE, taken after the invitation's lock, with what
+-- completion judges (canComplete): whether they hold a passkey or an OIDC
+-- link, and whether they hold Owner or SystemAdmin. Its columns are
+-- GetInvitedUser's, in the same order.
 SELECT u.id, u.email, u.normalized_email, u.display_name, u.password_hash, u.is_disabled,
        u.totp_enabled, u.managed_by, u.pending_since,
        EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
-       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link
+       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
+       EXISTS (SELECT 1 FROM identity.user_roles ur JOIN identity.roles ro ON ro.id = ur.role_id
+               WHERE ur.user_id = u.id AND ro.name IN ('Owner', 'SystemAdmin'))::boolean AS privileged
 FROM identity.users u
 WHERE u.id = @id
 FOR UPDATE OF u;
 
+-- name: GetInvitedUser :one
+-- GetInvitedUser is LockInvitedUser without the lock, for a resend and a
+-- validation, which judge the same thing and change no user.
+SELECT u.id, u.email, u.normalized_email, u.display_name, u.password_hash, u.is_disabled,
+       u.totp_enabled, u.managed_by, u.pending_since,
+       EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
+       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
+       EXISTS (SELECT 1 FROM identity.user_roles ur JOIN identity.roles ro ON ro.id = ur.role_id
+               WHERE ur.user_id = u.id AND ro.name IN ('Owner', 'SystemAdmin'))::boolean AS privileged
+FROM identity.users u
+WHERE u.id = @id;
+
 -- name: CompletePendingUser :exec
 -- CompletePendingUser gives a pending user the password they chose on
 -- accepting their invitation: the email counts as confirmed, the pending
--- mark is cleared and the security stamp rotated.
+-- mark is cleared, any lockout and failure count from before are cleared,
+-- and the security stamp rotated.
 UPDATE identity.users
 SET password_hash = @password_hash, email_confirmed = true, pending_since = NULL,
+    lockout_end = NULL, failed_login_count = 0,
     version = @version, updated_at = @now::timestamptz
 WHERE id = @id;

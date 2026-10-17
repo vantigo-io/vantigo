@@ -45,8 +45,10 @@ under **Display name**; change it later under
 [your profile](#edit-your-profile).
 
 Such an invitation works only while the account is still waiting for you. If the
-account has been disabled or completed in the meantime, the page says **This
-invitation is invalid or expired**; ask HR or the workspace's Owner.
+account has been disabled, completed or changed in the meantime, the link opens on
+**This invitation is invalid or expired**, or, when that happens while the page is
+open, **Create account** answers **This invitation is invalid or no longer
+available**; ask HR or the workspace's Owner.
 
 An administrator can also create your account with a password they choose and give
 it to you directly. In that case, change the password under
