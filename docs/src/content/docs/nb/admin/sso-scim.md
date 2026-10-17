@@ -303,8 +303,11 @@ ansattnummer — en bruker identitetsleverandøren opprettet og en eier
 nummeret — aktiverer den igjen når Ansatte deaktiverte den (en ny ansettelse),
 deaktiverer den etter at ansettelsen er slutt, og holder språket og ansattnummeret i
 takt. Den endrer verken navnet eller adressen, og gir ingen rolle: de er leverandørens
-og eierens. En bruker en eier deaktiverte, forblir deaktivert, og en bruker katalogen
-har deaktivert, er katalogens å aktivere eller deaktivere. Til leverandøren har opprettet
+og eierens. En bruker en eier deaktiverte, forblir deaktivert. En som slutter,
+deaktiveres i identitetsmodulen også når katalogen allerede har deaktivert dem, så en
+senere aktivering i katalogen, eller SCIM slått av, slipper dem ikke inn igjen; en ny
+ansettelse aktiverer dem igjen i identitetsmodulen, og så lenge katalogen fortsatt
+melder dem inaktive, holder den dem ute. Til leverandøren har opprettet
 kontoen og en eier har tatt den inn, melder Ansatte personens konto som ikke funnet.
 
 En ventende bruker — en Ansatte opprettet i lokal modus, før OIDC eller SCIM ble slått

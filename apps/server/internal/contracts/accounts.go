@@ -37,8 +37,11 @@ const (
 const (
 	// DisabledByDirectory: SCIM is configured and the directory deactivated
 	// the user, who is not an Owner — identity's record may still say enabled,
-	// but no session of theirs is accepted. A provider neither enables nor
-	// disables such a user for Staff: the directory decides.
+	// but no session of theirs is accepted. A provider still writes
+	// identity's record of such a user: Deactivate disables them for Staff
+	// (a leaver loses access whatever the directory later says), and Activate
+	// re-enables a user Staff disabled, whom the directory keeps out while it
+	// reports them inactive.
 	DisabledByDirectory = "directory"
 	// DisabledByOwner: an Owner disabled the user. A provider never undoes
 	// it (ErrBlockedByOwner).
@@ -210,7 +213,8 @@ var (
 	ErrUserGone = errors.New("contracts: the user no longer exists")
 	// ErrModeMismatch: this process derives another authority mode than the
 	// one identity's API process recorded (their OIDC or SCIM settings
-	// differ), so a provider acts on neither.
+	// differ), so a provider prepares, activates and updates nothing — it
+	// still deactivates, so a leaver never keeps access over it.
 	ErrModeMismatch = errors.New("contracts: this process's authority mode differs from the recorded one")
 	// ErrLastOwner: deactivating the user would leave no active Owner.
 	ErrLastOwner = errors.New("contracts: the account is the last active Owner")
@@ -250,7 +254,8 @@ var (
 type AccountProvisioning interface {
 	// Mode answers AccountModeLocal or AccountModeFederated — the mode
 	// identity's API process recorded — or ErrModeMismatch when this
-	// process's own configuration derives another.
+	// process's own configuration derives another; every write but
+	// Deactivate then answers ErrModeMismatch too.
 	Mode(ctx context.Context) (string, error)
 	// Prepare finds the managed user holding spec.EmployeeNumber or, in local
 	// mode only, creates one: Staff-managed, disabled by Staff, pending, with
@@ -268,9 +273,11 @@ type AccountProvisioning interface {
 	// ErrEmployeeRoleUnsafe, ErrUserGone.
 	Activate(ctx context.Context, actor Actor, userID uuid.UUID, opts ActivateOpts) (AccountRef, error)
 	// Deactivate disables a managed user (DisabledByStaff unless already
-	// disabled), ends their sessions and revokes their acceptable
-	// invitations. ErrAccountNotManaged, ErrAccountPrivileged, ErrLastOwner,
-	// ErrUserGone.
+	// disabled), whatever a directory says, ends their sessions and revokes
+	// their acceptable invitations. It reads no authority mode, so it never
+	// answers ErrModeMismatch: a leaver is disabled even by a process whose
+	// configuration disagrees. ErrAccountNotManaged, ErrAccountPrivileged,
+	// ErrLastOwner, ErrUserGone.
 	Deactivate(ctx context.Context, actor Actor, userID uuid.UUID) (AccountRef, error)
 	// Update writes the display name, language and employee number of a
 	// managed user, and the email only while the user is pending; in

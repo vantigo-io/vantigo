@@ -297,8 +297,11 @@ Owner [adopted](/en/admin/authentication/#adopt-an-existing-user-for-staff) with
 number — re-enables that user when Staff disabled them (a rehire), disables them after
 the employment ends, and keeps their language and employee number in step. It changes
 neither their name nor their address, and gives no role: those are the provider's and
-the Owner's. A user an Owner disabled stays disabled, and a user the directory
-deactivated is the directory's to enable or disable. Until the provider has created the
+the Owner's. A user an Owner disabled stays disabled. A leaver is disabled in identity
+even when the directory already deactivated them, so a later reactivation in the
+directory, or SCIM turned off, does not let them back in; a rehire re-enables them in
+identity, and while the directory still reports them inactive it keeps them out. Until
+the provider has created the
 account and an Owner has adopted it, Staff reports the person's account as not found.
 
 A pending user — one Staff created in local mode, before OIDC or SCIM was turned on,

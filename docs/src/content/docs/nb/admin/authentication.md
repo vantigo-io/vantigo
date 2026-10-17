@@ -219,8 +219,9 @@ Modusen utledes av konfigurasjonen til prosessen som serverer API-et, og registr
 identitetsmodulen starter der (`identity.system_settings.authority_mode`, med
 `authority_mode_at`). En prosess som bare kjører bakgrunnsjobber, leser den registrerte
 modusen i stedet for å stole på sine egne innstillinger: når dens egne `OIDC_*` og
-`SCIM_TOKEN` gir en annen, nekter klargjøringen å gjøre noe til de to stemmer overens
-(se [Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)). Å slå OIDC
+`SCIM_TOKEN` gir en annen, klargjør, aktiverer og oppdaterer klargjøringen ingenting
+til de to stemmer overens — den deaktiverer fortsatt, så en som slutter, aldri beholder
+tilgangen på grunn av en feilkonfigurert worker (se [Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)). Å slå OIDC
 eller SCIM av eller på endrer derfor modusen ved API-ets neste oppstart; endringen
 revisjonslogges `authority-mode.changed` med modusene før og etter, uten aktør og uten
 korrelasjons-ID. En oppstart med samme modus endrer ingenting.
@@ -231,15 +232,15 @@ Ansatte når identitetsmodulens brukere bare gjennom identitetsmodulens klargjø
 kjører hver endring i en egen transaksjon — under eierlåsen, deretter brukerens
 invitasjoner, deretter brukeren — revisjonslogger den med aktøren (personen som trykket
 på en knapp i Ansatte, eller `system:staff-accounts`), og sender e-post først når
-endringen er lagret. Den avviser alt uten en gyldig aktør, og gjør ingenting så lenge
+endringen er lagret. Den avviser alt uten en gyldig aktør, og så lenge
 [autoritetsmodusen](#autoritetsmodusen) prosessen utleder, er en annen enn den
-registrerte.
+registrerte, gjør den ingenting annet enn å deaktivere.
 
 | Steg | Lokal modus | Føderert modus | Revisjonslogg |
 | --- | --- | --- | --- |
 | Klargjør | Finner brukeren Ansatte styrer med ansattnummeret, ellers oppretter den en: styrt av Ansatte, ventende, deaktivert av Ansatte, med den innebygde rollen `User`, uten innloggingsmetode og med ubekreftet adresse. En eiers invitasjon til adressen trekkes tilbake `replaced`. | Finner brukeren Ansatte styrer med nummeret; oppretter ingenting | `user.staff-prepared` |
 | Aktiver | Gir en ventende bruker, eller en Ansatte har deaktivert, [ansattrollene](#ansattrollene) og aktiverer dem; inviterer en ventende bruker uten innloggingsmetode ved navn | Aktiverer igjen en bruker Ansatte deaktiverte; gir ingen rolle og sender ingen invitasjon | `user.staff-activated` |
-| Deaktiver | Deaktiverer brukeren som Ansattes (`disabledBy: staff`), avslutter øktene og tilbakestillingslenkene, og trekker tilbake de åpne invitasjonene `deactivated` | Det samme | `user.staff-deactivated` |
+| Deaktiver | Deaktiverer brukeren som Ansattes (`disabledBy: staff`) — også en katalogen allerede har deaktivert — avslutter øktene og tilbakestillingslenkene, og trekker tilbake de åpne invitasjonene `deactivated` | Det samme | `user.staff-deactivated` |
 | Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter, og da trekkes invitasjonene tilbake `email_changed` | Skriver bare språket og ansattnummeret | `user.staff-updated` |
 
 En aktivert ventende bruker er aktivert, men kan fortsatt ikke logge inn: innlogging med
@@ -256,9 +257,14 @@ starter en ny runde. En e-post som ikke kan sendes, trekker invitasjonen tilbake
 `delivery_failed` og teller ikke; neste aktivering prøver igjen.
 
 Ansattes klargjøring rører aldri en eier eller en SystemAdmin, aktiverer aldri igjen en
-bruker en eier deaktiverte, deaktiverer aldri den siste aktive eieren, og overlater en
-bruker katalogen har deaktivert (mens SCIM er konfigurert) til katalogen. Dette avviser
-den:
+bruker en eier deaktiverte, og deaktiverer aldri den siste aktive eieren. En som slutter,
+mister tilgangen uansett hva katalogen sier: Ansatte deaktiverer dem i
+identitetsmodulen også når katalogen allerede melder dem inaktive (SCIM deaktiverer
+aldri en bruker i identitetsmodulen, og deaktiveringen der teller bare mens SCIM er
+konfigurert), så en katalog som aktiverer dem igjen senere, eller SCIM slått av, slipper
+dem ikke inn. En ny ansettelse aktiverer igjen det Ansatte deaktiverte; så lenge
+katalogen fortsatt melder personen inaktiv, holder den dem ute, og Ansatte melder
+kontoen som deaktivert av katalogen. Dette avviser den:
 
 | Avvisning | Betydning | Hva du gjør |
 | --- | --- | --- |
@@ -270,7 +276,7 @@ den:
 | Adressen er tatt | En annen bruker har personens adresse | Gi personen en annen adresse i Ansatte, eller rydd i den andre kontoen |
 | Ansattnummeret er tatt | En bruker Ansatte ikke styrer, har nummeret | Ta inn den brukeren, eller rett nummeret i Ansatte |
 | Ikke funnet | Føderert modus: ingen bruker Ansatte styrer, har nummeret ennå | La identitetsleverandøren opprette kontoen, og ta den inn |
-| Ulik modus | Denne prosessens `OIDC_*`/`SCIM_TOKEN` gir en annen modus enn API-et registrerte | Gi workeren API-ets innstillinger ([Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)) |
+| Ulik modus | Denne prosessens `OIDC_*`/`SCIM_TOKEN` gir en annen modus enn API-et registrerte (avvist for hvert steg unntatt deaktivering) | Gi workeren API-ets innstillinger ([Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)) |
 
 ### Ta en eksisterende bruker inn under Ansatte
 
