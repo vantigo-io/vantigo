@@ -616,9 +616,9 @@ func (s *server) PutIdentityAccessRolesByIdPermissions(ctx context.Context, req 
 // updateRole is .NET's UpdateRole (EA/AMS:198-279), in its order: 400
 // invalid_role; then, in one transaction under the role's lock, 404 for an unknown role, 409 system_role for a built-in one, 409
 // role_conflict unless the stamp is the role's version, 403
-// role_group_protected_permission, 403 role_provisioning_protected for a
-// role in the set Staff may give that is to get a key the set refuses, the
-// caller's authority, and 409
+// role_group_protected_permission, the caller's authority, 403
+// role_provisioning_protected for a role in the set Staff may give that is to
+// get a key the set refuses, and 409
 // role_exists for a normalized name another role has. The role then gets
 // its new metadata, version and permission set, and role.updated is
 // audited. Holders' sessions are untouched: .NET rotated no user's
@@ -669,10 +669,12 @@ func (s *server) updateRole(ctx context.Context, id uuid.UUID, name, displayName
 		if err := s.guardGroupMappedRole(ctx, q, id, newName, slices.Concat(current, requested)); err != nil {
 			return err
 		}
-		if err := s.guardProvisioningRole(ctx, q, id, requested); err != nil {
+		if err := s.authorizeRoleEdit(ctx, q, p, delegations, id, slices.Concat(current, requested), now); err != nil {
 			return err
 		}
-		if err := s.authorizeRoleEdit(ctx, q, p, delegations, id, slices.Concat(current, requested), now); err != nil {
+		// After the authority check, so a caller without it learns nothing
+		// of the set.
+		if err := s.guardProvisioningRole(ctx, q, id, requested); err != nil {
 			return err
 		}
 		taken, err := q.RoleNameTaken(ctx, store.RoleNameTakenParams{NormalizedName: normalizeRoleName(newName), ID: id})

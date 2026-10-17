@@ -967,3 +967,87 @@ func TestProvisioningRoles_TheReplacementTakesEachRolesLock(t *testing.T) {
 		t.Fatalf("put: status %d body %s", r.status, r.body)
 	}
 }
+
+// A replacement waiting behind a role edit that adds a denied key judges
+// the role as the edit left it: a raw connection, holding the role's lock,
+// bumps the role's version and gives it staff:manage without committing;
+// the PUT naming the role waits (pg_blocking_pids); once the edit commits
+// the PUT is refused 400 role_not_assignable naming staff:manage, and the
+// role is not in the set.
+func TestProvisioningRoles_AReplacementBehindAnEditThatAddsADeniedKey(t *testing.T) {
+	h := newHarness(t, withPermissions(customersView, staffManagePermission))
+	owner, _ := h.bootstrapOwner(t)
+	role := createRole(t, owner, "Widened Employee", customersView.Key)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	holder, err := pgx.Connect(ctx, h.cfg.DatabaseURL)
+	if err != nil {
+		t.Fatalf("connect the editor: %v", err)
+	}
+	defer func() { _ = holder.Close(context.Background()) }()
+	tx, err := holder.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	for _, stmt := range []struct {
+		sql  string
+		args []any
+	}{
+		{`SELECT pg_advisory_xact_lock($1)`, []any{identity.RoleMutationLockKey(role.ID)}},
+		{`UPDATE identity.roles SET version = gen_random_uuid() WHERE id = $1`, []any{role.ID}},
+		{`INSERT INTO identity.role_permissions (role_id, permission_key) VALUES ($1, 'staff:manage')`, []any{role.ID}},
+	} {
+		if _, err := tx.Exec(ctx, stmt.sql, stmt.args...); err != nil {
+			t.Fatalf("%s: %v", stmt.sql, err)
+		}
+	}
+	var holderPID int
+	if err := tx.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&holderPID); err != nil {
+		t.Fatalf("editor pid: %v", err)
+	}
+	result := make(chan *resp, 1)
+	go func() { result <- putProvisioningRoles(owner, role.ID) }()
+	deadline := time.Now().Add(15 * time.Second)
+	for h.count(t, `SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid))`, holderPID) != 1 {
+		if time.Now().After(deadline) {
+			_ = tx.Rollback(ctx)
+			t.Fatal("the replacement never waited on the edit")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit the edit: %v", err)
+	}
+	r := <-result
+	if e := errorOf(t, r); r.status != http.StatusBadRequest || e.Code != "role_not_assignable" || !strings.Contains(e.Message, "staff:manage") {
+		t.Errorf("the replacement: status %d body %s, want 400 role_not_assignable naming staff:manage", r.status, r.body)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.provisioning_roles WHERE role_id = $1`, role.ID); n != 0 {
+		t.Errorf("the widened role entered the set")
+	}
+}
+
+// A caller without authority over a role learns nothing of the set from an
+// edit: a delegate who does not steward a role in the set, adding
+// staff:manage to it, is refused for their authority (role_edit_denied),
+// not role_provisioning_protected.
+func TestProvisioningRoles_AnEditOutsideTheCallersAuthorityIsRefusedForThatFirst(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, withPermissions(customersView, staffManagePermission))
+	owner, _ := h.bootstrapOwner(t)
+	inSet := createRole(t, owner, "Unstewarded Employee", customersView.Key)
+	stewarded := createRole(t, owner, "Stewarded", customersView.Key)
+	if r := putProvisioningRoles(owner, inSet.ID); r.status != http.StatusOK {
+		t.Fatalf("put: status %d body %s", r.status, r.body)
+	}
+	const delegateEmail = "outsider@example.test"
+	delegateID := h.createUser(t, owner, delegateEmail, identity.RoleUser)
+	delegate(t, h, owner, delegateID, []uuid.UUID{stewarded.ID}, customersView.Key, staffManagePermission.Key)
+	outsider := h.login(t, delegateEmail, userPassword)
+
+	r := updateRole(outsider, inSet.ID, inSet.Name, inSet.Version, customersView.Key, staffManagePermission.Key)
+	if r.status != http.StatusForbidden || r.code() != "role_edit_denied" {
+		t.Errorf("the outsider's edit: status %d body %s, want 403 role_edit_denied", r.status, r.body)
+	}
+}

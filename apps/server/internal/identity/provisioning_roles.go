@@ -61,7 +61,9 @@ func (s *server) provisioningDeniedKeys() []string {
 // when the role is in the set Staff may give and keys hold one the set
 // refuses: 403 role_provisioning_protected. The caller holds the role's
 // lock, which PUT /owner/provisioning-roles also takes for each role it
-// names, so the set and the edit cannot pass each other.
+// names: an edit waits for a replacement naming its role to commit, and a
+// replacement behind an edit judges the role as the edit left it
+// (LockAssignableRoles).
 func (s *server) guardProvisioningRole(ctx context.Context, q *store.Queries, roleID uuid.UUID, keys []string) error {
 	inSet, err := q.IsProvisioningRole(ctx, roleID)
 	if err != nil || !inSet {
@@ -108,10 +110,13 @@ func (s *server) GetIdentityOwnerProvisioningRoles(ctx context.Context, _ gen.Ge
 // PutIdentityOwnerProvisioningRoles replaces the roles Staff may give with
 // roleIds, whole, for an Owner (400 invalid_request without roleIds). In one
 // serializable transaction each named role's lock is taken in ordinal order,
-// so no role edit passes the check below, then the roles FOR KEY SHARE, so
-// none is deleted before the set commits; any that is not a custom role is
-// 400 role_not_assignable and nothing changes, as is one carrying a
-// permission of provisioningDeniedKeys (the message naming it). A change is audited
+// so no role edit starts while the set is judged, then the roles FOR SHARE
+// (LockAssignableRoles): a role edit that committed while the replacement
+// waited on a role's lock makes it fail to serialize and retry, so the check
+// reads the role's keys as the edit left them, and no role is deleted or
+// edited before the set commits. Any that is not a custom role is 400
+// role_not_assignable and nothing changes, as is one carrying a permission
+// of provisioningDeniedKeys (the message naming it). A change is audited
 // provisioning-roles.replaced with the set before and after. 200 with the
 // set.
 func (s *server) PutIdentityOwnerProvisioningRoles(ctx context.Context, req gen.PutIdentityOwnerProvisioningRolesRequestObject) (gen.PutIdentityOwnerProvisioningRolesResponseObject, error) {
