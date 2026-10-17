@@ -165,6 +165,11 @@ Dette kan en eier fortsatt gjøre med en bruker som Ansatte styrer:
 Brukere som var deaktivert før denne versjonen, er registrert som deaktivert av en eier,
 siden bare en eier kunne deaktivere en bruker.
 
+En ventende brukers **invitasjonsrunde** begynner når Ansatte oppretter brukeren
+(`identity.users.invitations_since`): invitasjonene Ansattes klargjøring leverer til
+brukeren fra da av, teller mot de tre, og en ny invitasjon (Ansattes *Kjør nå*) eller en
+ny adresse mens brukeren venter, starter en ny runde.
+
 ### En ventende bruker godtar invitasjonen sin
 
 Invitasjonen kontoklargjøringen i Ansatte sender en ventende bruker, navngir den

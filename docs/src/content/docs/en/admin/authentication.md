@@ -153,6 +153,11 @@ What an Owner may still do with a Staff-managed user:
 Users disabled before this version are recorded as disabled by an Owner, since only an
 Owner could disable one.
 
+A pending user's **invitation spell** begins when Staff creates them
+(`identity.users.invitations_since`): the invitations Staff's provisioning delivers to
+them since then count toward its three, and a fresh invitation (Staff's *Run now*) or a
+new address while they are pending starts another spell.
+
 ### A pending user accepts their invitation
 
 The invitation Staff's provisioning sends a pending user names that user

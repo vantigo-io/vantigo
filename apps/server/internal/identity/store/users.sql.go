@@ -104,7 +104,7 @@ const getUserByID = `-- name: GetUserByID :one
 SELECT id, email, normalized_email, email_confirmed, display_name, preferred_language,
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
        totp_enabled, totp_last_step, version, created_at, updated_at,
-       managed_by, employee_number, employee_number_key, pending_since, disabled_by
+       managed_by, employee_number, employee_number_key, pending_since, invitations_since, disabled_by
 FROM identity.users
 WHERE id = $1
 `
@@ -133,6 +133,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (IdentityUser, 
 		&i.EmployeeNumber,
 		&i.EmployeeNumberKey,
 		&i.PendingSince,
+		&i.InvitationsSince,
 		&i.DisabledBy,
 	)
 	return i, err
@@ -142,7 +143,7 @@ const getUserByNormalizedEmail = `-- name: GetUserByNormalizedEmail :one
 SELECT id, email, normalized_email, email_confirmed, display_name, preferred_language,
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
        totp_enabled, totp_last_step, version, created_at, updated_at,
-       managed_by, employee_number, employee_number_key, pending_since, disabled_by
+       managed_by, employee_number, employee_number_key, pending_since, invitations_since, disabled_by
 FROM identity.users
 WHERE normalized_email = $1
 `
@@ -171,6 +172,7 @@ func (q *Queries) GetUserByNormalizedEmail(ctx context.Context, normalizedEmail 
 		&i.EmployeeNumber,
 		&i.EmployeeNumberKey,
 		&i.PendingSince,
+		&i.InvitationsSince,
 		&i.DisabledBy,
 	)
 	return i, err

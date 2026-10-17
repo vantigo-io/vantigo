@@ -32,6 +32,7 @@ var identityAccountsColumns = []string{
 	"users.disabled_by:character varying:10:YES:",
 	"users.employee_number:character varying:16:YES:",
 	"users.employee_number_key:text::YES:",
+	"users.invitations_since:timestamp with time zone::YES:",
 	"users.managed_by:character varying:20:YES:",
 	"users.pending_since:timestamp with time zone::YES:",
 }
@@ -43,7 +44,7 @@ const identityAccountsColumnsQuery = `
 	FROM information_schema.columns
 	WHERE table_schema = 'identity' AND (table_name = 'provisioning_roles'
 	   OR (table_name, column_name) IN (
-	       ('users', 'managed_by'), ('users', 'employee_number'), ('users', 'employee_number_key'), ('users', 'pending_since'), ('users', 'disabled_by'),
+	       ('users', 'managed_by'), ('users', 'employee_number'), ('users', 'employee_number_key'), ('users', 'pending_since'), ('users', 'invitations_since'), ('users', 'disabled_by'),
 	       ('invitations', 'user_id'), ('invitations', 'revoked_reason'),
 	       ('system_settings', 'authority_mode'), ('system_settings', 'authority_mode_at')))
 	ORDER BY 1`

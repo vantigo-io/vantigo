@@ -234,6 +234,7 @@ type IdentityUser struct {
 	EmployeeNumber    *string
 	EmployeeNumberKey *string
 	PendingSince      *time.Time
+	InvitationsSince  *time.Time
 	DisabledBy        *string
 }
 
