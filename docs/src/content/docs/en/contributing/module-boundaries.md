@@ -247,10 +247,13 @@ Communications' outbox is the working example.
     (`contracts.DisabledByDirectory`) while SCIM is configured. Each refusal is a
     sentinel error (`ErrAccountNotManaged`, `ErrAccountPrivileged`,
     `ErrBlockedByOwner`, `ErrAccountEmailTaken`, `ErrEmployeeNumberTaken`,
-    `ErrInvalidActor`, `ErrEmployeeRoleMissing`, `ErrAccountNotFound`, `ErrUserGone`,
-    `ErrModeMismatch`, `ErrLastOwner`); anything else is a failure to retry. The
-    provider is stateless — api mode with `WORKERS_IN_PROCESS` builds it twice, once
-    for Compose and once for Workers. With no provider `Deps.Accounts` is nil, which a
+    `ErrInvalidActor`, `ErrEmployeeRoleMissing`, `ErrEmployeeRoleUnsafe` (a role in
+    the set has come to carry an administrative key), `ErrAccountNotFound`,
+    `ErrUserGone`, `ErrModeMismatch`, `ErrLastOwner`); anything else is a failure to
+    retry. The provider is stateless — api mode with `WORKERS_IN_PROCESS` builds it
+    twice, once for Compose and once for Workers, and identity's tests pin that two
+    instances answer the same and that `module.Workers` hands a worker identity's own
+    provider. With no provider `Deps.Accounts` is nil, which a
     caller answers as "accounts are unavailable".
 
 ## How they are enforced

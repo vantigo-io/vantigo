@@ -566,7 +566,8 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 			if !errors.Is(err, pgx.ErrNoRows) {
 				return nil, fmt.Errorf("identity: OIDC link: %w", err)
 			}
-			if u.IsDisabled || isLockedOut(u.LockoutEnd, s.deps.Clock()) {
+			// A pending Staff user's only way in is their invitation.
+			if u.IsDisabled || isPending(u) || isLockedOut(u.LockoutEnd, s.deps.Clock()) {
 				return fail(oidcAccountLocked, "the email's account is unavailable")
 			}
 			return fail(oidcEmailConflict, "the email belongs to an account the identity is not linked to")

@@ -286,6 +286,29 @@ into a failed one. The endpoint never returns bearer tokens, client secrets or
 secret-reference names. Treat null timestamps as "no successful use has been recorded
 yet".
 
+## Staff in a federated installation
+
+With OIDC or SCIM configured, the [authority mode](/en/admin/authentication/#the-authority-mode)
+is federated: the identity provider owns the accounts, and Staff's account
+provisioning only links to them. It never creates a user and never sends an
+invitation. For each person whose account Staff manages, it finds the Staff-managed
+user holding the person's employee number — a user the identity provider created and an
+Owner [adopted](/en/admin/authentication/#adopt-an-existing-user-for-staff) with that
+number — re-enables that user when Staff disabled them (a rehire), disables them after
+the employment ends, and keeps their language and employee number in step. It changes
+neither their name nor their address, and gives no role: those are the provider's and
+the Owner's. A user an Owner disabled stays disabled, and a user the directory
+deactivated is the directory's to enable or disable. Until the provider has created the
+account and an Owner has adopted it, Staff reports the person's account as not found.
+
+A pending user — one Staff created in local mode, before OIDC or SCIM was turned on,
+who has not accepted their invitation — never becomes the identity provider's account
+by their address alone: OIDC's first sign-in with that address answers
+`account_locked` and links nothing, and SCIM's create of a User with that address is
+refused `DuplicateEmail`, with no second user. Let the pending user accept their
+invitation, or have an Owner unmanage and delete them, before the provider's account
+takes the address.
+
 ## Local break-glass Owner and MFA
 
 Keep at least one local Owner account as the break-glass path even when OIDC is

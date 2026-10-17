@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 )
@@ -47,9 +48,19 @@ var staffAdministrativeKeys = []string{"staff:approve", "staff:manage", "staff:p
 // (guardProvisioningRole); the provider's Activate re-checks at assignment
 // time.
 func (s *server) provisioningDeniedKeys() []string {
+	return provisioningDeniedKeys(s.deps.Catalog)
+}
+
+// provisioningDeniedKeys is the denied set over catalog: identity:manage
+// and Staff's administrative keys always, and every key catalog holds that
+// cannot be delegated. The provider, built before any module mounts, passes
+// the catalog identity's mount gave its Access, which a worker-only process
+// never mounts: there the set is the fixed keys alone, which today are every
+// non-delegable key there is.
+func provisioningDeniedKeys(catalog map[string]contracts.Permission) []string {
 	keys := append([]string{"identity:manage"}, staffAdministrativeKeys...)
-	for key := range s.deps.Catalog {
-		if s.protectedPermission(key) {
+	for key, p := range catalog {
+		if !p.Delegable {
 			keys = append(keys, key)
 		}
 	}

@@ -76,3 +76,22 @@ func recordAuthorityMode(ctx context.Context, d module.Deps) error {
 	}
 	return nil
 }
+
+// authorityMode is the mode the provider acts in, read on q: the recorded
+// mode, or contracts.ErrModeMismatch when cfg derives another; cfg's own
+// derivation while none is recorded yet. Nothing is cached: every call reads
+// the row.
+func authorityMode(ctx context.Context, q *store.Queries, cfg *config.Config) (string, error) {
+	derived := deriveAuthorityMode(cfg)
+	recorded, err := q.GetAuthorityMode(ctx)
+	if err != nil {
+		return "", fmt.Errorf("identity: read the authority mode: %w", err)
+	}
+	if recorded == nil {
+		return derived, nil
+	}
+	if *recorded != derived {
+		return "", contracts.ErrModeMismatch
+	}
+	return *recorded, nil
+}
