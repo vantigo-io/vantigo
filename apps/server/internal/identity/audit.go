@@ -18,7 +18,8 @@ import (
 // before and after are marshalled to JSON as given, so a caller that ports
 // a .NET event keeps its property names and order in its own struct.
 type auditEvent struct {
-	actor      *uuid.UUID // nil for an anonymous change (bootstrap)
+	actor      *uuid.UUID // nil for an anonymous change (bootstrap) or a system's
+	system     string     // the system that made the change, such as "system:staff-accounts"; "" for none
 	targetUser *uuid.UUID
 	targetRole *uuid.UUID
 	action     string
@@ -30,11 +31,16 @@ type auditEvent struct {
 // writeAudit records e at now on q, which must be the caller's transaction:
 // the row commits or rolls back with the change it describes, so a failed
 // audit write undoes the change. details is {"action":…} and the
-// correlation id is r's trace id, as .NET wrote them.
+// correlation id is r's trace id, as .NET wrote them. A change no request
+// made (a system's, such as Staff's provisioning) passes a nil r and has no
+// correlation id; a system actor is written as details.actor after the
+// action, with no actor_user_id, and every other row's details stay
+// {"action":…} exactly.
 func writeAudit(ctx context.Context, q *store.Queries, r *http.Request, now time.Time, e auditEvent) error {
 	details, err := json.Marshal(struct {
 		Action string `json:"action"`
-	}{e.action})
+		Actor  string `json:"actor,omitempty"`
+	}{e.action, e.system})
 	if err != nil {
 		return fmt.Errorf("identity: audit %s: %w", e.action, err)
 	}
@@ -47,8 +53,10 @@ func writeAudit(ctx context.Context, q *store.Queries, r *http.Request, now time
 		return fmt.Errorf("identity: audit %s: %w", e.action, err)
 	}
 	var correlation *string
-	if id := httpx.TraceID(r); id != "" {
-		correlation = &id
+	if r != nil {
+		if id := httpx.TraceID(r); id != "" {
+			correlation = &id
+		}
 	}
 	beforeJSON, afterJSON := string(before), string(after)
 	if err := q.InsertAuditEvent(ctx, store.InsertAuditEventParams{

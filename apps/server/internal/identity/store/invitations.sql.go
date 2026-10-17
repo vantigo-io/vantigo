@@ -12,6 +12,33 @@ import (
 	"github.com/google/uuid"
 )
 
+const completePendingUser = `-- name: CompletePendingUser :exec
+UPDATE identity.users
+SET password_hash = $1, email_confirmed = true, pending_since = NULL,
+    version = $2, updated_at = $3::timestamptz
+WHERE id = $4
+`
+
+type CompletePendingUserParams struct {
+	PasswordHash *string
+	Version      uuid.UUID
+	Now          time.Time
+	ID           uuid.UUID
+}
+
+// CompletePendingUser gives a pending user the password they chose on
+// accepting their invitation: the email counts as confirmed, the pending
+// mark is cleared and the security stamp rotated.
+func (q *Queries) CompletePendingUser(ctx context.Context, arg CompletePendingUserParams) error {
+	_, err := q.db.Exec(ctx, completePendingUser,
+		arg.PasswordHash,
+		arg.Version,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
 const countPendingOwnerInvitationsForEmail = `-- name: CountPendingOwnerInvitationsForEmail :one
 SELECT count(*)::int
 FROM identity.invitations
@@ -99,10 +126,10 @@ func (q *Queries) GetInvitation(ctx context.Context, id uuid.UUID) (IdentityInvi
 
 const insertInvitation = `-- name: InsertInvitation :one
 INSERT INTO identity.invitations (
-    id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at
+    id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, user_id, created_at, expires_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7,
-    $8::timestamptz, $9::timestamptz
+    $1, $2, $3, $4, $5, $6, $7, $8::uuid,
+    $9::timestamptz, $10::timestamptz
 )
 RETURNING id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at, user_id, revoked_reason
 `
@@ -115,10 +142,13 @@ type InsertInvitationParams struct {
 	DisplayName     *string
 	TokenHash       []byte
 	InvitedByUserID *uuid.UUID
+	UserID          *uuid.UUID
 	CreatedAt       time.Time
 	ExpiresAt       time.Time
 }
 
+// InsertInvitation stores an invitation; user_id names the pending user it
+// completes, null for one that creates an account.
 func (q *Queries) InsertInvitation(ctx context.Context, arg InsertInvitationParams) (IdentityInvitation, error) {
 	row := q.db.QueryRow(ctx, insertInvitation,
 		arg.ID,
@@ -128,6 +158,7 @@ func (q *Queries) InsertInvitation(ctx context.Context, arg InsertInvitationPara
 		arg.DisplayName,
 		arg.TokenHash,
 		arg.InvitedByUserID,
+		arg.UserID,
 		arg.CreatedAt,
 		arg.ExpiresAt,
 	)
@@ -215,6 +246,53 @@ func (q *Queries) LockInvitationByTokenHash(ctx context.Context, tokenHash []byt
 		&i.AcceptedAt,
 		&i.UserID,
 		&i.RevokedReason,
+	)
+	return i, err
+}
+
+const lockInvitedUser = `-- name: LockInvitedUser :one
+SELECT u.id, u.email, u.normalized_email, u.display_name, u.password_hash, u.is_disabled,
+       u.totp_enabled, u.managed_by, u.pending_since,
+       EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
+       EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link
+FROM identity.users u
+WHERE u.id = $1
+FOR UPDATE OF u
+`
+
+type LockInvitedUserRow struct {
+	ID              uuid.UUID
+	Email           string
+	NormalizedEmail string
+	DisplayName     string
+	PasswordHash    *string
+	IsDisabled      bool
+	TotpEnabled     bool
+	ManagedBy       *string
+	PendingSince    *time.Time
+	HasPasskey      bool
+	HasOidcLink     bool
+}
+
+// LockInvitedUser reads the user a named invitation completes and holds
+// their row FOR UPDATE, taken after the invitation's lock, with whether they
+// hold a passkey or an OIDC link: acceptance completes only a pending user
+// without any credential.
+func (q *Queries) LockInvitedUser(ctx context.Context, id uuid.UUID) (LockInvitedUserRow, error) {
+	row := q.db.QueryRow(ctx, lockInvitedUser, id)
+	var i LockInvitedUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.NormalizedEmail,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.IsDisabled,
+		&i.TotpEnabled,
+		&i.ManagedBy,
+		&i.PendingSince,
+		&i.HasPasskey,
+		&i.HasOidcLink,
 	)
 	return i, err
 }

@@ -33,6 +33,20 @@ ugyldig eller utløpt** betyr at lenken er utløpt, tilbakekalt eller allerede b
 be den som inviterte deg om å sende den på nytt. En adresse som allerede har en
 konto, kan ikke inviteres.
 
+### Når kontoen din ble satt opp fra ansattregisteret
+
+Når arbeidsplassen registrerer deg i Ansatte, kan kontoen din finnes allerede før du
+blir invitert: HR har satt den opp med navnet ditt, og invitasjonen lar deg bare
+velge hvordan du logger inn. Lenken åpner den samme siden **Bli med i Vantigo**; velg
+et **Passord** og **Opprett konto**, så blir du logget inn på kontoen som ble laget
+til deg, med rollene den fikk. Navnet ditt forblir det HR registrerte, uansett hva du
+skriver under **Visningsnavn**; endre det senere under
+[profilen din](#rediger-profilen-din).
+
+En slik invitasjon virker bare mens kontoen fortsatt venter på deg. Er kontoen
+deaktivert eller fullført i mellomtiden, sier siden **Denne invitasjonen er ugyldig
+eller utløpt**; spør HR eller eieren av arbeidsområdet.
+
 En administrator kan også opprette kontoen din med et passord de velger selv og gi
 det til deg direkte. Bytt i så fall passord under [Sikkerhet](#bytt-passord) første
 gang du logger inn.
