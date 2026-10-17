@@ -27,6 +27,35 @@ func (q *Queries) CountPendingInvitations(ctx context.Context, now time.Time) (i
 	return column_1, err
 }
 
+const ensureSystemSettings = `-- name: EnsureSystemSettings :exec
+INSERT INTO identity.system_settings (id, maintenance_enabled, updated_at)
+VALUES (1, false, $1::timestamptz)
+ON CONFLICT (id) DO NOTHING
+`
+
+// EnsureSystemSettings creates the singleton row, maintenance off, when
+// there is none, so the authority mode has a row to be recorded on; an
+// existing row is left as it is.
+func (q *Queries) EnsureSystemSettings(ctx context.Context, now time.Time) error {
+	_, err := q.db.Exec(ctx, ensureSystemSettings, now)
+	return err
+}
+
+const getAuthorityMode = `-- name: GetAuthorityMode :one
+SELECT s.authority_mode
+FROM (VALUES (1)) AS one (x)
+LEFT JOIN identity.system_settings s ON s.id = 1
+`
+
+// GetAuthorityMode is the authority mode identity's API process recorded,
+// null when none has been (no row yet, or a row from before 00050).
+func (q *Queries) GetAuthorityMode(ctx context.Context) (*string, error) {
+	row := q.db.QueryRow(ctx, getAuthorityMode)
+	var authority_mode *string
+	err := row.Scan(&authority_mode)
+	return authority_mode, err
+}
+
 const getLastOperationalEvents = `-- name: GetLastOperationalEvents :one
 SELECT oidc.occurred_at AS last_oidc_sign_in_at, scim.occurred_at AS last_scim_request_at
 FROM (VALUES (1)) AS one (x)
@@ -122,6 +151,19 @@ func (q *Queries) GetSystemSettings(ctx context.Context) (GetSystemSettingsRow, 
 	return i, err
 }
 
+const lockAuthorityMode = `-- name: LockAuthorityMode :one
+SELECT authority_mode FROM identity.system_settings WHERE id = 1 FOR UPDATE
+`
+
+// LockAuthorityMode reads the recorded mode holding the singleton row, so
+// two API processes starting at once record and audit one change each.
+func (q *Queries) LockAuthorityMode(ctx context.Context) (*string, error) {
+	row := q.db.QueryRow(ctx, lockAuthorityMode)
+	var authority_mode *string
+	err := row.Scan(&authority_mode)
+	return authority_mode, err
+}
+
 const recordOperationalEvent = `-- name: RecordOperationalEvent :exec
 INSERT INTO identity.operational_events (kind, occurred_at)
 VALUES ($1, $2::timestamptz)
@@ -140,6 +182,22 @@ type RecordOperationalEventParams struct {
 // SV/ScimProtocolService.cs:574-581).
 func (q *Queries) RecordOperationalEvent(ctx context.Context, arg RecordOperationalEventParams) error {
 	_, err := q.db.Exec(ctx, recordOperationalEvent, arg.Kind, arg.Now)
+	return err
+}
+
+const setAuthorityMode = `-- name: SetAuthorityMode :exec
+UPDATE identity.system_settings
+SET authority_mode = $1::text, authority_mode_at = $2::timestamptz
+WHERE id = 1
+`
+
+type SetAuthorityModeParams struct {
+	AuthorityMode string
+	Now           time.Time
+}
+
+func (q *Queries) SetAuthorityMode(ctx context.Context, arg SetAuthorityModeParams) error {
+	_, err := q.db.Exec(ctx, setAuthorityMode, arg.AuthorityMode, arg.Now)
 	return err
 }
 

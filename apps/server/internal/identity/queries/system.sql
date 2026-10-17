@@ -70,3 +70,28 @@ LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id;
 SELECT count(*)::int
 FROM identity.invitations
 WHERE accepted_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz;
+
+-- name: GetAuthorityMode :one
+-- GetAuthorityMode is the authority mode identity's API process recorded,
+-- null when none has been (no row yet, or a row from before 00050).
+SELECT s.authority_mode
+FROM (VALUES (1)) AS one (x)
+LEFT JOIN identity.system_settings s ON s.id = 1;
+
+-- name: EnsureSystemSettings :exec
+-- EnsureSystemSettings creates the singleton row, maintenance off, when
+-- there is none, so the authority mode has a row to be recorded on; an
+-- existing row is left as it is.
+INSERT INTO identity.system_settings (id, maintenance_enabled, updated_at)
+VALUES (1, false, @now::timestamptz)
+ON CONFLICT (id) DO NOTHING;
+
+-- name: LockAuthorityMode :one
+-- LockAuthorityMode reads the recorded mode holding the singleton row, so
+-- two API processes starting at once record and audit one change each.
+SELECT authority_mode FROM identity.system_settings WHERE id = 1 FOR UPDATE;
+
+-- name: SetAuthorityMode :exec
+UPDATE identity.system_settings
+SET authority_mode = @authority_mode::text, authority_mode_at = @now::timestamptz
+WHERE id = 1;

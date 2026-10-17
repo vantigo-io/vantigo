@@ -7,6 +7,7 @@
 package identity
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -155,6 +156,13 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 	})
 	srv, err := newServer(a, d)
 	if err != nil {
+		return nil, err
+	}
+	// Only a process serving the API mounts identity, so the mode recorded
+	// is always an API process's (authority_mode.go).
+	ctx, cancel := context.WithTimeout(context.Background(), recordModeTimeout)
+	defer cancel()
+	if err := recordAuthorityMode(ctx, d); err != nil {
 		return nil, err
 	}
 	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{accessConflictFilter}, gen.StrictHTTPServerOptions{

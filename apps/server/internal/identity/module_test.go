@@ -152,3 +152,20 @@ func TestHarness_ParallelSubtestsShareOneHarness(t *testing.T) {
 		})
 	}
 }
+
+// The API process records its authority mode when identity mounts, so a
+// worker-only process can compare its own: the harness's installation, with
+// neither OIDC nor SCIM, is local; one with SCIM_TOKEN is federated.
+func TestModule_MountRecordsTheAuthorityMode(t *testing.T) {
+	t.Parallel()
+	for env, want := range map[string]string{"": "local", "identity-harness-scim-token": "federated"} {
+		var opts []harnessOption
+		if env != "" {
+			opts = append(opts, withEnv("SCIM_TOKEN", env))
+		}
+		h := newHarness(t, opts...)
+		if n := h.count(t, `SELECT count(*) FROM identity.system_settings WHERE authority_mode = $1 AND authority_mode_at = $2`, want, h.now()); n != 1 {
+			t.Errorf("SCIM_TOKEN %q: the mounted installation did not record %s at its clock", env, want)
+		}
+	}
+}

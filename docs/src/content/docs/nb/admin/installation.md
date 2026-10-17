@@ -286,7 +286,12 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 3. Gi worker-containeren de samme innstillingene for `SCIM_TOKEN` og `OIDC_*` som
    API-et. Hvem som har en tillatelse (en deaktivering i katalogen teller bare så lenge
    SCIM er konfigurert) og kontomodusen (lokal eller føderert) følger begge disse, så
-   en worker uten dem ville vurdere annerledes enn API-et.
+   en worker uten dem ville vurdere annerledes enn API-et. API-et registrerer modusen
+   det utleder når det starter (se
+   [autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen)); en worker der
+   egne innstillinger gir en annen modus, klargjør ingen kontoer i det hele tatt —
+   Ansattes kontoer venter, rapportert som ulik modus — til innstillingene stemmer med
+   API-ets og den er startet på nytt.
 
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
