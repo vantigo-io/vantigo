@@ -49,6 +49,8 @@ export const capabilitiesOf = (role: Role): StaffCapabilities => ({
   // staff:manage and staff:approve decide absence; no fixture role manages anyone by the terms.
   canDecide: manages(role) || role === "approve",
   managesAnyone: false,
+  // Running and disabling accounts is staff:manage's (delivery C).
+  canRunAccounts: manages(role),
 });
 
 /** Whether the role lists people and reads the structure: `staff:view`'s and `staff:manage`'s. */
@@ -265,6 +267,7 @@ export const settings = (overrides: Partial<StaffSettings> = {}): StaffSettings 
   selfCertDaysPerYear: 24,
   selfCertAfterMonths: 2,
   autoCarryOver: false,
+  createBeforeDays: 14,
   revision: 3,
   ...overrides,
 });

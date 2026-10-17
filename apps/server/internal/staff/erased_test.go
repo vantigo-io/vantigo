@@ -86,6 +86,9 @@ func TestErased_EveryWriteIsRefused(t *testing.T) {
 		{"PUT /people/{id}/bank-account", hr, func(c *modtest.Client) *modtest.Response {
 			return c.Do(http.MethodPut, bankAccountPath(id), map[string]any{"kind": "bban", "value": "12345678903"})
 		}},
+		{"PUT /people/{id}/account", hr, func(c *modtest.Client) *modtest.Response {
+			return c.Do(http.MethodPut, accountPath(id), map[string]any{"provisionAccount": true}, ifMatch(r.person.Revision))
+		}},
 		{"PUT /people/{id}/user (a link)", hr, func(c *modtest.Client) *modtest.Response {
 			return c.Do(http.MethodPut, userPath(id), map[string]any{"userId": other})
 		}},

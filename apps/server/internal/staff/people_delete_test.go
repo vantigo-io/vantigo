@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -120,4 +123,38 @@ func TestDeletePerson_CascadesAndRecordsTheEmployeeNumberOnly(t *testing.T) {
 	if r := hr.Do(http.MethodGet, personPath(p.Id), nil); r.Status != http.StatusNotFound {
 		t.Errorf("GET after delete: %d, want 404", r.Status)
 	}
+}
+
+// The accounts worker's preparing link names no user (plan reading 9): it
+// does not keep a person created in error, and the delete takes it along —
+// but not while the worker holds it, when identity may be creating the user
+// it is for: accounts_busy, and nothing deleted (pre-flight I4). A link
+// naming a user is still person_in_use.
+func TestDeletePerson_APreparingLinkGoesWithThePerson(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+
+	free := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	preparingLink(t, h, free.Id)
+	do(t, hr, http.MethodDelete, personPath(free.Id), nil, http.StatusNoContent, nil)
+	if n := h.Count(t, `SELECT count(*) FROM staff.identity_links WHERE person_id = $1`, free.Id); n != 0 {
+		t.Errorf("the preparing link outlived its person: %d", n)
+	}
+
+	leased := createPerson(t, hr, newPerson("Ola", "Hansen"))
+	preparingLink(t, h, leased.Id)
+	h.Exec(t, `UPDATE staff.identity_links SET lease_id = gen_random_uuid(), lease_until = $2 WHERE person_id = $1`,
+		leased.Id, h.Now().Add(5*time.Minute))
+	refused(t, hr.Do(http.MethodDelete, personPath(leased.Id), nil), http.StatusConflict, "accounts_busy")
+	if n := h.Count(t, `SELECT count(*) FROM staff.people WHERE id = $1`, leased.Id); n != 1 {
+		t.Errorf("a busy delete removed the person")
+	}
+	// A lease that has run out is no hold.
+	h.Exec(t, `UPDATE staff.identity_links SET lease_until = $2 WHERE person_id = $1`, leased.Id, h.Now().Add(-time.Minute))
+	do(t, hr, http.MethodDelete, personPath(leased.Id), nil, http.StatusNoContent, nil)
+
+	linked := createPerson(t, hr, newPerson("Per", "Olsen"))
+	managedLink(t, h, linked.Id, uuid.New(), "pending")
+	refused(t, hr.Do(http.MethodDelete, personPath(linked.Id), nil), http.StatusConflict, "person_in_use")
 }

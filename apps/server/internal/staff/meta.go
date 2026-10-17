@@ -2,7 +2,9 @@ package staff
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -20,8 +22,13 @@ import (
 // schemes, and two capabilities: managesAnyone — the caller's linked person
 // manages anyone today by the one manager rule (effectiveManager), so a
 // manager who has left manages nobody — and canDecide — staff:approve,
-// staff:manage, or managesAnyone: who may decide absence (design S12). C's
-// accountMode arrives additively with C.
+// staff:manage, or managesAnyone: who may decide absence (design S12).
+// Delivery C adds, for staff:manage alone, the authority mode identity
+// records (accountMode) and whether an Owner has named the roles Staff may
+// give (provisioningRolesSet), both asked of identity first, before any
+// snapshot — absent when no module provides accounts, accountMode also on a
+// mode mismatch (contracts.ErrModeMismatch) — and the capability
+// canRunAccounts.
 
 // GetStaffMeta Get the Staff metadata
 // (GET /api/v1/staff/meta)
@@ -29,6 +36,14 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
 	if err != nil {
 		return nil, err
+	}
+	var (
+		accountMode *gen.StaffAccountMode
+		rolesSet    *bool
+	)
+	if caller.Manage {
+		accountMode = s.accountMode(ctx)
+		rolesSet = s.provisioningRolesSet(ctx)
 	}
 	q := store.New(s.deps.Pool)
 	managesAnyone, err := managesAnyoneToday(ctx, q, caller)
@@ -54,9 +69,12 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 			CanSeeHealth:         caller.PersonalData,
 			CanDecide:            caller.Approve || caller.Manage || managesAnyone,
 			ManagesAnyone:        managesAnyone,
+			CanRunAccounts:       caller.Manage,
 		},
-		AbsenceTypes:   mapRows(types, absenceTypeResponse),
-		HolidaySchemes: mapRows(schemes, holidaySchemeResponse),
+		AbsenceTypes:         mapRows(types, absenceTypeResponse),
+		HolidaySchemes:       mapRows(schemes, holidaySchemeResponse),
+		AccountMode:          accountMode,
+		ProvisioningRolesSet: rolesSet,
 	}
 	// HR without the directory still names units and departments (plan
 	// reading 15), so the structure is staff:manage's to read too.
@@ -68,6 +86,22 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 		meta.Structure = &structure
 	}
 	return gen.GetStaffMeta200JSONResponse(meta), nil
+}
+
+// provisioningRolesSet is whether an Owner has named the roles Staff may
+// give, nil when no module provides accounts or identity could not answer
+// (logged).
+func (s *server) provisioningRolesSet(ctx context.Context) *bool {
+	roles, err := s.accountsProvisioningRoles(ctx)
+	switch {
+	case errors.Is(err, errAccountsUnavailable):
+		return nil
+	case err != nil:
+		s.logger().WarnContext(ctx, "staff: read the roles Staff may give", slog.String("error", err.Error()))
+		return nil
+	}
+	set := len(roles) > 0
+	return &set
 }
 
 // managesAnyoneToday is whether the caller's linked person manages anyone

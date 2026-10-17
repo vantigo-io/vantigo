@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -23,6 +25,14 @@ import (
 // The user is read from the directory before the transaction opens; the
 // rules that need the table — one person per user — are judged under the
 // person's lock, and the unique index settles two writers that race.
+//
+// Delivery C shares the row with the accounts worker (plan pre-flight B3,
+// reading 8), so the self-service link keeps away from it: a user identity
+// reports Staff-managed — the user to link, or the one linked now — is asked
+// about before the transaction and refused link_managed, so a managed user is
+// reached only through the worker's employee-number lookup and never by
+// tying a person to them here; and a link in one of the worker's states
+// (anything but linked) is refused the same way under the lock.
 
 // linkExternalIndex is the unique index that holds one person per user under
 // a provider.
@@ -170,6 +180,11 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		}
 		target = user
 	}
+	// Whether identity manages the user to link, or the one linked now:
+	// asked before the transaction, never under the lock.
+	if refused, err := s.refuseManagedLink(ctx, req.Id, body.UserId); err != nil || refused != nil {
+		return refused, err
+	}
 	who, err := s.actorFor(ctx)
 	if err != nil {
 		return nil, err
@@ -204,6 +219,9 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		current, err := personLink(ctx, txq, req.Id)
 		if err != nil {
 			return err
+		}
+		if current != nil && current.State != linkStateLinked {
+			return linkManaged()
 		}
 		if target == nil {
 			if current == nil {
@@ -259,4 +277,41 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		user = userResponse(target.ID, target.DisplayName, target.Active)
 	}
 	return gen.PutStaffPeopleByIdUser200JSONResponse(linkResponse(row, user)), nil
+}
+
+// refuseManagedLink is the self-service link's question to identity, before
+// its transaction: whether the user to link (target, nil for an unlink) or
+// the user personID is linked to now is Staff-managed. It answers the 409
+// link_managed for a managed one, the 503 accounts_unavailable when identity
+// cannot say — the self-service link must not tie a person to a managed user
+// on a guess — and nil when the link may go ahead. No user to judge asks
+// nothing.
+func (s *server) refuseManagedLink(ctx context.Context, personID int64, target *openapi_types.UUID) (gen.PutStaffPeopleByIdUserResponseObject, error) {
+	var users []uuid.UUID
+	if target != nil {
+		users = append(users, *target)
+	}
+	current, err := personLink(ctx, store.New(s.deps.Pool), personID)
+	if err != nil {
+		return nil, err
+	}
+	if current != nil && current.ExternalID != nil {
+		if id, err := uuid.Parse(*current.ExternalID); err == nil && (target == nil || id != *target) {
+			users = append(users, id)
+		}
+	}
+	for _, id := range users {
+		ref, err := s.accountsAccount(ctx, id, nil)
+		if err != nil {
+			if !errors.Is(err, errAccountsUnavailable) {
+				s.logger().WarnContext(ctx, "staff: ask identity whether a user is Staff-managed", "person_id", personID, "error", err.Error())
+			}
+			return gen.PutStaffPeopleByIdUser503ApplicationProblemPlusJSONResponse(accountsUnavailable()), nil
+		}
+		if ref != nil && ref.Managed {
+			r, _ := asRefusal(linkManaged())
+			return gen.PutStaffPeopleByIdUser409ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
+	}
+	return nil, nil
 }

@@ -319,3 +319,38 @@ func retentionBusy() gen.StaffProblem {
 	return conflict(codeRetentionBusy, "Retention is running",
 		"The retention run is already running, here or on another server. Nothing was run; try again when it has finished.")
 }
+
+// The refusal codes of the accounts (delivery C, Task 3): accounts_unavailable
+// a 503, the other two 409s on the state of things.
+const (
+	codeAccountsUnavailable = "accounts_unavailable"
+	codeLinkManaged         = "link_managed"
+	codeAccountsBusy        = "accounts_busy"
+)
+
+// accountsUnavailable is the 503 a request answers when it needs identity's
+// account provisioning and cannot have it: no module provides it, or identity
+// could not answer. Nothing was changed.
+func accountsUnavailable() gen.StaffProblem {
+	status := int32(http.StatusServiceUnavailable)
+	code, title := codeAccountsUnavailable, "Accounts are unavailable"
+	detail := "Identity could not say what it holds for this account. Nothing was changed; try again."
+	return gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
+}
+
+// linkManaged is the 409 the self-service link answers for an account the
+// accounts worker manages (plan pre-flight B3, reading 8): a Staff-managed
+// user is reached only through the worker's own employee-number lookup, and
+// the worker's link is the worker's.
+func linkManaged() error {
+	return refuseConflict(conflict(codeLinkManaged, "Managed by Staff",
+		"This account is managed by Staff's accounts, so it is not linked or unlinked by hand. Use the person's Account tab."))
+}
+
+// accountsBusy is the 409 a request answers while the accounts worker holds
+// the person's link: it is acting on the account right now. Nothing was
+// changed; the request may be retried in a few minutes.
+func accountsBusy() error {
+	return refuseConflict(conflict(codeAccountsBusy, "Accounts busy",
+		"Staff's accounts worker is acting on this person's account right now. Nothing was changed; try again in a few minutes."))
+}

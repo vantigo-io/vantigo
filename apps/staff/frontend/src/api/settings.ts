@@ -31,6 +31,18 @@ export const updateStaffSettings = (input: StaffSettingsInput, revision: number)
   request<StaffSettings>("/api/v1/staff/settings", json("PUT", input, revision));
 
 /**
+ * The two account settings (delivery C) as read, for a settings form that
+ * does not edit them to send back whole: `createBeforeDays`, and
+ * `deleteExternalAfterDays` — null for "never", which the server answers absent.
+ */
+export const accountSettingsOf = (
+  settings: StaffSettings,
+): Pick<StaffSettingsInput, "createBeforeDays" | "deleteExternalAfterDays"> => ({
+  createBeforeDays: settings.createBeforeDays,
+  deleteExternalAfterDays: settings.deleteExternalAfterDays ?? null,
+});
+
+/**
  * Acknowledges a threshold, once and for good: its dashboard item never
  * comes back. Acknowledging it again changes nothing. Answers every
  * acknowledgement so far; the settings' revision does not move.

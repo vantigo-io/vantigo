@@ -381,6 +381,8 @@ describe("Settings — retention", () => {
   it("shows the derived block, and saves the two periods with the revision it read", async () => {
     const fetchMock = stubStaffApi({
       settings: settings({
+        createBeforeDays: 30,
+        deleteExternalAfterDays: 90,
         retention: {
           pendingDeletions: 3,
           failingDeletions: 1,
@@ -412,6 +414,8 @@ describe("Settings — retention", () => {
       pensionProvider: "Storebrand",
       retentionGraceDays: 120,
       healthRetentionDays: 365,
+      createBeforeDays: 30,
+      deleteExternalAfterDays: 90,
     });
   });
 

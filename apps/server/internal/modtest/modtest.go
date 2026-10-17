@@ -138,6 +138,8 @@ type setup struct {
 	objectStore  storage.ObjectStore
 	peppolLookup func(ctx context.Context, participant string) (peppol.Result, error)
 	poolMaxConns int32
+	accounts     contracts.AccountProvisioning
+	noAccounts   bool
 }
 
 // Option adjusts a harness before it is built.
@@ -371,6 +373,27 @@ func WithPeppolLookup(fn func(ctx context.Context, participant string) (peppol.R
 	return func(s *setup) { s.peppolLookup = fn }
 }
 
+// WithAccounts makes p the installation's contracts.AccountProvisioning, for
+// a module under test (staff) whose subject is what it does with identity's
+// answers — a Staff-managed user, a mode mismatch, a provider that fails —
+// rather than identity's own rules, which identity's tests prove. Identity
+// is always composed and always provides Accounts, and Compose would
+// overwrite a preset Deps.Accounts, so the option replaces identity's
+// Module.Accounts in the composition instead: p is what Compose resolves the
+// slot to, for every module, and identity's own provider is not built.
+// Unset, the slot is identity's real provider.
+func WithAccounts(p contracts.AccountProvisioning) Option {
+	return func(s *setup) { s.accounts = p }
+}
+
+// WithoutAccounts composes identity without its Module.Accounts, so
+// Deps.Accounts is nil for every module: an installation where no module
+// provides account provisioning, which a consumer answers as "accounts are
+// unavailable". It wins over WithAccounts.
+func WithoutAccounts() Option {
+	return func(s *setup) { s.noAccounts = true }
+}
+
 // WithPoolMaxConns builds the installation's pool at n connections on the
 // harness's migrated database (testdb.Migrated's URL, db.WithMaxConns) in
 // place of the shared default size, for a test that must starve when
@@ -530,7 +553,14 @@ func New(t *testing.T, opts ...Option) *Harness {
 	// Identity is mounted beside the module under test so its access layer is
 	// the real one: a signed-in principal, its roles and its permissions are
 	// resolved from identity's tables on every request, as in production.
-	mods := append([]module.Module{identity.Module(access)}, s.modules...)
+	identityModule := identity.Module(access)
+	switch {
+	case s.noAccounts:
+		identityModule.Accounts = nil
+	case s.accounts != nil:
+		identityModule.Accounts = func(module.Deps) contracts.AccountProvisioning { return s.accounts }
+	}
+	mods := append([]module.Module{identityModule}, s.modules...)
 	api, err := module.Compose(h.deps, mods...)
 	if err != nil {
 		t.Fatalf("modtest: compose: %v", err)

@@ -58,7 +58,7 @@ func TestKeepRawBody_KeepsAllButUploads(t *testing.T) {
 }
 
 // The mount fails unless the contract closes StaffPersonRequest,
-// StaffMeRequest and StaffAbsenceTypeChangeRequest (additionalProperties false): the unknown-property refusal reads that, and
+// StaffPersonAccountRequest, StaffMeRequest and StaffAbsenceTypeChangeRequest (additionalProperties false): the unknown-property refusal reads that, and
 // a contract that lost it — or the schema — would silently accept anything.
 func TestCheckClosedSchemas_FailsTheMountOnAnOpenOrMissingSchema(t *testing.T) {
 	t.Parallel()
@@ -69,8 +69,8 @@ func TestCheckClosedSchemas_FailsTheMountOnAnOpenOrMissingSchema(t *testing.T) {
 	if err := checkClosedSchemas(doc); err != nil {
 		t.Errorf("the real contract: %v, want nil", err)
 	}
-	if !slices.Equal(closedSchemas, []string{personRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema}) {
-		t.Errorf("closed schemas = %v, want StaffPersonRequest, StaffMeRequest, StaffAbsenceTypeChangeRequest, StaffAbsenceChangeRequest, StaffAbsenceRequest and StaffAbsenceDecisionRequest", closedSchemas)
+	if !slices.Equal(closedSchemas, []string{personRequestSchema, accountRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema}) {
+		t.Errorf("closed schemas = %v, want StaffPersonRequest, StaffPersonAccountRequest, StaffMeRequest, StaffAbsenceTypeChangeRequest, StaffAbsenceChangeRequest, StaffAbsenceRequest and StaffAbsenceDecisionRequest", closedSchemas)
 	}
 	open := true
 	for _, name := range closedSchemas {

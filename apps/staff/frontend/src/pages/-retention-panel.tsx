@@ -8,7 +8,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { STAFF_QUERY_KEY } from "../api/request";
 import { runRetention, type StaffRetentionRun } from "../api/retention";
-import { type StaffSettings, updateStaffSettings } from "../api/settings";
+import { accountSettingsOf, type StaffSettings, updateStaffSettings } from "../api/settings";
 import { FieldGroup, Fields } from "../components/field-group";
 import "../i18n";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
@@ -74,6 +74,7 @@ export const RetentionPanel = ({ settings }: { settings: StaffSettings }) => {
           ...(settings.injuryInsurer ? { injuryInsurer: settings.injuryInsurer } : {}),
           retentionGraceDays: Number(values.retentionGraceDays),
           healthRetentionDays: Number(values.healthRetentionDays),
+          ...accountSettingsOf(settings),
         },
         settings.revision,
       ),

@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -28,7 +28,7 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [derived dates](#the-derived-dates), the [§ 14-6 check](#the--14-6-check),
 [managers and the org view](#managers-and-the-org-view), the
 [sealed identifiers](#the-sealed-identifiers), the
-[self-service link](#the-self-service-link), [My page](#my-page), the
+[self-service link](#the-self-service-link), the [accounts](#accounts), [My page](#my-page), the
 [documents](#documents) and their [categories](#categories-and-classes),
 [absence](#absence) — the [types](#absence-types), the [holiday schemes](#holiday-schemes) and the
 [care-day fields](#the-care-day-fields) — the
@@ -102,7 +102,7 @@ Down deletes the links naming no user and restores both.
 | `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** | no |
 | `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the [calendar](#the-calendar) with types hidden. | no |
 | `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. It [decides](#decisions) anyone's absence requests but an HR-only type's, is the [Approver audience](#field-groups-and-audiences), sees the [inbox](#the-approvals-inbox) and the [calendar](#the-calendar), and makes `GET /meta`'s `canDecide` true; it reads open [sick-leave cases](#sick-leave-cases) and marks their milestones. | no |
-| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the settings, documents other than health and their categories, the account flag, imports and exports, the retention run by hand, the thresholds' acknowledgement. The account flag arrives with C. | yes |
+| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the settings, documents other than health and their categories, the [account flag](#accounts), imports and exports, the retention run by hand, the thresholds' acknowledgement. | yes |
 | `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure is the [retention run](#retention)'s, on its schedule (run by hand by `staff:manage`); it alone writes the milestones' notes and [decides HR-only types](#decisions). | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
@@ -116,15 +116,16 @@ contract's `x-vantigo-access`; a caller without it gets the access layer's unifo
 (`staff:personal-data`: everyone's health documents), `managesAnyone` (the caller's
 linked person manages anyone today by the [one manager rule](#managers-and-the-org-view),
 so a manager who has left manages nobody) and `canDecide` (`staff:approve`,
-`staff:manage`, or `managesAnyone`: who may decide absence) — so the app never
-re-derives a rule.
+`staff:manage`, or `managesAnyone`: who may decide absence) and `canRunAccounts`
+(`staff:manage`: running the accounts worker by hand and disabling an account now) — so
+the app never re-derives a rule. For `staff:manage` alone it also answers the
+[accounts'](#accounts) `accountMode` and `provisioningRolesSet`.
 
 ## Settings
 
 One row, written by the migration. `GET /settings` and `PUT /settings` are
-`staff:manage`'s. The contract exposes thirteen fields, a derived block and the
-acknowledged thresholds; the account days on the row reach the contract with delivery
-C.
+`staff:manage`'s. The contract exposes fifteen fields, a derived block and the
+acknowledged thresholds.
 
 | Field | Default | Rule |
 | --- | --- | --- |
@@ -141,6 +142,8 @@ C.
 | `selfCertDaysPerYear` | 24 | 12 to 365 self-certified days in twelve months; read under `custom` only; left out, kept. |
 | `selfCertAfterMonths` | 2 | 0 to 2 months of employment before egenmelding may be used; left out, kept. |
 | `autoCarryOver` | false | Carry holiday left at a year's end into the next as forced, without HR's action; left out, kept. |
+| `createBeforeDays` | 14 | 0 to 90 days before the account's effective date that the accounts worker prepares it, disabled ([accounts](#accounts)); left out, kept. |
+| `deleteExternalAfterDays` | — | 1 to 3650 days after the last employment ended that an external directory's account is deleted, or `null` for never; inert — no module reads it yet (the Entra module will); left out, kept, and absent on the wire when never. |
 
 **The self-certification policy.** A preset writes its own numbers, whatever the
 request carries: `minimum` — the statutory one — 3 days an occurrence and 4
@@ -535,8 +538,9 @@ values.
 ### Deleting a person
 
 `DELETE /people/{id}` (`staff:manage`) is the hard delete of a person **created in
-error**: one with no employment, no user link, no document, no absence and no holiday
-adjustment, and named as nobody's manager — neither a department's nor on anyone's
+error**: one with no employment, no user link (the accounts' `preparing` link, naming
+no user, is deleted with them — `accounts_busy` (409) while the worker holds it), no
+document, no absence and no holiday adjustment, and named as nobody's manager — neither a department's nor on anyone's
 terms — and not under a [legal hold](#the-legal-hold). An absence or an adjustment is
 the history of an employment, which the delete would take with the person. An [erased](#the-erased-state) person is
 `person_erased` (409) and a held one `legal_hold` (409), judged before what names
@@ -892,6 +896,91 @@ linked, Owners included.
   elsewhere is listed; linking them answers why not.
 
 A linked person cannot be [deleted](#deleting-a-person) as created in error.
+
+The link is one row with the [accounts](#accounts)' (plan reading 8), so the
+self-service link keeps away from the accounts worker's. Before the transaction,
+identity is asked (`Accounts.Account`) whether the user to link, or the user linked
+now, is **Staff-managed**: a managed user is `link_managed` (409) — reached only through
+the worker's employee-number lookup, never by tying a person to them by hand — and
+identity unable to say is `accounts_unavailable` (503); nothing is written either way.
+Under the person's lock, a link in any state but `linked` — the worker's `preparing`,
+`pending`, `active`, `disabled`, `failed` or `blocked` — is `link_managed` too, for a
+relink and an unlink alike. A link naming no user (the worker's `preparing` link) reads
+`linked: false`.
+
+## Accounts
+
+Delivery C's accounts give a person a user in identity on the dates their employments
+set (design S22–S27). This section is the flag and what reads it; the accounts worker
+that acts on it is described as it lands.
+
+**The flag** is three columns of `staff.people` (00042's): `provision_account`,
+`provision_from` and `account_email_kind`. It is the links group's, as the
+self-service link is: the person, `staff:manage` and `staff:personal-data` read it; a
+manager, an Approver, a colleague and anyone else get the person's 404.
+
+- **`GET /people/{id}/account`** (`staff:access`, then the person themselves,
+  `staff:manage` or `staff:personal-data`; otherwise the unknown id's 404) answers
+  `{provisionAccount, provisionFrom, provisionFromEffective, accountEmailKind,
+  address: {kind, present}, mode, link, revision}`.
+  - `accountEmailKind` is `work` or `private`; a null column reads `work`.
+    `address` says which of the person's addresses the account would be given and
+    whether the person has it — never the address itself.
+  - **The effective date** `provisionFromEffective` is `provisionFrom` when HR set
+    one, else the first day of the person's earliest employment that has not ended by
+    today (an employment ending today still counts), else absent.
+  - `mode` is the authority mode identity recorded (`local` or `federated`), asked
+    before the person is read. It is absent when no module provides accounts, when
+    this process's configuration derives another mode than the recorded one
+    (`contracts.ErrModeMismatch`), and when identity could not answer (logged).
+  - `link` is the person's row in `staff.identity_links`, absent when there is none:
+    `state`, `managed`, `reason` (`blocked_reason`, a code), `attempts`,
+    `nextAttemptAt`, `lastSyncedAt`, `user` (named by the user directory) and, for a
+    pending account whose link still names the user identity was asked about,
+    `invitation {state, issued}` — `none`, `active`, `expired`, `revoked_by_owner` or
+    `exhausted`, and the invitations delivered in the pending spell. identity is asked
+    with no address to compare; the codes never carry an address or a driver's words.
+- **`PUT /people/{id}/account`** (`staff:manage`) replaces the three fields,
+  `If-Match` on the person's revision, under the person's lock: what it leaves out is
+  cleared — `provisionFrom` to none, `accountEmailKind` to `work`. An erased person is
+  `person_erased` (409), a stale revision `revision_conflict`; an unknown kind or an
+  unknown property is a 400. A change moves the person's revision and is one
+  `account_flag_updated` event naming each changed field, before and after; a replace
+  that changes nothing writes nothing. Turning the flag on without the chosen address is
+  accepted — the worker waits, and HR is told. It answers the account as `GET` does.
+
+**The address identity compares.** Whenever Staff asks identity whether its address
+for a user differs from Staff's (`AccountRef.EmailDiffers`), it hands identity the
+person's own stored address by their `accountEmailKind` — the accessor takes the
+person, never an address — so the answer is no oracle on identity's address.
+
+**The link's states.** `linked` is HR's self-service link; `preparing` (a link naming
+no user yet — `external_id` is nullable since 00051), `pending`, `active`,
+`disabled`, `failed` and `blocked` are the worker's. A `preparing` link does not make
+a person "in use": [deleting](#deleting-a-person) the person deletes it with them, but
+not while the worker holds it (`lease_until` in the future): `accounts_busy` (409).
+
+**The settings** `createBeforeDays` and `deleteExternalAfterDays` are under
+[Settings](#settings). **Meta** answers `staff:manage` the `accountMode` (as above)
+and `provisioningRolesSet` — whether an Owner has named the roles Staff may give in
+identity, without which a local account cannot be enabled; both absent when no module
+provides accounts or identity could not answer. Both exports carry `account`
+(`provisionAccount`, `provisionFrom`, `accountEmailKind` and the link's `linkState`).
+
+**The account events** are class C and listed only to the links group's readers — the
+person, `staff:manage`, `staff:personal-data` — and never to a manager, an Approver or
+a colleague, whose history and its count leave them out.
+`account_flag_updated {fields: {provisionAccount, provisionFrom, accountEmailKind}}`
+is HR's change of the flag; the worker's `account_prepared`, `account_activated`,
+`account_deactivated`, `account_updated`, `account_blocked`, `account_failed` and
+`account_mismatched` carry a step, a state and codes only — no address, no name, no
+user id beyond the link's own.
+
+**Calls out.** Every call to identity's `contracts.AccountProvisioning` goes through
+one accessor in `contractscalls.go` and is refused inside any of the module's
+transactions; with no module providing it (`Deps.Accounts` nil) each answers
+"unavailable", which a read leaves out and a write answers `accounts_unavailable`
+(503).
 
 ## My page
 
@@ -2679,6 +2768,9 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `payroll_format_unsupported` | 400 | A payroll export's `format` other than `csv`. |
 | `retention_busy` | 409 | `POST /retention/run` while the retention lease is held — by the worker, here or on another replica, or another run by hand. Nothing ran. |
 | `threshold_unknown` | 404 | `POST /thresholds/{key}/acknowledge` with a key other than `5`, `30`, `50` and `otp`. |
+| `link_managed` | 409 | `PUT /people/{id}/user` naming, or unlinking, a Staff-managed user, or on a link in one of the accounts worker's states. |
+| `accounts_busy` | 409 | `DELETE /people/{id}` while the accounts worker holds the person's `preparing` link. |
+| `accounts_unavailable` | 503 | `PUT /people/{id}/user` when identity cannot say whether the user is Staff-managed. Nothing was changed. |
 
 An unknown id is a bare 404 with no body.
 
@@ -2781,6 +2873,8 @@ All under `/api/v1/staff`.
 | `GET /people/{id}`, `/next-of-kin`, `/roles`, `/events` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `POST /people`, `PUT /people/{id}`, `DELETE /people/{id}`, `PUT /people/{id}/next-of-kin`, `PUT /people/{id}/roles` | `staff:manage` |
 | `GET /people/{id}/user` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
+| `GET /people/{id}/account` | `staff:access`, then the person, `staff:manage` or `staff:personal-data` (otherwise 404) |
+| `PUT /people/{id}/account` | `staff:manage` |
 | `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |
 | `PUT /people/{id}/national-id`, `POST /people/{id}/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST /people/{id}/bank-account/reveal` | `staff:personal-data` |
 | `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents`, `GET /me/export` | `staff:access`, then a self-service link (otherwise `no_person`) |

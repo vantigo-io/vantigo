@@ -184,6 +184,9 @@ var fieldClasses = map[string]string{
 	"workEmail": "D", "phoneWork": "D", "phoneMobile": "D", "phonePrivate": "D", "privateEmail": "D",
 	"street": "D", "postalCode": "D", "city": "D", "country": "D", "notes": "D", "nextOfKin": "D",
 	"nationalId": "D", "bankAccount": "D", "user": "C",
+	// The account flag (design §3.1, S22) is class C, as its columns are;
+	// delivery C's.
+	"provisionAccount": "C", "provisionFrom": "C", "accountEmailKind": "C",
 	// The care-day fields (design §3.1, S11) are class D, the person's
 	// administration; delivery B's.
 	"childrenUnder12": "D", "soleCarer": "D", "chronicallyIllChildren": "D",
@@ -370,13 +373,13 @@ func (s *server) GetStaffPeopleByIdEvents(ctx context.Context, req gen.GetStaffP
 		}
 		hide, plain := a.hidesLeaveRows(), types.plain()
 		if total, err = q.CountPersonEvents(ctx, store.CountPersonEventsParams{
-			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds, WithCare: a.reads(groupCareDays), CareKinds: careEventKinds,
+			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds, WithCare: a.reads(groupCareDays), CareKinds: careEventKinds, WithLinks: a.reads(groupLinks), LinkKinds: accountEventKinds,
 			HideLeaveRows: hide, PlainTypeIds: plain,
 		}); err != nil {
 			return fmt.Errorf("staff: count person %d's events: %w", req.Id, err)
 		}
 		rows, err = q.ListPersonEvents(ctx, store.ListPersonEventsParams{
-			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds, WithCare: a.reads(groupCareDays), CareKinds: careEventKinds,
+			PersonID: &req.Id, WithHealth: a.reads(groupHealth), WithHold: a.seesHoldEvents(), HoldKinds: holdEventKinds, AbsenceKinds: absenceEventKinds, WithCare: a.reads(groupCareDays), CareKinds: careEventKinds, WithLinks: a.reads(groupLinks), LinkKinds: accountEventKinds,
 			HideLeaveRows: hide, PlainTypeIds: plain, PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {

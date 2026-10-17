@@ -13,7 +13,9 @@ import (
 
 // This file and objects.go are the whole of this module's reach outside its
 // own schema: the user directory (deps.Users, identity's
-// contracts.UserDirectory, always composed) and the SMTP seam (deps.SMTPSend,
+// contracts.UserDirectory, always composed), account provisioning
+// (deps.Accounts, identity's contracts.AccountProvisioning — delivery C's
+// write direction, staff → identity) and the SMTP seam (deps.SMTPSend,
 // or the platform's guarded mail.SendOutbound) here, and the object store the
 // documents' bytes live in there (delivery A2). Every call is made through
 // one of the thin accessors and through nowhere else, so "what does Staff ask
@@ -80,6 +82,56 @@ func (s *server) usersSearch(ctx context.Context, query string, limit int) ([]co
 		return nil, err
 	}
 	return s.deps.Users.SearchUsers(ctx, query, limit)
+}
+
+// errAccountsUnavailable is every accounts accessor's answer when no module
+// provides account provisioning (Deps.Accounts nil): the request is answered
+// accounts_unavailable, or the field it fills is left out.
+var errAccountsUnavailable = errors.New("staff: no module provides account provisioning")
+
+// accountsMode, accountsAccount and accountsProvisioningRoles are identity's
+// account provisioning read side (contracts.AccountProvisioning): the
+// authority mode, a user as identity reports them, and the roles an Owner
+// named for Staff. The writes (Prepare, Activate, Deactivate, Update) are
+// the accounts worker's and Run and Disable now's, delivery C's Task 4.
+func (s *server) accountsMode(ctx context.Context) (string, error) {
+	if err := noteContractCall(ctx, "Accounts.Mode"); err != nil {
+		return "", err
+	}
+	if s.deps.Accounts == nil {
+		return "", errAccountsUnavailable
+	}
+	return s.deps.Accounts.Mode(ctx)
+}
+
+// accountsAccount is the user id names as identity reports them, nil when
+// identity knows no such user. The address identity compares its own with
+// (AccountRef.EmailDiffers) is person's own stored one, by their choice
+// (accountAddress), and none when person is nil: the accessor takes the
+// person, never an address, so no caller can hand identity one it supplied
+// and read the answer as an oracle on identity's address.
+func (s *server) accountsAccount(ctx context.Context, id uuid.UUID, person *accountPerson) (*contracts.AccountRef, error) {
+	if err := noteContractCall(ctx, "Accounts.Account"); err != nil {
+		return nil, err
+	}
+	if s.deps.Accounts == nil {
+		return nil, errAccountsUnavailable
+	}
+	want := ""
+	if person != nil {
+		want = accountAddress(*person)
+	}
+	return s.deps.Accounts.Account(ctx, id, want)
+}
+
+func (s *server) accountsProvisioningRoles(ctx context.Context) ([]contracts.RoleRef, error) {
+	if err := noteContractCall(ctx, "Accounts.ProvisioningRoles"); err != nil {
+		return nil, err
+	}
+	if s.deps.Accounts == nil {
+		return nil, errAccountsUnavailable
+	}
+	return s.deps.Accounts.ProvisioningRoles(ctx)
 }
 
 // smtpSend hands one mail to the installation's SMTP server: Deps.SMTPSend

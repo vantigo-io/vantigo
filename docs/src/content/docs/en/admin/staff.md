@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence and the retention periods.
+description: Enabling the Staff module, giving people access to it, linking people to their users, turning on accounts for a person, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence, the retention periods and the account settings.
 sidebar:
   order: 44
 sources:
@@ -29,6 +29,8 @@ sources:
   - apps/server/internal/staff/cases.go
   - apps/server/internal/staff/sickness.go
   - apps/server/internal/staff/care_days.go
+  - apps/server/internal/staff/account_flag.go
+  - apps/server/internal/staff/account_settings.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -95,6 +97,42 @@ included.
 
 A user can be linked to one person only, and a person to one user; linking a person to
 another user replaces the link. A disabled user cannot be linked.
+
+A user Staff's accounts manage is not linked or unlinked here: the request answers
+`link_managed` (409), and so does a person whose link is the accounts worker's
+(`GET /api/v1/staff/people/{id}/account` shows its state). If identity cannot be asked
+whether the user is managed, the request answers `accounts_unavailable` (503) and
+changes nothing; try again.
+
+## Turn on accounts for a person
+
+Staff can give a person a user in identity, prepared before they start and enabled on
+their first day (delivery C). The account flag is set here; the accounts worker that
+acts on it arrives with the next part of the delivery.
+
+1. Before the first account, an Owner names the roles Staff may give in identity (the
+   employee roles). `GET /api/v1/staff/meta` answers `provisioningRolesSet` to
+   `staff:manage`: `false` until an Owner has named at least one. `accountMode` says
+   whether identity holds the passwords (`local`) or an identity provider owns the
+   accounts (`federated`); it is absent when this process's OIDC or SCIM settings
+   disagree with the API's.
+2. As a user with `staff:manage`, read the person's flag:
+   `GET /api/v1/staff/people/{id}/account`, and note its `revision`.
+3. Turn it on: `PUT /api/v1/staff/people/{id}/account` with `If-Match` set to that
+   revision and `{"provisionAccount": true, "provisionFrom": null, "accountEmailKind": "work"}`.
+   Leave `provisionFrom` null to enable the account on the first day of the person's
+   earliest employment that has not ended; set a date to choose another day. Choose
+   `private` to give identity the person's private email instead of the work email.
+   The request is a full replace: send all three fields.
+4. Verify: the answer's `provisionFromEffective` is the day the account is enabled,
+   and `address.present` is `true`. A flag turned on without the chosen address is
+   accepted, but no account is made until the person has it. The person's history
+   shows `account_flag_updated`.
+
+How many days before that day the account is prepared, disabled, is the setting
+`createBeforeDays` ([The settings](#the-settings)). An erased person's flag cannot be
+changed (`person_erased`). Someone else saving the person first answers
+`revision_conflict`; read the flag again.
 
 ## The personal-data permission
 
@@ -922,6 +960,13 @@ changing the settings at once cannot overwrite each other unseen.
   `selfCertAfterMonths`) and **automatic carry-over** (`autoCarryOver`, off, with the
   read-only `autoCarryOverSince`): [The self-certification policy](#the-self-certification-policy).
   Left out of a replace, each keeps its value.
+- **Accounts** (`createBeforeDays`, 14, from 0 to 90, and `deleteExternalAfterDays`,
+  none, from 1 to 3650 or `null` for never): how many days before an account's
+  effective date it is prepared, disabled ([Turn on accounts for a
+  person](#turn-on-accounts-for-a-person)), and when an external directory's account is
+  deleted after the last employment ended — stored but not used yet; the Entra module
+  will read it. Left out of a replace, each keeps its value; `null` sets
+  `deleteExternalAfterDays` to never.
 - **Retention state** (`retention`, read-only): the deletion ledger's pending and
   failing files, the oldest pending, and the last erase ([The deletion
   ledger](#the-deletion-ledger)). Files the store has refused at least once and that

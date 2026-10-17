@@ -1,6 +1,7 @@
 package staff_test
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 )
@@ -276,5 +278,56 @@ func TestLink_APreparingLinkNamesNobody(t *testing.T) {
 	nobody, _ := signIn(t, h)
 	if r := nobody.Do(http.MethodGet, "/api/v1/staff/me", nil); r.Status != http.StatusNotFound {
 		t.Errorf("an unlinked user's /me: %d %s, want the 404 of a user who is nobody", r.Status, r.Body)
+	}
+}
+
+// The self-service link keeps away from the accounts worker's (plan
+// pre-flight B3, reading 8): a user identity reports Staff-managed is
+// link_managed whether it is the user to link or the one linked now, asked
+// before the transaction; a link in one of the worker's states is
+// link_managed under the lock, for a relink and an unlink alike; identity
+// unable to say is accounts_unavailable; and an unmanaged self-service link
+// is linked and unlinked as before. A refusal changes nothing.
+func TestLink_AManagedAccountIsNotLinkedByHand(t *testing.T) {
+	t.Parallel()
+	fake := newFakeAccounts()
+	h := newHarness(t, withAccounts(fake))
+	hr, _ := signIn(t, h, "staff:manage")
+	_, managed := signIn(t, h)
+	_, plain := signIn(t, h)
+	_, other := signIn(t, h)
+	fake.setUser(contracts.AccountRef{UserID: managed, State: contracts.AccountStateActive, Managed: true})
+	fake.setUser(contracts.AccountRef{UserID: plain, State: contracts.AccountStateActive})
+
+	kari := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	refused(t, hr.Do(http.MethodPut, userPath(kari.Id), map[string]any{"userId": managed}), http.StatusConflict, "link_managed")
+	if n := h.Count(t, `SELECT count(*) FROM staff.identity_links WHERE person_id = $1`, kari.Id); n != 0 {
+		t.Errorf("a refused link wrote %d links", n)
+	}
+
+	// A worker-state link: identity knows nothing of its user, the lock's
+	// check refuses.
+	ola := createPerson(t, hr, newPerson("Ola", "Hansen"))
+	managedLink(t, h, ola.Id, uuid.New(), "pending")
+	refused(t, hr.Do(http.MethodPut, userPath(ola.Id), map[string]any{"userId": other}), http.StatusConflict, "link_managed")
+	refused(t, hr.Do(http.MethodPut, userPath(ola.Id), map[string]any{"userId": nil}), http.StatusConflict, "link_managed")
+	if n := h.Count(t, `SELECT count(*) FROM staff.identity_links WHERE person_id = $1 AND state = 'pending'`, ola.Id); n != 1 {
+		t.Errorf("the worker's link after the refusals: %d, want it kept", n)
+	}
+
+	// An adopted user behind HR's link: the unlink is the worker's too.
+	per := createPerson(t, hr, newPerson("Per", "Olsen"))
+	link(t, h, per.Id, managed)
+	refused(t, hr.Do(http.MethodPut, userPath(per.Id), map[string]any{"userId": nil}), http.StatusConflict, "link_managed")
+	refused(t, hr.Do(http.MethodPut, userPath(per.Id), map[string]any{"userId": other}), http.StatusConflict, "link_managed")
+
+	// An unmanaged self-service link is HR's.
+	linkThroughAPI(t, hr, kari.Id, plain)
+	do(t, hr, http.MethodPut, userPath(kari.Id), map[string]any{"userId": nil}, http.StatusOK, nil)
+
+	fake.set(func(f *fakeAccounts) { f.accountErr = errors.New("identity is down") })
+	refused(t, hr.Do(http.MethodPut, userPath(kari.Id), map[string]any{"userId": plain}), http.StatusServiceUnavailable, "accounts_unavailable")
+	if n := h.Count(t, `SELECT count(*) FROM staff.identity_links WHERE person_id = $1`, kari.Id); n != 0 {
+		t.Errorf("a link identity could not judge wrote %d links", n)
 	}
 }

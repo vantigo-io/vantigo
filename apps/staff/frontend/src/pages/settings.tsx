@@ -19,7 +19,7 @@ import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { staffMetaQueryOptions } from "../api/meta";
 import { STAFF_QUERY_KEY } from "../api/request";
-import { type StaffSettings, staffSettingsQueryOptions, updateStaffSettings } from "../api/settings";
+import { accountSettingsOf, type StaffSettings, staffSettingsQueryOptions, updateStaffSettings } from "../api/settings";
 import "../i18n";
 import {
   EMPLOYEE_NUMBER_MAX_LENGTH,
@@ -172,6 +172,7 @@ const GeneralForm = ({ settings }: { settings: StaffSettings }) => {
           nextEmployeeNumber: Number(values.nextEmployeeNumber),
           ...(optional(values.pensionProvider) ? { pensionProvider: values.pensionProvider.trim() } : {}),
           ...(optional(values.injuryInsurer) ? { injuryInsurer: values.injuryInsurer.trim() } : {}),
+          ...accountSettingsOf(settings),
         },
         settings.revision,
       );

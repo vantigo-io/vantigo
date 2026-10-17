@@ -14,8 +14,10 @@ SELECT * FROM staff.settings WHERE id = 1 FOR UPDATE;
 -- UpdateSettings replaces the settings the contract exposes and moves the
 -- revision on; a retention period left out (NULL) keeps its value. The
 -- self-certification policy and the carry-over (delivery B) are written as
--- the caller resolved them from the row it locked. The account columns,
--- delivery C's, are left as they are.
+-- the caller resolved them from the row it locked. The account settings
+-- (delivery C) keep their values when left out: create_before_days when
+-- NULL, delete_external_after_days unless @set_delete_external_after_days —
+-- its NULL is a value, "never".
 UPDATE staff.settings SET
     time_zone = @time_zone,
     employee_number_prefix = @employee_number_prefix,
@@ -31,6 +33,9 @@ UPDATE staff.settings SET
     self_cert_after_months = @self_cert_after_months,
     auto_carry_over = @auto_carry_over,
     auto_carry_over_since = @auto_carry_over_since,
+    create_before_days = coalesce(sqlc.narg(create_before_days)::smallint, create_before_days),
+    delete_external_after_days = CASE WHEN @set_delete_external_after_days::boolean
+        THEN sqlc.narg(delete_external_after_days)::smallint ELSE delete_external_after_days END,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = 1

@@ -99,6 +99,12 @@ referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
 - **Pårørende** og **Roller** (verneombud, medlem av AMU, HMS-ansvarlig, hver med
   dagene de har rollen).
 - **Selvbetjening** — brukeren personen logger inn med, hvis HR har koblet en.
+- **Konto** — om Ansatte gir personen en bruker å logge inn med, fra hvilken dag, og på
+  jobb-e-posten eller den private e-posten. Kontoen klargjøres, deaktivert, et antall
+  dager før den dagen og aktiveres på den; uten en dag HR har satt selv er det første
+  dag i personens tidligste arbeidsforhold som ikke har sluttet. Personen og HR ser den;
+  bare HR (`staff:manage`) endrer den. En bruker Ansatte forvalter slik, kobles ikke til
+  eller fra under **Selvbetjening**.
 - **Barn og omsorgsdager** — **Barn under 12**, **Aleneomsorg** og **Barn med ekstra
   omsorgsdager**, det personens omsorgsdager telles ut fra. Personen, HR og
   `staff:personal-data`, og bare når ett av dem er registrert.

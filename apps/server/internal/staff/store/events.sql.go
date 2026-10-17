@@ -18,12 +18,13 @@ WHERE staff.events.person_id = $1
   AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[])
        OR ($4::boolean AND kind = ANY($5::text[])))
   AND ($6::boolean OR NOT (kind = ANY($7::text[])))
-  AND NOT ($8::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
+  AND ($8::boolean OR NOT (kind = ANY($9::text[])))
+  AND NOT ($10::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
-           THEN payload->'typeIds' <@ to_jsonb($9::bigint[]) END, false))
-  AND NOT ($8::boolean AND kind = ANY($3::text[])
+           THEN payload->'typeIds' <@ to_jsonb($11::bigint[]) END, false))
+  AND NOT ($10::boolean AND kind = ANY($3::text[])
            AND (payload->>'absenceId')::bigint IN (
-               SELECT ab.id FROM staff.absences ab WHERE NOT (ab.type_id = ANY($9::bigint[]))))
+               SELECT ab.id FROM staff.absences ab WHERE NOT (ab.type_id = ANY($11::bigint[]))))
 `
 
 type CountPersonEventsParams struct {
@@ -34,6 +35,8 @@ type CountPersonEventsParams struct {
 	CareKinds     []string
 	WithHold      bool
 	HoldKinds     []string
+	WithLinks     bool
+	LinkKinds     []string
 	HideLeaveRows bool
 	PlainTypeIds  []int64
 }
@@ -41,8 +44,10 @@ type CountPersonEventsParams struct {
 // CountPersonEvents counts what ListPersonEvents pages through, health events
 // (those whose payload touches class E) — but the absence family's — and the
 // hold's kinds only when asked for, the withdrawal of egenmelding
-// (@care_kinds) to the readers of the care-day fields (@with_care), and an
-// absence event of a row shown as leave never to its leave-reader.
+// (@care_kinds) to the readers of the care-day fields (@with_care), the
+// account events (@link_kinds) to the readers of the links group
+// (@with_links), and an absence event of a row shown as leave never to its
+// leave-reader.
 func (q *Queries) CountPersonEvents(ctx context.Context, arg CountPersonEventsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countPersonEvents,
 		arg.PersonID,
@@ -52,6 +57,8 @@ func (q *Queries) CountPersonEvents(ctx context.Context, arg CountPersonEventsPa
 		arg.CareKinds,
 		arg.WithHold,
 		arg.HoldKinds,
+		arg.WithLinks,
+		arg.LinkKinds,
 		arg.HideLeaveRows,
 		arg.PlainTypeIds,
 	)
@@ -151,14 +158,15 @@ WHERE staff.events.person_id = $1
   AND ($2::boolean OR NOT ('E' = ANY(payload_classes)) OR kind = ANY($3::text[])
        OR ($4::boolean AND kind = ANY($5::text[])))
   AND ($6::boolean OR NOT (kind = ANY($7::text[])))
-  AND NOT ($8::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
+  AND ($8::boolean OR NOT (kind = ANY($9::text[])))
+  AND NOT ($10::boolean AND kind = ANY($3::text[]) AND NOT coalesce(
       CASE WHEN jsonb_typeof(payload->'typeIds') = 'array' AND jsonb_array_length(payload->'typeIds') > 0
-           THEN payload->'typeIds' <@ to_jsonb($9::bigint[]) END, false))
-  AND NOT ($8::boolean AND kind = ANY($3::text[])
+           THEN payload->'typeIds' <@ to_jsonb($11::bigint[]) END, false))
+  AND NOT ($10::boolean AND kind = ANY($3::text[])
            AND (payload->>'absenceId')::bigint IN (
-               SELECT ab.id FROM staff.absences ab WHERE NOT (ab.type_id = ANY($9::bigint[]))))
+               SELECT ab.id FROM staff.absences ab WHERE NOT (ab.type_id = ANY($11::bigint[]))))
 ORDER BY at DESC, id DESC
-LIMIT $11 OFFSET $10
+LIMIT $13 OFFSET $12
 `
 
 type ListPersonEventsParams struct {
@@ -169,6 +177,8 @@ type ListPersonEventsParams struct {
 	CareKinds     []string
 	WithHold      bool
 	HoldKinds     []string
+	WithLinks     bool
+	LinkKinds     []string
 	HideLeaveRows bool
 	PlainTypeIds  []int64
 	PageOffset    int32
@@ -204,7 +214,9 @@ type ListPersonEventsRow struct {
 // The withdrawal of egenmelding and its restoring (@care_kinds), class E,
 // are listed to the readers of the care-day fields (@with_care) — the
 // person, staff:manage, staff:personal-data — and never to a manager (plan
-// pre-flight I6).
+// pre-flight I6). The account events (@link_kinds, delivery C) are listed
+// the same way to the readers of the links group (@with_links) — the same
+// three — and never to a manager, an Approver or a colleague.
 func (q *Queries) ListPersonEvents(ctx context.Context, arg ListPersonEventsParams) ([]ListPersonEventsRow, error) {
 	rows, err := q.db.Query(ctx, listPersonEvents,
 		arg.PersonID,
@@ -214,6 +226,8 @@ func (q *Queries) ListPersonEvents(ctx context.Context, arg ListPersonEventsPara
 		arg.CareKinds,
 		arg.WithHold,
 		arg.HoldKinds,
+		arg.WithLinks,
+		arg.LinkKinds,
 		arg.HideLeaveRows,
 		arg.PlainTypeIds,
 		arg.PageOffset,

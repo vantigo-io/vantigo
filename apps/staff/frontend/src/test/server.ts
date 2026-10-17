@@ -1027,6 +1027,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           JSON.stringify({
             exportedAt: "2026-10-11T08:00:00Z",
             person: personOf(stored, audience),
+            account: { provisionAccount: false, accountEmailKind: "work" },
             absences: [],
             holidayAdjustments: [],
             cases: [],
@@ -2137,7 +2138,15 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         if (refused) return Promise.resolve(refused);
         // A replace — but the retention periods left out keep their values,
         // and the derived block and the acknowledgements are not the body's.
-        const { retention, thresholdsAcknowledged, retentionGraceDays, healthRetentionDays, ...kept } = state.settings;
+        const {
+          retention,
+          thresholdsAcknowledged,
+          retentionGraceDays,
+          healthRetentionDays,
+          createBeforeDays,
+          deleteExternalAfterDays,
+          ...kept
+        } = state.settings;
         // The self-certification policy and the carry-over left out keep theirs too.
         const {
           selfCertPolicy,
@@ -2148,9 +2157,14 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           autoCarryOver,
           autoCarryOverSince,
         } = kept;
+        // The account settings left out keep theirs; a null
+        // deleteExternalAfterDays is "never", answered absent.
+        const { deleteExternalAfterDays: sentDelete, ...sent } = body as StaffSettingsInput;
+        const keptDelete = "deleteExternalAfterDays" in (body as object) ? sentDelete : deleteExternalAfterDays;
         state.settings = {
           retentionGraceDays,
           healthRetentionDays,
+          createBeforeDays,
           selfCertPolicy,
           selfCertDaysPerOccurrence,
           selfCertOccurrencesPerYear,
@@ -2159,7 +2173,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           autoCarryOver,
           ...(autoCarryOverSince ? { autoCarryOverSince } : {}),
           employeeNumberPrefix: "",
-          ...(body as StaffSettingsInput),
+          ...sent,
+          ...(typeof keptDelete === "number" ? { deleteExternalAfterDays: keptDelete } : {}),
           retention,
           thresholdsAcknowledged,
           revision: state.settings.revision + 1,

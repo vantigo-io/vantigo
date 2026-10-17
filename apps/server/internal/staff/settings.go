@@ -21,8 +21,8 @@ import (
 // injury insurer (delivery A1), the two retention periods with the
 // retention run's state, derived (delivery A2), and the self-certification
 // policy and automatic carry-over (delivery B, absence_settings.go; plan
-// reading 2: the contract grows with the deliveries; the account columns are
-// already on the row). There is exactly one row, written by the
+// reading 2: the contract grows with the deliveries), and the two account
+// settings (delivery C, account_settings.go). There is exactly one row, written by the
 // migration, and a replace is guarded by its revision.
 
 // parsedSettings is one validated settings body. A retention period left
@@ -182,8 +182,8 @@ func retentionState(ctx context.Context, q *store.Queries) (gen.StaffRetentionSt
 // (PUT /api/v1/staff/settings)
 //
 // A full replace of A1's five fields, guarded by If-Match; A2's retention
-// periods and B's self-certification policy and carry-over each keep their
-// value when left out. The policy is resolved against the row as locked, and
+// periods, B's self-certification policy and carry-over and C's two account
+// settings (account_settings.go) each keep their value when left out. The policy is resolved against the row as locked, and
 // "today" for autoCarryOverSince is the stored zone's. The zone is judged
 // by Go, then — when it changes — by the database, before the transaction;
 // the revision is judged under the row's lock, so two replaces at once queue
@@ -198,6 +198,7 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 		return gen.PutStaffSettings400ApplicationProblemPlusJSONResponse(invalid(invalidSettingsTitle, badIfMatch())), nil
 	}
 	parsed, f := parseSettings(body)
+	accounts := parseAccountSettings(body, bodyHas(ctx, "deleteExternalAfterDays"), &f)
 	q := store.New(s.deps.Pool)
 	if !f.failed() {
 		current, err := settings(ctx, q)
@@ -246,6 +247,9 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 			SelfCertAfterMonths:        policy.AfterMonths,
 			AutoCarryOver:              policy.AutoCarryOver,
 			AutoCarryOverSince:         policy.AutoCarryOverSince,
+			CreateBeforeDays:           accounts.createBeforeDays,
+			SetDeleteExternalAfterDays: accounts.deleteExternal,
+			DeleteExternalAfterDays:    accounts.deleteExternalAfterDays,
 			Now:                        now,
 		})
 		if err != nil {
