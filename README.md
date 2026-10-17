@@ -160,7 +160,7 @@ mise install                          # Go, Bun and the lint/release tools
 bun install --frozen-lockfile         # frontend workspace dependencies
 
 mise run server:db                    # PostgreSQL for tests (55432) and development (55433)
-mise run server:seed                  # optional: populate the showcase demo dataset (owner@vantigo.local / vantigo)
+mise run server:seed                  # optional: populate the showcase demo dataset (owner@vantigo.local / VantigoIsAwesome!)
 mise run server:dev                   # the api command on http://localhost:8080
 ```
 

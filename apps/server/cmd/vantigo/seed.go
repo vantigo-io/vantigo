@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	demoDefaultPassword     = "vantigo"
+	demoDefaultPassword     = "VantigoIsAwesome!"
 	demoOwnerEmail          = "owner@vantigo.local"
 	demoFirstCustomerNumber = int64(10001)
 	demoCustomerCount       = 200
