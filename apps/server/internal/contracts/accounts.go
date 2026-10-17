@@ -35,6 +35,11 @@ const (
 // The values of AccountRef.DisabledBy beside "" (not disabled, or disabled
 // before identity recorded who did it).
 const (
+	// DisabledByDirectory: SCIM is configured and the directory deactivated
+	// the user, who is not an Owner — identity's record may still say enabled,
+	// but no session of theirs is accepted. A provider neither enables nor
+	// disables such a user for Staff: the directory decides.
+	DisabledByDirectory = "directory"
 	// DisabledByOwner: an Owner disabled the user. A provider never undoes
 	// it (ErrBlockedByOwner).
 	DisabledByOwner = "owner"
@@ -73,6 +78,22 @@ const SystemActorStaffAccounts = "system:staff-accounts"
 type Actor struct {
 	UserID *uuid.UUID
 	System string
+}
+
+// Valid reports whether a names exactly one actor: a user (not the nil
+// UUID), or a known system (SystemActorStaffAccounts). A provider refuses an
+// invalid actor with ErrInvalidActor before any write, so every change it
+// audits has someone to name.
+func (a Actor) Valid() bool {
+	user := a.UserID != nil && *a.UserID != uuid.Nil
+	switch {
+	case user && a.System == "":
+		return true
+	case a.UserID == nil && a.System == SystemActorStaffAccounts:
+		return true
+	default:
+		return false
+	}
 }
 
 // AccountSpec is what the caller wants a managed user to look like. It names
@@ -120,12 +141,14 @@ type AccountRef struct {
 	// own record's (SameEmployeeNumber): a link to a user with another number
 	// is someone else's account.
 	EmployeeNumber string
-	// Email is the user's current address in identity. It exists so the
-	// caller can tell whether it differs from the address it would set (a
-	// non-pending user's address is not written, so a difference is reported
-	// to an Owner rather than corrected). It is for that comparison alone:
-	// never put on the caller's wire, in a log, an event or an error.
-	Email string
+	// EmailDiffers reports whether the user's address in identity differs
+	// from the one the caller passed to Account, compared as identity
+	// compares addresses (normalised, so a difference of case alone is none).
+	// It is false when identity holds a placeholder no mail reaches, and when
+	// the caller passed none. A non-pending user's address is never written
+	// by Update, so a difference is the caller's to report to an Owner. The
+	// identity address itself never crosses into the caller.
+	EmailDiffers bool
 	// HasCredential reports whether the user can sign in by themselves: a
 	// password, a passkey or an OIDC link.
 	HasCredential bool
@@ -165,6 +188,12 @@ var (
 	// ErrAccountEmailTaken: another user, not the managed one with this
 	// employee number, holds the address.
 	ErrAccountEmailTaken = errors.New("contracts: another account holds the address")
+	// ErrEmployeeNumberTaken: another user holds the employee number (by
+	// NormalizeEmployeeNumber's key), so it cannot be given to this one.
+	ErrEmployeeNumberTaken = errors.New("contracts: another account holds the employee number")
+	// ErrInvalidActor: the call's Actor is not Valid. A provider answers it
+	// before any write; it is the caller's bug, never retried.
+	ErrInvalidActor = errors.New("contracts: the call names no valid actor")
 	// ErrEmployeeRoleMissing: no Owner has named the roles Staff may give, so
 	// a local Activate cannot give the user any.
 	ErrEmployeeRoleMissing = errors.New("contracts: no employee role is named for Staff")
@@ -210,7 +239,8 @@ var (
 //     identity reports is the same as its record's, by SameEmployeeNumber.
 //
 // Every write is idempotent: called again with the same arguments it changes
-// nothing more and answers the same AccountRef.
+// nothing more and answers the same AccountRef. Every write refuses an
+// Actor that is not Valid with ErrInvalidActor before it writes anything.
 type AccountProvisioning interface {
 	// Mode answers AccountModeLocal or AccountModeFederated — the mode
 	// identity's API process recorded — or ErrModeMismatch when this
@@ -219,7 +249,8 @@ type AccountProvisioning interface {
 	// Prepare finds the managed user holding spec.EmployeeNumber or, in local
 	// mode only, creates one: Staff-managed, disabled by Staff, pending, with
 	// no credential. ErrAccountEmailTaken when another user holds the
-	// address, ErrAccountPrivileged when the user found is an Owner or a
+	// address, ErrEmployeeNumberTaken when an unmanaged user holds the
+	// number, ErrAccountPrivileged when the user found is an Owner or a
 	// SystemAdmin, ErrAccountNotFound in federated mode when none is found.
 	Prepare(ctx context.Context, actor Actor, spec AccountSpec) (AccountRef, error)
 	// Activate enables a managed user. In local mode it assigns the
@@ -237,10 +268,15 @@ type AccountProvisioning interface {
 	// Update writes the display name, language and employee number of a
 	// managed user, and the email only while the user is pending; in
 	// federated mode the language and the employee number only.
-	// ErrAccountNotManaged, ErrAccountEmailTaken, ErrUserGone.
+	// ErrAccountNotManaged, ErrAccountEmailTaken, ErrEmployeeNumberTaken,
+	// ErrUserGone.
 	Update(ctx context.Context, actor Actor, userID uuid.UUID, spec AccountSpec) (AccountRef, error)
 	// Account reports a user, or (nil, nil) when no user has the id.
-	Account(ctx context.Context, userID uuid.UUID) (*AccountRef, error)
+	// wantEmail is the address the caller would set; the answer says only
+	// whether identity's differs (AccountRef.EmailDiffers), never what it is.
+	// A directory-deactivated non-Owner reads AccountStateDisabled with
+	// DisabledByDirectory while SCIM is configured.
+	Account(ctx context.Context, userID uuid.UUID, wantEmail string) (*AccountRef, error)
 	// ProvisioningRoles lists the roles an Owner named for Staff to give,
 	// ordered by name; empty when none is named.
 	ProvisioningRoles(ctx context.Context) ([]RoleRef, error)

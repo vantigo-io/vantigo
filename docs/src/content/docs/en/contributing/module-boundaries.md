@@ -229,22 +229,29 @@ Communications' outbox is the working example.
     caller never calls it inside one of its own transactions or read-only snapshots,
     and holds no connection or lease across a call**; a worker claims its row in one
     short transaction, commits, calls identity holding nothing, and writes the result
-    in a second. Every write names its `contracts.Actor` — a user, or a system actor
-    such as `system:staff-accounts` — which identity writes to its audit. The spec
+    in a second. Every write names its `contracts.Actor` — exactly one of a user and a
+    known system actor (`system:staff-accounts`), which identity writes to its audit;
+    a provider refuses an actor that is not `Actor.Valid` with `ErrInvalidActor`
+    before it writes anything. The spec
     carries no roles: identity assigns the set an Owner named, so `staff:manage` can
     never mint an account holding a role it chose. The employee number decides whose
     account a user is: `Prepare` finds by it, and a caller acts on a user only when
     identity's number is the same as its record's by `contracts.SameEmployeeNumber`
     — the same `contracts.NormalizeEmployeeNumber` key (trimmed, NFC-normalised,
     upper-cased by Go), which identity stores as `users.employee_number_key` and keeps
-    unique, so no database collation decides which two numbers are one. `AccountRef.Email` exists only so the caller can tell whether the address
-    differs from the one it would set; like `Holder.Email` below it never reaches a
-    caller's wire, log, event or error. Each refusal is a sentinel error
-    (`ErrAccountNotManaged`, `ErrAccountPrivileged`, `ErrBlockedByOwner`,
-    `ErrAccountEmailTaken`, `ErrEmployeeRoleMissing`, `ErrAccountNotFound`,
-    `ErrUserGone`, `ErrModeMismatch`, `ErrLastOwner`); anything else is a failure to
-    retry. With no provider `Deps.Accounts` is nil, which a caller answers as
-    "accounts are unavailable".
+    unique, so no database collation decides which two numbers are one. **The identity
+    address never crosses into the caller**: `Account(ctx, userID, wantEmail)` takes
+    the address the caller would set and answers only `AccountRef.EmailDiffers`, judged
+    by identity's own address normalisation and false for a placeholder no mail
+    reaches. A directory-deactivated non-Owner reads `disabled` by `directory`
+    (`contracts.DisabledByDirectory`) while SCIM is configured. Each refusal is a
+    sentinel error (`ErrAccountNotManaged`, `ErrAccountPrivileged`,
+    `ErrBlockedByOwner`, `ErrAccountEmailTaken`, `ErrEmployeeNumberTaken`,
+    `ErrInvalidActor`, `ErrEmployeeRoleMissing`, `ErrAccountNotFound`, `ErrUserGone`,
+    `ErrModeMismatch`, `ErrLastOwner`); anything else is a failure to retry. The
+    provider is stateless — api mode with `WORKERS_IN_PROCESS` builds it twice, once
+    for Compose and once for Workers. With no provider `Deps.Accounts` is nil, which a
+    caller answers as "accounts are unavailable".
 
 ## How they are enforced
 

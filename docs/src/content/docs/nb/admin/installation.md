@@ -283,6 +283,10 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 2. Kjør én ekstra container fra det samme imaget med kommandoen `worker`. Den kjører
    alltid bakgrunnsjobbene uansett `WORKERS_IN_PROCESS`, og serverer bare
    `/health/live` og `/health/ready` for prober.
+3. Gi worker-containeren de samme innstillingene for `SCIM_TOKEN` og `OIDC_*` som
+   API-et. Hvem som har en tillatelse (en deaktivering i katalogen teller bare så lenge
+   SCIM er konfigurert) og kontomodusen (lokal eller føderert) følger begge disse, så
+   en worker uten dem ville vurdere annerledes enn API-et.
 
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.

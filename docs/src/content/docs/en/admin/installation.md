@@ -281,6 +281,10 @@ HTTP replica does not multiply the pollers:
 2. Run one extra container from the same image with the `worker` command. It always
    runs the workers regardless of `WORKERS_IN_PROCESS`, and serves only `/health/live`
    and `/health/ready` for probes.
+3. Give the worker container the same `SCIM_TOKEN` and `OIDC_*` settings as the API.
+   Who holds a permission (a directory's deactivation counts only while SCIM is
+   configured) and the accounts mode (local or federated) both follow them, so a
+   worker without them would judge differently from the API.
 
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
