@@ -739,26 +739,106 @@ func TestProvisioning_AccountReportsTheUser(t *testing.T) {
 	}
 }
 
-// Under SCIM, a directory-deactivated user is the directory's to enable or
-// disable: Activate and Deactivate leave their state as it is.
-func TestProvisioning_TheDirectoryDecidesADeactivatedUser(t *testing.T) {
+// A leaver loses access whatever the directory says (S23): Deactivate
+// disables a managed user identity holds enabled even while the directory
+// already reports them inactive — SCIM never writes is_disabled, and the
+// directory's deactivation stops sessions only while SCIM is configured. Once
+// the directory reactivates them, or SCIM is gone, the user reads disabled by
+// Staff and still cannot sign in; Activate (a rehire) re-enables what Staff
+// disabled.
+func TestProvisioning_DeactivateDisablesWhateverTheDirectorySays(t *testing.T) {
+	t.Parallel()
+	for _, scim := range []bool{true, false} {
+		var opts []harnessOption
+		if scim {
+			opts = append(opts, withEnv("SCIM_TOKEN", scimToken))
+		}
+		h := newHarness(t, opts...)
+		h.bootstrapOwner(t)
+		employeeRole(t, h)
+		p := h.accounts(t)
+		const email = "dir@example.test"
+		id := h.seedUser(t, email, userPassword, identity.RoleUserID)
+		makePending(t, h, id, "Y-1")
+		h.exec(t, `UPDATE identity.users SET pending_since = NULL WHERE id = $1`, id)
+		h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+		        VALUES ($1, $2, $3, $3, false, 1, 'etag', $4, $4)`, uuid.New(), id, id.String(), h.now())
+		token := h.session(t, id, false)
+
+		if _, err := p.Deactivate(context.Background(), systemActor, id); err != nil {
+			t.Fatalf("SCIM %v: %v", scim, err)
+		}
+		if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND is_disabled AND disabled_by = 'staff'`, id); n != 1 {
+			t.Errorf("SCIM %v: the leaver is not disabled by Staff: %s", scim, userState(t, h, id))
+		}
+		if n := h.count(t, `SELECT count(*) FROM identity.sessions WHERE user_id = $1 AND revoked_at IS NULL`, id); n != 0 {
+			t.Errorf("SCIM %v: %d live sessions, want none", scim, n)
+		}
+		h.exec(t, `UPDATE identity.scim_user_mappings SET upstream_active = true WHERE user_id = $1`, id)
+		if got := accountOf(t, p, id, ""); got.State != contracts.AccountStateDisabled || got.DisabledBy != contracts.DisabledByStaff {
+			t.Errorf("SCIM %v: reactivated upstream = %+v, want disabled by Staff", scim, got)
+		}
+		for name, tok := range map[string]string{"old": token, "new": h.session(t, id, false)} {
+			if _, o := check(t, h, tok, "session"); o == allowed {
+				t.Errorf("SCIM %v: the leaver's %s session is admitted", scim, name)
+			}
+		}
+		if r := h.client(t).do(http.MethodPost, "/api/v1/identity/login", map[string]string{"email": email, "password": userPassword}); r.status == http.StatusOK {
+			t.Errorf("SCIM %v: the leaver signed in", scim)
+		}
+		if back := mustActivate(t, p, id, contracts.ActivateOpts{}); back.State != contracts.AccountStateActive || back.DisabledBy != "" {
+			t.Errorf("SCIM %v: the rehire = %+v, want active", scim, back)
+		}
+	}
+}
+
+// Activate re-enables a user Staff disabled even while the directory
+// reports them inactive (it still blocks their sessions while SCIM is
+// configured), and the ref reports the directory's deactivation meanwhile.
+func TestProvisioning_ActivateReenablesUnderAnInactiveDirectory(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, withEnv("SCIM_TOKEN", scimToken))
+	owner, _ := h.bootstrapOwner(t)
 	p := h.accounts(t)
-	id := h.insertUser(t, "dir@example.test", identity.RoleUserID)
-	makePending(t, h, id, "Y-1")
-	h.exec(t, `UPDATE identity.users SET pending_since = NULL WHERE id = $1`, id)
-	h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
-	        VALUES ($1, $2, $3, $3, false, 1, 'etag', $4, $4)`, uuid.New(), id, id.String(), h.now())
-	before := footprint(t, h)
+	id := h.createUser(t, owner, "rehire@example.test", identity.RoleUser)
+	mustManage(t, owner, id, "Y-2")
 	if _, err := p.Deactivate(context.Background(), systemActor, id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Activate(context.Background(), systemActor, id, contracts.ActivateOpts{}); err != nil {
-		t.Fatal(err)
+	h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+	        VALUES ($1, $2, $3, $3, false, 1, 'etag', $4, $4)`, uuid.New(), id, id.String(), h.now())
+	got := mustActivate(t, p, id, contracts.ActivateOpts{})
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND NOT is_disabled AND disabled_by IS NULL`, id); n != 1 {
+		t.Errorf("the Staff-disabled user was not re-enabled: %s", userState(t, h, id))
 	}
-	if after := footprint(t, h); after != before {
-		t.Errorf("the provider changed a directory-deactivated user: %s → %s", before, after)
+	if got.State != contracts.AccountStateDisabled || got.DisabledBy != contracts.DisabledByDirectory {
+		t.Errorf("ref = %+v, want disabled by the directory while it says inactive", got)
+	}
+}
+
+// A leaver is disabled even when this process's configuration derives
+// another mode than the recorded one: Deactivate reads no mode. Every other
+// write still answers ErrModeMismatch.
+func TestProvisioning_DeactivateIgnoresAModeMismatch(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	employeeRole(t, h)
+	p := h.accounts(t)
+	ref := mustPrepare(t, p, spec("mismatch@example.test", "M-9"))
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	h.exec(t, `UPDATE identity.system_settings SET authority_mode = 'federated'`)
+	ctx := context.Background()
+	_, err := p.Prepare(ctx, systemActor, spec("other@example.test", "M-8"))
+	wantErr(t, "Prepare", err, contracts.ErrModeMismatch)
+	_, err = p.Activate(ctx, systemActor, ref.UserID, contracts.ActivateOpts{})
+	wantErr(t, "Activate", err, contracts.ErrModeMismatch)
+	_, err = p.Update(ctx, systemActor, ref.UserID, spec("mismatch@example.test", "M-9"))
+	wantErr(t, "Update", err, contracts.ErrModeMismatch)
+	if _, err := p.Deactivate(ctx, systemActor, ref.UserID); err != nil {
+		t.Fatalf("Deactivate under a mismatch: %v", err)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND is_disabled AND disabled_by = 'staff'`, ref.UserID); n != 1 {
+		t.Errorf("the leaver is not disabled: %s", userState(t, h, ref.UserID))
 	}
 }
 
@@ -817,8 +897,8 @@ func TestProvisioning_FederatedLinksAndNeverCreates(t *testing.T) {
 }
 
 // Mode answers the recorded mode; when this process's own configuration
-// derives another, Mode and every write answer ErrModeMismatch and nothing
-// is written; with no mode recorded yet, the derivation. Nothing is cached:
+// derives another, Mode and every write but Deactivate answer
+// ErrModeMismatch and nothing is written; with no mode recorded yet, the derivation. Nothing is cached:
 // the recorded value is read on every call, so two instances agree and see a
 // change at once.
 func TestProvisioning_ModeIsTheRecordedOne(t *testing.T) {
@@ -843,8 +923,6 @@ func TestProvisioning_ModeIsTheRecordedOne(t *testing.T) {
 		wantErr(t, "Prepare", err, contracts.ErrModeMismatch)
 		_, err = p.Activate(ctx, systemActor, ref.UserID, contracts.ActivateOpts{})
 		wantErr(t, "Activate", err, contracts.ErrModeMismatch)
-		_, err = p.Deactivate(ctx, systemActor, ref.UserID)
-		wantErr(t, "Deactivate", err, contracts.ErrModeMismatch)
 		_, err = p.Update(ctx, systemActor, ref.UserID, spec("mode@example.test", "M-3"))
 		wantErr(t, "Update", err, contracts.ErrModeMismatch)
 	}

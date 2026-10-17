@@ -289,9 +289,10 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
    en worker uten dem ville vurdere annerledes enn API-et. API-et registrerer modusen
    det utleder når det starter (se
    [autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen)); en worker der
-   egne innstillinger gir en annen modus, klargjør ingen kontoer i det hele tatt —
-   Ansattes kontoer venter, rapportert som ulik modus — til innstillingene stemmer med
-   API-ets og den er startet på nytt.
+   egne innstillinger gir en annen modus, klargjør, aktiverer og oppdaterer ingen
+   kontoer — Ansattes kontoer venter, rapportert som ulik modus — til innstillingene
+   stemmer med API-ets og den er startet på nytt; den deaktiverer fortsatt dem som
+   slutter.
 
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.

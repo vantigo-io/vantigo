@@ -24,7 +24,7 @@ import (
 // is read or written) and runs in one serializable transaction of its own on
 // identity's pool, retried from a fresh snapshot while it loses a race:
 // the recorded authority mode is read (ErrModeMismatch when this process's
-// configuration derives another), then the owner lock is taken — any write
+// configuration derives another; Deactivate alone reads none), then the owner lock is taken — any write
 // may meet an Owner, and taking it always keeps one lock order — then the
 // user's invitations FOR UPDATE, then the user FOR UPDATE, as acceptance
 // orders them. Mail is sent only after the commit. Each change is audited
@@ -110,15 +110,25 @@ func auditActor(actor contracts.Actor) (*uuid.UUID, string) {
 // loses a race, with the mode and the clock, under the owner lock. An
 // invalid actor is refused before the transaction begins.
 func (p *provisioning) write(ctx context.Context, actor contracts.Actor, fn func(q *store.Queries, mode string, now time.Time) error) error {
+	return p.writeIn(ctx, actor, true, fn)
+}
+
+// writeIn is write, reading the mode only when withMode: Deactivate reads
+// none, so a leaver is disabled even by a process whose configuration
+// disagrees with the recorded mode (fn is then given "").
+func (p *provisioning) writeIn(ctx context.Context, actor contracts.Actor, withMode bool, fn func(q *store.Queries, mode string, now time.Time) error) error {
 	if !actor.Valid() {
 		return contracts.ErrInvalidActor
 	}
 	return db.RetrySerializable(ctx, serializableAttempts, func() error {
 		return db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{IsoLevel: pgx.Serializable}, func(tx pgx.Tx) error {
 			q := store.New(tx)
-			mode, err := authorityMode(ctx, q, p.deps.Config)
-			if err != nil {
-				return err
+			mode := ""
+			if withMode {
+				var err error
+				if mode, err = authorityMode(ctx, q, p.deps.Config); err != nil {
+					return err
+				}
 			}
 			if err := lockOwners(ctx, q); err != nil {
 				return err
@@ -146,9 +156,10 @@ func (p *provisioning) scimEnabled() bool {
 	return p.deps.Config != nil && p.deps.Config.SCIM != nil
 }
 
-// directoryInactive reports whether the directory decides u: SCIM is
-// configured and deactivated them, and they are no Owner — no session of
-// theirs is accepted, whatever identity's record says.
+// directoryInactive reports whether the directory has deactivated u: SCIM
+// is configured, the directory reports them inactive, and they are no Owner
+// — no session of theirs is accepted, whatever identity's record says. The
+// ref reports it; the writes act on identity's record all the same.
 func (p *provisioning) directoryInactive(u provisionedUser) bool {
 	return p.scimEnabled() && u.ScimInactive && !u.IsOwner
 }
@@ -348,8 +359,10 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 }
 
 // Activate enables a managed user who is not privileged. An Owner's disable
-// (or a disable no one recorded as Staff's) is ErrBlockedByOwner; a user the
-// directory deactivated under SCIM is left to the directory, unchanged.
+// (or a disable no one recorded as Staff's) is ErrBlockedByOwner. A user
+// Staff disabled is re-enabled even while the directory reports them
+// inactive: identity's own record is Staff's to restore, and the directory's
+// deactivation still stops their sessions while SCIM is configured.
 //
 // In local mode, a user who is pending or disabled by Staff is given the
 // roles Staff may give — read FOR SHARE, as PUT /owner/provisioning-roles
@@ -389,9 +402,6 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 		}
 		if u.IsDisabled && deref(u.DisabledBy) != disabledByStaffValue {
 			return contracts.ErrBlockedByOwner
-		}
-		if p.directoryInactive(u) {
-			return nil
 		}
 		local := mode == contracts.AccountModeLocal
 		before, err := captureUser(ctx, q, userID)
@@ -504,13 +514,17 @@ func (p *provisioning) deniedRole(ctx context.Context, q *store.Queries, roles [
 // (ErrAccountNotManaged), not the last active Owner (ErrLastOwner), not an
 // Owner or a SystemAdmin (ErrAccountPrivileged). An enabled user is disabled
 // with disabled_by staff, their sessions and reset links ended, audited
-// user.staff-deactivated; an already disabled one keeps who disabled them,
-// and a user the directory deactivated under SCIM is left to the directory.
+// user.staff-deactivated — whatever the directory says, since a leaver must
+// lose access whatever the identity provider does (SCIM never writes
+// is_disabled, and its deactivation counts only while SCIM is configured);
+// an already disabled one keeps who disabled them. Deactivate reads no
+// authority mode, so it disables even where this process's configuration
+// disagrees with the recorded mode.
 // Every invitation naming the user that could still be accepted is revoked
 // deactivated. Again, it changes nothing.
 func (p *provisioning) Deactivate(ctx context.Context, actor contracts.Actor, userID uuid.UUID) (contracts.AccountRef, error) {
 	var ref contracts.AccountRef
-	err := p.write(ctx, actor, func(q *store.Queries, _ string, now time.Time) error {
+	err := p.writeIn(ctx, actor, false, func(q *store.Queries, _ string, now time.Time) error {
 		u, err := lockUser(ctx, q, userID)
 		if err != nil {
 			return err
@@ -528,7 +542,7 @@ func (p *provisioning) Deactivate(ctx context.Context, actor contracts.Actor, us
 		if u.Privileged {
 			return contracts.ErrAccountPrivileged
 		}
-		if !u.IsDisabled && !p.directoryInactive(u) {
+		if !u.IsDisabled {
 			before, err := captureUser(ctx, q, userID)
 			if err != nil {
 				return err

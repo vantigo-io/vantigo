@@ -203,7 +203,8 @@ The mode is derived from the configuration of the process serving the API and re
 when identity starts there (`identity.system_settings.authority_mode`, with
 `authority_mode_at`). A worker-only process reads the recorded mode instead of trusting
 its own settings: when its own `OIDC_*` and `SCIM_TOKEN` derive another, provisioning
-refuses to act at all until the two agree (see
+prepares, activates and updates nothing until the two agree — it still deactivates, so
+a leaver never keeps access over a misconfigured worker (see
 [Installation](/en/admin/installation/#background-workers-and-scaling)). Turning OIDC
 or SCIM on or off therefore changes the mode at the API's next start; the change is
 audited `authority-mode.changed` with the modes before and after, no actor and no
@@ -215,15 +216,15 @@ Staff reaches identity's users only through identity's provisioning, which runs 
 change in a transaction of its own — under the owner lock, then the user's
 invitations, then the user — audits it with its actor (the person who pressed a button
 in Staff, or `system:staff-accounts`), and sends mail only once the change is
-committed. It refuses anything with no valid actor, and does nothing at all while the
+committed. It refuses anything with no valid actor, and while the
 [authority mode](#the-authority-mode) the process derives differs from the recorded
-one.
+one it does nothing but deactivate.
 
 | Step | Local mode | Federated mode | Audited |
 | --- | --- | --- | --- |
 | Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's invitation to that address is revoked `replaced`. | Finds the Staff-managed user with the number; creates nothing | `user.staff-prepared` |
 | Activate | Gives a pending user, or one Staff disabled, the [employee roles](#the-employee-roles) and enables them; invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | `user.staff-activated` |
-| Deactivate | Disables the user as Staff's (`disabledBy: staff`), ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | `user.staff-deactivated` |
+| Deactivate | Disables the user as Staff's (`disabledBy: staff`) — also one the directory already deactivated — ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | `user.staff-deactivated` |
 | Update | Writes the display name, the language and the employee number; the address only while the user is pending, which revokes their invitations `email_changed` | Writes the language and the employee number only | `user.staff-updated` |
 
 An activated pending user is enabled but still cannot sign in: password, passkey and
@@ -240,8 +241,13 @@ does not send another — until someone runs the person's account in Staff by ha
 invitation `delivery_failed` and does not count; the next activation tries again.
 
 Staff's provisioning never touches an Owner or a SystemAdmin, never re-enables a user
-an Owner disabled, never deactivates the last active Owner, and leaves a user the
-directory deactivated (while SCIM is configured) to the directory. What it refuses:
+an Owner disabled and never deactivates the last active Owner. A leaver loses access
+whatever the directory says: Staff disables them in identity even when the directory
+already reports them inactive (SCIM never disables a user in identity, and its
+deactivation counts only while SCIM is configured), so a directory that reactivates
+them later, or SCIM turned off, does not let them back in. A rehire re-enables what
+Staff disabled; while the directory still reports the person inactive, it keeps them
+out and Staff reports their account disabled by the directory. What it refuses:
 
 | Refusal | Meaning | What to do |
 | --- | --- | --- |
@@ -253,7 +259,7 @@ directory deactivated (while SCIM is configured) to the directory. What it refus
 | Address taken | Another user holds the person's address | Give the person another address in Staff, or resolve the other account |
 | Employee number taken | A user Staff does not manage holds the number | Adopt that user, or correct the number in Staff |
 | Not found | Federated mode: no Staff-managed user holds the number yet | Let the identity provider create the account, then adopt it |
-| Mode mismatch | This process's `OIDC_*`/`SCIM_TOKEN` derive another mode than the API recorded | Give the worker the API's settings ([Installation](/en/admin/installation/#background-workers-and-scaling)) |
+| Mode mismatch | This process's `OIDC_*`/`SCIM_TOKEN` derive another mode than the API recorded (refused for every step but deactivation) | Give the worker the API's settings ([Installation](/en/admin/installation/#background-workers-and-scaling)) |
 
 ### Adopt an existing user for Staff
 

@@ -244,7 +244,10 @@ Communications' outbox is the working example.
     the address the caller would set and answers only `AccountRef.EmailDiffers`, judged
     by identity's own address normalisation and false for a placeholder no mail
     reaches. A directory-deactivated non-Owner reads `disabled` by `directory`
-    (`contracts.DisabledByDirectory`) while SCIM is configured. Each refusal is a
+    (`contracts.DisabledByDirectory`) while SCIM is configured; the writes still act
+    on identity's record of such a user, and `Deactivate` — which alone reads no
+    authority mode, so it never answers `ErrModeMismatch` — disables a leaver
+    whatever the directory says. Each refusal is a
     sentinel error (`ErrAccountNotManaged`, `ErrAccountPrivileged`,
     `ErrBlockedByOwner`, `ErrAccountEmailTaken`, `ErrEmployeeNumberTaken`,
     `ErrInvalidActor`, `ErrEmployeeRoleMissing`, `ErrEmployeeRoleUnsafe` (a role in
