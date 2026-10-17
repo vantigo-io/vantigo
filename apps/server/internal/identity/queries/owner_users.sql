@@ -29,8 +29,9 @@ ORDER BY is_owner DESC, u.display_name COLLATE "C", u.id;
 -- name: IsLastActiveOwner :one
 -- IsLastActiveOwner is .NET's AuthAccountState.IsLastActiveOwner
 -- (EA/AuthAccountState.cs:27-62): the user is an active Owner (neither
--- disabled nor locked out at now) and no other active Owner exists. Callers
--- hold the owner lock, so the answer holds until they commit.
+-- disabled nor locked out at now, nor a pending Staff user who has not chosen
+-- a credential) and no other active Owner exists. Callers hold the owner
+-- lock, so the answer holds until they commit.
 WITH active_owners AS (
     SELECT u.id
     FROM identity.users u
@@ -38,6 +39,7 @@ WITH active_owners AS (
     JOIN identity.roles r ON r.id = ur.role_id
     WHERE r.name = 'Owner'
       AND NOT u.is_disabled
+      AND u.pending_since IS NULL
       AND (u.lockout_end IS NULL OR u.lockout_end <= @now::timestamptz)
 )
 SELECT (EXISTS (SELECT 1 FROM active_owners WHERE id = @user_id::uuid)

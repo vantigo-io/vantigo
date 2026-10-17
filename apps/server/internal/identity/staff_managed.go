@@ -47,6 +47,9 @@ var (
 	accountPrivileged = refuse(http.StatusConflict, "account_privileged", "An Owner or a SystemAdmin cannot be managed by Staff.", nil)
 	// employeeNumberTaken refuses an employee number another user holds.
 	employeeNumberTaken = refuse(http.StatusConflict, "employee_number_taken", "Another user already holds this employee number.", nil)
+	// accountPending refuses making a pending user usable by any other way
+	// than accepting their invitation: an Owner's enable, or a promotion.
+	accountPending = refuse(http.StatusConflict, "account_pending", "This user has not accepted their invitation yet; the account becomes usable only by accepting it.", nil)
 	// accountManaged refuses deleting a user Staff manages.
 	accountManaged = refuse(http.StatusConflict, "account_managed", "This user is managed by Staff and cannot be deleted; stop Staff managing them first.", nil)
 )
@@ -54,6 +57,12 @@ var (
 // staffManaged reports whether Staff manages u.
 func staffManaged(u store.IdentityUser) bool {
 	return u.ManagedBy != nil
+}
+
+// isPending reports whether u is a pending user: one Staff created who has
+// not yet chosen a credential through their invitation.
+func isPending(u store.IdentityUser) bool {
+	return u.PendingSince != nil
 }
 
 // disabledByOwner reports whether an Owner disabled u.

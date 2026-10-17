@@ -567,3 +567,71 @@ func TestProvisioningRoles_CustomOnlyReplacedWholeAndCascading(t *testing.T) {
 		t.Errorf("put without roleIds: status %d code %q, want 400 invalid_request", r.status, r.code())
 	}
 }
+
+// makePending marks id a pending Staff-managed user, enabled, as a test
+// arranges what no endpoint makes yet.
+func makePending(t *testing.T, h *harness, id uuid.UUID, number string) {
+	t.Helper()
+	h.exec(t, `UPDATE identity.users SET managed_by = 'staff', employee_number = $2, pending_since = $3, is_disabled = false, disabled_by = NULL
+	           WHERE id = $1`, id, number, h.now())
+}
+
+// A pending user becomes usable only by accepting their invitation: an
+// Owner can neither promote them to Owner nor enable them (account_pending),
+// and neither writes anything.
+func TestStaffManaged_APendingUserIsNeitherPromotedNorEnabled(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	const email = "pending@example.test"
+	id := h.insertUser(t, email, identity.RoleUserID)
+	makePending(t, h, id, "P-9")
+
+	r := owner.do(http.MethodPut, userPath(id, ""), map[string]string{"displayName": email, "email": email, "role": identity.RoleOwner})
+	if r.status != http.StatusConflict || r.code() != "account_pending" {
+		t.Errorf("promote a pending user: status %d code %q, want 409 account_pending", r.status, r.code())
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.user_roles WHERE user_id = $1 AND role_id = $2`, id, identity.RoleOwnerID); n != 0 {
+		t.Errorf("the pending user holds Owner")
+	}
+	if n := len(h.auditEvents(t, "user.role-changed")); n != 0 {
+		t.Errorf("user.role-changed rows = %d, want 0", n)
+	}
+	// Editing a pending user's name, as a User, is still an Owner's.
+	if r := owner.do(http.MethodPut, userPath(id, ""), map[string]string{"displayName": "Renamed", "email": email, "role": identity.RoleUser}); r.status != http.StatusOK {
+		t.Errorf("rename a pending user: status %d body %s, want 200", r.status, r.body)
+	}
+
+	h.exec(t, `UPDATE identity.users SET is_disabled = true, disabled_by = 'staff' WHERE id = $1`, id)
+	if r := owner.do(http.MethodPost, userPath(id, "/enable"), nil); r.status != http.StatusConflict || r.code() != "account_pending" {
+		t.Errorf("enable a pending user: status %d code %q, want 409 account_pending", r.status, r.code())
+	}
+	if got := staffColumns(t, h, id); got != "staff:P-9:true:staff" {
+		t.Errorf("columns after the refused enable = %s", got)
+	}
+	if n := len(h.auditEvents(t, "user.enabled")); n != 0 {
+		t.Errorf("user.enabled rows = %d, want 0", n)
+	}
+	// Disabling one is still an Owner's.
+	if r := owner.do(http.MethodPost, userPath(id, "/disable"), nil); r.status != http.StatusOK {
+		t.Errorf("disable a pending user: status %d body %s, want 200", r.status, r.body)
+	}
+}
+
+// A pending user holding Owner (no endpoint makes one; a test does) is no
+// active Owner: with them and one real Owner, the real one is the last.
+func TestStaffManaged_APendingOwnerIsNotAnActiveOwner(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, ownerID := h.bootstrapOwner(t)
+	pending := h.insertUser(t, "pending-owner@example.test", identity.RoleOwnerID)
+	makePending(t, h, pending, "P-10")
+	caller := h.signIn(t, pending, true)
+
+	if r := caller.do(http.MethodPost, userPath(ownerID, "/disable"), nil); r.status != http.StatusConflict || r.code() != "last_active_owner" {
+		t.Errorf("disable the only real Owner: status %d code %q, want 409 last_active_owner", r.status, r.code())
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND NOT is_disabled`, ownerID); n != 1 {
+		t.Errorf("the only real Owner was disabled")
+	}
+}

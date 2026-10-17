@@ -855,8 +855,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** @description Edits another user's display name, email and role (User or Owner). 409 account_exists for an email another account has; 409 last_active_owner for demoting the last active Owner; 409 account_pending for promoting a pending user (one Staff created who has not accepted their invitation) to Owner. Promoting a user Staff manages to Owner stops Staff managing them in the same change, audited user.staff-unmanaged with the reason promoted, since Staff never manages an Owner. */
         put: operations["putIdentityOwnerUsersById"];
         post?: never;
+        /** @description Deletes another user. Refused 409 account_managed for a user Staff manages (stop Staff managing them first), before any other check; 409 last_active_owner for the last active Owner; 409 provenance_conflict for a user SCIM provisioned; 400 for the caller's own account. */
         delete: operations["deleteIdentityOwnerUsersById"];
         options?: never;
         head?: never;
@@ -888,6 +890,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Disables another user and ends their sessions. The disable is recorded as an Owner's (disabledBy owner), also over a user Staff disabled, and Staff never re-enables a user an Owner disabled. 409 last_active_owner for the last active Owner; a pending user does not count as an active Owner. */
         post: operations["postIdentityOwnerUsersByIdDisable"];
         delete?: never;
         options?: never;
@@ -904,6 +907,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Enables another user, ending their sessions, and clears disabledBy. 409 account_pending for a pending user (one Staff created who has not accepted their invitation): the account becomes usable only by accepting it. */
         post: operations["postIdentityOwnerUsersByIdEnable"];
         delete?: never;
         options?: never;
