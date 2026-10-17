@@ -140,7 +140,10 @@ Dette kan en eier fortsatt gjøre med en bruker som Ansatte styrer:
   `account_pending`, siden kontoen bare blir brukbar ved at invitasjonen aksepteres.
 - **Deaktivere** brukeren. En eiers deaktivering registreres som eierens
   (`disabledBy: owner`), også over en bruker Ansatte hadde deaktivert, og Ansatte
-  aktiverer aldri igjen en bruker en eier har deaktivert. Aktivering fjerner den.
+  aktiverer aldri igjen en bruker en eier har deaktivert. Aktivering fjerner den. Å
+  overstyre deaktiveringen til Ansatte — å deaktivere over den, eller å aktivere en
+  bruker Ansatte deaktiverte — logges i tillegg som `user.disabled-by-changed`, med hvem
+  som hadde deaktivert brukeren før og etter.
 - **Forfremme** brukeren til eier. Ansatte styrer aldri en eier, så forfremmelsen
   slutter å la Ansatte styre brukeren i samme endring, logget som
   `user.staff-unmanaged` med årsaken `promoted`. En ventende bruker kan ikke
@@ -174,7 +177,9 @@ SystemAdmin.
 3. Kontroller: svaret, og brukeren i listen, viser `managedBy: staff` og
    ansattnummeret. Revisjonsloggen registrerer `user.staff-managed`.
 
-Å ta inn en styrt bruker på nytt med et annet nummer endrer nummeret. En bruker som
+Ansattnumre sammenlignes uansett store eller små bokstaver (`upper()` på begge sider),
+så `a-17` og `A-17` er samme nummer. Å ta inn en styrt bruker på nytt med et annet
+nummer endrer nummeret. En bruker som
 SCIM klargjør, kan tas inn: i en føderert installasjon er den styrte brukeren
 identitetsleverandørens.
 
@@ -184,7 +189,7 @@ Dette kan gå galt:
 | --- | --- |
 | 409 `account_privileged` | Brukeren er eier eller SystemAdmin; Ansatte styrer dem aldri, og en eier håndterer eiere for hånd |
 | 409 `employee_number_taken` | En annen bruker har allerede nummeret, uansett store eller små bokstaver |
-| 400 `invalid_request` | Modulen er ikke `staff`, nummeret er tomt eller lengre enn 16 tegn, eller brukeren er deg selv |
+| 400 `invalid_request` | Modulen er ikke `staff`, nummeret er tomt, lengre enn 16 tegn eller inneholder et kontrolltegn, eller brukeren er deg selv |
 
 ### Slutte å la Ansatte styre en bruker
 

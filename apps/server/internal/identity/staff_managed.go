@@ -7,12 +7,14 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 )
@@ -36,6 +38,8 @@ const (
 	// disabledByOwnerValue is identity.users.disabled_by for an Owner's
 	// disable.
 	disabledByOwnerValue = "owner"
+	// disabledByStaffValue is identity.users.disabled_by for Staff's.
+	disabledByStaffValue = "staff"
 	// staffUnmanagedPromoted is user.staff-unmanaged's reason when a
 	// promotion to Owner ended the management.
 	staffUnmanagedPromoted = "promoted"
@@ -70,6 +74,12 @@ func disabledByOwner(u store.IdentityUser) bool {
 	return u.DisabledBy != nil && *u.DisabledBy == disabledByOwnerValue
 }
 
+// disabledByAudit is user.disabled-by-changed's before and after: who had
+// disabled the user, and who has now (null once enabled).
+type disabledByAudit struct {
+	DisabledBy *string `json:"disabledBy"`
+}
+
 // staffManagedAudit is the before and after of user.staff-managed and
 // user.staff-unmanaged; reason is set only when the management ended for a
 // reason other than an Owner's unmanage (promoted).
@@ -92,10 +102,12 @@ func privileged(ctx context.Context, q *store.Queries, id uuid.UUID) (bool, erro
 // PostIdentityOwnerUsersByIdManage adopts another user for Staff for an
 // Owner: managed_by staff and the employee number. After validation (400
 // invalid_request: the module is staff, the number 1–16 characters once
-// trimmed) and the self check, one serializable transaction under the owner
+// trimmed, none a control character) and the self check, one serializable transaction under the owner
 // lock: an unknown user is 404; an Owner or a SystemAdmin is 409
 // account_privileged; a number another user holds, however it is cased, is
-// 409 employee_number_taken. A SCIM-mapped user is admitted (plan reading
+// 409 employee_number_taken, also when only the unique index sees a
+// concurrent adoption's number. The comparison is upper() on both sides, the
+// index's and GetUserIDByEmployeeNumber's. A SCIM-mapped user is admitted (plan reading
 // 15). A change is audited user.staff-managed; adopting a user again with
 // the number they hold changes nothing.
 func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.PostIdentityOwnerUsersByIdManageRequestObject) (gen.PostIdentityOwnerUsersByIdManageResponseObject, error) {
@@ -108,8 +120,8 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 	if deref(body.Module) != staffModule {
 		fields["module"] = []string{"Module must be staff."}
 	}
-	if number == "" || utf8.RuneCountInString(number) > maxEmployeeNumberLength {
-		fields["employeeNumber"] = []string{"An employee number of at most 16 characters is required."}
+	if number == "" || utf8.RuneCountInString(number) > maxEmployeeNumberLength || strings.ContainsFunc(number, unicode.IsControl) {
+		fields["employeeNumber"] = []string{"An employee number of at most 16 characters, none of them a control character, is required."}
 	}
 	if len(fields) > 0 {
 		return refuse(http.StatusBadRequest, "invalid_request", userInvalidMessage, fields), nil
@@ -153,6 +165,11 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 			if err := q.SetUserStaffManaged(ctx, store.SetUserStaffManagedParams{
 				ID: target.ID, ManagedBy: &module, EmployeeNumber: &number, Version: uuid.New(), Now: now,
 			}); err != nil {
+				// A concurrent adoption that took the number first, seen
+				// only by the index.
+				if db.IsUniqueViolation(err, "ux_users_employee_number") {
+					return employeeNumberTaken
+				}
 				return err
 			}
 			if err := writeAudit(ctx, q, r, now, auditEvent{

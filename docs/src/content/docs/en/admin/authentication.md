@@ -132,7 +132,9 @@ What an Owner may still do with a Staff-managed user:
   the account becomes usable only by accepting its invitation.
 - **Disable** the user. An Owner's disable is recorded as the Owner's
   (`disabledBy: owner`), also over a user Staff had disabled, and Staff never
-  re-enables a user an Owner disabled. Enabling clears it.
+  re-enables a user an Owner disabled. Enabling clears it. Overriding Staff's disable —
+  disabling over it, or enabling a user Staff disabled — is also audited
+  `user.disabled-by-changed`, with who had disabled the user before and after.
 - **Promote** the user to Owner. Staff never manages an Owner, so the promotion stops
   Staff managing them in the same change, audited `user.staff-unmanaged` with the
   reason `promoted`. A pending user cannot be promoted (409 `account_pending`), and a
@@ -165,7 +167,9 @@ Owner nor a SystemAdmin.
 3. Verify: the answer, and the user in the list, show `managedBy: staff` and the
    employee number. The audit records `user.staff-managed`.
 
-Adopting a managed user again with another number changes the number. A user SCIM
+Employee numbers are compared however they are cased (`upper()` on both sides), so
+`a-17` and `A-17` are one number. Adopting a managed user again with another number
+changes the number. A user SCIM
 provisions may be adopted: in a federated installation the managed user is the
 identity provider's.
 
@@ -175,7 +179,7 @@ What can go wrong:
 | --- | --- |
 | 409 `account_privileged` | The user is an Owner or a SystemAdmin; Staff never manages them, and an Owner handles Owners by hand |
 | 409 `employee_number_taken` | Another user already holds the number, however it is cased |
-| 400 `invalid_request` | The module is not `staff`, or the number is blank or longer than 16 characters, or the user is you |
+| 400 `invalid_request` | The module is not `staff`, or the number is blank, longer than 16 characters or holds a control character, or the user is you |
 
 ### Stop Staff managing a user
 

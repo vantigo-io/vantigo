@@ -890,7 +890,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Disables another user and ends their sessions. The disable is recorded as an Owner's (disabledBy owner), also over a user Staff disabled, and Staff never re-enables a user an Owner disabled. 409 last_active_owner for the last active Owner; a pending user does not count as an active Owner. */
+        /** @description Disables another user and ends their sessions. The disable is recorded as an Owner's (disabledBy owner), also over a user Staff disabled (that override audited user.disabled-by-changed beside user.disabled), and Staff never re-enables a user an Owner disabled. 409 last_active_owner for the last active Owner; a pending user does not count as an active Owner. */
         post: operations["postIdentityOwnerUsersByIdDisable"];
         delete?: never;
         options?: never;
@@ -907,7 +907,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Enables another user, ending their sessions, and clears disabledBy. 409 account_pending for a pending user (one Staff created who has not accepted their invitation): the account becomes usable only by accepting it. */
+        /** @description Enables another user, ending their sessions, and clears disabledBy; enabling a user Staff disabled is also audited user.disabled-by-changed. 409 account_pending for a pending user (one Staff created who has not accepted their invitation): the account becomes usable only by accepting it. */
         post: operations["postIdentityOwnerUsersByIdEnable"];
         delete?: never;
         options?: never;
@@ -924,7 +924,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Adopts the user for Staff: marks them managed by Staff (managedBy staff) with the employee number that ties them to a person in Staff's register, so Staff's provisioning may enable, disable and update them. Changing the number of a managed user is the same call. Refused 409 account_privileged for an Owner or a SystemAdmin (an Owner handles Owners by hand), 409 employee_number_taken when another user holds the number however it is cased, 400 invalid_request for a module other than staff or a number that is blank or longer than 16 characters, and 400 for the caller's own account. A SCIM-mapped user may be adopted. Audited user.staff-managed. */
+        /** @description Adopts the user for Staff: marks them managed by Staff (managedBy staff) with the employee number that ties them to a person in Staff's register, so Staff's provisioning may enable, disable and update them. Changing the number of a managed user is the same call. Refused 409 account_privileged for an Owner or a SystemAdmin (an Owner handles Owners by hand), 409 employee_number_taken when another user holds the number however it is cased, 400 invalid_request for a module other than staff or a number that is blank, longer than 16 characters or holding a control character, and 400 for the caller's own account. A SCIM-mapped user may be adopted. Audited user.staff-managed. */
         post: operations["postIdentityOwnerUsersByIdManage"];
         delete?: never;
         options?: never;
