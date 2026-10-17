@@ -523,9 +523,79 @@ func TestProvisioning_AnOwnersRevokeHoldsUntilAFreshInvitation(t *testing.T) {
 		t.Errorf("after the revoke = %+v and %d mails, want revoked_by_owner and no new mail", got.Invitation, len(h.mailTo(email)))
 	}
 	h.advance(time.Minute)
+	if early := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{FreshInvitation: true}); early.Invitation.State != contracts.InvitationRevokedByOwner || len(h.mailTo(email)) != 1 {
+		t.Errorf("a fresh invitation within ten minutes of the last = %+v and %d mails, want the revoke kept and no mail", early.Invitation, len(h.mailTo(email)))
+	}
+	h.advance(10 * time.Minute)
 	fresh := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{FreshInvitation: true})
 	if fresh.Invitation != (contracts.Invitation{State: contracts.InvitationActive, Issued: 1}) || len(h.mailTo(email)) != 2 {
 		t.Errorf("the fresh invitation = %+v and %d mails, want active, one", fresh.Invitation, len(h.mailTo(email)))
+	}
+}
+
+// A fresh invitation never re-sends one that can still be accepted: while
+// the latest is open, FreshInvitation changes nothing and mails nothing.
+// After a lapse, two fresh calls within ten minutes send one invitation.
+func TestProvisioning_AFreshInvitationNeverResendsAnOpenOne(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	employeeRole(t, h)
+	p := h.accounts(t)
+	const email = "open@example.test"
+	ref := mustPrepare(t, p, spec(email, "N-1"))
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	open := func() []uuid.UUID {
+		rows, err := h.pool.Query(context.Background(), `SELECT id FROM identity.invitations WHERE user_id = $1 AND revoked_at IS NULL AND accepted_at IS NULL ORDER BY id`, ref.UserID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ids
+	}
+	first := open()
+	h.advance(time.Hour)
+	got := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{FreshInvitation: true})
+	if now := open(); len(now) != 1 || now[0] != first[0] || len(h.mailTo(email)) != 1 {
+		t.Errorf("a fresh call while open: invitations %v (was %v), %d mails, want the same one and one mail", now, first, len(h.mailTo(email)))
+	}
+	if got.Invitation != (contracts.Invitation{State: contracts.InvitationActive, Issued: 1}) {
+		t.Errorf("ref = %+v, want the open invitation, one", got.Invitation)
+	}
+
+	h.advance(h.cfg.InvitationLifetime)
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{FreshInvitation: true})
+	h.advance(5 * time.Minute)
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{FreshInvitation: true})
+	if n := len(h.mailTo(email)); n != 2 {
+		t.Errorf("%d mails after two fresh calls within ten minutes of a lapse, want 2", n)
+	}
+}
+
+// Activate gives the roles only on the call that enables the user: a
+// pending user Staff has already enabled is given nothing again, so an
+// Owner's removal of a role before they accept is not undone.
+func TestProvisioning_ActivateGivesTheRolesOnlyWhenItEnables(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	role := employeeRole(t, h)
+	p := h.accounts(t)
+	ref := mustPrepare(t, p, spec("removed@example.test", "R-7"))
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	h.exec(t, `DELETE FROM identity.user_roles WHERE user_id = $1 AND role_id = $2`, ref.UserID, role)
+	before := footprint(t, h)
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	if n := h.count(t, `SELECT count(*) FROM identity.user_roles WHERE user_id = $1 AND role_id = $2`, ref.UserID, role); n != 0 {
+		t.Error("Activate gave back a role an Owner removed from a pending user")
+	}
+	if after := footprint(t, h); after != before {
+		t.Errorf("Activate of an enabled pending user wrote: %s → %s", before, after)
+	}
+	h.exec(t, `DELETE FROM identity.provisioning_roles`)
+	if _, err := p.Activate(context.Background(), systemActor, ref.UserID, contracts.ActivateOpts{}); err != nil {
+		t.Errorf("Activate of an enabled user with no set named = %v, want nothing to give and no refusal", err)
 	}
 }
 

@@ -223,7 +223,7 @@ one it does nothing but deactivate.
 | Step | Local mode | Federated mode | Audited |
 | --- | --- | --- | --- |
 | Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's invitation to that address is revoked `replaced`. | Finds the Staff-managed user with the number; creates nothing | `user.staff-prepared` |
-| Activate | Gives a pending user, or one Staff disabled, the [employee roles](#the-employee-roles) and enables them; invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | `user.staff-activated` |
+| Activate | Enables a user Staff disabled — a prepared user among them — giving them the [employee roles](#the-employee-roles) on that call only, so a role an Owner removes later stays removed; invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | `user.staff-activated` |
 | Deactivate | Disables the user as Staff's (`disabledBy: staff`) — also one the directory already deactivated — ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | `user.staff-deactivated` |
 | Update | Writes the display name, the language and the employee number; the address only while the user is pending, which revokes their invitations `email_changed` | Writes the language and the employee number only | `user.staff-updated` |
 
@@ -237,7 +237,9 @@ Invitations follow the pending user's [invitation spell](#staff-managed-users): 
 lapsed invitation is replaced at the next activation until three have been delivered;
 then Staff reports it unanswered. An Owner's revoke of the invitation stands — Staff
 does not send another — until someone runs the person's account in Staff by hand
-(*Run now*), which starts a new spell. A mail that cannot be sent revokes its
+(*Run now*), which starts a new spell. *Run now* never re-sends an invitation that can
+still be accepted, and starts a spell at most once every ten minutes: within ten
+minutes of the last invitation it is an ordinary run. A mail that cannot be sent revokes its
 invitation `delivery_failed` and does not count; the next activation tries again.
 
 Staff's provisioning never touches an Owner or a SystemAdmin, never re-enables a user

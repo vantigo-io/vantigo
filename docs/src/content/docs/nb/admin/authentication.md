@@ -239,7 +239,7 @@ registrerte, gjør den ingenting annet enn å deaktivere.
 | Steg | Lokal modus | Føderert modus | Revisjonslogg |
 | --- | --- | --- | --- |
 | Klargjør | Finner brukeren Ansatte styrer med ansattnummeret, ellers oppretter den en: styrt av Ansatte, ventende, deaktivert av Ansatte, med den innebygde rollen `User`, uten innloggingsmetode og med ubekreftet adresse. En eiers invitasjon til adressen trekkes tilbake `replaced`. | Finner brukeren Ansatte styrer med nummeret; oppretter ingenting | `user.staff-prepared` |
-| Aktiver | Gir en ventende bruker, eller en Ansatte har deaktivert, [ansattrollene](#ansattrollene) og aktiverer dem; inviterer en ventende bruker uten innloggingsmetode ved navn | Aktiverer igjen en bruker Ansatte deaktiverte; gir ingen rolle og sender ingen invitasjon | `user.staff-activated` |
+| Aktiver | Aktiverer en bruker Ansatte har deaktivert — også en klargjort bruker — og gir dem [ansattrollene](#ansattrollene) bare ved det kallet, så en rolle en eier fjerner senere, forblir fjernet; inviterer en ventende bruker uten innloggingsmetode ved navn | Aktiverer igjen en bruker Ansatte deaktiverte; gir ingen rolle og sender ingen invitasjon | `user.staff-activated` |
 | Deaktiver | Deaktiverer brukeren som Ansattes (`disabledBy: staff`) — også en katalogen allerede har deaktivert — avslutter øktene og tilbakestillingslenkene, og trekker tilbake de åpne invitasjonene `deactivated` | Det samme | `user.staff-deactivated` |
 | Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter, og da trekkes invitasjonene tilbake `email_changed` | Skriver bare språket og ansattnummeret | `user.staff-updated` |
 
@@ -253,7 +253,9 @@ Invitasjonene følger den ventende brukerens [invitasjonsrunde](#brukere-som-ans
 en invitasjon som har gått ut, erstattes ved neste aktivering til tre er levert; deretter
 melder Ansatte den som ubesvart. En eiers tilbaketrekking av invitasjonen står — Ansatte
 sender ingen ny — til noen kjører personens konto for hånd i Ansatte (*Kjør nå*), som
-starter en ny runde. En e-post som ikke kan sendes, trekker invitasjonen tilbake
+starter en ny runde. *Kjør nå* sender aldri på nytt en invitasjon som fortsatt kan
+godtas, og starter en runde høyst én gang hvert tiende minutt: innen ti minutter etter
+forrige invitasjon er det en vanlig kjøring. En e-post som ikke kan sendes, trekker invitasjonen tilbake
 `delivery_failed` og teller ikke; neste aktivering prøver igjen.
 
 Ansattes klargjøring rører aldri en eier eller en SystemAdmin, aktiverer aldri igjen en

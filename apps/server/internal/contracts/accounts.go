@@ -164,9 +164,11 @@ type AccountRef struct {
 type ActivateOpts struct {
 	// FreshInvitation starts a new pending spell — the delivered count reset
 	// and an Owner's revoke overridden — so a pending user gets an invitation
-	// even when the last was revoked by an Owner or three went unanswered. Set
-	// only by an explicit request of a person (Staff's Run now), never by a
-	// worker.
+	// even when the last was revoked by an Owner or three went unanswered. It
+	// never re-sends an invitation that can still be accepted, and starts a
+	// spell only when no invitation naming the user was made in the last ten
+	// minutes (within them the call is an ordinary one). Set only by an
+	// explicit request of a person (Staff's Run now), never by a worker.
 	FreshInvitation bool
 }
 
@@ -241,8 +243,8 @@ var (
 //   - The actor. Every write names who it acts for (Actor), and identity
 //     audits each change with it.
 //   - The roles are identity's. AccountSpec carries none; Activate assigns
-//     the set an Owner named (ProvisioningRoles), only when the user was
-//     pending or disabled by Staff, so an Owner's later removal of a role is
+//     the set an Owner named (ProvisioningRoles), only on the call that
+//     enables a user Staff disabled, so an Owner's later removal of a role is
 //     not undone.
 //   - The employee number decides whose account it is. Prepare finds a
 //     managed user by number; a caller acts on a user only when the number
@@ -264,10 +266,10 @@ type AccountProvisioning interface {
 	// number, ErrAccountPrivileged when the user found is an Owner or a
 	// SystemAdmin, ErrAccountNotFound in federated mode when none is found.
 	Prepare(ctx context.Context, actor Actor, spec AccountSpec) (AccountRef, error)
-	// Activate enables a managed user. In local mode it assigns the
-	// provisioning roles (ErrEmployeeRoleMissing when there are none) and
-	// invites a pending user who has no credential and no acceptable
-	// invitation, delivering after its commit; in federated mode it only
+	// Activate enables a managed user. In local mode the call that enables
+	// them assigns the provisioning roles (ErrEmployeeRoleMissing when there
+	// are none), and it invites a pending user who has no credential and no
+	// acceptable invitation, delivering after its commit; in federated mode it only
 	// re-enables a user Staff disabled. ErrAccountNotManaged,
 	// ErrAccountPrivileged, ErrBlockedByOwner, ErrEmployeeRoleMissing,
 	// ErrEmployeeRoleUnsafe, ErrUserGone.

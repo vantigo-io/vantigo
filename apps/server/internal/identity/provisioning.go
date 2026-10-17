@@ -364,21 +364,24 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 // inactive: identity's own record is Staff's to restore, and the directory's
 // deactivation still stops their sessions while SCIM is configured.
 //
-// In local mode, a user who is pending or disabled by Staff is given the
-// roles Staff may give — read FOR SHARE, as PUT /owner/provisioning-roles
-// reads them, so none is edited before this commits: none named is
-// ErrEmployeeRoleMissing, and one now carrying a denied key
-// (provisioningDeniedKeys) is ErrEmployeeRoleUnsafe — then enabled, with
-// disabled_by cleared and the stamp rotated; a pending user stays pending,
-// unable to sign in until they accept their invitation. A user who is
-// neither keeps their roles as they are, so an Owner's removal of one is
-// not undone. A pending user who could complete an invitation (canComplete's
-// conditions: no password, passkey or OIDC link) is then issued one naming
-// them, unless the latest of their spell is active, revoked by an Owner or
-// the third delivered (invitationState); opts.FreshInvitation first starts a
-// new spell, so an Owner's revoke and the count are behind it. The
-// invitation is mailed after the commit; a failed delivery revokes it
-// delivery_failed, uncounted, and fails the call.
+// In local mode, the call that enables a user — one disabled by Staff,
+// a prepared user among them — gives them the roles Staff may give, read FOR
+// SHARE, as PUT /owner/provisioning-roles reads them, so none is edited
+// before this commits: none named is ErrEmployeeRoleMissing, and one now
+// carrying a denied key (provisioningDeniedKeys) is ErrEmployeeRoleUnsafe;
+// then the user is enabled, with disabled_by cleared and the stamp rotated.
+// A pending user stays pending, unable to sign in until they accept their
+// invitation. A user already enabled is given nothing, so an Owner's removal
+// of a role — before or after the acceptance — is not undone. A pending user
+// who could complete an invitation (canComplete's conditions: no password,
+// passkey or OIDC link) is then issued one naming them, unless the latest of
+// their spell is open, revoked by an Owner or the third delivered
+// (invitationState). opts.FreshInvitation never re-sends an open invitation:
+// otherwise it starts a new spell, so an Owner's revoke and the count are
+// behind it — but only when no invitation naming the user was made in the
+// last ten minutes (freshInvitationInterval); within them it is an ordinary
+// call. The invitation is mailed after the commit; a failed delivery revokes
+// it delivery_failed, uncounted, and fails the call.
 //
 // In federated mode, a user disabled by Staff is re-enabled; nothing else is
 // given, issued or changed.
@@ -409,7 +412,7 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 			return err
 		}
 		changed := false
-		if local && (u.PendingSince != nil || u.IsDisabled) {
+		if local && u.IsDisabled {
 			roles, err := q.LockProvisioningRoleIDs(ctx)
 			if err != nil {
 				return err
@@ -456,18 +459,24 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 		if !local || u.PendingSince == nil || u.HasPassword || u.HasPasskey || u.HasOidcLink {
 			return nil
 		}
-		since := spellStart(u)
-		if opts.FreshInvitation {
-			if err := q.SetInvitationsSince(ctx, store.SetInvitationsSinceParams{ID: userID, Now: now}); err != nil {
-				return err
-			}
-			since = now
-		}
-		invs, err := q.ListUserInvitationsSince(ctx, store.ListUserInvitationsSinceParams{UserID: &userID, Since: since})
+		invs, err := q.ListUserInvitationsSince(ctx, store.ListUserInvitationsSinceParams{UserID: &userID, Since: spellStart(u)})
 		if err != nil {
 			return err
 		}
-		switch invitationState(invs, now).State {
+		state := invitationState(invs, now).State
+		if opts.FreshInvitation && state != contracts.InvitationActive {
+			fresh, err := freshAllowed(ctx, q, userID, now)
+			if err != nil {
+				return err
+			}
+			if fresh {
+				if err := q.SetInvitationsSince(ctx, store.SetInvitationsSinceParams{ID: userID, Now: now}); err != nil {
+					return err
+				}
+				state = contracts.InvitationNone
+			}
+		}
+		switch state {
 		case contracts.InvitationNone, contracts.InvitationExpired:
 		default:
 			return nil
@@ -492,6 +501,27 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 		}
 	}
 	return p.reread(ctx, store.New(p.deps.Pool), userID, p.deps.Clock())
+}
+
+// freshInvitationInterval bounds ActivateOpts.FreshInvitation: a fresh
+// spell starts only when no invitation naming the user was made in the last
+// ten minutes, so a person pressing Run now again and again sends at most one
+// invitation per ten minutes.
+const freshInvitationInterval = 10 * time.Minute
+
+// freshAllowed reports whether a fresh spell may start for the user at now:
+// no invitation naming them was made within freshInvitationInterval.
+func freshAllowed(ctx context.Context, q *store.Queries, userID uuid.UUID, now time.Time) (bool, error) {
+	all, err := q.ListUserInvitationsSince(ctx, store.ListUserInvitationsSinceParams{UserID: &userID, Since: time.Time{}})
+	if err != nil {
+		return false, err
+	}
+	for _, inv := range all {
+		if inv.CreatedAt.Add(freshInvitationInterval).After(now) {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // deniedRole refuses roles when one carries a denied key, naming them.
