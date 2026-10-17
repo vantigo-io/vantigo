@@ -62,7 +62,7 @@ Running `mise run server:seed` populates a rich, idempotent showcase dataset (`V
 - **30 invoices** across paid, partially paid, open, overdue, and draft states
 - **10 energy metering points** (`NO1`–`NO5`) and **10 customer support conversations**
 
-All 20 seeded accounts share the password **`vantigo`** and have verified emails with MFA disabled so you can immediately sign in and test different permission boundaries:
+All 20 seeded accounts share the password **`VantigoIsAwesome!`** and have verified emails with MFA disabled so you can immediately sign in and test different permission boundaries:
 
 #### Role Personas
 
@@ -76,30 +76,30 @@ All 20 seeded accounts share the password **`vantigo`** and have verified emails
 | **Consultant** | Logs own time entries and expenses; views and works on assigned projects; read-only access to customers, products, and energy metering points. |
 | **Read-Only Auditor** | Read-only access across customers, products, projects, time, expenses, invoices, staff, energy, and communications; no write or approval permissions. |
 
-#### Seeded Users (`password: vantigo`)
+#### Seeded Users (`password: VantigoIsAwesome!`)
 
-| # | Email | Name | Title | Dept | Role Persona |
-| --- | --- | --- | --- | --- | --- |
-| 1 | `owner@vantigo.local` | Astrid Lindqvist | Managing Partner | `LEAD` | **Owner (`SystemAdmin`)** |
-| 2 | `henrik.solberg@vantigo.local` | Henrik Solberg | Practice Director | `LEAD` | **Practice Lead** |
-| 3 | `ingrid.nygaard@vantigo.local` | Ingrid Nygård | Principal Architect | `ENG` | **Practice Lead** |
-| 4 | `magnus.bakken@vantigo.local` | Magnus Bakken | Delivery Lead | `CONS` | **Practice Lead** |
-| 5 | `sofie.haugen@vantigo.local` | Sofie Haugen | Finance & Operations Manager | `OPS` | **Finance & Billing** |
-| 6 | `erik.johansen@vantigo.local` | Erik Johansen | Regional Lead West | `CONS` | **Practice Lead** |
-| 7 | `nora.berg@vantigo.local` | Nora Berg | Senior Cloud Consultant | `ENG` | **Consultant** |
-| 8 | `jakob.dahl@vantigo.local` | Jakob Dahl | Senior Billing Controller | `OPS` | **Finance & Billing** |
-| 9 | `emilie.lund@vantigo.local` | Emilie Lund | Lead Product Designer | `ENG` | **Consultant** |
-| 10 | `jonas.moen@vantigo.local` | Jonas Moen | Senior Platform Engineer | `ENG` | **Consultant** |
-| 11 | `thea.hagen@vantigo.local` | Thea Hagen | Energy Domain Specialist | `CONS` | **Customer Success** |
-| 12 | `sander.lie@vantigo.local` | Sander Lie | Senior Backend Engineer | `ENG` | **Consultant** |
-| 13 | `frida.eide@vantigo.local` | Frida Eide | Management Consultant | `CONS` | **Consultant** |
-| 14 | `tobias.strand@vantigo.local` | Tobias Strand | HR & Compliance Lead | `OPS` | **HR & People Manager** |
-| 15 | `maja.holm@vantigo.local` | Maja Holm | Customer Success Lead | `OPS` | **Customer Success** |
-| 16 | `oliver.aas@vantigo.local` | Oliver Aas | Data & Analytics Engineer | `ENG` | **Consultant** |
-| 17 | `amalie.vik@vantigo.local` | Amalie Vik | Project Consultant | `CONS` | **Consultant** |
-| 18 | `kasper.myhre@vantigo.local` | Kasper Myhre | Fullstack Engineer | `ENG` | **Consultant** |
-| 19 | `hedda.bo@vantigo.local` | Hedda Bø | People & Culture Partner | `OPS` | **HR & People Manager** |
-| 20 | `mathias.rask@vantigo.local` | Mathias Rask | Internal Auditor | `OPS` | **Read-Only Auditor** |
+| # | Photo | Name | Role Persona | Title | Dept | Email | Password |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | <img src="apps/server/cmd/vantigo/avatars/01-astrid-lindqvist.jpg" width="48" height="48" alt="Astrid Lindqvist" /> | Astrid Lindqvist | **Owner (`SystemAdmin`)** | Managing Partner | `LEAD` | `owner@vantigo.local` | `VantigoIsAwesome!` |
+| 2 | <img src="apps/server/cmd/vantigo/avatars/02-henrik-solberg.jpg" width="48" height="48" alt="Henrik Solberg" /> | Henrik Solberg | **Practice Lead** | Practice Director | `LEAD` | `henrik.solberg@vantigo.local` | `VantigoIsAwesome!` |
+| 3 | <img src="apps/server/cmd/vantigo/avatars/03-ingrid-nygaard.jpg" width="48" height="48" alt="Ingrid Nygård" /> | Ingrid Nygård | **Practice Lead** | Principal Architect | `ENG` | `ingrid.nygaard@vantigo.local` | `VantigoIsAwesome!` |
+| 4 | <img src="apps/server/cmd/vantigo/avatars/04-magnus-bakken.jpg" width="48" height="48" alt="Magnus Bakken" /> | Magnus Bakken | **Practice Lead** | Delivery Lead | `CONS` | `magnus.bakken@vantigo.local` | `VantigoIsAwesome!` |
+| 5 | <img src="apps/server/cmd/vantigo/avatars/05-sofie-haugen.jpg" width="48" height="48" alt="Sofie Haugen" /> | Sofie Haugen | **Finance & Billing** | Finance & Operations Manager | `OPS` | `sofie.haugen@vantigo.local` | `VantigoIsAwesome!` |
+| 6 | <img src="apps/server/cmd/vantigo/avatars/06-erik-johansen.jpg" width="48" height="48" alt="Erik Johansen" /> | Erik Johansen | **Practice Lead** | Regional Lead West | `CONS` | `erik.johansen@vantigo.local` | `VantigoIsAwesome!` |
+| 7 | <img src="apps/server/cmd/vantigo/avatars/07-nora-berg.jpg" width="48" height="48" alt="Nora Berg" /> | Nora Berg | **Consultant** | Senior Cloud Consultant | `ENG` | `nora.berg@vantigo.local` | `VantigoIsAwesome!` |
+| 8 | <img src="apps/server/cmd/vantigo/avatars/08-jakob-dahl.jpg" width="48" height="48" alt="Jakob Dahl" /> | Jakob Dahl | **Finance & Billing** | Senior Billing Controller | `OPS` | `jakob.dahl@vantigo.local` | `VantigoIsAwesome!` |
+| 9 | <img src="apps/server/cmd/vantigo/avatars/09-emilie-lund.jpg" width="48" height="48" alt="Emilie Lund" /> | Emilie Lund | **Consultant** | Lead Product Designer | `ENG` | `emilie.lund@vantigo.local` | `VantigoIsAwesome!` |
+| 10 | <img src="apps/server/cmd/vantigo/avatars/10-jonas-moen.jpg" width="48" height="48" alt="Jonas Moen" /> | Jonas Moen | **Consultant** | Senior Platform Engineer | `ENG` | `jonas.moen@vantigo.local` | `VantigoIsAwesome!` |
+| 11 | <img src="apps/server/cmd/vantigo/avatars/11-thea-hagen.jpg" width="48" height="48" alt="Thea Hagen" /> | Thea Hagen | **Customer Success** | Energy Domain Specialist | `CONS` | `thea.hagen@vantigo.local` | `VantigoIsAwesome!` |
+| 12 | <img src="apps/server/cmd/vantigo/avatars/12-sander-lie.jpg" width="48" height="48" alt="Sander Lie" /> | Sander Lie | **Consultant** | Senior Backend Engineer | `ENG` | `sander.lie@vantigo.local` | `VantigoIsAwesome!` |
+| 13 | <img src="apps/server/cmd/vantigo/avatars/13-frida-eide.jpg" width="48" height="48" alt="Frida Eide" /> | Frida Eide | **Consultant** | Management Consultant | `CONS` | `frida.eide@vantigo.local` | `VantigoIsAwesome!` |
+| 14 | <img src="apps/server/cmd/vantigo/avatars/14-tobias-strand.jpg" width="48" height="48" alt="Tobias Strand" /> | Tobias Strand | **HR & People Manager** | HR & Compliance Lead | `OPS` | `tobias.strand@vantigo.local` | `VantigoIsAwesome!` |
+| 15 | <img src="apps/server/cmd/vantigo/avatars/15-maja-holm.jpg" width="48" height="48" alt="Maja Holm" /> | Maja Holm | **Customer Success** | Customer Success Lead | `OPS` | `maja.holm@vantigo.local` | `VantigoIsAwesome!` |
+| 16 | <img src="apps/server/cmd/vantigo/avatars/16-oliver-aas.jpg" width="48" height="48" alt="Oliver Aas" /> | Oliver Aas | **Consultant** | Data & Analytics Engineer | `ENG` | `oliver.aas@vantigo.local` | `VantigoIsAwesome!` |
+| 17 | <img src="apps/server/cmd/vantigo/avatars/17-amalie-vik.jpg" width="48" height="48" alt="Amalie Vik" /> | Amalie Vik | **Consultant** | Project Consultant | `CONS` | `amalie.vik@vantigo.local` | `VantigoIsAwesome!` |
+| 18 | <img src="apps/server/cmd/vantigo/avatars/18-kasper-myhre.jpg" width="48" height="48" alt="Kasper Myhre" /> | Kasper Myhre | **Consultant** | Fullstack Engineer | `ENG` | `kasper.myhre@vantigo.local` | `VantigoIsAwesome!` |
+| 19 | <img src="apps/server/cmd/vantigo/avatars/19-hedda-bo.jpg" width="48" height="48" alt="Hedda Bø" /> | Hedda Bø | **HR & People Manager** | People & Culture Partner | `OPS` | `hedda.bo@vantigo.local` | `VantigoIsAwesome!` |
+| 20 | <img src="apps/server/cmd/vantigo/avatars/20-mathias-rask.jpg" width="48" height="48" alt="Mathias Rask" /> | Mathias Rask | **Read-Only Auditor** | Internal Auditor | `OPS` | `mathias.rask@vantigo.local` | `VantigoIsAwesome!` |
 
 Rules the code relies on:
 
