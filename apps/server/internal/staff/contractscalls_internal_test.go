@@ -37,6 +37,10 @@ func (silentUsers) SearchUsers(context.Context, string, int) ([]contracts.UserEn
 	return nil, nil
 }
 
+func (silentUsers) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+	return nil, nil
+}
+
 func silentMail(context.Context, config.MailConfig, mail.Outbound) error { return nil }
 
 // silentStore is an object store that keeps nothing and refuses nothing.

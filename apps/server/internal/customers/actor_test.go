@@ -22,8 +22,8 @@ import (
 // is unreachable through this module's endpoints today.
 
 // stubUserDirectory is a minimal contracts.UserDirectory: User answers
-// exactly what the test configures, Users/SearchUsers are never called by
-// actorFor and panic if that ever changes.
+// exactly what the test configures, Users/SearchUsers/PermissionHolders are
+// never called by actorFor and panic if that ever changes.
 type stubUserDirectory struct {
 	user *contracts.UserEntry
 	err  error
@@ -39,6 +39,10 @@ func (d stubUserDirectory) Users(context.Context, []uuid.UUID) ([]contracts.User
 
 func (d stubUserDirectory) SearchUsers(context.Context, string, int) ([]contracts.UserEntry, error) {
 	panic("actorFor never calls SearchUsers")
+}
+
+func (d stubUserDirectory) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
+	panic("actorFor never calls PermissionHolders")
 }
 
 // serverWithUsers builds a *server whose only wired dependency is the given

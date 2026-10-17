@@ -24,10 +24,14 @@ const (
 
 // userDirectory is this module's contracts.UserDirectory, the one sanctioned
 // way another module reads identity's user data. It is read-only and holds
-// nothing but the queries: Compose builds it once, before any module mounts,
-// and hands it to every module including this one.
+// nothing but the queries and whether SCIM is configured: Compose builds it
+// once, before any module mounts, and hands it to every module including
+// this one.
 type userDirectory struct {
 	q *store.Queries
+	// scimEnabled is whether SCIM is configured, which makes a directory's
+	// deactivation of a non-Owner count against PermissionHolders.
+	scimEnabled bool
 }
 
 var _ contracts.UserDirectory = (*userDirectory)(nil)
@@ -35,7 +39,7 @@ var _ contracts.UserDirectory = (*userDirectory)(nil)
 // newUserDirectory is Module's Users: the constructor Compose calls with the
 // dependencies it was given.
 func newUserDirectory(d module.Deps) contracts.UserDirectory {
-	return &userDirectory{q: store.New(d.Pool)}
+	return &userDirectory{q: store.New(d.Pool), scimEnabled: d.Config != nil && d.Config.SCIM != nil}
 }
 
 // User looks up a user by id.
@@ -90,8 +94,31 @@ func (d *userDirectory) SearchUsers(ctx context.Context, query string, limit int
 	return entries, nil
 }
 
-// userEntry builds a contracts.UserEntry from the three columns the
-// directory ever exposes: it never sees email, roles, or MFA state.
+// PermissionHolders lists the active users holding key, ordered by display
+// name, in one query (DirectoryPermissionHolders says who counts). A
+// placeholder address — a directory's or an identity provider's, which no
+// mail reaches (publicEmail) — is answered empty; the holder is kept.
+func (d *userDirectory) PermissionHolders(ctx context.Context, key string) ([]contracts.Holder, error) {
+	rows, err := d.q.DirectoryPermissionHolders(ctx, store.DirectoryPermissionHoldersParams{
+		ScimEnabled:   d.scimEnabled,
+		PermissionKey: key,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("identity: user directory permission holders: %w", err)
+	}
+	holders := make([]contracts.Holder, 0, len(rows))
+	for _, row := range rows {
+		holder := contracts.Holder{ID: row.ID, DisplayName: row.DisplayName, PreferredLanguage: row.PreferredLanguage}
+		if email := publicEmail(row.Email); email != nil {
+			holder.Email = *email
+		}
+		holders = append(holders, holder)
+	}
+	return holders, nil
+}
+
+// userEntry builds a contracts.UserEntry from the three columns User, Users
+// and SearchUsers ever expose: they never see email, roles, or MFA state.
 func userEntry(id uuid.UUID, displayName string, isDisabled bool) contracts.UserEntry {
 	return contracts.UserEntry{ID: id, DisplayName: displayName, Active: !isDisabled}
 }

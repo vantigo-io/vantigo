@@ -47,4 +47,30 @@ type UserDirectory interface {
 	// SearchUsers finds active users whose display name matches query,
 	// ordered by display name, capped at limit.
 	SearchUsers(ctx context.Context, query string, limit int) ([]UserEntry, error)
+	// PermissionHolders lists the active users who hold the permission key,
+	// ordered by display name. See Holder for who counts.
+	PermissionHolders(ctx context.Context, key string) ([]Holder, error)
+}
+
+// Holder is a user PermissionHolders names: an active user holding the
+// permission asked about.
+//
+// A user holds a key through a role they hold directly, through a role mapped
+// to an active access group they are effectively a member of (forced in, or
+// present upstream and not overridden out — exactly the rule a permission
+// check applies), or as an Owner, who holds every key. A delegation grants
+// authorization management only, never a key. Active means what a session
+// needs: not disabled, not pending (a Staff-managed user who has not yet
+// chosen a credential), and — while SCIM is configured — not deactivated by
+// the directory unless an Owner. A lockout is temporary and ignored.
+//
+// Email is the address to mail the holder at, "" when identity holds none a
+// mail can reach (a directory's or an identity provider's placeholder). It is
+// for mailing the holder and nothing else: never put on a consumer's wire,
+// in a log, an event or an error.
+type Holder struct {
+	ID                uuid.UUID
+	DisplayName       string
+	Email             string
+	PreferredLanguage string // "en", "nb" or "" when the user chose none
 }

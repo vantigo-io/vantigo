@@ -2,8 +2,10 @@ package identity_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -213,5 +215,156 @@ func TestUserDirectory_SearchUsersEscapesWildcards(t *testing.T) {
 				t.Errorf("SearchUsers(%q) = %+v, want only the literal match %s", tc.query, got, literal)
 			}
 		})
+	}
+}
+
+// holdersFixture is one installation's users for PermissionHolders: every
+// way to hold or not hold staff:approve, by name. Each display name sorts
+// by the letter it starts with, so the expected order is the alphabet.
+type holdersFixture struct {
+	h     *harness
+	users map[string]uuid.UUID
+}
+
+func newHoldersFixture(t *testing.T, opts ...harnessOption) *holdersFixture {
+	t.Helper()
+	h := newHarness(t, opts...)
+	f := &holdersFixture{h: h, users: map[string]uuid.UUID{}}
+	approver := h.insertRole(t, "Approver", "staff:approve")
+	manager := h.insertRole(t, "Manager", "staff:manage")
+
+	add := func(name string, roles ...uuid.UUID) uuid.UUID {
+		id := h.insertUser(t, name+"@example.test", roles...)
+		f.users[name] = id
+		return id
+	}
+	group := func(name, source string, active bool, mappingSource string) uuid.UUID {
+		id := uuid.New()
+		h.exec(t, `INSERT INTO identity.access_groups (id, display_name, source, is_active, version, created_at, updated_at)
+		        VALUES ($1, $2, $3, $4, $5, $6, $6)`, id, name, source, active, uuid.New(), h.now())
+		h.exec(t, `INSERT INTO identity.access_group_role_mappings (group_id, role_id, source) VALUES ($1, $2, $3)`, id, approver, mappingSource)
+		return id
+	}
+	member := func(groupID, userID uuid.UUID, upstream bool, override *string) {
+		h.exec(t, `INSERT INTO identity.access_group_memberships (group_id, user_id, source, is_upstream_present, membership_override)
+		        VALUES ($1, $2, 'local', $3, $4)`, groupID, userID, upstream, override)
+	}
+	forceMember, forceNonMember := "force_member", "force_non_member"
+	approvers := group("Approvers", "local", true, "local")
+	retired := group("Retired approvers", "local", false, "local")
+	mismatched := group("Mismatched approvers", "scim", true, "local")
+
+	direct := add("a-direct", identity.RoleUserID, approver)
+	h.exec(t, `UPDATE identity.users SET preferred_language = 'nb' WHERE id = $1`, direct)
+	member(approvers, add("b-forced-member", identity.RoleUserID), false, &forceMember)
+	member(approvers, add("c-upstream-member", identity.RoleUserID), true, nil)
+	member(approvers, add("x-overridden-out", identity.RoleUserID), true, &forceNonMember)
+	member(approvers, add("x-upstream-absent", identity.RoleUserID), false, nil)
+	member(retired, add("x-retired-group", identity.RoleUserID), true, &forceMember)
+	member(mismatched, add("x-source-mismatch", identity.RoleUserID), true, &forceMember)
+	add("d-owner-without-the-key", identity.RoleOwnerID)
+
+	h.exec(t, `UPDATE identity.users SET is_disabled = true, disabled_by = 'owner' WHERE id = $1`, add("x-disabled", approver))
+	// Activated by Staff, so enabled, but the invitation not yet accepted.
+	h.exec(t, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'E-1', pending_since = $2 WHERE id = $1`,
+		add("x-pending", approver), h.now())
+	h.exec(t, `UPDATE identity.users SET lockout_end = $2 WHERE id = $1`, add("e-locked-out", approver), h.now().Add(time.Hour))
+
+	deactivate := func(userID uuid.UUID) {
+		h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+		        VALUES ($1, $2, $3, $3, false, 1, 'etag', $4, $4)`, uuid.New(), userID, userID.String(), h.now())
+	}
+	deactivate(add("f-scim-inactive-owner", identity.RoleOwnerID))
+	deactivate(add("g-scim-inactive", approver))
+
+	owner := h.insertUser(t, "z-delegator@example.test", identity.RoleOwnerID)
+	f.users["z-delegator"] = owner
+	h.exec(t, `INSERT INTO identity.authorization_delegations (id, grantee_user_id, created_by_user_id, version, created_at, updated_at)
+	        VALUES ($1, $2, $3, $4, $5, $5)`, uuid.New(), add("x-delegate", identity.RoleUserID), owner, uuid.New(), h.now())
+	add("x-holds-another-key", identity.RoleUserID, manager)
+
+	// A directory user named no address keeps a placeholder no mail reaches.
+	placeholder := uuid.New()
+	email := "scim-" + uuid.NewString() + "@sso.invalid"
+	h.exec(t, `INSERT INTO identity.users (id, email, normalized_email, display_name, version, created_at, updated_at)
+	        VALUES ($1, $2, upper($2), 'h-placeholder', $3, $4, $4)`, placeholder, email, uuid.New(), h.now())
+	h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, placeholder, approver)
+	f.users["h-placeholder"] = placeholder
+	return f
+}
+
+func (f *holdersFixture) holders(t *testing.T) []contracts.Holder {
+	t.Helper()
+	got, err := newUserDirectory(t, f.h).PermissionHolders(context.Background(), "staff:approve")
+	if err != nil {
+		t.Fatalf("PermissionHolders: %v", err)
+	}
+	return got
+}
+
+func (f *holdersFixture) names(got []contracts.Holder) []string {
+	byID := map[uuid.UUID]string{}
+	for name, id := range f.users {
+		byID[id] = name
+	}
+	names := make([]string, 0, len(got))
+	for _, holder := range got {
+		names = append(names, byID[holder.ID])
+	}
+	return names
+}
+
+// TestUserDirectory_PermissionHoldersUnderSCIM proves who holds a key (the
+// owner's answer 4, reading 3): a direct role, a role mapped to an active
+// group the user is effectively a member of (forced in, or present upstream
+// and not overridden out, the mapping's source the group's), or the Owner
+// role without the key; never a disabled or pending user, a delegate
+// without the key, or — while SCIM is configured — a directory-deactivated
+// non-Owner; a lockout ignored. The holders come ordered by display name,
+// each with their address and language, a placeholder address empty.
+func TestUserDirectory_PermissionHoldersUnderSCIM(t *testing.T) {
+	t.Parallel()
+	f := newHoldersFixture(t, withEnv("SCIM_TOKEN", "identity-harness-scim-token"))
+
+	got := f.holders(t)
+	want := []string{"a-direct", "b-forced-member", "c-upstream-member", "d-owner-without-the-key", "e-locked-out", "f-scim-inactive-owner", "h-placeholder", "z-delegator"}
+	if names := f.names(got); !slices.Equal(names, want) {
+		t.Fatalf("holders = %v, want %v", names, want)
+	}
+	if got[0] != (contracts.Holder{ID: f.users["a-direct"], DisplayName: "a-direct@example.test", Email: "a-direct@example.test", PreferredLanguage: "nb"}) {
+		t.Errorf("the direct holder = %+v, want their name, address and language", got[0])
+	}
+	if got[1].PreferredLanguage != "" {
+		t.Errorf("a holder who chose no language = %q, want empty", got[1].PreferredLanguage)
+	}
+	if placeholder := got[6]; placeholder.Email != "" || placeholder.DisplayName != "h-placeholder" {
+		t.Errorf("the placeholder holder = %+v, want them named with an empty address", placeholder)
+	}
+}
+
+// TestUserDirectory_PermissionHoldersWithoutSCIM proves a directory's
+// deactivation counts only while SCIM is configured, as a session's does:
+// without it the deactivated non-Owner holds the key again.
+func TestUserDirectory_PermissionHoldersWithoutSCIM(t *testing.T) {
+	t.Parallel()
+	f := newHoldersFixture(t)
+
+	want := []string{"a-direct", "b-forced-member", "c-upstream-member", "d-owner-without-the-key", "e-locked-out", "f-scim-inactive-owner", "g-scim-inactive", "h-placeholder", "z-delegator"}
+	if names := f.names(f.holders(t)); !slices.Equal(names, want) {
+		t.Errorf("holders = %v, want %v", names, want)
+	}
+}
+
+// TestUserDirectory_PermissionHoldersOfAKeyNobodyHolds proves a key no role
+// carries is held by the Owners alone, and with no active Owner by nobody: an
+// empty answer, not an error.
+func TestUserDirectory_PermissionHoldersOfAKeyNobodyHolds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, h.insertUser(t, "former-owner@example.test", identity.RoleOwnerID))
+
+	got, err := newUserDirectory(t, h).PermissionHolders(context.Background(), "staff:personal-data")
+	if err != nil || len(got) != 0 {
+		t.Errorf("PermissionHolders = %+v, %v, want none and no error", got, err)
 	}
 }

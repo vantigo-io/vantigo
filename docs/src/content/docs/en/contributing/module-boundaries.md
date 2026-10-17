@@ -64,9 +64,10 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are ten single-provider slots, each filled by at most one enabled module:
+   There are eleven single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
-   (`contracts.UserDirectory`, identity), `Products` (`contracts.ProductCatalog`,
+   (`contracts.UserDirectory`, identity), `Accounts`
+   (`contracts.AccountProvisioning`, identity — rule 11), `Products` (`contracts.ProductCatalog`,
    products), `Projects` (`contracts.ProjectDirectory`, projects), `Actuals`
    (`contracts.ProjectActuals`, time), `Expenses`
    (`contracts.ProjectExpenses`, expenses), `Receivables`
@@ -75,7 +76,9 @@ Communications' outbox is the working example.
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
    `BillableMilestones` (`contracts.BillableMilestones`, projects). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
-   `Mount` runs, so a module's `Deps` already carries what it consumes; `Actuals`,
+   `Mount` runs, so a module's `Deps` already carries what it consumes; `Accounts`
+   is resolved right after `Users`, so its provider may read the user directory
+   while it is built; `Actuals`,
    `Expenses`, `Receivables` and the three `Billable*` are resolved last, after
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
    the project directory or the customer directory (none does, but a future
@@ -94,7 +97,12 @@ Communications' outbox is the working example.
    read an empty slot as "nothing to stamp". It resolves `Directory` too, as
    Compose does — from the one enabled module that declares it, the caller's own
    left in place when none is enabled — because energy's import worker resolves a
-   file's organisation numbers through the customer directory.
+   file's organisation numbers through the customer directory; and then `Users` and
+   `Accounts`, from the enabled modules, in Compose's order, keeping a value preset
+   on `Deps` when no enabled module provides one: a worker reads identity's users and
+   the accounts worker writes them. Workers has no error to return, so two providers
+   of `Directory`, `Users` or `Accounts` — a bug in the binary's module list, which
+   Compose refuses — panic.
    One order is not the module order: both Compose and Workers put the
    `CustomerReferences` and `CustomerPersonalData` of the modules that declare
    `InvoicedWork` **after every other module's**, each side in module order (a
@@ -130,7 +138,8 @@ Communications' outbox is the working example.
    that already points at the surviving customer. Today's holders are projects,
    energy, communications and invoices ([Merging duplicates](/en/reference/customers/#merging-duplicates)).
    Another write direction needs a design of its own, not a second holder-shaped
-   interface — rule 9 is that design for the second, and rule 10 for the third.
+   interface — rule 9 is that design for the second, rule 10 for the third and
+   rule 11 for the fourth.
 9. **A person's data, handed over and taken out.** The second sanctioned
    cross-module direction, made for the GDPR of private-person customers:
    `contracts.CustomerPersonalData`. A module that holds anything about a
@@ -206,6 +215,35 @@ Communications' outbox is the working example.
     invoiced and writes the document. A refusal names the first line holding the source
     and the source (`linePosition`, `sourceKind`, `sourceId`). Today's holders are time,
     expenses and projects ([Invoicing work](/en/reference/invoices/#invoicing-work)).
+11. **Staff writes identity's accounts.** The fourth sanctioned cross-module
+    direction, staff → identity, made for the accounts of the people Staff
+    registers: `contracts.AccountProvisioning`, in the single-provider slot
+    `Accounts` (rule 5), which identity provides. Through it a caller prepares a
+    Staff-managed user (`Prepare`), enables it (`Activate`), disables it
+    (`Deactivate`), updates it (`Update`), reads it (`Account`) and reads the roles an
+    Owner named for Staff to give (`ProvisioningRoles`); `Mode` says whether identity
+    holds the credentials (`local`) or an identity provider does (`federated`). Unlike
+    rules 8–10 it is **not** a holder that runs on the caller's transaction: every
+    method runs on identity's own pool, in identity's own transactions, and mails after
+    its own commit. So the rule every locked transaction keeps is strict here — **a
+    caller never calls it inside one of its own transactions or read-only snapshots,
+    and holds no connection or lease across a call**; a worker claims its row in one
+    short transaction, commits, calls identity holding nothing, and writes the result
+    in a second. Every write names its `contracts.Actor` — a user, or a system actor
+    such as `system:staff-accounts` — which identity writes to its audit. The spec
+    carries no roles: identity assigns the set an Owner named, so `staff:manage` can
+    never mint an account holding a role it chose. The employee number decides whose
+    account a user is: `Prepare` finds by it, and a caller acts on a user only when
+    identity's number is the same as its record's by `contracts.SameEmployeeNumber`
+    (trimmed, case-folded as PostgreSQL's `upper()` folds it, as identity's unique index
+    does). `AccountRef.Email` exists only so the caller can tell whether the address
+    differs from the one it would set; like `Holder.Email` below it never reaches a
+    caller's wire, log, event or error. Each refusal is a sentinel error
+    (`ErrAccountNotManaged`, `ErrAccountPrivileged`, `ErrBlockedByOwner`,
+    `ErrAccountEmailTaken`, `ErrEmployeeRoleMissing`, `ErrAccountNotFound`,
+    `ErrUserGone`, `ErrModeMismatch`, `ErrLastOwner`); anything else is a failure to
+    retry. With no provider `Deps.Accounts` is nil, which a caller answers as
+    "accounts are unavailable".
 
 ## How they are enforced
 
@@ -349,7 +387,21 @@ Projects prices its billing lines through it, but when `products` is disabled
 instead of failing startup. That is the shape to copy — a required dependency gets a
 config check, an optional one leaves the `Deps` field nil and **the consumer must
 handle nil**. The one exception is `contracts.UserDirectory`: identity is always
-mounted, so `Deps.Users` is always set once composed.
+mounted, so `Deps.Users` is always set once composed — and, since `module.Workers`
+resolves it as well, in worker mode too.
+
+`UserDirectory.PermissionHolders(key)` names the **active users holding a
+permission**, ordered by display name, in one query of identity's: a user holds the
+key through a role they hold directly, through a role mapped to an active access group
+they are effectively a member of (forced in, or present upstream and not overridden
+out — exactly the rule a permission check applies), or as an Owner, who holds every
+key; a delegation grants authorization management only, never a key. Active means
+what a session needs: not disabled, not pending (a Staff-managed user who has not yet
+chosen a credential), and, while SCIM is configured, not deactivated by the directory
+unless an Owner; a lockout is temporary and ignored. Each `contracts.Holder` carries
+the user's address for **mailing that holder and nothing else**: a consumer never puts
+it on its own wire, in a log, an event or an error, and a directory's or identity
+provider's placeholder address, which no mail reaches, is answered empty.
 
 **Identity owns the state of the users Staff manages.** `identity.users.managed_by`
 (`staff` or null), `employee_number`, `pending_since` and `disabled_by`,
@@ -359,7 +411,8 @@ mounted, so `Deps.Users` is always set once composed.
 (`00050_identity_accounts.sql`), written by identity's own handlers — an Owner's
 adoption, unmanage, disable and employee-role endpoints — and read by nobody else's
 SQL. Staff reaches them only through a contract identity provides, never through its
-own queries, and Staff's register keeps only the opaque user id of the link. In
+own queries — `contracts.AccountProvisioning` (rule 11) — and Staff's register keeps
+only the opaque user id of the link. In
 identity's Go code these are `staffManaged` names: "managed" there already means an
 Owner's User/Owner role management (`isManagedRole`, `ListManagedUsers`).
 

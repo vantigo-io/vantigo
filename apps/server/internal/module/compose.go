@@ -193,6 +193,18 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.Users = usersProvider.Users(deps)
 	}
 
+	// Account provisioning (contracts.AccountProvisioning) resolves right
+	// after the user directory: it is identity's write port, staff →
+	// identity, and its provider may read deps.Users while it is built.
+	// Workers resolves both the same way, since worker mode never composes.
+	accountsProvider, err := soleProvider(mods, "account provisioning", func(m Module) bool { return m.Accounts != nil })
+	if err != nil {
+		return nil, err
+	}
+	if accountsProvider != nil {
+		deps.Accounts = accountsProvider.Accounts(deps)
+	}
+
 	productsProvider, err := soleProvider(mods, "a product catalog", func(m Module) bool { return m.Products != nil })
 	if err != nil {
 		return nil, err
