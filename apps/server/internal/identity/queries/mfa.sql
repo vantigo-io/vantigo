@@ -33,11 +33,11 @@ WHERE token_hash = @token_hash;
 -- GetTwoFactorCandidate reads what the second sign-in step decides on for
 -- the user a login ticket names: the TOTP state and the encrypted secret,
 -- the lockout, the roles, and whether the account is effectively disabled
--- beyond is_disabled, as GetLoginCandidate reads it. It locks the user
+-- beyond is_disabled, as GetLoginCandidate reads it (a pending user too). It locks the user
 -- row: the second step's lock order is the user row first (see
 -- redeemLoginTicket), and holding it makes the lockout it reads the one in
 -- force until the step ends.
-SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled, u.totp_secret,
+SELECT u.id, u.email, u.display_name, (u.is_disabled OR u.pending_since IS NOT NULL)::boolean AS is_disabled, u.lockout_end, u.totp_enabled, u.totp_secret,
        r.role_names,
        (@scim_enabled::boolean AND m.upstream_active IS FALSE AND NOT r.is_owner)::boolean AS scim_inactive
 FROM identity.users u

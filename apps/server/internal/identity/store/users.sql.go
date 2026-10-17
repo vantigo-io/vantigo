@@ -45,7 +45,7 @@ func (q *Queries) AssignUserRole(ctx context.Context, arg AssignUserRoleParams) 
 }
 
 const getLoginCandidate = `-- name: GetLoginCandidate :one
-SELECT u.id, u.email, u.display_name, u.password_hash, u.is_disabled, u.lockout_end, u.totp_enabled,
+SELECT u.id, u.email, u.display_name, u.password_hash, (u.is_disabled OR u.pending_since IS NOT NULL)::boolean AS is_disabled, u.lockout_end, u.totp_enabled,
        r.role_names,
        ($1::boolean AND m.upstream_active IS FALSE AND NOT r.is_owner)::boolean AS scim_inactive
 FROM identity.users u
@@ -81,7 +81,8 @@ type GetLoginCandidateRow struct {
 // with normalized_email: its credential, TOTP and lockout state, its roles,
 // and whether it is "effectively disabled" beyond is_disabled: while SCIM
 // is configured, a non-Owner the directory deactivated
-// (SV/ScimLifecycleService.cs:21-44).
+// (SV/ScimLifecycleService.cs:21-44). A pending user reads as disabled: their
+// only way in is accepting their invitation.
 func (q *Queries) GetLoginCandidate(ctx context.Context, arg GetLoginCandidateParams) (GetLoginCandidateRow, error) {
 	row := q.db.QueryRow(ctx, getLoginCandidate, arg.ScimEnabled, arg.NormalizedEmail)
 	var i GetLoginCandidateRow
