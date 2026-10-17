@@ -3,6 +3,7 @@ package identity_test
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -69,6 +70,7 @@ func TestInvitations_ANamedInvitationCompletesAPendingUser(t *testing.T) {
 	h.bootstrapOwner(t)
 	const email = "pending@example.test"
 	id := pendingUser(t, h, email, "Pending Person", "E-1", identity.RoleUserID)
+	h.exec(t, `UPDATE identity.users SET lockout_end = $2, failed_login_count = 3 WHERE id = $1`, id, h.now().Add(time.Hour))
 	users := h.count(t, `SELECT count(*) FROM identity.users`)
 	invID, token := issueNamed(t, h, email, &id)
 
@@ -98,7 +100,7 @@ func TestInvitations_ANamedInvitationCompletesAPendingUser(t *testing.T) {
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND password_hash IS NOT NULL AND email_confirmed
 	                     AND pending_since IS NULL AND display_name = 'Pending Person' AND managed_by = 'staff' AND employee_number = 'E-1'
-	                     AND NOT is_disabled`, id); n != 1 {
+	                     AND NOT is_disabled AND lockout_end IS NULL AND failed_login_count = 0`, id); n != 1 {
 		t.Errorf("the user is not completed as it should be: %s", userState(t, h, id))
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.user_roles WHERE user_id = $1`, id); n != 1 {
@@ -112,7 +114,7 @@ func TestInvitations_ANamedInvitationCompletesAPendingUser(t *testing.T) {
 		t.Fatalf("%d %s rows, want 1", len(events), completingAudit)
 	}
 	e := events[0]
-	wantBefore := `{"InvitationId":"` + invID.String() + `","Roles":["User"]}`
+	wantBefore := `{"InvitationId":"` + invID.String() + `","Roles":["User"],"PendingSince":"` + h.now().UTC().Format(time.RFC3339Nano) + `"}`
 	wantAfter := `{"UserId":"` + id.String() + `","Roles":["User"],"PermissionKeys":[],"IsDisabled":false,"IsDeleted":false}`
 	if e.Actor != nil || e.TargetUser == nil || *e.TargetUser != id || e.Details != `{"action":"`+completingAudit+`"}` ||
 		e.Before != wantBefore || e.After != wantAfter || e.MFA {
@@ -130,12 +132,14 @@ func TestInvitations_ANamedInvitationCompletesAPendingUser(t *testing.T) {
 }
 
 // mfaEnrollmentRequired is judged on the roles the user really holds, not
-// the invitation's User: a pending user holding SystemAdmin must enrol.
+// the invitation's User. A privileged user never completes (see the
+// refusals), so the roles here are a custom role's holder's; what is pinned
+// is that the answer's roles are the user's own.
 func TestInvitations_CompletionJudgesMFAOnTheUsersRoles(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, withEnv("OWNERS_REQUIRE_MFA", "1"))
 	const email = "pending-admin@example.test"
-	id := pendingUser(t, h, email, "Pending Admin", "E-2", identity.RoleUserID, identity.RoleSystemAdminID)
+	id := pendingUser(t, h, email, "Pending Admin", "E-2")
 	_, token := issueNamed(t, h, email, &id)
 
 	r := accept(h.client(t), token, inviteePassword, "")
@@ -149,8 +153,8 @@ func TestInvitations_CompletionJudgesMFAOnTheUsersRoles(t *testing.T) {
 		MfaEnrollmentRequired bool `json:"mfaEnrollmentRequired"`
 	}
 	r.json(&body)
-	if !body.MfaEnrollmentRequired || !slices.Equal(body.User.Roles, []string{identity.RoleSystemAdmin, identity.RoleUser}) {
-		t.Errorf("accept body = %s, want SystemAdmin and User and mfaEnrollmentRequired", r.body)
+	if body.MfaEnrollmentRequired || len(body.User.Roles) != 0 {
+		t.Errorf("accept body = %s, want the user's own roles (none) and no enrolment required", r.body)
 	}
 }
 
@@ -174,6 +178,14 @@ func TestInvitations_ANamedInvitationRefusesWhatItCannotComplete(t *testing.T) {
 		}},
 		{"disabled by an Owner", func(t *testing.T, id uuid.UUID) (string, uuid.UUID) {
 			h.exec(t, `UPDATE identity.users SET is_disabled = true, disabled_by = 'owner' WHERE id = $1`, id)
+			return "", uuid.Nil
+		}},
+		{"a SystemAdmin", func(t *testing.T, id uuid.UUID) (string, uuid.UUID) {
+			h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, identity.RoleSystemAdminID)
+			return "", uuid.Nil
+		}},
+		{"an Owner", func(t *testing.T, id uuid.UUID) (string, uuid.UUID) {
+			h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, identity.RoleOwnerID)
 			return "", uuid.Nil
 		}},
 		{"unmanaged", func(t *testing.T, id uuid.UUID) (string, uuid.UUID) {
@@ -215,6 +227,7 @@ func TestInvitations_ANamedInvitationRefusesWhatItCannotComplete(t *testing.T) {
 				named = id
 			}
 			before := userState(t, h, id)
+			roles := h.count(t, `SELECT count(*) FROM identity.user_roles WHERE user_id = $1`, id)
 			users := h.count(t, `SELECT count(*) FROM identity.users`)
 			invID, token := issueNamed(t, h, invEmail, &named)
 
@@ -227,6 +240,9 @@ func TestInvitations_ANamedInvitationRefusesWhatItCannotComplete(t *testing.T) {
 			}
 			if n := h.count(t, `SELECT count(*) FROM identity.users`); n != users {
 				t.Errorf("%d users after the refusal, want %d", n, users)
+			}
+			if n := h.count(t, `SELECT count(*) FROM identity.user_roles WHERE user_id = $1`, id); n != roles {
+				t.Errorf("%d roles after the refusal, want %d", n, roles)
 			}
 			if n := h.count(t, `SELECT count(*) FROM identity.users WHERE normalized_email = upper($1)`, invEmail); invEmail != email && n != 0 {
 				t.Errorf("an account was created for %s", invEmail)
@@ -427,5 +443,80 @@ func TestInvitations_CompletionTakesTheOwnerLockFirst(t *testing.T) {
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND pending_since IS NULL`, id); n != 1 {
 		t.Errorf("the user was not completed")
+	}
+}
+
+// A resend of a named invitation is for a user who can still accept it: a
+// user whose address changed, who is no longer managed by Staff, is
+// disabled, has completed, is privileged, or is gone answers 409
+// invitation_not_active, and nothing is written or mailed.
+func TestInvitations_ResendOfANamedInvitationNeedsAUserWhoCanAccept(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	for i, c := range []struct {
+		name  string
+		setup func(t *testing.T, id uuid.UUID)
+	}{
+		{"an address changed", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `UPDATE identity.users SET email = 'moved'||$2||'@example.test', normalized_email = upper('moved'||$2||'@example.test') WHERE id = $1`, id, id.String())
+		}},
+		{"unmanaged", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `UPDATE identity.users SET managed_by = NULL WHERE id = $1`, id)
+		}},
+		{"disabled", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `UPDATE identity.users SET is_disabled = true, disabled_by = 'owner' WHERE id = $1`, id)
+		}},
+		{"completed", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `UPDATE identity.users SET pending_since = NULL WHERE id = $1`, id)
+		}},
+		{"a SystemAdmin", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, identity.RoleSystemAdminID)
+		}},
+		{"gone", func(t *testing.T, id uuid.UUID) { h.exec(t, `DELETE FROM identity.users WHERE id = $1`, id) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			email := "resend-case" + string(rune('a'+i)) + "@example.test"
+			id := pendingUser(t, h, email, "Resend "+c.name, "R-"+string(rune('A'+i)), identity.RoleUserID)
+			invID, _ := issueNamed(t, h, email, &id)
+			c.setup(t, id)
+
+			r := owner.do(http.MethodPost, ownerInvitationsPath+"/"+invID.String()+"/resend", nil)
+			if r.status != http.StatusConflict || r.code() != "invitation_not_active" {
+				t.Errorf("resend: status %d body %s, want 409 invitation_not_active", r.status, r.body)
+			}
+			if n := len(h.mailTo(email)); n != 0 {
+				t.Errorf("%d mails, want none", n)
+			}
+			if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE normalized_email = upper($1)`, email); n != 1 {
+				t.Errorf("%d invitations for the address, want the one issued", n)
+			}
+			if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE id = $1 AND revoked_at IS NULL`, invID); n != 1 {
+				t.Errorf("the issued invitation was revoked")
+			}
+		})
+	}
+}
+
+// Validating a named invitation says it is valid only while its user can
+// accept it, and names no role: the account's roles are its own.
+func TestInvitations_ValidateANamedInvitation(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	const email = "validate-named@example.test"
+	id := pendingUser(t, h, email, "Validate Named", "V-1", identity.RoleUserID)
+	_, token := issueNamed(t, h, email, &id)
+	anonymous := h.client(t)
+
+	r := anonymous.do(http.MethodGet, invitationsValidatePath+"?token="+url.QueryEscape(token), nil)
+	var v validation
+	r.json(&v)
+	if r.status != http.StatusOK || !v.Valid || str(v.Email) != email || v.ExpiresAt == nil || strings.Contains(string(r.body), `"role"`) {
+		t.Errorf("validate: status %d body %s, want valid with the email and expiry and no role", r.status, r.body)
+	}
+	h.exec(t, `UPDATE identity.users SET is_disabled = true, disabled_by = 'owner' WHERE id = $1`, id)
+	r = anonymous.do(http.MethodGet, invitationsValidatePath+"?token="+url.QueryEscape(token), nil)
+	if r.status != http.StatusOK || strings.TrimSpace(string(r.body)) != `{"valid":false}` {
+		t.Errorf("validate for a disabled user: status %d body %s, want {\"valid\":false}", r.status, r.body)
 	}
 }

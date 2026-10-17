@@ -165,14 +165,21 @@ Invitasjonen kontoklargjøringen i Ansatte sender en ventende bruker, navngir de
 brukeren (`identity.invitations.user_id`). Når den godtas, fullføres den eksisterende
 kontoen i stedet for at en ny opprettes: under eierlåsen, så invitasjonens radlås, så
 brukerens, må brukeren fortsatt ha invitasjonens adresse, være styrt av Ansatte, være
-ventende, ikke være deaktivert (av en eier eller av Ansatte) og ikke ha passord,
-passnøkkel eller OIDC-kobling. Passordet må oppfylle reglene; brukeren får det, en
-bekreftet e-post og ingen ventemerking, beholder visningsnavnet sitt (det som skrives på
+ventende, ikke være deaktivert (av en eier eller av Ansatte), verken være eier eller
+SystemAdmin og ikke ha passord, passnøkkel eller OIDC-kobling. Passordet må oppfylle
+reglene; brukeren får det, en bekreftet e-post, ingen ventemerking og ingen utestenging,
+beholder visningsnavnet sitt (det som skrives på
 siden, brukes ikke) og rollene brukeren har — en invitasjon som navngir en bruker, gir
 ingen rolle og gjør aldri noen til første eier. Revisjonsloggen registrerer
 `invitation.accepted-completing-user`, og brukeren blir logget inn. Alt annet svarer
 samme 400 `invitation_invalid` som en ukjent eller utløpt lenke, og ingenting skrives.
-En ny sending beholder brukeren invitasjonen navngir.
+
+De samme vilkårene avgjør resten av en navngitt invitasjons liv. Å validere lenken
+(`GET /api/v1/identity/invitations/validate`) svarer `valid: false` så snart brukeren
+ikke lenger oppfyller dem, og navngir ingen rolle mens brukeren gjør det, siden kontoen
+beholder sine egne. En ny sending beholder brukeren invitasjonen navngir, og avvises med
+409 `invitation_not_active`, uten at noe sendes, så snart den brukeren ikke lenger
+oppfyller dem eller er borte.
 
 En eier kan ikke invitere adressen til en ventende bruker for hånd: kontoen finnes, så
 invitasjonen svarer 409 `account_exists`. Det er Ansatte som sender invitasjonen til en

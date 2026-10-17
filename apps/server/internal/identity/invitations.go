@@ -47,6 +47,9 @@ var (
 	// accept: missing, unknown, revoked, accepted, expired, or lost to a
 	// concurrent acceptance.
 	invitationInvalid = refuse(http.StatusBadRequest, "invitation_invalid", "The invitation is invalid or no longer available.", nil)
+	// invitationNotActive refuses resending an invitation that can no longer
+	// be accepted: accepted, or naming a user who cannot complete it.
+	invitationNotActive = refuse(http.StatusConflict, "invitation_not_active", "The invitation is no longer active.", nil)
 )
 
 // PostIdentityOwnerInvitations invites an email to create an account with a
@@ -177,7 +180,8 @@ func (s *server) PostIdentityOwnerInvitationsByIdRevoke(ctx context.Context, req
 
 // PostIdentityOwnerInvitationsByIdResend sends an invitation again for an
 // Owner (EA/AuthAccountEndpoints.cs:1203-1265): 404 for an unknown one, 409
-// invitation_not_active for an accepted one. Otherwise a new invitation
+// invitation_not_active for an accepted one, and for one naming a user who
+// can no longer complete it (canComplete). Otherwise a new invitation
 // with a new token replaces every pending one for the email, the resent
 // one included, and is delivered as a new one is. 200 with the new
 // invitation.
@@ -194,7 +198,12 @@ func (s *server) PostIdentityOwnerInvitationsByIdResend(ctx context.Context, req
 			return err
 		}
 		if orig.AcceptedAt != nil {
-			return refuse(http.StatusConflict, "invitation_not_active", "The invitation is no longer active.", nil)
+			return invitationNotActive
+		}
+		if orig.UserID != nil {
+			if ok, err := invitedUserCanComplete(ctx, q, orig); err != nil || !ok {
+				return cmpOr(err, error(invitationNotActive))
+			}
 		}
 		inv, token, err = s.issueInvitation(ctx, q, store.InsertInvitationParams{
 			Email:           orig.Email,
@@ -217,8 +226,9 @@ func (s *server) PostIdentityOwnerInvitationsByIdResend(ctx context.Context, req
 
 // GetIdentityInvitationsValidate tells the invitee's browser whether a
 // token can still be accepted, and for which email and role until when
-// (EA/AuthAccountEndpoints.cs:1267-1276). Anything else answers
-// {valid:false}.
+// (EA/AuthAccountEndpoints.cs:1267-1276). A named invitation is valid only
+// while its user can complete it (canComplete) and names no role. Anything
+// else answers {valid:false}.
 func (s *server) GetIdentityInvitationsValidate(ctx context.Context, req gen.GetIdentityInvitationsValidateRequestObject) (gen.GetIdentityInvitationsValidateResponseObject, error) {
 	hash, ok := parseToken(deref(req.Params.Token))
 	if !ok {
@@ -231,6 +241,18 @@ func (s *server) GetIdentityInvitationsValidate(ctx context.Context, req gen.Get
 	if err != nil {
 		return nil, fmt.Errorf("identity: validate invitation: %w", err)
 	}
+	if inv.UserID != nil {
+		// A named invitation is valid while its user can complete it, and
+		// grants no role, so it names none.
+		ok, err := invitedUserCanComplete(ctx, s.q, inv)
+		if err != nil {
+			return nil, fmt.Errorf("identity: validate invitation: %w", err)
+		}
+		if !ok {
+			return gen.GetIdentityInvitationsValidate200JSONResponse{Valid: false}, nil
+		}
+		return gen.GetIdentityInvitationsValidate200JSONResponse{Valid: true, Email: &inv.Email, ExpiresAt: &inv.ExpiresAt}, nil
+	}
 	return gen.GetIdentityInvitationsValidate200JSONResponse{Valid: true, Email: &inv.Email, Role: &inv.Role, ExpiresAt: &inv.ExpiresAt}, nil
 }
 
@@ -239,6 +261,38 @@ func (s *server) GetIdentityInvitationsValidate(ctx context.Context, req gen.Get
 type invitationAcceptedAudit struct {
 	InvitationID uuid.UUID `json:"InvitationId"`
 	Roles        []string  `json:"Roles"`
+}
+
+// invitationCompletingAudit is invitation.accepted-completing-user's before:
+// the invitation, the user's roles and since when they were pending (UTC).
+type invitationCompletingAudit struct {
+	InvitationID uuid.UUID `json:"InvitationId"`
+	Roles        []string  `json:"Roles"`
+	PendingSince time.Time `json:"PendingSince"`
+}
+
+// canComplete is the one judgement of whether u, the user inv names, can
+// still complete it: u has inv's normalized address, is managed by Staff,
+// pending and not disabled, holds no password, passkey or OIDC link, and
+// is neither an Owner nor a SystemAdmin (an Owner handles those by hand).
+// Acceptance judges it under the locks; a resend and a validation judge it
+// unlocked, to refuse what acceptance would.
+func canComplete(inv store.IdentityInvitation, u store.GetInvitedUserRow) bool {
+	return u.NormalizedEmail == inv.NormalizedEmail && deref(u.ManagedBy) == staffModule && u.PendingSince != nil &&
+		!u.IsDisabled && u.PasswordHash == nil && !u.HasPasskey && !u.HasOidcLink && !u.Privileged
+}
+
+// invitedUserCanComplete reads the user inv names, unlocked, and judges
+// canComplete; a user who is gone cannot.
+func invitedUserCanComplete(ctx context.Context, q *store.Queries, inv store.IdentityInvitation) (bool, error) {
+	u, err := q.GetInvitedUser(ctx, *inv.UserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return canComplete(inv, u), nil
 }
 
 // PostIdentityInvitationsAccept creates the invited account and signs it in
@@ -403,14 +457,13 @@ func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.Post
 // (staff foundation design S25; staff accounts plan, pre-flight I7), in
 // acceptance's transaction, under the owner lock, the invitation's lock and
 // then the user's FOR UPDATE, in that order. It assigns no role: not the
-// invitation's, and never the first Owner's bootstrap. The user must exist and be the invitation's address, managed
-// by Staff, pending, not disabled, and hold no password, passkey or OIDC
-// link; anything else is acceptance's uniform 400 invitation_invalid and
-// writes nothing. The password must pass the policy (400
-// identity_validation_failed, as for a new account); the user's own address
-// is not a duplicate. The user gets the password, a confirmed email and the
-// pending mark cleared, and keeps their display name (the request's is
-// ignored) and their roles. The invitation is marked accepted,
+// invitation's, and never the first Owner's bootstrap. The user must exist
+// and be able to complete it (canComplete); anything else is acceptance's
+// uniform 400 invitation_invalid and writes nothing. The password must pass
+// the policy (400 identity_validation_failed, as for a new account); the
+// user's own address is not a duplicate. The user gets the password, a
+// confirmed email, the pending mark and any lockout cleared, and keeps their
+// display name (the request's is ignored) and their roles. The invitation is marked accepted,
 // invitation.accepted-completing-user is audited, and a session starts. It
 // returns the user as acceptance answers them, whether they have TOTP, and
 // the session's token.
@@ -422,8 +475,7 @@ func (s *server) completePendingUser(ctx context.Context, tx pgx.Tx, q *store.Qu
 	if err != nil {
 		return gen.AuthUserResponse{}, false, "", err
 	}
-	if u.NormalizedEmail != inv.NormalizedEmail || deref(u.ManagedBy) != staffModule || u.PendingSince == nil ||
-		u.IsDisabled || u.PasswordHash != nil || u.HasPasskey || u.HasOidcLink {
+	if !canComplete(inv, store.GetInvitedUserRow(u)) {
 		return gen.AuthUserResponse{}, false, "", invitationInvalid
 	}
 	if err := s.checkPasswordPolicy(password); err != nil {
@@ -450,7 +502,7 @@ func (s *server) completePendingUser(ctx context.Context, tx pgx.Tx, q *store.Qu
 	if err := writeAudit(ctx, q, r, now, auditEvent{
 		targetUser: &u.ID,
 		action:     "invitation.accepted-completing-user",
-		before:     invitationAcceptedAudit{InvitationID: inv.ID, Roles: before.Roles},
+		before:     invitationCompletingAudit{InvitationID: inv.ID, Roles: before.Roles, PendingSince: u.PendingSince.UTC()},
 		after:      after,
 	}); err != nil {
 		return gen.AuthUserResponse{}, false, "", err

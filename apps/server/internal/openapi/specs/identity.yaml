@@ -610,6 +610,7 @@ components:
                     nullable: true
                     type: string
                 role:
+                    description: The role the account will have; absent for an invitation that completes an account which already exists, which keeps its own roles.
                     nullable: true
                     type: string
                 valid:

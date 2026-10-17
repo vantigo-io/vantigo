@@ -154,13 +154,19 @@ The invitation Staff's provisioning sends a pending user names that user
 (`identity.invitations.user_id`). Accepting it completes the existing account instead
 of creating one: under the owner lock, then the invitation's row lock, then the user's,
 the user must still be the invitation's address, managed by Staff, pending, not
-disabled (by an Owner or by Staff), and hold no password, passkey or OIDC link. The
-password must meet the policy; the user then has it, a confirmed email and no pending
-mark, keeps their display name (the one typed on the page is ignored) and the roles they
+disabled (by an Owner or by Staff), neither an Owner nor a SystemAdmin, and hold no
+password, passkey or OIDC link. The password must meet the policy; the user then has
+it, a confirmed email, no pending mark and no lockout, keeps their display name (the one typed on the page is ignored) and the roles they
 hold — an invitation naming a user grants no role and never makes the first Owner. The
 audit records `invitation.accepted-completing-user`, and the user is signed in. Anything
 else answers the same 400 `invitation_invalid` as an unknown or expired token, and
-nothing is written. A resend keeps the user the invitation names.
+nothing is written.
+
+The same conditions decide the rest of a named invitation's life. Validating its link
+(`GET /api/v1/identity/invitations/validate`) answers `valid: false` once the user no
+longer meets them, and names no role while they do, since the account keeps its own. A
+resend keeps the user the invitation names, and is refused 409 `invitation_not_active`,
+with nothing sent, once that user no longer meets them or is gone.
 
 An Owner cannot invite a pending user's address by hand: the account exists, so the
 invite answers 409 `account_exists`. A pending user's invitation is Staff's to send; an

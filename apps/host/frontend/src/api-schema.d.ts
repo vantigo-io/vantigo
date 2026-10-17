@@ -1456,6 +1456,7 @@ export interface components {
             email?: string | null;
             /** Format: date-time */
             expiresAt?: string | null;
+            /** @description The role the account will have; absent for an invitation that completes an account which already exists, which keeps its own roles. */
             role?: string | null;
             valid: boolean;
         };

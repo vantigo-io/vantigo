@@ -44,8 +44,10 @@ skriver under **Visningsnavn**; endre det senere under
 [profilen din](#rediger-profilen-din).
 
 En slik invitasjon virker bare mens kontoen fortsatt venter på deg. Er kontoen
-deaktivert eller fullført i mellomtiden, sier siden **Denne invitasjonen er ugyldig
-eller utløpt**; spør HR eller eieren av arbeidsområdet.
+deaktivert, fullført eller endret i mellomtiden, åpner lenken på **Denne invitasjonen
+er ugyldig eller utløpt**, eller, når det skjer mens siden er åpen, svarer **Opprett
+konto** med **Denne invitasjonen er ugyldig eller ikke lenger tilgjengelig**; spør HR
+eller eieren av arbeidsområdet.
 
 En administrator kan også opprette kontoen din med et passord de velger selv og gi
 det til deg direkte. Bytt i så fall passord under [Sikkerhet](#bytt-passord) første
