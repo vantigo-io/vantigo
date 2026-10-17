@@ -1105,10 +1105,16 @@ components:
                     type: string
                 name:
                     type: string
+                permissionKeys:
+                    description: The permission keys the role carries, in ordinal order. Every user Staff provisions is given them.
+                    items:
+                        type: string
+                    type: array
             required:
                 - id
                 - name
                 - displayName
+                - permissionKeys
             type: object
         ProvisioningRolesRequest:
             properties:
@@ -4659,7 +4665,7 @@ paths:
             x-vantigo-access: policy:ActiveAccount
     /api/v1/identity/owner/provisioning-roles:
         get:
-            description: The roles Staff may give the users it provisions, by name.
+            description: The roles Staff may give the users it provisions, by name, each with its permission keys.
             operationId: getIdentityOwnerProvisioningRoles
             responses:
                 "200":
@@ -4694,7 +4700,7 @@ paths:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
         put:
-            description: 'Replaces the roles Staff may give the users it provisions with roleIds, whole. Custom roles only: a built-in, system or unknown role is refused 400 role_not_assignable and nothing changes. A role''s delete removes it from the set. Audited provisioning-roles.replaced.'
+            description: 'Replaces the roles Staff may give the users it provisions with roleIds, whole. Custom roles only: a built-in, system or unknown role, or a role carrying a permission that grants administration (identity:manage, staff:manage, staff:personal-data, staff:approve), is refused 400 role_not_assignable, the message naming the role and the key, and nothing changes. A role''s delete removes it from the set. Audited provisioning-roles.replaced.'
             operationId: putIdentityOwnerProvisioningRoles
             requestBody:
                 content:

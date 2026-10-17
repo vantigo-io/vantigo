@@ -803,9 +803,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The roles Staff may give the users it provisions, by name. */
+        /** @description The roles Staff may give the users it provisions, by name, each with its permission keys. */
         get: operations["getIdentityOwnerProvisioningRoles"];
-        /** @description Replaces the roles Staff may give the users it provisions with roleIds, whole. Custom roles only: a built-in, system or unknown role is refused 400 role_not_assignable and nothing changes. A role's delete removes it from the set. Audited provisioning-roles.replaced. */
+        /** @description Replaces the roles Staff may give the users it provisions with roleIds, whole. Custom roles only: a built-in, system or unknown role, or a role carrying a permission that grants administration (identity:manage, staff:manage, staff:personal-data, staff:approve), is refused 400 role_not_assignable, the message naming the role and the key, and nothing changes. A role's delete removes it from the set. Audited provisioning-roles.replaced. */
         put: operations["putIdentityOwnerProvisioningRoles"];
         post?: never;
         delete?: never;
@@ -1642,6 +1642,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            /** @description The permission keys the role carries, in ordinal order. Every user Staff provisions is given them. */
+            permissionKeys: string[];
         };
         ProvisioningRolesRequest: {
             roleIds: string[] | null;

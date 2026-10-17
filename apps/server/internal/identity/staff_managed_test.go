@@ -469,9 +469,10 @@ func TestStaffManaged_EveryRevokeRecordsItsReason(t *testing.T) {
 // provisioningRoles is ProvisioningRolesResponse as a test reads it.
 type provisioningRoles struct {
 	Roles []struct {
-		ID          uuid.UUID `json:"id"`
-		Name        string    `json:"name"`
-		DisplayName string    `json:"displayName"`
+		ID             uuid.UUID `json:"id"`
+		Name           string    `json:"name"`
+		DisplayName    string    `json:"displayName"`
+		PermissionKeys []string  `json:"permissionKeys"`
 	} `json:"roles"`
 }
 
@@ -633,5 +634,39 @@ func TestStaffManaged_APendingOwnerIsNotAnActiveOwner(t *testing.T) {
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND NOT is_disabled`, ownerID); n != 1 {
 		t.Errorf("the only real Owner was disabled")
+	}
+}
+
+// A role that grants administration is never Staff's to give: a custom role
+// carrying identity:manage, staff:manage, staff:personal-data or
+// staff:approve is refused role_not_assignable naming the key, and nothing
+// is written. The set lists each role's permission keys.
+func TestProvisioningRoles_RefuseAdministrativePermissionsAndListKeys(t *testing.T) {
+	t.Parallel()
+	h, owner, _ := rbacHarness(t)
+	employee := createRole(t, owner, "Employee", customersView.Key)
+	empty := createRole(t, owner, "Empty")
+	if r := putProvisioningRoles(owner, employee.ID, empty.ID); r.status != http.StatusOK {
+		t.Fatalf("put: status %d body %s", r.status, r.body)
+	}
+	got := getProvisioningRoles(t, owner)
+	if len(got.Roles) != 2 || !slices.Equal(got.Roles[0].PermissionKeys, []string{customersView.Key}) ||
+		got.Roles[1].PermissionKeys == nil || len(got.Roles[1].PermissionKeys) != 0 {
+		t.Errorf("the set's keys = %+v, want Employee [customers:view] and Empty []", got)
+	}
+
+	for _, key := range []string{"identity:manage", "staff:manage", "staff:personal-data", "staff:approve"} {
+		role := h.insertRole(t, "Admin "+key, customersView.Key, key)
+		r := putProvisioningRoles(owner, employee.ID, role)
+		e := errorOf(t, r)
+		if r.status != http.StatusBadRequest || e.Code != "role_not_assignable" || !strings.Contains(e.Message, key) {
+			t.Errorf("a role with %s: status %d error %+v, want 400 role_not_assignable naming the key", key, r.status, e)
+		}
+	}
+	if ids := getProvisioningRoles(t, owner).ids(); len(ids) != 2 {
+		t.Errorf("after the refusals = %v, want the two kept", ids)
+	}
+	if n := len(h.auditEvents(t, "provisioning-roles.replaced")); n != 1 {
+		t.Errorf("provisioning-roles.replaced rows = %d, want 1", n)
 	}
 }

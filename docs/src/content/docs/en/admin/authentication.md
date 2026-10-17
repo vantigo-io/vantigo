@@ -200,12 +200,21 @@ account a role it chooses.
      -d '{"roleIds":["<role id>"]}'
    ```
 
-3. Verify: `GET /api/v1/identity/owner/provisioning-roles` lists the roles by name. The
-   audit records `provisioning-roles.replaced` with the set before and after.
+3. Verify: `GET /api/v1/identity/owner/provisioning-roles` lists the roles by name, each
+   with its permission keys. The audit records `provisioning-roles.replaced` with the
+   set before and after.
 
-The request replaces the set; an empty `roleIds` empties it. A built-in, system or
-unknown role is refused 400 `role_not_assignable` and nothing changes. Deleting a role
-removes it from the set.
+The request replaces the set; an empty `roleIds` empties it. Deleting a role removes it
+from the set. 400 `role_not_assignable` refuses, and nothing changes, for:
+
+- a built-in, system or unknown role;
+- a role carrying a permission that grants administration — `identity:manage`,
+  `staff:manage`, `staff:personal-data` or `staff:approve`. The message names the role
+  and the key.
+
+**Caution:** a role in the set is given to every user Staff provisions, and editing
+that role's permissions later changes what all of them hold at once. Give the role only
+what every employee needs, and review the set before widening one of its roles.
 
 ### Why an invitation was revoked
 

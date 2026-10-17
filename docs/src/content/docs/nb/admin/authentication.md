@@ -211,12 +211,21 @@ slik at `staff:manage` aldri kan gi en konto en rolle den selv velger.
    ```
 
 3. Kontroller: `GET /api/v1/identity/owner/provisioning-roles` lister rollene etter
-   navn. Revisjonsloggen registrerer `provisioning-roles.replaced` med settet før og
-   etter.
+   navn, hver med sine rettighetsnøkler. Revisjonsloggen registrerer
+   `provisioning-roles.replaced` med settet før og etter.
 
-Forespørselen erstatter settet; en tom `roleIds` tømmer det. En innebygd rolle, en
-systemrolle eller en ukjent rolle avvises med 400 `role_not_assignable`, og ingenting
-endres. Å slette en rolle fjerner den fra settet.
+Forespørselen erstatter settet; en tom `roleIds` tømmer det. Å slette en rolle fjerner
+den fra settet. 400 `role_not_assignable` avviser, og ingenting endres, for:
+
+- en innebygd rolle, en systemrolle eller en ukjent rolle;
+- en rolle med en rettighet som gir administrasjon — `identity:manage`,
+  `staff:manage`, `staff:personal-data` eller `staff:approve`. Meldingen navngir rollen
+  og nøkkelen.
+
+**Forsiktig:** en rolle i settet gis til hver bruker Ansatte klargjør, og å endre
+rettighetene til den rollen senere endrer det alle de brukerne holder, på én gang. Gi
+rollen bare det hver ansatt trenger, og gå gjennom settet før du utvider en av rollene
+i det.
 
 ### Hvorfor en invitasjon ble trukket tilbake
 
