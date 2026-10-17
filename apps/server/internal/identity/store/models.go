@@ -232,6 +232,7 @@ type IdentityUser struct {
 	UpdatedAt         time.Time
 	ManagedBy         *string
 	EmployeeNumber    *string
+	EmployeeNumberKey *string
 	PendingSince      *time.Time
 	DisabledBy        *string
 }

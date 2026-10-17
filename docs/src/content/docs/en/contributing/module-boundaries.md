@@ -235,8 +235,9 @@ Communications' outbox is the working example.
     never mint an account holding a role it chose. The employee number decides whose
     account a user is: `Prepare` finds by it, and a caller acts on a user only when
     identity's number is the same as its record's by `contracts.SameEmployeeNumber`
-    (trimmed, NFC-normalised as identity stores every number, and case-folded as
-    PostgreSQL's `upper()` folds it, as identity's unique index does). `AccountRef.Email` exists only so the caller can tell whether the address
+    — the same `contracts.NormalizeEmployeeNumber` key (trimmed, NFC-normalised,
+    upper-cased by Go), which identity stores as `users.employee_number_key` and keeps
+    unique, so no database collation decides which two numbers are one. `AccountRef.Email` exists only so the caller can tell whether the address
     differs from the one it would set; like `Holder.Email` below it never reaches a
     caller's wire, log, event or error. Each refusal is a sentinel error
     (`ErrAccountNotManaged`, `ErrAccountPrivileged`, `ErrBlockedByOwner`,

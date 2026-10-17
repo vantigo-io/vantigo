@@ -215,10 +215,13 @@ SystemAdmin.
 3. Kontroller: svaret, og brukeren i listen, viser `managedBy: staff` og
    ansattnummeret. Revisjonsloggen registrerer `user.staff-managed`.
 
-Ansattnumre lagres og sammenlignes i Unicode normalform C (NFC), så en `Å` skrevet som
-ett tegn og en skrevet som `A` med en kombinerende ring er samme nummer, og de
-sammenlignes uansett store eller små bokstaver (`upper()` på begge sider), så `a-17` og
-`A-17` er samme nummer. Å ta inn en styrt bruker på nytt med et annet
+Ansattnumre lagres i Unicode normalform C (NFC), så en `Å` skrevet som ett tegn og en
+skrevet som `A` med en kombinerende ring er samme nummer, og de sammenlignes med en
+nøkkel identitet beregner og lagrer ved siden av nummeret
+(`identity.users.employee_number_key`): trimmet, NFC, deretter med store bokstaver etter
+serverens egen bokstavtabell, så `a-17` og `A-17` er samme nummer. Databasens
+sorteringsregler spiller ingen rolle, så de samme to numrene er ett eller to på hver
+installasjon: `ß-1` og `ẞ-1` forblir to numre, det samme gjør `æ-1` og `ae-1`. Å ta inn en styrt bruker på nytt med et annet
 nummer endrer nummeret. En bruker som
 SCIM klargjør, kan tas inn: i en føderert installasjon er den styrte brukeren
 identitetsleverandørens.

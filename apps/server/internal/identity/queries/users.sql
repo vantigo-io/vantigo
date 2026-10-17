@@ -2,7 +2,7 @@
 SELECT id, email, normalized_email, email_confirmed, display_name, preferred_language,
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
        totp_enabled, totp_last_step, version, created_at, updated_at,
-       managed_by, employee_number, pending_since, disabled_by
+       managed_by, employee_number, employee_number_key, pending_since, disabled_by
 FROM identity.users
 WHERE normalized_email = $1;
 
@@ -18,7 +18,7 @@ INSERT INTO identity.users (
 SELECT id, email, normalized_email, email_confirmed, display_name, preferred_language,
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
        totp_enabled, totp_last_step, version, created_at, updated_at,
-       managed_by, employee_number, pending_since, disabled_by
+       managed_by, employee_number, employee_number_key, pending_since, disabled_by
 FROM identity.users
 WHERE id = $1;
 

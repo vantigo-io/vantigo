@@ -246,17 +246,21 @@ type AccountProvisioning interface {
 	ProvisioningRoles(ctx context.Context) ([]RoleRef, error)
 }
 
-// SameEmployeeNumber reports whether a and b are the same employee number as
-// identity compares them: trimmed of surrounding white space, NFC-normalised
-// (identity stores every number so, and a caller's record need not be), and
-// case-folded as PostgreSQL's upper() does (identity's unique index is on
-// upper(employee_number)). An empty number is the same as no other.
+// NormalizeEmployeeNumber is the one key two employee numbers are compared
+// by: trimmed of surrounding white space, NFC-normalised (two spellings of
+// one character, a precomposed Å and A with a combining ring, are one), then
+// upper-cased by Go's own case mapping. Identity stores it beside the number
+// and its unique index is on it, as normalized_email is for addresses, so no
+// database collation's upper() — which differs between the C locale and
+// en_US, and from Go — ever decides which two numbers are one.
+func NormalizeEmployeeNumber(s string) string {
+	return strings.ToUpper(norm.NFC.String(strings.TrimSpace(s)))
+}
+
+// SameEmployeeNumber reports whether a and b are the same employee number:
+// the same NormalizeEmployeeNumber key, identity's. An empty number is the
+// same as no other, not even another empty one.
 func SameEmployeeNumber(a, b string) bool {
-	a, b = norm.NFC.String(strings.TrimSpace(a)), norm.NFC.String(strings.TrimSpace(b))
-	// Upper-cased and compared, deliberately not strings.EqualFold: simple
-	// folding is not upper(), and two numbers identity's index tells apart
-	// must stay apart. (The Kelvin sign, which folding alone would call k, is
-	// K already once NFC-normalised, as identity stores it.)
-	upperA, upperB := strings.ToUpper(a), strings.ToUpper(b)
-	return a != "" && upperA == upperB
+	keyA := NormalizeEmployeeNumber(a)
+	return keyA != "" && keyA == NormalizeEmployeeNumber(b)
 }

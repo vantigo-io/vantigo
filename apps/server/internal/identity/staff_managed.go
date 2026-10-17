@@ -63,13 +63,14 @@ var (
 // Owner's adoption or from Staff's provisioning alike: trimmed, then
 // NFC-normalised, so two spellings of one number (a precomposed Å and A with
 // a combining ring) are stored and compared as one, then judged — 1 to 16
-// characters, each printable (unprintable). It returns the number to store
-// and compare, and whether it is valid. contracts.SameEmployeeNumber
-// normalises the same way.
-func normalizeEmployeeNumber(raw string) (string, bool) {
-	number := norm.NFC.String(strings.TrimSpace(raw))
-	valid := number != "" && utf8.RuneCountInString(number) <= maxEmployeeNumberLength && !strings.ContainsFunc(number, unprintable)
-	return number, valid
+// characters, each printable (unprintable). It returns the number to store,
+// its key (contracts.NormalizeEmployeeNumber, which users.employee_number_key
+// holds and ux_users_employee_number is on — what every lookup compares),
+// and whether it is valid.
+func normalizeEmployeeNumber(raw string) (number, key string, valid bool) {
+	number = norm.NFC.String(strings.TrimSpace(raw))
+	valid = number != "" && utf8.RuneCountInString(number) <= maxEmployeeNumberLength && !strings.ContainsFunc(number, unprintable)
+	return number, contracts.NormalizeEmployeeNumber(number), valid
 }
 
 // unprintable reports whether r has no place in an employee number: a
@@ -130,8 +131,9 @@ func privileged(ctx context.Context, q *store.Queries, id uuid.UUID) (bool, erro
 // lock: an unknown user is 404; an Owner or a SystemAdmin is 409
 // account_privileged; a number another user holds, however it is cased, is
 // 409 employee_number_taken, also when only the unique index sees a
-// concurrent adoption's number. The comparison is upper() on both sides, the
-// index's and GetUserIDByEmployeeNumber's. A SCIM-mapped user is admitted (plan reading
+// concurrent adoption's number. The comparison is the number's key on both
+// sides (contracts.NormalizeEmployeeNumber), the index's and
+// GetUserIDByEmployeeNumber's. A SCIM-mapped user is admitted (plan reading
 // 15). A change is audited user.staff-managed; adopting a user again with
 // the number they hold changes nothing.
 func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.PostIdentityOwnerUsersByIdManageRequestObject) (gen.PostIdentityOwnerUsersByIdManageResponseObject, error) {
@@ -139,7 +141,7 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 	if req.Body != nil {
 		body = *req.Body
 	}
-	number, numberValid := normalizeEmployeeNumber(deref(body.EmployeeNumber))
+	number, key, numberValid := normalizeEmployeeNumber(deref(body.EmployeeNumber))
 	fields := map[string][]string{}
 	if deref(body.Module) != staffModule {
 		fields["module"] = []string{"Module must be staff."}
@@ -175,7 +177,7 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 		if priv, err := privileged(ctx, q, target.ID); err != nil || priv {
 			return cmpOr(err, error(accountPrivileged))
 		}
-		holder, err := q.GetUserIDByEmployeeNumber(ctx, number)
+		holder, err := q.GetUserIDByEmployeeNumber(ctx, key)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 		case err != nil:
@@ -187,7 +189,7 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 		if !staffManaged(target) || deref(target.EmployeeNumber) != number {
 			module := staffModule
 			if err := q.SetUserStaffManaged(ctx, store.SetUserStaffManagedParams{
-				ID: target.ID, ManagedBy: &module, EmployeeNumber: &number, Version: uuid.New(), Now: now,
+				ID: target.ID, ManagedBy: &module, EmployeeNumber: &number, EmployeeNumberKey: &key, Version: uuid.New(), Now: now,
 			}); err != nil {
 				// A concurrent adoption that took the number first, seen
 				// only by the index.

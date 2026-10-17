@@ -402,7 +402,7 @@ func TestStaffManaged_TheListShowsPendingManagedAndWhoDisabled(t *testing.T) {
 	owner, _ := h.bootstrapOwner(t)
 	plain := h.createUser(t, owner, "plain@example.test", identity.RoleUser)
 	pending := h.insertUser(t, "pending@example.test", identity.RoleUserID)
-	h.exec(t, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'N-1', pending_since = $2, is_disabled = true, disabled_by = 'staff'
+	h.exec(t, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'N-1', employee_number_key = 'N-1', pending_since = $2, is_disabled = true, disabled_by = 'staff'
 	           WHERE id = $1`, pending, h.now())
 
 	// pending is always sent; the other three only when set.
@@ -612,8 +612,8 @@ func TestProvisioningRoles_CustomOnlyReplacedWholeAndCascading(t *testing.T) {
 // arranges what no endpoint makes yet.
 func makePending(t *testing.T, h *harness, id uuid.UUID, number string) {
 	t.Helper()
-	h.exec(t, `UPDATE identity.users SET managed_by = 'staff', employee_number = $2, pending_since = $3, is_disabled = false, disabled_by = NULL
-	           WHERE id = $1`, id, number, h.now())
+	h.exec(t, `UPDATE identity.users SET managed_by = 'staff', employee_number = $2, employee_number_key = $4, pending_since = $3, is_disabled = false, disabled_by = NULL
+	           WHERE id = $1`, id, number, h.now(), contracts.NormalizeEmployeeNumber(number))
 }
 
 // A pending user becomes usable only by accepting their invitation: an
@@ -804,7 +804,7 @@ func TestStaffManaged_ConcurrentAdoptionsOfOneNumber(t *testing.T) {
 	if !slices.Equal(codes, []string{"200", "employee_number_taken"}) {
 		t.Errorf("the two adoptions answered %v, want one 200 and one employee_number_taken", codes)
 	}
-	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE upper(employee_number) = 'R-1'`); n != 1 {
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE employee_number_key = 'R-1'`); n != 1 {
 		t.Errorf("users holding R-1 = %d, want 1", n)
 	}
 }
@@ -830,7 +830,7 @@ func TestStaffManaged_AnAdoptionBehindAnUncommittedNumber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin: %v", err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'R-1' WHERE id = $1`, other); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'R-1', employee_number_key = 'R-1' WHERE id = $1`, other); err != nil {
 		t.Fatalf("hold R-1: %v", err)
 	}
 	var holderPID int

@@ -5,16 +5,22 @@
 -- identity.users gains the Staff-managed columns: managed_by ('staff' or
 -- null) marks a user Staff's provisioning may act on, which an Owner sets by
 -- adopting a user or Staff by creating one; employee_number correlates the
--- user with the person in Staff's register, unique however it is cased;
+-- user with the person in Staff's register, as it was given (trimmed and
+-- NFC-normalised), and employee_number_key is the same number as identity's
+-- one Go normaliser (contracts.NormalizeEmployeeNumber) compares it — unique
+-- by that key, as normalized_email is for addresses, so no database
+-- collation's upper() decides which two numbers are one;
 -- pending_since marks a user Staff created who has not yet chosen a
 -- credential; disabled_by records who disabled the user, so Staff never
 -- re-enables what an Owner disabled.
 ALTER TABLE identity.users
     ADD COLUMN managed_by      varchar(20) CHECK (managed_by IN ('staff')),
     ADD COLUMN employee_number varchar(16),
+    ADD COLUMN employee_number_key text,
     ADD COLUMN pending_since   timestamptz,
-    ADD COLUMN disabled_by     varchar(10) CHECK (disabled_by IN ('owner', 'staff'));
-CREATE UNIQUE INDEX ux_users_employee_number ON identity.users (upper(employee_number)) WHERE employee_number IS NOT NULL;
+    ADD COLUMN disabled_by     varchar(10) CHECK (disabled_by IN ('owner', 'staff')),
+    ADD CONSTRAINT users_employee_number_key_check CHECK ((employee_number IS NULL) = (employee_number_key IS NULL));
+CREATE UNIQUE INDEX ux_users_employee_number ON identity.users (employee_number_key) WHERE employee_number_key IS NOT NULL;
 
 -- Before this migration only an Owner disabled a user (SCIM's upstream state
 -- is scim_user_mappings.upstream_active, a separate thing).
@@ -57,6 +63,8 @@ ALTER TABLE identity.invitations
 DROP INDEX identity.ux_users_employee_number;
 ALTER TABLE identity.users
     DROP COLUMN disabled_by,
+    DROP CONSTRAINT users_employee_number_key_check,
     DROP COLUMN pending_since,
+    DROP COLUMN employee_number_key,
     DROP COLUMN employee_number,
     DROP COLUMN managed_by;
