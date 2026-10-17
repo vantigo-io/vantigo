@@ -282,6 +282,13 @@ func newHoldersFixture(t *testing.T, opts ...harnessOption) *holdersFixture {
 	h.exec(t, `INSERT INTO identity.authorization_delegations (id, grantee_user_id, created_by_user_id, version, created_at, updated_at)
 	        VALUES ($1, $2, $3, $4, $5, $5)`, uuid.New(), add("x-delegate", identity.RoleUserID), owner, uuid.New(), h.now())
 	add("x-holds-another-key", identity.RoleUserID, manager)
+	add("x-system-admin", identity.RoleUserID, identity.RoleSystemAdminID)
+
+	// A group the directory provisions, its mapping the directory's too, and
+	// a member the directory reports present.
+	scimGroup := group("Directory approvers", "scim", true, "scim")
+	h.exec(t, `INSERT INTO identity.access_group_memberships (group_id, user_id, source, is_upstream_present, membership_override)
+	        VALUES ($1, $2, 'scim', true, NULL)`, scimGroup, add("i-scim-group-member", identity.RoleUserID))
 
 	// A directory user named no address keeps a placeholder no mail reaches.
 	placeholder := uuid.New()
@@ -327,7 +334,7 @@ func TestUserDirectory_PermissionHoldersUnderSCIM(t *testing.T) {
 	f := newHoldersFixture(t, withEnv("SCIM_TOKEN", "identity-harness-scim-token"))
 
 	got := f.holders(t)
-	want := []string{"a-direct", "b-forced-member", "c-upstream-member", "d-owner-without-the-key", "e-locked-out", "f-scim-inactive-owner", "h-placeholder", "z-delegator"}
+	want := []string{"a-direct", "b-forced-member", "c-upstream-member", "d-owner-without-the-key", "e-locked-out", "f-scim-inactive-owner", "h-placeholder", "i-scim-group-member", "z-delegator"}
 	if names := f.names(got); !slices.Equal(names, want) {
 		t.Fatalf("holders = %v, want %v", names, want)
 	}
@@ -349,7 +356,7 @@ func TestUserDirectory_PermissionHoldersWithoutSCIM(t *testing.T) {
 	t.Parallel()
 	f := newHoldersFixture(t)
 
-	want := []string{"a-direct", "b-forced-member", "c-upstream-member", "d-owner-without-the-key", "e-locked-out", "f-scim-inactive-owner", "g-scim-inactive", "h-placeholder", "z-delegator"}
+	want := []string{"a-direct", "b-forced-member", "c-upstream-member", "d-owner-without-the-key", "e-locked-out", "f-scim-inactive-owner", "g-scim-inactive", "h-placeholder", "i-scim-group-member", "z-delegator"}
 	if names := f.names(f.holders(t)); !slices.Equal(names, want) {
 		t.Errorf("holders = %v, want %v", names, want)
 	}

@@ -257,3 +257,24 @@ func TestPasswordRecovery_AFailedSendIsSwallowedAndLogsNoAddress(t *testing.T) {
 		t.Errorf("no WARN record for the failed send")
 	}
 }
+
+// A pending user is sent no reset link, even holding a password and a
+// confirmed email (an Owner's adoption over an existing account, then made
+// pending): their only way to a password is accepting their invitation. The
+// answer is the same as for any other address.
+func TestPasswordRecovery_APendingUserIsSentNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	const email = "pending-recovery@example.test"
+	id := h.seedUser(t, email, userPassword, identity.RoleUserID)
+	h.exec(t, `UPDATE identity.users SET email_confirmed = true WHERE id = $1`, id)
+	makePending(t, h, id, "R-9")
+
+	requestRecovery(t, h, email)
+	if got := h.mailTo(email); len(got) != 0 {
+		t.Errorf("%d mails to the pending user, want none", len(got))
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.password_reset_tokens WHERE user_id = $1`, id); n != 0 {
+		t.Errorf("%d reset links minted, want none", n)
+	}
+}

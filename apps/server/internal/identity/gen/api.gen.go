@@ -420,7 +420,7 @@ type OwnerUserCreateRequest struct {
 
 // OwnerUserManageRequest defines model for OwnerUserManageRequest.
 type OwnerUserManageRequest struct {
-	// EmployeeNumber The person's employee number in Staff's register, 1 to 16 characters once trimmed, each printable (no control, format or other invisible character, and no space but U+0020); unique among users however it is cased.
+	// EmployeeNumber The person's employee number in Staff's register, 1 to 16 characters once trimmed, each a letter a–z in either case, a digit or a hyphen (Staff's own alphabet); unique among users however it is cased.
 	EmployeeNumber *string `json:"employeeNumber"`
 
 	// Module The module that manages the user; staff is the only one.

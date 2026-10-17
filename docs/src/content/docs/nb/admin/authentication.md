@@ -143,7 +143,10 @@ Dette kan en eier fortsatt gjøre med en bruker som Ansatte styrer:
   deaktivert konto, og en økt brukeren allerede har, avsluttes ved neste forespørsel.
   Ingen skriver noen gang et passord til en ventende bruker, verken en eier, en
   tilbakestilling eller brukeren selv: selve skrivingen sjekker, så en bruker som blir
-  ventende mens et passord settes, får likevel ikke noe (409 `account_pending`).
+  ventende mens et passord settes, får likevel ikke noe (409 `account_pending`;
+  brukerens egen endring svarer 401 og avslutter ingen økt). Gjenoppretting av passord
+  sender ingen tilbakestillingslenke til en ventende bruker, og svarer som for enhver
+  annen adresse.
 - **Deaktivere** brukeren. En eiers deaktivering registreres som eierens
   (`disabledBy: owner`), også over en bruker Ansatte hadde deaktivert, og Ansatte
   aktiverer aldri igjen en bruker en eier har deaktivert. Aktivering fjerner den. Å
@@ -218,13 +221,14 @@ SystemAdmin.
 3. Kontroller: svaret, og brukeren i listen, viser `managedBy: staff` og
    ansattnummeret. Revisjonsloggen registrerer `user.staff-managed`.
 
-Ansattnumre lagres i Unicode normalform C (NFC), så en `Å` skrevet som ett tegn og en
-skrevet som `A` med en kombinerende ring er samme nummer, og de sammenlignes med en
-nøkkel identitet beregner og lagrer ved siden av nummeret
-(`identity.users.employee_number_key`): trimmet, NFC, deretter med store bokstaver etter
-serverens egen bokstavtabell, så `a-17` og `A-17` er samme nummer. Databasens
-sorteringsregler spiller ingen rolle, så de samme to numrene er ett eller to på hver
-installasjon: `ß-1` og `ẞ-1` forblir to numre, det samme gjør `æ-1` og `ae-1`. Å ta inn en styrt bruker på nytt med et annet
+Et ansattnummer bruker Ansattes eget alfabet: etter trimming 1 til 16 tegn, hvert en
+bokstav `a`–`z` (store eller små), et siffer eller en bindestrek — det a-meldingen, en
+lønnsfil og Entras `employeeId` bærer uten escaping, og det Ansattes eget register
+selv har. Numrene sammenlignes med en nøkkel identitetsmodulen beregner og lagrer ved
+siden av nummeret (`identity.users.employee_number_key`), nummeret med store bokstaver,
+så `a-17` og `A-17` er samme nummer, mens `E-1` og `E-01` er to. Databasens
+sorteringsregler spiller ingen rolle.
+Å ta inn en styrt bruker på nytt med et annet
 nummer endrer nummeret. En bruker som
 SCIM klargjør, kan tas inn: i en føderert installasjon er den styrte brukeren
 identitetsleverandørens.
@@ -235,7 +239,7 @@ Dette kan gå galt:
 | --- | --- |
 | 409 `account_privileged` | Brukeren er eier eller SystemAdmin; Ansatte styrer dem aldri, og en eier håndterer eiere for hånd |
 | 409 `employee_number_taken` | En annen bruker har allerede nummeret, uansett store eller små bokstaver |
-| 400 `invalid_request` | Modulen er ikke `staff`, nummeret er tomt, lengre enn 16 tegn eller inneholder et tegn som ikke skrives ut — et kontrolltegn, et usynlig tegn som et mellomrom med null bredde, et retningstegn eller et byte-rekkefølgemerke, eller et annet mellomrom enn det vanlige — eller brukeren er deg selv |
+| 400 `invalid_request` | Modulen er ikke `staff`, nummeret er tomt, lengre enn 16 tegn eller inneholder noe annet enn `a`–`z`, `A`–`Z`, sifre og bindestreker — et mellomrom inni, en understrek, en bokstav som `Å` eller `ı`, et siffer i full bredde, et usynlig tegn eller et kontrolltegn — eller brukeren er deg selv |
 
 ### Slutte å la Ansatte styre en bruker
 

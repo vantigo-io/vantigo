@@ -134,7 +134,9 @@ What an Owner may still do with a Staff-managed user:
   sign-in refuse them as they refuse a disabled account, and a session they already
   hold ends on its next request. No password is ever written to a pending user, by an
   Owner, a reset or the user: the write itself checks, so a user made pending while a
-  password set waits still keeps none (409 `account_pending`).
+  password set waits still keeps none (409 `account_pending`; the user's own change
+  answers 401 and ends no session). Password recovery sends a pending user no reset
+  link, and answers as it does for any address.
 - **Disable** the user. An Owner's disable is recorded as the Owner's
   (`disabledBy: owner`), also over a user Staff had disabled, and Staff never
   re-enables a user an Owner disabled. Enabling clears it. Overriding Staff's disable —
@@ -204,12 +206,13 @@ Owner nor a SystemAdmin.
 3. Verify: the answer, and the user in the list, show `managedBy: staff` and the
    employee number. The audit records `user.staff-managed`.
 
-Employee numbers are stored in Unicode normal form C (NFC), so an `Å` typed as one
-character and one typed as `A` with a combining ring are one number, and compared by a
-key identity computes and stores beside the number (`identity.users.employee_number_key`):
-trimmed, NFC, then upper-cased by the server's own case mapping, so `a-17` and `A-17`
-are one number. The database's collation plays no part, so the same two numbers are one
-or two on every installation: `ß-1` and `ẞ-1` stay two numbers, as do `æ-1` and `ae-1`. Adopting a managed user again with another number
+An employee number is Staff's own alphabet: once trimmed, 1 to 16 characters, each a
+letter `a`–`z` in either case, a digit or a hyphen — what the a-melding, a payroll file
+and Entra's `employeeId` carry without escaping, and what Staff's register itself
+holds. Numbers are compared by a key identity computes and stores beside the number
+(`identity.users.employee_number_key`), the number upper-cased, so `a-17` and `A-17`
+are one number and `E-1` and `E-01` are two. The database's collation plays no part.
+Adopting a managed user again with another number
 changes the number. A user SCIM
 provisions may be adopted: in a federated installation the managed user is the
 identity provider's.
@@ -220,7 +223,7 @@ What can go wrong:
 | --- | --- |
 | 409 `account_privileged` | The user is an Owner or a SystemAdmin; Staff never manages them, and an Owner handles Owners by hand |
 | 409 `employee_number_taken` | Another user already holds the number, however it is cased |
-| 400 `invalid_request` | The module is not `staff`, or the number is blank, longer than 16 characters or holds a character that does not print — a control character, an invisible one such as a zero-width space, a bidi control or a byte-order mark, or a space other than the ordinary one — or the user is you |
+| 400 `invalid_request` | The module is not `staff`, or the number is blank, longer than 16 characters or holds anything but `a`–`z`, `A`–`Z`, digits and hyphens — a space inside it, an underscore, a letter such as `Å` or `ı`, a full-width digit, an invisible or control character — or the user is you |
 
 ### Stop Staff managing a user
 

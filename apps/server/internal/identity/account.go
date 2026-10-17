@@ -270,7 +270,9 @@ const maxNewPasswordLength = 256
 // session while keeping the caller's, and deletes every password-reset
 // token of this user (spec *Sessions* and *Credentials*; .NET only
 // refreshed the caller's cookie and relied on the stamp rotation to end
-// other sessions and invalidate reset tokens implicitly).
+// other sessions and invalidate reset tokens implicitly). A user deleted or
+// made pending after the read is written no row and answered 401
+// unauthenticated, with nothing revoked or spent.
 func (s *server) PostIdentityAccountPassword(ctx context.Context, req gen.PostIdentityAccountPasswordRequestObject) (gen.PostIdentityAccountPasswordResponseObject, error) {
 	var body gen.AccountPasswordRequest
 	if req.Body != nil {
@@ -309,10 +311,18 @@ func (s *server) PostIdentityAccountPassword(ctx context.Context, req gen.PostId
 		return nil, fmt.Errorf("identity: change password: %w", err)
 	}
 	now := s.deps.Clock()
+	written := true
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		if _, err := q.UpdateAccountPassword(ctx, store.UpdateAccountPasswordParams{ID: p.UserID, PasswordHash: &hash, Version: uuid.New(), Now: now}); err != nil {
+		n, err := q.UpdateAccountPassword(ctx, store.UpdateAccountPasswordParams{ID: p.UserID, PasswordHash: &hash, Version: uuid.New(), Now: now})
+		if err != nil {
 			return err
+		}
+		if n == 0 {
+			// Deleted, or made pending, since the read above: nothing is
+			// stored, so nothing is revoked or spent either.
+			written = false
+			return nil
 		}
 		if err := q.DeleteUserPasswordResetTokens(ctx, p.UserID); err != nil {
 			return err
@@ -321,6 +331,9 @@ func (s *server) PostIdentityAccountPassword(ctx context.Context, req gen.PostId
 	})
 	if err != nil {
 		return nil, fmt.Errorf("identity: change password: %w", err)
+	}
+	if !written {
+		return gen.PostIdentityAccountPassword401JSONResponse(authErrorBody("unauthenticated", "The session is not authenticated.", nil)), nil
 	}
 	return gen.PostIdentityAccountPassword200JSONResponse{Success: true}, nil
 }

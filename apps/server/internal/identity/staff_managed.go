@@ -4,15 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"golang.org/x/text/unicode/norm"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -33,9 +31,6 @@ import (
 const (
 	// staffModule is the one module that manages users.
 	staffModule = "staff"
-	// maxEmployeeNumberLength is identity.users.employee_number's bound,
-	// Staff's own (staff.people.employee_number).
-	maxEmployeeNumberLength = 16
 	// disabledByOwnerValue is identity.users.disabled_by for an Owner's
 	// disable.
 	disabledByOwnerValue = "owner"
@@ -59,27 +54,35 @@ var (
 	accountManaged = refuse(http.StatusConflict, "account_managed", "This user is managed by Staff and cannot be deleted; stop Staff managing them first.", nil)
 )
 
+// employeeNumberPattern is Staff's own alphabet for an employee number
+// (staff/values.go's numberPattern): letters a–z in either case, digits and
+// the hyphen, at most 16 (identity.users.employee_number's bound, and
+// staff.people.employee_number's). Identity can never usefully
+// hold a number Staff cannot hold, and within ASCII the key's case mapping is
+// the same under every Unicode version Go ships.
+var employeeNumberPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,16}$`)
+
 // normalizeEmployeeNumber is how identity takes an employee number, from an
-// Owner's adoption or from Staff's provisioning alike: trimmed, then
-// NFC-normalised, so two spellings of one number (a precomposed Å and A with
-// a combining ring) are stored and compared as one, then judged — 1 to 16
-// characters, each printable (unprintable). It returns the number to store,
-// its key (contracts.NormalizeEmployeeNumber, which users.employee_number_key
-// holds and ux_users_employee_number is on — what every lookup compares),
-// and whether it is valid.
-func normalizeEmployeeNumber(raw string) (number, key string, valid bool) {
-	number = norm.NFC.String(strings.TrimSpace(raw))
-	valid = number != "" && utf8.RuneCountInString(number) <= maxEmployeeNumberLength && !strings.ContainsFunc(number, unprintable)
-	return number, contracts.NormalizeEmployeeNumber(number), valid
+// Owner's adoption or from Staff's provisioning alike: trimmed, then judged
+// against Staff's alphabet (employeeNumberPattern). It returns the number to
+// store and whether it is valid; its key is setStaffManaged's to derive.
+func normalizeEmployeeNumber(raw string) (number string, valid bool) {
+	number = strings.TrimSpace(raw)
+	return number, employeeNumberPattern.MatchString(number)
 }
 
-// unprintable reports whether r has no place in an employee number: a
-// control character, a format character (Unicode Cf: zero-width characters,
-// bidi controls, the byte-order mark) or anything else that does not print,
-// spaces other than U+0020 included — each would make two numbers that look
-// alike differ.
-func unprintable(r rune) bool {
-	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || !unicode.IsPrint(r)
+// setStaffManaged is the one writer of a user's managed_by, employee number
+// and its key on q: the key is derived here, from the number, by
+// contracts.NormalizeEmployeeNumber — no caller passes one, so the number
+// and the key ux_users_employee_number compares can never disagree. A nil
+// number clears all three (the end of the management).
+func setStaffManaged(ctx context.Context, q *store.Queries, id uuid.UUID, number *string, now time.Time) error {
+	p := store.SetUserStaffManagedParams{ID: id, Version: uuid.New(), Now: now}
+	if number != nil {
+		module, key := staffModule, contracts.NormalizeEmployeeNumber(*number)
+		p.ManagedBy, p.EmployeeNumber, p.EmployeeNumberKey = &module, number, &key
+	}
+	return q.SetUserStaffManaged(ctx, p)
 }
 
 // staffManaged reports whether Staff manages u.
@@ -125,8 +128,8 @@ func privileged(ctx context.Context, q *store.Queries, id uuid.UUID) (bool, erro
 
 // PostIdentityOwnerUsersByIdManage adopts another user for Staff for an
 // Owner: managed_by staff and the employee number. After validation (400
-// invalid_request: the module is staff, the number 1–16 characters once
-// trimmed and NFC-normalised, each printable — see normalizeEmployeeNumber)
+// invalid_request: the module is staff, the number 1–16 characters of
+// Staff's alphabet once trimmed — see normalizeEmployeeNumber)
 // and the self check, one serializable transaction under the owner
 // lock: an unknown user is 404; an Owner or a SystemAdmin is 409
 // account_privileged; a number another user holds, however it is cased, is
@@ -141,13 +144,13 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 	if req.Body != nil {
 		body = *req.Body
 	}
-	number, key, numberValid := normalizeEmployeeNumber(deref(body.EmployeeNumber))
+	number, numberValid := normalizeEmployeeNumber(deref(body.EmployeeNumber))
 	fields := map[string][]string{}
 	if deref(body.Module) != staffModule {
 		fields["module"] = []string{"Module must be staff."}
 	}
 	if !numberValid {
-		fields["employeeNumber"] = []string{"An employee number of at most 16 characters, each a printable one, is required."}
+		fields["employeeNumber"] = []string{"An employee number of 1 to 16 characters, each a letter a–z, a digit or a hyphen, is required."}
 	}
 	if len(fields) > 0 {
 		return refuse(http.StatusBadRequest, "invalid_request", userInvalidMessage, fields), nil
@@ -177,7 +180,7 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 		if priv, err := privileged(ctx, q, target.ID); err != nil || priv {
 			return cmpOr(err, error(accountPrivileged))
 		}
-		holder, err := q.GetUserIDByEmployeeNumber(ctx, key)
+		holder, err := q.GetUserIDByEmployeeNumber(ctx, contracts.NormalizeEmployeeNumber(number))
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 		case err != nil:
@@ -188,9 +191,7 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 		now := s.deps.Clock()
 		if !staffManaged(target) || deref(target.EmployeeNumber) != number {
 			module := staffModule
-			if err := q.SetUserStaffManaged(ctx, store.SetUserStaffManagedParams{
-				ID: target.ID, ManagedBy: &module, EmployeeNumber: &number, EmployeeNumberKey: &key, Version: uuid.New(), Now: now,
-			}); err != nil {
+			if err := setStaffManaged(ctx, q, target.ID, &number, now); err != nil {
 				// A concurrent adoption that took the number first, seen
 				// only by the index.
 				if db.IsUniqueViolation(err, "ux_users_employee_number") {
@@ -265,7 +266,7 @@ func (s *server) PostIdentityOwnerUsersByIdUnmanage(ctx context.Context, req gen
 // caller's transaction under the owner lock, and audits
 // user.staff-unmanaged by p with reason (empty for an Owner's unmanage).
 func unmanageStaff(ctx context.Context, q *store.Queries, r *http.Request, p contracts.Principal, target store.IdentityUser, reason string, now time.Time) error {
-	if err := q.SetUserStaffManaged(ctx, store.SetUserStaffManagedParams{ID: target.ID, Version: uuid.New(), Now: now}); err != nil {
+	if err := setStaffManaged(ctx, q, target.ID, nil, now); err != nil {
 		return err
 	}
 	return writeAudit(ctx, q, r, now, auditEvent{
