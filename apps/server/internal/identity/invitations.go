@@ -21,6 +21,17 @@ import (
 // a created invitation.
 const ownerInvitationsPath = "/api/v1/identity/owner/invitations"
 
+// Why an invitation was revoked (identity.invitations.revoked_reason): an
+// Owner revoked it; another invitation or an account for its address
+// replaced it; its mail could not be sent; the email of the user it was
+// addressed to changed.
+const (
+	revokedByOwner        = "owner"
+	revokedReplaced       = "replaced"
+	revokedDeliveryFailed = "delivery_failed"
+	revokedEmailChanged   = "email_changed"
+)
+
 // Invitation messages (EA/AuthAccountEndpoints.cs:1076-1368).
 const (
 	invitationRequestInvalidMessage = "The invitation request is invalid."
@@ -97,13 +108,15 @@ func (s *server) issueInvitation(ctx context.Context, q *store.Queries, inv stor
 	return issueInvitation(ctx, q, s.deps.Config.InvitationLifetime, inv, now)
 }
 
-// issueInvitation revokes the pending invitations for inv's email and
+// issueInvitation revokes the pending invitations for inv's email (replaced) and
 // stores inv as its one active invitation, with a fresh id and token, made
 // at now and expiring lifetime later
 // (EA/AuthAccountEndpoints.cs:1076-1146, :1203-1265). Only the token's hash
 // is stored; the token itself goes back to the caller for the email alone.
 func issueInvitation(ctx context.Context, q *store.Queries, lifetime time.Duration, inv store.InsertInvitationParams, now time.Time) (store.IdentityInvitation, string, error) {
-	if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{NormalizedEmail: inv.NormalizedEmail, Now: now}); err != nil {
+	if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{
+		NormalizedEmail: inv.NormalizedEmail, Now: now, RevokedReason: revokedReplaced,
+	}); err != nil {
 		return store.IdentityInvitation{}, "", err
 	}
 	token, hash := newToken()
@@ -118,7 +131,7 @@ func (s *server) deliverInvitation(ctx context.Context, inv store.IdentityInvita
 
 // deliverInvitation emails inv's link once its transaction has committed
 // (EA/AuthAccountEndpoints.cs:1133-1143, :1454-1467). When the send fails,
-// nobody holds the token, so the invitation is revoked, even if the caller
+// nobody holds the token, so the invitation is revoked (delivery_failed), even if the caller
 // has gone, and the failure is the answer. The mail driver's error stays out
 // of it, because it can name the recipient (go-mail lists the affected
 // recipients).
@@ -126,7 +139,7 @@ func deliverInvitation(ctx context.Context, q *store.Queries, d module.Deps, inv
 	if err := d.Mail.Send(ctx, invitationMail(inv.Email, inviteURL(d.Config.InvitationAcceptURL, token))); err == nil {
 		return nil
 	}
-	if _, err := q.RevokeInvitation(context.WithoutCancel(ctx), store.RevokeInvitationParams{ID: inv.ID, Now: d.Clock()}); err != nil {
+	if _, err := q.RevokeInvitation(context.WithoutCancel(ctx), store.RevokeInvitationParams{ID: inv.ID, Now: d.Clock(), RevokedReason: revokedDeliveryFailed}); err != nil {
 		return fmt.Errorf("identity: invitation %s could not be sent, nor revoked: %w", inv.ID, err)
 	}
 	return fmt.Errorf("identity: invitation %s could not be sent and was revoked", inv.ID)
@@ -147,11 +160,12 @@ func (s *server) GetIdentityOwnerInvitations(ctx context.Context, _ gen.GetIdent
 }
 
 // PostIdentityOwnerInvitationsByIdRevoke revokes a pending invitation for
-// an Owner (EA/AuthAccountEndpoints.cs:1176-1201). It is idempotent: an
+// an Owner (EA/AuthAccountEndpoints.cs:1176-1201), recording the revoke as
+// the Owner's (revoked_reason owner). It is idempotent: an
 // accepted or already revoked invitation is answered as it is. 404 for an
 // unknown one.
 func (s *server) PostIdentityOwnerInvitationsByIdRevoke(ctx context.Context, req gen.PostIdentityOwnerInvitationsByIdRevokeRequestObject) (gen.PostIdentityOwnerInvitationsByIdRevokeResponseObject, error) {
-	inv, err := s.q.RevokeInvitation(ctx, store.RevokeInvitationParams{ID: req.Id, Now: s.deps.Clock()})
+	inv, err := s.q.RevokeInvitation(ctx, store.RevokeInvitationParams{ID: req.Id, Now: s.deps.Clock(), RevokedReason: revokedByOwner})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.PostIdentityOwnerInvitationsByIdRevoke404Response{}, nil
 	}

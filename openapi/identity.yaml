@@ -817,6 +817,20 @@ components:
                 - email
                 - role
             type: object
+        OwnerUserManageRequest:
+            properties:
+                employeeNumber:
+                    description: The person's employee number in Staff's register, 1 to 16 characters once trimmed; unique among users however it is cased.
+                    nullable: true
+                    type: string
+                module:
+                    description: The module that manages the user; staff is the only one.
+                    nullable: true
+                    type: string
+            required:
+                - module
+                - employeeNumber
+            type: object
         OwnerUserPasswordRequest:
             properties:
                 password:
@@ -834,10 +848,19 @@ components:
                     type: string
                 disabled:
                     type: boolean
+                disabledBy:
+                    description: Who disabled the user, owner or staff; absent while the user is enabled. An Owner's disable wins over Staff's, and Staff never re-enables a user an Owner disabled.
+                    enum:
+                        - owner
+                        - staff
+                    type: string
                 displayName:
                     type: string
                 email:
                     nullable: true
+                    type: string
+                employeeNumber:
+                    description: The employee number of a user Staff manages; absent otherwise.
                     type: string
                 id:
                     format: uuid
@@ -848,6 +871,14 @@ components:
                     format: date-time
                     nullable: true
                     type: string
+                managedBy:
+                    description: staff for a user Staff's provisioning manages (created by Staff or adopted by an Owner); absent otherwise.
+                    enum:
+                        - staff
+                    type: string
+                pending:
+                    description: A user Staff created who has not yet chosen a credential through their invitation. A pending user is listed disabled and not active. Always sent; optional only because the recorded .NET exchanges predate it.
+                    type: boolean
                 role:
                     type: string
                 ssoEnabled:
@@ -1064,6 +1095,40 @@ components:
                 - displayName
                 - description
                 - permissionKeys
+            type: object
+        ProvisioningRole:
+            properties:
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+                - displayName
+            type: object
+        ProvisioningRolesRequest:
+            properties:
+                roleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    nullable: true
+                    type: array
+            required:
+                - roleIds
+            type: object
+        ProvisioningRolesResponse:
+            properties:
+                roles:
+                    items:
+                        $ref: '#/components/schemas/ProvisioningRole'
+                    type: array
+            required:
+                - roles
             type: object
         RoleAssignmentRequest:
             properties:
@@ -4592,6 +4657,96 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/owner/provisioning-roles:
+        get:
+            description: The roles Staff may give the users it provisions, by name.
+            operationId: getIdentityOwnerProvisioningRoles
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProvisioningRolesResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+        put:
+            description: 'Replaces the roles Staff may give the users it provisions with roleIds, whole. Custom roles only: a built-in, system or unknown role is refused 400 role_not_assignable and nothing changes. A role''s delete removes it from the set. Audited provisioning-roles.replaced.'
+            operationId: putIdentityOwnerProvisioningRoles
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/ProvisioningRolesRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProvisioningRolesResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
     /api/v1/identity/owner/system-status:
         get:
             operationId: getIdentityOwnerSystemStatus
@@ -4983,6 +5138,70 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/users/{id}/manage:
+        post:
+            description: 'Adopts the user for Staff: marks them managed by Staff (managedBy staff) with the employee number that ties them to a person in Staff''s register, so Staff''s provisioning may enable, disable and update them. Changing the number of a managed user is the same call. Refused 409 account_privileged for an Owner or a SystemAdmin (an Owner handles Owners by hand), 409 employee_number_taken when another user holds the number however it is cased, 400 invalid_request for a module other than staff or a number that is blank or longer than 16 characters, and 400 for the caller''s own account. A SCIM-mapped user may be adopted. Audited user.staff-managed.'
+            operationId: postIdentityOwnerUsersByIdManage
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/OwnerUserManageRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OwnerUserResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
     /api/v1/identity/owner/users/{id}/password:
         post:
             operationId: postIdentityOwnerUsersByIdPassword
@@ -5089,6 +5308,57 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/users/{id}/unmanage:
+        post:
+            description: 'Stops Staff managing the user: clears managedBy and the employee number. A pending user stays pending, the Owner''s to finish or delete. Unmanaging a user Staff does not manage changes nothing. 400 for the caller''s own account. Audited user.staff-unmanaged.'
+            operationId: postIdentityOwnerUsersByIdUnmanage
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OwnerUserResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
                 "429":
                     content:
                         application/json:

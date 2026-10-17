@@ -1,9 +1,10 @@
 -- name: RevokeActiveInvitationsForEmail :exec
 -- RevokeActiveInvitationsForEmail ends every pending invitation for one
 -- normalized email (EA/AuthAccountEndpoints.cs:673-681), so at most one is
--- ever active (ux_invitations_active_email).
+-- ever active (ux_invitations_active_email), recording why (revoked_reason:
+-- replaced, email_changed).
 UPDATE identity.invitations
-SET revoked_at = @now::timestamptz
+SET revoked_at = @now::timestamptz, revoked_reason = @revoked_reason::text
 WHERE normalized_email = @normalized_email AND accepted_at IS NULL AND revoked_at IS NULL;
 
 -- name: InsertInvitation :one
@@ -25,10 +26,12 @@ ORDER BY created_at DESC, id;
 SELECT * FROM identity.invitations WHERE id = @id;
 
 -- name: RevokeInvitation :one
--- RevokeInvitation revokes a pending invitation and leaves an accepted or
--- already revoked one as it is (EA/AuthAccountEndpoints.cs:1176-1201).
+-- RevokeInvitation revokes a pending invitation, recording why (an Owner's
+-- revoke, a failed delivery), and leaves an accepted or already revoked one
+-- as it is, its reason included (EA/AuthAccountEndpoints.cs:1176-1201).
 UPDATE identity.invitations
-SET revoked_at = CASE WHEN accepted_at IS NULL AND revoked_at IS NULL THEN @now::timestamptz ELSE revoked_at END
+SET revoked_at = CASE WHEN accepted_at IS NULL AND revoked_at IS NULL THEN @now::timestamptz ELSE revoked_at END,
+    revoked_reason = CASE WHEN accepted_at IS NULL AND revoked_at IS NULL THEN @revoked_reason::text ELSE revoked_reason END
 WHERE id = @id
 RETURNING *;
 
@@ -56,9 +59,10 @@ UPDATE identity.invitations SET accepted_at = @now::timestamptz WHERE id = @id;
 -- invitation not addressed to @normalized_email, expired ones included.
 -- BOOTSTRAP_OWNER_EMAIL's startup step calls this before deciding whether to
 -- issue: a corrected value then retires the token a previous, mistyped one
--- mailed out, instead of leaving it live for up to INVITATION_LIFETIME.
+-- mailed out, instead of leaving it live for up to INVITATION_LIFETIME. The
+-- corrected address's invitation replaces it.
 UPDATE identity.invitations
-SET revoked_at = @now::timestamptz
+SET revoked_at = @now::timestamptz, revoked_reason = 'replaced'
 WHERE role = 'Owner' AND normalized_email != @normalized_email AND accepted_at IS NULL AND revoked_at IS NULL;
 
 -- name: CountPendingOwnerInvitationsForEmail :one

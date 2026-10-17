@@ -135,6 +135,9 @@ func TestBootstrapInvite_AFailedSendDoesNotStopStartup(t *testing.T) {
 	if n := pendingOwnerInvitations(t, h); n != 0 {
 		t.Errorf("pending owner invitations = %d; an unsent invitation must be revoked", n)
 	}
+	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE revoked_reason = 'delivery_failed'`); n != 1 {
+		t.Errorf("invitations revoked delivery_failed = %d, want the unsent one", n)
+	}
 	if !strings.Contains(string(h.log.Bytes()), "bootstrap owner invitation could not be sent") {
 		t.Error("the failure was not logged")
 	}
@@ -197,6 +200,9 @@ func TestBootstrapInvite_ACorrectedAddressReplacesTheOldInvitation(t *testing.T)
 	}
 	if n := pendingOwnerInvitations(t, h); n != 1 {
 		t.Fatalf("pending owner invitations = %d, want exactly 1 (the corrected one)", n)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE email = $1 AND revoked_reason = 'replaced'`, bootstrapOwner); n != 1 {
+		t.Errorf("the typo address's invitations revoked replaced = %d, want 1", n)
 	}
 
 	correctedToken := mailedLink(t, h, corrected).Query().Get("token")

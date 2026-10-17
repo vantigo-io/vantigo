@@ -126,7 +126,10 @@ func (s *server) GetIdentityOwnerUsers(ctx context.Context, _ gen.GetIdentityOwn
 // at now, whether TOTP is enrolled, the owner avatar URL when an avatar is
 // stored (base path prefixed, as accountAvatarPath is), and whether the
 // user is linked to the workforce OIDC provider. The email is shown as
-// stored, as .NET showed it.
+// stored, as .NET showed it. Delivery C adds the Staff-managed state:
+// pending, managedBy, the employee number and who disabled the user. A
+// pending user is listed disabled, and so not active, until they choose a
+// credential, whatever is_disabled says.
 func (s *server) ownerUser(u store.ListManagedUsersRow, now time.Time) gen.OwnerUserResponse {
 	role := RoleUser
 	if u.IsOwner {
@@ -138,19 +141,24 @@ func (s *server) ownerUser(u store.ListManagedUsersRow, now time.Time) gen.Owner
 		avatarURL = &v
 	}
 	locked := isLockedOut(u.LockoutEnd, now)
+	disabled, pending := u.IsDisabled || u.Pending, u.Pending
 	email := u.Email
 	return gen.OwnerUserResponse{
 		Id:               u.ID,
 		DisplayName:      u.DisplayName,
 		Email:            &email,
 		Role:             role,
-		Active:           !u.IsDisabled && !locked,
-		Disabled:         u.IsDisabled,
+		Active:           !disabled && !locked,
+		Disabled:         disabled,
 		LockedOut:        locked,
 		LockoutEnd:       u.LockoutEnd,
 		TwoFactorEnabled: u.TotpEnabled,
 		AvatarUrl:        avatarURL,
 		SsoEnabled:       u.SsoEnabled,
+		Pending:          &pending,
+		ManagedBy:        (*gen.OwnerUserResponseManagedBy)(u.ManagedBy),
+		EmployeeNumber:   u.EmployeeNumber,
+		DisabledBy:       (*gen.OwnerUserResponseDisabledBy)(u.DisabledBy),
 	}
 }
 
@@ -254,7 +262,10 @@ func (s *server) PostIdentityOwnerUsers(ctx context.Context, req gen.PostIdentit
 			return cmpOr(err, error(accountExists))
 		}
 		now := s.deps.Clock()
-		if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{NormalizedEmail: normalizeEmail(email), Now: now}); err != nil {
+		// The account replaces any invitation to its address.
+		if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{
+			NormalizedEmail: normalizeEmail(email), Now: now, RevokedReason: revokedReplaced,
+		}); err != nil {
 			return err
 		}
 		if problems := validatePassword(password, s.deps.Config.IsDevelopment()); problems != nil {
@@ -321,9 +332,11 @@ func cmpOr(err, fallback error) error {
 // serializable transaction under the owner lock: an unknown user is 404; an
 // email another account has is 409 account_exists; demoting the last active
 // Owner is 409 last_active_owner. An email change revokes the pending
-// invitations of the old and the new email. A role change replaces the
-// managed role and audits user.role-changed. Any change to the email,
-// display name or role ends every session of the user.
+// invitations of the old and the new email (email_changed). A role change
+// replaces the managed role and audits user.role-changed; a promotion to
+// Owner also stops Staff managing the user, audited user.staff-unmanaged
+// with the reason promoted, since Staff never manages an Owner. Any change
+// to the email, display name or role ends every session of the user.
 func (s *server) PutIdentityOwnerUsersById(ctx context.Context, req gen.PutIdentityOwnerUsersByIdRequestObject) (gen.PutIdentityOwnerUsersByIdResponseObject, error) {
 	var body gen.OwnerUserUpdateRequest
 	if req.Body != nil {
@@ -378,7 +391,9 @@ func (s *server) PutIdentityOwnerUsersById(ctx context.Context, req gen.PutIdent
 		detailsChanged := target.DisplayName != displayName || emailChanged
 		if emailChanged {
 			for _, e := range []string{target.Email, email} {
-				if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{NormalizedEmail: normalizeEmail(e), Now: now}); err != nil {
+				if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{
+					NormalizedEmail: normalizeEmail(e), Now: now, RevokedReason: revokedEmailChanged,
+				}); err != nil {
 					return err
 				}
 			}
@@ -398,6 +413,11 @@ func (s *server) PutIdentityOwnerUsersById(ctx context.Context, req gen.PutIdent
 		roleChanged := len(managed) != 1 || managed[0] != role
 		if roleChanged {
 			if err := s.replaceManagedRole(ctx, q, r, p.UserID, p.MFAVerified, target.ID, roles, managed, role, now); err != nil {
+				return err
+			}
+		}
+		if role == RoleOwner && staffManaged(target) {
+			if err := unmanageStaff(ctx, q, r, p, target, staffUnmanagedPromoted, now); err != nil {
 				return err
 			}
 		}
@@ -474,7 +494,10 @@ func (s *server) PostIdentityOwnerUsersByIdEnable(ctx context.Context, req gen.P
 }
 
 // setUserDisabled is disable and enable: after the self check, one
-// serializable transaction under the owner lock.
+// serializable transaction under the owner lock. A disable records
+// disabled_by = owner, also over a user Staff disabled (audited
+// user.disabled, the sessions already ended), so Staff never re-enables
+// them; an enable clears it.
 func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled bool) (gen.OwnerUserResponse, error) {
 	p, err := callerFrom(ctx)
 	if err != nil {
@@ -511,14 +534,22 @@ func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled boo
 				return refuse(http.StatusConflict, "last_active_owner", "The last active Owner cannot be disabled.", nil)
 			}
 		}
-		if target.IsDisabled != disabled {
-			if err := q.SetUserDisabled(ctx, store.SetUserDisabledParams{ID: id, IsDisabled: disabled, Version: uuid.New(), Now: now}); err != nil {
+		ownersDisable := disabled && target.IsDisabled && !disabledByOwner(target)
+		if target.IsDisabled != disabled || ownersDisable {
+			var by *string
+			if disabled {
+				owner := disabledByOwnerValue
+				by = &owner
+			}
+			if err := q.SetUserDisabled(ctx, store.SetUserDisabledParams{ID: id, IsDisabled: disabled, DisabledBy: by, Version: uuid.New(), Now: now}); err != nil {
 				return err
 			}
 			// The stamp rotation (:793-797, :852-856): sessions and reset
 			// links end, on enable as on disable.
-			if err := s.access.rotateSecurityStamp(ctx, q, id, uuid.Nil); err != nil {
-				return err
+			if target.IsDisabled != disabled {
+				if err := s.access.rotateSecurityStamp(ctx, q, id, uuid.Nil); err != nil {
+					return err
+				}
 			}
 			after := before
 			after.IsDisabled = disabled
@@ -540,9 +571,11 @@ func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled boo
 
 // DeleteIdentityOwnerUsersById deletes another user for an Owner
 // (EA/AuthAccountEndpoints.cs:873-936), in one serializable transaction
-// under the owner lock: the last active Owner is 409 last_active_owner, and
-// a user SCIM provisioned is 409 provenance_conflict. The deletion takes
-// the user's sessions with it and audits user.deleted. 204.
+// under the owner lock: a user Staff manages is 409 account_managed, before
+// any other check (an Owner unmanages them first); the last active Owner is
+// 409 last_active_owner, and a user SCIM provisioned is 409
+// provenance_conflict. The deletion takes the user's sessions with it and
+// audits user.deleted. 204.
 func (s *server) DeleteIdentityOwnerUsersById(ctx context.Context, req gen.DeleteIdentityOwnerUsersByIdRequestObject) (gen.DeleteIdentityOwnerUsersByIdResponseObject, error) {
 	p, err := callerFrom(ctx)
 	if err != nil {
@@ -561,8 +594,12 @@ func (s *server) DeleteIdentityOwnerUsersById(ctx context.Context, req gen.Delet
 		if err := lockOwners(ctx, q); err != nil {
 			return err
 		}
-		if _, err := managedTarget(ctx, q, req.Id); err != nil {
+		target, err := managedTarget(ctx, q, req.Id)
+		if err != nil {
 			return err
+		}
+		if staffManaged(target) {
+			return accountManaged
 		}
 		before, err := captureUser(ctx, q, req.Id)
 		if err != nil {

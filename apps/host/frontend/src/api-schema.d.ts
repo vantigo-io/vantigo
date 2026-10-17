@@ -796,6 +796,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/owner/provisioning-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The roles Staff may give the users it provisions, by name. */
+        get: operations["getIdentityOwnerProvisioningRoles"];
+        /** @description Replaces the roles Staff may give the users it provisions with roleIds, whole. Custom roles only: a built-in, system or unknown role is refused 400 role_not_assignable and nothing changes. A role's delete removes it from the set. Audited provisioning-roles.replaced. */
+        put: operations["putIdentityOwnerProvisioningRoles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/owner/system-status": {
         parameters: {
             query?: never;
@@ -893,6 +911,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/owner/users/{id}/manage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Adopts the user for Staff: marks them managed by Staff (managedBy staff) with the employee number that ties them to a person in Staff's register, so Staff's provisioning may enable, disable and update them. Changing the number of a managed user is the same call. Refused 409 account_privileged for an Owner or a SystemAdmin (an Owner handles Owners by hand), 409 employee_number_taken when another user holds the number however it is cased, 400 invalid_request for a module other than staff or a number that is blank or longer than 16 characters, and 400 for the caller's own account. A SCIM-mapped user may be adopted. Audited user.staff-managed. */
+        post: operations["postIdentityOwnerUsersByIdManage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/owner/users/{id}/password": {
         parameters: {
             query?: never;
@@ -919,6 +954,23 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["postIdentityOwnerUsersByIdPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/owner/users/{id}/unmanage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Stops Staff managing the user: clears managedBy and the employee number. A pending user stays pending, the Owner's to finish or delete. Unmanaging a user Staff does not manage changes nothing. 400 for the caller's own account. Audited user.staff-unmanaged. */
+        post: operations["postIdentityOwnerUsersByIdUnmanage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1473,6 +1525,12 @@ export interface components {
             role: string | null;
             temporaryPassword?: string | null;
         };
+        OwnerUserManageRequest: {
+            /** @description The person's employee number in Staff's register, 1 to 16 characters once trimmed; unique among users however it is cased. */
+            employeeNumber: string | null;
+            /** @description The module that manages the user; staff is the only one. */
+            module: string | null;
+        };
         OwnerUserPasswordRequest: {
             password: string | null;
         };
@@ -1480,13 +1538,27 @@ export interface components {
             active: boolean;
             avatarUrl: string | null;
             disabled: boolean;
+            /**
+             * @description Who disabled the user, owner or staff; absent while the user is enabled. An Owner's disable wins over Staff's, and Staff never re-enables a user an Owner disabled.
+             * @enum {string}
+             */
+            disabledBy?: "owner" | "staff";
             displayName: string;
             email: string | null;
+            /** @description The employee number of a user Staff manages; absent otherwise. */
+            employeeNumber?: string;
             /** Format: uuid */
             id: string;
             lockedOut: boolean;
             /** Format: date-time */
             lockoutEnd: string | null;
+            /**
+             * @description staff for a user Staff's provisioning manages (created by Staff or adopted by an Owner); absent otherwise.
+             * @enum {string}
+             */
+            managedBy?: "staff";
+            /** @description A user Staff created who has not yet chosen a credential through their invitation. A pending user is listed disabled and not active. Always sent; optional only because the recorded .NET exchanges predate it. */
+            pending?: boolean;
             role: string;
             /** @default false */
             ssoEnabled: boolean;
@@ -1560,6 +1632,18 @@ export interface components {
             displayName: string | null;
             name: string | null;
             permissionKeys: string[] | null;
+        };
+        ProvisioningRole: {
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        ProvisioningRolesRequest: {
+            roleIds: string[] | null;
+        };
+        ProvisioningRolesResponse: {
+            roles: components["schemas"]["ProvisioningRole"][];
         };
         RoleAssignmentRequest: {
             concurrencyStamp: string | null;
@@ -5561,6 +5645,124 @@ export interface operations {
             };
         };
     };
+    getIdentityOwnerProvisioningRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisioningRolesResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityOwnerProvisioningRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProvisioningRolesRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisioningRolesResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     getIdentityOwnerSystemStatus: {
         parameters: {
             query?: never;
@@ -6077,6 +6279,85 @@ export interface operations {
             };
         };
     };
+    postIdentityOwnerUsersByIdManage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OwnerUserManageRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerUserResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     postIdentityOwnerUsersByIdPassword: {
         parameters: {
             query?: never;
@@ -6218,6 +6499,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityOwnerUsersByIdUnmanage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerUserResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Too Many Requests */
             429: {

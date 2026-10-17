@@ -62,7 +62,8 @@ func TestAccountPasswordLimitKeepsDotNetsPolicy(t *testing.T) {
 // TestUserInvitationAndRecoveryLimitsKeepDotNetsPolicies pins the brief's
 // limits for owner user management, invitations and password recovery
 // (EA/AuthAccountEndpoints.cs:41-100, inventory §12): UserManagement on
-// every /owner/users operation but the avatar, which has its own policy.
+// every /owner/users operation but the avatar, which has its own policy, and
+// on the roles Staff may give (/owner/provisioning-roles).
 func TestUserInvitationAndRecoveryLimitsKeepDotNetsPolicies(t *testing.T) {
 	want := map[string]ratelimit.Policy{
 		"getIdentityOwnerUsers":                   policyUserManagement,
@@ -74,6 +75,10 @@ func TestUserInvitationAndRecoveryLimitsKeepDotNetsPolicies(t *testing.T) {
 		"postIdentityOwnerUsersByIdPassword":      policyUserManagement,
 		"postIdentityOwnerUsersByIdPasswordReset": policyUserManagement,
 		"getIdentityOwnerUsersByIdAvatar":         policyOwnerAvatarRead,
+		"postIdentityOwnerUsersByIdManage":        policyUserManagement,
+		"postIdentityOwnerUsersByIdUnmanage":      policyUserManagement,
+		"getIdentityOwnerProvisioningRoles":       policyUserManagement,
+		"putIdentityOwnerProvisioningRoles":       policyUserManagement,
 		"getIdentityOwnerInvitations":             policyInvitations,
 		"postIdentityOwnerInvitations":            policyInvitations,
 		"postIdentityOwnerInvitationsByIdResend":  policyInvitations,

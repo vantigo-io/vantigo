@@ -36,7 +36,7 @@ func (q *Queries) CountPendingOwnerInvitationsForEmail(ctx context.Context, arg 
 }
 
 const getActiveInvitationByTokenHash = `-- name: GetActiveInvitationByTokenHash :one
-SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at FROM identity.invitations
+SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at, user_id, revoked_reason FROM identity.invitations
 WHERE token_hash = $1
   AND revoked_at IS NULL
   AND accepted_at IS NULL
@@ -66,12 +66,14 @@ func (q *Queries) GetActiveInvitationByTokenHash(ctx context.Context, arg GetAct
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.AcceptedAt,
+		&i.UserID,
+		&i.RevokedReason,
 	)
 	return i, err
 }
 
 const getInvitation = `-- name: GetInvitation :one
-SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at FROM identity.invitations WHERE id = $1
+SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at, user_id, revoked_reason FROM identity.invitations WHERE id = $1
 `
 
 func (q *Queries) GetInvitation(ctx context.Context, id uuid.UUID) (IdentityInvitation, error) {
@@ -89,6 +91,8 @@ func (q *Queries) GetInvitation(ctx context.Context, id uuid.UUID) (IdentityInvi
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.AcceptedAt,
+		&i.UserID,
+		&i.RevokedReason,
 	)
 	return i, err
 }
@@ -100,7 +104,7 @@ INSERT INTO identity.invitations (
     $1, $2, $3, $4, $5, $6, $7,
     $8::timestamptz, $9::timestamptz
 )
-RETURNING id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at
+RETURNING id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at, user_id, revoked_reason
 `
 
 type InsertInvitationParams struct {
@@ -140,12 +144,14 @@ func (q *Queries) InsertInvitation(ctx context.Context, arg InsertInvitationPara
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.AcceptedAt,
+		&i.UserID,
+		&i.RevokedReason,
 	)
 	return i, err
 }
 
 const listInvitations = `-- name: ListInvitations :many
-SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at FROM identity.invitations
+SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at, user_id, revoked_reason FROM identity.invitations
 ORDER BY created_at DESC, id
 `
 
@@ -172,6 +178,8 @@ func (q *Queries) ListInvitations(ctx context.Context) ([]IdentityInvitation, er
 			&i.ExpiresAt,
 			&i.RevokedAt,
 			&i.AcceptedAt,
+			&i.UserID,
+			&i.RevokedReason,
 		); err != nil {
 			return nil, err
 		}
@@ -184,7 +192,7 @@ func (q *Queries) ListInvitations(ctx context.Context) ([]IdentityInvitation, er
 }
 
 const lockInvitationByTokenHash = `-- name: LockInvitationByTokenHash :one
-SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at FROM identity.invitations WHERE token_hash = $1 FOR UPDATE
+SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at, user_id, revoked_reason FROM identity.invitations WHERE token_hash = $1 FOR UPDATE
 `
 
 // LockInvitationByTokenHash is acceptance's SELECT … FOR UPDATE
@@ -205,6 +213,8 @@ func (q *Queries) LockInvitationByTokenHash(ctx context.Context, tokenHash []byt
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.AcceptedAt,
+		&i.UserID,
+		&i.RevokedReason,
 	)
 	return i, err
 }
@@ -225,39 +235,44 @@ func (q *Queries) MarkInvitationAccepted(ctx context.Context, arg MarkInvitation
 
 const revokeActiveInvitationsForEmail = `-- name: RevokeActiveInvitationsForEmail :exec
 UPDATE identity.invitations
-SET revoked_at = $1::timestamptz
-WHERE normalized_email = $2 AND accepted_at IS NULL AND revoked_at IS NULL
+SET revoked_at = $1::timestamptz, revoked_reason = $2::text
+WHERE normalized_email = $3 AND accepted_at IS NULL AND revoked_at IS NULL
 `
 
 type RevokeActiveInvitationsForEmailParams struct {
 	Now             time.Time
+	RevokedReason   string
 	NormalizedEmail string
 }
 
 // RevokeActiveInvitationsForEmail ends every pending invitation for one
 // normalized email (EA/AuthAccountEndpoints.cs:673-681), so at most one is
-// ever active (ux_invitations_active_email).
+// ever active (ux_invitations_active_email), recording why (revoked_reason:
+// replaced, email_changed).
 func (q *Queries) RevokeActiveInvitationsForEmail(ctx context.Context, arg RevokeActiveInvitationsForEmailParams) error {
-	_, err := q.db.Exec(ctx, revokeActiveInvitationsForEmail, arg.Now, arg.NormalizedEmail)
+	_, err := q.db.Exec(ctx, revokeActiveInvitationsForEmail, arg.Now, arg.RevokedReason, arg.NormalizedEmail)
 	return err
 }
 
 const revokeInvitation = `-- name: RevokeInvitation :one
 UPDATE identity.invitations
-SET revoked_at = CASE WHEN accepted_at IS NULL AND revoked_at IS NULL THEN $1::timestamptz ELSE revoked_at END
-WHERE id = $2
-RETURNING id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at
+SET revoked_at = CASE WHEN accepted_at IS NULL AND revoked_at IS NULL THEN $1::timestamptz ELSE revoked_at END,
+    revoked_reason = CASE WHEN accepted_at IS NULL AND revoked_at IS NULL THEN $2::text ELSE revoked_reason END
+WHERE id = $3
+RETURNING id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at, user_id, revoked_reason
 `
 
 type RevokeInvitationParams struct {
-	Now time.Time
-	ID  uuid.UUID
+	Now           time.Time
+	RevokedReason string
+	ID            uuid.UUID
 }
 
-// RevokeInvitation revokes a pending invitation and leaves an accepted or
-// already revoked one as it is (EA/AuthAccountEndpoints.cs:1176-1201).
+// RevokeInvitation revokes a pending invitation, recording why (an Owner's
+// revoke, a failed delivery), and leaves an accepted or already revoked one
+// as it is, its reason included (EA/AuthAccountEndpoints.cs:1176-1201).
 func (q *Queries) RevokeInvitation(ctx context.Context, arg RevokeInvitationParams) (IdentityInvitation, error) {
-	row := q.db.QueryRow(ctx, revokeInvitation, arg.Now, arg.ID)
+	row := q.db.QueryRow(ctx, revokeInvitation, arg.Now, arg.RevokedReason, arg.ID)
 	var i IdentityInvitation
 	err := row.Scan(
 		&i.ID,
@@ -271,13 +286,15 @@ func (q *Queries) RevokeInvitation(ctx context.Context, arg RevokeInvitationPara
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.AcceptedAt,
+		&i.UserID,
+		&i.RevokedReason,
 	)
 	return i, err
 }
 
 const revokePendingOwnerInvitationsExceptEmail = `-- name: RevokePendingOwnerInvitationsExceptEmail :execrows
 UPDATE identity.invitations
-SET revoked_at = $1::timestamptz
+SET revoked_at = $1::timestamptz, revoked_reason = 'replaced'
 WHERE role = 'Owner' AND normalized_email != $2 AND accepted_at IS NULL AND revoked_at IS NULL
 `
 
@@ -290,7 +307,8 @@ type RevokePendingOwnerInvitationsExceptEmailParams struct {
 // invitation not addressed to @normalized_email, expired ones included.
 // BOOTSTRAP_OWNER_EMAIL's startup step calls this before deciding whether to
 // issue: a corrected value then retires the token a previous, mistyped one
-// mailed out, instead of leaving it live for up to INVITATION_LIFETIME.
+// mailed out, instead of leaving it live for up to INVITATION_LIFETIME. The
+// corrected address's invitation replaces it.
 func (q *Queries) RevokePendingOwnerInvitationsExceptEmail(ctx context.Context, arg RevokePendingOwnerInvitationsExceptEmailParams) (int64, error) {
 	result, err := q.db.Exec(ctx, revokePendingOwnerInvitationsExceptEmail, arg.Now, arg.NormalizedEmail)
 	if err != nil {

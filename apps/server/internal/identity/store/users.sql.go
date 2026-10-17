@@ -102,7 +102,8 @@ func (q *Queries) GetLoginCandidate(ctx context.Context, arg GetLoginCandidatePa
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, email, normalized_email, email_confirmed, display_name, preferred_language,
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
-       totp_enabled, totp_last_step, version, created_at, updated_at
+       totp_enabled, totp_last_step, version, created_at, updated_at,
+       managed_by, employee_number, pending_since, disabled_by
 FROM identity.users
 WHERE id = $1
 `
@@ -127,6 +128,10 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (IdentityUser, 
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ManagedBy,
+		&i.EmployeeNumber,
+		&i.PendingSince,
+		&i.DisabledBy,
 	)
 	return i, err
 }
@@ -134,7 +139,8 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (IdentityUser, 
 const getUserByNormalizedEmail = `-- name: GetUserByNormalizedEmail :one
 SELECT id, email, normalized_email, email_confirmed, display_name, preferred_language,
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
-       totp_enabled, totp_last_step, version, created_at, updated_at
+       totp_enabled, totp_last_step, version, created_at, updated_at,
+       managed_by, employee_number, pending_since, disabled_by
 FROM identity.users
 WHERE normalized_email = $1
 `
@@ -159,6 +165,10 @@ func (q *Queries) GetUserByNormalizedEmail(ctx context.Context, normalizedEmail 
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ManagedBy,
+		&i.EmployeeNumber,
+		&i.PendingSince,
+		&i.DisabledBy,
 	)
 	return i, err
 }
