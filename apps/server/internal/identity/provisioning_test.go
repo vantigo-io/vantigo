@@ -765,6 +765,74 @@ func TestProvisioning_UpdateRefusals(t *testing.T) {
 	_ = other
 }
 
+// Update refuses an Owner or a SystemAdmin it finds managed (only possible
+// by SQL), writing nothing.
+func TestProvisioning_UpdateRefusesAPrivilegedUser(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	p := h.accounts(t)
+	admin := h.insertUser(t, "admin@example.test", identity.RoleUserID, identity.RoleSystemAdminID)
+	makePending(t, h, admin, "P-7")
+	before := footprint(t, h)
+	_, err := p.Update(context.Background(), systemActor, admin, spec("admin-renamed@example.test", "P-8"))
+	wantErr(t, "a managed SystemAdmin", err, contracts.ErrAccountPrivileged)
+	if after := footprint(t, h); after != before {
+		t.Errorf("the refusal wrote: %s → %s", before, after)
+	}
+}
+
+// An open Owner-role invitation to the address is an Owner's to accept, so
+// Prepare and Update refuse the address (ErrAccountEmailTaken) and write
+// nothing: staff:manage must not squat it. An Owner's open User-role
+// invitation is replaced, and the audit row names the invitations it
+// replaced and their roles.
+func TestProvisioning_AnOwnersInvitationsToTheAddress(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	p := h.accounts(t)
+	invite := func(email, role string) uuid.UUID {
+		t.Helper()
+		r := owner.do(http.MethodPost, "/api/v1/identity/owner/invitations", map[string]string{"email": email, "role": role})
+		if r.status != http.StatusCreated {
+			t.Fatalf("invite %s as %s: %d %s", email, role, r.status, r.body)
+		}
+		var body struct {
+			ID uuid.UUID `json:"id"`
+		}
+		r.json(&body)
+		return body.ID
+	}
+	invite("future-owner@example.test", identity.RoleOwner)
+	pending := mustPrepare(t, p, spec("pending@example.test", "I-1"))
+	before := footprint(t, h)
+	_, err := p.Prepare(context.Background(), systemActor, spec("FUTURE-OWNER@example.test", "I-2"))
+	wantErr(t, "Prepare at an Owner's invited address", err, contracts.ErrAccountEmailTaken)
+	_, err = p.Update(context.Background(), systemActor, pending.UserID, spec("future-owner@example.test", "I-1"))
+	wantErr(t, "Update to an Owner's invited address", err, contracts.ErrAccountEmailTaken)
+	if after := footprint(t, h); after != before {
+		t.Errorf("the refusals wrote: %s → %s", before, after)
+	}
+
+	prepared := invite("new-hire@example.test", identity.RoleUser)
+	ref := mustPrepare(t, p, spec("new-hire@example.test", "I-3"))
+	updated := invite("moved@example.test", identity.RoleUser)
+	if _, err := p.Update(context.Background(), systemActor, pending.UserID, spec("moved@example.test", "I-1")); err != nil {
+		t.Fatal(err)
+	}
+	for action, want := range map[string]uuid.UUID{"user.staff-prepared": prepared, "user.staff-updated": updated} {
+		events := h.auditEvents(t, action)
+		last := events[len(events)-1]
+		if !strings.Contains(last.After, `"replacedInvitations":[{"id":"`+want.String()+`","role":"User"}]`) {
+			t.Errorf("%s after = %s, want the replaced invitation %s named with its role", action, last.After, want)
+		}
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE id = ANY ($1) AND revoked_reason = 'replaced'`, []uuid.UUID{prepared, updated}); n != 2 {
+		t.Errorf("%d of the two User invitations revoked replaced, want 2", n)
+	}
+	_ = ref
+}
+
 // Account reports a user, or nil for an unknown id. EmailDiffers compares
 // as identity compares addresses: a difference of case or surrounding space
 // is none, an empty wanted address and a placeholder address report none.

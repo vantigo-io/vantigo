@@ -147,3 +147,11 @@ SELECT r.id FROM identity.provisioning_roles p
 JOIN identity.roles r ON r.id = p.role_id
 ORDER BY r.id
 FOR SHARE OF r;
+
+-- name: ListOpenInvitationsForEmail :many
+-- ListOpenInvitationsForEmail is every invitation to the address neither
+-- accepted nor revoked — what RevokeActiveInvitationsForEmail would revoke —
+-- by id, with its role and expiry.
+SELECT id, role, expires_at FROM identity.invitations
+WHERE normalized_email = @normalized_email AND accepted_at IS NULL AND revoked_at IS NULL
+ORDER BY id;
