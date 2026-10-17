@@ -1535,7 +1535,7 @@ export interface components {
             temporaryPassword?: string | null;
         };
         OwnerUserManageRequest: {
-            /** @description The person's employee number in Staff's register, 1 to 16 characters once trimmed; unique among users however it is cased. */
+            /** @description The person's employee number in Staff's register, 1 to 16 characters once trimmed, each printable (no control, format or other invisible character, and no space but U+0020); unique among users however it is cased. */
             employeeNumber: string | null;
             /** @description The module that manages the user; staff is the only one. */
             module: string | null;

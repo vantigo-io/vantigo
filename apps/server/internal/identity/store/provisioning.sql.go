@@ -69,6 +69,18 @@ func (q *Queries) InsertProvisioningRoles(ctx context.Context, arg InsertProvisi
 	return err
 }
 
+const isProvisioningRole = `-- name: IsProvisioningRole :one
+SELECT EXISTS (SELECT 1 FROM identity.provisioning_roles WHERE role_id = $1)::boolean
+`
+
+// IsProvisioningRole reports whether the role is in the set Staff may give.
+func (q *Queries) IsProvisioningRole(ctx context.Context, roleID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isProvisioningRole, roleID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listProvisioningRoles = `-- name: ListProvisioningRoles :many
 SELECT r.id, r.name, r.display_name,
        array(SELECT rp.permission_key FROM identity.role_permissions rp

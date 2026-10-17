@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 )
 
@@ -183,6 +184,10 @@ func TestStaffManaged_AdoptionRefusals(t *testing.T) {
 		{"a number too long", plain, map[string]string{"module": "staff", "employeeNumber": strings.Repeat("9", 17)}, http.StatusBadRequest, "invalid_request"},
 		{"a control character", plain, map[string]string{"module": "staff", "employeeNumber": "E\x007"}, http.StatusBadRequest, "invalid_request"},
 		{"a tab inside", plain, map[string]string{"module": "staff", "employeeNumber": "E\t7"}, http.StatusBadRequest, "invalid_request"},
+		{"a zero-width space", plain, map[string]string{"module": "staff", "employeeNumber": "A-1\u200b7"}, http.StatusBadRequest, "invalid_request"},
+		{"a byte-order mark", plain, map[string]string{"module": "staff", "employeeNumber": "\ufeffA17"}, http.StatusBadRequest, "invalid_request"},
+		{"a bidi override", plain, map[string]string{"module": "staff", "employeeNumber": "A\u202e17"}, http.StatusBadRequest, "invalid_request"},
+		{"a no-break space", plain, map[string]string{"module": "staff", "employeeNumber": "A\u00a017"}, http.StatusBadRequest, "invalid_request"},
 		{"no body", plain, nil, http.StatusBadRequest, "invalid_request"},
 		{"the caller", ownerID, map[string]string{"module": "staff", "employeeNumber": "S-1"}, http.StatusBadRequest, "invalid_request"},
 	} {
@@ -801,5 +806,164 @@ func TestStaffManaged_ConcurrentAdoptionsOfOneNumber(t *testing.T) {
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE upper(employee_number) = 'R-1'`); n != 1 {
 		t.Errorf("users holding R-1 = %d, want 1", n)
+	}
+}
+
+// An adoption whose number only the unique index sees — another user's
+// uncommitted UPDATE holds it on a raw connection — waits on that index
+// entry (pg_blocking_pids); once the holder commits, the adoption is refused
+// employee_number_taken and writes nothing.
+func TestStaffManaged_AnAdoptionBehindAnUncommittedNumber(t *testing.T) {
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	other := h.createUser(t, owner, "other-holder@example.test", identity.RoleUser)
+	target := h.createUser(t, owner, "late@example.test", identity.RoleUser)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	holder, err := pgx.Connect(ctx, h.cfg.DatabaseURL)
+	if err != nil {
+		t.Fatalf("connect the holder: %v", err)
+	}
+	defer func() { _ = holder.Close(context.Background()) }()
+	tx, err := holder.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'R-1' WHERE id = $1`, other); err != nil {
+		t.Fatalf("hold R-1: %v", err)
+	}
+	var holderPID int
+	if err := tx.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&holderPID); err != nil {
+		t.Fatalf("holder pid: %v", err)
+	}
+
+	result := make(chan *resp, 1)
+	go func() { result <- manage(owner, target, "r-1") }()
+	deadline := time.Now().Add(15 * time.Second)
+	for h.count(t, `SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid))`, holderPID) != 1 {
+		if time.Now().After(deadline) {
+			_ = tx.Rollback(ctx)
+			t.Fatal("the adoption never waited on the held number")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit the holder: %v", err)
+	}
+	if r := <-result; r.status != http.StatusConflict || r.code() != "employee_number_taken" {
+		t.Errorf("the adoption: status %d code %q body %s, want 409 employee_number_taken", r.status, r.code(), r.body)
+	}
+	if got := staffColumns(t, h, target); got != "-:-:false:-" {
+		t.Errorf("the target after the refusal = %s", got)
+	}
+	if n := len(h.auditEvents(t, "user.staff-managed")); n != 0 {
+		t.Errorf("user.staff-managed rows = %d, want 0", n)
+	}
+}
+
+// staffManagePermission is staff:manage, delegable here so that only the
+// provisioning set's guard can refuse it to a stewarding delegate;
+// customersPurge is a non-delegable key of the catalog's own.
+var (
+	staffManagePermission = contracts.Permission{Key: "staff:manage", Display: "Manage staff", Description: "Manage the staff register.", Category: "Staff", Delegable: true}
+	customersPurge        = contracts.Permission{Key: "customers:purge", Display: "Purge customers", Description: "Purge customer records.", Category: "Customers", Delegable: false}
+)
+
+// A role in the set Staff may give cannot gain a key the set refuses: an
+// Owner's edit and a stewarding delegate's edit adding staff:manage are
+// refused 403 role_provisioning_protected and write nothing. A role outside
+// the set is edited as before. A non-delegable key of the catalog is
+// refused to the set as identity:manage is.
+func TestProvisioningRoles_ARoleInTheSetCannotGainADeniedKey(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, withPermissions(customersView, staffManagePermission, customersPurge))
+	owner, _ := h.bootstrapOwner(t)
+	inSet := createRole(t, owner, "Employee", customersView.Key)
+	outside := createRole(t, owner, "Outside", customersView.Key)
+	if r := putProvisioningRoles(owner, inSet.ID); r.status != http.StatusOK {
+		t.Fatalf("put: status %d body %s", r.status, r.body)
+	}
+	const delegateEmail = "steward@example.test"
+	delegateID := h.createUser(t, owner, delegateEmail, identity.RoleUser)
+	delegate(t, h, owner, delegateID, []uuid.UUID{inSet.ID, outside.ID}, customersView.Key, staffManagePermission.Key)
+	steward := h.login(t, delegateEmail, userPassword)
+
+	for name, c := range map[string]*client{"an Owner": owner, "a stewarding delegate": steward} {
+		r := updateRole(c, inSet.ID, inSet.Name, inSet.Version, customersView.Key, staffManagePermission.Key)
+		if r.status != http.StatusForbidden || r.code() != "role_provisioning_protected" {
+			t.Errorf("%s adding staff:manage: status %d body %s, want 403 role_provisioning_protected", name, r.status, r.body)
+		}
+		r = c.do(http.MethodPut, accessPath+"/roles/"+inSet.ID.String()+"/permissions",
+			roleBody(inSet.Name, "Integration role", []string{staffManagePermission.Key}, &inSet.Version))
+		if r.status != http.StatusForbidden || r.code() != "role_provisioning_protected" {
+			t.Errorf("%s replacing the permissions with staff:manage: status %d body %s, want 403 role_provisioning_protected", name, r.status, r.body)
+		}
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.role_permissions WHERE role_id = $1 AND permission_key = 'staff:manage'`, inSet.ID); n != 0 {
+		t.Errorf("the role in the set holds staff:manage")
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.roles WHERE id = $1 AND version::text = $2`, inSet.ID, inSet.Version); n != 1 {
+		t.Errorf("the role in the set was changed")
+	}
+	if n := len(h.auditEvents(t, "role.updated")); n != 0 {
+		t.Errorf("role.updated rows = %d, want 0", n)
+	}
+	// The role in the set may still change in what the set allows.
+	if r := updateRole(owner, inSet.ID, "Employee renamed", inSet.Version); r.status != http.StatusOK {
+		t.Errorf("an edit within the set's bounds: status %d body %s, want 200", r.status, r.body)
+	}
+	if r := updateRole(steward, outside.ID, outside.Name, outside.Version, customersView.Key, staffManagePermission.Key); r.status != http.StatusOK {
+		t.Errorf("the delegate adding staff:manage to a role outside the set: status %d body %s, want 200", r.status, r.body)
+	}
+
+	purge := h.insertRole(t, "Purger", customersPurge.Key)
+	r := putProvisioningRoles(owner, inSet.ID, purge)
+	if e := errorOf(t, r); r.status != http.StatusBadRequest || e.Code != "role_not_assignable" || !strings.Contains(e.Message, customersPurge.Key) {
+		t.Errorf("a role with a non-delegable catalog key: status %d error %+v, want 400 role_not_assignable naming it", r.status, e)
+	}
+}
+
+// PUT /owner/provisioning-roles takes the lock of each role it names before
+// it judges their keys, the lock a role edit holds: while a raw connection
+// holds a named role's lock the replacement waits (pg_blocking_pids), and
+// released, it completes.
+func TestProvisioningRoles_TheReplacementTakesEachRolesLock(t *testing.T) {
+	h, owner, _ := rbacHarness(t)
+	role := createRole(t, owner, "Locked Employee", customersView.Key)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	holder, err := pgx.Connect(ctx, h.cfg.DatabaseURL)
+	if err != nil {
+		t.Fatalf("connect the holder: %v", err)
+	}
+	defer func() { _ = holder.Close(context.Background()) }()
+	tx, err := holder.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, identity.RoleMutationLockKey(role.ID)); err != nil {
+		t.Fatalf("take the role's lock: %v", err)
+	}
+	var holderPID int
+	if err := tx.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&holderPID); err != nil {
+		t.Fatalf("holder pid: %v", err)
+	}
+	result := make(chan *resp, 1)
+	go func() { result <- putProvisioningRoles(owner, role.ID) }()
+	deadline := time.Now().Add(15 * time.Second)
+	for h.count(t, `SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid))`, holderPID) != 1 {
+		if time.Now().After(deadline) {
+			_ = tx.Rollback(ctx)
+			t.Fatal("the replacement never waited on the role's lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("release the role's lock: %v", err)
+	}
+	if r := <-result; r.status != http.StatusOK {
+		t.Fatalf("put: status %d body %s", r.status, r.body)
 	}
 }
