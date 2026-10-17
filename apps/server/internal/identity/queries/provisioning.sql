@@ -11,11 +11,14 @@ ORDER BY r.name COLLATE "C", r.id;
 
 -- name: LockAssignableRoles :many
 -- LockAssignableRoles is which of @ids name a custom role (neither system nor
--- built in), each taken FOR KEY SHARE so it cannot be deleted before the
--- set that names it commits.
+-- built in), each taken FOR SHARE so it is neither deleted nor edited before
+-- the set that names it commits. FOR SHARE, not FOR KEY SHARE: a role edit
+-- bumps the role's version, and a serializable caller whose snapshot predates
+-- an edit committed meanwhile then fails to serialize here and retries with
+-- a fresh snapshot, instead of judging the role's keys as they were.
 SELECT id FROM identity.roles
 WHERE id = ANY (@ids::uuid[]) AND NOT is_system AND NOT is_built_in
-FOR KEY SHARE;
+FOR SHARE;
 
 -- name: FirstDeniedRolePermission :one
 -- FirstDeniedRolePermission is the first of @role_ids, by name, carrying a

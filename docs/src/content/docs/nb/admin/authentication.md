@@ -261,9 +261,12 @@ rollen bare det hver ansatt trenger, og gå gjennom settet før du utvider en av
 i det. En endring som ville gi en rolle i settet en av rettighetene ovenfor — av en eier
 eller av en delegert som forvalter rollen, gjennom
 `PUT /api/v1/identity/access/roles/{id}` eller dens `/permissions` — avvises med 403
-`role_provisioning_protected`, og ingenting endres; ta rollen ut av settet først. Å
-navngi settet og å endre en av rollene i det venter på hverandre, så ingen av dem
-slipper forbi den andres kontroll.
+`role_provisioning_protected`, og ingenting endres; ta rollen ut av settet først. Den
+som ikke har myndighet over rollen, avvises for det først (`role_edit_denied`). En
+endring av en rolle venter mens settet navngis med den rollen, og å navngi settet mens en
+av rollene i det endres, venter på endringen og vurderer så rollen slik endringen
+etterlot den — så en rolle som i mellomtiden fikk en av disse rettighetene, avvises med
+`role_not_assignable`.
 
 ### Hvorfor en invitasjon ble trukket tilbake
 

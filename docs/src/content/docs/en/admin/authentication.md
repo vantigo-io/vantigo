@@ -248,8 +248,11 @@ what every employee needs, and review the set before widening one of its roles. 
 that would give a role in the set one of the permissions above — by an Owner or by a
 delegate stewarding the role, through `PUT /api/v1/identity/access/roles/{id}` or its
 `/permissions` — is refused 403 `role_provisioning_protected`, and nothing changes;
-take the role out of the set first. Naming the set and editing one of its roles wait
-for each other, so neither passes the other's check.
+take the role out of the set first; a caller with no authority over the role is
+refused for that first (`role_edit_denied`). An edit of a role waits while the set is
+being named with that role, and naming the set while one of its roles is being edited
+waits for the edit and then judges the role as the edit left it — so a role widened
+with one of those permissions meanwhile is refused `role_not_assignable`.
 
 ### Why an invitation was revoked
 
