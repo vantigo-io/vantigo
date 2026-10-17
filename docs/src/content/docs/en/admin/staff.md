@@ -906,7 +906,10 @@ changing the settings at once cannot overwrite each other unseen.
   `nextEmployeeNumber`, 1). A person created without an employee number gets the
   prefix and the next number, unpadded: `EMP-` and 7 make `EMP-7`. The prefix is up
   to eight letters, digits or hyphens, and the two together may make at most 16
-  characters.
+  characters. Two employee numbers that differ only in case are the same number
+  (`emp-7` is refused beside `EMP-7`), and that is judged the same way whatever
+  locale the database was created with — a Turkish one included — and the same way
+  identity judges the employee number it keeps on a user.
 - **Pension provider** and **injury insurer** (`pensionProvider`,
   `injuryInsurer`). The occupational pension (OTP) provider and the occupational
   injury insurer, which the employment contract check reads.

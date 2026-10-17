@@ -343,7 +343,7 @@ func (s *server) GetStaffPeopleByIdPersonalData(ctx context.Context, req gen.Get
 	}
 	var user *gen.StaffPersonUser
 	if f.link != nil {
-		if user, err = s.linkedUser(ctx, &f.link.ExternalID); err != nil {
+		if user, err = s.linkedUser(ctx, f.link.ExternalID); err != nil {
 			return nil, err
 		}
 	}
@@ -391,7 +391,7 @@ func (s *server) GetStaffMeExport(ctx context.Context, _ gen.GetStaffMeExportReq
 	}
 	var user *gen.StaffPersonUser
 	if f.link != nil {
-		if user, err = s.linkedUser(ctx, &f.link.ExternalID); err != nil {
+		if user, err = s.linkedUser(ctx, f.link.ExternalID); err != nil {
 			return nil, err
 		}
 	}

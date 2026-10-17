@@ -79,7 +79,8 @@ func readPerson(ctx context.Context, q *store.Queries, id int64) (store.GetPerso
 }
 
 // linkedUserID is the user id a person's self-service link names, as stored,
-// nil when the person is linked to nobody.
+// nil when the person is linked to nobody — no link, or a link naming no user
+// yet (a preparing one, 00051).
 func linkedUserID(ctx context.Context, q *store.Queries, personID int64) (*string, error) {
 	id, err := q.PersonLinkedUser(ctx, personID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -88,7 +89,7 @@ func linkedUserID(ctx context.Context, q *store.Queries, personID int64) (*strin
 	if err != nil {
 		return nil, fmt.Errorf("staff: read person %d's link: %w", personID, err)
 	}
-	return &id, nil
+	return id, nil
 }
 
 // linkedUser is the linked user as the directory names them, read through the

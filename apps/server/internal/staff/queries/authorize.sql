@@ -4,7 +4,7 @@
 -- whatever state the link is in, so delivery C's states never take the Self
 -- audience away from a person. No row is a user linked to nobody.
 SELECT person_id FROM staff.identity_links
-WHERE provider = 'identity' AND external_id = @external_id;
+WHERE provider = 'identity' AND external_id = @external_id::text;
 
 -- name: NamedAsManager :one
 -- NamedAsManager is whether any terms row or department names the person as

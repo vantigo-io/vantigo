@@ -67,7 +67,7 @@ WHERE person_id = ANY($1::bigint[]) AND provider = 'identity'
 
 type PeopleLinksRow struct {
 	PersonID   int64
-	ExternalID string
+	ExternalID *string
 }
 
 // PeopleLinks is the self-service links of @person_ids' people under the
@@ -101,7 +101,7 @@ WHERE person_id = $1 AND provider = 'identity'
 `
 
 type PersonLinkRow struct {
-	ExternalID string
+	ExternalID *string
 	State      string
 	Managed    bool
 }
@@ -120,7 +120,7 @@ func (q *Queries) PersonLink(ctx context.Context, personID int64) (PersonLinkRow
 
 const setPersonLink = `-- name: SetPersonLink :exec
 INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
-VALUES ($1, 'identity', $2, 'linked', false, $3::timestamptz, $3::timestamptz)
+VALUES ($1, 'identity', $2::text, 'linked', false, $3::timestamptz, $3::timestamptz)
 ON CONFLICT (person_id, provider) DO UPDATE SET
     external_id = EXCLUDED.external_id,
     state = 'linked',

@@ -201,7 +201,8 @@ WITH probe AS (
 SELECT candidate.n::bigint AS n
 FROM probe, generate_series(probe.first, probe.first + probe.people) AS candidate(n)
 WHERE NOT EXISTS (
-    SELECT 1 FROM staff.people p WHERE upper(p.employee_number) = upper(probe.prefix || candidate.n::text)
+    SELECT 1 FROM staff.people p
+    WHERE upper(p.employee_number COLLATE "C") = upper((probe.prefix || candidate.n::text) COLLATE "C")
 )
 ORDER BY candidate.n
 LIMIT 1
@@ -840,12 +841,14 @@ func (q *Queries) PersonActiveOn(ctx context.Context, arg PersonActiveOnParams) 
 }
 
 const personIDByEmployeeNumber = `-- name: PersonIDByEmployeeNumber :one
-SELECT id FROM staff.people WHERE upper(employee_number) = upper($1::text)
+SELECT id FROM staff.people WHERE upper(employee_number COLLATE "C") = upper(($1::text) COLLATE "C")
 `
 
 // PersonIDByEmployeeNumber is the person an employee number names, however
 // it is cased — the unique index's own reading, so the import's key finds
-// the one person the number can be. No row is a number nobody has.
+// the one person the number can be. No row is a number nobody has. Both
+// sides are upper-cased under "C", as the index is (00051), so no database
+// collation decides which two numbers are one.
 func (q *Queries) PersonIDByEmployeeNumber(ctx context.Context, employeeNumber string) (int64, error) {
 	row := q.db.QueryRow(ctx, personIDByEmployeeNumber, employeeNumber)
 	var id int64
@@ -903,9 +906,9 @@ WHERE person_id = $1 AND provider = 'identity'
 // PersonLinkedUser is the user a person's self-service link names (design
 // S24), as the link stores it: the user's id as text. No row is a person
 // linked to nobody.
-func (q *Queries) PersonLinkedUser(ctx context.Context, personID int64) (string, error) {
+func (q *Queries) PersonLinkedUser(ctx context.Context, personID int64) (*string, error) {
 	row := q.db.QueryRow(ctx, personLinkedUser, personID)
-	var external_id string
+	var external_id *string
 	err := row.Scan(&external_id)
 	return external_id, err
 }

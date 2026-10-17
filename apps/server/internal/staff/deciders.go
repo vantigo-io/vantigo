@@ -110,12 +110,16 @@ func (s *server) judgeDecider(ctx context.Context, caller *callerContext, person
 
 // activeLinked is the people among links whose linked user the directory
 // answers active — called outside every transaction. A link naming no user
-// id, or a user the directory does not know, is no active user.
+// (a preparing link, delivery C) or no user id, or a user the directory does
+// not know, is no active user.
 func (s *server) activeLinked(ctx context.Context, links []store.PeopleLinksRow) ([]int64, error) {
 	byUser := map[uuid.UUID]int64{}
 	ids := make([]uuid.UUID, 0, len(links))
 	for _, l := range links {
-		id, err := uuid.Parse(l.ExternalID)
+		if l.ExternalID == nil {
+			continue
+		}
+		id, err := uuid.Parse(*l.ExternalID)
 		if err != nil {
 			continue
 		}

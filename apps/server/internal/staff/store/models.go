@@ -221,7 +221,7 @@ type StaffIdentityLink struct {
 	ID            int64
 	PersonID      int64
 	Provider      string
-	ExternalID    string
+	ExternalID    *string
 	State         string
 	Managed       bool
 	BlockedReason *string

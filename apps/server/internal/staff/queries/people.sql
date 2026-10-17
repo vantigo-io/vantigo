@@ -35,7 +35,8 @@ WITH probe AS (
 SELECT candidate.n::bigint AS n
 FROM probe, generate_series(probe.first, probe.first + probe.people) AS candidate(n)
 WHERE NOT EXISTS (
-    SELECT 1 FROM staff.people p WHERE upper(p.employee_number) = upper(probe.prefix || candidate.n::text)
+    SELECT 1 FROM staff.people p
+    WHERE upper(p.employee_number COLLATE "C") = upper((probe.prefix || candidate.n::text) COLLATE "C")
 )
 ORDER BY candidate.n
 LIMIT 1;
@@ -337,8 +338,10 @@ ORDER BY erased_at DESC, id;
 -- name: PersonIDByEmployeeNumber :one
 -- PersonIDByEmployeeNumber is the person an employee number names, however
 -- it is cased — the unique index's own reading, so the import's key finds
--- the one person the number can be. No row is a number nobody has.
-SELECT id FROM staff.people WHERE upper(employee_number) = upper(@employee_number::text);
+-- the one person the number can be. No row is a number nobody has. Both
+-- sides are upper-cased under "C", as the index is (00051), so no database
+-- collation decides which two numbers are one.
+SELECT id FROM staff.people WHERE upper(employee_number COLLATE "C") = upper((@employee_number::text) COLLATE "C");
 
 -- name: ListPeopleForExport :many
 -- ListPeopleForExport is the register's file: every person, erased ones

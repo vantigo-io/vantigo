@@ -81,6 +81,20 @@ and `people.self_cert_withdrawn_from`, the day HR withdrew the right to egenmeld
 from which it is refused.
 Still no CHECK constraint.
 
+Delivery C's Staff migration is `00051_staff_accounts.sql` (00050 is identity's, the
+same delivery's: one migration per schema). It changes two things of 00042's and adds
+nothing. `identity_links.external_id` becomes nullable, so the accounts worker's
+`preparing` link names no user until identity has created one; every reader of a link
+takes one naming no user as a person linked to nobody — `GET /people/{id}/user` reads
+`linked: false`, the person and the exports name no user, and no signed-in user is the
+person through it. And `ux_people_employee_number_upper` is rebuilt on
+`upper(employee_number COLLATE "C")`: `upper()` under the database's own collation is
+that collation's (under a Turkish one `upper('i')` is `İ`), so the index — and the
+queries that look a number up or skip past taken ones, which ask the same expression —
+judges case the way identity's key does (`contracts.NormalizeEmployeeNumber`) on
+Staff's alphabet of a–z, digits and hyphens, whatever the installation's locale. The
+Down deletes the links naming no user and restores both.
+
 ## Permissions
 
 | Key | Name | Grants | Sensitive |
