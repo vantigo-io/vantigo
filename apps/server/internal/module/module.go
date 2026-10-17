@@ -220,6 +220,12 @@ type Module struct {
 	// it; Compose and Workers call it before anything they build runs —
 	// after they have resolved Users, so a provider built here may read
 	// deps.Users — and put the result on every module's Deps.
+	//
+	// The provider it builds must be stateless — its pool, its configuration
+	// and its clock, nothing it remembers between calls: api mode with
+	// WORKERS_IN_PROCESS builds it twice, once for Compose and once for
+	// Workers, and the two must answer alike, as must one per process across
+	// replicas.
 	Accounts func(Deps) contracts.AccountProvisioning
 	// Products builds this module's contracts.ProductCatalog
 	// implementation, if it provides one. At most one enabled module may

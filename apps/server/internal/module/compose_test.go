@@ -860,7 +860,7 @@ func (*fakeAccounts) Update(context.Context, contracts.Actor, uuid.UUID, contrac
 	return contracts.AccountRef{}, nil
 }
 
-func (*fakeAccounts) Account(context.Context, uuid.UUID) (*contracts.AccountRef, error) {
+func (*fakeAccounts) Account(context.Context, uuid.UUID, string) (*contracts.AccountRef, error) {
 	return nil, nil
 }
 
