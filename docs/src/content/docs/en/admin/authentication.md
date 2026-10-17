@@ -127,13 +127,17 @@ not `active` until they do), and, only when set, `managedBy` (`staff`),
 
 What an Owner may still do with a Staff-managed user:
 
-- **Edit, reset the password or MFA, and enable** the user as any other.
+- **Edit, reset the password or MFA, and enable** the user as any other — except that
+  a **pending** user cannot be enabled: the enable answers 409 `account_pending`, since
+  the account becomes usable only by accepting its invitation.
 - **Disable** the user. An Owner's disable is recorded as the Owner's
   (`disabledBy: owner`), also over a user Staff had disabled, and Staff never
   re-enables a user an Owner disabled. Enabling clears it.
 - **Promote** the user to Owner. Staff never manages an Owner, so the promotion stops
   Staff managing them in the same change, audited `user.staff-unmanaged` with the
-  reason `promoted`.
+  reason `promoted`. A pending user cannot be promoted (409 `account_pending`), and a
+  pending user never counts as an active Owner, so disabling or demoting the last
+  Owner who can sign in is refused `last_active_owner` whatever pending users hold.
 - **Not delete** the user: the delete answers 409 `account_managed`. Stop Staff managing
   them first (below), then delete.
 

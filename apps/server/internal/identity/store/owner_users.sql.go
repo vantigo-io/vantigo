@@ -123,6 +123,7 @@ WITH active_owners AS (
     JOIN identity.roles r ON r.id = ur.role_id
     WHERE r.name = 'Owner'
       AND NOT u.is_disabled
+      AND u.pending_since IS NULL
       AND (u.lockout_end IS NULL OR u.lockout_end <= $2::timestamptz)
 )
 SELECT (EXISTS (SELECT 1 FROM active_owners WHERE id = $1::uuid)
@@ -136,8 +137,9 @@ type IsLastActiveOwnerParams struct {
 
 // IsLastActiveOwner is .NET's AuthAccountState.IsLastActiveOwner
 // (EA/AuthAccountState.cs:27-62): the user is an active Owner (neither
-// disabled nor locked out at now) and no other active Owner exists. Callers
-// hold the owner lock, so the answer holds until they commit.
+// disabled nor locked out at now, nor a pending Staff user who has not chosen
+// a credential) and no other active Owner exists. Callers hold the owner
+// lock, so the answer holds until they commit.
 func (q *Queries) IsLastActiveOwner(ctx context.Context, arg IsLastActiveOwnerParams) (bool, error) {
 	row := q.db.QueryRow(ctx, isLastActiveOwner, arg.UserID, arg.Now)
 	var last_active_owner bool

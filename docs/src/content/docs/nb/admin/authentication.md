@@ -135,13 +135,18 @@ vist som `disabled` og ikke `active` til det skjer), og, bare når de er satt,
 
 Dette kan en eier fortsatt gjøre med en bruker som Ansatte styrer:
 
-- **Redigere, tilbakestille passordet eller MFA, og aktivere** brukeren som enhver annen.
+- **Redigere, tilbakestille passordet eller MFA, og aktivere** brukeren som enhver annen
+  — bortsett fra at en **ventende** bruker ikke kan aktiveres: aktiveringen svarer 409
+  `account_pending`, siden kontoen bare blir brukbar ved at invitasjonen aksepteres.
 - **Deaktivere** brukeren. En eiers deaktivering registreres som eierens
   (`disabledBy: owner`), også over en bruker Ansatte hadde deaktivert, og Ansatte
   aktiverer aldri igjen en bruker en eier har deaktivert. Aktivering fjerner den.
 - **Forfremme** brukeren til eier. Ansatte styrer aldri en eier, så forfremmelsen
   slutter å la Ansatte styre brukeren i samme endring, logget som
-  `user.staff-unmanaged` med årsaken `promoted`.
+  `user.staff-unmanaged` med årsaken `promoted`. En ventende bruker kan ikke
+  forfremmes (409 `account_pending`), og en ventende bruker regnes aldri som en aktiv
+  eier, så å deaktivere eller nedgradere den siste eieren som kan logge inn, avvises
+  med `last_active_owner` uansett hva ventende brukere holder.
 - **Ikke slette** brukeren: slettingen svarer 409 `account_managed`. Slutt å la Ansatte
   styre brukeren først (nedenfor), og slett deretter.
 

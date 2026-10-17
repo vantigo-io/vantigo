@@ -335,7 +335,8 @@ func cmpOr(err, fallback error) error {
 // invitations of the old and the new email (email_changed). A role change
 // replaces the managed role and audits user.role-changed; a promotion to
 // Owner also stops Staff managing the user, audited user.staff-unmanaged
-// with the reason promoted, since Staff never manages an Owner. Any change
+// with the reason promoted, since Staff never manages an Owner; promoting a
+// pending user is 409 account_pending. Any change
 // to the email, display name or role ends every session of the user.
 func (s *server) PutIdentityOwnerUsersById(ctx context.Context, req gen.PutIdentityOwnerUsersByIdRequestObject) (gen.PutIdentityOwnerUsersByIdResponseObject, error) {
 	var body gen.OwnerUserUpdateRequest
@@ -376,6 +377,9 @@ func (s *server) PutIdentityOwnerUsersById(ctx context.Context, req gen.PutIdent
 			return err
 		}
 		roles = nonNil(roles)
+		if role == RoleOwner && !slices.Contains(roles, RoleOwner) && isPending(target) {
+			return accountPending
+		}
 		now := s.deps.Clock()
 		if slices.Contains(roles, RoleOwner) && role == RoleUser {
 			last, err := q.IsLastActiveOwner(ctx, store.IsLastActiveOwnerParams{UserID: target.ID, Now: now})
@@ -497,7 +501,9 @@ func (s *server) PostIdentityOwnerUsersByIdEnable(ctx context.Context, req gen.P
 // serializable transaction under the owner lock. A disable records
 // disabled_by = owner, also over a user Staff disabled (audited
 // user.disabled, the sessions already ended), so Staff never re-enables
-// them; an enable clears it.
+// them; an enable clears it. Enabling a pending user is 409
+// account_pending: the account becomes usable only by accepting its
+// invitation.
 func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled bool) (gen.OwnerUserResponse, error) {
 	p, err := callerFrom(ctx)
 	if err != nil {
@@ -523,6 +529,9 @@ func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled boo
 		before, err := captureUser(ctx, q, id)
 		if err != nil {
 			return err
+		}
+		if !disabled && isPending(target) {
+			return accountPending
 		}
 		now := s.deps.Clock()
 		if disabled {
