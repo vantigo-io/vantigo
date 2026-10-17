@@ -280,6 +280,20 @@ Eierens liste over invitasjoner (`GET /api/v1/identity/owner/invitations`, og sv
 tilbaketrekking og ny sending) viser årsaken som `revokedReason` på hver tilbaketrukket
 invitasjon, og utelater den på en som ikke er trukket tilbake.
 
+### Hvem som har en tillatelse
+
+Identitet svarer andre moduler på hvem som har en tillatelse (for eksempel Ansatte, for
+å vite hvem som kan avgjøre et fravær). En bruker har den gjennom en rolle som er tildelt
+dem direkte, gjennom en rolle som er koblet til en aktiv tilgangsgruppe de er medlem av
+(tvunget inn, eller til stede i katalogen og ikke overstyrt ut — den samme regelen hver
+tillatelsessjekk bruker), eller ved å være Eier, som har alle tillatelser. En delegering
+av autorisasjon lar mottakeren administrere roller; den gir ingen tillatelse i seg selv.
+Bare aktive brukere teller: en deaktivert bruker, en ventende bruker som ennå ikke har
+godtatt invitasjonen sin, og — så lenge SCIM er konfigurert — en bruker katalogen har
+deaktivert, med mindre det er en Eier, har ingenting. En utestengelse er midlertidig og
+endrer ikke hvem som har en tillatelse. For å gjøre noen til innehaver, gi dem en rolle
+med tillatelsen, eller koble en slik rolle til en gruppe de er med i.
+
 ## MFA
 
 MFA er en sekssifret TOTP-autentisator pluss engangs gjenopprettingskoder, og

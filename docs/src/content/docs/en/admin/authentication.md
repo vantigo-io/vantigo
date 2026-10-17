@@ -266,6 +266,20 @@ The Owner's invitation list (`GET /api/v1/identity/owner/invitations`, and the r
 and resend answers) shows the reason as `revokedReason` on each revoked invitation, and
 leaves it out on one that is not revoked.
 
+### Who holds a permission
+
+Identity answers other modules who holds a permission (for instance Staff, to know who
+can decide an absence). A user holds it through a role assigned to them directly,
+through a role mapped to an active access group they are a member of (forced in, or
+present in the directory and not overridden out — the rule every permission check
+applies), or by being an Owner, who holds every permission. An authorization
+delegation lets its grantee manage roles; it grants no permission of its own. Only
+active users count: a disabled user, a pending user who has not yet accepted their
+invitation, and — while SCIM is configured — a user the directory deactivated, unless
+an Owner, hold nothing. A lockout is temporary and does not change who holds a
+permission. To make someone a holder, give them a role carrying the permission, or map
+one to a group they belong to.
+
 ## MFA
 
 MFA is a six-digit TOTP authenticator plus one-use recovery codes, and passkeys
