@@ -368,3 +368,39 @@ func TestUserDirectory_PermissionHoldersOfAKeyNobodyHolds(t *testing.T) {
 		t.Errorf("PermissionHolders = %+v, %v, want none and no error", got, err)
 	}
 }
+
+// TestUserDirectory_PermissionHoldersAreWhoTheCheckAdmits is the
+// differential test between the two answers to "who holds staff:approve":
+// for every fixture user, a session of theirs passes
+// Access.Check("permission:staff:approve") exactly when PermissionHolders
+// names them, under SCIM and without. The one documented difference is the
+// lockout, which ends a permission check for a while but not a holding.
+// Sessions are MFA-verified: MFA belongs to a sign-in, not a user, so an
+// Owner held to MFA (OwnersRequireMFA) is a holder whose sessions without a
+// second factor are refused — the session's matter, not the holding's.
+func TestUserDirectory_PermissionHoldersAreWhoTheCheckAdmits(t *testing.T) {
+	t.Parallel()
+	for name, opts := range map[string][]harnessOption{
+		"under SCIM":   {withEnv("SCIM_TOKEN", "identity-harness-scim-token")},
+		"without SCIM": nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newHoldersFixture(t, opts...)
+			holders := map[string]bool{}
+			for _, holder := range f.names(f.holders(t)) {
+				holders[holder] = true
+			}
+			for user, id := range f.users {
+				_, o := check(t, f.h, f.h.session(t, id, true), "permission:staff:approve")
+				want := holders[user]
+				if user == "e-locked-out" {
+					want = false // a holder, locked out of checks for now
+				}
+				if got := o == allowed; got != want {
+					t.Errorf("%s: the check admits = %v (%v), PermissionHolders names = %v", user, got, o, holders[user])
+				}
+			}
+		})
+	}
+}

@@ -658,9 +658,12 @@ func TestStaffManaged_APendingUserIsNeitherPromotedNorEnabled(t *testing.T) {
 	}
 }
 
-// A pending user holding Owner (no endpoint makes one; a test does) is no
-// active Owner: with them and one real Owner, the real one is the last.
-func TestStaffManaged_APendingOwnerIsNotAnActiveOwner(t *testing.T) {
+// A pending user holding Owner (no endpoint makes one; a test does) can act
+// as no Owner: their session is refused before any rule runs, so they cannot
+// disable the one real Owner, who stays enabled. That a pending Owner never
+// counts among the active Owners is IsLastActiveOwner's own test
+// (TestIsLastActiveOwner_APendingOwnerDoesNotCount).
+func TestStaffManaged_APendingOwnerCannotActAsAnOwner(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	_, ownerID := h.bootstrapOwner(t)
@@ -668,8 +671,8 @@ func TestStaffManaged_APendingOwnerIsNotAnActiveOwner(t *testing.T) {
 	makePending(t, h, pending, "P-10")
 	caller := h.signIn(t, pending, true)
 
-	if r := caller.do(http.MethodPost, userPath(ownerID, "/disable"), nil); r.status != http.StatusConflict || r.code() != "last_active_owner" {
-		t.Errorf("disable the only real Owner: status %d code %q, want 409 last_active_owner", r.status, r.code())
+	if r := caller.do(http.MethodPost, userPath(ownerID, "/disable"), nil); r.status != http.StatusUnauthorized {
+		t.Errorf("a pending Owner disables the real one: status %d code %q, want 401", r.status, r.code())
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND NOT is_disabled`, ownerID); n != 1 {
 		t.Errorf("the only real Owner was disabled")

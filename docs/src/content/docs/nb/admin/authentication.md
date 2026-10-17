@@ -140,7 +140,10 @@ Dette kan en eier fortsatt gjøre med en bruker som Ansatte styrer:
   begge svarer 409 `account_pending`, siden kontoen bare blir brukbar ved at
   invitasjonen aksepteres. Skulle en ventende bruker likevel ha en innloggingsmetode,
   avviser innlogging med passord, passnøkkel og OIDC brukeren slik de avviser en
-  deaktivert konto.
+  deaktivert konto, og en økt brukeren allerede har, avsluttes ved neste forespørsel.
+  Ingen skriver noen gang et passord til en ventende bruker, verken en eier, en
+  tilbakestilling eller brukeren selv: selve skrivingen sjekker, så en bruker som blir
+  ventende mens et passord settes, får likevel ikke noe (409 `account_pending`).
 - **Deaktivere** brukeren. En eiers deaktivering registreres som eierens
   (`disabledBy: owner`), også over en bruker Ansatte hadde deaktivert, og Ansatte
   aktiverer aldri igjen en bruker en eier har deaktivert. Aktivering fjerner den. Å

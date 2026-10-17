@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
+	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 )
 
 // TestSetPassword_AVanishedUserIsNotFound covers the window between the
@@ -56,5 +57,48 @@ func TestDeletionBackstopsMatchTheirConstraintUnderEitherCode(t *testing.T) {
 		if isProvenanceViolation(err) || isDelegationCreatorViolation(err) {
 			t.Errorf("%v matched a deletion backstop", err)
 		}
+	}
+}
+
+// TestIsLastActiveOwner_APendingOwnerDoesNotCount proves a pending user
+// holding Owner is no active Owner: beside them, the one real Owner is the
+// last, which the last-Owner refusals (an Owner's disable or demotion,
+// Staff's Deactivate) rest on. A second real Owner makes neither the last.
+func TestIsLastActiveOwner_APendingOwnerDoesNotCount(t *testing.T) {
+	t.Parallel()
+	srv, pool := newInternalServer(t)
+	ctx := context.Background()
+	owner := func(email string) uuid.UUID {
+		id := uuid.New()
+		if _, err := pool.Exec(ctx, `INSERT INTO identity.users (id, email, normalized_email, display_name, version, created_at, updated_at)
+			VALUES ($1, $2, upper($2), $2, gen_random_uuid(), now(), now())`, id, email); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, RoleOwnerID); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	realOwner := owner("real-owner@example.test")
+	pending := owner("pending-owner@example.test")
+	if _, err := pool.Exec(ctx, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'P-1', employee_number_key = 'P-1', pending_since = now() WHERE id = $1`, pending); err != nil {
+		t.Fatal(err)
+	}
+	last := func(id uuid.UUID) bool {
+		got, err := srv.q.IsLastActiveOwner(ctx, store.IsLastActiveOwnerParams{UserID: id, Now: internalNow})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if !last(realOwner) {
+		t.Errorf("the real Owner beside a pending one: last = false, want true")
+	}
+	if last(pending) {
+		t.Errorf("the pending Owner: last = true, want false (no active Owner)")
+	}
+	owner("second-owner@example.test")
+	if last(realOwner) {
+		t.Errorf("the real Owner beside a second real one: last = true, want false")
 	}
 }

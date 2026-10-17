@@ -448,7 +448,8 @@ func TestInvitations_CompletionTakesTheOwnerLockFirst(t *testing.T) {
 
 // A resend of a named invitation is for a user who can still accept it: a
 // user whose address changed, who is no longer managed by Staff, is
-// disabled, has completed, is privileged, or is gone answers 409
+// disabled, has completed, is privileged, is gone, or gained a password, a
+// passkey or an OIDC link answers 409
 // invitation_not_active, and nothing is written or mailed.
 func TestInvitations_ResendOfANamedInvitationNeedsAUserWhoCanAccept(t *testing.T) {
 	t.Parallel()
@@ -474,6 +475,9 @@ func TestInvitations_ResendOfANamedInvitationNeedsAUserWhoCanAccept(t *testing.T
 			h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, identity.RoleSystemAdminID)
 		}},
 		{"gone", func(t *testing.T, id uuid.UUID) { h.exec(t, `DELETE FROM identity.users WHERE id = $1`, id) }},
+		{"a password", func(t *testing.T, id uuid.UUID) { giveCredential(t, h, id, "password") }},
+		{"a passkey", func(t *testing.T, id uuid.UUID) { giveCredential(t, h, id, "passkey") }},
+		{"an OIDC link", func(t *testing.T, id uuid.UUID) { giveCredential(t, h, id, "oidc") }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			email := "resend-case" + string(rune('a'+i)) + "@example.test"
@@ -518,5 +522,75 @@ func TestInvitations_ValidateANamedInvitation(t *testing.T) {
 	r = anonymous.do(http.MethodGet, invitationsValidatePath+"?token="+url.QueryEscape(token), nil)
 	if r.status != http.StatusOK || strings.TrimSpace(string(r.body)) != `{"valid":false}` {
 		t.Errorf("validate for a disabled user: status %d body %s, want {\"valid\":false}", r.status, r.body)
+	}
+}
+
+// giveCredential gives id a credential of kind — password, passkey or oidc —
+// by SQL, as no endpoint gives a pending user one.
+func giveCredential(t *testing.T, h *harness, id uuid.UUID, kind string) {
+	t.Helper()
+	switch kind {
+	case "password":
+		hash, err := identity.HashPassword(userPassword)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.exec(t, `UPDATE identity.users SET password_hash = $2 WHERE id = $1`, id, hash)
+	case "passkey":
+		h.exec(t, `INSERT INTO identity.passkeys (credential_id, user_id, name, credential, user_verified, backup_eligible, backed_up, created_at)
+		           VALUES ($1, $2, 'Key', '{}', true, false, false, $3)`, id[:], id, h.now())
+	case "oidc":
+		h.exec(t, `INSERT INTO identity.oidc_links (issuer, subject, user_id, created_at) VALUES ('https://idp.example.test', $1, $2, $3)`,
+			id.String(), id, h.now())
+	default:
+		t.Fatalf("no credential kind %q", kind)
+	}
+}
+
+// Validating a named invitation answers {valid:false} for each condition the
+// one completing predicate refuses — not only a disabled user — so the accept
+// screen never invites someone to complete what acceptance would refuse.
+func TestInvitations_ValidateRefusesEachConditionAcceptanceRefuses(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	anonymous := h.client(t)
+	for i, c := range []struct {
+		name  string
+		setup func(t *testing.T, id uuid.UUID)
+	}{
+		{"an address changed", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `UPDATE identity.users SET email = 'moved'||$2||'@example.test', normalized_email = upper('moved'||$2||'@example.test') WHERE id = $1`, id, id.String())
+		}},
+		{"unmanaged", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `UPDATE identity.users SET managed_by = NULL WHERE id = $1`, id)
+		}},
+		{"disabled by Staff", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `UPDATE identity.users SET is_disabled = true, disabled_by = 'staff' WHERE id = $1`, id)
+		}},
+		{"completed", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `UPDATE identity.users SET pending_since = NULL WHERE id = $1`, id)
+		}},
+		{"a SystemAdmin", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, identity.RoleSystemAdminID)
+		}},
+		{"an Owner", func(t *testing.T, id uuid.UUID) {
+			h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, identity.RoleOwnerID)
+		}},
+		{"gone", func(t *testing.T, id uuid.UUID) { h.exec(t, `DELETE FROM identity.users WHERE id = $1`, id) }},
+		{"a password", func(t *testing.T, id uuid.UUID) { giveCredential(t, h, id, "password") }},
+		{"a passkey", func(t *testing.T, id uuid.UUID) { giveCredential(t, h, id, "passkey") }},
+		{"an OIDC link", func(t *testing.T, id uuid.UUID) { giveCredential(t, h, id, "oidc") }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			email := "validate-case" + string(rune('a'+i)) + "@example.test"
+			id := pendingUser(t, h, email, "Validate "+c.name, "W-"+string(rune('A'+i)), identity.RoleUserID)
+			_, token := issueNamed(t, h, email, &id)
+			c.setup(t, id)
+
+			r := anonymous.do(http.MethodGet, invitationsValidatePath+"?token="+url.QueryEscape(token), nil)
+			if r.status != http.StatusOK || strings.TrimSpace(string(r.body)) != `{"valid":false}` {
+				t.Errorf("validate: status %d body %s, want {\"valid\":false}", r.status, r.body)
+			}
+		})
 	}
 }
