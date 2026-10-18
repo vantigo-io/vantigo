@@ -276,7 +276,7 @@ kontoen som deaktivert av katalogen. Dette avviser den:
 | Avvisning | Betydning | Hva du gjør |
 | --- | --- | --- |
 | Ikke styrt | Brukeren styres ikke av Ansatte | Ta dem inn, eller overlat dem til en eier |
-| Privilegert | Brukeren er eier eller SystemAdmin (avvist for hvert steg, også en oppdatering) | Håndter kontoen for hånd |
+| Privilegert | Brukeren er eier eller SystemAdmin (avvist for hvert steg, også en oppdatering). Identitet melder dette når Ansatte leser kontoen, så Ansatte melder det uten å forsøke, også for en styrt bruker som siden er gjort til eier | Håndter kontoen for hånd |
 | Sperret av en eier | En eier deaktiverte brukeren | Aktiver dem her hvis Ansatte skal styre dem igjen |
 | Ansattrolle mangler | Ingen ansattrolle er valgt | Velg [ansattrollene](#ansattrollene) |
 | Usikker ansattrolle | En rolle i settet har en tillatelse som gir administrasjon — bare mulig ved en endring utenom identitetsmodulens kontroller | Ta tillatelsen av rollen, eller rollen ut av settet |

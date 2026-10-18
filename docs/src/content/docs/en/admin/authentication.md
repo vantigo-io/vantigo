@@ -258,7 +258,7 @@ out and Staff reports their account disabled by the directory. What it refuses:
 | Refusal | Meaning | What to do |
 | --- | --- | --- |
 | Not managed | The user is not Staff-managed | Adopt them, or leave them to an Owner |
-| Privileged | The user is an Owner or a SystemAdmin (refused for every step, an update included) | Handle the account by hand |
+| Privileged | The user is an Owner or a SystemAdmin (refused for every step, an update included). Identity reports this when Staff reads the account, so Staff reports it without trying, also for a managed user since promoted to Owner | Handle the account by hand |
 | Blocked by an Owner | An Owner disabled the user | Enable them here if Staff should manage them again |
 | Employee role missing | No employee role is named | Name the [employee roles](#the-employee-roles) |
 | Employee role unsafe | A role in the set carries a permission that grants administration — possible only by a change outside identity's checks | Take the permission off the role, or the role out of the set |
