@@ -1094,3 +1094,88 @@ func TestAccountsWorker_ACycleOnAPoolOfOneAgainstIdentity(t *testing.T) {
 		t.Error("the user was not enabled on the pool of one")
 	}
 }
+
+// A leaver whose user identity cannot read is retried at every poll, never
+// daily (reading 25, review MEDIUM 1): the read fails for four polls, and the
+// first poll identity answers again deactivates the user.
+func TestAccountsWorker_ALeaversFailedReadIsRetriedAtEveryPoll(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Slutt", "2020-01-01", dayPtr("2026-06-30"))
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber, HasCredential: true})
+	workerLink(t, w.h, p.Id, u, "active")
+	w.fake.set(func(f *fakeAccounts) { f.accountErr = errFakeDown })
+	for poll := 1; poll <= 4; poll++ {
+		w.cycle(t)
+		w.h.Advance(time.Hour)
+	}
+	if n := countWrites(w.fake, "Deactivate"); n != 0 {
+		t.Fatalf("Deactivate called %d times while identity could not be read", n)
+	}
+	w.fake.set(func(f *fakeAccounts) { f.accountErr = nil })
+	w.cycle(t)
+	if n := countWrites(w.fake, "Deactivate"); n != 1 {
+		t.Errorf("identity answers again, but Deactivate was called %d times at the next poll; link %+v", n, mustLink(t, w.h, p.Id))
+	}
+}
+
+// An unchanged mismatch on a link naming no user is recorded once, not on
+// every day it is claimed again (review LOW 1).
+func TestAccountsWorker_AnUnchangedMismatchIsRecordedOnce(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	x := w.employee(t, "Xavier", "2020-01-01", dayPtr("2026-06-30"))
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateDisabled, DisabledBy: contracts.DisabledByStaff,
+		Managed: true, EmployeeNumber: x.EmployeeNumber, HasCredential: true})
+	workerLink(t, w.h, x.Id, u, "disabled")
+	w.h.Exec(t, `UPDATE staff.identity_links SET synced_employee_number = $2, next_attempt_at = $3 WHERE person_id = $1`,
+		x.Id, x.EmployeeNumber, w.h.Now().Add(720*time.Hour))
+	old := x.EmployeeNumber
+	w.h.Exec(t, `UPDATE staff.people SET employee_number = 'X-NEW' WHERE id = $1`, x.Id)
+	p := w.employee(t, "Petra", "2026-01-01", nil)
+	w.h.Exec(t, `UPDATE staff.people SET employee_number = $2 WHERE id = $1`, p.Id, old)
+	for _, day := range []time.Time{w.h.Now(), osloAt("2026-09-13", 1), osloAt("2026-09-14", 1), osloAt("2026-09-15", 1)} {
+		setClock(t, w.h, day)
+		w.cycle(t)
+	}
+	n := 0
+	for _, e := range eventsAs(t, w.hr, p.Id) {
+		if e.Kind == "account_mismatched" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d account_mismatched events for one unchanged mismatch over four days, want one", n)
+	}
+}
+
+// A person erased, or their flag turned off, while Prepare runs (review LOW
+// 2): the prepared user is recorded on the link, and nothing more is done
+// with them — no Activate, no Update.
+func TestAccountsWorker_APreparedUserOfAPersonErasedOrTurnedOffIsLeft(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, sql string }{
+		{"erased", `UPDATE staff.people SET erased_at = now() WHERE id = $1`},
+		{"the flag off", `UPDATE staff.people SET provision_account = false WHERE id = $1`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newAccountsWorld(t)
+			w.h.Exec(t, `UPDATE staff.settings SET create_before_days = 0`)
+			p := w.employee(t, "Midt", today(t, w.h), nil)
+			w.fake.whenWriting(func(method string, _ uuid.UUID) {
+				if method == "Prepare" {
+					w.h.Exec(t, tc.sql, p.Id)
+				}
+			})
+			w.cycle(t)
+			if got := w.fake.writeCalls(); len(got) != 1 || got[0] != "Prepare:"+p.EmployeeNumber {
+				t.Errorf("writes = %v, want the Prepare alone", got)
+			}
+			if l, _ := linkOf(t, w.h, p.Id); l.User == "" {
+				t.Errorf("the link = %+v, want the prepared user recorded", l)
+			}
+		})
+	}
+}

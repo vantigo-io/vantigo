@@ -1094,15 +1094,19 @@ worker process, a run beside the ticker — through the link rows alone.
    in one read-only snapshot, closed; the link's user as identity reports them
    (`Account`, with the person's own chosen address); the table; then each step
    **called under a two-minute timeout with no transaction open and no connection
-   held**. **The lease is renewed before each call and each read of the chain**
-   (`lease_until` five minutes on, conditionally on the claim still holding a live
-   lease, with no connection kept), so a chain longer than one lease keeps its link; a
-   renewal that finds the lease lapsed or taken stops the chain. **A user `Prepare`
+   held**. **The lease is renewed before each call, and before each read of the user
+   after a call** — the first read rides on the claim's fresh lease — (`lease_until`
+   five minutes on, conditionally on the claim still holding a live lease, with no
+   connection kept), so a chain longer than one lease keeps its link; a renewal that
+   finds the lease lapsed or taken stops the chain. **A user `Prepare`
    answers is recorded on the link at once**, in a short write under the person's lock
    on the claim's lease, before anything more is done with them: a user another
    person's link already names (`ux_identity_links_provider_external`) is `mismatch`,
    `blocked`, and the chain stops — nothing is activated or updated for someone else's
-   user. After each successful call the user is read again and the table asked again
+   user; recorded once (`account_mismatched`), not again each day the unchanged link is
+   claimed. The same write reads the person again under the lock: a person erased, or
+   whose flag was turned off, while `Prepare` ran has the user recorded and nothing more
+   done with them. After each successful call the user is read again and the table asked again
    on the fresh answer, until it answers nothing or a report, or after **three calls**,
    or when a call left the user as they were (pre-flight I2: prepared and enabled on
    day one with `createBeforeDays` 0). After a successful `Prepare` or `Update` the
@@ -1136,7 +1140,10 @@ be made (identity unreachable, a timeout, an answer that is not one of the contr
 is `last_error = accounts_unavailable`, `attempts` counted, retried at the next poll
 while `attempts < 3`, then daily — **except a deactivation, retried at every poll for
 as long as it fails**, so a leaver loses access as soon as identity answers; any answer
-resets `attempts` and clears `last_error`. A claim that spent its three calls with more
+resets `attempts` and clears `last_error`. A failed read of the link's user is retried
+at every poll too when the person's facts alone say a deactivation may be due — every
+employment ended, or between employments before the later one is due — and the link is
+not already `disabled`. A claim that spent its three calls with more
 to do, a step held by the mode mismatch, or a call whose follow-up read failed is
 claimed again at the next poll.
 
@@ -1165,6 +1172,12 @@ deactivation — `Deactivate` reads no mode, so a leaver loses access whatever t
 configuration says — and holds every other step before any identity call: the links it
 holds record `blocked_reason = mode_mismatch`, their state kept, and are claimed again
 at the next poll, so the installation's item is derived from link rows (reading 21).
+
+**A known remaining risk.** HR may relink a self-service link to a user an Owner has
+adopted for Staff in the instant between a claim's lease renewal and its call: one call
+of that claim can then reach the previous user. Every write the claim makes afterwards
+is still refused — the result names the user the claim knew — and the next claim works
+the new link.
 
 **Calls out.** Every call to identity's `contracts.AccountProvisioning` goes through
 one accessor in `contractscalls.go` and is refused inside any of the module's
