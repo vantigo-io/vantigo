@@ -203,11 +203,16 @@ func TestDecide(t *testing.T) {
 		// The directory deactivated the user (SCIM).
 		both("the directory, during the employment", withUser(linkStateActive, ref(contracts.AccountStateDisabled, contracts.DisabledByDirectory, true, contracts.InvitationNone)), stepNoneWant),
 		both("the directory, after the end", all(ended, withUser(linkStateActive, ref(contracts.AccountStateDisabled, contracts.DisabledByDirectory, true, contracts.InvitationNone))), stepDeactivateWant),
-		both("the directory, after the end, already deactivated", all(ended, withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByDirectory, true, contracts.InvitationNone))), stepNoneWant),
+		both("the directory, after the end, the link recorded disabled (every run)", all(ended, withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByDirectory, true, contracts.InvitationNone))), stepDeactivateWant),
+		both("the directory, between employments, the link recorded disabled", all(gap, withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByDirectory, true, contracts.InvitationNone))), stepDeactivateWant),
 
 		// The user as identity reports them.
-		both("unmanaged: linked, not managed by Staff", withUser(linkStateActive, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"}),
+		both("unmanaged: linked, not managed by Staff", withUser(linkStateLinked, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"}),
 			accountStep{Kind: accountStepNone, State: linkStateLinked}),
+		both("worker link, user unmanaged (promoted)", withUser(linkStateActive, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"}),
+			reportWant(reasonNotManaged, "")),
+		both("worker link, user unmanaged, after the end", all(ended, withUser(linkStateDisabled, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"})),
+			reportWant(reasonNotManaged, "")),
 		both("unmanaged, after the end", all(ended, withUser(linkStateLinked, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"})),
 			accountStep{Kind: accountStepNone, State: linkStateLinked}),
 		both("the user gone on a worker's link (never re-created)", withUser(linkStateActive, nil), reportWant(reasonUserGone, linkStateFailed)),
@@ -216,6 +221,11 @@ func TestDecide(t *testing.T) {
 		both("another employee number", withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmployeeNumber = "B-2"; return r }()), reportWant(reasonMismatch, blocked)),
 		both("no employee number in identity", withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmployeeNumber = ""; return r }()), reportWant(reasonMismatch, blocked)),
 		both("another employee number, after the end (nothing)", all(ended, withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmployeeNumber = "B-2"; return r }())), reportWant(reasonMismatch, blocked)),
+		both("renumbered (identity holds the synced number)", all(withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmployeeNumber = "OLD-7"; return r }()), func(in *accountDecision) { in.Link.SyncedEmployeeNumber = "old-7" }), stepUpdateWant),
+		both("renumbered, the spec changed", all(withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmployeeNumber = "OLD-7"; return r }()), func(in *accountDecision) { in.Link.SyncedEmployeeNumber = "old-7" }, func(in *accountDecision) { in.Link.SpecChanged = true }), stepUpdateWant),
+		both("renumbered, a leaver", all(ended, withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmployeeNumber = "OLD-7"; return r }()), func(in *accountDecision) { in.Link.SyncedEmployeeNumber = "old-7" }), stepDeactivateWant),
+		both("renumbered, the number matching neither", all(withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmployeeNumber = "OLD-7"; return r }()), func(in *accountDecision) { in.Link.SyncedEmployeeNumber = "C-3" }), reportWant(reasonMismatch, blocked)),
+		both("the synced number is the person's, identity another", all(withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmployeeNumber = "B-2"; return r }()), func(in *accountDecision) { in.Link.SyncedEmployeeNumber = "A-1" }), reportWant(reasonMismatch, blocked)),
 		both("the same number in another case", withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmployeeNumber = " a-1 "; return r }()), stepNoneWant),
 
 		// The spec changed, the address differs.
@@ -236,6 +246,13 @@ func TestDecide(t *testing.T) {
 		both("due, the address missing, no link", func(in *accountDecision) { in.Person.AddressPresent = false }, reportWant(reasonEmailMissing, "")),
 		{name: "due, the address missing, a prepared user", edit: all(withUser(linkStatePending, prepared()), func(in *accountDecision) { in.Person.AddressPresent = false }),
 			local: reportWant(reasonEmailMissing, ""), federated: reportWant(reasonModeChanged, linkStatePending)},
+		both("before the window, a current employee, the spec changed", all(withUser(linkStateActive, active()), func(in *accountDecision) {
+			f := day(t, "2026-11-15")
+			in.Person.ProvisionFrom = &f
+			in.Link.SpecChanged = true
+		}), stepUpdateWant),
+		both("before the window, disabled by an Owner", all(employed(span("2026-11-10", "")), withUser(linkStateActive, ref(contracts.AccountStateDisabled, contracts.DisabledByOwner, true, contracts.InvitationNone))), reportWant(reasonDisabledByOwner, blocked)),
+		both("before the window, disabled by Staff (never activated early)", all(employed(span("2026-11-10", "")), withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByStaff, true, contracts.InvitationNone))), stepNoneWant),
 		both("before the window, the address missing", all(employed(span("2026-11-10", "")), func(in *accountDecision) { in.Person.AddressPresent = false }), stepNoneWant),
 	}
 
@@ -365,4 +382,46 @@ func lastElem(path string) string {
 		}
 	}
 	return path
+}
+
+// TestDecide_AccountFrom is the effective provisionFrom the worker acts on
+// (and the Account tab will show): the stored date, else the start of the
+// earliest employment not ended by today; between employments the later
+// start, unless the stored date falls after the earlier end.
+func TestDecide_AccountFrom(t *testing.T) {
+	today := day(t, "2026-10-18")
+	at := func(s string) *time.Time { d := day(t, s); return &d }
+	span := func(start string, end *time.Time) decideEmployment {
+		return decideEmployment{Start: day(t, start), End: end}
+	}
+	for _, c := range []struct {
+		name   string
+		stored *time.Time
+		emps   []decideEmployment
+		want   string
+	}{
+		{"no employment, none stored", nil, nil, ""},
+		{"no employment, a stored date", at("2026-11-01"), nil, "2026-11-01"},
+		{"one open employment", nil, []decideEmployment{span("2026-10-01", nil)}, "2026-10-01"},
+		{"a future employment", nil, []decideEmployment{span("2026-12-01", nil)}, "2026-12-01"},
+		{"the earliest of two open", nil, []decideEmployment{span("2026-06-01", nil), span("2025-01-01", at("2026-12-31"))}, "2025-01-01"},
+		{"an ended one ignored", nil, []decideEmployment{span("2024-01-01", at("2026-10-17")), span("2026-06-01", nil)}, "2026-06-01"},
+		{"ending today still counts", nil, []decideEmployment{span("2024-01-01", at("2026-10-18"))}, "2024-01-01"},
+		{"every employment ended, none stored", nil, []decideEmployment{span("2024-01-01", at("2026-10-17"))}, ""},
+		{"every employment ended, a stored date", at("2024-01-01"), []decideEmployment{span("2024-01-01", at("2026-10-17"))}, "2024-01-01"},
+		{"a stored early date", at("2026-10-10"), []decideEmployment{span("2026-11-01", nil)}, "2026-10-10"},
+		{"a stored late date", at("2026-11-15"), []decideEmployment{span("2026-10-01", nil)}, "2026-11-15"},
+		{"between employments, none stored", nil, []decideEmployment{span("2025-01-01", at("2026-09-30")), span("2026-12-01", nil)}, "2026-12-01"},
+		{"between employments, a stale stored date", at("2025-01-01"), []decideEmployment{span("2025-01-01", at("2026-09-30")), span("2026-12-01", nil)}, "2026-12-01"},
+		{"between employments, a stored date after the end", at("2026-10-15"), []decideEmployment{span("2025-01-01", at("2026-09-30")), span("2026-12-01", nil)}, "2026-10-15"},
+	} {
+		got, ok := accountFrom(c.stored, c.emps, today)
+		gotS := ""
+		if ok {
+			gotS = got.Format(time.DateOnly)
+		}
+		if gotS != c.want {
+			t.Errorf("%s: accountFrom = %q, want %q", c.name, gotS, c.want)
+		}
+	}
 }

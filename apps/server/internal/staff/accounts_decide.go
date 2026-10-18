@@ -14,13 +14,18 @@ import (
 // AccountProvisioning.Account, asked on no connection.
 //
 // How the worker uses it (Task 4b). For one claimed link: decide; when the
-// step is a call (prepare, activate, deactivate, update), make it, then run
-// decide again on the AccountRef the call answered — the link now naming the
-// user, its state the ref's — and go on until the step is none or a report,
-// at most three calls per claim (plan I2: Prepare, then Activate, then an
-// Update in one claim). A step that answers the same ref as before ends the
-// chain too (an Activate within identity's ten minutes issues nothing), and
-// Fresh is passed only to the first decide of a Run now. A call's error is
+// step is a call (prepare, activate, deactivate, update), make it, then ask
+// AccountProvisioning.Account(userID, the person's own address) — not the ref
+// the call answered, whose EmailDiffers is always false since a write is
+// handed no address to compare — and run decide again on that ref, the link
+// now naming the user, and go on until the step is none or a report, at most
+// three calls per claim (plan I2: Prepare, then Activate, then an Update in
+// one claim). A step after which the ref is unchanged ends the chain too (an
+// Activate within identity's ten minutes issues nothing; a Deactivate of a
+// user the directory keeps inactive reads the same before and after), and
+// Fresh is passed only to the first decide of a Run now. After a Prepare or
+// an Update the worker records the employee number it wrote as the link's
+// SyncedEmployeeNumber. A call's error is
 // the worker's to record, not decide's: ErrAccountPrivileged (the user an
 // Owner or a SystemAdmin — AccountRef carries no such mark, so only a call
 // tells), ErrBlockedByOwner, ErrAccountNotFound (federated, not found),
@@ -75,6 +80,9 @@ const (
 	reasonEmailDiffers         = "email_differs"
 	reasonInvitationRevoked    = "invitation_revoked"
 	reasonInvitationUnanswered = "invitation_unanswered"
+	// reasonNotManaged: the worker's link names a user Staff no longer
+	// manages (an Owner unmanaged or promoted them); the link keeps its state.
+	reasonNotManaged = "account_not_managed"
 )
 
 // accountStep is decide's answer: one step. Fresh is the activate's
@@ -109,13 +117,16 @@ type accountPersonFacts struct {
 
 // accountLinkFacts is the person's link: its state, the user it names
 // (ExternalID nil while preparing), whether the worker recorded the user
-// managed, and SpecChanged — the person's spec hashed as the worker hashes it
-// (last_spec_hash) differs from the link's.
+// managed, SpecChanged — the person's spec hashed as the worker hashes it
+// (last_spec_hash) differs from the link's — and SyncedEmployeeNumber, the
+// number the worker last wrote to identity for this link ("" when unknown),
+// so a person HR renumbered is still known by the number identity holds.
 type accountLinkFacts struct {
-	State       string
-	ExternalID  *string
-	Managed     bool
-	SpecChanged bool
+	State                string
+	ExternalID           *string
+	Managed              bool
+	SpecChanged          bool
+	SyncedEmployeeNumber string
 }
 
 // accountDecision is decide's whole input. Link nil is a person with no link;
@@ -155,24 +166,11 @@ func decideDay(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
-// accountPhaseOf judges today against the employments (at least one) and
-// reports whether the person is between employments — one ended before
-// today, none current, a later one to come.
-//
-// F is the stored provisionFrom, else the first day of the earliest
-// employment not ended by today (spec reading 14, effectiveProvisionFrom).
-// Between employments the later start S stands for F (spec: "as the row for
-// F = S"), unless the stored date falls after the last ended employment, so
-// is the later one's own (an early provisionFrom honoured); a stored date
-// from before then is the earlier employment's and is not read.
-func accountPhaseOf(p accountPersonFacts, today time.Time, createBeforeDays int) (accountPhase, bool) {
-	var (
-		current, later bool
-		earliestOpen   time.Time
-		lastEnd        time.Time
-		ended          bool
-	)
-	for _, e := range p.Employments {
+// accountSpan is the employments against today: whether one is current
+// (started, its end today or later), one is later (starts after today), and
+// the last end before today of the ended ones (ended false when none).
+func accountSpan(employments []decideEmployment, today time.Time) (current, later, ended bool, lastEnd, earliestOpen time.Time) {
+	for _, e := range employments {
 		start := decideDay(e.Start)
 		if e.End != nil && decideDay(*e.End).Before(today) {
 			if end := decideDay(*e.End); !ended || end.After(lastEnd) {
@@ -190,16 +188,42 @@ func accountPhaseOf(p accountPersonFacts, today time.Time, createBeforeDays int)
 			earliestOpen = start
 		}
 	}
+	return current, later, ended, lastEnd, earliestOpen
+}
+
+// accountFrom is the effective provisionFrom F the worker acts on, false
+// when there is none: the stored date, else the first day of the earliest
+// employment not ended by today (spec reading 14). Between employments — one
+// ended before today, none current, a later one to come — the later start
+// stands for F (spec: "as the row for F = S") unless the stored date falls
+// after the last ended employment, so is the later one's own (an early
+// provisionFrom honoured); a stored date from before then is the earlier
+// employment's and is not read. With every employment ended (or none) the
+// stored date is answered as stored.
+func accountFrom(provisionFrom *time.Time, employments []decideEmployment, today time.Time) (time.Time, bool) {
+	today = decideDay(today)
+	current, later, ended, lastEnd, earliestOpen := accountSpan(employments, today)
+	between := ended && !current && later
+	if provisionFrom != nil {
+		if stored := decideDay(*provisionFrom); !between || stored.After(lastEnd) {
+			return stored, true
+		}
+	}
+	if !current && !later {
+		return time.Time{}, false
+	}
+	return earliestOpen, true
+}
+
+// accountPhaseOf judges today against the employments (at least one) and F
+// (accountFrom), and reports whether the person is between employments.
+func accountPhaseOf(p accountPersonFacts, today time.Time, createBeforeDays int) (accountPhase, bool) {
+	current, later, ended, _, _ := accountSpan(p.Employments, today)
 	if !current && !later {
 		return phaseEnded, false
 	}
 	between := ended && !current
-	from := earliestOpen
-	if p.ProvisionFrom != nil {
-		if stored := decideDay(*p.ProvisionFrom); !between || stored.After(lastEnd) {
-			from = stored
-		}
-	}
+	from, _ := accountFrom(p.ProvisionFrom, p.Employments, today)
 	switch {
 	case !today.Before(from):
 		return phaseDue, between
@@ -210,15 +234,17 @@ func accountPhaseOf(p accountPersonFacts, today time.Time, createBeforeDays int)
 	}
 }
 
-// accountEnabled is whether a Deactivate would still disable ref's user: an
-// active user, a pending user no one disabled, and a user the directory
-// deactivated whom the worker has not yet disabled itself (identity's record
-// stays enabled while only the directory says inactive, and the ref cannot
-// tell, so the link's own state does).
-func accountEnabled(ref *contracts.AccountRef, linkState string) bool {
+// accountEnabled is whether a Deactivate may still be needed for ref's user:
+// an active user, a pending user no one disabled, and any user the directory
+// deactivated — the ref hides identity's own record behind the directory's
+// answer, so whether identity has disabled them is never inferred (not from
+// the link's state either: an Owner may have re-enabled them since, reading
+// 32). Deactivate disables identity's record whatever the directory says and
+// is idempotent; the worker's chain ends on the unchanged ref.
+func accountEnabled(ref *contracts.AccountRef) bool {
 	switch {
 	case ref.DisabledBy == contracts.DisabledByDirectory:
-		return linkState != linkStateDisabled
+		return true
 	case ref.State == contracts.AccountStateActive:
 		return true
 	case ref.State == contracts.AccountStatePending:
@@ -237,34 +263,37 @@ func accountEnabled(ref *contracts.AccountRef, linkState string) bool {
 //  3. No employment at all: report no_employment.
 //  4. A link naming a user: identity knows no such user — on HR's
 //     self-service link nothing, on the worker's report failed user_gone,
-//     never re-created (reading 18); the user not managed by Staff: nothing,
-//     the link recorded linked, not managed; identity's employee number not
-//     the person's (contracts.SameEmployeeNumber): report blocked mismatch
-//     and nothing else, not even at the end (B3).
+//     never re-created (reading 18); the user not managed by Staff — on
+//     HR's self-service link nothing, the link recorded linked; on the
+//     worker's report account_not_managed, the link's state kept;
+//     identity's employee number neither the person's nor the one last
+//     synced to identity (contracts.SameEmployeeNumber): report blocked
+//     mismatch and nothing else, not even at the end (B3).
 //  5. Every employment ended (T > E, none later): deactivate a user who is
-//     still enabled — the address need not be present, and identity disables
-//     whatever the directory says; otherwise nothing.
-//  6. Between employments, before the later one's start: deactivate a user
-//     the earlier one left enabled.
+//     still enabled — the address need not be present — and a user the
+//     directory deactivated every run, since identity disables its own
+//     record whatever the directory says; otherwise nothing.
+//  6. Between employments, before the later one is due: the same.
 //  7. Federated mode and a pending user with no credential (created in
 //     local mode): report mode_changed (reading 30), nothing else.
-//  8. Before the window (T < F − createBeforeDays): nothing.
+//  8. Before the window (T < F − createBeforeDays) with no user: nothing.
 //  9. The address the flag names missing: report account_email_missing.
 //  10. No user yet: prepare (federated: find).
-//  11. Due (T ≥ F) — the user's state: the directory deactivated them,
-//     nothing (the directory decides); disabled by an Owner (or by no one
-//     recorded), report blocked — blocked_by_owner for a user still
-//     pending (the activation refused), disabled_by_owner otherwise; disabled by Staff,
-//     activate (a rehire; federated re-enables only); pending and disabled
-//     by Staff, activate (local); pending and enabled with no credential,
-//     by the invitation — active nothing, revoked by an Owner
-//     invitation_revoked and exhausted invitation_unanswered unless the run
-//     is fresh, else activate.
+//  11. The user's state (before T ≥ F the same, but never an activate): the
+//     directory deactivated them, nothing (the directory decides); disabled
+//     by an Owner (or by no one recorded), report blocked —
+//     blocked_by_owner for a user still pending (the activation refused),
+//     disabled_by_owner otherwise; disabled by Staff, activate (a rehire;
+//     federated re-enables only); pending and disabled by Staff, activate
+//     (local); pending and enabled with no credential, by the invitation —
+//     active nothing, revoked by an Owner invitation_revoked and exhausted
+//     invitation_unanswered unless the run is fresh, else activate.
 //  12. The spec: a pending user whose address differs, update (local — the
 //     address is written while pending); a non-pending user's differing
 //     address, report email_differs (local; in federated mode the identity
 //     provider owns it), riding with an update when the spec changed; the
-//     spec changed, update.
+//     spec changed, or identity holds the synced number of a person HR
+//     renumbered, update.
 func decide(in accountDecision) accountStep {
 	none := accountStep{Kind: accountStepNone}
 	p := in.Person
@@ -284,16 +313,19 @@ func decide(in accountDecision) accountStep {
 			return none
 		case ref == nil:
 			return accountStep{Kind: accountStepReport, Reason: reasonUserGone, State: linkStateFailed}
-		case !ref.Managed:
+		case !ref.Managed && in.Link.State == linkStateLinked:
 			return accountStep{Kind: accountStepNone, State: linkStateLinked}
-		case !contracts.SameEmployeeNumber(ref.EmployeeNumber, p.EmployeeNumber):
+		case !ref.Managed:
+			return accountStep{Kind: accountStepReport, Reason: reasonNotManaged}
+		case !contracts.SameEmployeeNumber(ref.EmployeeNumber, p.EmployeeNumber) &&
+			!contracts.SameEmployeeNumber(ref.EmployeeNumber, in.Link.SyncedEmployeeNumber):
 			return accountStep{Kind: accountStepReport, Reason: reasonMismatch, State: linkStateBlocked}
 		}
 	}
 
 	phase, between := accountPhaseOf(p, today, in.CreateBeforeDays)
 	if phase == phaseEnded || (between && phase != phaseDue) {
-		if hasUser && accountEnabled(ref, in.Link.State) {
+		if hasUser && accountEnabled(ref) {
 			return accountStep{Kind: accountStepDeactivate}
 		}
 		if phase == phaseEnded {
@@ -304,7 +336,7 @@ func decide(in accountDecision) accountStep {
 	if federated && pending && !ref.HasCredential {
 		return accountStep{Kind: accountStepReport, Reason: reasonModeChanged, State: linkStatePending}
 	}
-	if phase == phaseBefore {
+	if phase == phaseBefore && !hasUser {
 		return none
 	}
 	if !p.AddressPresent {
@@ -313,15 +345,17 @@ func decide(in accountDecision) accountStep {
 	if !hasUser {
 		return accountStep{Kind: accountStepPrepare}
 	}
-	if phase == phaseDue {
-		if step := decideDue(in, ref, pending); step.Kind != accountStepNone {
-			return step
-		}
+	// Before T ≥ F nothing is activated; every report and the update still
+	// apply.
+	if step := decideDue(in, ref, pending); step.Kind != accountStepNone &&
+		(phase == phaseDue || step.Kind != accountStepActivate) {
+		return step
 	}
 	return decideSpec(in, ref, pending)
 }
 
-// decideDue is row 11 of decide: the user's state once the account is due.
+// decideDue is row 11 of decide: the user's state, as it stands once the
+// account is due (decide drops an activate before then).
 func decideDue(in accountDecision, ref *contracts.AccountRef, pending bool) accountStep {
 	none := accountStep{Kind: accountStepNone}
 	activate := accountStep{Kind: accountStepActivate, Fresh: in.Fresh}
@@ -375,7 +409,9 @@ func decideDue(in accountDecision, ref *contracts.AccountRef, pending bool) acco
 // decideSpec is row 12 of decide: what the user's details need.
 func decideSpec(in accountDecision, ref *contracts.AccountRef, pending bool) accountStep {
 	federated := in.Mode == contracts.AccountModeFederated
-	changed := in.Link.SpecChanged
+	// A person HR renumbered: identity still holds the synced number, which
+	// the update rewrites (the owner's answer 1: the number still syncs).
+	changed := in.Link.SpecChanged || !contracts.SameEmployeeNumber(ref.EmployeeNumber, in.Person.EmployeeNumber)
 	switch {
 	case !federated && pending && ref.EmailDiffers:
 		return accountStep{Kind: accountStepUpdate}
