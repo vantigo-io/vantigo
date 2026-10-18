@@ -12,7 +12,7 @@ import { request } from "./request";
 export type ImportState = "draft" | "checking" | "checked" | "importing" | "done";
 export type ImportMode = "create" | "update" | "createOrUpdate";
 export type ImportMatchBy = "customerNumber" | "legalId";
-export type ImportRowOutcome = "created" | "updated" | "failed";
+export type ImportRowOutcome = "created" | "updated" | "failed" | "skipped";
 
 /** One field of the mapping: read from a column of the file, or one value for every row. */
 export interface ImportMappingColumn {
@@ -56,6 +56,7 @@ export interface CustomerImport {
   created: number;
   updated: number;
   failed: number;
+  skipped: number;
   stopRequested: boolean;
   error: string | null;
   createdAt: string;

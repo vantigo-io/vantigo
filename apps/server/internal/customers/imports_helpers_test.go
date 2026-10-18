@@ -36,6 +36,7 @@ type importJSON struct {
 	Created       int                   `json:"created"`
 	Updated       int                   `json:"updated"`
 	Failed        int                   `json:"failed"`
+	Skipped       int                   `json:"skipped"`
 	StopRequested bool                  `json:"stopRequested"`
 	Error         string                `json:"error"`
 	CreatedByName string                `json:"createdByName"`

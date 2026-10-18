@@ -1272,10 +1272,10 @@ for column by the one who downloaded it is a mapping the import accepts.
 `customers.imports` is one import — its state, the file's name, size, encoding and
 separator, its header as written, its row count, the mapping, the counts and the
 times — and `customers.import_rows` its rows: each row's cells as the reader left
-them, and, once the worker has run it, its outcome (`created`, `updated` or
-`failed`), the customer it made or changed, and its errors (`[{column, message}]`,
+them, and, once the worker has run it, its outcome (`created`, `updated`, `failed`
+or `skipped`), the customer it made or changed, and its errors (`[{column, message}]`,
 `column` the file's 0-based column index, absent for a problem with the row as a
-whole). The upload parses the file **once** and writes the rows with `CopyFrom`
+whole; a skipped row's one entry is the row-level "Same customer as row N."). The upload parses the file **once** and writes the rows with `CopyFrom`
 in the transaction that creates the import; nothing reads the bytes again, and the
 bytes are not kept — the rows are the file. The database rather than the object
 store, because the worker reads by row, resumes by row and writes a result beside
@@ -1360,9 +1360,17 @@ country and id, defaults applied — the duplicate guard's own query, every stat
 included). In `update`, a row that finds nobody is refused. In `createOrUpdate`, a
 row with a **blank** key creates, a legal id nobody holds creates, and a customer
 number nobody has is refused — a typo, never a customer with another number. **More
-than one** holder of a legal id is the row's error naming them. Two rows of the file
-with one legal identity are refused on the second in every mode; a matched customer
-that is merged away or anonymised is refused; `type` may not change by import.
+than one** holder of a legal id is the row's error naming them. A row that repeats
+an earlier row's legal identity (country and id, the default country applied) is
+**skipped** when every mapped cell — compared trimmed, a fixed value equal by
+definition, an unmapped column free to differ — is equal to that earlier row's: the
+same customer listed again, as a supplier's export lists a customer once per
+metering point. Its outcome is `skipped` with the message "Same customer as row N."
+(N the first row with that identity), it is neither written nor counted as failed,
+and it is not in the failed-rows file. A repeat that differs in any mapped cell is
+refused, in every mode and whether or not `allowDuplicateIdentity` is set; a matched
+customer that is merged away or anonymised is refused; `type` may not change by
+import.
 
 **Suggestions.** The upload answers, and every read repeats, a `suggested` mapping
 in three tiers, the first that fits a column winning and a field taken by the first
@@ -1372,8 +1380,11 @@ the field's own JSON name; and an alias table of the words these files use
 (`navn`, `kundenummer`, `orgnr`, `e-post`, `telefon`, `adresse`, `postnummer`,
 `poststed`, `land`, `fakturaepost`, `betalingsbetingelser`, `valuta`,
 `kundegruppe`, `stikkord`, …), matched after lowercasing and dropping everything but
-letters and digits. The default mode is `createOrUpdate` by `customerNumber` when a
-customer-number column was suggested, otherwise `create`.
+letters and digits. The default mode is `createOrUpdate` matched by `legalId` when a
+legal-id column was suggested — whether or not a customer-number column was too,
+since another system's export carries that system's customer numbers, which no
+customer here has; `createOrUpdate` by `customerNumber` when a customer-number column
+was suggested and no legal-id column; otherwise `create`.
 
 **Validating the mapping** (400 on `mode`, `matchBy` or `columns`): a mode or match
 key outside the enum, a mode that matches without its match column mapped, an
@@ -1413,8 +1424,9 @@ draft ──check──▶ checking ──(worker)──▶ checked ──run─
   again), clears the rows' results and queues the check; the worker runs every row
   exactly as the real run would, each in its own transaction rolled back at its end
   — no customer, no number, no event kept — and writes each row's outcome and errors
-  after it. Two rows creating one legal identity are refused on the second in both
-  runs (a pass over the file before any row runs); otherwise a dry run cannot see an
+  after it. A row repeating an earlier row's legal identity is skipped or refused
+  (above) in both runs alike, by a pass over the file before any row runs; otherwise
+  a dry run cannot see an
   earlier row's effect on a later one, and the real run refuses the later row
   cleanly, as that row's error.
 - `POST …/run` on a `checked` import with `created + updated > 0` clears the rows'
@@ -1437,7 +1449,7 @@ draft ──check──▶ checking ──(worker)──▶ checked ──run─
   the run stood; it is never silently dropped, and the page shows it.
 
 The counts on the import are the worker's progress while it runs (`processed`,
-`created`, `updated`, `failed`, written after every chunk) and the totals recounted
+`created`, `updated`, `failed`, `skipped`, written after every chunk) and the totals recounted
 from the rows once it has finished. `requestedAt` is when the check or the run was
 asked for, `startedAt` when the worker took it up, `finishedAt` when it ended.
 
@@ -1472,7 +1484,7 @@ exists.
 
 ### Rows and the failed-rows file
 
-`GET …/rows?outcome=failed|created|updated&page&pageSize` (page size 1–500, default
+`GET …/rows?outcome=failed|created|updated|skipped&page&pageSize` (page size 1–500, default
 50) is the rows in file order, every one or those of one outcome, each with its
 cells, outcome, errors and the customer's id and number — the errors table after a
 check, the created customers after a run. `GET …/failed-rows` is the failed rows as

@@ -22,13 +22,14 @@ import "../i18n";
 
 export type { ImportCapabilities } from "./-import-mapping-step";
 
-/** The four figures a result shows, worded for a check or for a run. */
+/** The figures a result shows, worded for a check or for a run. */
 const Figures = ({ imp, done }: { imp: CustomerImport; done: boolean }) => {
   const { t, formatters } = useI18n("customers");
   const figures = [
     { label: t("importCountRows"), value: imp.rows },
     { label: t(done ? "importCountCreated" : "importCountWouldCreate"), value: imp.created },
     { label: t(done ? "importCountUpdated" : "importCountWouldUpdate"), value: imp.updated },
+    { label: t(done ? "importCountSkipped" : "importCountWouldSkip"), value: imp.skipped },
     { label: t(done ? "importCountFailed" : "importCountHaveErrors"), value: imp.failed },
   ];
   if (done && imp.processed < imp.rows) {
@@ -124,6 +125,7 @@ const CheckResult = ({ imp }: { imp: CustomerImport }) => {
         <Figures imp={imp} done={false} />
         {imp.failed > 0 && <ImportRowsTable imp={imp} outcome="failed" />}
         <DownloadFailedRows imp={imp} />
+        {imp.skipped > 0 && <ImportRowsTable imp={imp} outcome="skipped" />}
         <Group justify="flex-end">
           <Button variant="default" loading={backToMapping.isPending} onClick={() => backToMapping.mutate()}>
             {t("importChangeMapping")}
@@ -155,6 +157,7 @@ const DoneResult = ({ imp }: { imp: CustomerImport }) => {
         <DownloadFailedRows imp={imp} />
         {imp.created > 0 && <ImportRowsTable imp={imp} outcome="created" />}
         {imp.updated > 0 && <ImportRowsTable imp={imp} outcome="updated" />}
+        {imp.skipped > 0 && <ImportRowsTable imp={imp} outcome="skipped" />}
         <Group justify="flex-end">
           <Button component={Link} to="/customers/import" variant="default">
             {t("importStartAnother")}

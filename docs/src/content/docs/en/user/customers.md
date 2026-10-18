@@ -326,20 +326,29 @@ customer list to open **Import customers**.
    which customer field it becomes, or leave it **Not imported**. Vantigo suggests a
    field for common names such as *Kundenr*, *Org.nr*, *E-post* or *Postnummer*, and
    remembers the choices you made for a file with the same columns. When your file
+   has an organisation number column, Vantigo suggests **Create and update** and
+   finding the customer by **Organisation number**, even if the file also has a
+   customer number — another system's customer numbers are not Vantigo's. When your file
    lacks a field every customer needs, use **Add a value for every row** to set one
    value for all of them — a country, a status, a currency, or a group or tag that
    marks the batch. The **Preview** shows the first rows as they will be read, with
    any problem marked. Your choices are saved as you make them.
 3. **Check file.** Every row is tried exactly as the import would, without saving
    anything. A progress bar shows how far it has come, and **Stop** cancels it. The
-   result is **Rows**, **Would be created**, **Would be updated** and **Have errors**,
-   with each problem by **Row** and **Column**. **Change mapping** takes you back to
-   step 2.
+   result is **Rows**, **Would be created**, **Would be updated**, **Would be
+   skipped** and **Have errors**, with each problem by **Row** and **Column**. A row
+   that repeats an earlier row's organisation number with the same values in every
+   mapped column is the same customer listed again — a supplier's file lists a
+   customer once for every metering point — and is skipped with *Same customer as row
+   N.*, not counted as an error. A repeat with a different value in a mapped column
+   is an error. **Change mapping** takes you back to step 2.
 4. **Import** saves the rows, after a confirmation that says how many customers will
    be created and updated. You can leave the page and come back: the import runs in
    the background, and the page shows its progress. **Stop** keeps the rows already
    saved and does not attempt the rest. When it is done the page shows **Created**,
-   **Updated** and **Failed**, and lists the new customers as links.
+   **Updated**, **Skipped** and **Failed**, and lists the new customers as links and
+   the skipped rows with the row each repeats. Skipped rows are not in the failed
+   rows file.
 
 When rows fail, **Download failed rows** gives you exactly those rows, with your own
 columns and an error column in front. Fix them and upload that file: your mapping is

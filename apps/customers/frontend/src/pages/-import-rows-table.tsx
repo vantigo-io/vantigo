@@ -13,8 +13,9 @@ const PAGE_SIZE = 50;
 /**
  * An import's rows of one outcome (customers import wizard design D8), a page
  * at a time: the failed rows as the errors table — the row, the column as the
- * file spells it, the problem — and the created or updated rows with each
- * customer as a link, the onboarding's "did it work?" answered by opening one.
+ * file spells it, the problem — the created or updated rows with each
+ * customer as a link, the onboarding's "did it work?" answered by opening one,
+ * and the skipped rows with the earlier row each repeats.
  */
 export const ImportRowsTable = ({ imp, outcome }: { imp: CustomerImport; outcome: ImportRowOutcome }) => {
   const { t } = useI18n("customers");
@@ -33,6 +34,8 @@ export const ImportRowsTable = ({ imp, outcome }: { imp: CustomerImport; outcome
 
   const nameColumn = imp.mapping?.columns.find((c) => c.field === "name" && c.column != null)?.column;
   const failed = outcome === "failed";
+  const skipped = outcome === "skipped";
+  const nameOf = (cells: string[]) => (nameColumn != null ? (cells[nameColumn] ?? "") : (cells[0] ?? ""));
   return (
     <Stack gap="sm">
       <Table.ScrollContainer minWidth={600}>
@@ -45,6 +48,11 @@ export const ImportRowsTable = ({ imp, outcome }: { imp: CustomerImport; outcome
                 <>
                   <Table.Th>{t("importErrorColumn")}</Table.Th>
                   <Table.Th>{t("importErrorMessage")}</Table.Th>
+                </>
+              ) : skipped ? (
+                <>
+                  <Table.Th>{t("name")}</Table.Th>
+                  <Table.Th>{t("importSkippedReason")}</Table.Th>
                 </>
               ) : (
                 <>
@@ -65,6 +73,12 @@ export const ImportRowsTable = ({ imp, outcome }: { imp: CustomerImport; outcome
                     <Table.Td>{e.message}</Table.Td>
                   </Table.Tr>
                 ))
+              ) : skipped ? (
+                <Table.Tr key={row.row}>
+                  <Table.Td>{row.row}</Table.Td>
+                  <Table.Td>{nameOf(row.cells)}</Table.Td>
+                  <Table.Td>{row.errors.map((e) => e.message).join(" ")}</Table.Td>
+                </Table.Tr>
               ) : (
                 <Table.Tr key={row.row}>
                   <Table.Td>{row.row}</Table.Td>
@@ -77,7 +91,7 @@ export const ImportRowsTable = ({ imp, outcome }: { imp: CustomerImport; outcome
                       "—"
                     )}
                   </Table.Td>
-                  <Table.Td>{nameColumn != null ? (row.cells[nameColumn] ?? "") : (row.cells[0] ?? "")}</Table.Td>
+                  <Table.Td>{nameOf(row.cells)}</Table.Td>
                 </Table.Tr>
               ),
             )}

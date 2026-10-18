@@ -31,7 +31,7 @@ FROM customers.imports;
 -- counts are reset with the state, so a draft never shows a stale check.
 -- name: SetImportMapping :execrows
 UPDATE customers.imports
-SET mapping = $2, state = 'draft', processed = 0, created = 0, updated = 0, failed = 0,
+SET mapping = $2, state = 'draft', processed = 0, created = 0, updated = 0, failed = 0, skipped = 0,
     requested_at = NULL, started_at = NULL, finished_at = NULL, error = NULL, stop_requested = false,
     updated_at = $3
 WHERE id = $1 AND state IN ('draft', 'checked');
@@ -44,7 +44,7 @@ WHERE import_id = $1;
 -- name: RequestImportCheck :execrows
 UPDATE customers.imports
 SET state = 'checking', requested_at = $2, started_at = NULL, finished_at = NULL, error = NULL,
-    stop_requested = false, processed = 0, created = 0, updated = 0, failed = 0, updated_at = $2
+    stop_requested = false, processed = 0, created = 0, updated = 0, failed = 0, skipped = 0, updated_at = $2
 WHERE id = $1 AND state IN ('draft', 'checked') AND mapping IS NOT NULL;
 
 -- The check's counts stay until the worker starts (it writes its own as it
@@ -93,13 +93,13 @@ WHERE id = $1;
 
 -- name: UpdateImportProgress :exec
 UPDATE customers.imports
-SET processed = $2, created = $3, updated = $4, failed = $5, updated_at = $6
+SET processed = $2, created = $3, updated = $4, failed = $5, skipped = $6, updated_at = $7
 WHERE id = $1;
 
 -- name: FinishImport :exec
 UPDATE customers.imports
-SET state = $2, processed = $3, created = $4, updated = $5, failed = $6,
-    finished_at = $7, stop_requested = false, error = NULL, updated_at = $8
+SET state = $2, processed = $3, created = $4, updated = $5, failed = $6, skipped = $7,
+    finished_at = $8, stop_requested = false, error = NULL, updated_at = $9
 WHERE id = $1;
 
 -- name: FailImport :exec
@@ -112,7 +112,8 @@ SELECT
     count(*) FILTER (WHERE outcome IS NOT NULL)      AS processed,
     count(*) FILTER (WHERE outcome = 'created')      AS created,
     count(*) FILTER (WHERE outcome = 'updated')      AS updated,
-    count(*) FILTER (WHERE outcome = 'failed')       AS failed
+    count(*) FILTER (WHERE outcome = 'failed')       AS failed,
+    count(*) FILTER (WHERE outcome = 'skipped')      AS skipped
 FROM customers.import_rows
 WHERE import_id = $1;
 
@@ -132,6 +133,13 @@ SELECT row_no, COALESCE((cells[@id_column::int])::text, '')::text AS legal_id, C
 FROM customers.import_rows
 WHERE import_id = $1
 ORDER BY row_no;
+
+-- The duplicate pass's comparison: the cells of the earlier row a repeat is
+-- compared with.
+-- name: ImportRowCells :one
+SELECT cells
+FROM customers.import_rows
+WHERE import_id = $1 AND row_no = $2;
 
 -- name: WriteImportRowOutcome :exec
 UPDATE customers.import_rows

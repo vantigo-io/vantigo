@@ -67,6 +67,7 @@ export const ImportProgress = ({ imp, now = () => Date.now() }: { imp: CustomerI
             {t("importProgressCounts", {
               created: formatters.formatNumber(imp.created),
               updated: formatters.formatNumber(imp.updated),
+              skipped: formatters.formatNumber(imp.skipped),
               failed: formatters.formatNumber(imp.failed),
             })}
           </Text>

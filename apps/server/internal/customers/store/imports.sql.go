@@ -118,8 +118,8 @@ func (q *Queries) FailedImportRows(ctx context.Context, importID int32) ([]Faile
 
 const finishImport = `-- name: FinishImport :exec
 UPDATE customers.imports
-SET state = $2, processed = $3, created = $4, updated = $5, failed = $6,
-    finished_at = $7, stop_requested = false, error = NULL, updated_at = $8
+SET state = $2, processed = $3, created = $4, updated = $5, failed = $6, skipped = $7,
+    finished_at = $8, stop_requested = false, error = NULL, updated_at = $9
 WHERE id = $1
 `
 
@@ -130,6 +130,7 @@ type FinishImportParams struct {
 	Created    int32
 	Updated    int32
 	Failed     int32
+	Skipped    int32
 	FinishedAt *time.Time
 	UpdatedAt  time.Time
 }
@@ -142,6 +143,7 @@ func (q *Queries) FinishImport(ctx context.Context, arg FinishImportParams) erro
 		arg.Created,
 		arg.Updated,
 		arg.Failed,
+		arg.Skipped,
 		arg.FinishedAt,
 		arg.UpdatedAt,
 	)
@@ -149,7 +151,7 @@ func (q *Queries) FinishImport(ctx context.Context, arg FinishImportParams) erro
 }
 
 const getImport = `-- name: GetImport :one
-SELECT id, state, file_name, size_bytes, encoding, separator, header, row_count, mapping, processed, created, updated, failed, stop_requested, error, created_by_user_id, created_by_name, created_at, updated_at, requested_at, started_at, finished_at
+SELECT id, state, file_name, size_bytes, encoding, separator, header, row_count, mapping, processed, created, updated, failed, stop_requested, error, created_by_user_id, created_by_name, created_at, updated_at, requested_at, started_at, finished_at, skipped
 FROM customers.imports
 WHERE id = $1
 `
@@ -180,8 +182,29 @@ func (q *Queries) GetImport(ctx context.Context, id int32) (CustomersImport, err
 		&i.RequestedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Skipped,
 	)
 	return i, err
+}
+
+const importRowCells = `-- name: ImportRowCells :one
+SELECT cells
+FROM customers.import_rows
+WHERE import_id = $1 AND row_no = $2
+`
+
+type ImportRowCellsParams struct {
+	ImportID int32
+	RowNo    int32
+}
+
+// The duplicate pass's comparison: the cells of the earlier row a repeat is
+// compared with.
+func (q *Queries) ImportRowCells(ctx context.Context, arg ImportRowCellsParams) ([]string, error) {
+	row := q.db.QueryRow(ctx, importRowCells, arg.ImportID, arg.RowNo)
+	var cells []string
+	err := row.Scan(&cells)
+	return cells, err
 }
 
 const importRowCounts = `-- name: ImportRowCounts :one
@@ -189,7 +212,8 @@ SELECT
     count(*) FILTER (WHERE outcome IS NOT NULL)      AS processed,
     count(*) FILTER (WHERE outcome = 'created')      AS created,
     count(*) FILTER (WHERE outcome = 'updated')      AS updated,
-    count(*) FILTER (WHERE outcome = 'failed')       AS failed
+    count(*) FILTER (WHERE outcome = 'failed')       AS failed,
+    count(*) FILTER (WHERE outcome = 'skipped')      AS skipped
 FROM customers.import_rows
 WHERE import_id = $1
 `
@@ -199,6 +223,7 @@ type ImportRowCountsRow struct {
 	Created   int64
 	Updated   int64
 	Failed    int64
+	Skipped   int64
 }
 
 func (q *Queries) ImportRowCounts(ctx context.Context, importID int32) (ImportRowCountsRow, error) {
@@ -209,6 +234,7 @@ func (q *Queries) ImportRowCounts(ctx context.Context, importID int32) (ImportRo
 		&i.Created,
 		&i.Updated,
 		&i.Failed,
+		&i.Skipped,
 	)
 	return i, err
 }
@@ -466,7 +492,7 @@ func (q *Queries) LatestImportMappingForHeader(ctx context.Context, header []str
 }
 
 const listImports = `-- name: ListImports :many
-SELECT id, state, file_name, size_bytes, encoding, separator, header, row_count, mapping, processed, created, updated, failed, stop_requested, error, created_by_user_id, created_by_name, created_at, updated_at, requested_at, started_at, finished_at
+SELECT id, state, file_name, size_bytes, encoding, separator, header, row_count, mapping, processed, created, updated, failed, stop_requested, error, created_by_user_id, created_by_name, created_at, updated_at, requested_at, started_at, finished_at, skipped
 FROM customers.imports
 ORDER BY updated_at DESC, id DESC
 LIMIT $1 OFFSET $2
@@ -509,6 +535,7 @@ func (q *Queries) ListImports(ctx context.Context, arg ListImportsParams) ([]Cus
 			&i.RequestedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.Skipped,
 		); err != nil {
 			return nil, err
 		}
@@ -521,7 +548,7 @@ func (q *Queries) ListImports(ctx context.Context, arg ListImportsParams) ([]Cus
 }
 
 const nextQueuedImport = `-- name: NextQueuedImport :one
-SELECT id, state, file_name, size_bytes, encoding, separator, header, row_count, mapping, processed, created, updated, failed, stop_requested, error, created_by_user_id, created_by_name, created_at, updated_at, requested_at, started_at, finished_at
+SELECT id, state, file_name, size_bytes, encoding, separator, header, row_count, mapping, processed, created, updated, failed, stop_requested, error, created_by_user_id, created_by_name, created_at, updated_at, requested_at, started_at, finished_at, skipped
 FROM customers.imports
 WHERE state IN ('checking', 'importing')
 ORDER BY requested_at, id
@@ -555,6 +582,7 @@ func (q *Queries) NextQueuedImport(ctx context.Context) (CustomersImport, error)
 		&i.RequestedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Skipped,
 	)
 	return i, err
 }
@@ -562,7 +590,7 @@ func (q *Queries) NextQueuedImport(ctx context.Context) (CustomersImport, error)
 const requestImportCheck = `-- name: RequestImportCheck :execrows
 UPDATE customers.imports
 SET state = 'checking', requested_at = $2, started_at = NULL, finished_at = NULL, error = NULL,
-    stop_requested = false, processed = 0, created = 0, updated = 0, failed = 0, updated_at = $2
+    stop_requested = false, processed = 0, created = 0, updated = 0, failed = 0, skipped = 0, updated_at = $2
 WHERE id = $1 AND state IN ('draft', 'checked') AND mapping IS NOT NULL
 `
 
@@ -652,7 +680,7 @@ func (q *Queries) RevertUnstartedImport(ctx context.Context, arg RevertUnstarted
 
 const setImportMapping = `-- name: SetImportMapping :execrows
 UPDATE customers.imports
-SET mapping = $2, state = 'draft', processed = 0, created = 0, updated = 0, failed = 0,
+SET mapping = $2, state = 'draft', processed = 0, created = 0, updated = 0, failed = 0, skipped = 0,
     requested_at = NULL, started_at = NULL, finished_at = NULL, error = NULL, stop_requested = false,
     updated_at = $3
 WHERE id = $1 AND state IN ('draft', 'checked')
@@ -708,7 +736,7 @@ func (q *Queries) SweepImports(ctx context.Context, updatedAt time.Time) (int64,
 
 const updateImportProgress = `-- name: UpdateImportProgress :exec
 UPDATE customers.imports
-SET processed = $2, created = $3, updated = $4, failed = $5, updated_at = $6
+SET processed = $2, created = $3, updated = $4, failed = $5, skipped = $6, updated_at = $7
 WHERE id = $1
 `
 
@@ -718,6 +746,7 @@ type UpdateImportProgressParams struct {
 	Created   int32
 	Updated   int32
 	Failed    int32
+	Skipped   int32
 	UpdatedAt time.Time
 }
 
@@ -728,6 +757,7 @@ func (q *Queries) UpdateImportProgress(ctx context.Context, arg UpdateImportProg
 		arg.Created,
 		arg.Updated,
 		arg.Failed,
+		arg.Skipped,
 		arg.UpdatedAt,
 	)
 	return err

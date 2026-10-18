@@ -96,9 +96,11 @@ var aliasIndex = func() map[string]string {
 // suggestMapping is the mapping the page starts from (design D3): previous is
 // the mapping last saved on an import with this very header, nil when none;
 // otherwise each column's header looked up in the alias index, a field taken
-// by the first column that claims it. The mode is createOrUpdate by
-// customerNumber when a customer-number column was found, otherwise create —
-// the day-one case.
+// by the first column that claims it. The mode is createOrUpdate matched by
+// legalId when a legal-id column was found — whether or not a customer number
+// was too, since another system's export carries that system's numbers, which
+// no customer here has — else by customerNumber when a customer-number column
+// was found, otherwise create — the day-one case.
 func suggestMapping(header []string, previous *gen.CustomerImportMapping) gen.CustomerImportMapping {
 	if previous != nil {
 		return *previous
@@ -115,7 +117,12 @@ func suggestMapping(header []string, previous *gen.CustomerImportMapping) gen.Cu
 		columns = append(columns, gen.CustomerImportMappingColumn{Field: field, Column: &column})
 	}
 	mapping := gen.CustomerImportMapping{Mode: gen.Create, Columns: columns}
-	if taken["customerNumber"] {
+	switch {
+	case taken["legalId"]:
+		matchBy := gen.LegalId
+		mapping.Mode = gen.CreateOrUpdate
+		mapping.MatchBy = &matchBy
+	case taken["customerNumber"]:
 		matchBy := gen.CustomerNumber
 		mapping.Mode = gen.CreateOrUpdate
 		mapping.MatchBy = &matchBy

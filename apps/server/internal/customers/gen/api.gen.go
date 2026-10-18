@@ -91,6 +91,7 @@ func (e CustomerImportMappingMode) Valid() bool {
 const (
 	Created CustomerImportRowOutcome = "created"
 	Failed  CustomerImportRowOutcome = "failed"
+	Skipped CustomerImportRowOutcome = "skipped"
 	Updated CustomerImportRowOutcome = "updated"
 )
 
@@ -100,6 +101,8 @@ func (e CustomerImportRowOutcome) Valid() bool {
 	case Created:
 		return true
 	case Failed:
+		return true
+	case Skipped:
 		return true
 	case Updated:
 		return true
@@ -377,7 +380,7 @@ type CustomerGroupSummary struct {
 	Name                    string             `json:"name"`
 }
 
-// CustomerImport An import of customers from a file (customers import wizard design D1, D5, D7). state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run) or done (final; finishedAt set — and, when it was stopped, processed short of rows and the rest never attempted). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written, a nameless column an empty string; sample the first twenty rows, each with the errors its cells get under the saved mapping (none when there is no mapping yet). mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated and failed are the worker's progress while it runs and the recounted totals once it has finished. error is a whole-run failure the worker met and will retry next cycle, with the run where it stood. createdByName is the uploader's display name through the user directory, absent when the account is gone. requestedAt is when the check or the run was asked for, startedAt when the worker took it up.
+// CustomerImport An import of customers from a file (customers import wizard design D1, D5, D7). state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run) or done (final; finishedAt set — and, when it was stopped, processed short of rows and the rest never attempted). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written, a nameless column an empty string; sample the first twenty rows, each with the errors its cells get under the saved mapping (none when there is no mapping yet). mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated, failed and skipped are the worker's progress while it runs and the recounted totals once it has finished; skipped counts the rows that repeat an earlier row's legal identity with every mapped cell equal to that row's — the same customer listed again, neither written nor failed. error is a whole-run failure the worker met and will retry next cycle, with the run where it stood. createdByName is the uploader's display name through the user directory, absent when the account is gone. requestedAt is when the check or the run was asked for, startedAt when the worker took it up.
 type CustomerImport struct {
 	Created       int32      `json:"created"`
 	CreatedAt     time.Time  `json:"createdAt"`
@@ -398,6 +401,7 @@ type CustomerImport struct {
 	Sample        []CustomerImportSampleRow `json:"sample"`
 	Separator     string                    `json:"separator"`
 	SizeBytes     int64                     `json:"sizeBytes"`
+	Skipped       int32                     `json:"skipped"`
 	StartedAt     *time.Time                `json:"startedAt,omitempty"`
 	State         CustomerImportState       `json:"state"`
 	StopRequested bool                      `json:"stopRequested"`
@@ -431,7 +435,7 @@ type CustomerImportMappingColumn struct {
 	Value  *string `json:"value,omitempty"`
 }
 
-// CustomerImportRow One row of an import with what the worker did with it (customers import wizard design D7). cells are the row's cells as the file had them; outcome is absent for a row not yet run; customerId and customerNumber name the customer a created or updated row made or changed; errors are a failed row's problems, each on a column of the file (the 0-based index) or on the row as a whole.
+// CustomerImportRow One row of an import with what the worker did with it (customers import wizard design D7). cells are the row's cells as the file had them; outcome is absent for a row not yet run; customerId and customerNumber name the customer a created or updated row made or changed; errors are a failed row's problems, each on a column of the file (the 0-based index) or on the row as a whole; a skipped row — one repeating an earlier row's legal identity with every mapped cell equal — carries one row-level entry naming that row ("Same customer as row N.").
 type CustomerImportRow struct {
 	Cells          []string                  `json:"cells"`
 	CustomerId     *int32                    `json:"customerId,omitempty"`
@@ -1208,7 +1212,7 @@ type PostCustomersImportsMultipartBody struct {
 
 // GetCustomersImportsByImportIdRowsParams defines parameters for GetCustomersImportsByImportIdRows.
 type GetCustomersImportsByImportIdRowsParams struct {
-	// Outcome created, updated or failed; absent for every row.
+	// Outcome created, updated, failed or skipped; absent for every row.
 	Outcome  *string `form:"outcome,omitempty" json:"outcome,omitempty"`
 	Page     *int32  `form:"page,omitempty" json:"page,omitempty"`
 	PageSize *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`

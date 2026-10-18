@@ -235,6 +235,7 @@ type CustomersImport struct {
 	RequestedAt     *time.Time
 	StartedAt       *time.Time
 	FinishedAt      *time.Time
+	Skipped         int32
 }
 
 type CustomersImportRow struct {
