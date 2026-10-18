@@ -374,7 +374,8 @@ func TestAccountsWorker_TwoCyclesAtOnce(t *testing.T) {
 // A lease another cycle holds is skipped until it lapses (five minutes),
 // then the link is claimed again.
 func TestAccountsWorker_ALapsedLeaseIsClaimedAgain(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): a seam or pool-of-one test runs alone (plan Global
+	// Constraints, "Races").
 	w := newAccountsWorld(t)
 	p := w.employee(t, "Lise", "2026-01-01", nil)
 	w.h.Exec(t, `INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, lease_id, lease_until, created_at, updated_at)
@@ -397,7 +398,8 @@ func TestAccountsWorker_ALapsedLeaseIsClaimedAgain(t *testing.T) {
 // after this one's lapsed — and writes nothing: the link and the history
 // are the other cycle's.
 func TestAccountsWorker_AResultOnAMovedLeaseIsRefused(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): a seam or pool-of-one test runs alone (plan Global
+	// Constraints, "Races").
 	w := newAccountsWorld(t)
 	p := w.employee(t, "Mona", "2026-01-01", nil)
 	w.fake.whenWriting(func(method string, _ uuid.UUID) {
@@ -453,7 +455,8 @@ func TestAccountsWorker_APersonDeletedMidPrepare(t *testing.T) {
 // is written, its events carry flagOffMeanwhile, and the next cycle does
 // nothing more.
 func TestAccountsWorker_TheFlagTurnedOffMeanwhile(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): a seam or pool-of-one test runs alone (plan Global
+	// Constraints, "Races").
 	w := newAccountsWorld(t)
 	w.h.Exec(t, `UPDATE staff.settings SET create_before_days = 0`)
 	p := w.employee(t, "Unn", today(t, w.h), nil)
@@ -481,7 +484,8 @@ func TestAccountsWorker_TheFlagTurnedOffMeanwhile(t *testing.T) {
 // asking for another would wait for itself; the deadline makes that a
 // failure.
 func TestAccountsWorker_ACycleOnAPoolOfOne(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): a seam or pool-of-one test runs alone (plan Global
+	// Constraints, "Races").
 	w := newAccountsWorld(t)
 	w.h.Exec(t, `UPDATE staff.settings SET create_before_days = 0`)
 	p := w.employee(t, "Ena", today(t, w.h), nil)
@@ -1064,7 +1068,8 @@ func TestAccountsWorker_ADeactivationIsRetriedAtEveryPoll(t *testing.T) {
 // The real provider on a pool of one (review LOW 8): identity's calls take
 // the one connection too, so the cycle must hold none while it calls.
 func TestAccountsWorker_ACycleOnAPoolOfOneAgainstIdentity(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): a seam or pool-of-one test runs alone (plan Global
+	// Constraints, "Races").
 	h := newHarness(t)
 	hr, _ := signIn(t, h, "staff:manage")
 	role := uuid.New()
