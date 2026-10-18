@@ -698,7 +698,7 @@ func TestAccountsWorker_ABlockedLinkRecovers(t *testing.T) {
 		t.Fatalf("the link = %+v, want blocked account_privileged", l)
 	}
 	ref := w.fake.user(user)
-	ref.Privileged = false
+	ref.Privileged, ref.EmployeeNumber = false, p.EmployeeNumber // the Owner's adoption names the number again
 	w.fake.setUser(ref)
 	setClock(t, w.h, osloAt("2026-09-13", 0))
 	w.cycle(t)

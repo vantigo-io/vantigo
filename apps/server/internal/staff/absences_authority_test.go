@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -223,5 +224,21 @@ func TestAbsences_OverlapProbesNoHROnlyRow(t *testing.T) {
 	}
 	if r := w.hr.Do(http.MethodPost, absencesPath, with(absence(t, h, "velferdspermisjon", "2026-11-03", "2026-11-03"), "personId", w.kari.Id)); r.Status != http.StatusConflict {
 		t.Errorf("a second day row over HR's own: %d, want 409 — rows the writer reads still overlap", r.Status)
+	}
+}
+
+// A correction refused across the HR-only line says what HR does instead
+// (re-check L-1): a registered row cannot be cancelled, so the detail names
+// removing it and entering the other.
+func TestAbsences_ACorrectionAcrossTheLineNamesRemoval(t *testing.T) {
+	t.Parallel()
+	w := newDecisionWorld(t)
+	h := w.h
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	visit := register(t, hrPD, w.kari.Id, absence(t, h, "helse", "2026-09-01", "2026-09-01", "hours", 2))
+	p := refused(t, hrPD.Do(http.MethodPost, correctPath(visit.Id), absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2),
+		ifMatchAs(t, hrPD, visit.Id)), http.StatusConflict, "absence_visibility_change")
+	if !strings.Contains(p.Detail, "remove") {
+		t.Errorf("the refusal's detail = %q, want it to name removing the absence", p.Detail)
 	}
 }

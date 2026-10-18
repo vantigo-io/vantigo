@@ -1088,8 +1088,9 @@ graderingen — med **Rett** (et godkjent) eller **Endre** (et registrert) på p
 får e-post om en retting. Et avgjort fravær som har begynt, trekkes bare tilbake av HR.
 Verken en endring eller en retting gjør en HR-type om til en annen type, eller omvendt
 (`absence_visibility_change`): de avgjøres og ses av forskjellige personer. For å rette et
-fravær lagt inn som feil slags fravær, trykker du **Trekk tilbake fraværet** og legger inn det
-andre på nytt.
+fravær lagt inn som feil slags fravær, trekker du det tilbake (**Trekk tilbake fraværet**) —
+eller, et registrert fravær, som ikke kan trekkes tilbake, fjerner du det
+(`DELETE /absences/{id}`) — og legger inn det andre på nytt.
 
 ## E-postene om fravær
 

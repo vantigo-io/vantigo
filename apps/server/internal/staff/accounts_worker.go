@@ -957,9 +957,13 @@ var errAccountMismatch = errors.New("staff: the link's user carries another empl
 // Disable now's own, and the worker's while the marker stands: the user as
 // identity reports them first. A user gone, or disabled in identity's own
 // record already (by an Owner meanwhile, say; a directory's deactivation is
-// not that), clears the request with no call. A user carrying another
-// employee number than the person's, or than the one last synced, is
-// someone else's account (decide's rule): nothing is called, the link is
+// not that), clears the request with no call. A privileged or unmanaged
+// user is identity's to refuse — Deactivate answers account_privileged or
+// account_not_managed — and is judged before the number, as decide judges:
+// identity holds no number for either, so the number check would take every
+// one of them for someone else's account (re-check of 032ed2ca). A managed
+// user carrying another employee number than the person's, or than the one
+// last synced, is someone else's account (decide's rule): nothing is called, the link is
 // blocked mismatch and the request kept, so the disable runs once HR has put
 // the number right. Otherwise Deactivate (deactivateClaimed). It answers how
 // the claim ended and the error the caller reports: the read's or the call's,
@@ -984,7 +988,8 @@ func (s *server) finishRequestedDisable(ctx context.Context, run accountsRun, r 
 		r.state = linkStateDisabled
 		r.answered("")
 		r.disableRequested = nil
-	case !contracts.SameEmployeeNumber(ref.EmployeeNumber, f.row.EmployeeNumber) &&
+	case ref.Managed && !ref.Privileged &&
+		!contracts.SameEmployeeNumber(ref.EmployeeNumber, f.row.EmployeeNumber) &&
 		!contracts.SameEmployeeNumber(ref.EmployeeNumber, deref(r.claim.SyncedEmployeeNumber)):
 		r.reported(accountStep{Kind: accountStepReport, Reason: reasonMismatch, State: linkStateBlocked}, ref)
 		answer = errAccountMismatch
