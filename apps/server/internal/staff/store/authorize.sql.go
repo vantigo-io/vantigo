@@ -38,7 +38,9 @@ WHERE provider = 'identity' AND external_id = $1::text
 // user carries another employee number (mismatch) or whom Staff no longer
 // manages (account_not_managed) gives its user no Self, nor anything else of
 // the person (privacy review M1). HR's self-service link (linked) never
-// carries either reason. No row is a user linked to nobody.
+// carries either reason. No row is a user linked to nobody. links.sql's
+// PeopleLinks and LinkedPeopleOfUsers apply the same predicate (sqlc shares
+// no fragment); keep the three identical.
 func (q *Queries) PersonForUser(ctx context.Context, externalID string) (int64, error) {
 	row := q.db.QueryRow(ctx, personForUser, externalID)
 	var person_id int64
