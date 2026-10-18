@@ -232,3 +232,35 @@ describe("History — the account events", () => {
       expect(screen.queryByText(raw)).not.toBeInTheDocument();
   });
 });
+
+describe("History — the account events' readers", () => {
+  it("lists a manager none of the account events, which are the links group's", async () => {
+    stubStaffApi({
+      role: "access",
+      me: 101,
+      events: {
+        102: [
+          {
+            id: 701,
+            kind: "account_flag_updated",
+            at: "2026-10-01T08:00:00Z",
+            actor: hr,
+            payload: { fields: { provisionAccount: { from: false, to: true } } },
+          },
+          {
+            id: 700,
+            kind: "account_prepared",
+            at: "2026-09-30T08:00:00Z",
+            actor: hr,
+            payload: { step: "prepare", state: "pending" },
+          },
+          ...graceHistory()[102],
+        ],
+      },
+    });
+    renderRoute("/staff/people/102?tab=history");
+    expect(await events()).toHaveLength(2);
+    expect(screen.queryByText("Account flag changed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Account prepared")).not.toBeInTheDocument();
+  });
+});

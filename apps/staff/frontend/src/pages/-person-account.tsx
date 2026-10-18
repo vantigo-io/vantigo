@@ -27,9 +27,6 @@ import { useStaffFormat } from "../lib/format";
 /** The reasons for which only an Owner, adopting the user for Staff, lets Staff manage them. */
 const adoptionReasons = ["account_not_managed", "employee_number_taken"];
 
-/** Disable now's refusals, each said with the flag already off (the owner's answer 2). */
-const disableRefusals = ["account_not_managed", "account_privileged", "account_mismatch"];
-
 const codeOf = (error: unknown): string | undefined => {
   const code = (error as { code?: unknown } | null)?.code;
   return typeof code === "string" ? code : undefined;
@@ -245,14 +242,17 @@ const AccountLinkGroup = ({
       queryClient.setQueryData(queryKey, answer.account);
       setOutcome({ color: "teal", text: t(answer.invitationSent ? "runNowSent" : "runNowNotSent") });
     },
-    onError: (error) => setOutcome({ color: "red", text: refusalText(error, t) }),
+    onError: async (error) => {
+      setOutcome({ color: codeOf(error) === "accounts_busy" ? "yellow" : "red", text: refusalText(error, t) });
+      await queryClient.invalidateQueries({ queryKey });
+    },
   });
 
   const disable = useMutation({
     mutationFn: () => disablePersonAccount(person.id),
     onSuccess: (answer) => {
       queryClient.setQueryData(queryKey, answer);
-      setOutcome({ color: "teal", text: t("disableNowDone") });
+      setOutcome({ color: "teal", text: t(answer.link?.user ? "disableNowDone" : "disableNowNoAccount") });
     },
     onError: async (error) => {
       const code = codeOf(error);
@@ -260,9 +260,9 @@ const AccountLinkGroup = ({
         color: code === "accounts_busy" ? "yellow" : "red",
         text: code === "accounts_unavailable" ? t("disableUnavailable") : refusalText(error, t),
       });
-      // The flag is off whatever identity answered, unless the worker held the link.
-      if (code && (disableRefusals.includes(code) || code === "accounts_unavailable"))
-        await queryClient.invalidateQueries({ queryKey });
+      // The flag is off whatever identity answered, unless the worker held
+      // the link — and even then it may have been written: read it again.
+      await queryClient.invalidateQueries({ queryKey });
     },
   });
 
@@ -278,13 +278,21 @@ const AccountLinkGroup = ({
       },
     });
 
+  // An Owner's adoption is the way for Staff to manage an existing user:
+  // offered for HR's hand link once HR wants an account, and for a reason
+  // only adoption clears; never on an erased record, whose access only ends.
   const adopt =
     canManage &&
+    !erased &&
     link !== undefined &&
-    ((!link.managed && link.user !== undefined) ||
+    ((link.state === "linked" && !link.managed && link.user !== undefined && account.provisionAccount) ||
       (link.reason !== undefined && adoptionReasons.includes(link.reason)));
   const canRun = canManage && !erased && account.provisionAccount;
-  const canDisable = canManage && (account.provisionAccount || (link?.user !== undefined && link.state !== "disabled"));
+  // Never on HR's self-service link, which is not Staff's to disable.
+  const canDisable =
+    canManage &&
+    link?.state !== "linked" &&
+    (account.provisionAccount || (link?.managed === true && link.user !== undefined && link.state !== "disabled"));
   const invitation = link?.invitation;
 
   return (

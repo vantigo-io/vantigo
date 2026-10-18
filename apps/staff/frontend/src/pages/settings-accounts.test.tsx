@@ -73,10 +73,7 @@ describe("Settings — accounts", () => {
     renderRoute("/staff/settings");
     const card = await region("Accounts");
     expect(within(card).getByText(/No Owner has named the roles Staff may give/)).toBeInTheDocument();
-    expect(within(card).getByRole("link", { name: "Open Roles and access" })).toHaveAttribute(
-      "href",
-      "/workspace/roles",
-    );
+    expect(within(card).getByRole("link", { name: "Open Roles & access" })).toHaveAttribute("href", "/workspace/roles");
   });
 
   it("runs the accounts now and says the counts, warning that it may take minutes", async () => {
@@ -88,7 +85,7 @@ describe("Settings — accounts", () => {
     await waitFor(() => expect(sent(fetchMock, "POST", /\/staff\/accounts\/run$/)).toHaveLength(1), slow);
     expect(
       await within(card).findByText(
-        "5 accounts worked: 3 done, 2 failed and retried by the worker; 4 left for the worker's next cycle.",
+        "Accounts worked: 5. Done: 3. Failed, retried by the worker: 2. Left for the worker's next cycle: 4.",
         {},
         slow,
       ),

@@ -245,7 +245,7 @@ interface Audience {
   colleague: boolean;
 }
 
-type Group = "work" | "dates" | "employment" | "pay" | "private" | "notes" | "sealed" | "hold" | "careDays";
+type Group = "work" | "dates" | "employment" | "pay" | "private" | "notes" | "sealed" | "hold" | "careDays" | "links";
 
 /** Design §5's field groups, as `shaping.go` keys them; a field not named is the employment group's. */
 const groupOf: Record<string, Group> = {
@@ -301,6 +301,10 @@ const groupOf: Record<string, Group> = {
   nationalId: "sealed",
   bankAccount: "sealed",
   user: "sealed",
+  // The account flag's fields are the links group's (plan reading 11).
+  provisionAccount: "links",
+  provisionFrom: "links",
+  accountEmailKind: "links",
   // The hold group (design §5): staff:manage's and staff:personal-data's alone.
   erasedAt: "hold",
   legalHold: "hold",
@@ -332,6 +336,7 @@ const reads = (audience: Audience, group: Group): boolean => {
     case "private":
     case "sealed":
     case "careDays":
+    case "links":
       return audience.self || hr;
     case "notes":
     case "hold":
@@ -1173,14 +1178,12 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         // stands, and never linked or unlinked by hand (link_managed).
         const workers = state.accounts[stored.id]?.link;
         const managedLink = workers && workers.state !== "linked" ? workers : undefined;
+        // A link naming no user yet (preparing) reads as no link (links.go linkResponse).
         const linkOf = () =>
           managedLink
-            ? {
-                linked: managedLink.user !== undefined,
-                state: managedLink.state,
-                managed: managedLink.managed,
-                ...(managedLink.user ? { user: managedLink.user } : {}),
-              }
+            ? managedLink.user
+              ? { linked: true, state: managedLink.state, managed: managedLink.managed, user: managedLink.user }
+              : { linked: false }
             : record.user
               ? { linked: true, state: "linked", managed: false, user: record.user }
               : { linked: false };
@@ -1217,6 +1220,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (sub === "account" || sub === "account/run" || sub === "account/disable") {
         // The links group's (plan reading 11): the person, HR and personal-data; anyone else the 404.
         if (!audience.self && !audience.hr && !audience.personalData) return notFound();
+        // Every write is staff:access+staff:manage's: the access layer's 403 for the person and personal-data alone.
+        if (method !== "GET" && !audience.hr) return forbidden();
         const current = accountOf(stored);
         if (sub === "account" && method === "GET") return jsonResponse(200, current);
         if (sub === "account" && method === "PUT") {
@@ -1285,7 +1290,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (sub === "events" && method === "GET") {
         // §5's Events row: the person, a manager of theirs and HR — a colleague gets the unknown id's 404.
         if (!audience.self && !audience.manager && !audience.hr && !audience.personalData) return notFound();
-        const all = (state.events[stored.id] ?? []).map((event) => shapeEvent(audience, event));
+        // The account events are the links group's: listed to none else.
+        const all = (state.events[stored.id] ?? [])
+          .filter((event) => !event.kind.startsWith("account_") || reads(audience, "links"))
+          .map((event) => shapeEvent(audience, event));
         return jsonResponse(200, page(all, Math.max(1, Number(url.searchParams.get("page")) || 1), pageSize));
       }
       if (sub === "employments" && method === "GET")
