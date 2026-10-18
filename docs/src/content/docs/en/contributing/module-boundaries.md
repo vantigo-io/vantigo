@@ -64,9 +64,11 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are eleven single-provider slots, each filled by at most one enabled module:
+   There are twelve single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
-   (`contracts.UserDirectory`, identity), `Accounts`
+   (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
+   identity — the workspace's business time zone and the day an instant falls on in
+   it, which every module judges "today" by), `Accounts`
    (`contracts.AccountProvisioning`, identity — rule 11), `Products` (`contracts.ProductCatalog`,
    products), `Projects` (`contracts.ProjectDirectory`, projects), `Actuals`
    (`contracts.ProjectActuals`, time), `Expenses`
@@ -76,9 +78,9 @@ Communications' outbox is the working example.
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
    `BillableMilestones` (`contracts.BillableMilestones`, projects). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
-   `Mount` runs, so a module's `Deps` already carries what it consumes; `Accounts`
-   is resolved right after `Users`, so its provider may read the user directory
-   while it is built; `Actuals`,
+   `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`
+   and then `Accounts` are resolved right after `Users`, so the accounts provider may
+   read the user directory while it is built; `Actuals`,
    `Expenses`, `Receivables` and the three `Billable*` are resolved last, after
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
    the project directory or the customer directory (none does, but a future
@@ -423,9 +425,13 @@ Projects prices its billing lines through it, but when `products` is disabled
 `Deps.Products` is simply nil and Projects answers 409 on its billing-line operations
 instead of failing startup. That is the shape to copy — a required dependency gets a
 config check, an optional one leaves the `Deps` field nil and **the consumer must
-handle nil**. The one exception is `contracts.UserDirectory`: identity is always
-mounted, so `Deps.Users` is always set once composed — and, since `module.Workers`
-resolves it as well, in worker mode too.
+handle nil**. The two exceptions are `contracts.UserDirectory` and
+`contracts.BusinessCalendar`: identity is always mounted, so `Deps.Users` and
+`Deps.Calendar` are always set once composed — and, since `module.Workers` resolves
+them as well, in worker mode too. A module reads the calendar **before** it opens a
+transaction, never inside one: the read takes a pool connection of its own, which a
+transaction holding locks must not wait for (rule 7); `modtest.SetBusinessTimeZone`
+sets the zone for a test whose subject is another zone.
 
 `UserDirectory.PermissionHolders(key)` names the **active users holding a
 permission**, ordered by display name, in one query of identity's: a user holds the

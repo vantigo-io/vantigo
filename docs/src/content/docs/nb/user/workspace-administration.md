@@ -338,6 +338,27 @@ Vantigo-installasjonen er allerede satt opp." En installasjon kan i stedet sette
 opp til å sende den første eieren en invitasjon på e-post; se første eier og lokale
 kontoer i [Identitet, autentisering og distribusjon](/nb/admin/authentication/).
 
+## Innstillinger for arbeidsområdet
+
+Kortet **Arbeidsområde** på oversikten holder det som gjelder hele installasjonen og
+som hver modul leser. I dag er det én innstilling, **Virksomhetens tidssone**:
+kalenderen hver regnskapsdag dømmes etter — dagen en faktura utstedes og forfaller, en
+periodelås, dagen en reise startet, «i dag» i Ansatte. Den er `Europe/Oslo` til en
+eier endrer den. Innstillingssidene i Ansatte og Utlegg viser den også, men bare her
+kan den endres.
+
+1. På oversikten, under **Arbeidsområde**, velg sonen fra listen. Bruk en bysone som
+   `Europe/Oslo`; et navn serveren og databasen leser forskjellig, som `CET`, avvises
+   med en setning som sier det.
+2. Velg **Lagre innstillinger for arbeidsområdet** og bekreft **Endre virksomhetens
+   tidssone?** Dialogen sier hva som endres: fra neste forespørsel leses «i dag» og
+   hver dag som utledes av et tidspunkt i den nye sonen. Datoer som alt er skrevet —
+   en fakturas utstedelsesdato, en reises diettdager — blir som de er.
+
+Hver endring føres i revisjonsloggen for autorisasjon som
+`workspace.business_time_zone_changed`, med sonen før og etter. Der en person ser et
+tidspunkt, ser de det i denne sonen også, til en egen personlig tidssone finnes.
+
 ## Systemadministrasjon
 
 Kontoen som ble opprettet ved oppsettet, er også installasjonens

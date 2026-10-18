@@ -124,6 +124,7 @@ func Module(a *Access) module.Module {
 		}},
 		Mount:    func(d module.Deps) (http.Handler, error) { return mount(a, d) },
 		Users:    newUserDirectory,
+		Calendar: newBusinessCalendar,
 		Accounts: func(d module.Deps) contracts.AccountProvisioning { return newProvisioning(a, d) },
 	}
 }

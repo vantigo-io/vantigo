@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00002_identity_baseline.sql
       - ../db/migrations/00050_identity_accounts.sql
+      - ../db/migrations/00052_identity_workspace_time_zone.sql
     queries: queries
     gen:
       go:

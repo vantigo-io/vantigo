@@ -12,6 +12,11 @@ export interface Session {
   mfaEnrollmentRequired?: boolean;
   mfaAuthenticated?: boolean;
   isSystemAdmin: boolean;
+  /** The zone instants are shown to this user in: their own, else the workspace's. */
+  timeZone?: string;
+  timeZoneSource?: "personal" | "business";
+  /** The workspace's business time zone, the calendar every bookkeeping day is judged in. */
+  businessTimeZone?: string;
 }
 
 export const sessionQueryKey = ["auth", "session"] as const;

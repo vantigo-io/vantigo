@@ -193,6 +193,17 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.Users = usersProvider.Users(deps)
 	}
 
+	// The business calendar (contracts.BusinessCalendar) resolves right
+	// after the user directory: identity provides both, and every module
+	// judges its "today" by it.
+	calendarProvider, err := soleProvider(mods, "a business calendar", func(m Module) bool { return m.Calendar != nil })
+	if err != nil {
+		return nil, err
+	}
+	if calendarProvider != nil {
+		deps.Calendar = calendarProvider.Calendar(deps)
+	}
+
 	// Account provisioning (contracts.AccountProvisioning) resolves right
 	// after the user directory: it is identity's write port, staff →
 	// identity, and its provider may read deps.Users while it is built.

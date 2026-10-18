@@ -448,7 +448,18 @@ export const translateHostPermissionDescription = (
 
 const en = {
   "admin.dashboard": "Admin dashboard",
-  "admin.overview": "A read-only overview of accounts and identity integrations.",
+  "admin.overview": "An overview of accounts and identity integrations, and the workspace's own settings.",
+  "admin.workspace": "Workspace",
+  "admin.workspaceDescription": "What is true of the whole installation, read by every module.",
+  "admin.businessTimeZone": "Business time zone",
+  "admin.businessTimeZoneDescription":
+    "The calendar every bookkeeping day is judged in: an invoice's issue day, a period lock, a trip's departure day, Staff's today. Use a city zone such as Europe/Oslo.",
+  "admin.businessTimeZoneChangeTitle": "Change the business time zone?",
+  "admin.businessTimeZoneChangeConfirm":
+    "From now on, today and every day derived from a point in time are read in {{to}} instead of {{from}}. Dates already written stay what they are; a trip that departed just after midnight may be read as the day before or after.",
+  "admin.saveWorkspace": "Save workspace settings",
+  "admin.workspaceSaved": "Workspace settings saved",
+  "admin.workspaceSavedBody": "Every module reads the new time zone from the next request on.",
   "admin.statusLoadFailed": "Status could not be loaded",
   "admin.noConfiguration": "No configuration details are shown here.",
   "admin.people": "People",
@@ -877,7 +888,18 @@ const en = {
 
 const nb: { [Key in keyof typeof en]: string } = {
   "admin.dashboard": "Administrasjonspanel",
-  "admin.overview": "En skrivebeskyttet oversikt over kontoer og identitetsintegrasjoner.",
+  "admin.overview": "En oversikt over kontoer og identitetsintegrasjoner, og arbeidsområdets egne innstillinger.",
+  "admin.workspace": "Arbeidsområde",
+  "admin.workspaceDescription": "Det som gjelder hele installasjonen, og som hver modul leser.",
+  "admin.businessTimeZone": "Virksomhetens tidssone",
+  "admin.businessTimeZoneDescription":
+    "Kalenderen hver regnskapsdag dømmes etter: dagen en faktura utstedes, en periodelås, dagen en reise startet, «i dag» i Ansatte. Bruk en bysone som Europe/Oslo.",
+  "admin.businessTimeZoneChangeTitle": "Endre virksomhetens tidssone?",
+  "admin.businessTimeZoneChangeConfirm":
+    "Fra nå av leses i dag og hver dag som utledes av et tidspunkt i {{to}} i stedet for {{from}}. Datoer som alt er skrevet, blir som de er; en reise som startet like etter midnatt kan leses som dagen før eller etter.",
+  "admin.saveWorkspace": "Lagre innstillinger for arbeidsområdet",
+  "admin.workspaceSaved": "Innstillingene for arbeidsområdet er lagret",
+  "admin.workspaceSavedBody": "Hver modul leser den nye tidssonen fra neste forespørsel.",
   "admin.statusLoadFailed": "Kunne ikke laste status",
   "admin.noConfiguration": "Ingen konfigurasjonsdetaljer vises her.",
   "admin.people": "Personer",

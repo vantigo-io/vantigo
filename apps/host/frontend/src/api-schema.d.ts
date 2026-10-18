@@ -981,6 +981,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/owner/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the workspace's settings */
+        get: operations["getIdentityOwnerWorkspace"];
+        /**
+         * Change the workspace's settings
+         * @description Replaces the workspace's settings. The business time zone is checked twice — the server must know the name, and the database must read it the same way — and a change is recorded as workspace.business_time_zone_changed in the authorization audit trail. The value already held answers 200 with nothing written.
+         */
+        put: operations["putIdentityOwnerWorkspace"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/passkeys/login/begin": {
         parameters: {
             query?: never;
@@ -1319,7 +1340,16 @@ export interface components {
             version: string | null;
         };
         AuthSessionResponse: {
+            /** @description The workspace's business time zone (time zones design D4), the calendar every bookkeeping day is judged in. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            businessTimeZone?: string;
             isSystemAdmin: boolean;
+            /** @description The zone instants are shown to this user in — their own when they chose one, else the business time zone (time zones design D5). */
+            timeZone?: string;
+            /**
+             * @description Whether timeZone is the user's own choice (personal) or the workspace's (business).
+             * @enum {string}
+             */
+            timeZoneSource?: "personal" | "business";
             mfaAuthenticated: boolean;
             mfaEnrollmentRequired: boolean;
             twoFactorEnabled: boolean;
@@ -1900,6 +1930,15 @@ export interface components {
             code: string | null;
             /** @default false */
             rememberMe: boolean;
+        };
+        /** @description The workspace's own settings (time zones design D2 and D3). businessTimeZone is the one calendar every bookkeeping day in the installation is judged in — an invoice's issue day, a period lock, a trip's departure day, Staff's "today" — which every module reads through the platform's BusinessCalendar contract; Europe/Oslo until an Owner sets another. */
+        WorkspaceSettings: {
+            /** @description An IANA name, such as Europe/Oslo. */
+            businessTimeZone: string;
+        };
+        WorkspaceSettingsRequest: {
+            /** @description An IANA name such as Europe/Oslo, which this server and its database must read the same way; a name the two read differently (CET, an abbreviation to the database and a zone with summer time to the server) is refused. Changing it moves "today" and every day derived from an instant from the next request on; dates already written stay what they were. */
+            businessTimeZone: string;
         };
         AuthErrorResponse: {
             error: {
@@ -6582,6 +6621,95 @@ export interface operations {
             429: {
                 headers: {
                     "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityOwnerWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityOwnerWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceSettingsRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSettings"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

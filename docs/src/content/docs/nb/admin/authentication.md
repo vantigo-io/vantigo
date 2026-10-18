@@ -242,6 +242,20 @@ eller SCIM av eller på endrer derfor modusen ved API-ets neste oppstart; endrin
 revisjonslogges `authority-mode.changed` med modusene før og etter, uten aktør og uten
 korrelasjons-ID. En oppstart med samme modus endrer ingenting.
 
+Samme rad holder **arbeidsområdets forretningstidssone**
+(`identity.system_settings.business_time_zone`, `Europe/Oslo` som standard): den ene
+kalenderen hver modul dømmer en regnskapsdag etter, lest gjennom plattformens
+`BusinessCalendar`-kontrakt og satt av en eier med
+`PUT /api/v1/identity/owner/workspace` eller kortet **Arbeidsområde** under
+[Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet).
+Et navn serveren ikke kan laste, og et navn databasen leser annerledes enn serveren
+(`CET`), avvises. En endring revisjonslogges `workspace.business_time_zone_changed` med
+sonen før og etter, av eieren som gjorde den. Før denne innstillingen hadde Ansatte og
+Utlegg hver sin sone; en installasjon oppgradert derfra kjører på `Europe/Oslo` til en
+eier setter arbeidsområdets, og migreringsloggen advarer når en av modulenes verdi var
+en annen. En brukers egen `time_zone`-kolonne finnes ved siden av, tom — «følg
+arbeidsområdet» — til en personlig innstilling kommer; økten svarer med begge.
+
 ### Hva Ansattes klargjøring gjør i identitetsmodulen
 
 Ansatte når identitetsmodulens brukere bare gjennom identitetsmodulens klargjøring, som

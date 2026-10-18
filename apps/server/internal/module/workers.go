@@ -60,8 +60,8 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	return out
 }
 
-// withUsersAndAccounts resolves the two single-provider slots a worker needs
-// from the enabled modules, in Compose's order — Users, then Accounts, whose
+// withUsersAndAccounts resolves the single-provider slots a worker needs
+// from the enabled modules, in Compose's order — Users, the Calendar, then Accounts, whose
 // provider may read deps.Users while it is built — keeping a preset value
 // when no enabled module provides one (the seam a test harness fills). The
 // staff-accounts worker writes identity's accounts and reads its users, and
@@ -73,6 +73,13 @@ func withUsersAndAccounts(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if usersProvider != nil {
 		deps.Users = usersProvider.Users(deps)
+	}
+	calendarProvider, err := soleProvider(enabled, "a business calendar", func(m Module) bool { return m.Calendar != nil })
+	if err != nil {
+		return deps, err
+	}
+	if calendarProvider != nil {
+		deps.Calendar = calendarProvider.Calendar(deps)
 	}
 	accountsProvider, err := soleProvider(enabled, "account provisioning", func(m Module) bool { return m.Accounts != nil })
 	if err != nil {

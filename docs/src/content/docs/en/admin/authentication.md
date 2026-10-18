@@ -226,6 +226,21 @@ or SCIM on or off therefore changes the mode at the API's next start; the change
 audited `authority-mode.changed` with the modes before and after, no actor and no
 correlation id. Starting with the same mode changes nothing.
 
+The same row holds the **workspace's business time zone**
+(`identity.system_settings.business_time_zone`, `Europe/Oslo` by default): the one
+calendar every module judges a bookkeeping day in, read through the platform's
+`BusinessCalendar` contract and set by an Owner with
+`PUT /api/v1/identity/owner/workspace` or the **Workspace** card under
+[Workspace administration](/en/user/workspace-administration/#workspace-settings). A
+name the server cannot load, and a name the database reads differently from the
+server (`CET`), are refused. A change is audited
+`workspace.business_time_zone_changed` with the zone before and after, by the Owner
+who made it. Before this setting Staff and Expenses each held a zone of their own;
+an installation upgraded from there runs on `Europe/Oslo` until an Owner sets the
+workspace's, and the migration log warns when either module's value was another. A
+user's own `time_zone` column exists beside it, empty — "follow the workspace" — until
+a personal setting lands; the session answers both.
+
 ### What Staff's provisioning does in identity
 
 Staff reaches identity's users only through identity's provisioning, which runs each

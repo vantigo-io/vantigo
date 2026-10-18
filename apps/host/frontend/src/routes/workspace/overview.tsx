@@ -20,6 +20,7 @@ import type { ReactNode } from "react";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getIdentitySystemStatus } from "../../api/system-status";
 import "../../i18n";
+import { WorkspaceSettingsCard } from "./-workspace-settings";
 
 const providerName = (value: string | null, t: (key: string) => string) => {
   if (!value) return t("common.disabled");
@@ -197,6 +198,7 @@ const AdminDashboardPage = () => {
             <StatusCard title={t("admin.operationalActivity")} icon={IconActivity}>
               <Text c="dimmed">{t("admin.activityDescription")}</Text>
             </StatusCard>
+            <WorkspaceSettingsCard />
           </SimpleGrid>
         </Stack>
       )}
