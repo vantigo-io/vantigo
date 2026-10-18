@@ -187,3 +187,27 @@ func TestWorkers_PanicsOnAKindClaimedTwice(t *testing.T) {
 	}()
 	Workers(Deps{}, Module{Name: "alpha", InvoicedWork: holder}, Module{Name: "beta", InvoicedWork: holder})
 }
+
+// Worker mode never composes, yet energy's import worker resolves a file's
+// organisation numbers through the customer directory (energy import design
+// D4): Workers resolves the slot as Compose does — from the enabled module
+// that declares one, never a disabled one — before any module builds its
+// workers, and leaves the caller's own when none is enabled.
+func TestWorkers_HandTheWorkersTheCustomerDirectory(t *testing.T) {
+	enabled, disabled, preset := &fakeDirectory{}, &fakeDirectory{}, &fakeDirectory{}
+	var seen contracts.CustomerDirectory
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d.Directory
+		return nil
+	}}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}},
+		reader, Module{Name: "owner", Directory: func(Deps) contracts.CustomerDirectory { return enabled }})
+	if seen != enabled {
+		t.Errorf("the workers saw Deps.Directory = %v, want the enabled owner's", seen)
+	}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, Directory: preset},
+		reader, Module{Name: "owner", Directory: func(Deps) contracts.CustomerDirectory { return disabled }})
+	if seen != preset {
+		t.Errorf("the workers saw Deps.Directory = %v, want the caller's, the owner being disabled", seen)
+	}
+}
