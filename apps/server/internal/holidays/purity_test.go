@@ -1,4 +1,4 @@
-package calendar
+package holidays
 
 import (
 	"go/ast"

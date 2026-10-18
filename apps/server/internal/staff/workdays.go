@@ -5,12 +5,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/vantigo-io/vantigo/server/internal/calendar"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 )
 
 // This file is the module's days (design §4 Days and the zone), pure: the
 // working days a holiday or a leave deducts, counted by the platform
-// calendar's public holidays (internal/calendar), never a list of the
+// calendar's public holidays (internal/holidays), never a list of the
 // module's own; the calendar days egenmelding and the arbeidsgiverperiode
 // count; and a row's share of each day. Days are civil dates at UTC
 // midnight, the calendar's convention.
@@ -19,7 +19,7 @@ import (
 // Friday, without Norway's public holidays. It is the one function a
 // part-time working pattern — a phase 2 column — would read through (spec
 // reading 4).
-func worksOn(d time.Time) bool { return calendar.BusinessDay(d) }
+func worksOn(d time.Time) bool { return holidays.BusinessDay(d) }
 
 // workingDays is the working days from from to to, both counted (worksOn);
 // none when to is before from.

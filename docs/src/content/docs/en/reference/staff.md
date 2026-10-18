@@ -1735,7 +1735,7 @@ property they do not take. A caller linked to nobody gets `no_person` on
 The write is judged under the person's lock: the type is read `FOR KEY SHARE` (so HR
 widening an HR-only type waits for it, and then finds it in use), the employments, then
 [overlap](#overlap). Its answer carries `workingDays` — Monday to Friday without the
-public holidays of the platform calendar (`internal/calendar`), whatever the share; an
+public holidays of the platform calendar (`internal/holidays`), whatever the share; an
 hour row counts none — and, for a type that draws on the holiday account, `accounts`:
 the [holiday account](#the-holiday-account) of each year the row touches after the
 write, and `overdrawn` when taking every requested day would overdraw one. That is a
@@ -2062,7 +2062,7 @@ plain request, and the sole holder of `staff:personal-data`'s HR-only one. Each 
 ### The calendar
 
 `GET /calendar?from&to&departmentId` answers a range of at most 93 days: the public
-holidays in it from the platform calendar (`internal/calendar`) and a row per person
+holidays in it from the platform calendar (`internal/holidays`) and a row per person
 with their requested, approved and registered absences touching it, shaped as
 `GET /absences` shapes them. `staff:approve`, `staff:manage` and `staff:personal-data`
 see everyone with an employment in the range; `staff:view` the people among them active

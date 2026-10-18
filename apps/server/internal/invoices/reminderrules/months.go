@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/vantigo-io/vantigo/server/internal/calendar"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 )
 
 // AddMonthsClamped is d moved n months (n may be negative), on the same day of
@@ -35,7 +35,7 @@ func lastDayOf(year int, month time.Month) int {
 // Saturday, a Sunday or a Norwegian public holiday (R4 §2.7, the lenient
 // reading; the spec's reading 8 as amended at Task 4's review) — the same
 // rule as the deadline's, and it only ever delays a charge.
-func EffectiveDue(due time.Time) time.Time { return calendar.NextBusinessDay(due) }
+func EffectiveDue(due time.Time) time.Time { return holidays.NextBusinessDay(due) }
 
 // addDays is d moved n calendar days. Days here are UTC midnights, so a day is
 // always 24 hours.
@@ -68,5 +68,5 @@ func halfYearName(d time.Time) string {
 // Norwegian public holiday — the debtor-favourable reading, since a payment
 // order cannot reach a bank on such a day. E moves by the same rule.
 func LetterDeadline(sentOn time.Time, deadlineDays int) time.Time {
-	return calendar.NextBusinessDay(addDays(sentOn, max(deadlineDays, 14)))
+	return holidays.NextBusinessDay(addDays(sentOn, max(deadlineDays, 14)))
 }

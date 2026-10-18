@@ -1122,7 +1122,7 @@ all of it.
 [the plan](docs/superpowers/plans/2026-10-13-staff-absence.md);
 [the reference](docs/src/content/docs/en/reference/staff.md#absence)): the Norwegian
 public-holiday calendar moved out of Invoices into the platform package
-`internal/calendar`; absence types in the statutory vocabulary with their a-melding
+`internal/holidays`; absence types in the statutory vocabulary with their a-melding
 leave descriptions ([the mapping](docs/src/content/docs/en/reference/staff.md#the-a-meldings-leave-descriptions)),
 an HR-only visibility and company types beside the seeds; holiday schemes above the
 statutory minimum, converted from virkedager, and the

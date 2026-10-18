@@ -6,7 +6,7 @@ sidebar:
 sources:
   - apps/server/internal/secrets
   - apps/server/internal/payments
-  - apps/server/internal/calendar
+  - apps/server/internal/holidays
 ---
 
 A module may import the platform but never another module (see
@@ -205,10 +205,10 @@ forwarded to `VIPPS_TEST_WEBHOOK_LISTEN` (default `127.0.0.1:8089`) — it also 
 a webhook, captures one signed callback, verifies it, writes it as the fixture and
 deletes the registration.
 
-## The calendar
+## The holidays
 
-[`apps/server/internal/calendar`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/calendar)
-is the one place the server knows which days are public holidays; a module that
+[`apps/server/internal/holidays`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/holidays),
+the public-holiday calendar, is the one place the server knows which days are public holidays; a module that
 counts business days counts them with it. Invoices moves a due date and a reminder
 letter's deadline off them ([The rules](/en/reference/invoices/#the-rules)); Staff
 counts every working day it reckons — the holiday account, the payroll totals, the
