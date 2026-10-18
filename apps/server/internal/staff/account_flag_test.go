@@ -81,6 +81,11 @@ func TestAccount_ReadByAudience(t *testing.T) {
 			if string(r.Body) != string(unknown.Body) {
 				t.Errorf("%s: %q, want the unknown id's 404 %q", c.name, r.Body, unknown.Body)
 			}
+			for _, header := range []string{"Content-Type", "Content-Length"} {
+				if r.Header(header) != unknown.Header(header) {
+					t.Errorf("%s: %s %q, want the unknown id's %q", c.name, header, r.Header(header), unknown.Header(header))
+				}
+			}
 			continue
 		}
 		var got gen.StaffPersonAccount
@@ -365,5 +370,60 @@ func TestAccount_AChangeIsInvisibleOutsideTheLinksGroup(t *testing.T) {
 	}
 	if got := w.h.Count(t, `SELECT revision FROM staff.people WHERE id = $1`, w.kari.Id); int32(got) != w.kari.Revision {
 		t.Errorf("the person's revision = %d after the flag changed, want %d", got, w.kari.Revision)
+	}
+}
+
+// The replace must name the flag (review M2): the decoder reads a body
+// without provisionAccount as false, and a replace that leaves it out is not
+// "turn the account off". It is a 400 naming provisionAccount, and nothing
+// changes: the flag stays on, no event, the flag's revision where it was.
+func TestAccount_AReplaceMustNameTheFlag(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	p := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	acc := getAccount(t, hr, p.Id)
+	do(t, hr, http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": true}, http.StatusOK, &acc, ifMatch(acc.Revision))
+	events := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND kind = 'account_flag_updated'`, p.Id)
+	for _, body := range []map[string]any{{}, {"provisionFrom": nil, "accountEmailKind": "work"}} {
+		pr := refused(t, hr.Do(http.MethodPut, accountPath(p.Id), body, ifMatch(acc.Revision)), http.StatusBadRequest, "")
+		if len(pr.Errors["provisionAccount"]) == 0 {
+			t.Errorf("%v: errors = %v, want provisionAccount named", body, pr.Errors)
+		}
+	}
+	if got := getAccount(t, hr, p.Id); !got.ProvisionAccount || got.Revision != acc.Revision {
+		t.Errorf("after the refusals %+v, want the flag on at revision %d", got, acc.Revision)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND kind = 'account_flag_updated'`, p.Id); n != events {
+		t.Errorf("account_flag_updated events = %d after the refusals, want %d", n, events)
+	}
+}
+
+// The account events are the links group's (review L6): an Approver and a
+// colleague, who may read the person, are listed none of them and count
+// none — their history (an Approver's, which seesEvents refuses, and a
+// colleague's) answers as it did before the flag changed.
+func TestAccount_TheEventsAreNotTheApproversOrAColleagues(t *testing.T) {
+	t.Parallel()
+	w := newDecisionWorld(t)
+	read := func() map[string]string {
+		out := map[string]string{}
+		for name, c := range map[string]*modtest.Client{"the Approver": w.approver, "a colleague": w.viewer} {
+			r := c.Do(http.MethodGet, pagedPath(eventsPath(w.kari.Id), 1, 100), nil)
+			out[name] = fmt.Sprintf("%d %s", r.Status, r.Body)
+		}
+		return out
+	}
+	before := read()
+	acc := getAccount(t, w.hr, w.kari.Id)
+	do(t, w.hr, http.MethodPut, accountPath(w.kari.Id), map[string]any{"provisionAccount": true}, http.StatusOK, nil, ifMatch(acc.Revision))
+	if !slices.Contains(kindsOf(eventsAs(t, w.hr, w.kari.Id)), "account_flag_updated") {
+		t.Fatal("HR's history lacks account_flag_updated")
+	}
+	after := read()
+	for name, b := range before {
+		if after[name] != b || strings.Contains(after[name], "account_") {
+			t.Errorf("%s's history changed with the flag:\nbefore %s\nafter  %s", name, b, after[name])
+		}
 	}
 }

@@ -565,5 +565,21 @@ skjemaet `staff` som over. En installasjon som lister `MODULES` eksplisitt får 
 først når `staff` legges til; den trenger ingen annen modul. Se
 [Ansatte](/nb/admin/staff/).
 
+**Utgivelsen med Ansattes kontoer.** Ansatte-migreringen (`00051`) gjør en persons
+ansattnummer unikt etter store bokstaver under sorteringen `C`, så store og små
+bokstaver vurderes likt uansett hvilken locale databasen ble opprettet med. Under en
+tyrkisk eller aserbajdsjansk locale kan den gamle indeksen ha godtatt to numre som bare
+skiller seg i store og små bokstaver (`i-1` ved siden av `I-1`), og da feiler
+migreringen på den nye indeksen. Før du oppgraderer en slik installasjon, ser du etter
+dem:
+
+```sql
+SELECT upper(employee_number COLLATE "C"), count(*) FROM staff.people GROUP BY 1 HAVING count(*) > 1;
+```
+
+Ingen rad betyr at oppgraderingen er trygg; for hver rad gir du først én av personene et
+annet nummer i Ansatte. Å rulle migreringen tilbake er en operatørs siste utvei: den
+sletter kontoarbeiderens koblinger som ennå ikke navngir en bruker.
+
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

@@ -74,12 +74,24 @@ const accountRequestSchema = "StaffPersonAccountRequest"
 
 // accountPerson is what the account needs of a person: the flag, the two
 // addresses it may name and the flag's own revision (00051's
-// account_revision — never the person's, which a manager reads).
-type accountPerson = store.GetPersonAccountRow
+// account_revision — never the person's, which a manager reads). It is a
+// type of this file's own, built only by readAccountPerson from the person's
+// stored row, so no code can fabricate one around an address of its choosing
+// and hand it to accountsAccount (review L4): the address identity compares
+// is always the person's own.
+type accountPerson struct {
+	id               int64
+	provisionAccount bool
+	provisionFrom    pgtype.Date
+	accountEmailKind *string
+	workEmail        *string
+	privateEmail     *string
+	revision         int32
+}
 
 // accountEmailKindOf is p's address choice, null read as work.
 func accountEmailKindOf(p accountPerson) string {
-	if p.AccountEmailKind != nil && *p.AccountEmailKind == accountEmailPrivate {
+	if p.accountEmailKind != nil && *p.accountEmailKind == accountEmailPrivate {
 		return accountEmailPrivate
 	}
 	return accountEmailWork
@@ -90,9 +102,9 @@ func accountEmailKindOf(p accountPerson) string {
 // the only address Staff ever hands identity, or asks identity to compare
 // (accountsAccount): never one a caller supplied.
 func accountAddress(p accountPerson) string {
-	address := p.WorkEmail
+	address := p.workEmail
 	if accountEmailKindOf(p) == accountEmailPrivate {
-		address = p.PrivateEmail
+		address = p.privateEmail
 	}
 	if address == nil {
 		return ""
@@ -110,7 +122,11 @@ func readAccountPerson(ctx context.Context, q *store.Queries, id int64) (account
 	if err != nil {
 		return accountPerson{}, fmt.Errorf("staff: read person %d's account flag: %w", id, err)
 	}
-	return row, nil
+	return accountPerson{
+		id: row.ID, provisionAccount: row.ProvisionAccount, provisionFrom: row.ProvisionFrom,
+		accountEmailKind: row.AccountEmailKind, workEmail: row.WorkEmail, privateEmail: row.PrivateEmail,
+		revision: row.AccountRevision,
+	}, nil
 }
 
 // readAccountLink is the person's link with the worker's columns on q, nil
@@ -130,17 +146,17 @@ func readAccountLink(ctx context.Context, q *store.Queries, personID int64) (*st
 // the stored date, else the first day of the earliest employment that has
 // not ended by today, else none.
 func effectiveProvisionFrom(ctx context.Context, q *store.Queries, p accountPerson, today time.Time) (*openapi_types.Date, error) {
-	if p.ProvisionFrom.Valid {
-		return dateOf(p.ProvisionFrom), nil
+	if p.provisionFrom.Valid {
+		return dateOf(p.provisionFrom), nil
 	}
 	start, err := q.EarliestOpenEmploymentStart(ctx, store.EarliestOpenEmploymentStartParams{
-		PersonID: p.ID, Today: pgtype.Date{Time: today, Valid: true},
+		PersonID: p.id, Today: pgtype.Date{Time: today, Valid: true},
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("staff: read person %d's earliest employment: %w", p.ID, err)
+		return nil, fmt.Errorf("staff: read person %d's earliest employment: %w", p.id, err)
 	}
 	return dateOf(start), nil
 }
@@ -224,13 +240,13 @@ func (s *server) accountView(ctx context.Context, personID int64, today time.Tim
 
 	kind := gen.StaffAccountEmailKind(accountEmailKindOf(p))
 	out := gen.StaffPersonAccount{
-		ProvisionAccount:       p.ProvisionAccount,
-		ProvisionFrom:          dateOf(p.ProvisionFrom),
+		ProvisionAccount:       p.provisionAccount,
+		ProvisionFrom:          dateOf(p.provisionFrom),
 		ProvisionFromEffective: effective,
 		AccountEmailKind:       kind,
 		Address:                gen.StaffPersonAccountAddress{Kind: kind, Present: accountAddress(p) != ""},
 		Mode:                   mode,
-		Revision:               p.AccountRevision,
+		Revision:               p.revision,
 	}
 	if link == nil {
 		return out, nil
@@ -310,8 +326,8 @@ func parseAccountFlag(body gen.StaffPersonAccountRequest) (parsedAccountFlag, fi
 // names; empty when it changes nothing.
 func accountFlagChanges(current accountPerson, next parsedAccountFlag) changes {
 	out := changes{}
-	if current.ProvisionAccount != next.provision {
-		out["provisionAccount"] = fieldChange{From: current.ProvisionAccount, To: next.provision}
+	if current.provisionAccount != next.provision {
+		out["provisionAccount"] = fieldChange{From: current.provisionAccount, To: next.provision}
 	}
 	day := func(d pgtype.Date) any {
 		if !d.Valid {
@@ -319,7 +335,7 @@ func accountFlagChanges(current accountPerson, next parsedAccountFlag) changes {
 		}
 		return d.Time.Format(time.DateOnly)
 	}
-	if from, to := day(current.ProvisionFrom), day(next.from); from != to {
+	if from, to := day(current.provisionFrom), day(next.from); from != to {
 		out["provisionFrom"] = fieldChange{From: from, To: to}
 	}
 	if from := accountEmailKindOf(current); from != next.kind {
@@ -352,6 +368,13 @@ func (s *server) PutStaffPeopleByIdAccount(ctx context.Context, req gen.PutStaff
 	if f := s.unknownProperties(ctx, accountRequestSchema); f.failed() {
 		return gen.PutStaffPeopleByIdAccount400ApplicationProblemPlusJSONResponse(invalid(invalidAccountFlagTitle, f)), nil
 	}
+	// The decoder reads a body without provisionAccount as false, and a
+	// replace that leaves the flag out is not "turn the account off".
+	if !bodyHas(ctx, "provisionAccount") {
+		return gen.PutStaffPeopleByIdAccount400ApplicationProblemPlusJSONResponse(invalid(invalidAccountFlagTitle, fieldErrors{
+			errs: fieldError("provisionAccount", "provisionAccount is required: true to give the person an account, false not to"),
+		})), nil
+	}
 	parsed, f := parseAccountFlag(body)
 	if f.failed() {
 		return gen.PutStaffPeopleByIdAccount400ApplicationProblemPlusJSONResponse(invalid(invalidAccountFlagTitle, f)), nil
@@ -369,7 +392,7 @@ func (s *server) PutStaffPeopleByIdAccount(ctx context.Context, req gen.PutStaff
 		if err != nil {
 			return err
 		}
-		if err := checkRevision("account flag", current.AccountRevision, revision); err != nil {
+		if err := checkRevision("account flag", current.revision, revision); err != nil {
 			return err
 		}
 		c := accountFlagChanges(current, parsed)

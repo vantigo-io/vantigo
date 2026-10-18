@@ -107,6 +107,10 @@ func (s *server) DeleteStaffPeopleById(ctx context.Context, req gen.DeleteStaffP
 			return fmt.Errorf("staff: lock person %d's link: %w", req.Id, err)
 		case link.LeaseUntil != nil && link.LeaseUntil.After(s.deps.Clock()):
 			return accountsBusy()
+		case link.ExternalID != nil:
+			// A user named past PersonInUse's read — judged again on the
+			// locked row, so the delete never takes a link naming a user.
+			return personInUse([]string{"is linked to a user"})
 		default:
 			if err := txq.DeletePersonLink(ctx, req.Id); err != nil {
 				return fmt.Errorf("staff: delete person %d's preparing link: %w", req.Id, err)
