@@ -237,7 +237,7 @@ resolution: **Hour**, **Day** or **Month**. The chart sums the kWh per bucket.
 
 - **Hour** lists every reading in the range, grouped by day, with **Start**, **End**,
   **Quantity (kWh)**, **Quality** (**Measured**, **Estimated**, **Corrected** or
-  **Manual**) and **Source** (**Elhub** or **Manual**).
+  **Manual**) and **Source** (**Elhub**, **Manual** or **Import**).
 - **Day** and **Month** list one row per bucket with the summed **Quantity (kWh)**,
   the number of **Intervals** behind it, and **Measured** or **Contains estimated**
   for its quality.
@@ -253,6 +253,70 @@ greater. The reading is stored with quality **Manual** and source **Manual**. A 
 with exactly the same start and end as an existing one replaces it in the lists and
 sums; the old one is kept as history. A refusal is shown as *Could not add reading*.
 Needs `energy:consumption-manage`.
+
+## Import readings
+
+To bring a metering point's history in from another system, click **Import readings**
+in **Consumption**. It is shown when you hold `energy:import`,
+`energy:consumption-manage` and `energy:consumption-view`. One file holds the readings
+of this one metering point.
+
+1. **Choose a CSV file** of at most 10 MB and 50 000 rows (more than five years of
+   hourly values): the first row names the columns, the separator may be a semicolon,
+   a comma or a tab, and the file may be UTF-8 or a Norwegian Excel's own encoding.
+2. Say which column holds what. The columns are suggested from their names (*Fra*,
+   *Fra og med*, *Start* or *From* for the start; *Til*, *Slutt*, *End* or *To* for the
+   end; *kWh*, *Forbruk*, *Volum* or *Mengde* for the quantity; *Kvalitet* for the
+   quality; *Målepunkt* or *GSRN* for the metering point), and you can change each one:
+   - **Start** and **Quantity (kWh)** are needed.
+   - **End**, or, when the file has one timestamp per line, a **Resolution**: **One
+     hour (PT1H)** or **15 minutes (PT15M)**, and each reading ends that long after it
+     starts.
+   - **Quality** is optional; without it every reading is **Measured**. The file may
+     say Measured, Estimated, Corrected or Manual, or *målt*, *estimert*, *stipulert*,
+     *korrigert* or *manuell*, in any case; an empty cell is Measured.
+   - **Metering point (GSRN)** is optional. When you map it, every row must name this
+     metering point, so a file meant for another point is refused before anything is
+     written.
+3. Click **Check**. Nothing is saved; you see how many readings are **new**, how many
+   are **replacing** one already on the metering point and how many are **unchanged**,
+   the period the file covers, and, when rows have problems, the first 200 of them
+   with their row (the first row under the header is row 1) and column.
+4. When the check found no problem, click **Import**. It says what it will do — *Adds
+   12 readings and replaces 3.* — and **Import** there writes them. The page's
+   consumption is updated straight away.
+
+How the file is read:
+
+- **Times.** A date and time may be written as `2025-01-31 13:00` or
+  `2025-01-31T13:00` (seconds optional), `31.01.2025 13:00` or `31/01/2025 13:00`.
+  A time with an offset, such as `2025-01-31T13:00+01:00` or `…Z`, is that moment. A
+  time without one is the metering point's local time: Norwegian time for a
+  Norwegian price area.
+- **Summer time.** On the spring night the clocks skip from 02:00 to 03:00, a time in
+  between, such as 02:30, does not exist, and its row is refused. On the autumn night
+  the clocks go back from 03:00 to 02:00, so the hour from 02:00 happens twice: the
+  first row starting at a repeated time is the first (summer-time) occurrence, the
+  next row starting at the same time the second (winter-time) one. Keep the rows in
+  the order they happened. An end at a repeated time is the first moment of that name
+  after the reading's start, so *02:00–03:00* twice is read as two consecutive hours.
+- **Quantities** accept a decimal comma or point (`1,5` and `1.5`; a space as thousands
+  separator is ignored), must be zero or greater, and are stored to three decimals.
+- **Each row** follows the manual reading's rules: the end must be later than the
+  start. Two rows of the file with the same start and end are an error on the second.
+
+What the import writes:
+
+- A row whose start and end equal a reading already on the metering point, with the
+  same quantity and quality, is **unchanged**: nothing is written for it, so importing
+  the same file twice changes nothing.
+- A row with the same start and end but another quantity or quality **replaces** that
+  reading, as a manual reading does; the old reading is kept as history.
+- Any other row is **new**. A reading that only overlaps a row without having the same
+  start and end is left as it is.
+- Imported readings have the source **Import**.
+- **All or nothing.** When any row has an error, nothing is imported; fix the file and
+  check it again.
 
 ## The customer page's Energy tab
 
@@ -289,4 +353,4 @@ merged, the supply periods of the absorbed customer move to the surviving one.
 | `energy:supply-periods-manage` | Assign, switch, end and attach supply periods |
 | `energy:consumption-view` | See consumption and the Energy tab's consumption figure |
 | `energy:consumption-manage` | Add manual readings |
-| `energy:import` | Import metering points from a file, with `energy:metering-points-manage`; what the import writes needs the permissions above |
+| `energy:import` | Import metering points from a file, with `energy:metering-points-manage`; import readings, with `energy:consumption-manage` and `energy:consumption-view`; what an import writes needs the permissions above |

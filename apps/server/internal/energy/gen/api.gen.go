@@ -21,6 +21,24 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for ConsumptionImportMappingResolution.
+const (
+	PT15M ConsumptionImportMappingResolution = "PT15M"
+	PT1H  ConsumptionImportMappingResolution = "PT1H"
+)
+
+// Valid indicates whether the value is a known member of the ConsumptionImportMappingResolution enum.
+func (e ConsumptionImportMappingResolution) Valid() bool {
+	switch e {
+	case PT15M:
+		return true
+	case PT1H:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EnergyImportState.
 const (
 	Attaching EnergyImportState = "attaching"
@@ -151,16 +169,68 @@ type ConsumptionAggregateResponse struct {
 	QuantityKwh   float64   `json:"quantityKwh"`
 }
 
+// ConsumptionImportError One problem with one row of a consumption import. row is the row's number as the import counts it (the first row under the header is 1, blank rows take no number); column is the 0-based index of the file column the offending cell is in, absent for a problem with the row as a whole (an interval the file repeats, an end not after its start).
+type ConsumptionImportError struct {
+	Column  *int32 `json:"column,omitempty"`
+	Message string `json:"message"`
+	Row     int32  `json:"row"`
+}
+
+// ConsumptionImportMapping Which columns of a consumption file hold what (energy import design D8), each a 0-based column of the file. start and quantityKwh are required; exactly one of end (a column) and resolution (PT1H or PT15M: the end is the start plus that length) is given; quality is optional (every row Measured when unmapped); gsrn is optional and, when mapped, every row must name this metering point. A column holds one field at most. As the server suggests it, any field it found no column for is absent, and resolution is PT1H when no end column was found.
+type ConsumptionImportMapping struct {
+	End         *int32                              `json:"end,omitempty"`
+	Gsrn        *int32                              `json:"gsrn,omitempty"`
+	Quality     *int32                              `json:"quality,omitempty"`
+	QuantityKwh *int32                              `json:"quantityKwh,omitempty"`
+	Resolution  *ConsumptionImportMappingResolution `json:"resolution,omitempty"`
+	Start       *int32                              `json:"start,omitempty"`
+}
+
+// ConsumptionImportMappingResolution defines model for ConsumptionImportMapping.Resolution.
+type ConsumptionImportMappingResolution string
+
+// ConsumptionImportResult What a consumption import read and did (energy import design D8). header, sample (the first ten rows), rows (the number of data rows) and suggested (the mapping proposed from the header) are answered on every call, with the encoding and the separator the file was read with. evaluated is false when no mapping was sent: the file was only read, and the counts are zero. Otherwise new, replacing and unchanged count the rows without an error — new where no current interval has the row's start and end, replacing where one has them with another quantity or quality, unchanged where one has them with the same quantity and quality — and rangeStart and rangeEnd are the earliest start and the latest end among them. errorCount counts every problem found, errors lists the first 200 in file order. imported is true only when the readings were written: a run (dryRun=false) with no error, all of them in one transaction.
+type ConsumptionImportResult struct {
+	DryRun     bool                         `json:"dryRun"`
+	Encoding   string                       `json:"encoding"`
+	ErrorCount int32                        `json:"errorCount"`
+	Errors     []ConsumptionImportError     `json:"errors"`
+	Evaluated  bool                         `json:"evaluated"`
+	Header     []string                     `json:"header"`
+	Imported   bool                         `json:"imported"`
+	New        int32                        `json:"new"`
+	RangeEnd   *time.Time                   `json:"rangeEnd,omitempty"`
+	RangeStart *time.Time                   `json:"rangeStart,omitempty"`
+	Replacing  int32                        `json:"replacing"`
+	Rows       int32                        `json:"rows"`
+	Sample     []ConsumptionImportSampleRow `json:"sample"`
+	Separator  string                       `json:"separator"`
+
+	// Suggested Which columns of a consumption file hold what (energy import design D8), each a 0-based column of the file. start and quantityKwh are required; exactly one of end (a column) and resolution (PT1H or PT15M: the end is the start plus that length) is given; quality is optional (every row Measured when unmapped); gsrn is optional and, when mapped, every row must name this metering point. A column holds one field at most. As the server suggests it, any field it found no column for is absent, and resolution is PT1H when no end column was found.
+	Suggested ConsumptionImportMapping `json:"suggested"`
+	Unchanged int32                    `json:"unchanged"`
+}
+
+// ConsumptionImportSampleRow One of the first rows of a consumption file, as the file has it.
+type ConsumptionImportSampleRow struct {
+	Cells []string `json:"cells"`
+	Row   int32    `json:"row"`
+}
+
 // ConsumptionResponse defines model for ConsumptionResponse.
 type ConsumptionResponse struct {
 	End             time.Time `json:"end"`
 	Id              int64     `json:"id"`
 	MeteringPointId int32     `json:"meteringPointId"`
-	Quality         string    `json:"quality"`
-	QuantityKwh     float64   `json:"quantityKwh"`
-	ReceivedAt      time.Time `json:"receivedAt"`
-	Source          string    `json:"source"`
-	Start           time.Time `json:"start"`
+
+	// Quality Measured, Estimated, Corrected or Manual.
+	Quality     string    `json:"quality"`
+	QuantityKwh float64   `json:"quantityKwh"`
+	ReceivedAt  time.Time `json:"receivedAt"`
+
+	// Source Where the interval came from — Manual (added by hand), Import (a consumption import from a file) or Elhub.
+	Source string    `json:"source"`
+	Start  time.Time `json:"start"`
 }
 
 // CreateSupplyPeriodRequest defines model for CreateSupplyPeriodRequest.
@@ -503,6 +573,20 @@ type GetEnergyMeteringPointsByIdConsumptionAggregateParams struct {
 	Resolution *string    `form:"resolution,omitempty" json:"resolution,omitempty"`
 }
 
+// PostEnergyMeteringPointsByIdConsumptionImportMultipartBody defines parameters for PostEnergyMeteringPointsByIdConsumptionImport.
+type PostEnergyMeteringPointsByIdConsumptionImportMultipartBody struct {
+	File openapi_types.File `json:"file"`
+
+	// Mapping A ConsumptionImportMapping as JSON. Absent, the file is only read.
+	Mapping *string `json:"mapping,omitempty"`
+}
+
+// PostEnergyMeteringPointsByIdConsumptionImportParams defines parameters for PostEnergyMeteringPointsByIdConsumptionImport.
+type PostEnergyMeteringPointsByIdConsumptionImportParams struct {
+	// DryRun true (the default) checks the file and writes nothing; false writes every row, or nothing when any row has an error.
+	DryRun *bool `form:"dryRun,omitempty" json:"dryRun,omitempty"`
+}
+
 // GetEnergyStatsSummaryParams defines parameters for GetEnergyStatsSummary.
 type GetEnergyStatsSummaryParams struct {
 	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
@@ -536,6 +620,9 @@ type PutEnergyMeteringPointsByIdJSONRequestBody = MeteringPointUpdateRequest
 
 // PostEnergyMeteringPointsByIdConsumptionJSONRequestBody defines body for PostEnergyMeteringPointsByIdConsumption for application/json ContentType.
 type PostEnergyMeteringPointsByIdConsumptionJSONRequestBody = ManualConsumptionRequest
+
+// PostEnergyMeteringPointsByIdConsumptionImportMultipartRequestBody defines body for PostEnergyMeteringPointsByIdConsumptionImport for multipart/form-data ContentType.
+type PostEnergyMeteringPointsByIdConsumptionImportMultipartRequestBody PostEnergyMeteringPointsByIdConsumptionImportMultipartBody
 
 // PostEnergyMeteringPointsByIdMetersJSONRequestBody defines body for PostEnergyMeteringPointsByIdMeters for application/json ContentType.
 type PostEnergyMeteringPointsByIdMetersJSONRequestBody = ReplaceMeterRequest
@@ -614,6 +701,9 @@ type ServerInterface interface {
 	// GetEnergyMeteringPointsByIdConsumptionAggregate Aggregate consumption
 	// (GET /api/v1/energy/metering-points/{id}/consumption/aggregate)
 	GetEnergyMeteringPointsByIdConsumptionAggregate(w http.ResponseWriter, r *http.Request, id int32, params GetEnergyMeteringPointsByIdConsumptionAggregateParams)
+	// PostEnergyMeteringPointsByIdConsumptionImport Import consumption readings from a file
+	// (POST /api/v1/energy/metering-points/{id}/consumption/import)
+	PostEnergyMeteringPointsByIdConsumptionImport(w http.ResponseWriter, r *http.Request, id int32, params PostEnergyMeteringPointsByIdConsumptionImportParams)
 	// GetEnergyMeteringPointsByIdMeters List meter history
 	// (GET /api/v1/energy/metering-points/{id}/meters)
 	GetEnergyMeteringPointsByIdMeters(w http.ResponseWriter, r *http.Request, id int32)
@@ -1466,6 +1556,48 @@ func (siw *ServerInterfaceWrapper) GetEnergyMeteringPointsByIdConsumptionAggrega
 	handler.ServeHTTP(w, r)
 }
 
+// PostEnergyMeteringPointsByIdConsumptionImport operation middleware
+func (siw *ServerInterfaceWrapper) PostEnergyMeteringPointsByIdConsumptionImport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostEnergyMeteringPointsByIdConsumptionImportParams
+
+	// ------------- Optional query parameter "dryRun" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dryRun", r.URL.Query(), &params.DryRun, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dryRun"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dryRun", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEnergyMeteringPointsByIdConsumptionImport(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEnergyMeteringPointsByIdMeters operation middleware
 func (siw *ServerInterfaceWrapper) GetEnergyMeteringPointsByIdMeters(w http.ResponseWriter, r *http.Request) {
 
@@ -1926,6 +2058,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/consumption", wrapper.GetEnergyMeteringPointsByIdConsumption)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/consumption", wrapper.PostEnergyMeteringPointsByIdConsumption)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/consumption/aggregate", wrapper.GetEnergyMeteringPointsByIdConsumptionAggregate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/consumption/import", wrapper.PostEnergyMeteringPointsByIdConsumptionImport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/meters", wrapper.GetEnergyMeteringPointsByIdMeters)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/meters", wrapper.PostEnergyMeteringPointsByIdMeters)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods", wrapper.GetEnergyMeteringPointsByIdSupplyPeriods)
@@ -3452,6 +3585,118 @@ func (response GetEnergyMeteringPointsByIdConsumptionAggregate404Response) Visit
 	return nil
 }
 
+type PostEnergyMeteringPointsByIdConsumptionImportRequestObject struct {
+	Id     int32 `json:"id"`
+	Params PostEnergyMeteringPointsByIdConsumptionImportParams
+	Body   *multipart.Reader
+}
+
+type PostEnergyMeteringPointsByIdConsumptionImportResponseObject interface {
+	VisitPostEnergyMeteringPointsByIdConsumptionImportResponse(w http.ResponseWriter) error
+}
+
+type PostEnergyMeteringPointsByIdConsumptionImport200JSONResponse ConsumptionImportResult
+
+func (response PostEnergyMeteringPointsByIdConsumptionImport200JSONResponse) VisitPostEnergyMeteringPointsByIdConsumptionImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdConsumptionImport400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostEnergyMeteringPointsByIdConsumptionImport400ApplicationProblemPlusJSONResponse) VisitPostEnergyMeteringPointsByIdConsumptionImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdConsumptionImport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdConsumptionImport401JSONResponse) VisitPostEnergyMeteringPointsByIdConsumptionImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdConsumptionImport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdConsumptionImport403JSONResponse) VisitPostEnergyMeteringPointsByIdConsumptionImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdConsumptionImport404Response struct {
+}
+
+func (response PostEnergyMeteringPointsByIdConsumptionImport404Response) VisitPostEnergyMeteringPointsByIdConsumptionImportResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEnergyMeteringPointsByIdConsumptionImport422JSONResponse ConsumptionImportResult
+
+func (response PostEnergyMeteringPointsByIdConsumptionImport422JSONResponse) VisitPostEnergyMeteringPointsByIdConsumptionImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdConsumptionImport429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostEnergyMeteringPointsByIdConsumptionImport429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostEnergyMeteringPointsByIdConsumptionImport429ResponseHeaders
+}
+
+func (response PostEnergyMeteringPointsByIdConsumptionImport429JSONResponse) VisitPostEnergyMeteringPointsByIdConsumptionImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnergyMeteringPointsByIdMetersRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -4198,6 +4443,9 @@ type StrictServerInterface interface {
 	// GetEnergyMeteringPointsByIdConsumptionAggregate Aggregate consumption
 	// (GET /api/v1/energy/metering-points/{id}/consumption/aggregate)
 	GetEnergyMeteringPointsByIdConsumptionAggregate(ctx context.Context, request GetEnergyMeteringPointsByIdConsumptionAggregateRequestObject) (GetEnergyMeteringPointsByIdConsumptionAggregateResponseObject, error)
+	// PostEnergyMeteringPointsByIdConsumptionImport Import consumption readings from a file
+	// (POST /api/v1/energy/metering-points/{id}/consumption/import)
+	PostEnergyMeteringPointsByIdConsumptionImport(ctx context.Context, request PostEnergyMeteringPointsByIdConsumptionImportRequestObject) (PostEnergyMeteringPointsByIdConsumptionImportResponseObject, error)
 	// GetEnergyMeteringPointsByIdMeters List meter history
 	// (GET /api/v1/energy/metering-points/{id}/meters)
 	GetEnergyMeteringPointsByIdMeters(ctx context.Context, request GetEnergyMeteringPointsByIdMetersRequestObject) (GetEnergyMeteringPointsByIdMetersResponseObject, error)
@@ -4861,6 +5109,40 @@ func (sh *strictHandler) GetEnergyMeteringPointsByIdConsumptionAggregate(w http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetEnergyMeteringPointsByIdConsumptionAggregateResponseObject); ok {
 		if err := validResponse.VisitGetEnergyMeteringPointsByIdConsumptionAggregateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEnergyMeteringPointsByIdConsumptionImport operation middleware
+func (sh *strictHandler) PostEnergyMeteringPointsByIdConsumptionImport(w http.ResponseWriter, r *http.Request, id int32, params PostEnergyMeteringPointsByIdConsumptionImportParams) {
+	var request PostEnergyMeteringPointsByIdConsumptionImportRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEnergyMeteringPointsByIdConsumptionImport(ctx, request.(PostEnergyMeteringPointsByIdConsumptionImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEnergyMeteringPointsByIdConsumptionImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEnergyMeteringPointsByIdConsumptionImportResponseObject); ok {
+		if err := validResponse.VisitPostEnergyMeteringPointsByIdConsumptionImportResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

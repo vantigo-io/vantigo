@@ -46,15 +46,18 @@ var permissions = []contracts.Permission{
 // limits maps each rate-limited operationId to its policy. No Energy endpoint
 // called RequireRateLimiting (energy inventory §6); the import's upload (energy
 // import design D6) takes the customers import's limit, since it stores what
-// it is sent.
+// it is sent; the consumption import (design D8) the same, since every call
+// reads a file.
 var limits = map[string]ratelimit.Policy{
-	"postEnergyImports": policyImportUpload,
+	"postEnergyImports":                             policyImportUpload,
+	"postEnergyMeteringPointsByIdConsumptionImport": policyConsumptionImport,
 }
 
 // bodyLimits raises the router's request-body cap for the import's upload
-// (imports.go); every other operation keeps the platform default (1 MiB).
+// (imports.go) and the consumption import (consumption_import.go); every other operation keeps the platform default (1 MiB).
 var bodyLimits = map[string]int64{
-	"postEnergyImports": maxImportUploadRequestBytes,
+	"postEnergyImports":                             maxImportUploadRequestBytes,
+	"postEnergyMeteringPointsByIdConsumptionImport": maxConsumptionImportRequestBytes,
 }
 
 // Module is energy as a platform module: its contract mounted under

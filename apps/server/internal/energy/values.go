@@ -10,6 +10,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/text/unicode/norm"
 )
 
 // This file holds the module's small value-level helpers: duplicated from
@@ -184,4 +185,35 @@ func floatFromNumeric(n pgtype.Numeric) float64 {
 		return *v
 	}
 	return 0
+}
+
+// consumptionQualities are a consumption interval's quality values, in their
+// canonical form: Measured and Estimated as a meter or Elhub reports them,
+// Corrected, and Manual for a reading added by hand. The aggregates flag a
+// bucket holding Estimated or Corrected (queries/consumption.sql).
+var consumptionQualities = []string{"Measured", "Estimated", "Corrected", "Manual"}
+
+// consumptionQualityWords are the words a consumption file may use for a
+// quality (energy import design D8): each canonical value and its Norwegian
+// names, matched in lower case. Stipulert is how Norwegian grid companies say
+// estimated.
+var consumptionQualityWords = map[string]string{
+	"målt": "Measured", "estimert": "Estimated", "stipulert": "Estimated", "korrigert": "Corrected", "manuell": "Manual",
+}
+
+// parseConsumptionQuality is a quality cell as stored: Measured when blank,
+// else the canonical value it names, any case; ok is false for a word that
+// names none.
+func parseConsumptionQuality(cell string) (string, bool) {
+	word := strings.ToLower(norm.NFC.String(strings.TrimSpace(cell)))
+	if word == "" {
+		return "Measured", true
+	}
+	for _, q := range consumptionQualities {
+		if strings.ToLower(q) == word {
+			return q, true
+		}
+	}
+	q, ok := consumptionQualityWords[word]
+	return q, ok
 }

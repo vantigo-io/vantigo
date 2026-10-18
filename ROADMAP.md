@@ -412,6 +412,24 @@ number, or address.
 *Unblocks:* the composition pattern future modules (Invoices) reuse to extend
 the customer page.
 
+**Delivery: import from a file (done)** — moving to Vantigo from another system without
+retyping it. **Metering points from a file**: a supplier's export uploaded, its columns
+mapped (suggested from the export's own words), checked as a dry run and imported by
+the `energy-import` worker; each point is linked to its customer by organisation
+number through the customer directory, a customer switch is shown and must be
+confirmed by count, and the points the file gave no start date are attached afterwards
+or found again with the list's **Without customer** filter. **Consumption per metering
+point**: **Import readings** on the point's page takes a file of hourly or
+quarter-hourly values, reads local times in the market time zone with the DST nights
+spelled out, refuses a file for another point by its GSRN, and writes every reading —
+new, replacing the current one as history, or unchanged — in one transaction, or
+nothing. Both read files through the shared `internal/fileimport`. See
+[`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#importing-metering-points).
+
+*Delivered:* a supplier's metering points, their customers and their history in
+Vantigo on day one, with the import behind its own sensitive permission
+(`energy:import`) and every write still needing the permission it needs by hand.
+
 ### Phase 4 — Invoicing groundwork (align with Invoices)
 
 An `internal/contracts` interface (e.g. `contracts.ConsumptionProvider`) returning

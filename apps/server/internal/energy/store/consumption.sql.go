@@ -302,6 +302,23 @@ func (q *Queries) EnsureConsumptionPartition(ctx context.Context, partitionMonth
 	return err
 }
 
+const ensureConsumptionPartitions = `-- name: EnsureConsumptionPartitions :exec
+SELECT energy.ensure_consumption_partition(months.partition_month)
+FROM (
+    SELECT DISTINCT date_trunc('month', s)::date AS partition_month
+    FROM unnest($1::timestamptz[]) AS s
+) AS months
+`
+
+// EnsureConsumptionPartitions is EnsureConsumptionPartition for every month a
+// consumption import touches, in one statement: the months are truncated in
+// the session's own time zone, as the single-month query's ::date is, so each
+// row lands in the partition created for it.
+func (q *Queries) EnsureConsumptionPartitions(ctx context.Context, starts []time.Time) error {
+	_, err := q.db.Exec(ctx, ensureConsumptionPartitions, starts)
+	return err
+}
+
 const findCurrentConsumptionInterval = `-- name: FindCurrentConsumptionInterval :one
 SELECT id, metering_point_id, start, "end", quantity_kwh, quality, source, received_at
 FROM energy.consumption_intervals
@@ -545,6 +562,58 @@ func (q *Queries) ListConsumptionByMeteringPoint(ctx context.Context, arg ListCo
 	return items, nil
 }
 
+const listCurrentConsumptionForImport = `-- name: ListCurrentConsumptionForImport :many
+SELECT id, start, "end", quantity_kwh, quality
+FROM energy.consumption_intervals
+WHERE metering_point_id = $1
+  AND is_current
+  AND start >= $2::timestamptz
+  AND start <= $3::timestamptz
+`
+
+type ListCurrentConsumptionForImportParams struct {
+	MeteringPointID int32
+	FromTs          time.Time
+	ToTs            time.Time
+}
+
+type ListCurrentConsumptionForImportRow struct {
+	ID          int64
+	Start       time.Time
+	End         time.Time
+	QuantityKwh pgtype.Numeric
+	Quality     string
+}
+
+// ListCurrentConsumptionForImport is what a consumption import compares its
+// rows with (design D8): the point's current intervals starting within the
+// file's own range, each matched to a row by its exact start and end.
+func (q *Queries) ListCurrentConsumptionForImport(ctx context.Context, arg ListCurrentConsumptionForImportParams) ([]ListCurrentConsumptionForImportRow, error) {
+	rows, err := q.db.Query(ctx, listCurrentConsumptionForImport, arg.MeteringPointID, arg.FromTs, arg.ToTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCurrentConsumptionForImportRow
+	for rows.Next() {
+		var i ListCurrentConsumptionForImportRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Start,
+			&i.End,
+			&i.QuantityKwh,
+			&i.Quality,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCustomerMeteringPointPriceAreas = `-- name: ListCustomerMeteringPointPriceAreas :many
 SELECT DISTINCT mp.id, mp.price_area
 FROM energy.metering_points mp
@@ -744,6 +813,32 @@ func (q *Queries) ListExpiringSupplyPeriods(ctx context.Context, arg ListExpirin
 	return items, nil
 }
 
+const lockMeteringPointForConsumptionImport = `-- name: LockMeteringPointForConsumptionImport :one
+SELECT id, gsrn, price_area
+FROM energy.metering_points
+WHERE id = $1
+FOR NO KEY UPDATE
+`
+
+type LockMeteringPointForConsumptionImportRow struct {
+	ID        int32
+	Gsrn      string
+	PriceArea string
+}
+
+// LockMeteringPointForConsumptionImport is the consumption import's first
+// statement in its transaction (energy import design D8): the point read
+// again and locked, so two imports into one point run one after the other and
+// the second compares against what the first wrote. FOR NO KEY UPDATE leaves
+// the foreign keys' FOR KEY SHARE free, as the metering-point import's own
+// lock does.
+func (q *Queries) LockMeteringPointForConsumptionImport(ctx context.Context, id int32) (LockMeteringPointForConsumptionImportRow, error) {
+	row := q.db.QueryRow(ctx, lockMeteringPointForConsumptionImport, id)
+	var i LockMeteringPointForConsumptionImportRow
+	err := row.Scan(&i.ID, &i.Gsrn, &i.PriceArea)
+	return i, err
+}
+
 const setConsumptionIntervalNotCurrent = `-- name: SetConsumptionIntervalNotCurrent :exec
 UPDATE energy.consumption_intervals SET is_current = false WHERE id = $1 AND start = $2::timestamptz
 `
@@ -757,5 +852,27 @@ type SetConsumptionIntervalNotCurrentParams struct {
 // (AddManualConsumptionEndpoint.cs:20): the supersede chain's other half.
 func (q *Queries) SetConsumptionIntervalNotCurrent(ctx context.Context, arg SetConsumptionIntervalNotCurrentParams) error {
 	_, err := q.db.Exec(ctx, setConsumptionIntervalNotCurrent, arg.ID, arg.Start)
+	return err
+}
+
+const setConsumptionIntervalsNotCurrent = `-- name: SetConsumptionIntervalsNotCurrent :exec
+UPDATE energy.consumption_intervals
+SET is_current = false
+WHERE id = ANY($1::bigint[]) AND start = ANY($2::timestamptz[])
+`
+
+type SetConsumptionIntervalsNotCurrentParams struct {
+	Ids    []int64
+	Starts []time.Time
+}
+
+// SetConsumptionIntervalsNotCurrent is SetConsumptionIntervalNotCurrent for
+// every interval a consumption import replaces, in one statement: the
+// supersede chain's other half, flipped before the new rows are copied in so
+// the unique index on current rows holds. An id names one row (it is an
+// identity); the starts are there so only the partitions they fall in are
+// searched.
+func (q *Queries) SetConsumptionIntervalsNotCurrent(ctx context.Context, arg SetConsumptionIntervalsNotCurrentParams) error {
+	_, err := q.db.Exec(ctx, setConsumptionIntervalsNotCurrent, arg.Ids, arg.Starts)
 	return err
 }

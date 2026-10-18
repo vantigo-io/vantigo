@@ -239,3 +239,48 @@ SELECT id, metering_point_id, "end"
 FROM energy.supply_periods
 WHERE status = 'Active' AND "end" IS NOT NULL AND "end" >= @now::timestamptz AND "end" <= @expires_by::timestamptz
 ORDER BY "end";
+
+-- name: LockMeteringPointForConsumptionImport :one
+-- LockMeteringPointForConsumptionImport is the consumption import's first
+-- statement in its transaction (energy import design D8): the point read
+-- again and locked, so two imports into one point run one after the other and
+-- the second compares against what the first wrote. FOR NO KEY UPDATE leaves
+-- the foreign keys' FOR KEY SHARE free, as the metering-point import's own
+-- lock does.
+SELECT id, gsrn, price_area
+FROM energy.metering_points
+WHERE id = @id
+FOR NO KEY UPDATE;
+
+-- name: ListCurrentConsumptionForImport :many
+-- ListCurrentConsumptionForImport is what a consumption import compares its
+-- rows with (design D8): the point's current intervals starting within the
+-- file's own range, each matched to a row by its exact start and end.
+SELECT id, start, "end", quantity_kwh, quality
+FROM energy.consumption_intervals
+WHERE metering_point_id = @metering_point_id
+  AND is_current
+  AND start >= @from_ts::timestamptz
+  AND start <= @to_ts::timestamptz;
+
+-- name: EnsureConsumptionPartitions :exec
+-- EnsureConsumptionPartitions is EnsureConsumptionPartition for every month a
+-- consumption import touches, in one statement: the months are truncated in
+-- the session's own time zone, as the single-month query's ::date is, so each
+-- row lands in the partition created for it.
+SELECT energy.ensure_consumption_partition(months.partition_month)
+FROM (
+    SELECT DISTINCT date_trunc('month', s)::date AS partition_month
+    FROM unnest(@starts::timestamptz[]) AS s
+) AS months;
+
+-- name: SetConsumptionIntervalsNotCurrent :exec
+-- SetConsumptionIntervalsNotCurrent is SetConsumptionIntervalNotCurrent for
+-- every interval a consumption import replaces, in one statement: the
+-- supersede chain's other half, flipped before the new rows are copied in so
+-- the unique index on current rows holds. An id names one row (it is an
+-- identity); the starts are there so only the partitions they fall in are
+-- searched.
+UPDATE energy.consumption_intervals
+SET is_current = false
+WHERE id = ANY(@ids::bigint[]) AND start = ANY(@starts::timestamptz[]);

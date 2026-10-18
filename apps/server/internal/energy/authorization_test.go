@@ -91,6 +91,10 @@ var energyEndpointCases = []energyEndpointCase{
 		body: func(now time.Time) any {
 			return map[string]any{"start": now.Add(-2 * time.Hour), "end": now.Add(-time.Hour), "quantityKwh": 1}
 		}},
+	// The consumption import (energy import design D5, D8): energy:import is
+	// the door, and the readings need what a manual reading needs.
+	{method: http.MethodPost, path: "/api/v1/energy/metering-points/999999/consumption/import",
+		permissions: []string{"energy:consumption-manage", "energy:consumption-view", "energy:import"}},
 	{method: http.MethodGet, path: "/api/v1/energy/metering-points/999999/supply-periods",
 		permissions: []string{"energy:supply-periods-view"}},
 	{method: http.MethodPost, path: "/api/v1/energy/metering-points/999999/supply-periods",
