@@ -67,7 +67,7 @@ var columnClasses = map[string]string{
 	"people.bank_account_sealed": "D", "people.bank_account_last4": "D", "people.bank_account_kind": "D",
 	"people.children_under_12": "D", "people.sole_carer": "D", "people.chronically_ill_children": "D",
 	"people.self_cert_withdrawn_until": "E", "people.self_cert_withdrawn_reason": "E", "people.self_cert_withdrawn_from": "E",
-	"people.provision_account": "C", "people.provision_from": "C", "people.account_email_kind": "C",
+	"people.provision_account": "C", "people.provision_from": "C", "people.account_email_kind": "C", "people.account_revision": "C",
 	"people.legal_hold": "F", "people.legal_hold_reason": "F", "people.legal_hold_by_user_id": "F", "people.legal_hold_at": "F",
 	"people.erased_at": "C", "people.reassessed_at": "C", "people.reassessed_by_user_id": "C",
 	"people.notes": "D", "people.revision": "C", "people.created_at": "C", "people.updated_at": "C",

@@ -1252,7 +1252,7 @@ export interface paths {
         get: operations["getStaffPeopleByIdAccount"];
         /**
          * Change a person's account flag
-         * @description Replaces the account flag's three fields (design S22): provisionAccount, provisionFrom and accountEmailKind, guarded by the person's revision. A change is one account_flag_updated event naming each field that changed; a replace that changes nothing writes nothing. Turning the flag on for a person without the chosen address is accepted — the worker waits, and HR is told (accountEmailMissing). Nothing is asked of identity until the accounts worker acts.
+         * @description Replaces the account flag's three fields (design S22): provisionAccount, provisionFrom and accountEmailKind, guarded by the flag's own revision (StaffPersonAccount.revision), never the person's, which this write does not move. A change is one account_flag_updated event naming each field that changed; a replace that changes nothing writes nothing. Turning the flag on for a person without the chosen address is accepted — the worker waits, and HR is told (accountEmailMissing). Nothing is asked of identity until the accounts worker acts.
          */
         put: operations["putStaffPeopleByIdAccount"];
         post?: never;
@@ -3314,7 +3314,7 @@ export interface components {
             provisionFromEffective?: string;
             /**
              * Format: int32
-             * @description The person's revision, which a change of the flag sends back in If-Match.
+             * @description The account flag's own revision, which a change of the flag sends back in If-Match. Never the person's — no account write moves the person's revision, which a manager, an Approver and a colleague read.
              */
             revision: number;
         };
@@ -8623,7 +8623,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The revision the person was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                /** @description The account flag's revision, as GET /people/{id}/account's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
                 "If-Match": string;
             };
             path: {

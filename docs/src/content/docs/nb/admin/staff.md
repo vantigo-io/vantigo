@@ -120,7 +120,8 @@ det, kommer med neste del av leveransen.
    (`federated`); den mangler når denne prosessens OIDC- eller SCIM-innstillinger er
    uenige med API-ets.
 2. Som en bruker med `staff:manage` leser du personens flagg:
-   `GET /api/v1/staff/people/{id}/account`, og merker deg `revision`.
+   `GET /api/v1/staff/people/{id}/account`, og merker deg `revision` — flaggets egen,
+   ikke personens: å endre flagget flytter aldri personens revisjon.
 3. Slå det på: `PUT /api/v1/staff/people/{id}/account` med `If-Match` satt til den
    revisjonen og `{"provisionAccount": true, "provisionFrom": null, "accountEmailKind": "work"}`.
    La `provisionFrom` være null for å aktivere kontoen på første dag i personens

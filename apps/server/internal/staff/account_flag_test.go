@@ -329,3 +329,41 @@ func TestAccount_TheExportsCarryTheFlag(t *testing.T) {
 		}
 	}
 }
+
+// The flag has its own revision (review M1): a change of it moves nothing a
+// manager, an Approver or a colleague reads of the person — not the person's
+// revision, not the ETag — so the change is no signal to anyone outside the
+// links group. GET /people/{id} answers them byte for byte as before.
+func TestAccount_AChangeIsInvisibleOutsideTheLinksGroup(t *testing.T) {
+	t.Parallel()
+	w := newDecisionWorld(t)
+	type read struct {
+		status int
+		body   string
+		etag   string
+	}
+	readAs := func() map[string]read {
+		out := map[string]read{}
+		for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "the Approver": w.approver, "a colleague": w.viewer} {
+			r := c.Do(http.MethodGet, personPath(w.kari.Id), nil)
+			out[name] = read{r.Status, string(r.Body), r.Header("ETag")}
+		}
+		return out
+	}
+	before := readAs()
+	personRevision := getAccount(t, w.hr, w.kari.Id)
+	do(t, w.hr, http.MethodPut, accountPath(w.kari.Id), map[string]any{"provisionAccount": true, "provisionFrom": "2026-11-01"},
+		http.StatusOK, nil, ifMatch(personRevision.Revision))
+	after := readAs()
+	for name, b := range before {
+		if b.status != http.StatusOK {
+			t.Fatalf("%s reads the person: %d, want 200", name, b.status)
+		}
+		if a := after[name]; a != b {
+			t.Errorf("%s reads the person differently after the flag changed:\nbefore %+v\nafter  %+v", name, b, a)
+		}
+	}
+	if got := w.h.Count(t, `SELECT revision FROM staff.people WHERE id = $1`, w.kari.Id); int32(got) != w.kari.Revision {
+		t.Errorf("the person's revision = %d after the flag changed, want %d", got, w.kari.Revision)
+	}
+}

@@ -2362,7 +2362,7 @@ type StaffPersonAccount struct {
 	// ProvisionFromEffective The day the account is enabled: provisionFrom when set, else the first day of the earliest employment that has not ended by today. Absent when there is neither. The account is prepared, disabled, createBeforeDays before it.
 	ProvisionFromEffective *openapi_types.Date `json:"provisionFromEffective,omitempty"`
 
-	// Revision The person's revision, which a change of the flag sends back in If-Match.
+	// Revision The account flag's own revision, which a change of the flag sends back in If-Match. Never the person's — no account write moves the person's revision, which a manager, an Approver and a colleague read.
 	Revision int32 `json:"revision"`
 }
 
@@ -3443,7 +3443,7 @@ type PutStaffPeopleByIdParams struct {
 
 // PutStaffPeopleByIdAccountParams defines parameters for PutStaffPeopleByIdAccount.
 type PutStaffPeopleByIdAccountParams struct {
-	// IfMatch The revision the person was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	// IfMatch The account flag's revision, as GET /people/{id}/account's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
 	IfMatch string `json:"If-Match"`
 }
 

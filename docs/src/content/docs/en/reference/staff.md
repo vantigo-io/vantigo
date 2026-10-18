@@ -83,7 +83,8 @@ Still no CHECK constraint.
 
 Delivery C's Staff migration is `00051_staff_accounts.sql` (00050 is identity's, the
 same delivery's: one migration per schema). It changes two things of 00042's and adds
-nothing. `identity_links.external_id` becomes nullable, so the accounts worker's
+one column, `people.account_revision`, the [account flag's](#accounts) own revision.
+`identity_links.external_id` becomes nullable, so the accounts worker's
 `preparing` link names no user until identity has created one; every reader of a link
 takes one naming no user as a person linked to nobody — `GET /people/{id}/user` reads
 `linked: false`, the person and the exports name no user, and no signed-in user is the
@@ -915,14 +916,18 @@ set (design S22–S27). This section is the flag and what reads it; the accounts
 that acts on it is described as it lands.
 
 **The flag** is three columns of `staff.people` (00042's): `provision_account`,
-`provision_from` and `account_email_kind`. It is the links group's, as the
+`provision_from` and `account_email_kind`, with its own revision,
+`account_revision` (00051's). **No account write — HR's or the accounts worker's —
+moves the person's `revision`**, which a manager, an Approver and a colleague read: a
+flag turned on or off is no signal to anyone outside the links group, as a sealed
+field's write is none. It is the links group's, as the
 self-service link is: the person, `staff:manage` and `staff:personal-data` read it; a
 manager, an Approver, a colleague and anyone else get the person's 404.
 
 - **`GET /people/{id}/account`** (`staff:access`, then the person themselves,
   `staff:manage` or `staff:personal-data`; otherwise the unknown id's 404) answers
   `{provisionAccount, provisionFrom, provisionFromEffective, accountEmailKind,
-  address: {kind, present}, mode, link, revision}`.
+  address: {kind, present}, mode, link, revision}` — `revision` the flag's own.
   - `accountEmailKind` is `work` or `private`; a null column reads `work`.
     `address` says which of the person's addresses the account would be given and
     whether the person has it — never the address itself.
@@ -941,10 +946,12 @@ manager, an Approver, a colleague and anyone else get the person's 404.
     `exhausted`, and the invitations delivered in the pending spell. identity is asked
     with no address to compare; the codes never carry an address or a driver's words.
 - **`PUT /people/{id}/account`** (`staff:manage`) replaces the three fields,
-  `If-Match` on the person's revision, under the person's lock: what it leaves out is
+  `If-Match` on the flag's own revision (the `revision` `GET` answered, never the
+  person's), under the person's lock: what it leaves out is
   cleared — `provisionFrom` to none, `accountEmailKind` to `work`. An erased person is
   `person_erased` (409), a stale revision `revision_conflict`; an unknown kind or an
-  unknown property is a 400. A change moves the person's revision and is one
+  unknown property is a 400. A change moves the flag's revision — not the person's —
+  and is one
   `account_flag_updated` event naming each changed field, before and after; a replace
   that changes nothing writes nothing. Turning the flag on without the chosen address is
   accepted — the worker waits, and HR is told. It answers the account as `GET` does.
@@ -2303,7 +2310,7 @@ holds every payload field to its column's class, and a third holds this table to
 
 | Table | Class | Columns |
 | --- | --- | --- |
-| `people` | C | `id`, `employee_number`, `given_name`, `family_name`, `display_name`, `birth_date`, `gender`, `national_id_kind`, `work_country`, `preferred_language`, `provision_account`, `provision_from`, `account_email_kind`, `erased_at`, `reassessed_at`, `reassessed_by_user_id`, `revision`, `created_at`, `updated_at` |
+| `people` | C | `id`, `employee_number`, `given_name`, `family_name`, `display_name`, `birth_date`, `gender`, `national_id_kind`, `work_country`, `preferred_language`, `provision_account`, `provision_from`, `account_email_kind`, `account_revision`, `erased_at`, `reassessed_at`, `reassessed_by_user_id`, `revision`, `created_at`, `updated_at` |
 | `people` | D | `national_id_sealed`, `national_id_mac`, `national_id_country`, `work_email`, `phone_work`, `phone_mobile`, `phone_private`, `private_email`, `street`, `postal_code`, `city`, `country`, `bank_account_sealed`, `bank_account_last4`, `bank_account_kind`, `children_under_12`, `sole_carer`, `chronically_ill_children`, `notes` |
 | `people` | E | `self_cert_withdrawn_until`, `self_cert_withdrawn_reason`, `self_cert_withdrawn_from` |
 | `people` | F | `legal_hold`, `legal_hold_reason`, `legal_hold_by_user_id`, `legal_hold_at` |
