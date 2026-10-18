@@ -204,8 +204,10 @@ func TestProvisioning_PrepareCreatesAPendingManagedUser(t *testing.T) {
 
 	before := footprint(t, h)
 	again := mustPrepare(t, p, spec("another@example.test", "E-17"))
-	if again != ref {
-		t.Errorf("Prepare again = %+v, want %+v", again, ref)
+	found := ref
+	found.Created = false
+	if again != found {
+		t.Errorf("Prepare again = %+v, want %+v (found, not Created)", again, found)
 	}
 	if after := footprint(t, h); after != before {
 		t.Errorf("Prepare again wrote: %s → %s", before, after)
@@ -1285,5 +1287,28 @@ func TestProvisioning_WorkersResolveIdentitysProvider(t *testing.T) {
 	ref, err := got.Accounts.Prepare(context.Background(), systemActor, spec("worker@example.test", "X-1"))
 	if err != nil || h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1`, ref.UserID) != 1 {
 		t.Errorf("the worker's provider did not prepare in the installation: %+v, %v", ref, err)
+	}
+}
+
+// AccountRef.Created is true on the Prepare that created the user and on no
+// other answer — a second Prepare finding them, the writes, Account — so a
+// caller undoing its own creation never deactivates a user it only found.
+func TestProvisioning_CreatedOnlyOnTheCreatingPrepare(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	employeeRole(t, h)
+	p := h.accounts(t)
+	first := mustPrepare(t, p, spec("created@example.test", "C-1"))
+	if !first.Created {
+		t.Errorf("the creating Prepare answered %+v, want Created", first)
+	}
+	if again := mustPrepare(t, p, spec("created@example.test", "C-1")); again.Created || again.UserID != first.UserID {
+		t.Errorf("a second Prepare answered %+v, want the same user, not Created", again)
+	}
+	if ref := mustActivate(t, p, first.UserID, contracts.ActivateOpts{}); ref.Created {
+		t.Error("Activate answered Created")
+	}
+	if ref := accountOf(t, p, first.UserID, ""); ref.Created {
+		t.Error("Account answered Created")
 	}
 }

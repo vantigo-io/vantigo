@@ -163,6 +163,12 @@ type AccountRef struct {
 	// Invitation is the user's invitation state; InvitationNone for a user
 	// who is not pending.
 	Invitation Invitation
+	// Created reports that the call answering the ref created the user: true
+	// only on the Prepare that made them, false on every other answer (a
+	// Prepare that found the user, any other write, Account). A caller that
+	// must undo its own creation — its record gone while Prepare ran —
+	// deactivates only a user it created, never one it found.
+	Created bool
 }
 
 // ActivateOpts adjusts one Activate call.
@@ -256,7 +262,8 @@ var (
 //     identity reports is the same as its record's, by SameEmployeeNumber.
 //
 // Every write is idempotent: called again with the same arguments it changes
-// nothing more and answers the same AccountRef. Every write refuses an
+// nothing more and answers the same AccountRef — but for Created, which only
+// the creating Prepare answers. Every write refuses an
 // Actor that is not Valid with ErrInvalidActor before it writes anything.
 type AccountProvisioning interface {
 	// Mode answers AccountModeLocal or AccountModeFederated — the mode

@@ -249,6 +249,9 @@ Communications' outbox is the working example.
     reaches. `AccountRef.Privileged` marks an Owner or a SystemAdmin, managed or not
     (a managed user promoted to Owner is unmanaged by the promotion), whom every write
     refuses with `ErrAccountPrivileged`, so a caller reports them without calling.
+    `AccountRef.Created` is true only on the `Prepare` that created the user, so a
+    caller undoing its own creation (its record gone while `Prepare` ran) deactivates
+    only a user it created, never one it found.
     A directory-deactivated non-Owner reads `disabled` by `directory`
     (`contracts.DisabledByDirectory`) while SCIM is configured; the writes still act
     on identity's record of such a user, and `Deactivate` — which alone reads no
