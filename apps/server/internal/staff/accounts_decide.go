@@ -27,15 +27,18 @@ import (
 // Prepare or Update the re-run's link facts carry the employee number it
 // wrote as SyncedEmployeeNumber, and after an Update SpecChanged false; both
 // are recorded on the link only on success, so a failed call leaves them as
-// they were. A call's error is
-// the worker's to record, not decide's: ErrAccountPrivileged (the user an
-// Owner or a SystemAdmin — AccountRef carries no such mark, so only a call
-// tells), ErrBlockedByOwner, ErrAccountNotFound (federated, not found),
-// ErrUserGone, ErrAccountNotManaged, ErrEmployeeRoleMissing,
-// ErrEmployeeRoleUnsafe, ErrAccountEmailTaken and ErrEmployeeNumberTaken each
-// become the link's blocked_reason; anything else is a failure to retry. On
-// ErrModeMismatch from Mode the worker still runs every deactivate step decide
-// answers (deactivate reads no mode) and holds the others.
+// they were. A call's error is the worker's to record, not decide's:
+// ErrAccountPrivileged (decide reports account_privileged from
+// AccountRef.Privileged itself, so the call answers it only for a user who
+// became an Owner or a SystemAdmin between the Account read and the call),
+// ErrBlockedByOwner, ErrAccountNotFound (federated, not found), ErrUserGone,
+// ErrAccountNotManaged, ErrEmployeeRoleMissing, ErrEmployeeRoleUnsafe,
+// ErrAccountEmailTaken and ErrEmployeeNumberTaken each become the link's
+// blocked_reason; anything else is a failure to retry. A blocked link is
+// claimed again on its schedule — decide never reads blocked as an input —
+// so it recovers once what blocked it is gone. On ErrModeMismatch from Mode
+// the worker still runs every deactivate step decide answers (deactivate
+// reads no mode) and holds the others.
 
 // accountStepKind is what decide answers the worker to do.
 type accountStepKind string

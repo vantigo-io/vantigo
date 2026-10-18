@@ -435,6 +435,11 @@ const changed = "changed"
 // event is not listed at all to an audience without the health group
 // (ListPersonEvents), so this is its second line, not its first.
 //
+// An accounts worker's event (account_prepared, account_activated, …) names
+// no field either: its step, state, code, invitation and flagOffMeanwhile are
+// the links group's — the person, staff:manage and staff:personal-data — and
+// an empty payload to anyone else.
+//
 // The erased event names no field: its kinds — what each erase removed, by
 // count — are the hold group's, as the event is one of the hold's kinds
 // (holdEventKinds), and an empty payload to anyone else, the person included;
@@ -476,12 +481,41 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 		// The absence's type before and after (review H1), by which the
 		// whole event is shown as leave.
 		TypeIDs *[]int64 `json:"typeIds"`
+		// An accounts worker's event (delivery C, accounts_worker.go): the
+		// step, the link's state, a code, a pending user's invitation and
+		// whether the flag was turned off meanwhile — the links group's.
+		Step             *string        `json:"step"`
+		State            *string        `json:"state"`
+		Code             *string        `json:"code"`
+		Invitation       map[string]any `json:"invitation"`
+		FlagOffMeanwhile bool           `json:"flagOffMeanwhile"`
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal(stored, &payload); err != nil {
 		return out
 	}
 	if payload.Fields == nil {
+		if payload.Step != nil {
+			// An account event names no field: the whole of it is the links
+			// group's, and empty to anyone else — whom the listing never
+			// shows it (accountEventKinds) — so this is its second line.
+			if a.reads(groupLinks) {
+				out["step"] = *payload.Step
+				if payload.State != nil {
+					out["state"] = *payload.State
+				}
+				if payload.Code != nil {
+					out["code"] = *payload.Code
+				}
+				if payload.Invitation != nil {
+					out["invitation"] = payload.Invitation
+				}
+				if payload.FlagOffMeanwhile {
+					out["flagOffMeanwhile"] = true
+				}
+			}
+			return out
+		}
 		if payload.Kinds != nil && a.reads(groupHold) {
 			kinds := make([]any, 0, len(payload.Kinds))
 			for _, k := range payload.Kinds {

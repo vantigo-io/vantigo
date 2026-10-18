@@ -15,9 +15,15 @@ import (
 // fakeAccounts is a contracts.AccountProvisioning a test shapes: the mode
 // and its error, the users it reports and what it answers for them, the
 // roles an Owner named, and a failure for any read. It records each user
-// Account was asked about with the address it was given to compare. Its
-// writes are delivery C's Task 4's to fill; until then they answer
-// errFakeWrite. It is safe for concurrent use.
+// Account was asked about with the address it was given to compare, and
+// every write (writes). Its writes act as identity's provider would on the
+// users it holds (Task 4b): Prepare finds the managed user holding the
+// number or creates one pending and disabled by Staff; Activate enables a
+// user Staff disabled and invites a pending one; Deactivate disables for
+// Staff; Update writes the number — unless a test shaped an error for the
+// method (failWith) or a hook (onWrite), run before the write outside the
+// lock, which is how a test acts at the moment the worker is inside a call.
+// It is safe for concurrent use.
 //
 // The harness installs it with withAccounts (modtest.WithAccounts), which
 // replaces identity's provider in the composition: identity always provides
@@ -32,6 +38,9 @@ type fakeAccounts struct {
 	roles      []contracts.RoleRef
 	rolesErr   error
 	asked      []askedAccount
+	writeErr   map[string]error
+	writes     []string
+	onWrite    func(method string, user uuid.UUID)
 }
 
 // askedAccount is one Account call: the user and the address to compare.
@@ -42,13 +51,13 @@ type askedAccount struct {
 
 var _ contracts.AccountProvisioning = (*fakeAccounts)(nil)
 
-// errFakeWrite is the fake's answer to a write: no test of Task 3 writes.
-var errFakeWrite = errors.New("fakeAccounts: no write is shaped")
+// errFakeDown is a failure to retry: identity could not be reached.
+var errFakeDown = errors.New("fakeAccounts: identity is down")
 
 // newFakeAccounts is a provider in local mode that knows nobody and has no
 // roles named.
 func newFakeAccounts() *fakeAccounts {
-	return &fakeAccounts{mode: contracts.AccountModeLocal, users: map[uuid.UUID]contracts.AccountRef{}}
+	return &fakeAccounts{mode: contracts.AccountModeLocal, users: map[uuid.UUID]contracts.AccountRef{}, writeErr: map[string]error{}}
 }
 
 // withAccounts composes the harness with f as the account provisioning.
@@ -101,18 +110,164 @@ func (f *fakeAccounts) ProvisioningRoles(context.Context) ([]contracts.RoleRef, 
 	return slices.Clone(f.roles), f.rolesErr
 }
 
-func (f *fakeAccounts) Prepare(context.Context, contracts.Actor, contracts.AccountSpec) (contracts.AccountRef, error) {
-	return contracts.AccountRef{}, errFakeWrite
+// failWith makes every call of method ("Prepare", "Activate", "Deactivate",
+// "Update") answer err, nil to stop.
+func (f *fakeAccounts) failWith(method string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err == nil {
+		delete(f.writeErr, method)
+		return
+	}
+	f.writeErr[method] = err
 }
 
-func (f *fakeAccounts) Activate(context.Context, contracts.Actor, uuid.UUID, contracts.ActivateOpts) (contracts.AccountRef, error) {
-	return contracts.AccountRef{}, errFakeWrite
+// whenWriting runs fn at the start of every write, outside the fake's lock.
+func (f *fakeAccounts) whenWriting(fn func(method string, user uuid.UUID)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onWrite = fn
 }
 
-func (f *fakeAccounts) Deactivate(context.Context, contracts.Actor, uuid.UUID) (contracts.AccountRef, error) {
-	return contracts.AccountRef{}, errFakeWrite
+// writeCalls is every write so far, "Method" or "Method:<employee number>"
+// for Prepare and Update, in order.
+func (f *fakeAccounts) writeCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.writes)
 }
 
-func (f *fakeAccounts) Update(context.Context, contracts.Actor, uuid.UUID, contracts.AccountSpec) (contracts.AccountRef, error) {
-	return contracts.AccountRef{}, errFakeWrite
+// user is the ref the fake holds for id.
+func (f *fakeAccounts) user(id uuid.UUID) contracts.AccountRef {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.users[id]
+}
+
+// begin records one write and answers its shaped error, running the hook
+// first, outside the lock.
+func (f *fakeAccounts) begin(method, note string, user uuid.UUID) error {
+	f.mu.Lock()
+	hook := f.onWrite
+	f.mu.Unlock()
+	if hook != nil {
+		hook(method, user)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := method
+	if note != "" {
+		call += ":" + note
+	}
+	f.writes = append(f.writes, call)
+	return f.writeErr[method]
+}
+
+func (f *fakeAccounts) Prepare(_ context.Context, actor contracts.Actor, spec contracts.AccountSpec) (contracts.AccountRef, error) {
+	if !actor.Valid() {
+		return contracts.AccountRef{}, contracts.ErrInvalidActor
+	}
+	if err := f.begin("Prepare", spec.EmployeeNumber, uuid.Nil); err != nil {
+		return contracts.AccountRef{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, ref := range f.users {
+		if contracts.SameEmployeeNumber(ref.EmployeeNumber, spec.EmployeeNumber) {
+			if !ref.Managed {
+				return contracts.AccountRef{}, contracts.ErrEmployeeNumberTaken
+			}
+			return ref, nil
+		}
+	}
+	ref := contracts.AccountRef{
+		UserID: uuid.New(), State: contracts.AccountStatePending, DisabledBy: contracts.DisabledByStaff, Managed: true,
+		EmployeeNumber: spec.EmployeeNumber, Invitation: contracts.Invitation{State: contracts.InvitationNone},
+	}
+	f.users[ref.UserID] = ref
+	return ref, nil
+}
+
+func (f *fakeAccounts) Activate(_ context.Context, actor contracts.Actor, id uuid.UUID, _ contracts.ActivateOpts) (contracts.AccountRef, error) {
+	if !actor.Valid() {
+		return contracts.AccountRef{}, contracts.ErrInvalidActor
+	}
+	if err := f.begin("Activate", "", id); err != nil {
+		return contracts.AccountRef{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ref, ok := f.users[id]
+	switch {
+	case !ok:
+		return contracts.AccountRef{}, contracts.ErrUserGone
+	case !ref.Managed:
+		return contracts.AccountRef{}, contracts.ErrAccountNotManaged
+	case ref.Privileged:
+		return contracts.AccountRef{}, contracts.ErrAccountPrivileged
+	case ref.DisabledBy != "" && ref.DisabledBy != contracts.DisabledByStaff:
+		return contracts.AccountRef{}, contracts.ErrBlockedByOwner
+	}
+	ref.DisabledBy = ""
+	if ref.State == contracts.AccountStateDisabled {
+		ref.State = contracts.AccountStateActive
+	}
+	if ref.State == contracts.AccountStatePending && !ref.HasCredential && ref.Invitation.State != contracts.InvitationActive {
+		ref.Invitation = contracts.Invitation{State: contracts.InvitationActive, Issued: ref.Invitation.Issued + 1}
+	}
+	f.users[id] = ref
+	return ref, nil
+}
+
+func (f *fakeAccounts) Deactivate(_ context.Context, actor contracts.Actor, id uuid.UUID) (contracts.AccountRef, error) {
+	if !actor.Valid() {
+		return contracts.AccountRef{}, contracts.ErrInvalidActor
+	}
+	if err := f.begin("Deactivate", "", id); err != nil {
+		return contracts.AccountRef{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ref, ok := f.users[id]
+	switch {
+	case !ok:
+		return contracts.AccountRef{}, contracts.ErrUserGone
+	case !ref.Managed:
+		return contracts.AccountRef{}, contracts.ErrAccountNotManaged
+	case ref.Privileged:
+		return contracts.AccountRef{}, contracts.ErrAccountPrivileged
+	}
+	if ref.DisabledBy == "" || ref.DisabledBy == contracts.DisabledByDirectory {
+		ref.DisabledBy = contracts.DisabledByStaff
+	}
+	if ref.State == contracts.AccountStateActive {
+		ref.State = contracts.AccountStateDisabled
+	}
+	if ref.Invitation.State == contracts.InvitationActive {
+		ref.Invitation.State = contracts.InvitationNone
+	}
+	f.users[id] = ref
+	return ref, nil
+}
+
+func (f *fakeAccounts) Update(_ context.Context, actor contracts.Actor, id uuid.UUID, spec contracts.AccountSpec) (contracts.AccountRef, error) {
+	if !actor.Valid() {
+		return contracts.AccountRef{}, contracts.ErrInvalidActor
+	}
+	if err := f.begin("Update", spec.EmployeeNumber, id); err != nil {
+		return contracts.AccountRef{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ref, ok := f.users[id]
+	switch {
+	case !ok:
+		return contracts.AccountRef{}, contracts.ErrUserGone
+	case !ref.Managed:
+		return contracts.AccountRef{}, contracts.ErrAccountNotManaged
+	}
+	ref.EmployeeNumber = spec.EmployeeNumber
+	ref.EmailDiffers = ref.EmailDiffers && ref.State != contracts.AccountStatePending
+	f.users[id] = ref
+	return ref, nil
 }

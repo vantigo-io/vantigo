@@ -92,8 +92,7 @@ var errAccountsUnavailable = errors.New("staff: no module provides account provi
 // accountsMode, accountsAccount and accountsProvisioningRoles are identity's
 // account provisioning read side (contracts.AccountProvisioning): the
 // authority mode, a user as identity reports them, and the roles an Owner
-// named for Staff. The writes (Prepare, Activate, Deactivate, Update) are
-// the accounts worker's and Run and Disable now's, delivery C's Task 4.
+// named for Staff. The writes follow them.
 func (s *server) accountsMode(ctx context.Context) (string, error) {
 	if err := noteContractCall(ctx, "Accounts.Mode"); err != nil {
 		return "", err
@@ -132,6 +131,52 @@ func (s *server) accountsProvisioningRoles(ctx context.Context) ([]contracts.Rol
 		return nil, errAccountsUnavailable
 	}
 	return s.deps.Accounts.ProvisioningRoles(ctx)
+}
+
+// accountsPrepare, accountsActivate, accountsDeactivate and accountsUpdate
+// are identity's account provisioning write side: the accounts worker's
+// steps (accounts_worker.go), and Run and Disable now's (Task 4c). Each is
+// called on no connection of this module's — the claim committed, the
+// snapshot closed — so the call holds no lock and no connection while
+// identity works.
+func (s *server) accountsPrepare(ctx context.Context, actor contracts.Actor, spec contracts.AccountSpec) (contracts.AccountRef, error) {
+	if err := noteContractCall(ctx, "Accounts.Prepare"); err != nil {
+		return contracts.AccountRef{}, err
+	}
+	if s.deps.Accounts == nil {
+		return contracts.AccountRef{}, errAccountsUnavailable
+	}
+	return s.deps.Accounts.Prepare(ctx, actor, spec)
+}
+
+func (s *server) accountsActivate(ctx context.Context, actor contracts.Actor, id uuid.UUID, opts contracts.ActivateOpts) (contracts.AccountRef, error) {
+	if err := noteContractCall(ctx, "Accounts.Activate"); err != nil {
+		return contracts.AccountRef{}, err
+	}
+	if s.deps.Accounts == nil {
+		return contracts.AccountRef{}, errAccountsUnavailable
+	}
+	return s.deps.Accounts.Activate(ctx, actor, id, opts)
+}
+
+func (s *server) accountsDeactivate(ctx context.Context, actor contracts.Actor, id uuid.UUID) (contracts.AccountRef, error) {
+	if err := noteContractCall(ctx, "Accounts.Deactivate"); err != nil {
+		return contracts.AccountRef{}, err
+	}
+	if s.deps.Accounts == nil {
+		return contracts.AccountRef{}, errAccountsUnavailable
+	}
+	return s.deps.Accounts.Deactivate(ctx, actor, id)
+}
+
+func (s *server) accountsUpdate(ctx context.Context, actor contracts.Actor, id uuid.UUID, spec contracts.AccountSpec) (contracts.AccountRef, error) {
+	if err := noteContractCall(ctx, "Accounts.Update"); err != nil {
+		return contracts.AccountRef{}, err
+	}
+	if s.deps.Accounts == nil {
+		return contracts.AccountRef{}, errAccountsUnavailable
+	}
+	return s.deps.Accounts.Update(ctx, actor, id, spec)
 }
 
 // smtpSend hands one mail to the installation's SMTP server: Deps.SMTPSend

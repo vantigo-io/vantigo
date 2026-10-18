@@ -1,0 +1,789 @@
+package staff
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/staff/store"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
+)
+
+// This file is the staff-accounts worker (design S27, §4 "Accounts" and
+// Locking; plan Task 4b): every poll it gives the people whose account flag
+// is on the user the decision table (accounts_decide.go) says they should
+// have — prepared, disabled, createBeforeDays before the start, enabled on
+// the day, disabled the day after the last end — through identity's
+// contracts.AccountProvisioning.
+//
+// It holds no cycle-wide lock and no lease connection (pre-flight B2; PR
+// #124 is the counter-example). A cycle:
+//
+//  1. For every person with the flag on, not erased and with no link, whose
+//     account the decision table says is due to be prepared, it writes a
+//     preparing link under the person's lock, INSERT … ON CONFLICT DO
+//     NOTHING, so two cycles write one.
+//  2. It claims up to fifty due links, one at a time, each by a conditional
+//     UPDATE … FOR UPDATE SKIP LOCKED that sets a lease (lease_id,
+//     lease_until five minutes on) and commits at once: a link another
+//     cycle holds is skipped, and two cycles share the work.
+//  3. Per claim: the person's facts in a read-only snapshot, closed; the
+//     link's user as identity reports them (Account, with the person's own
+//     address); decide; each step called under a two-minute timeout with no
+//     transaction open and no connection held; after each successful call
+//     the user read again and decide run again on the fresh ref, up to three
+//     calls, until it answers nothing or a report, or the ref is unchanged
+//     (the header of accounts_decide.go).
+//  4. The result under the person's lock, then the link WHERE lease_id is
+//     the claim's — a link claimed since by another cycle is not written, and
+//     a link gone (the person deleted) has the user a Prepare of this claim
+//     made deactivated, outside any transaction, and logged. The flag is read
+//     again under the lock: one turned off meanwhile is recorded on the
+//     events (flagOffMeanwhile), and the next cycle claims the link no more.
+//
+// The worker writes only the link and the account events: never the person
+// (their revision and updated_at, which a manager reads, stay as they are),
+// never user_linked or user_unlinked. last_error and every event hold codes
+// and states, never an address or a driver's words (pre-flight I5).
+//
+// A mode mismatch (identity's Mode answering contracts.ErrModeMismatch: this
+// process's OIDC or SCIM settings differ from the API's) holds every step but
+// deactivate, which reads no mode, so a leaver is disabled whatever the
+// configuration says; the links it holds record mode_mismatch, from which the
+// installation's attention item is derived (Task 4c).
+
+const (
+	// accountsWorkerName is what the runner logs this worker as.
+	accountsWorkerName = "staff-accounts"
+	// accountsBatch bounds one cycle at fifty claims; a backlog drains over
+	// cycles.
+	accountsBatch = 50
+	// accountsLeaseFor is how long a claim holds its link: longer than the
+	// two-minute calls a chain is made of, so a claim alive is never taken
+	// over, and short enough that a crashed one is taken over soon.
+	accountsLeaseFor = 5 * time.Minute
+	// accountsCallTimeout bounds each identity call.
+	accountsCallTimeout = 2 * time.Minute
+	// accountsMaxCalls is the most calls one claim chains (plan I2).
+	accountsMaxCalls = 3
+	// accountsMaxAttempts is how many failed attempts are retried at each
+	// poll before the link is retried daily.
+	accountsMaxAttempts = 3
+)
+
+// The codes a call's refusal is recorded as, beside decide's own reasons
+// (accounts_decide.go): the link's blocked_reason, or for a failure to
+// retry its last_error.
+const (
+	reasonNotFound            = "not_found"
+	reasonEmployeeRoleMissing = "employee_role_missing"
+	reasonEmployeeRoleUnsafe  = "employee_role_unsafe"
+	reasonEmailTaken          = "account_email_taken"
+	reasonNumberTaken         = "employee_number_taken"
+	reasonModeMismatch        = "mode_mismatch"
+	// reasonInvalidActor is a bug of this module's (the call named no valid
+	// actor): logged, and the link failed until it is fixed.
+	reasonInvalidActor = "invalid_actor"
+	// errorAccountsUnavailable is last_error for a call that could not be
+	// made — identity unreachable, a timeout, any answer that is not one of
+	// the contract's — retried.
+	errorAccountsUnavailable = "accounts_unavailable"
+)
+
+// accountsRun is who a cycle acts for: the actor identity audits, the actor
+// the account events name, and whether HR asked for a fresh invitation (Run
+// now, Task 4c), which only the first decide of a claim is given.
+type accountsRun struct {
+	actor contracts.Actor
+	who   actor
+	fresh bool
+}
+
+// accountsWorkerRun is the worker's own: the system actor in identity, the
+// installation in the history.
+var accountsWorkerRun = accountsRun{
+	actor: contracts.Actor{System: contracts.SystemActorStaffAccounts},
+	who:   actor{Kind: actorKindSystem, Display: systemActorDisplayName},
+}
+
+// accountsTally is what a cycle did: the links claimed, those whose result
+// was written as done or refused, and those failed to retry.
+type accountsTally struct {
+	attempted, done, failed int
+}
+
+// AccountsWorker provisions the accounts the flag asks for. It implements
+// worker.Worker.
+type AccountsWorker struct {
+	deps module.Deps
+	srv  *server
+}
+
+var _ worker.Worker = (*AccountsWorker)(nil)
+
+// NewAccountsWorker builds the worker over d.
+func NewAccountsWorker(d module.Deps) *AccountsWorker {
+	return &AccountsWorker{deps: d, srv: newServer(d)}
+}
+
+// Name identifies this worker in the runner's logs.
+func (w *AccountsWorker) Name() string { return accountsWorkerName }
+
+// Interval is the poll (STAFF_WORKERS_POLL, default an hour).
+func (w *AccountsWorker) Interval() time.Duration { return w.srv.workersPoll() }
+
+// Run is the worker loop: a cycle, then the poll. A failure is logged and
+// the loop goes on.
+func (w *AccountsWorker) Run(ctx context.Context) error {
+	ticker := time.NewTicker(w.Interval())
+	defer ticker.Stop()
+	for {
+		if err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+			w.srv.logger().Error("staff: the accounts cycle failed", "worker", accountsWorkerName, "error", err.Error())
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
+// RunCycle is one cycle, the worker as the actor.
+func (w *AccountsWorker) RunCycle(ctx context.Context) error {
+	_, err := w.srv.accountsCycle(ctx, accountsWorkerRun)
+	return err
+}
+
+// workersPoll is the Staff workers' poll: STAFF_WORKERS_POLL, or an hour
+// for Deps without a Config.
+func (s *server) workersPoll() time.Duration {
+	if s.deps.Config != nil && s.deps.Config.StaffWorkersPoll > 0 {
+		return s.deps.Config.StaffWorkersPoll
+	}
+	return defaultWorkersPoll
+}
+
+// accountsCycle is one cycle for run. No provider is nothing to do. The mode
+// is asked once, on no connection; identity unable to answer fails the
+// cycle, which the next poll runs again.
+func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTally, error) {
+	var tally accountsTally
+	if s.deps.Accounts == nil {
+		s.logger().DebugContext(ctx, "staff: no module provides accounts; the accounts cycle does nothing", "worker", accountsWorkerName)
+		return tally, nil
+	}
+	mode, err := withCallTimeout(ctx, s.accountsMode)
+	mismatch := errors.Is(err, contracts.ErrModeMismatch)
+	switch {
+	case mismatch:
+		mode = ""
+		s.logger().WarnContext(ctx, "staff: this process's authority mode differs from the recorded one; only deactivations run",
+			"worker", accountsWorkerName)
+	case err != nil:
+		return tally, fmt.Errorf("staff: read the authority mode: %w", err)
+	}
+	if err := s.prepareAccountLinks(ctx, mode); err != nil {
+		return tally, err
+	}
+	for tally.attempted < accountsBatch {
+		now := s.deps.Clock()
+		lease := uuid.New()
+		claim, err := store.New(s.deps.Pool).ClaimAccountLink(ctx, store.ClaimAccountLinkParams{
+			LeaseID: lease, LeaseUntil: now.Add(accountsLeaseFor), Now: now,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			break
+		}
+		if err != nil {
+			return tally, fmt.Errorf("staff: claim an account link: %w", err)
+		}
+		tally.attempted++
+		if s.workAccountLink(ctx, run, claim, lease, mode, mismatch, now) {
+			tally.done++
+		} else {
+			tally.failed++
+		}
+	}
+	return tally, nil
+}
+
+// withCallTimeout runs one identity call under accountsCallTimeout.
+func withCallTimeout[T any](ctx context.Context, call func(context.Context) (T, error)) (T, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountsCallTimeout)
+	defer cancel()
+	return call(ctx)
+}
+
+// accountFacts is what one claim reads of the person, in one snapshot: the
+// account columns, the person's row, decide's view of them and the civil day
+// in the settings zone.
+type accountFacts struct {
+	person           accountPerson
+	row              store.GetPersonRow
+	decide           accountPersonFacts
+	today            time.Time
+	zone             *time.Location
+	createBeforeDays int
+}
+
+// readAccountFacts reads personID's facts at now in one read-only snapshot,
+// closed before it answers; errPersonNotFound for no such person.
+func (s *server) readAccountFacts(ctx context.Context, personID int64, now time.Time) (accountFacts, error) {
+	var f accountFacts
+	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		set, err := settings(ctx, q)
+		if err != nil {
+			return err
+		}
+		f.zone = zoneOf(set)
+		f.today = civilToday(now, f.zone)
+		f.createBeforeDays = int(set.CreateBeforeDays)
+		if f.person, err = readAccountPerson(ctx, q, personID); err != nil {
+			return err
+		}
+		if f.row, err = q.GetPerson(ctx, personID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errPersonNotFound
+			}
+			return fmt.Errorf("staff: read person %d: %w", personID, err)
+		}
+		employments, err := accountEmployments(ctx, q, personID)
+		if err != nil {
+			return err
+		}
+		var from *time.Time
+		if f.person.provisionFrom.Valid {
+			from = &f.person.provisionFrom.Time
+		}
+		f.decide = accountPersonFacts{
+			Erased: f.row.ErasedAt != nil, Flag: f.person.provisionAccount, ProvisionFrom: from,
+			AddressPresent: accountAddress(f.person) != "", EmployeeNumber: f.row.EmployeeNumber, Employments: employments,
+		}
+		return nil
+	})
+	return f, err
+}
+
+// spec is what the person's user should look like.
+func (f accountFacts) spec() contracts.AccountSpec {
+	return contracts.AccountSpec{
+		Email: accountAddress(f.person), DisplayName: f.row.DisplayName,
+		PreferredLanguage: f.row.PreferredLanguage, EmployeeNumber: f.row.EmployeeNumber,
+	}
+}
+
+// specHash is last_spec_hash: SHA-256 over the address (only while the user
+// is pending — afterwards identity's address is an Owner's, the owner's
+// answer 1), the display name, the language and the employee number.
+func (f accountFacts) specHash(pending bool) []byte {
+	email := ""
+	if pending {
+		email = accountAddress(f.person)
+	}
+	sum := sha256.Sum256([]byte(strings.Join([]string{email, f.row.DisplayName, f.row.PreferredLanguage, f.row.EmployeeNumber}, "|")))
+	return sum[:]
+}
+
+// nextMidnight is the first instant of the civil day after f.today in the
+// settings zone: a link that succeeded is acted on once per civil day,
+// however long a daylight-saving change makes the day.
+func (f accountFacts) nextMidnight() time.Time {
+	y, m, d := f.today.Date()
+	return time.Date(y, m, d+1, 0, 0, 0, 0, f.zone)
+}
+
+// prepareAccountLinks writes a preparing link for every person the decision
+// table says is due to be prepared, each under the person's lock, the flag
+// and the erasure judged again there.
+func (s *server) prepareAccountLinks(ctx context.Context, mode string) error {
+	ids, err := store.New(s.deps.Pool).AccountCandidates(ctx)
+	if err != nil {
+		return fmt.Errorf("staff: read the people due an account: %w", err)
+	}
+	for _, id := range ids {
+		now := s.deps.Clock()
+		f, err := s.readAccountFacts(ctx, id, now)
+		if errors.Is(err, errPersonNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		step := decide(accountDecision{Person: f.decide, Mode: mode, CreateBeforeDays: f.createBeforeDays, Today: f.today})
+		if step.Kind != accountStepPrepare {
+			continue
+		}
+		err = s.withPersonLock(ctx, id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+			p, err := readAccountPerson(ctx, txq, id)
+			if err != nil || !p.provisionAccount {
+				return err
+			}
+			if err := txq.InsertPreparingLink(ctx, store.InsertPreparingLinkParams{PersonID: id, Now: now}); err != nil {
+				return fmt.Errorf("staff: write person %d's preparing link: %w", id, err)
+			}
+			return nil
+		})
+		if _, refused := asRefusal(err); refused || errors.Is(err, errPersonNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// accountEventPayload is an account event's payload (plan Global
+// Constraints, "The account events"): the step, the link's state after it,
+// the code of a refusal or a failure, a pending user's invitation after an
+// activation, and whether the flag was turned off meanwhile — codes and
+// states only.
+type accountEventPayload struct {
+	Step             string                  `json:"step"`
+	State            string                  `json:"state"`
+	Code             string                  `json:"code,omitempty"`
+	Invitation       *accountEventInvitation `json:"invitation,omitempty"`
+	FlagOffMeanwhile bool                    `json:"flagOffMeanwhile,omitempty"`
+}
+
+type accountEventInvitation struct {
+	State  string `json:"state"`
+	Issued int    `json:"issued"`
+}
+
+// accountEventClasses is every account event's payload_classes: class C,
+// as the link's columns are, passed explicitly — the payload names no field
+// of fieldClasses.
+var accountEventClasses = []string{"C"}
+
+type accountEvent struct {
+	kind    string
+	payload accountEventPayload
+}
+
+// accountResult is what a claim writes to its link, built as the claim
+// goes: it starts as the claimed row.
+type accountResult struct {
+	claim      store.ClaimAccountLinkRow
+	externalID *string
+	state      string
+	managed    bool
+	reason     *string
+	lastError  *string
+	attempts   int32
+	syncedAt   *time.Time
+	specHash   []byte
+	synced     *string
+	// failed is a call that could not be made, retried; soon is a link to
+	// claim again at the next poll rather than the next civil day (held by
+	// a mode mismatch, or the chain's three calls spent with more to do).
+	failed, soon bool
+	// prepared is the user a Prepare of this claim answered for a link that
+	// named none: deactivated when the result finds the link gone.
+	prepared *uuid.UUID
+	events   []accountEvent
+}
+
+func newAccountResult(claim store.ClaimAccountLinkRow) *accountResult {
+	return &accountResult{
+		claim: claim, externalID: claim.ExternalID, state: claim.State, managed: claim.Managed,
+		reason: claim.BlockedReason, lastError: claim.LastError, attempts: claim.Attempts,
+		syncedAt: claim.LastSyncedAt, specHash: claim.LastSpecHash, synced: claim.SyncedEmployeeNumber,
+	}
+}
+
+// stateOfRef is the link state ref's user reads as, current the link's: a
+// pending user Staff disabled after an enable stays disabled to the link,
+// though identity still reports them pending.
+func stateOfRef(ref contracts.AccountRef, current string) string {
+	switch ref.State {
+	case contracts.AccountStateActive:
+		return linkStateActive
+	case contracts.AccountStateDisabled:
+		return linkStateDisabled
+	}
+	if ref.DisabledBy != "" && current == linkStateDisabled {
+		return linkStateDisabled
+	}
+	return linkStatePending
+}
+
+// answered clears the failure: whatever was asked was answered.
+func (r *accountResult) answered(reason string) {
+	r.reason, r.lastError, r.attempts = nil, nil, 0
+	if reason != "" {
+		r.reason = &reason
+	}
+}
+
+// reported records a non-call step: nothing to do, or a report.
+func (r *accountResult) reported(step accountStep, ref *contracts.AccountRef) {
+	if ref != nil {
+		r.managed = ref.Managed
+	}
+	switch {
+	case step.State != "":
+		r.state = step.State
+	case step.Kind == accountStepNone && ref != nil:
+		r.state = stateOfRef(*ref, r.state)
+	}
+	r.answered(step.Reason)
+	if step.Kind == accountStepReport && r.changed() {
+		r.event(reportEventKind(step.Reason, r.state), string(step.Kind), step.Reason)
+	}
+}
+
+// changed is whether the state or the reason differs from the claimed row's.
+func (r *accountResult) changed() bool {
+	return r.state != r.claim.State || deref(r.reason) != deref(r.claim.BlockedReason)
+}
+
+// reportEventKind is the event a report or a refusal is recorded as.
+func reportEventKind(reason, state string) string {
+	switch {
+	case reason == reasonMismatch:
+		return eventAccountMismatched
+	case state == linkStateFailed:
+		return eventAccountFailed
+	default:
+		return eventAccountBlocked
+	}
+}
+
+func (r *accountResult) event(kind, step, code string) {
+	r.events = append(r.events, accountEvent{kind: kind, payload: accountEventPayload{Step: step, State: r.state, Code: code}})
+}
+
+// held records a step held by the mode mismatch: the state kept, the reason
+// mode_mismatch, claimed again at the next poll.
+func (r *accountResult) held(step accountStep) {
+	r.answered(reasonModeMismatch)
+	r.soon = true
+	if r.changed() {
+		r.event(eventAccountBlocked, string(step.Kind), reasonModeMismatch)
+	}
+}
+
+// succeeded records a call identity carried out, at now.
+func (r *accountResult) succeeded(step accountStep, got contracts.AccountRef, f accountFacts, now time.Time) {
+	id := got.UserID.String()
+	if r.externalID == nil {
+		r.prepared = &got.UserID
+	}
+	r.externalID = &id
+	r.managed = got.Managed
+	r.syncedAt = &now
+	r.answered("")
+	if step.Kind == accountStepDeactivate {
+		r.state = linkStateDisabled
+	} else {
+		r.state = stateOfRef(got, r.state)
+	}
+	payload := accountEventPayload{Step: string(step.Kind), State: r.state}
+	var kind string
+	switch step.Kind {
+	case accountStepPrepare:
+		kind = eventAccountPrepared
+		number := f.row.EmployeeNumber
+		r.synced = &number
+	case accountStepActivate:
+		kind = eventAccountActivated
+		if got.State == contracts.AccountStatePending {
+			payload.Invitation = &accountEventInvitation{State: got.Invitation.State, Issued: got.Invitation.Issued}
+		}
+	case accountStepDeactivate:
+		kind = eventAccountDeactivated
+	case accountStepUpdate:
+		kind = eventAccountUpdated
+		number := f.row.EmployeeNumber
+		r.synced = &number
+		r.specHash = f.specHash(got.State == contracts.AccountStatePending)
+	}
+	r.events = append(r.events, accountEvent{kind: kind, payload: payload})
+}
+
+// failedCall records a call's error: one of the contract's refusals as the
+// link's blocked_reason, anything else a failure retried.
+func (r *accountResult) failedCall(step accountStep, err error) {
+	code, state, answer := accountCallCode(err)
+	if !answer {
+		r.failed = true
+		r.attempts = r.claim.Attempts + 1
+		code := errorAccountsUnavailable
+		first := r.lastError == nil
+		r.lastError = &code
+		if first {
+			r.event(eventAccountFailed, string(step.Kind), code)
+		}
+		return
+	}
+	if state != "" {
+		r.state = state
+	}
+	r.answered(code)
+	if r.changed() {
+		r.event(reportEventKind(code, r.state), string(step.Kind), code)
+	}
+}
+
+// accountCallCode maps a call's error to the code it is recorded as and the
+// link state it leaves ("" to keep the link's), answer false for a failure
+// to retry.
+func accountCallCode(err error) (code, state string, answer bool) {
+	for _, m := range []struct {
+		err         error
+		code, state string
+	}{
+		{contracts.ErrAccountPrivileged, reasonPrivileged, linkStateBlocked},
+		{contracts.ErrLastOwner, reasonPrivileged, linkStateBlocked},
+		{contracts.ErrBlockedByOwner, reasonBlockedByOwner, linkStateBlocked},
+		{contracts.ErrAccountNotFound, reasonNotFound, linkStateBlocked},
+		{contracts.ErrUserGone, reasonUserGone, linkStateFailed},
+		{contracts.ErrAccountNotManaged, reasonNotManaged, ""},
+		{contracts.ErrEmployeeRoleMissing, reasonEmployeeRoleMissing, linkStateBlocked},
+		{contracts.ErrEmployeeRoleUnsafe, reasonEmployeeRoleUnsafe, linkStateBlocked},
+		{contracts.ErrAccountEmailTaken, reasonEmailTaken, linkStateBlocked},
+		{contracts.ErrEmployeeNumberTaken, reasonNumberTaken, linkStateBlocked},
+		{contracts.ErrModeMismatch, reasonModeMismatch, ""},
+		{contracts.ErrInvalidActor, reasonInvalidActor, linkStateFailed},
+	} {
+		if errors.Is(err, m.err) {
+			return m.code, m.state, true
+		}
+	}
+	return "", "", false
+}
+
+// isCall is whether step is one identity carries out.
+func (step accountStep) isCall() bool {
+	switch step.Kind {
+	case accountStepPrepare, accountStepActivate, accountStepDeactivate, accountStepUpdate:
+		return true
+	}
+	return false
+}
+
+// readAccountRef is the link's user as identity reports them, compared with
+// the person's own address, under the call timeout.
+func (s *server) readAccountRef(ctx context.Context, id uuid.UUID, f accountFacts) (*contracts.AccountRef, error) {
+	return withCallTimeout(ctx, func(ctx context.Context) (*contracts.AccountRef, error) {
+		return s.accountsAccount(ctx, id, &f.person)
+	})
+}
+
+// callAccountStep makes step's call for run, under the call timeout.
+func (s *server) callAccountStep(ctx context.Context, run accountsRun, step accountStep, user *uuid.UUID, f accountFacts) (contracts.AccountRef, error) {
+	return withCallTimeout(ctx, func(ctx context.Context) (contracts.AccountRef, error) {
+		switch step.Kind {
+		case accountStepPrepare:
+			return s.accountsPrepare(ctx, run.actor, f.spec())
+		case accountStepActivate:
+			return s.accountsActivate(ctx, run.actor, *user, contracts.ActivateOpts{FreshInvitation: step.Fresh})
+		case accountStepDeactivate:
+			return s.accountsDeactivate(ctx, run.actor, *user)
+		default:
+			return s.accountsUpdate(ctx, run.actor, *user, f.spec())
+		}
+	})
+}
+
+// workAccountLink works one claimed link and writes its result, answering
+// whether it ended without a failure to retry.
+func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim store.ClaimAccountLinkRow, lease uuid.UUID, mode string, mismatch bool, now time.Time) bool {
+	log := s.logger().With("worker", accountsWorkerName, "person_id", claim.PersonID)
+	r := newAccountResult(claim)
+	f, err := s.readAccountFacts(ctx, claim.PersonID, now)
+	if errors.Is(err, errPersonNotFound) {
+		return true
+	}
+	if err != nil {
+		log.ErrorContext(ctx, "staff: read a person's account facts", "error", err.Error())
+		return false
+	}
+	var user *uuid.UUID
+	if claim.ExternalID != nil {
+		id, err := uuid.Parse(*claim.ExternalID)
+		if err != nil {
+			log.ErrorContext(ctx, "staff: a link names no user id identity could know")
+			r.answered(reasonUserGone)
+			r.state = linkStateFailed
+			return s.writeAccountResult(ctx, run, r, lease, f, now)
+		}
+		user = &id
+	}
+	var ref *contracts.AccountRef
+	if user != nil {
+		if ref, err = s.readAccountRef(ctx, *user, f); err != nil {
+			log.WarnContext(ctx, "staff: read a linked account", "error", err.Error())
+			r.failedCall(accountStep{Kind: accountStepNone}, err)
+			return s.writeAccountResult(ctx, run, r, lease, f, now)
+		}
+	}
+	link := accountLinkFacts{
+		State: claim.State, ExternalID: claim.ExternalID, Managed: claim.Managed,
+		SpecChanged:          ref != nil && !bytes.Equal(f.specHash(ref.State == contracts.AccountStatePending), claim.LastSpecHash),
+		SyncedEmployeeNumber: deref(claim.SyncedEmployeeNumber),
+	}
+	in := accountDecision{Person: f.decide, Link: &link, Ref: ref, Mode: mode, CreateBeforeDays: f.createBeforeDays, Today: f.today, Fresh: run.fresh}
+	for calls := 0; ; calls++ {
+		step := decide(in)
+		if !step.isCall() {
+			r.reported(step, ref)
+			break
+		}
+		if mismatch && step.Kind != accountStepDeactivate {
+			log.InfoContext(ctx, "staff: an account step held by the authority mode mismatch", "step", string(step.Kind))
+			r.held(step)
+			break
+		}
+		if calls == accountsMaxCalls {
+			r.reported(accountStep{Kind: accountStepNone}, ref)
+			r.soon = true
+			break
+		}
+		got, err := s.callAccountStep(ctx, run, step, user, f)
+		if err != nil {
+			if errors.Is(err, contracts.ErrInvalidActor) {
+				log.ErrorContext(ctx, "staff: an account call named no valid actor", "step", string(step.Kind))
+			} else if _, _, answer := accountCallCode(err); !answer {
+				log.WarnContext(ctx, "staff: an account call failed", "step", string(step.Kind), "error", err.Error())
+			}
+			r.failedCall(step, err)
+			break
+		}
+		r.succeeded(step, got, f, now)
+		if user == nil {
+			id := got.UserID
+			user = &id
+		}
+		fresh, err := s.readAccountRef(ctx, *user, f)
+		if err != nil {
+			// The call stood; the next claim reads the user again.
+			log.WarnContext(ctx, "staff: read a linked account after a call", "error", err.Error())
+			break
+		}
+		unchanged := ref != nil && fresh != nil && *ref == *fresh
+		ref = fresh
+		link.ExternalID, link.State = r.externalID, r.state
+		if ref != nil {
+			link.Managed = ref.Managed
+		}
+		if step.Kind == accountStepPrepare || step.Kind == accountStepUpdate {
+			link.SyncedEmployeeNumber = f.row.EmployeeNumber
+		}
+		// The spec as the link now records it: after an Update the one it
+		// wrote, so the re-run asks for no second; after a Prepare the user
+		// is compared with it for the first time.
+		link.SpecChanged = step.Kind != accountStepUpdate && ref != nil &&
+			!bytes.Equal(f.specHash(ref.State == contracts.AccountStatePending), r.specHash)
+		in.Link, in.Ref, in.Fresh = &link, ref, false
+		if unchanged {
+			if next := decide(in); !next.isCall() {
+				r.reported(next, ref)
+			} else {
+				r.reported(accountStep{Kind: accountStepNone}, ref)
+			}
+			break
+		}
+	}
+	return s.writeAccountResult(ctx, run, r, lease, f, now)
+}
+
+// writeAccountResult writes r under the person's lock, then the link on the
+// claim's lease, re-reading the flag (plan M9). A link gone has the user a
+// Prepare of this claim made deactivated, outside the transaction; a link
+// claimed since is left to its new holder. A user another link already names
+// is recorded as a mismatch instead. It answers whether the claim ended
+// without a failure to retry.
+func (s *server) writeAccountResult(ctx context.Context, run accountsRun, r *accountResult, lease uuid.UUID, f accountFacts, now time.Time) bool {
+	log := s.logger().With("worker", accountsWorkerName, "person_id", r.claim.PersonID)
+	next := f.nextMidnight()
+	switch {
+	case r.failed && r.attempts < accountsMaxAttempts, r.soon:
+		next = now.Add(s.workersPoll())
+	}
+	gone := false
+	write := func() error {
+		return s.withPersonLock(ctx, r.claim.PersonID, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+			p, err := readAccountPerson(ctx, txq, r.claim.PersonID)
+			if err != nil {
+				return err
+			}
+			flagOff := f.decide.Flag && !p.provisionAccount
+			n, err := txq.WriteAccountResult(ctx, store.WriteAccountResultParams{
+				ID: r.claim.ID, LeaseID: lease, ExternalID: r.externalID, State: r.state, Managed: r.managed,
+				BlockedReason: r.reason, LastError: r.lastError, Attempts: r.attempts, NextAttemptAt: next,
+				LastSyncedAt: r.syncedAt, LastSpecHash: r.specHash, SyncedEmployeeNumber: r.synced, Now: now,
+			})
+			if err != nil {
+				return err
+			}
+			if n == 0 {
+				link, err := readAccountLink(ctx, txq, r.claim.PersonID)
+				if err != nil {
+					return err
+				}
+				gone = link == nil
+				if !gone {
+					log.InfoContext(ctx, "staff: an account link was claimed by another cycle meanwhile; its result is not written")
+				}
+				return nil
+			}
+			for _, e := range r.events {
+				e.payload.FlagOffMeanwhile = flagOff
+				if err := s.recordEvent(ctx, txq, &r.claim.PersonID, e.kind, run.who, e.payload, accountEventClasses); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+	err := write()
+	if db.IsUniqueViolation(err, "ux_identity_links_provider_external") {
+		// The user is another person's link's already: not this person's.
+		r.externalID, r.state, r.prepared = r.claim.ExternalID, linkStateBlocked, nil
+		r.answered(reasonMismatch)
+		r.events = nil
+		r.event(eventAccountMismatched, string(accountStepPrepare), reasonMismatch)
+		err = write()
+	}
+	if errors.Is(err, errPersonNotFound) {
+		gone, err = true, nil
+	}
+	if err != nil {
+		log.ErrorContext(ctx, "staff: write an account result", "error", err.Error())
+		return false
+	}
+	if gone && r.prepared != nil {
+		if _, err := withCallTimeout(ctx, func(ctx context.Context) (contracts.AccountRef, error) {
+			return s.accountsDeactivate(ctx, run.actor, *r.prepared)
+		}); err != nil {
+			log.ErrorContext(ctx, "staff: the person's link was gone after Prepare, and the user it prepared could not be deactivated",
+				slog.String("user_id", r.prepared.String()), slog.String("error", err.Error()))
+		} else {
+			log.WarnContext(ctx, "staff: the person's link was gone after Prepare; the user it prepared was deactivated",
+				slog.String("user_id", r.prepared.String()))
+		}
+	}
+	return !r.failed
+}
+
+// deref is *s, "" for nil.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}

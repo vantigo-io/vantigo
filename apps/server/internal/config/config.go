@@ -328,10 +328,20 @@ type Config struct {
 	// erased on a schedule, and objects queued for deletion wait — POST
 	// /retention/run still runs both by hand.
 	StaffRetentionEnabled bool
+	// StaffAccountsEnabled is the on/off switch for the Staff module's
+	// accounts worker, staff-accounts (STAFF_ACCOUNTS_ENABLED, staff
+	// foundation design §8.5; accounts plan reading 17). Default ON, as the
+	// retention worker's is: nothing happens until HR turns a person's
+	// account flag on and an Owner names the employee roles. A 0 means the
+	// worker is never handed to the runner: no account is prepared, enabled
+	// or disabled on a schedule — leavers included — until it is on again.
+	StaffAccountsEnabled bool
 	// StaffWorkersPoll is how often the Staff workers run a cycle
 	// (STAFF_WORKERS_POLL, default 1 hour, never under a minute): each poll
 	// takes the retention lease for an erase cycle — at most fifty people, a
-	// constant — and makes a pass over the deletion ledger. The erase is
+	// constant — and makes a pass over the deletion ledger; the accounts
+	// worker claims at most fifty due links, and retries a failed one at the
+	// next poll. The erase is
 	// idempotent, so an hourly poll is "once per civil day" kept however the
 	// clock changes; a minute is the floor because every poll asks the object
 	// store about every due row.
@@ -792,13 +802,15 @@ func energyImport(p *problems, env map[string]string, c *Config) {
 // staffWorkersMinPoll is the shortest STAFF_WORKERS_POLL accepted.
 const staffWorkersMinPoll = time.Minute
 
-// staffWorkers loads the Staff retention worker's settings (staff foundation
-// design §8.5): its switch, on by default, and the poll it shares with the
-// module's later workers, an hour by default and at least a minute. The batch —
+// staffWorkers loads the Staff workers' settings (staff foundation design
+// §8.5): the retention and the accounts workers' switches, each on by
+// default, and the poll they share, an hour by default and at least a
+// minute. The batch —
 // at most fifty people an erase cycle and a hundred objects a ledger pass — is
 // a constant in the worker, not a knob.
 func staffWorkers(p *problems, env map[string]string, c *Config) {
 	c.StaffRetentionEnabled = boolean(p, env, "STAFF_RETENTION_ENABLED", true)
+	c.StaffAccountsEnabled = boolean(p, env, "STAFF_ACCOUNTS_ENABLED", true)
 	c.StaffWorkersPoll = time.Hour
 	if v := env["STAFF_WORKERS_POLL"]; v != "" {
 		d, err := time.ParseDuration(v)

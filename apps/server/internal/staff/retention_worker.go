@@ -76,24 +76,27 @@ func NewRetentionWorker(d module.Deps) *RetentionWorker {
 }
 
 // workers is the module's background workers: staff-retention unless
-// STAFF_RETENTION_ENABLED=0. A Deps with no Config cannot say, and gets none.
+// STAFF_RETENTION_ENABLED=0, and staff-accounts (accounts_worker.go) unless
+// STAFF_ACCOUNTS_ENABLED=0. A Deps with no Config cannot say, and gets none.
 func workers(d module.Deps) []worker.Worker {
-	if d.Config == nil || !d.Config.StaffRetentionEnabled {
+	if d.Config == nil {
 		return nil
 	}
-	return []worker.Worker{NewRetentionWorker(d)}
+	var out []worker.Worker
+	if d.Config.StaffRetentionEnabled {
+		out = append(out, NewRetentionWorker(d))
+	}
+	if d.Config.StaffAccountsEnabled {
+		out = append(out, NewAccountsWorker(d))
+	}
+	return out
 }
 
 // Name identifies this worker in the runner's logs.
 func (w *RetentionWorker) Name() string { return retentionWorkerName }
 
 // Interval is the poll (STAFF_WORKERS_POLL, default an hour).
-func (w *RetentionWorker) Interval() time.Duration {
-	if w.deps.Config != nil && w.deps.Config.StaffWorkersPoll > 0 {
-		return w.deps.Config.StaffWorkersPoll
-	}
-	return defaultWorkersPoll
-}
+func (w *RetentionWorker) Interval() time.Duration { return w.srv.workersPoll() }
 
 // Run is the worker loop: an erase cycle and a ledger pass, then the poll. A
 // failure is logged and the loop goes on — the runner never restarts a

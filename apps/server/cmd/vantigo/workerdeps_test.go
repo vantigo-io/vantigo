@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -69,5 +70,52 @@ func TestWorkerModeDeps_CarryIdentitysUserDirectory(t *testing.T) {
 	}
 	if mode, err := seen.Accounts.Mode(ctx); err != nil || mode != contracts.AccountModeLocal {
 		t.Errorf("Accounts.Mode = %q, %v, want local from the pool", mode, err)
+	}
+}
+
+// TestWorkerMode_StaffAloneStartsTheAccountsWorker proves MODULES=staff
+// alone hands the runner staff-accounts (accounts plan M10) — identity is
+// always there to provide Accounts — and STAFF_ACCOUNTS_ENABLED=0 keeps it
+// out, the retention worker still started.
+func TestWorkerMode_StaffAloneStartsTheAccountsWorker(t *testing.T) {
+	_, databaseURL := testdb.Migrated(t)
+	pool, err := pgxpool.New(context.Background(), databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	for _, tc := range []struct {
+		enabled string
+		want    []string
+	}{
+		{enabled: "", want: []string{"staff-retention", "staff-accounts"}},
+		{enabled: "0", want: []string{"staff-retention"}},
+	} {
+		env := map[string]string{
+			"DATABASE_URL": databaseURL,
+			"APP_URL":      "http://localhost:8080",
+			"APP_SECRET":   testAppSecret,
+			"SMTP_HOST":    "smtp.example.invalid",
+			"SMTP_FROM":    "noreply@example.invalid",
+			"MODULES":      "staff",
+		}
+		if tc.enabled != "" {
+			env["STAFF_ACCOUNTS_ENABLED"] = tc.enabled
+		}
+		cfg, err := config.Load(env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deps, access, err := moduleDeps(cfg, pool, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, w := range module.Workers(deps, businessModules(access)...) {
+			names = append(names, w.Name())
+		}
+		if !slices.Equal(names, tc.want) {
+			t.Errorf("STAFF_ACCOUNTS_ENABLED=%q: workers = %v, want %v", tc.enabled, names, tc.want)
+		}
 	}
 }

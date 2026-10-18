@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, turning on accounts for a person, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence, the retention periods and the account settings.
+description: Enabling the Staff module, giving people access to it, linking people to their users, turning on accounts for a person and the accounts worker, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence, the retention periods and the account settings.
 sidebar:
   order: 44
 sources:
@@ -32,6 +32,7 @@ sources:
   - apps/server/internal/staff/account_flag.go
   - apps/server/internal/staff/account_settings.go
   - apps/server/internal/staff/accounts_decide.go
+  - apps/server/internal/staff/accounts_worker.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -109,8 +110,8 @@ every link and unlink naming a user that way.
 ## Turn on accounts for a person
 
 Staff can give a person a user in identity, prepared before they start and enabled on
-their first day (delivery C). The account flag is set here; the accounts worker that
-acts on it arrives with the next part of the delivery.
+their first day (delivery C). The account flag is set here; the accounts worker
+([below](#the-accounts-worker)) acts on it.
 
 1. Before the first account, an Owner names the roles Staff may give in identity (the
    employee roles). `GET /api/v1/staff/meta` answers `provisioningRolesSet` to
@@ -139,6 +140,65 @@ How many days before that day the account is prepared, disabled, is the setting
 `createBeforeDays` ([The settings](#the-settings)). An erased person's flag cannot be
 changed (`person_erased`). Someone else saving the person first answers
 `revision_conflict`; read the flag again.
+
+### The accounts worker
+
+The worker `staff-accounts` acts on the flag every `STAFF_WORKERS_POLL` (default `1h`)
+— in worker mode, and in api mode with `WORKERS_IN_PROCESS=1`
+([Installation](/en/admin/installation/)) — unless `STAFF_ACCOUNTS_ENABLED=0`. For a
+person whose flag is on it:
+
+- `createBeforeDays` before the effective day, creates the user in identity, pending
+  and disabled, and links it (the link's `state` reads `pending`);
+- on the day, enables the user under the employee roles and mails them an invitation
+  to choose a password; the link reads `active` once they have accepted it;
+- the day after the last employment ends, disables the user and ends their sessions
+  (`disabled`); a rehire enables them again on the new start;
+- keeps the user's name, language and employee number in step with the person — and
+  the address only while the user is still pending.
+
+Each person is acted on once a day, at the first poll after midnight in the business
+time zone. Several workers, or a worker and a run by hand, share the work person by
+person; none waits for another.
+
+1. Precondition: an Owner has named the employee roles (`provisioningRolesSet` is
+   `true`); without them an account is prepared but never enabled
+   (`employee_role_missing`).
+2. Verify, the day after the worker has run: `GET /api/v1/staff/people/{id}/account`
+   answers a `link` with its `state`, its `reason` when it is held, `attempts` and
+   `nextAttemptAt`. The person's history (as HR) shows `account_prepared`,
+   `account_activated`, `account_deactivated` and `account_updated`; a manager, an
+   Approver and a colleague see none of them.
+3. To stop it: `STAFF_ACCOUNTS_ENABLED=0` and restart. **Nothing is then done on a
+   schedule, leavers included**: a user whose employment ended keeps their access
+   until the worker runs again or an Owner disables them in identity. Turning the
+   `staff` module off has the same effect, and also strands pending users — prepared,
+   never invited — whom an Owner then finishes or deletes in identity.
+
+**Federated mode** (an identity provider owns the accounts): the worker never creates
+or invites anyone. It finds the user the provider created by the employee number, links
+it, re-enables a user it disabled and disables leavers; until the provider has created
+the user the link is held with `not_found` and tried again daily. A pending user made
+in local mode before the switch is held with `mode_changed` for an Owner.
+
+**The mode mismatch.** The worker's process must have the same OIDC and SCIM settings
+as the API's ([Installation](/en/admin/installation/)). When they differ, the worker
+still disables leavers but holds everything else: the links read
+`reason: mode_mismatch`, and the log says so. Align the settings and restart; the held
+links are tried again at the next poll.
+
+**A held link** (`reason` set) is tried again every day, so it clears by itself once its
+cause is gone. The reasons an operator meets: `employee_role_missing` and
+`employee_role_unsafe` (an Owner names, or fixes, the employee roles),
+`account_email_taken` and `employee_number_taken` (another user in identity holds the
+address or the number), `blocked_by_owner` and `disabled_by_owner` (an Owner disabled
+the user; only an Owner undoes it), `account_privileged` (the user is an Owner or a
+SystemAdmin, handled by hand), `account_not_managed` (an Owner stopped Staff managing
+the user), `mismatch` (the user holds another employee number: someone else's account),
+`user_gone` (the user was deleted in identity), `invitation_revoked` and
+`invitation_unanswered` (*Run now* sends a fresh invitation). A link whose `attempts`
+reach three could not reach identity: it is tried daily from then on, and the log
+names the failure.
 
 ## The personal-data permission
 
