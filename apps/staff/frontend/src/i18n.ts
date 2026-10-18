@@ -1348,6 +1348,10 @@ export const staffCatalog = {
       "Paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own.",
     ammefriStaysPaid:
       "{{name}} stays paid: it is paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own.",
+    svangerskapskontrollPaidByLaw:
+      "Paid by law: aml. § 12-1 gives a pregnant employee paid time off for antenatal check-ups that cannot reasonably take place outside working hours.",
+    svangerskapskontrollStaysPaid:
+      "{{name}} stays paid: aml. § 12-1 gives a pregnant employee paid time off for antenatal check-ups that cannot reasonably take place outside working hours.",
     sortInvalid: "1 to 1000",
     typeSort: "Order",
     typeSortDescription: "Left empty, after every type there is.",
@@ -1417,7 +1421,7 @@ export const staffCatalog = {
       "Off by default. Turned on, a year's remaining holiday is carried into the next, from the year it is turned on.",
     autoCarryOverSince: "On since {{date}}; no year before it is carried over automatically.",
     "refusal.seed_immutable":
-      "A seeded type changes only its names, its order, whether it is hidden and whether it is paid — ammefri always stays paid: it is paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own.",
+      "A seeded type changes only its names, its order, whether it is hidden and whether it is paid — ammefri always stays paid: it is paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own; svangerskapskontroll stays paid too, by aml. § 12-1.",
     "refusal.absence_type_in_use":
       "An HR-only type is not opened to colleagues while an absence names it: their rows were taken on the promise they stayed HR's.",
     "refusal.holiday_scheme_in_use": "The default scheme, or one an employment follows, is not archived.",
@@ -2774,6 +2778,10 @@ export const staffCatalog = {
       "Lønnet innenfor grensene i aml. § 12-8 (2) — inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer; ammefri utover det er ulønnet etter loven med mindre annet er avtalt — registrer den med en egen type.",
     ammefriStaysPaid:
       "{{name}} forblir lønnet: den er lønnet innenfor grensene i aml. § 12-8 (2) — inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer; ammefri utover det er ulønnet etter loven med mindre annet er avtalt — registrer den med en egen type.",
+    svangerskapskontrollPaidByLaw:
+      "Lønnet etter loven: aml. § 12-1 gir en gravid arbeidstaker fri med lønn til svangerskapskontroller som ikke rimelig kan finne sted utenom arbeidstiden.",
+    svangerskapskontrollStaysPaid:
+      "{{name}} forblir lønnet: aml. § 12-1 gir en gravid arbeidstaker fri med lønn til svangerskapskontroller som ikke rimelig kan finne sted utenom arbeidstiden.",
     sortInvalid: "1 til 1000",
     typeSort: "Rekkefølge",
     typeSortDescription: "Står det tomt, kommer den etter alle typene som finnes.",
@@ -2843,7 +2851,7 @@ export const staffCatalog = {
       "Av som standard. Slått på overføres årets gjenstående ferie til neste år, fra året det slås på.",
     autoCarryOverSince: "På siden {{date}}; ingen år før det overføres automatisk.",
     "refusal.seed_immutable":
-      "En forhåndsdefinert type endrer bare navn, rekkefølge, om den er skjult og om den er lønnet — ammefri forblir alltid lønnet: den er lønnet innenfor grensene i aml. § 12-8 (2) — inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer; ammefri utover det er ulønnet etter loven med mindre annet er avtalt — registrer den med en egen type.",
+      "En forhåndsdefinert type endrer bare navn, rekkefølge, om den er skjult og om den er lønnet — ammefri forblir alltid lønnet: den er lønnet innenfor grensene i aml. § 12-8 (2) — inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer; ammefri utover det er ulønnet etter loven med mindre annet er avtalt — registrer den med en egen type; svangerskapskontroll forblir også lønnet, etter aml. § 12-1.",
     "refusal.absence_type_in_use":
       "En type som bare er for HR, åpnes ikke for kolleger mens fravær har den: de ble registrert med løfte om å forbli HRs.",
     "refusal.holiday_scheme_in_use": "Standardordningen, eller en ordning et arbeidsforhold følger, arkiveres ikke.",

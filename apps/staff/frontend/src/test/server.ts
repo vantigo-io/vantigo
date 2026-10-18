@@ -2209,12 +2209,12 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       const stale = staleRevision(init, type.revision, "absence type");
       if (stale) return stale;
       const input = body as Schemas["StaffAbsenceTypeChangeRequest"];
-      // A seed's pay is HR's to change — but ammefri's, paid by law (aml. § 12-8 (2)), and a reserved type's.
+      // A seed's pay is HR's to change — but ammefri's and svangerskapskontroll's, paid by law (aml. § 12-8 (2), § 12-1), and a reserved type's.
       const fixed = ["allowsPercent", "drawsHoliday", "needsDecision", "visibility", "ameldingLeave"] as const;
       if (
         type.seeded &&
         (fixed.some((key) => input[key] !== type[key]) ||
-          (type.key === "ammefri" && !input.paid) ||
+          ((type.key === "ammefri" || type.key === "svangerskapskontroll") && !input.paid) ||
           (type.reserved && input.paid !== type.paid))
       )
         return staffProblem(409, {

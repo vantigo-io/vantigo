@@ -36,7 +36,7 @@ export interface paths {
         get?: never;
         /**
          * Change an absence type
-         * @description Replaces an absence type but for its key, kind and unit, recorded as the installation event absence_type_updated. A seed changes its names, sort, hidden and paid alone; anything else, setting ammefri unpaid (aml. § 12-8 (2) pays it), and showing a reserved type, is refused seed_immutable.
+         * @description Replaces an absence type but for its key, kind and unit, recorded as the installation event absence_type_updated. A seed changes its names, sort, hidden and paid alone; anything else, setting ammefri unpaid (aml. § 12-8 (2) pays it) or svangerskapskontroll unpaid (aml. § 12-1 pays it), and showing a reserved type, is refused seed_immutable.
          */
         put: operations["putStaffAbsenceTypesById"];
         post?: never;
@@ -2059,7 +2059,7 @@ export interface components {
          * @enum {string}
          */
         StaffAbsenceStatus: "requested" | "approved" | "rejected" | "cancelled" | "registered";
-        /** @description An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order, whether it is hidden and whether it is paid (seed_immutable otherwise) — ammefri never unpaid — paid within aml. § 12-8 (2)'s limits, up to one hour a day in the child's first year on a working day of seven hours or more, nursing time beyond that unpaid by law unless agreed and registered with a company type of its own; the reserved types are never shown and never offered. */
+        /** @description An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order, whether it is hidden and whether it is paid (seed_immutable otherwise) — ammefri never unpaid — paid within aml. § 12-8 (2)'s limits, up to one hour a day in the child's first year on a working day of seven hours or more, nursing time beyond that unpaid by law unless agreed and registered with a company type of its own — nor svangerskapskontroll, paid time off for antenatal check-ups by aml. § 12-1; the reserved types are never shown and never offered. */
         StaffAbsenceType: {
             /** @description Whether an absence of the type may be a percentage of each day. Never on a sick kind, whose share is the sykmelding's degree. */
             allowsPercent: boolean;
@@ -2075,7 +2075,7 @@ export interface components {
             names: components["schemas"]["StaffAbsenceTypeNames"];
             /** @description true — requested and decided (approved or rejected); false — a notification, registered when entered. */
             needsDecision: boolean;
-            /** @description Whether the absence is paid. Informational — no figure, the payroll export included, reads it. A seed's is HR's to change but ammefri's, paid by law. */
+            /** @description Whether the absence is paid. Informational — no figure, the payroll export included, reads it. A seed's is HR's to change but ammefri's and svangerskapskontroll's, paid by law. */
             paid: boolean;
             /** @description One of the four reserved types the erases write — absent in place of a sick or child-sick type; absent_hours in place of helse, counted in hours; absent_hr_only and absent_hr_only_hours (visibility hr_only) in place of an HR-only pregnancy type, days or hours, so the row reads as before to everyone who read it as leave. Always hidden. */
             reserved: boolean;
@@ -2091,7 +2091,7 @@ export interface components {
             unit: components["schemas"]["StaffAbsenceUnit"];
             visibility: components["schemas"]["StaffAbsenceVisibility"];
         };
-        /** @description A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort, hidden and paid alone — every other value as it is, else seed_immutable — ammefri stays paid (aml. § 12-8 (2)), and the reserved types stay hidden and unpaid. */
+        /** @description A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort, hidden and paid alone — every other value as it is, else seed_immutable — ammefri stays paid (aml. § 12-8 (2)), as does svangerskapskontroll (aml. § 12-1), and the reserved types stay hidden and unpaid. */
         StaffAbsenceTypeChangeRequest: {
             /** @description Only on a type counted in days. */
             allowsPercent: boolean;

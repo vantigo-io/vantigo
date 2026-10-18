@@ -125,6 +125,20 @@ describe("Settings — absence types", () => {
     expect(sent(fetchMock, "PUT", /absence-types\/1009$/)).toHaveLength(0);
   });
 
+  it("keeps svangerskapskontroll paid, saying why (aml. § 12-1), without asking the server", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    renderRoute("/staff/settings");
+
+    expect(await tableRow("Absence types", "Antenatal check-up")).toHaveTextContent("Paid");
+    await userEvent.click(screen.getByRole("button", { name: "Change Antenatal check-up" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change Antenatal check-up" });
+    expect(within(dialog).getByText(/aml\. § 12-1/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("switch", { name: /^Paid/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByText(/Antenatal check-up stays paid/)).toBeInTheDocument();
+    expect(sent(fetchMock, "PUT", /absence-types\/1004$/)).toHaveLength(0);
+  });
+
   it("says ammefri's seed_immutable in words", async () => {
     stubStaffApi({
       role: "manage",

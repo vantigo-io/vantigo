@@ -46,8 +46,14 @@ const ameldingLeaves: StaffAmeldingLeave[] = [
   "andreIkkeLovfestedePermisjoner",
   "permittering",
 ];
-/** The seed paid by law (aml. § 12-8 (2)), never set unpaid. */
-const ammefriKey = "ammefri";
+/**
+ * The seeds paid by law, never set unpaid, with the words that say why:
+ * ammefri (aml. § 12-8 (2)) and svangerskapskontroll (aml. § 12-1).
+ */
+const paidByLawKeys = {
+  ammefri: { why: "ammefriPaidByLaw", stays: "ammefriStaysPaid" },
+  svangerskapskontroll: { why: "svangerskapskontrollPaidByLaw", stays: "svangerskapskontrollStaysPaid" },
+} as const;
 /** The kinds a company type may be; the sick kinds are the seeds'. */
 const companyKinds = ["holiday", "leave", "time_off", "other"] as const;
 
@@ -69,7 +75,7 @@ const changeOf = (row: StaffAbsenceType): StaffAbsenceTypeChange => ({
  * vocabulary — shown read-only with their a-melding mapping and visibility,
  * whose names, order, hidden flag and pay alone change (the owner's answer
  * 7: a company paying beyond the law says so; ammefri stays paid, aml.
- * § 12-8 (2)), and the company's own types, editable but for the key, kind
+ * § 12-8 (2), and svangerskapskontroll, aml. § 12-1), and the company's own types, editable but for the key, kind
  * and unit. The reserved `absent` and `absent_hours`, which the erases
  * write, are never listed. Widening an HR-only type that absences name is
  * refused (`absence_type_in_use`), in words.
@@ -230,7 +236,8 @@ const TypeForm = ({ row, onClose }: { row?: StaffAbsenceType; onClose: () => voi
   const [banner, setBanner] = useState<string | null>(null);
   // A seed changes its names, its order, whether it is hidden and its pay alone.
   const fixed = row?.seeded ?? false;
-  const paidByLaw = fixed && row?.key === ammefriKey;
+  const paidByLaw =
+    fixed && row && Object.hasOwn(paidByLawKeys, row.key) ? paidByLawKeys[row.key as keyof typeof paidByLawKeys] : null;
   const locale = useLocale();
   const rowName = row ? (locale === "nb" ? row.names.nb : row.names.en) : "";
   const form = useForm<TypeValues>({
@@ -253,7 +260,7 @@ const TypeForm = ({ row, onClose }: { row?: StaffAbsenceType; onClose: () => voi
       key: (value) => (row || /^[a-z0-9_]{1,40}$/.test(value) ? null : t("absenceTypeKeyInvalid")),
       nameEn: (value) => (value.trim() && value.trim().length <= 100 ? null : t("nameRequired100")),
       nameNb: (value) => (value.trim() && value.trim().length <= 100 ? null : t("nameRequired100")),
-      paid: (value) => (paidByLaw && !value ? t("ammefriStaysPaid", { name: rowName }) : null),
+      paid: (value) => (paidByLaw && !value ? t(paidByLaw.stays, { name: rowName }) : null),
       sort: (value) =>
         value === ""
           ? row
@@ -390,7 +397,7 @@ const TypeForm = ({ row, onClose }: { row?: StaffAbsenceType; onClose: () => voi
           />
           <Switch
             label={t("typePaidField")}
-            description={paidByLaw ? t("ammefriPaidByLaw") : undefined}
+            description={paidByLaw ? t(paidByLaw.why) : undefined}
             {...form.getInputProps("paid", { type: "checkbox" })}
           />
           <Switch

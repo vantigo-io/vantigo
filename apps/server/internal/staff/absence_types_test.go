@@ -410,7 +410,8 @@ func TestAbsenceTypes_HROnlyTakesNoShareAndNoHoliday(t *testing.T) {
 // and on again, each an absence_type_updated event naming paid. Ammefri is
 // the exception: aml. § 12-8 (2) pays up to an hour a day in the child's
 // first year, so it is never set unpaid (seed_immutable, saying why); its
-// other changes stand.
+// other changes stand. svangerskapskontroll is held paid the same way, by
+// aml. § 12-1 (the owner's decision D3).
 func TestAbsenceTypes_ASeedsPay(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -445,6 +446,18 @@ func TestAbsenceTypes_ASeedsPay(t *testing.T) {
 	}
 	if got := absenceTypeByKey(t, absenceTypesAs(t, h, "staff:manage"), "ammefri"); !got.Paid || got.Revision != ammefri.Revision {
 		t.Errorf("after the refusal ammefri = %+v, want paid and unchanged", got)
+	}
+	// svangerskapskontroll likewise (the owner's decision D3): aml. § 12-1
+	// gives paid time off for antenatal check-ups.
+	check := absenceTypeByKey(t, types, "svangerskapskontroll")
+	uncheck := changeOf(check)
+	uncheck["paid"] = false
+	p = refused(t, hr.Do(http.MethodPut, absenceTypePath(check.Id), uncheck, ifMatch(check.Revision)), http.StatusConflict, "seed_immutable")
+	if !strings.Contains(p.Detail, "12-1") || !strings.Contains(p.Detail, "antenatal check-ups") {
+		t.Errorf("svangerskapskontroll unpaid: detail %q, want aml. § 12-1's paid time off for antenatal check-ups", p.Detail)
+	}
+	if got := absenceTypeByKey(t, absenceTypesAs(t, h, "staff:manage"), "svangerskapskontroll"); !got.Paid || got.Revision != check.Revision {
+		t.Errorf("after the refusal svangerskapskontroll = %+v, want paid and unchanged", got)
 	}
 	renamed := changeOf(ammefri)
 	renamed["names"] = map[string]any{"en": "Nursing hour", "nb": "Ammefri"}
