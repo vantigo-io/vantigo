@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -31,6 +32,31 @@ import (
 // on the module's clock; a claim begun finishes under its calls' own bounds,
 // so the request answers within the budget and one claim's chain.
 const accountsRunBudget = 60 * time.Second
+
+// The account runs' rate limits (privacy review L2), keyed by client address
+// as every platform policy is (objects.go's upload): each run calls identity
+// and may mail, so neither is left unbounded. A run of every account is a
+// cycle of up to fifty claims, thirty an hour; a person's Run now and Disable
+// now share one bound of a hundred and twenty an hour.
+const (
+	accountsRunsPerHour   = 30
+	accountActionsPerHour = 120
+)
+
+var (
+	policyAccountsRun = ratelimit.Policy{
+		Name:    "StaffAccountsRun",
+		Limit:   accountsRunsPerHour,
+		Window:  time.Hour,
+		Message: "Too many account runs. Please wait a little before running the accounts again.",
+	}
+	policyAccountAction = ratelimit.Policy{
+		Name:    "StaffAccountAction",
+		Limit:   accountActionsPerHour,
+		Window:  time.Hour,
+		Message: "Too many account runs and disables. Please wait a little before trying again.",
+	}
+)
 
 // Disable now's refusals (delivery C): a user Staff does not manage, and an
 // Owner, a SystemAdmin or the last active Owner — an Owner's to disable.

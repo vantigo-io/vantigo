@@ -61,6 +61,13 @@ func MailAvailable(d module.Deps) bool {
 // into it.
 const DocumentUploadsPerHour = documentUploadsPerHour
 
+// AccountsRunsPerHour and AccountActionsPerHour are the account runs' rate
+// limits, for the test that runs into them.
+const (
+	AccountsRunsPerHour   = accountsRunsPerHour
+	AccountActionsPerHour = accountActionsPerHour
+)
+
 // ColumnClasses is the retention class of every column the erase reaches,
 // keyed table.column, for the external tests that assert an erase column by
 // column.

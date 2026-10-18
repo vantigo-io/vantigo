@@ -94,10 +94,14 @@ var policyDocumentUpload = ratelimit.Policy{
 	Message: "Too many document uploads. Please wait a little before adding more.",
 }
 
-// limits maps each rate-limited operationId to its policy: the upload is the
-// one operation that writes bytes outside the database.
+// limits maps each rate-limited operationId to its policy: the upload, the
+// one operation that writes bytes outside the database, and the account runs,
+// which call identity and may mail (accounts_run.go).
 var limits = map[string]ratelimit.Policy{
-	"postStaffPeopleByIdDocuments": policyDocumentUpload,
+	"postStaffPeopleByIdDocuments":      policyDocumentUpload,
+	"postStaffAccountsRun":              policyAccountsRun,
+	"postStaffPeopleByIdAccountRun":     policyAccountAction,
+	"postStaffPeopleByIdAccountDisable": policyAccountAction,
 }
 
 // newServer builds the module's operations over d. It never fails: an object

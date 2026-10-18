@@ -1056,3 +1056,44 @@ func TestAccountsDisable_ASelfServiceLinkIsNotDisabled(t *testing.T) {
 		})
 	}
 }
+
+// The account runs carry the platform's rate limit (privacy review L2): a
+// run of every account at most thirty times an hour, and a person's Run now
+// and Disable now — one bound shared by the two — at most a hundred and
+// twenty, from one client; another client is not held by them.
+func TestAccountsRun_TheRunsAreRateLimited(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	other, _ := signIn(t, w.h, "staff:manage")
+	for i := range staff.AccountsRunsPerHour {
+		if r := w.hr.Do(http.MethodPost, accountsRunPath, nil); r.Status != http.StatusOK {
+			t.Fatalf("run %d: status %d body %s, want 200", i+1, r.Status, r.Body)
+		}
+	}
+	over := w.hr.Do(http.MethodPost, accountsRunPath, nil)
+	if over.Status != http.StatusTooManyRequests || over.Code() != "rate_limited" || over.Header("Retry-After") == "" {
+		t.Errorf("run %d: status %d code %q, want 429 rate_limited with a Retry-After", staff.AccountsRunsPerHour+1, over.Status, over.Code())
+	}
+	if r := other.Do(http.MethodPost, accountsRunPath, nil); r.Status != http.StatusOK {
+		t.Errorf("another client's run: status %d, want 200", r.Status)
+	}
+
+	const nobody = 9_999_999
+	for i := range staff.AccountActionsPerHour {
+		path := accountRunPath(nobody)
+		if i%2 == 1 {
+			path = accountDisablePath(nobody)
+		}
+		if r := w.hr.Do(http.MethodPost, path, nil); r.Status != http.StatusNotFound {
+			t.Fatalf("action %d: status %d body %s, want the unknown person's 404", i+1, r.Status, r.Body)
+		}
+	}
+	for _, path := range []string{accountRunPath(nobody), accountDisablePath(nobody)} {
+		if r := w.hr.Do(http.MethodPost, path, nil); r.Status != http.StatusTooManyRequests || r.Code() != "rate_limited" {
+			t.Errorf("%s past the bound: status %d code %q, want 429 rate_limited", path, r.Status, r.Code())
+		}
+	}
+	if r := other.Do(http.MethodPost, accountRunPath(nobody), nil); r.Status != http.StatusNotFound {
+		t.Errorf("another client's Run now: status %d, want 404", r.Status)
+	}
+}

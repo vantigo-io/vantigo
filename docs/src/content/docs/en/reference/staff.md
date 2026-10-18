@@ -1227,7 +1227,10 @@ claim knew. Each runs on the request's values but not its cancellation
 call in flight, record a false failure or leave a live lease — the work finishes, which
 when identity or the mail server is slow can take minutes. A claim that writes no
 result (its facts unreadable, or naming no user) releases its lease at once
-(`ReleaseAccountLease`, review L3).
+(`ReleaseAccountLease`, review L3). **The rate limits** (review L2), per client address
+as every platform policy: `POST /accounts/run` at most 30 an hour (`StaffAccountsRun`),
+and a person's `/account/run` and `/account/disable` together at most 120 an hour
+(`StaffAccountAction`, one counter for both); 429 past either.
 
 - **`POST /accounts/run`** runs one cycle: the preparing links of the people now due,
   then the due links claimed one at a time, at most fifty, **none begun after sixty

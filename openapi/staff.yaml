@@ -4431,6 +4431,16 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — at most 30 runs of the accounts an hour from one client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
                 "503":
                     content:
                         application/problem+json:
@@ -7452,6 +7462,16 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/StaffProblem'
                     description: 'Conflict — accounts_busy while the accounts worker holds the person''s link (nothing was changed, unless the worker took the link between the flag''s write and the claim: then the flag is off and the user not yet disabled — try again); account_not_managed on HR''s self-service link — Disable now acts only on accounts Staff manages: the flag is turned off and nothing else is recorded, called or tried again; unlink the person, or an Owner disables the user in identity — or when the worker''s link names a user no longer managed by Staff, and account_privileged when the user is an Owner or a SystemAdmin, or the last active Owner — an Owner disables them in identity. In the last two the flag is off and the refusal stays the link''s reason and raises its attention item; the disable is tried again daily, so it runs once an Owner has adopted the user again or demoted them. account_mismatch when the user carries another employee number — someone else''s account, left alone; the disable runs once the number is right.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — at most 120 of a person's Run now and Disable now together an hour from one client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
                 "503":
                     content:
                         application/problem+json:
@@ -7500,6 +7520,16 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/StaffProblem'
                     description: Conflict — person_erased when the person has been erased; accounts_busy while the accounts worker holds the person's link. Nothing was run.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — at most 120 of a person's Run now and Disable now together an hour from one client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
                 "503":
                     content:
                         application/problem+json:
