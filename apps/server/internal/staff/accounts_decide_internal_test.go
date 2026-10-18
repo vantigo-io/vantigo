@@ -90,9 +90,37 @@ func TestDecide(t *testing.T) {
 		both("erased, an active user after the end", all(func(in *accountDecision) { in.Person.Erased = true }, ended, withUser(linkStateActive, active())), stepNoneWant),
 		both("erased, no link, due", func(in *accountDecision) { in.Person.Erased = true }, stepNoneWant),
 
-		// flag off: nothing, with or without a link.
+		// flag off: nothing is created or enabled — but leaving disables
+		// anyway (the owner's decision D2): a Staff-managed user on the
+		// worker's link is deactivated once every employment has ended.
 		both("flag off, no link", func(in *accountDecision) { in.Person.Flag = false }, stepNoneWant),
-		both("flag off, an active link after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended, withUser(linkStateActive, active())), stepNoneWant),
+		both("flag off, an active link after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended, withUser(linkStateActive, active())), stepDeactivateWant),
+		both("flag off, a pending user after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended, withUser(linkStatePending, invited(contracts.InvitationActive))), stepDeactivateWant),
+		both("flag off, disabled by Staff after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended,
+			withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByStaff, true, contracts.InvitationNone))), stepNoneWant),
+		both("flag off, an active link before the end", all(func(in *accountDecision) { in.Person.Flag = false }, withUser(linkStateActive, active())), stepNoneWant),
+		both("flag off, an active link between employments", all(func(in *accountDecision) { in.Person.Flag = false }, gap, withUser(linkStateActive, active())), stepNoneWant),
+		both("flag off, a prepared user before the start", all(func(in *accountDecision) { in.Person.Flag = false }, employed(span("2026-10-25", "")), withUser(linkStatePending, prepared())), stepNoneWant),
+		both("flag off, HR's self-service link after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended, withUser(linkStateLinked, active())), stepNoneWant),
+		both("flag off, an adopted user on HR's self-service link after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended, withUser(linkStateLinked, active()),
+			func(in *accountDecision) { in.Link.Managed = false }), stepNoneWant),
+		both("flag off, an unmanaged user after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended, withUser(linkStateActive, func() *contracts.AccountRef {
+			r := active()
+			r.Managed, r.EmployeeNumber = false, ""
+			return r
+		}())), stepNoneWant),
+		both("flag off, a privileged user after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended, withUser(linkStateActive, func() *contracts.AccountRef {
+			r := active()
+			r.Privileged = true
+			return r
+		}())), stepNoneWant),
+		both("flag off, another number's user after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended, withUser(linkStateActive, func() *contracts.AccountRef {
+			r := active()
+			r.EmployeeNumber = "B-2"
+			return r
+		}())), stepNoneWant),
+		both("flag off, the user gone after the end", all(func(in *accountDecision) { in.Person.Flag = false }, ended, withUser(linkStateActive, nil)), stepNoneWant),
+		both("flag off, no employment, an active link", all(func(in *accountDecision) { in.Person.Flag = false }, employed(), withUser(linkStateActive, active())), stepNoneWant),
 
 		// flag on, no employment at all.
 		both("no employment", employed(), reportWant(reasonNoEmployment, "")),

@@ -369,7 +369,10 @@ day and at which address. HR changes it:
 1. Turn on **Staff provides an account**. Staff then creates the person's user,
    disabled, the number of days before its day that **Prepare the account (days
    before)** in [Accounts](#accounts) says, enables it on that day and disables it the
-   day after the last employment ends. It is never deleted.
+   day after the last employment ends. It is never deleted. Turning the flag off stops
+   Staff creating or enabling the account, but a person who leaves still loses it: the
+   day after their last employment ends, Staff disables an account it made whatever the
+   flag says (an account HR linked by hand is left as it is).
 2. **Account from** is the day the account is enabled. Left empty, it is the first day
    of the person's earliest employment that has not ended, and the field says which
    day that is — or that there is none yet, so there is no day to enable the account

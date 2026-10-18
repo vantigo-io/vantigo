@@ -1249,3 +1249,65 @@ func TestAccountsWorker_AnInvitedUsersAddressIsKeptAgainstIdentity(t *testing.T)
 		t.Errorf("the link = %+v, want pending, email_differs", l)
 	}
 }
+
+// Leaving disables anyway (the owner's decision D2): with the account flag
+// off, a Staff-managed user on the worker's link is left alone while the
+// person is employed — nothing is created, enabled or written — and is
+// deactivated the day after the last employment ends. HR's self-service link
+// to a user an Owner has adopted for Staff is HR's, and left as it is.
+func TestAccountsWorker_ALeaverIsDisabledWithTheFlagOff(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	end := shiftDay(t, today(t, w.h), 2)
+	person := func(given string) (gen.StaffPerson, uuid.UUID) {
+		t.Helper()
+		p := createPerson(t, w.hr, with(newPerson(given, "Slutter"), "workEmail", strings.ToLower(given)+"@example.test"))
+		seedEmploymentDated(t, w.h, p.Id, 0, shiftDay(t, today(t, w.h), -100), &end)
+		user := uuid.New()
+		w.fake.setUser(contracts.AccountRef{UserID: user, State: contracts.AccountStateActive, Managed: true,
+			EmployeeNumber: p.EmployeeNumber, HasCredential: true, Invitation: contracts.Invitation{State: contracts.InvitationNone}})
+		return p, user
+	}
+	leaver, leaverUser := person("Leaver")
+	workerLink(t, w.h, leaver.Id, leaverUser, "active")
+	selfService, selfUser := person("Selv")
+	link(t, w.h, selfService.Id, selfUser)
+	w.h.Exec(t, `UPDATE staff.identity_links SET managed = true WHERE person_id = $1`, selfService.Id)
+
+	// Employed, the flag off: nothing at all.
+	w.cycle(t)
+	if writes := w.fake.writeCalls(); len(writes) != 0 {
+		t.Fatalf("writes while employed with the flag off = %v, want none", writes)
+	}
+	// The last day: still employed.
+	setClock(t, w.h, osloAt(end, 12))
+	w.cycle(t)
+	if writes := w.fake.writeCalls(); len(writes) != 0 {
+		t.Fatalf("writes on the last day = %v, want none", writes)
+	}
+	// The day after the end: the leaver's account is deactivated.
+	setClock(t, w.h, osloAt(shiftDay(t, end, 1), 7))
+	w.cycle(t)
+	if writes := w.fake.writeCalls(); !slices.Equal(writes, []string{"Deactivate"}) {
+		t.Fatalf("writes the day after the end = %v, want one Deactivate", writes)
+	}
+	if !w.fake.staffDisabledUser(leaverUser) || w.fake.staffDisabledUser(selfUser) {
+		t.Errorf("disabled: the leaver %v, the self-service user %v; want the leaver alone",
+			w.fake.staffDisabledUser(leaverUser), w.fake.staffDisabledUser(selfUser))
+	}
+	if l := mustLink(t, w.h, leaver.Id); l.State != "disabled" {
+		t.Errorf("the leaver's link = %+v, want disabled", l)
+	}
+	if l := mustLink(t, w.h, selfService.Id); l.State != "linked" {
+		t.Errorf("the self-service link = %+v, want linked, untouched", l)
+	}
+	// Again the next day: nothing more.
+	setClock(t, w.h, osloAt(shiftDay(t, end, 2), 7))
+	w.cycle(t)
+	if n := countWrites(w.fake, "Deactivate"); n > 2 {
+		t.Errorf("%d Deactivate calls, want the leaver's alone", n)
+	}
+	if n := countWrites(w.fake, "Activate") + countWrites(w.fake, "Prepare") + countWrites(w.fake, "Update"); n != 0 {
+		t.Errorf("%d other writes with the flag off, want none", n)
+	}
+}

@@ -171,7 +171,14 @@ person whose flag is on it:
 - the day after the last employment ends, disables the user and ends their sessions
   (`disabled`); a rehire enables them again on the new start;
 - keeps the user's name, language and employee number in step with the person — and
-  the address only while the user is still pending.
+  the address only while the user is still pending and has not been sent an invitation.
+
+**Leaving disables anyway.** Turning the flag off stops Staff creating, enabling or
+updating the person's account, but not the disable at the end: once every employment
+has ended (none later), a user Staff manages through its own link is disabled the day
+after the last end whatever the flag says. A user HR linked by hand (the self-service
+link) is HR's and is left as it is; an Owner or a SystemAdmin is never disabled by Staff
+— another Owner demotes and disables them.
 
 Each person is acted on once a day, at the first poll after midnight in the business
 time zone. Several workers, or a worker and a run by hand, share the work person by
