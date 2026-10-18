@@ -5,22 +5,23 @@
 
 -- name: GetPersonAccount :one
 -- GetPersonAccount is a person's account flag with the two addresses it may
--- name and the revision a change of it is guarded by.
-SELECT id, provision_account, provision_from, account_email_kind, work_email, private_email, revision
+-- name and the flag's own revision, which a change of it is guarded by (00051:
+-- never people.revision, which a manager reads).
+SELECT id, provision_account, provision_from, account_email_kind, work_email, private_email, account_revision
 FROM staff.people
 WHERE id = @id;
 
 -- name: UpdatePersonAccount :one
--- UpdatePersonAccount replaces the flag's three fields and moves the
--- person's revision on.
+-- UpdatePersonAccount replaces the flag's three fields and moves the flag's
+-- own revision on — not the person's, nor updated_at, which tell nothing of
+-- the flag to anyone who reads the person without the links group.
 UPDATE staff.people SET
     provision_account = @provision_account,
     provision_from = sqlc.narg(provision_from)::date,
     account_email_kind = sqlc.narg(account_email_kind)::varchar,
-    revision = revision + 1,
-    updated_at = @now::timestamptz
+    account_revision = account_revision + 1
 WHERE id = @id
-RETURNING revision;
+RETURNING account_revision;
 
 -- name: EarliestOpenEmploymentStart :one
 -- EarliestOpenEmploymentStart is the first day of the person's earliest

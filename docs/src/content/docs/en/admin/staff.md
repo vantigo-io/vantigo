@@ -117,7 +117,8 @@ acts on it arrives with the next part of the delivery.
    accounts (`federated`); it is absent when this process's OIDC or SCIM settings
    disagree with the API's.
 2. As a user with `staff:manage`, read the person's flag:
-   `GET /api/v1/staff/people/{id}/account`, and note its `revision`.
+   `GET /api/v1/staff/people/{id}/account`, and note its `revision` — the flag's own,
+   not the person's: changing the flag never moves the person's revision.
 3. Turn it on: `PUT /api/v1/staff/people/{id}/account` with `If-Match` set to that
    revision and `{"provisionAccount": true, "provisionFrom": null, "accountEmailKind": "work"}`.
    Leave `provisionFrom` null to enable the account on the first day of the person's

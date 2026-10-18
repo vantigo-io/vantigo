@@ -328,6 +328,7 @@ type StaffPerson struct {
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
 	SelfCertWithdrawnFrom   pgtype.Date
+	AccountRevision         int32
 }
 
 type StaffPersonRole struct {

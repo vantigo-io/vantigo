@@ -19,14 +19,24 @@
 -- digits and hyphens, people_validation.go) is Go's mapping exactly. The
 -- queries that compare employee numbers use the same expression
 -- (queries/people.sql), so they ask the index's own question.
+--
+-- people.account_revision is the account flag's own revision (review M1): a
+-- change of the flag moves it and never people.revision, which a manager, an
+-- Approver and a colleague read — so a flag turned on or off is no signal to
+-- anyone outside the links group, as a sealed field's write is none.
 ALTER TABLE staff.identity_links ALTER COLUMN external_id DROP NOT NULL;
+
+ALTER TABLE staff.people ADD COLUMN account_revision integer NOT NULL DEFAULT 1;
 
 DROP INDEX staff.ux_people_employee_number_upper;
 CREATE UNIQUE INDEX ux_people_employee_number_upper ON staff.people (upper(employee_number COLLATE "C"));
 
 -- +goose Down
--- A link naming no user is a preparing one, which 00042 cannot hold: it is
--- deleted, and the person keeps their flag for the worker to prepare again.
+-- An operator's last resort, never a routine rollback: a link naming no user
+-- is a preparing one, which 00042 cannot hold, so it is deleted — the person
+-- keeps their flag for the worker to prepare again — and the flag's own
+-- revision goes.
+ALTER TABLE staff.people DROP COLUMN account_revision;
 DROP INDEX staff.ux_people_employee_number_upper;
 CREATE UNIQUE INDEX ux_people_employee_number_upper ON staff.people (upper(employee_number));
 

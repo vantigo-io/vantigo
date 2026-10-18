@@ -37,7 +37,7 @@ func (q *Queries) EarliestOpenEmploymentStart(ctx context.Context, arg EarliestO
 
 const getPersonAccount = `-- name: GetPersonAccount :one
 
-SELECT id, provision_account, provision_from, account_email_kind, work_email, private_email, revision
+SELECT id, provision_account, provision_from, account_email_kind, work_email, private_email, account_revision
 FROM staff.people
 WHERE id = $1
 `
@@ -49,7 +49,7 @@ type GetPersonAccountRow struct {
 	AccountEmailKind *string
 	WorkEmail        *string
 	PrivateEmail     *string
-	Revision         int32
+	AccountRevision  int32
 }
 
 // The account flag (design S22, §3.1) and the link it drives (S27, §3.6),
@@ -57,7 +57,8 @@ type GetPersonAccountRow struct {
 // the identity provider's row in staff.identity_links, which the accounts
 // worker writes and HR's self-service link shares (plan reading 8).
 // GetPersonAccount is a person's account flag with the two addresses it may
-// name and the revision a change of it is guarded by.
+// name and the flag's own revision, which a change of it is guarded by (00051:
+// never people.revision, which a manager reads).
 func (q *Queries) GetPersonAccount(ctx context.Context, id int64) (GetPersonAccountRow, error) {
 	row := q.db.QueryRow(ctx, getPersonAccount, id)
 	var i GetPersonAccountRow
@@ -68,7 +69,7 @@ func (q *Queries) GetPersonAccount(ctx context.Context, id int64) (GetPersonAcco
 		&i.AccountEmailKind,
 		&i.WorkEmail,
 		&i.PrivateEmail,
-		&i.Revision,
+		&i.AccountRevision,
 	)
 	return i, err
 }
@@ -151,31 +152,29 @@ UPDATE staff.people SET
     provision_account = $1,
     provision_from = $2::date,
     account_email_kind = $3::varchar,
-    revision = revision + 1,
-    updated_at = $4::timestamptz
-WHERE id = $5
-RETURNING revision
+    account_revision = account_revision + 1
+WHERE id = $4
+RETURNING account_revision
 `
 
 type UpdatePersonAccountParams struct {
 	ProvisionAccount bool
 	ProvisionFrom    pgtype.Date
 	AccountEmailKind *string
-	Now              time.Time
 	ID               int64
 }
 
-// UpdatePersonAccount replaces the flag's three fields and moves the
-// person's revision on.
+// UpdatePersonAccount replaces the flag's three fields and moves the flag's
+// own revision on — not the person's, nor updated_at, which tell nothing of
+// the flag to anyone who reads the person without the links group.
 func (q *Queries) UpdatePersonAccount(ctx context.Context, arg UpdatePersonAccountParams) (int32, error) {
 	row := q.db.QueryRow(ctx, updatePersonAccount,
 		arg.ProvisionAccount,
 		arg.ProvisionFrom,
 		arg.AccountEmailKind,
-		arg.Now,
 		arg.ID,
 	)
-	var revision int32
-	err := row.Scan(&revision)
-	return revision, err
+	var account_revision int32
+	err := row.Scan(&account_revision)
+	return account_revision, err
 }

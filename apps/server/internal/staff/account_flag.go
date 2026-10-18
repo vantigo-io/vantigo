@@ -73,7 +73,8 @@ const linkStateLinked = "linked"
 const accountRequestSchema = "StaffPersonAccountRequest"
 
 // accountPerson is what the account needs of a person: the flag, the two
-// addresses it may name and the revision.
+// addresses it may name and the flag's own revision (00051's
+// account_revision — never the person's, which a manager reads).
 type accountPerson = store.GetPersonAccountRow
 
 // accountEmailKindOf is p's address choice, null read as work.
@@ -229,7 +230,7 @@ func (s *server) accountView(ctx context.Context, personID int64, today time.Tim
 		AccountEmailKind:       kind,
 		Address:                gen.StaffPersonAccountAddress{Kind: kind, Present: accountAddress(p) != ""},
 		Mode:                   mode,
-		Revision:               p.Revision,
+		Revision:               p.AccountRevision,
 	}
 	if link == nil {
 		return out, nil
@@ -333,8 +334,9 @@ const invalidAccountFlagTitle = "The account flag was not changed"
 // PutStaffPeopleByIdAccount Change a person's account flag
 // (PUT /api/v1/staff/people/{id}/account)
 //
-// A full replace of the flag's three fields, guarded by the person's
-// revision and written under their lock; an erased person is person_erased.
+// A full replace of the flag's three fields, guarded by the flag's own
+// revision — no account write moves the person's — and written under the
+// person's lock; an erased person is person_erased.
 // A replace that changes nothing writes nothing. Nothing is asked of
 // identity here but the response's mode and link, after the commit: acting
 // on the flag is the accounts worker's.
@@ -367,7 +369,7 @@ func (s *server) PutStaffPeopleByIdAccount(ctx context.Context, req gen.PutStaff
 		if err != nil {
 			return err
 		}
-		if err := checkRevision("person", current.Revision, revision); err != nil {
+		if err := checkRevision("account flag", current.AccountRevision, revision); err != nil {
 			return err
 		}
 		c := accountFlagChanges(current, parsed)
@@ -376,7 +378,7 @@ func (s *server) PutStaffPeopleByIdAccount(ctx context.Context, req gen.PutStaff
 		}
 		kind := parsed.kind
 		if _, err := txq.UpdatePersonAccount(ctx, store.UpdatePersonAccountParams{
-			ID: req.Id, ProvisionAccount: parsed.provision, ProvisionFrom: parsed.from, AccountEmailKind: &kind, Now: s.deps.Clock(),
+			ID: req.Id, ProvisionAccount: parsed.provision, ProvisionFrom: parsed.from, AccountEmailKind: &kind,
 		}); err != nil {
 			return fmt.Errorf("staff: change person %d's account flag: %w", req.Id, err)
 		}
