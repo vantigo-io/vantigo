@@ -1136,7 +1136,7 @@ type StaffAbsenceShownAs string
 // StaffAbsenceStatus requested (waiting for a decision), approved, rejected, cancelled, or registered (a notification, needing none).
 type StaffAbsenceStatus string
 
-// StaffAbsenceType An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order, whether it is hidden and whether it is paid (seed_immutable otherwise) — ammefri never unpaid, aml. § 12-8 (2) paying up to one hour a day in the child's first year on a working day of seven hours or more; the reserved types are never shown and never offered.
+// StaffAbsenceType An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order, whether it is hidden and whether it is paid (seed_immutable otherwise) — ammefri never unpaid — paid within aml. § 12-8 (2)'s limits, up to one hour a day in the child's first year on a working day of seven hours or more, nursing time beyond that unpaid by law unless agreed and registered with a company type of its own; the reserved types are never shown and never offered.
 type StaffAbsenceType struct {
 	// AllowsPercent Whether an absence of the type may be a percentage of each day. Never on a sick kind, whose share is the sykmelding's degree.
 	AllowsPercent bool `json:"allowsPercent"`

@@ -440,8 +440,8 @@ func TestAbsenceTypes_ASeedsPay(t *testing.T) {
 	unpaid := changeOf(ammefri)
 	unpaid["paid"] = false
 	p := refused(t, hr.Do(http.MethodPut, absenceTypePath(ammefri.Id), unpaid, ifMatch(ammefri.Revision)), http.StatusConflict, "seed_immutable")
-	if !strings.Contains(p.Detail, "12-8") {
-		t.Errorf("ammefri unpaid: detail %q, want it to name aml. § 12-8", p.Detail)
+	if !strings.Contains(p.Detail, "12-8") || !strings.Contains(p.Detail, "unpaid by law unless agreed") || !strings.Contains(p.Detail, "company type of your own") {
+		t.Errorf("ammefri unpaid: detail %q, want aml. § 12-8 (2)'s limits, nursing time beyond them unpaid by law unless agreed, and a company type of your own", p.Detail)
 	}
 	if got := absenceTypeByKey(t, absenceTypesAs(t, h, "staff:manage"), "ammefri"); !got.Paid || got.Revision != ammefri.Revision {
 		t.Errorf("after the refusal ammefri = %+v, want paid and unchanged", got)
@@ -455,4 +455,19 @@ func TestAbsenceTypes_ASeedsPay(t *testing.T) {
 	both["paid"] = false
 	both["needsDecision"] = false
 	refused(t, hr.Do(http.MethodPut, absenceTypePath(velferd.Id), both, ifMatch(velferd.Revision)), http.StatusConflict, "seed_immutable")
+}
+
+// The reserved types' keys are never a company type's (review M3): absent,
+// absent_hours, absent_hr_only and absent_hr_only_hours are refused on the
+// key, saying they are reserved, before the database's unique key is asked.
+func TestAbsenceTypes_AReservedKeyIsRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	for _, key := range []string{"absent", "absent_hours", "absent_hr_only", "absent_hr_only_hours"} {
+		p := refused(t, hr.Do(http.MethodPost, absenceTypesPath, companyType(key, nil)), http.StatusBadRequest, "")
+		if msg := strings.Join(p.Errors["key"], " "); !strings.Contains(msg, "reserved") {
+			t.Errorf("%s: errors = %v, want the key refused as reserved", key, p.Errors)
+		}
+	}
 }
