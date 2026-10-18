@@ -108,10 +108,16 @@ func newFakeAccounts() *fakeAccounts {
 // withAccounts composes the harness with f as the account provisioning.
 func withAccounts(f *fakeAccounts) modtest.Option { return modtest.WithAccounts(f) }
 
-// setUser makes the fake report ref for ref.UserID.
+// setUser makes the fake report ref for ref.UserID. As identity, it holds
+// no employee number for a user Staff does not manage or a privileged one
+// (unmanaging clears it, promotion unmanages, adoption refuses an Owner), so
+// such a ref's number is blanked.
 func (f *fakeAccounts) setUser(ref contracts.AccountRef) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if !ref.Managed || ref.Privileged {
+		ref.EmployeeNumber = ""
+	}
 	f.users[ref.UserID] = ref
 }
 

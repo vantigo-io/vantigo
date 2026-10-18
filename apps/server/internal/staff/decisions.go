@@ -419,10 +419,10 @@ func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostS
 		// Nor an HR-only type and any other (the privacy review of delivery
 		// C): the row would keep its decision — a self-approval among it —
 		// under another audience, and its id would read as another kind of
-		// leave. HR cancels the decided row and enters the other.
+		// leave. HR cancels or removes the row and enters the other.
 		if hrOnlyType(t.Visibility) != hrOnlyType(beforeType.Visibility) {
 			return refuseConflict(conflict(codeAbsenceVisibilityChange, "Another kind of absence",
-				"A correction keeps an HR-only type HR-only and any other type not: cancel this absence and enter the other."))
+				"A correction keeps an HR-only type HR-only and any other type not: cancel or remove this absence and enter the other."))
 		}
 		row, err := txq.UpdateAbsence(ctx, store.UpdateAbsenceParams{
 			ID: before.ID, TypeID: t.ID, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last), Hours: p.Hours,

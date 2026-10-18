@@ -898,7 +898,7 @@ func TestAccountsDisable_AReadoptedUserIsDisabledByTheNextTry(t *testing.T) {
 	workerLink(t, w.h, p.Id, u, "active")
 	refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusConflict, "account_not_managed")
 	ref := w.fake.user(u)
-	ref.Managed = true
+	ref.Managed, ref.EmployeeNumber = true, p.EmployeeNumber // adoption names the number
 	w.fake.setUser(ref)
 	w.h.Advance(25 * time.Hour)
 	w.cycle(t)

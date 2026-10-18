@@ -1077,7 +1077,9 @@ with **Correct** (an approved one) or **Change** (a registered one) on the perso
 person is mailed about a correction. A decided absence that has begun is cancelled by HR only.
 Neither a change nor a correction turns an HR-only type into any other, or the other way
 round (`absence_visibility_change`): the two are decided and seen by different people. To
-fix an absence entered as the wrong kind, **Cancel absence** and enter the other anew.
+fix an absence entered as the wrong kind, cancel it (**Cancel absence**) — or, a
+registered one, which cannot be cancelled, remove it (`DELETE /absences/{id}`) — and
+enter the other anew.
 
 ## The absence mails
 
