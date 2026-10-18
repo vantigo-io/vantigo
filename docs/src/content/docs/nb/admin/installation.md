@@ -615,7 +615,12 @@ fortsatt klargjøres, med eller uten bruker: de ventende brukerne de koblingene 
 blir værende i identity, styrt av Ansatte, for en Owner å slutte å styre og slette. Den
 avvises, med typene, så lenge et fravær navngir en av de reserverte typene eller en
 hendelses `typeIds` gjør det — slett eller gi radene en annen type, og skriv om eller
-slett hendelsene, for hånd først.
+slett hendelsene, for hånd først. Å rulle identitys `00050` tilbake er også en siste
+utvei: den fjerner hvem som styrer en bruker, ansattnummeret og om brukeren venter, så
+en ventende bruker Ansatte laget, ser etterpå ut som en vanlig deaktivert bruker, og å
+rulle fram igjen etterlater dem foreldreløse — styrt av ingen, aldri invitert. Før du
+ruller den tilbake, lar du en Owner slutte å styre og slette de ventende brukerne på
+siden **Brukere**.
 
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

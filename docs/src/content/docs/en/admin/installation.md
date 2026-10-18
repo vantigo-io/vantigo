@@ -596,6 +596,11 @@ prepared, with or without a user: the pending users those links named stay in id
 managed by Staff, for an Owner to stop managing and delete. It refuses, naming the
 types, while an absence names one of the reserved types or an event's `typeIds` does —
 delete or retype those rows, and rewrite or delete those events, by hand first.
+Rolling identity's `00050` back is a last resort too: it drops who manages a user,
+their employee number and whether they are pending, so a pending user Staff made reads
+as an ordinary disabled user afterwards, and rolling forward again leaves them
+orphaned — managed by nobody, never invited. Before rolling it back, have an Owner stop
+managing and delete those pending users on the **Users** page.
 
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).
