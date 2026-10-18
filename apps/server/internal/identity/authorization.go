@@ -154,21 +154,24 @@ func roleMutationLockKey(id uuid.UUID) int64 {
 // Lock order, for a transaction that takes more than one of these: the
 // owner lock (ownerMutationLock) first; then delegation rows, by id (the
 // caller's FOR SHARE, heldDelegations; the one an Owner updates or revokes
-// FOR UPDATE); then role locks in ascending key order; then access_groups
-// rows; then users rows; then roles rows. Two exceptions are known and
-// accepted. A user's deletion, whose cascade takes the user's delegation
-// rows after their users row, can meet that user's own delegated
+// FOR UPDATE); then role locks, several in the ordinal order of the role
+// ids' text (ordinalIDs — PUT /owner/provisioning-roles is the one
+// transaction that takes several; every other takes one); then
+// access_groups rows; then users rows; then roles rows. Two exceptions are
+// known and accepted. A user's deletion, whose cascade takes the user's
+// delegation rows after their users row, can meet that user's own delegated
 // mutation. An invitation's acceptance locks the invitation row
 // (LockInvitationByTokenHash, FOR UPDATE) before, for an Owner invitation,
-// the owner lock (invitations.go), the reverse of an Owner user's create
-// or email edit, which take the owner lock and then revoke that email's
-// pending invitations (RevokeActiveInvitationsForEmail). In both cases
-// PostgreSQL breaks the deadlock (40P01) and RetrySerializable retries the
-// loser, which then sees the winner's commit. Delegation create and
-// update take a key share on the roles they name (LockStewardableRoles)
-// before the key share their writes take on users rows; no transaction
-// holding a users row waits for a roles row lock stronger than a key share,
-// so the two cannot meet.
+// the owner lock (invitations.go), the reverse of an Owner user's create or
+// email edit, and of Staff's provisioning Prepare and Update
+// (provisioning.go's replaceInvitationsTo), which take the owner lock and
+// then revoke that email's pending invitations
+// (RevokeActiveInvitationsForEmail). In both cases PostgreSQL breaks the
+// deadlock (40P01) and RetrySerializable retries the loser, which then sees
+// the winner's commit. Delegation create and update take a key share on the
+// roles they name (LockStewardableRoles) before the key share their writes
+// take on users rows; no transaction holding a users row waits for a roles
+// row lock stronger than a key share, so the two cannot meet.
 func lockRole(ctx context.Context, q *store.Queries, roleID uuid.UUID) error {
 	return q.AcquireRoleMutationLock(ctx, roleMutationLockKey(roleID))
 }

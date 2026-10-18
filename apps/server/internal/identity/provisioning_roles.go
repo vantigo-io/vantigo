@@ -147,6 +147,9 @@ func (s *server) PutIdentityOwnerProvisioningRoles(ctx context.Context, req gen.
 	var out gen.ProvisioningRolesResponse
 	err = s.serializable(ctx, provisioningRolesConflict, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		// The role locks in the ordinal order of the ids' text (ordinalIDs),
+		// the one order authorization.go's lock order names for a
+		// transaction taking several (lockRole).
 		for _, id := range ids {
 			if err := lockRole(ctx, q, id); err != nil {
 				return err
