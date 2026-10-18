@@ -112,6 +112,8 @@ export interface MeteringPointQueryParams {
   page?: number;
   pageSize?: number;
   search?: string;
+  /** Only the points with no customer now (energy import design D9). */
+  withoutCustomer?: boolean;
 }
 
 const queryString = (params: object) => {

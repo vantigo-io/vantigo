@@ -5,6 +5,7 @@ sidebar:
   order: 70
 sources:
   - apps/energy/frontend
+  - apps/host/frontend/src/routes/energy
 ---
 
 The Energy app keeps the metering points your organisation supplies: where each one
@@ -31,6 +32,12 @@ the city. The search box in the top bar finds metering points too, under the hea
 Click a row to open the metering point. The pencil at the end of the row opens the
 edit dialog directly.
 
+Turn on **Without customer** to list only the metering points that have no customer
+now: no active supply period that has started and not ended. A point whose only
+supply period starts later is listed too. This is the list to work through after an
+import that left points without a customer, see
+[Import metering points](#import-metering-points).
+
 ## Create a metering point
 
 Click **New metering point** on the list. Fill in:
@@ -51,6 +58,118 @@ Click **New metering point** on the list. Fill in:
 dialog marks the fields that are missing or malformed; a GSRN that already exists is
 refused with *Could not save metering point*. Creating needs
 `energy:metering-points-manage` and `energy:meters-manage`.
+
+## Import metering points
+
+**Import** on the list brings in the metering points from your previous system's
+export, one row per metering point. It is shown when you hold `energy:import` and
+`energy:metering-points-manage`; what the import writes needs the same permissions as
+writing it by hand (see the table at the end). Click **Import** to open **Import
+metering points**.
+
+The file needs a **GSRN** on every row; every row is matched by it. A new metering
+point also needs its **Meter number**, **Street address**, **Postal code**, **City**
+and **Price area**. To link a point to its customer, the file needs the customer's
+**organisation number**, and optionally the date the supply starts.
+
+1. **Upload the file.** Drop a CSV file on the page or choose one. It may be
+   separated by semicolons, commas or tabs, in UTF-8 or Windows (ANSI) encoding, with
+   the column names in the first row; at most 50 MB and 100 000 rows. **Recent
+   imports** below lists the earlier imports with their state: open one to continue
+   where it stood, or delete one that is not running. Deleting an import does not
+   remove the metering points it wrote.
+2. **Map columns.** Under **What to do with the rows**, choose **Create new metering
+   points** (a GSRN that already exists is refused), **Update existing metering
+   points** (a GSRN nobody has is refused) or **Create and update**. Then, for each
+   column of the file, choose under **Imported as** the field it becomes, from the
+   groups **Metering point**, **Address** and **Customer link**, or leave it as **Not
+   imported**. Vantigo suggests the fields for the column names supplier exports use,
+   such as *MÅLEPUNKTID*, *MÅLERNR*, *ANLEGGSADRESSE*, *PRISOMRÅDE*, *ORG. NR.* and
+   *STARTDATO KUNDE*; when the file has both the customer's postal address and the
+   installation's (*POSTNR* and *POSTNR ANLEGG*), the installation's is suggested.
+   **Same value for every row** sets a field the file has no column for, for example
+   one price area or one supply start date for every row. **Preview** shows the first
+   rows as they will be read, with each problem marked on its cell. The mapping is
+   saved as you change it. On an update only the mapped fields change; a blank cell
+   in a mapped optional field clears it.
+3. **Check file.** Every row is tried exactly as the import would, without saving
+   anything. The result counts the rows that **Would be created**, **Would be
+   updated**, **Would be skipped** and **Have errors**, and, when there are any,
+   those that **Would switch customer** and **Would wait for a start date**. **Change
+   mapping** takes you back to step 2.
+4. **Import** saves the rows, after a confirmation that repeats how many metering
+   points are created and updated. The import runs in the background: you can leave
+   the page and come back. **Stop** stops it after the rows in progress; the rows
+   already imported stay.
+
+The modes you may not run are greyed out, and the **Customer link** group is only
+offered when you hold `energy:supply-periods-manage`.
+
+### How a row is linked to its customer
+
+A metering point is linked to a customer by a supply period, and a supply period needs
+a start date. So the import reads the customer and the date separately:
+
+- **Customer's organisation number** names the customer. It must be a valid
+  Norwegian organisation number held by exactly one customer. A number nobody holds,
+  one that several customers hold, or a customer that is archived or merged into
+  another, fails the row, and the metering point is not written.
+- **Supply start date**, from a column or as one value for every row, is the day the
+  supply period starts (at midnight UTC). Dates may be written `2026-01-01`,
+  `01.01.2026` or `01/01/2026`, always with the day first. With a date, the supply
+  period is written as the point is imported.
+- **Without a start date**, the point is imported and matched to its customer, but
+  waits to be attached: see [Attach the waiting points](#attach-the-waiting-points).
+- **Without an organisation number** (the column not mapped, or the cell blank), the
+  point is imported with no customer, and an existing supply period is left as it is.
+  Find these points with **Without customer** on the list and give each one a
+  customer with **Assign customer**.
+- A point already supplied to that customer is left as it is, whatever the date says.
+
+### When a metering point switches customer
+
+When a point is supplied to another customer today and its row names a new customer
+with a start date, importing it **switches** the customer: the current supply period
+ends on the row's start date and the customer in the file takes over. The start date
+must be later than the current period's start.
+
+Since the file may be older than a switch made by hand, the check puts a red warning
+at the top of the page: *12 metering points will switch customer. Each one's current
+supply period ends on the row's start date and the customer in the file takes over.*,
+with a table of the **GSRN**, the **Current customer**, the **New customer** and the
+**Date**. When you click **Import**, the confirmation repeats the number, and its
+**Import** button stays disabled until you tick *I understand that 12 metering points
+will switch customer.* If the number has changed since the check, the import is
+refused with the reason and the page reads the import again; check the file again
+before importing.
+
+### Attach the waiting points
+
+When rows had a customer but no start date, the finished import shows **Attach to
+customers**: how many metering points wait, and a table of them with their customer.
+Choose the **Supply start date** and click **Attach**; every waiting point gets a
+supply period for its customer from that date. When some of them are supplied to
+another customer now, the same red warning and checkbox as above appear, and attaching
+switches them on that date. Each point is attached, or keeps waiting with the reason
+shown in the table, so you can attach again with another date until none are left. A
+point someone attached by hand in the meantime is left as it is. Attaching needs
+`energy:supply-periods-manage`.
+
+### Failed and skipped rows
+
+- **Failed** rows are listed by row, column and problem, for example a GSRN that is
+  not 18 digits, a second row with the same GSRN, or a meter number on an update that
+  differs from the current meter (use **Replace meter** for that). **Download failed
+  rows** gives you those rows exactly as they were, with an error column in front;
+  fix them and upload that file as a new import.
+- **Skipped** rows are totals lines: a row with no GSRN and at most one other filled
+  cell, such as the summed annual consumption many exports end with. They are counted
+  and listed, never failed.
+
+The finished import lists the metering points created and updated, and those that
+switched customer with both customers, each as a link. Imports are removed
+automatically after 30 days; the metering points and supply periods stay. The full
+rules are in [Importing metering points](/en/reference/energy/#importing-metering-points).
 
 ## Edit a metering point
 
@@ -169,3 +288,4 @@ merged, the supply periods of the absorbed customer move to the surviving one.
 | `energy:supply-periods-manage` | Assign, switch, end and attach supply periods |
 | `energy:consumption-view` | See consumption and the Energy tab's consumption figure |
 | `energy:consumption-manage` | Add manual readings |
+| `energy:import` | Import metering points from a file, with `energy:metering-points-manage`; what the import writes needs the permissions above |

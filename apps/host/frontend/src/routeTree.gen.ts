@@ -101,6 +101,8 @@ import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$p
 import { Route as ProjectsProjectIdTimeRouteImport } from './routes/projects/$projectId.time'
 import { Route as StaffPeopleIndexRouteImport } from './routes/staff/people.index'
 import { Route as StaffPeopleIdRouteImport } from './routes/staff/people.$id'
+import { Route as EnergyMeteringPointsImportIndexRouteImport } from './routes/energy/metering-points/import.index'
+import { Route as EnergyMeteringPointsImportImportIdRouteImport } from './routes/energy/metering-points/import.$importId'
 import { Route as InvoicesPaymentsFilesBankFileIdRouteImport } from './routes/invoices/payments.files.$bankFileId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -576,6 +578,18 @@ const StaffPeopleIdRoute = StaffPeopleIdRouteImport.update({
   path: '/people/$id',
   getParentRoute: () => StaffRoute,
 } as any)
+const EnergyMeteringPointsImportIndexRoute =
+  EnergyMeteringPointsImportIndexRouteImport.update({
+    id: '/metering-points/import/',
+    path: '/metering-points/import/',
+    getParentRoute: () => EnergyRoute,
+  } as any)
+const EnergyMeteringPointsImportImportIdRoute =
+  EnergyMeteringPointsImportImportIdRouteImport.update({
+    id: '/metering-points/import/$importId',
+    path: '/metering-points/import/$importId',
+    getParentRoute: () => EnergyRoute,
+  } as any)
 const InvoicesPaymentsFilesBankFileIdRoute =
   InvoicesPaymentsFilesBankFileIdRouteImport.update({
     id: '/payments/files/$bankFileId',
@@ -676,7 +690,9 @@ export interface FileRoutesByFullPath {
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
+  '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
+  '/energy/metering-points/import/': typeof EnergyMeteringPointsImportIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -757,7 +773,9 @@ export interface FileRoutesByTo {
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
   '/staff/people': typeof StaffPeopleIndexRoute
+  '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
+  '/energy/metering-points/import': typeof EnergyMeteringPointsImportIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -853,7 +871,9 @@ export interface FileRoutesById {
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
+  '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
+  '/energy/metering-points/import/': typeof EnergyMeteringPointsImportIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -950,7 +970,9 @@ export interface FileRouteTypes {
     | '/invoices/payments/'
     | '/projects/$projectId/'
     | '/staff/people/'
+    | '/energy/metering-points/import/$importId'
     | '/invoices/payments/files/$bankFileId'
+    | '/energy/metering-points/import/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1031,7 +1053,9 @@ export interface FileRouteTypes {
     | '/invoices/payments'
     | '/projects/$projectId'
     | '/staff/people'
+    | '/energy/metering-points/import/$importId'
     | '/invoices/payments/files/$bankFileId'
+    | '/energy/metering-points/import'
   id:
     | '__root__'
     | '/'
@@ -1126,7 +1150,9 @@ export interface FileRouteTypes {
     | '/invoices/payments/'
     | '/projects/$projectId/'
     | '/staff/people/'
+    | '/energy/metering-points/import/$importId'
     | '/invoices/payments/files/$bankFileId'
+    | '/energy/metering-points/import/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1801,6 +1827,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffPeopleIdRouteImport
       parentRoute: typeof StaffRoute
     }
+    '/energy/metering-points/import/': {
+      id: '/energy/metering-points/import/'
+      path: '/metering-points/import'
+      fullPath: '/energy/metering-points/import/'
+      preLoaderRoute: typeof EnergyMeteringPointsImportIndexRouteImport
+      parentRoute: typeof EnergyRoute
+    }
+    '/energy/metering-points/import/$importId': {
+      id: '/energy/metering-points/import/$importId'
+      path: '/metering-points/import/$importId'
+      fullPath: '/energy/metering-points/import/$importId'
+      preLoaderRoute: typeof EnergyMeteringPointsImportImportIdRouteImport
+      parentRoute: typeof EnergyRoute
+    }
     '/invoices/payments/files/$bankFileId': {
       id: '/invoices/payments/files/$bankFileId'
       path: '/payments/files/$bankFileId'
@@ -1884,6 +1924,8 @@ interface EnergyRouteChildren {
   EnergyIndexRoute: typeof EnergyIndexRoute
   EnergyMeteringPointsMeteringPointIdRoute: typeof EnergyMeteringPointsMeteringPointIdRoute
   EnergyMeteringPointsIndexRoute: typeof EnergyMeteringPointsIndexRoute
+  EnergyMeteringPointsImportImportIdRoute: typeof EnergyMeteringPointsImportImportIdRoute
+  EnergyMeteringPointsImportIndexRoute: typeof EnergyMeteringPointsImportIndexRoute
 }
 
 const EnergyRouteChildren: EnergyRouteChildren = {
@@ -1891,6 +1933,9 @@ const EnergyRouteChildren: EnergyRouteChildren = {
   EnergyMeteringPointsMeteringPointIdRoute:
     EnergyMeteringPointsMeteringPointIdRoute,
   EnergyMeteringPointsIndexRoute: EnergyMeteringPointsIndexRoute,
+  EnergyMeteringPointsImportImportIdRoute:
+    EnergyMeteringPointsImportImportIdRoute,
+  EnergyMeteringPointsImportIndexRoute: EnergyMeteringPointsImportIndexRoute,
 }
 
 const EnergyRouteWithChildren =
