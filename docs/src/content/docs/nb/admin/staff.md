@@ -323,7 +323,7 @@ lest fra Ansattes egne data (identity spørres ikke når dashbordet lastes). Hve
 navngir personen og ikke noe mer; åpne Konto-fanen deres for detaljene. Bare personer
 med flagget på som ikke er slettet listes, unntatt *accountFailing* for en deaktivering
 som er bedt om og ikke har nådd identity — også for en slettet person, med tittelen «An
-erased person».
+erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk deaktivert.
 
 | Punkt | Hva det betyr | Hva du gjør |
 | --- | --- | --- |
@@ -341,6 +341,7 @@ erased person».
 | `accountEmailTaken` | En annen bruker i identity har adressen | Rydd opp i duplikatet i identity, eller endre personens adresse |
 | `accountNumberTaken` | En bruker Ansatte ikke styrer har ansattnummeret | En Owner tar den brukeren inn for Ansatte, eller rydder i nummeret |
 | `accountFailing` (flagget på) | Identity svarte ikke tre ganger på rad | Sjekk identity og loggen, og kjør så Kjør nå |
+| `accountFailing` (flagget av, en som har sluttet) | Personen har sluttet (alle arbeidsforhold avsluttet, ingen senere), og arbeideren fikk ikke deaktivert brukeren Ansatte styrer for dem, tre kjøringer på rad — de kan fortsatt logge inn | Sjekk identity og loggen; arbeideren prøver igjen ved hver kjøring, og punktet forsvinner når brukeren er deaktivert |
 | `accountFailing` (flagget av, eller en slettet person) | En Deaktiver nå har ikke nådd identity — feilet, eller ventet mer enn ti minutter | Arbeideren prøver igjen ved hver kjøring og stopper når identity svarer (en bruker som alt er deaktivert, teller); send Deaktiver nå på nytt om det vedvarer |
 | `invitationUnanswered` | Tre invitasjoner ble ikke besvart | Sjekk adressen; Kjør nå sender en ny |
 | `invitationRevoked` | En Owner trakk invitasjonen tilbake | Kjør nå sender en ny, om personen skal ha den |

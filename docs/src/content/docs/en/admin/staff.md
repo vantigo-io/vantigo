@@ -317,7 +317,7 @@ them, read from Staff's own records (identity is not asked when the dashboard lo
 Each names the person and nothing more; open their Account tab for the details. Only
 people whose flag is on and who are not erased are listed, except *accountFailing* for a
 disable asked for that has not reached identity — for an erased person too, titled "An
-erased person".
+erased person" — and for a leaver whose account the worker could not disable.
 
 | Item | What it means | What to do |
 | --- | --- | --- |
@@ -335,6 +335,7 @@ erased person".
 | `accountEmailTaken` | Another user in identity holds the address | Resolve the duplicate in identity, or change the person's address |
 | `accountNumberTaken` | A user Staff does not manage holds the employee number | An Owner adopts that user for Staff, or resolves the number |
 | `accountFailing` (flag on) | Identity could not be reached three times in a row | Check identity's health and the log, then Run now |
+| `accountFailing` (flag off, a leaver) | The person has left (every employment ended, none later) and the worker could not disable the user Staff manages for them, three polls in a row — they can still sign in | Check identity's health and the log; the worker retries at every poll and the item clears once the user is disabled |
 | `accountFailing` (flag off, or an erased person) | A Disable now has not reached identity — failed, or waiting more than ten minutes | The worker retries at every poll and stops once identity answers (a user found disabled already counts); send Disable now again if it persists |
 | `invitationUnanswered` | Three invitations went unanswered | Check the address; Run now sends a fresh one |
 | `invitationRevoked` | An Owner revoked the invitation | Run now sends a fresh one, if the person should have it |
