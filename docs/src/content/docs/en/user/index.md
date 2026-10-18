@@ -55,7 +55,9 @@ shorter than yours:
 A few screens belong to an area without a sidebar entry of their own, and are opened
 from a button in that area's header instead — **Import customers**, for example, from
 **Import** on the customer list ([Export and
-import](/en/user/customers/#export-and-import)).
+import](/en/user/customers/#export-and-import)), and **Import metering points** from
+**Import** on the metering-point list ([Import metering
+points](/en/user/energy/#import-metering-points)).
 
 ## Search
 

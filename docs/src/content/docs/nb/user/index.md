@@ -55,7 +55,9 @@ kortere enn din:
 Noen få skjermbilder hører til et område uten å ha en egen oppføring i sidefeltet, og
 åpnes i stedet fra en knapp i områdets toppfelt — **Importer kunder**, for eksempel,
 fra **Importer** i kundelisten ([Eksport og
-import](/nb/user/customers/#eksport-og-import)).
+import](/nb/user/customers/#eksport-og-import)), og **Importer målepunkter** fra
+**Importer** i målepunktlisten ([Importer
+målepunkter](/nb/user/energy/#importer-målepunkter)).
 
 ## Søk
 

@@ -5,6 +5,7 @@ sidebar:
   order: 70
 sources:
   - apps/energy/frontend
+  - apps/host/frontend/src/routes/energy
 ---
 
 Energi-appen holder orden på målepunktene organisasjonen din leverer strøm til: hvor
@@ -31,6 +32,12 @@ så lenge du har `energy:metering-points-view`.
 Klikk på en rad for å åpne målepunktet. Blyanten ytterst på raden åpner
 redigeringsdialogen direkte.
 
+Slå på **Uten kunde** for å liste bare målepunktene som ikke har noen kunde nå: ingen
+aktiv leveranseperiode som har startet og ikke er avsluttet. Et målepunkt der den eneste
+leveranseperioden starter senere, listes også. Dette er listen du går gjennom etter en
+import som lot målepunkter stå uten kunde, se
+[Importer målepunkter](#importer-målepunkter).
+
 ## Opprett et målepunkt
 
 Klikk **Nytt målepunkt** i listen. Fyll inn:
@@ -51,6 +58,119 @@ Klikk **Nytt målepunkt** i listen. Fyll inn:
 markerer feltene som mangler eller har feil form; en GSRN som allerede finnes avvises
 med *Kunne ikke lagre målepunktet*. Å opprette krever `energy:metering-points-manage`
 og `energy:meters-manage`.
+
+## Importer målepunkter
+
+**Importer** i listen henter inn målepunktene fra eksporten fra det forrige systemet
+ditt, én rad per målepunkt. Knappen vises når du har `energy:import` og
+`energy:metering-points-manage`; det importen skriver, krever de samme rettighetene som
+å skrive det for hånd (se tabellen nederst). Trykk **Importer** for å åpne
+**Importer målepunkter**.
+
+Filen må ha en **GSRN** på hver rad; hver rad finnes igjen etter den. Et nytt målepunkt
+trenger i tillegg **Målernummer**, **Gateadresse**, **Postnummer**, **Poststed** og
+**Prisområde**. For å knytte et målepunkt til kunden sin trenger filen kundens
+**organisasjonsnummer**, og gjerne datoen leveringen starter.
+
+1. **Last opp filen.** Slipp en CSV-fil på siden eller velg en. Den kan være separert
+   med semikolon, komma eller tabulator, i UTF-8 eller Windows (ANSI), med
+   kolonnenavnene i første rad; høyst 50 MB og 100 000 rader. **Siste importer**
+   nedenfor lister tidligere importer med status: åpne en for å fortsette der den sto,
+   eller slett en som ikke kjører. Å slette en import fjerner ikke målepunktene den
+   skrev.
+2. **Velg kolonner.** Under **Hva som skal gjøres med radene** velger du **Opprett nye
+   målepunkter** (en GSRN som finnes fra før, avvises), **Oppdater eksisterende
+   målepunkter** (en GSRN ingen har, avvises) eller **Opprett og oppdater**. Velg så,
+   for hver kolonne i filen, under **Importeres som** hvilket felt den blir, fra
+   gruppene **Målepunkt**, **Adresse** og **Kundekobling**, eller la den stå som
+   **Importeres ikke**. Vantigo foreslår felt for kolonnenavnene leverandøreksporter
+   bruker, som *MÅLEPUNKTID*, *MÅLERNR*, *ANLEGGSADRESSE*, *PRISOMRÅDE*, *ORG. NR.* og
+   *STARTDATO KUNDE*; når filen har både kundens postadresse og anleggets (*POSTNR* og
+   *POSTNR ANLEGG*), foreslås anleggets. **Samme verdi for alle rader** setter et felt
+   filen ikke har noen kolonne for, for eksempel ett prisområde eller én startdato for
+   levering for alle radene. **Forhåndsvisning** viser de første radene slik de vil bli
+   lest, med hver feil markert i cellen sin. Valgene lagres mens du gjør dem. Ved
+   oppdatering endres bare feltene som er valgt; en tom celle i et valgt valgfritt felt
+   tømmer det.
+3. **Kontroller filen.** Hver rad prøves akkurat som importen ville gjort, uten at noe
+   lagres. Resultatet teller radene som **Ville blitt opprettet**, **Ville blitt
+   oppdatert**, **Ville blitt hoppet over** og **Har feil**, og, når det finnes noen,
+   de som **Ville byttet kunde** og **Ville ventet på en startdato**. **Endre valg av
+   kolonner** tar deg tilbake til steg 2.
+4. **Importer** lagrer radene, etter en bekreftelse som gjentar hvor mange målepunkter
+   som opprettes og oppdateres. Importen kjører i bakgrunnen: du kan forlate siden og
+   komme tilbake. **Stopp** stopper den etter radene som er i gang; radene som allerede
+   er importert, blir stående.
+
+Valgene du ikke har rettighet til, er grået ut, og gruppen **Kundekobling** tilbys bare
+når du har `energy:supply-periods-manage`.
+
+### Slik knyttes en rad til kunden sin
+
+Et målepunkt knyttes til en kunde med en leveranseperiode, og en leveranseperiode
+trenger en startdato. Derfor leser importen kunden og datoen hver for seg:
+
+- **Kundens organisasjonsnummer** angir kunden. Det må være et gyldig norsk
+  organisasjonsnummer som nøyaktig én kunde har. Et nummer ingen har, et som flere
+  kunder har, eller en kunde som er arkivert eller slått sammen med en annen, gjør at
+  raden feiler, og målepunktet skrives ikke.
+- **Startdato for levering**, fra en kolonne eller som én verdi for alle rader, er
+  dagen leveranseperioden starter (ved midnatt UTC). Datoer kan skrives `2026-01-01`,
+  `01.01.2026` eller `01/01/2026`, alltid med dagen først. Med en dato skrives
+  leveranseperioden når målepunktet importeres.
+- **Uten startdato** blir målepunktet importert og koblet til kunden sin, men venter
+  på å bli knyttet til: se [Knytt til de ventende
+  målepunktene](#knytt-til-de-ventende-målepunktene).
+- **Uten organisasjonsnummer** (kolonnen ikke valgt, eller cellen tom) blir
+  målepunktet importert uten kunde, og en eksisterende leveranseperiode blir stående
+  som den er. Finn disse målepunktene med **Uten kunde** i listen, og gi hvert av dem
+  en kunde med **Tildel kunde**.
+- Et målepunkt som allerede leveres til den kunden, blir stående som det er, uansett
+  hva datoen sier.
+
+### Når et målepunkt bytter kunde
+
+Når et målepunkt leveres til en annen kunde i dag og raden angir en ny kunde med en
+startdato, **bytter** importen kunde: den nåværende leveranseperioden avsluttes på
+radens startdato, og kunden i filen overtar. Startdatoen må være senere enn starten på
+den nåværende perioden.
+
+Fordi filen kan være eldre enn et kundebytte som er gjort for hånd, setter kontrollen
+en rød advarsel øverst på siden: *12 målepunkter vil bytte kunde. Hvert målepunkts
+nåværende leveranseperiode avsluttes på radens startdato, og kunden i filen overtar.*,
+med en tabell over **GSRN**, **Nåværende kunde**, **Ny kunde** og **Dato**. Når du
+trykker **Importer**, gjentar bekreftelsen antallet, og **Importer**-knappen i den er
+deaktivert til du krysser av for *Jeg forstår at 12 målepunkter vil bytte kunde.*
+Har antallet endret seg siden kontrollen, avvises importen med årsaken, og siden leser
+importen på nytt; kontroller filen igjen før du importerer.
+
+### Knytt til de ventende målepunktene
+
+Når rader hadde en kunde, men ingen startdato, viser den ferdige importen **Knytt til
+kunder**: hvor mange målepunkter som venter, og en tabell over dem med kunden deres.
+Velg **Startdato for levering** og trykk **Knytt til**; hvert ventende målepunkt får en
+leveranseperiode for kunden sin fra den datoen. Når noen av dem leveres til en annen
+kunde nå, vises den samme røde advarselen og avkrysningsboksen som over, og de bytter
+kunde på den datoen. Hvert målepunkt blir knyttet til, eller fortsetter å vente med
+årsaken vist i tabellen, så du kan knytte til på nytt med en annen dato til ingen er
+igjen. Et målepunkt noen har knyttet til for hånd i mellomtiden, blir stående som det
+er. Å knytte til krever `energy:supply-periods-manage`.
+
+### Rader som feilet eller ble hoppet over
+
+- Rader som **feilet**, listes med rad, kolonne og feil, for eksempel en GSRN som ikke
+  er 18 sifre, en rad til med samme GSRN, eller et målernummer ved oppdatering som er
+  forskjellig fra den nåværende måleren (bruk **Bytt måler** til det). **Last ned
+  radene som feilet** gir deg de radene akkurat som de var, med en error-kolonne
+  først; rett dem og last opp den filen som en ny import.
+- Rader som ble **hoppet over**, er summeringslinjer: en rad uten GSRN og med høyst én
+  annen utfylt celle, som det summerte årsforbruket mange eksporter slutter med. De
+  telles og listes, men feiler aldri.
+
+Den ferdige importen lister målepunktene som ble opprettet og oppdatert, og de som
+byttet kunde, med begge kundene, hver som en lenke. Importer fjernes automatisk etter
+30 dager; målepunktene og leveranseperiodene blir stående. Alle reglene står i
+[Importing metering points](/en/reference/energy/#importing-metering-points).
 
 ## Rediger et målepunkt
 
@@ -168,3 +288,4 @@ leveranseperiodene til den oppslukte kunden over til den som består.
 | `energy:supply-periods-manage` | Tildele, bytte, avslutte og knytte til leveranseperioder |
 | `energy:consumption-view` | Se forbruk og Energi-fanens forbrukstall |
 | `energy:consumption-manage` | Legge til manuelle avlesninger |
+| `energy:import` | Importere målepunkter fra en fil, sammen med `energy:metering-points-manage`; det importen skriver, krever rettighetene over |

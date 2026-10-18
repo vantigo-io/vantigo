@@ -1,7 +1,19 @@
-import { ActionIcon, Alert, Badge, Button, Card, Group, Pagination, Stack, Table, TextInput } from "@mantine/core";
-import { IconAlertCircle, IconBolt, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Group,
+  Pagination,
+  Stack,
+  Switch,
+  Table,
+  TextInput,
+} from "@mantine/core";
+import { IconAlertCircle, IconBolt, IconPencil, IconPlus, IconSearch, IconUpload } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type ConnectionStatus, meteringPointsQueryOptions } from "../api/energy";
@@ -12,21 +24,36 @@ const PAGE_SIZE = 25;
 interface MeteringPointsSearch {
   page: number;
   search: string;
+  /** Present only when true: the points with no customer now (energy import design D9). */
+  withoutCustomer?: boolean;
 }
 
 const statusColor = (status: ConnectionStatus) => ({ New: "blue", Connected: "teal", Disconnected: "red" })[status];
 
-export const MeteringPointsPage = () => {
+/**
+ * The metering-point list. `canImport` is the host's answer to whether the
+ * caller holds `energy:import` and `energy:metering-points-manage` (energy
+ * import design D9); it puts **Import** in the header, a link to the import
+ * page. **Without customer** keeps the points with no customer now — the list
+ * to attach the points an import left without one.
+ */
+export const MeteringPointsPage = ({ canImport = false }: { canImport?: boolean }) => {
   const { t } = useI18n("energy");
-  const { page, search } = useSearch({ strict: false }) as MeteringPointsSearch;
+  const { page, search, withoutCustomer } = useSearch({ strict: false }) as MeteringPointsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
+  const filter = withoutCustomer ? { withoutCustomer: true } : {};
   const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
     currentSearch: search,
-    onNavigate: (next, options) => void navigate({ search: next, ...options }),
+    onNavigate: (next, options) => void navigate({ search: { ...next, ...filter }, ...options }),
   });
   const [modalState, setModalState] = useState<MeteringPointModalState | null>(null);
   const { data, isPending, isError, error } = useQuery(
-    meteringPointsQueryOptions({ page, pageSize: PAGE_SIZE, search: search || undefined }),
+    meteringPointsQueryOptions({
+      page,
+      pageSize: PAGE_SIZE,
+      search: search || undefined,
+      withoutCustomer: withoutCustomer || undefined,
+    }),
   );
 
   return (
@@ -44,21 +71,45 @@ export const MeteringPointsPage = () => {
         }
         description={t("meteringPointsDescription")}
         actions={
-          <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-            {t("newMeteringPoint")}
-          </Button>
+          <Group gap="sm">
+            {canImport && (
+              <Button
+                component={Link}
+                to="/energy/metering-points/import"
+                variant="default"
+                leftSection={<IconUpload size={16} />}
+              >
+                {t("importMeteringPoints")}
+              </Button>
+            )}
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+              {t("newMeteringPoint")}
+            </Button>
+          </Group>
         }
       />
       <MeteringPointFormModal state={modalState} onClose={() => setModalState(null)} />
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
-          <TextInput
-            placeholder={t("searchMeteringPoints")}
-            leftSection={<IconSearch size={16} />}
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.currentTarget.value)}
-            maw={420}
-          />
+          <Group gap="md" align="center">
+            <TextInput
+              placeholder={t("searchMeteringPoints")}
+              leftSection={<IconSearch size={16} />}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.currentTarget.value)}
+              maw={420}
+              style={{ flex: 1 }}
+            />
+            <Switch
+              label={t("withoutCustomer")}
+              checked={!!withoutCustomer}
+              onChange={(event) =>
+                void navigate({
+                  search: { page: 1, search, ...(event.currentTarget.checked ? { withoutCustomer: true } : {}) },
+                })
+              }
+            />
+          </Group>
           {isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeteringPoints")}>
               {error.message}
