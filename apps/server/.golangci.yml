@@ -464,6 +464,7 @@ linters:
             - "**/internal/calendar/**"
             - "**/internal/config/**"
             - "**/internal/db/**"
+            - "**/internal/fileimport/**"
             - "**/internal/health/**"
             - "**/internal/httpx/**"
             - "**/internal/mail/**"

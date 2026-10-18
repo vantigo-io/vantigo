@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"reflect"
 	"testing"
+
+	"github.com/vantigo-io/vantigo/server/internal/fileimport"
 )
 
 // TestCustomerCSVColumns_AreDesignD1sInOrder pins the file's columns — the
@@ -57,30 +59,9 @@ func TestCSVCell_GuardsFormulasAndQuotesWhatWouldEndTheCell(t *testing.T) {
 	}
 }
 
-// TestCSVUnguard_TakesOffOnlyTheApostropheTheGuardPutOn: the importer reads
-// back what the export wrote, so "'+47 …" is a phone number again — but an
-// apostrophe a person typed in front of anything else is theirs, and stays.
-func TestCSVUnguard_TakesOffOnlyTheApostropheTheGuardPutOn(t *testing.T) {
-	for in, want := range map[string]string{
-		"'+47 22 33 44 55": "+47 22 33 44 55",
-		"'=SUM(A1)":        "=SUM(A1)",
-		"'-5":              "-5",
-		"'@home":           "@home",
-		"'\tx":             "\tx",
-		"'s-Hertogenbosch": "'s-Hertogenbosch",
-		"'":                "'",
-		"O'Brien":          "O'Brien",
-		"":                 "",
-	} {
-		if got := csvUnguard(in); got != want {
-			t.Errorf("csvUnguard(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 // TestReadImportFile_ReadsBackWhatTheWriterWrites: the export's own form —
 // a quoted separator and quotes, a line break, a guarded formula, a bare CR —
-// comes back from the upload's reader as the values it was written from
+// comes back from the upload's reader (internal/fileimport) as the values it was written from
 // (customers import wizard design D2), so an export re-imports as it is.
 func TestReadImportFile_ReadsBackWhatTheWriterWrites(t *testing.T) {
 	var b bytes.Buffer
@@ -89,14 +70,14 @@ func TestReadImportFile_ReadsBackWhatTheWriterWrites(t *testing.T) {
 	writeCSVRow(&b, []string{`Fjord; "Nord" AS`, "+47 22 33 44 55", "a\rb"})
 	writeCSVRow(&b, []string{"to\nlinjer", "=1+1", ""})
 
-	file, refusal := readImportFile(b.Bytes())
+	file, refusal := fileimport.Read(b.Bytes(), importUploadLimits)
 	if refusal != "" {
 		t.Fatalf("refusal = %q, want none", refusal)
 	}
 	if !reflect.DeepEqual(file.Header, []string{"name", "phone", "note"}) || file.Separator != ';' {
 		t.Errorf("header = %q separator %q", file.Header, file.Separator)
 	}
-	want := []csvRecord{
+	want := []fileimport.Record{
 		{Row: 1, Cells: []string{`Fjord; "Nord" AS`, "+47 22 33 44 55", "a\rb"}},
 		{Row: 2, Cells: []string{"to\nlinjer", "=1+1", ""}},
 	}

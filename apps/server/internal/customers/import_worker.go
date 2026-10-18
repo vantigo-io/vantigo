@@ -12,6 +12,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
+	"github.com/vantigo-io/vantigo/server/internal/fileimport"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
@@ -227,7 +228,7 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			rec := csvRecord{Row: int(row.RowNo), Cells: row.Cells}
+			rec := fileimport.Record{Row: int(row.RowNo), Cells: row.Cells}
 			p, planErrs := l.plan(rec, vocab, l.creates())
 			var result importRowResult
 			if first, dup := duplicates[row.RowNo]; dup {

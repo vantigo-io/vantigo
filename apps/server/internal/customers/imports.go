@@ -20,6 +20,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/fileimport"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
@@ -167,7 +168,7 @@ func (s *server) uploaderOf(ctx context.Context) (*uuid.UUID, *string, error) {
 // PostCustomersImports Upload a file of customers
 // (POST /api/v1/customers/imports)
 //
-// The file is read once (imports_read.go) and its rows written with CopyFrom
+// The file is read once (internal/fileimport) and its rows written with CopyFrom
 // in the transaction that creates the import, so an import either has every
 // row or does not exist.
 func (s *server) PostCustomersImports(ctx context.Context, req gen.PostCustomersImportsRequestObject) (gen.PostCustomersImportsResponseObject, error) {
@@ -175,7 +176,7 @@ func (s *server) PostCustomersImports(ctx context.Context, req gen.PostCustomers
 	if !ok {
 		return gen.PostCustomersImports400ApplicationProblemPlusJSONResponse(invalidImportFile(invalidImportUploadMessage)), nil
 	}
-	file, refusal := readImportFile(data)
+	file, refusal := fileimport.Read(data, importUploadLimits)
 	if refusal != "" {
 		return gen.PostCustomersImports400ApplicationProblemPlusJSONResponse(invalidImportFile(refusal)), nil
 	}
@@ -294,7 +295,7 @@ func (s *server) importSample(ctx context.Context, q *store.Queries, imp store.C
 	for _, row := range rows {
 		item := gen.CustomerImportSampleRow{Row: row.RowNo, Cells: row.Cells, Errors: []gen.CustomerImportRowError{}}
 		if mapping != nil {
-			_, errs := l.plan(csvRecord{Row: int(row.RowNo), Cells: row.Cells}, vocab, l.creates())
+			_, errs := l.plan(fileimport.Record{Row: int(row.RowNo), Cells: row.Cells}, vocab, l.creates())
 			for _, e := range errs {
 				item.Errors = append(item.Errors, l.wire(e))
 			}
