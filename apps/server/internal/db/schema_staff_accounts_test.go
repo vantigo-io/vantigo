@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"io/fs"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -185,6 +186,25 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 			t.Fatalf("delete the %s row: %v", key, err)
 		}
 	}
+	// So does an event whose typeIds names one (review item 3): the erase
+	// writes the reserved id into the absence events it rewrites, and with
+	// the type gone the event would name a type nobody has — listed then by
+	// whatever an unknown type falls to, not as it was.
+	for _, key := range []string{"absent_hours", "absent_hr_only", "absent_hr_only_hours"} {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO staff.events (person_id, kind, actor_kind, at, payload)
+			SELECT $1, 'absence_registered', 'system', now(), jsonb_build_object('typeIds', jsonb_build_array(1, id))
+			FROM staff.absence_types WHERE key = $2`, kari, key); err != nil {
+			t.Fatalf("an event naming %s: %v", key, err)
+		}
+		err := migrateErr(url, staffAccountsVersion-1)
+		if err == nil || !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "00051") || !strings.Contains(err.Error(), "event") {
+			t.Errorf("the Down with an event naming %s: %v, want it refused naming %s and the events", key, err, key)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM staff.events WHERE person_id = $1`, kari); err != nil {
+			t.Fatalf("delete the %s event: %v", key, err)
+		}
+	}
 
 	migrateTo(t, url, staffAccountsVersion-1)
 	if got := staffCollect(t, ctx, pool, "ammefri's pay after the rollback", `SELECT paid::text FROM staff.absence_types WHERE key = 'ammefri'`); !equalStrings(got, []string{"false"}) {
@@ -289,5 +309,88 @@ func TestStaffAccounts_RefusesACompanyTypeHoldingAReservedKey(t *testing.T) {
 			t.Errorf("00051 over a company type keyed %s: %v, want it refused naming the key", key, err)
 		}
 		pool.Close()
+	}
+}
+
+// 00051 over an installation already in use (review item 5): migrated to
+// 00050, two people whose employee numbers differ only by case under the old
+// index's collation — A-1 and b-2 — a linked self-service link and an
+// ammefri absence, then 00051 Up. The link is kept as it was, the employee
+// number index is rebuilt under "C" with both people in it, ammefri is paid
+// with its revision moved on by one, and each person's account_revision is 1.
+func TestStaffAccounts_UpOverExistingData(t *testing.T) {
+	url := testdb.URL(t)
+	migrateTo(t, url, staffAccountsVersion-1)
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	person := func(number, given string) int64 {
+		t.Helper()
+		var id int64
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO staff.people (employee_number, given_name, family_name, display_name, created_at, updated_at)
+			VALUES ($1, $2::text, 'Før', $2::text || ' Før', now(), now()) RETURNING id`, number, given).Scan(&id); err != nil {
+			t.Fatalf("person %s: %v", number, err)
+		}
+		return id
+	}
+	a := person("A-1", "Anne")
+	b := person("b-2", "Bjørn")
+	user := uuid.NewString()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
+		VALUES ($1, 'identity', $2, 'linked', false, now(), now())`, a, user); err != nil {
+		t.Fatalf("a linked link: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO staff.absences (person_id, type_id, first_day, last_day, hours, status, requested_by_user_id, created_at, updated_at)
+		SELECT $1, id, '2026-03-02', '2026-03-02', 1, 'registered', gen_random_uuid(), now(), now()
+		FROM staff.absence_types WHERE key = 'ammefri'`, b); err != nil {
+		t.Fatalf("an ammefri absence: %v", err)
+	}
+	var revisionBefore int
+	if err := pool.QueryRow(ctx, `SELECT revision FROM staff.absence_types WHERE key = 'ammefri' AND seeded`).Scan(&revisionBefore); err != nil {
+		t.Fatalf("ammefri's revision: %v", err)
+	}
+
+	migrateTo(t, url, staffAccountsVersion)
+
+	links := staffCollect(t, ctx, pool, "the link after 00051", `
+		SELECT person_id::text || ':' || state || ':' || managed::text || ':' || coalesce(external_id, '-') FROM staff.identity_links ORDER BY id`)
+	if want := []string{strconv.FormatInt(a, 10) + ":linked:false:" + user}; !equalStrings(links, want) {
+		t.Errorf("links after 00051 = %v, want %v unchanged", links, want)
+	}
+	index := staffCollect(t, ctx, pool, "the employee number index after 00051", `
+		SELECT indexdef FROM pg_indexes WHERE schemaname = 'staff' AND indexname = 'ux_people_employee_number_upper'`)
+	if !equalStrings(index, []string{employeeNumberIndexAfter}) {
+		t.Errorf("the employee number index = %v, want %s", index, employeeNumberIndexAfter)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO staff.people (employee_number, given_name, family_name, display_name, created_at, updated_at)
+		VALUES ('a-1', 'Annen', 'Før', 'Annen Før', now(), now())`); err == nil {
+		t.Error("a-1 beside A-1 after 00051 was admitted, want the rebuilt index to refuse it")
+	}
+	ammefri := staffCollect(t, ctx, pool, "ammefri after 00051", `
+		SELECT paid::text || ':' || revision::text FROM staff.absence_types WHERE key = 'ammefri' AND seeded`)
+	if want := []string{"true:" + strconv.Itoa(revisionBefore+1)}; !equalStrings(ammefri, want) {
+		t.Errorf("ammefri after 00051 = %v, want %v (paid, its revision moved on by one)", ammefri, want)
+	}
+	if n := staffCollect(t, ctx, pool, "the ammefri row after 00051", `
+		SELECT count(*)::text FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id WHERE t.key = 'ammefri' AND a.person_id = $1`, b); !equalStrings(n, []string{"1"}) {
+		t.Errorf("the ammefri row after 00051 = %v, want it kept", n)
+	}
+	revisions := staffCollect(t, ctx, pool, "account_revision after 00051", `
+		SELECT account_revision::text FROM staff.people WHERE id IN ($1, $2) ORDER BY id`, a, b)
+	if !equalStrings(revisions, []string{"1", "1"}) {
+		t.Errorf("account_revision after 00051 = %v, want 1 for each person", revisions)
+	}
+	for _, sql := range []string{`DELETE FROM staff.absences`, `DELETE FROM staff.identity_links`, `DELETE FROM staff.people`} {
+		if _, err := pool.Exec(ctx, sql); err != nil {
+			t.Fatalf("clean up (%s): %v", sql, err)
+		}
 	}
 }

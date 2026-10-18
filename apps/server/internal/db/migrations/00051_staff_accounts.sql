@@ -99,9 +99,13 @@ ALTER TABLE staff.settings ADD COLUMN erase_sick_case_dates boolean NOT NULL DEF
 -- revision, the synced employee number and the disable marker go. The two
 -- erase settings go, ammefri is unpaid again, and the reserved types this
 -- file seeded are deleted — but the Down refuses while any row names one
--- (review L1): giving an erased HR-only row absent would show a manager an
--- absence it read as leave, and the Down must never widen who reads a row.
--- The operator deletes or retypes those rows by hand first, knowingly.
+-- (review L1), or any event's typeIds does (review item 3): giving an
+-- erased HR-only row absent would show a manager an absence it read as
+-- leave, and the Down must never widen who reads a row. The operator deletes
+-- or retypes those rows, and rewrites or deletes those events, by hand
+-- first, knowingly. The links still being prepared are deleted with or
+-- without a user; the pending users those named are left in identity for an
+-- Owner to delete (admin/installation.md).
 -- +goose StatementBegin
 DO $$
 DECLARE
@@ -112,6 +116,17 @@ BEGIN
     WHERE t.seeded AND t.key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours');
     IF named IS NOT NULL THEN
         RAISE EXCEPTION 'staff 00051 Down: absences name the reserved type(s) % that this version added; it cannot give them another type without widening who reads them — delete or retype them by hand first', named;
+    END IF;
+    -- An event's typeIds naming one (review item 3): with the type gone the
+    -- event would name a type nobody has, listed by whatever an unknown type
+    -- falls to rather than as it was.
+    SELECT string_agg(DISTINCT t.key, ', ' ORDER BY t.key) INTO named
+    FROM staff.absence_types t
+    WHERE t.seeded AND t.key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours')
+      AND EXISTS (SELECT 1 FROM staff.events e
+                  WHERE jsonb_typeof(e.payload->'typeIds') = 'array' AND e.payload->'typeIds' @> jsonb_build_array(t.id));
+    IF named IS NOT NULL THEN
+        RAISE EXCEPTION 'staff 00051 Down: events name the reserved type(s) % that this version added in their typeIds; with the types gone they would name a type nobody has — rewrite or delete those events by hand first', named;
     END IF;
 END
 $$;

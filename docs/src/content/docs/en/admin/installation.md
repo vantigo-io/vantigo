@@ -558,8 +558,14 @@ added; it needs no other module. See [Staff](/en/admin/staff/).
 
 **The release with Staff's accounts.** It brings two migrations, one per schema:
 identity's `00050` (Staff-managed users, the employee roles, the recorded authority
-mode) and Staff's `00051` (a link that names no user yet, the account flag's own
-revision, the link's synced employee number). It also starts the accounts worker,
+mode) and Staff's `00051`. Staff's brings, in full: a link that names no user yet (the
+accounts worker's link while it is being prepared), the account flag's own revision
+(`people.account_revision`, 1 for everyone), the link's synced employee number, the
+disable *Disable now* asked for (`identity_links.disable_requested_at`), the employee
+number unique under the `C` collation (below), the seed `ammefri` paid, the reserved
+hidden types `absent_hours`, `absent_hr_only` and `absent_hr_only_hours`, and the two
+erase settings (`erase_pregnancy_health_types`, `erase_sick_case_dates`, both off). It
+also starts the accounts worker,
 `staff-accounts`, on by default. It does nothing until HR turns a person's account flag
 on; from then it creates that person's pending, disabled user ahead of the start even
 before an Owner has named the employee roles, and enables nobody until they are named.
@@ -576,8 +582,20 @@ SELECT upper(employee_number COLLATE "C"), count(*) FROM staff.people GROUP BY 1
 ```
 
 No row means the upgrade is safe; for each row, give one of the people another number
-in Staff first. Rolling the migration back is an operator's last resort: it deletes
-the accounts worker's links that do not yet name a user.
+in Staff first. The migration also refuses, naming the key, a company absence type
+that already holds one of the three reserved keys; look for them too:
+
+```sql
+SELECT key FROM staff.absence_types WHERE key IN ('absent_hours','absent_hr_only','absent_hr_only_hours') AND NOT seeded;
+```
+
+No row means the upgrade is safe; otherwise rename each type's key first.
+
+Rolling `00051` back is an operator's last resort. It deletes every link still being
+prepared, with or without a user: the pending users those links named stay in identity,
+managed by Staff, for an Owner to stop managing and delete. It refuses, naming the
+types, while an absence names one of the reserved types or an event's `typeIds` does —
+delete or retype those rows, and rewrite or delete those events, by hand first.
 
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).

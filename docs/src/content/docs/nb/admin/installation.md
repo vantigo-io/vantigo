@@ -576,8 +576,14 @@ først når `staff` legges til; den trenger ingen annen modul. Se
 
 **Utgivelsen med Ansattes kontoer.** Den har to migreringer, én per skjema: identitys
 `00050` (brukere styrt av Ansatte, ansattrollene, den registrerte autoritetsmodusen) og
-Ansattes `00051` (en kobling som ennå ikke navngir en bruker, kontoflaggets egen
-revisjon, koblingens synkroniserte ansattnummer). Den starter også kontoarbeideren,
+Ansattes `00051`. Ansattes har med seg, i sin helhet: en kobling som ennå ikke navngir
+en bruker (kontoarbeiderens kobling mens den klargjøres), kontoflaggets egen revisjon
+(`people.account_revision`, 1 for alle), koblingens synkroniserte ansattnummer,
+deaktiveringen *Deaktiver nå* ba om (`identity_links.disable_requested_at`),
+ansattnummeret unikt under sorteringen `C` (nedenfor), den forhåndsdefinerte typen
+`ammefri` lønnet, de reserverte skjulte typene `absent_hours`, `absent_hr_only` og
+`absent_hr_only_hours`, og de to sletteinnstillingene (`erase_pregnancy_health_types`,
+`erase_sick_case_dates`, begge av). Den starter også kontoarbeideren,
 `staff-accounts`, på som standard. Den gjør ingenting før HR slår på en persons
 kontoflagg; fra da oppretter den personens ventende, deaktiverte bruker før startdatoen
 også før en Owner har navngitt ansattrollene, og aktiverer ingen før de er navngitt.
@@ -595,8 +601,21 @@ SELECT upper(employee_number COLLATE "C"), count(*) FROM staff.people GROUP BY 1
 ```
 
 Ingen rad betyr at oppgraderingen er trygg; for hver rad gir du først én av personene et
-annet nummer i Ansatte. Å rulle migreringen tilbake er en operatørs siste utvei: den
-sletter kontoarbeiderens koblinger som ennå ikke navngir en bruker.
+annet nummer i Ansatte. Migreringen avviser også, med nøkkelen, en egen fraværstype som
+alt har en av de tre reserverte nøklene; se etter dem også:
+
+```sql
+SELECT key FROM staff.absence_types WHERE key IN ('absent_hours','absent_hr_only','absent_hr_only_hours') AND NOT seeded;
+```
+
+Ingen rad betyr at oppgraderingen er trygg; ellers gir du først hver type en ny nøkkel.
+
+Å rulle `00051` tilbake er en operatørs siste utvei. Den sletter alle koblinger som
+fortsatt klargjøres, med eller uten bruker: de ventende brukerne de koblingene navnga,
+blir værende i identity, styrt av Ansatte, for en Owner å slutte å styre og slette. Den
+avvises, med typene, så lenge et fravær navngir en av de reserverte typene eller en
+hendelses `typeIds` gjør det — slett eller gi radene en annen type, og skriv om eller
+slett hendelsene, for hånd først.
 
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
