@@ -290,6 +290,9 @@ HTTP replica does not multiply the pollers:
    own settings derive another prepares, activates and updates no account — Staff's
    accounts wait, reported as a mode mismatch — until its settings match the API's and
    it is restarted; it still disables leavers.
+4. Keep the clocks of the API and worker hosts in sync (NTP). The Staff accounts
+   worker's claims are leases that each process compares with its own clock, so a
+   clock that runs ahead can take over a link another process is still working on.
 
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology

@@ -70,8 +70,10 @@ const (
 	// cycles.
 	accountsBatch = 50
 	// accountsLeaseFor is how long a claim holds its link from its last
-	// renewal: the lease is renewed before each identity call and read of a
-	// chain (RenewAccountLease), each bounded by accountsCallTimeout, so a
+	// renewal: the lease is renewed before each identity call, and before
+	// each read of the user after a call — the first read rides on the
+	// claim's fresh lease — (RenewAccountLease), each bounded by
+	// accountsCallTimeout, so a
 	// claim alive keeps its link however long its chain, and a crashed one
 	// is taken over within five minutes. A renewal that finds the lease
 	// lapsed or taken stops the chain.
@@ -428,7 +430,23 @@ func (r *accountResult) mismatched() {
 	r.state = linkStateBlocked
 	r.answered(reasonMismatch)
 	r.events = nil
-	r.event(eventAccountMismatched, string(accountStepPrepare), reasonMismatch)
+	// Recorded once: a link already blocked on the mismatch, claimed again
+	// on its schedule, records nothing new (review LOW 1).
+	if c.State != linkStateBlocked || deref(c.BlockedReason) != reasonMismatch {
+		r.event(eventAccountMismatched, string(accountStepPrepare), reasonMismatch)
+	}
+}
+
+// deactivationDue is whether the person's facts alone, the user unread, say
+// a Deactivate may be due: the flag on, not erased, an employment, and every
+// employment ended — or between employments before the later one is due.
+func deactivationDue(f accountFacts) bool {
+	p := f.decide
+	if p.Erased || !p.Flag || len(p.Employments) == 0 {
+		return false
+	}
+	phase, between := accountPhaseOf(p, decideDay(f.today), f.createBeforeDays)
+	return phase == phaseEnded || (between && phase != phaseDue)
 }
 
 // stateOfRef is the link state ref's user reads as, current the link's: a
@@ -667,6 +685,12 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 		if ref, err = s.readAccountRef(ctx, *user, f); err != nil {
 			log.WarnContext(ctx, "staff: read a linked account", "error", err.Error())
 			r.failedCall(accountStep{Kind: accountStepNone}, err)
+			// A leaver's read is retried at every poll, as their Deactivate is
+			// (reading 25): judged on the facts alone, since the user could not
+			// be read (review MEDIUM 1).
+			if claim.State != linkStateDisabled && deactivationDue(f) {
+				r.soon = true
+			}
 			return s.writeAccountResult(ctx, run, r, lease, f, now)
 		}
 	}
@@ -860,11 +884,22 @@ func (s *server) renewAccountLease(ctx context.Context, id int64, lease uuid.UUI
 // recordPreparedUser writes the user a Prepare answered onto the claim's
 // link — under the person's lock, then the link on the claim's lease — and
 // answers whether the chain may go on with them: not when another link names
-// the user (a mismatch, recorded), the lease is lost or the person gone.
+// the user (a mismatch, recorded), the lease is lost or the person gone, and
+// not when the person was erased or their flag turned off while Prepare ran
+// (review LOW 2) — the user is recorded then, and nothing more is done.
 func (s *server) recordPreparedUser(ctx context.Context, r *accountResult, lease uuid.UUID, got contracts.AccountRef, f accountFacts, now time.Time) bool {
 	id := got.UserID.String()
-	recorded := false
+	recorded, stop := false, false
 	err := s.withPersonLock(ctx, r.claim.PersonID, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		p, err := readAccountPerson(ctx, txq, r.claim.PersonID)
+		if err != nil {
+			return err
+		}
+		row, err := txq.GetPerson(ctx, r.claim.PersonID)
+		if err != nil {
+			return fmt.Errorf("staff: read person %d: %w", r.claim.PersonID, err)
+		}
+		stop = row.ErasedAt != nil || !p.provisionAccount
 		n, err := txq.RecordPreparedUser(ctx, store.RecordPreparedUserParams{
 			ID: r.claim.ID, LeaseID: lease, ExternalID: id, SyncedEmployeeNumber: f.row.EmployeeNumber, Now: now,
 		})
@@ -886,5 +921,5 @@ func (s *server) recordPreparedUser(ctx context.Context, r *accountResult, lease
 		return false
 	}
 	r.current = &id
-	return true
+	return !stop
 }

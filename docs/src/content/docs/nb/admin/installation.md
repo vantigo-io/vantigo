@@ -293,6 +293,10 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
    kontoer — Ansattes kontoer venter, rapportert som ulik modus — til innstillingene
    stemmer med API-ets og den er startet på nytt; den deaktiverer fortsatt dem som
    slutter.
+4. Hold klokkene på API- og worker-vertene synkronisert (NTP). Kontojobben i Ansatte
+   tar koblinger med leieavtaler som hver prosess sammenligner med sin egen klokke, så
+   en klokke som går for fort kan ta over en kobling en annen prosess fortsatt arbeider
+   med.
 
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
