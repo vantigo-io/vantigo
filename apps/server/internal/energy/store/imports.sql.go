@@ -911,20 +911,27 @@ func (q *Queries) SpendConfirmedSwitch(ctx context.Context, id int32) error {
 	return err
 }
 
-const startImport = `-- name: StartImport :exec
+const startImport = `-- name: StartImport :execrows
 UPDATE energy.imports
-SET started_at = COALESCE(started_at, $2::timestamptz), error = NULL, updated_at = $2::timestamptz
-WHERE id = $1
+SET started_at = COALESCE(started_at, $1::timestamptz), error = NULL, updated_at = $1::timestamptz
+WHERE id = $2 AND state = $3
 `
 
 type StartImportParams struct {
-	ID        int32
 	StartedAt time.Time
+	ID        int32
+	State     string
 }
 
-func (q *Queries) StartImport(ctx context.Context, arg StartImportParams) error {
-	_, err := q.db.Exec(ctx, startImport, arg.ID, arg.StartedAt)
-	return err
+// The worker taking up the import it read from the queue, only while the
+// import is still in the state it was read in: a stop or a delete in between
+// leaves nothing to take up, and the worker goes on to the next.
+func (q *Queries) StartImport(ctx context.Context, arg StartImportParams) (int64, error) {
+	result, err := q.db.Exec(ctx, startImport, arg.StartedAt, arg.ID, arg.State)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const sweepImports = `-- name: SweepImports :execrows
@@ -1002,6 +1009,26 @@ func (q *Queries) WriteImportRowAttach(ctx context.Context, arg WriteImportRowAt
 		arg.SupplyStart,
 		arg.Errors,
 	)
+	return err
+}
+
+const writeImportRowAttachRefusal = `-- name: WriteImportRowAttachRefusal :exec
+UPDATE energy.import_rows
+SET errors = $3, attach_tried = true
+WHERE import_id = $1 AND row_no = $2
+`
+
+type WriteImportRowAttachRefusalParams struct {
+	ImportID int32
+	RowNo    int32
+	Errors   []byte
+}
+
+// A pending row the attach refused: still pending, its errors written, and
+// its switch_from as PreparePendingRowsForAttach left it, so the pending
+// switches still count it.
+func (q *Queries) WriteImportRowAttachRefusal(ctx context.Context, arg WriteImportRowAttachRefusalParams) error {
+	_, err := q.db.Exec(ctx, writeImportRowAttachRefusal, arg.ImportID, arg.RowNo, arg.Errors)
 	return err
 }
 

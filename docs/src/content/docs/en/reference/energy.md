@@ -26,8 +26,9 @@ periods, with the point's address and the monthly consumption inside each).
   verified), an owned address (`streetAddress` ≤ 200, `postalCode` ≤ 16, `city` ≤ 100,
   all required; `countryCode` two letters, `NO` when absent), `priceArea` (two
   upper-case letters and one or two digits, such as `NO1`), an optional `gridArea`
-  (trimmed, blank stored as none), an optional `expectedAnnualConsumptionKwh`
-  (`numeric(14,3)`, not negative), optional `latitude` (−90 to 90) and `longitude`
+  (trimmed, ≤ 64, blank stored as none), an optional `expectedAnnualConsumptionKwh`
+  (`numeric(14,3)`, not negative and, rounded to three decimals as the column stores
+  it, less than 100 000 000 000), optional `latitude` (−90 to 90) and `longitude`
   (−180 to 180), and `connectionStatus` — `New`, `Connected` or `Disconnected`, matched
   without regard to case, `New` when absent.
 - **Meter** — `meterNumber` (required, ≤ 64 after trimming), `installedAt`,
@@ -53,12 +54,14 @@ races past the pre-check meets the constraint and is a generic `409`. Every writ
 the metering point, so concurrent writers on one point go through the constraint one
 at a time.
 
-- **Create** (`POST …/supply-periods`) — `customerId` > 0, a UTC `start`, the point
+- **Create** (`POST …/supply-periods`) — `customerId` > 0, a UTC `start` (a body
+  without one is a `400` on `start`, *"Start is required."* — the router does not
+  enforce the contract's required fields), the point
   (404), the customer through the directory (an unknown one is a `400` on
   `customerId`), the overlap pre-check (`409`), then an open-ended `Active` period.
 - **Switch** (`POST …/supply-periods/switch`) — with an open `Active` period: the same
-  customer is a `400` on `customerId`, a `switchAt` at or before its start a `400` on
-  `switchAt`, and otherwise it ends at `switchAt` and the new customer's period starts
+  customer is a `400` on `customerId`, a `switchAt` missing (*"Switch at is
+  required."*) or at or before its start a `400` on `switchAt`, and otherwise it ends at `switchAt` and the new customer's period starts
   there. With none, it is a move-in and runs the create's overlap pre-check.
 - **End** (`POST …/supply-periods/{periodId}/end`) — `end` after the period's start; a
   cancelled period cannot be ended. **Cancel** (`DELETE …`) sets `Cancelled`, from any
@@ -145,8 +148,8 @@ column at most once.
 | `streetAddress`, `postalCode`, `city` | Required on a create; the endpoint's lengths. |
 | `countryCode` | Two letters; blank or unmapped is `NO` on a create; unmapped keeps the point's on an update. |
 | `priceArea` | Required on a create. Whitespace dropped and upper-cased: `NO 1`, `no1` and `NO1` are all `NO1`. |
-| `gridArea` | Optional; a blank cell clears it. |
-| `expectedAnnualConsumptionKwh`, `latitude`, `longitude` | Optional; a blank cell clears it. Spaces dropped (thousands), a decimal comma read as a point; the endpoint's ranges. |
+| `gridArea` | Optional; a blank cell clears it. At most 64 characters once trimmed. |
+| `expectedAnnualConsumptionKwh`, `latitude`, `longitude` | Optional; a blank cell clears it. Spaces dropped (thousands), a decimal comma read as a point; the endpoint's ranges. The consumption is rounded to three decimals, as the column stores it, before it is judged and compared: `1000,0004` against `1000` on file changes nothing. |
 | `connectionStatus` | `New`, `Connected`, `Disconnected` in any case, and `ny`, `tilkoblet`, `frakoblet`. A blank cell is `New` on a create and keeps the point's on an update. |
 | `customerLegalId` | The customer's organisation number: whitespace dropped, nine digits with a valid mod-11 check digit, looked up in country `NO`. |
 | `supplyStart` | A date — `2026-01-01`, `01.01.2026` or `01/01/2026`, always day first — read as midnight UTC. Needs `customerLegalId` mapped. Ignored on a row with no organisation number. |
@@ -156,7 +159,10 @@ judged whole by the endpoints' own validator (`validateMeteringPointFields`,
 `validateMeterNumber`), the point's own values laid under the row's on an update, and
 an update that changes nothing writes nothing. A field a create needs and the mapping
 lacks is said in those words (*"A new metering point needs a price area, and no
-priceArea column is mapped"*).
+priceArea column is mapped"*). A value the database still refuses as too long or out
+of range (SQLSTATE class `22`) fails its row with *"A value is out of range or too
+long for its field."* on no column, in the check and the run alike — never the whole
+run.
 
 **Modes**: `create` refuses a GSRN on file (*"A metering point with that GSRN already
 exists."*); `update` refuses a GSRN nobody has; `createOrUpdate` does both.
@@ -226,7 +232,9 @@ before is the row's error.
 
 ### Check, run and the switch confirmation
 
-`POST …/check` queues the dry run: every row runs exactly as the real run would, each
+`POST …/check` queues the dry run — the state moves to `checking` first and the
+previous results are cleared only when it did, so a check asked for as the worker takes
+a run up is `409 import_running` and the run's outcomes stay: every row runs exactly as the real run would, each
 in its own transaction, rolled back at its end — no point, meter or period is kept, and
 a point the check would create has no id on its row. `POST …/run` queues the real run
 of a checked import whose check found something to create or update; each row's
@@ -244,7 +252,8 @@ was not among the switches confirmed"*.
 ### Attaching the pending points
 
 `POST …/attach` with `{ start, confirmSwitches }` attaches every `pending` row of a
-`done` import, from `start` (a UTC timestamp): the import goes to `attaching` and the
+`done` import, from `start` (a UTC timestamp, required — a body without it is a `400`
+on `start`): the import goes to `attaching` and the
 worker reads each pending point's `Active` period **again, now** — none, and C's
 period starts at `start`; C's already (attached by hand meanwhile), and the row becomes
 `same` with nothing written; another customer's, and it is switched at `start`.
@@ -253,9 +262,10 @@ another customer's at the moment of the request (`409 import_switch_not_confirme
 otherwise), and the attach switches no more than that. The customers the rows name are
 read once through the directory before the first row; one archived or merged away
 since is refused. Each row becomes `attached` (with `switch_from` when it switched) or
-stays `pending` with its error, so the attach can be asked for again, with another
-date, until nothing is pending. `pendingSwitches` on the import counts the pending rows
-the run wrote as pending switches.
+stays `pending` with its error and its `switch_from` as the attach read it, so the
+attach can be asked for again, with another date, until nothing is pending.
+`pendingSwitches` on the import counts the pending rows whose `switch_from` is set: as
+the run wrote them, and as each attach re-read them.
 
 ### Endpoints
 
@@ -304,8 +314,15 @@ GSRN and organisation number once (the in-file duplicates and the numbers to res
 resolves the numbers through the directory, then walks the rows with no outcome in
 **chunks of 500**, writing the counts and reading the stop flag after each; for an
 attach it walks the untried pending rows the same way. Then the next queued import,
-then the sweep. A whole-run failure is written to `error` on the import and retried
-next cycle. `module.Workers` hands the worker the customers module's directory as
+then the sweep. The worker takes an import up only while it is still in the state it
+was read in (`StartImport`), so one stopped or deleted in between is passed over. A
+whole-run failure is written to `error` on the import and retried next cycle; a row's
+own value never is one (above).
+
+A row locks its point with `FOR NO KEY UPDATE` and then takes the point's
+`lockSupplyPeriods`; an endpoint takes `lockSupplyPeriods` and then inserts a period,
+whose foreign key takes `FOR KEY SHARE` on the point. The two locks on the point do not
+conflict, so the two orders cannot deadlock. `module.Workers` hands the worker the customers module's directory as
 `Compose` hands it to the handlers, so worker mode resolves customers too.
 
 | Setting | Default | Meaning |

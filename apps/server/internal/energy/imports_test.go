@@ -1,6 +1,7 @@
 package energy_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -58,6 +59,9 @@ func TestEnergyImport_EachFieldIsValidatedByTheEndpointsOwnRules(t *testing.T) {
 		{"a price area that is not one", map[string]string{"priceArea": "Oslo"}, "priceArea", "Price area must contain two uppercase letters followed by one or two digits."},
 		{"a consumption that is not a number", map[string]string{"expectedAnnualConsumptionKwh": "lots"}, "expectedAnnualConsumptionKwh", "Expected annual consumption must be a number, but was 'lots'"},
 		{"a negative consumption", map[string]string{"expectedAnnualConsumptionKwh": "-1"}, "expectedAnnualConsumptionKwh", "Expected annual consumption cannot be negative."},
+		{"a grid area longer than its column", map[string]string{"gridArea": strings.Repeat("g", 65)}, "gridArea", "Grid area cannot be longer than 64 characters."},
+		{"a consumption beyond its column", map[string]string{"expectedAnnualConsumptionKwh": "100 000 000 000"}, "expectedAnnualConsumptionKwh", "Expected annual consumption must be less than 100000000000."},
+		{"a consumption rounding onto the limit", map[string]string{"expectedAnnualConsumptionKwh": "99999999999,9996"}, "expectedAnnualConsumptionKwh", "Expected annual consumption must be less than 100000000000."},
 		{"a latitude off the globe", map[string]string{"latitude": "95"}, "latitude", "Latitude must be between -90 and 90."},
 		{"a longitude off the globe", map[string]string{"longitude": "200,5"}, "longitude", "Longitude must be between -180 and 180."},
 		{"a connection status that is not one", map[string]string{"connectionStatus": "kanskje"}, "connectionStatus", "Connection status must be New, Connected or Disconnected."},
@@ -538,6 +542,163 @@ func TestEnergyImport_AttachRefusesACustomerArchivedSince(t *testing.T) {
 	r := rowNamed(t, energyImportRows(t, c, done.ID, ""), 1)
 	if r.Link != "pending" || len(r.Errors) != 1 || r.Errors[0].Message != "Customer 1003 Cirrus Drift AS is archived and takes no more supply periods" {
 		t.Errorf("row = %+v, want still pending with the archived refusal", r)
+	}
+}
+
+// TestEnergyImport_ADataExceptionFailsTheRowNotTheRun: a value the database
+// refuses as too long or out of range (SQLSTATE class 22) — one the checks
+// let through — fails its row with a generic message, in the check and the
+// run alike. It used to fail the whole run, which the worker retried every
+// cycle, oldest first, so the import behind it never ran.
+func TestEnergyImport_ADataExceptionFailsTheRowNotTheRun(t *testing.T) {
+	t.Parallel()
+	h, c, _ := importHarness(t)
+	// A trigger stands in for a column the checks do not know the limit of.
+	h.Exec(t, `CREATE FUNCTION energy.refuse_poison_for_test() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF NEW.city = 'Poison' THEN
+				RAISE EXCEPTION 'value too long for type character varying' USING ERRCODE = '22001';
+			END IF;
+			RETURN NEW;
+		END $$`)
+	h.Exec(t, `CREATE TRIGGER refuse_poison_for_test BEFORE INSERT OR UPDATE ON energy.metering_points
+		FOR EACH ROW EXECUTE FUNCTION energy.refuse_poison_for_test()`)
+	poisoned := pointRow(gsrn2, "", "")
+	poisoned[4] = "Poison"
+	first := uploadEnergyImport(t, c, fileOf(pointHeader, pointRow(gsrn1, "", ""), poisoned))
+	second := uploadEnergyImport(t, c, fileOf(pointHeader, pointRow(gsrn3, "", "")))
+	for _, imp := range []energyImportJSON{first, second} {
+		energyImportOf(t, putEnergyMapping(c, imp.ID, fullMapping("create")), http.StatusOK)
+		energyImportOf(t, postEnergyCheck(c, imp.ID), http.StatusOK)
+	}
+	runEnergyImportWorker(t, h)
+	checked := getEnergyImport(t, c, first.ID)
+	if checked.State != "checked" || checked.Error != "" || checked.Created != 1 || checked.Failed != 1 {
+		t.Fatalf("the first check = %+v, want checked with one row created and the poisoned one failed", checked)
+	}
+	if behind := getEnergyImport(t, c, second.ID); behind.State != "checked" || behind.Created != 1 {
+		t.Errorf("the import behind it = %+v, want checked in the same cycle", behind)
+	}
+	row := rowNamed(t, energyImportRows(t, c, first.ID, "&outcome=failed"), 2)
+	if len(row.Errors) != 1 || row.Errors[0].Column != nil || row.Errors[0].Message != "A value is out of range or too long for its field." {
+		t.Errorf("the poisoned row's errors = %+v, want the one generic message on no column", row.Errors)
+	}
+	done := runEnergyImport(t, h, c, checked)
+	if done.Error != "" || done.Created != 1 || done.Failed != 1 {
+		t.Errorf("the run = %+v, want one created and the poisoned row failed", done)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM energy.metering_points WHERE gsrn = $1`, gsrn2); n != 0 {
+		t.Errorf("the poisoned row wrote %d points, want none", n)
+	}
+}
+
+// TestEnergyImport_ACheckAskedAsARunIsTakenUpKeepsTheRunsOutcomes: a check
+// asked for while the worker takes the import's run up — the handler having
+// read a state that allows the check — is the running import's 409, and the
+// outcomes the run writes are kept. It used to clear every row's outcome
+// before finding the import no longer checkable.
+func TestEnergyImport_ACheckAskedAsARunIsTakenUpKeepsTheRunsOutcomes(t *testing.T) {
+	t.Parallel()
+	h, c, _ := importHarness(t)
+	checked := checkEnergyImport(t, h, c, manyPoints(2), manyPointsMapping)
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// The worker under way, not yet committed: the import importing, its
+	// first row's outcome written.
+	if _, err := tx.Exec(ctx, `UPDATE energy.imports SET state = 'importing', started_at = now() WHERE id = $1`, checked.ID); err != nil {
+		t.Fatalf("take the run up: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE energy.import_rows SET outcome = 'created' WHERE import_id = $1 AND row_no = 1`, checked.ID); err != nil {
+		t.Fatalf("write the first outcome: %v", err)
+	}
+	answered := make(chan *modtest.Response, 1)
+	go func() { answered <- postEnergyCheck(c, checked.ID) }()
+	waitForALockWait(t, h)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if code := energyConflictCode(t, <-answered); code != "import_running" {
+		t.Errorf("code %q, want import_running", code)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM energy.import_rows WHERE import_id = $1 AND row_no = 1 AND outcome = 'created'`, checked.ID); n != 1 {
+		t.Error("the run's outcome on row 1 was cleared by the check")
+	}
+	if imp := getEnergyImport(t, c, checked.ID); imp.State != "importing" {
+		t.Errorf("state %q, want importing", imp.State)
+	}
+}
+
+// TestEnergyImport_AnAttachNeedsAStart: an attach without start decoded to
+// the zero time, which is UTC and passed, and queued an attach from year 1.
+func TestEnergyImport_AnAttachNeedsAStart(t *testing.T) {
+	t.Parallel()
+	h, c, _ := importHarness(t)
+	done := importEnergyNow(t, h, c, fileOf(pointHeader, pointRow(gsrn1, orgA, "")), fullMapping("create"))
+	r := c.Do(http.MethodPost, energyImportPath(done.ID, "/attach"), map[string]any{"confirmSwitches": 0},
+		modtest.SkipContract("the body leaves out the start the contract requires, which is the point"))
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if got := problem.Errors["start"]; len(got) != 1 || got[0] != "Start is required." {
+		t.Errorf("Errors[start] = %v, want [\"Start is required.\"]", got)
+	}
+	if after := getEnergyImport(t, c, done.ID); after.State != "done" || after.AttachStart != nil {
+		t.Errorf("after = %+v, want still done with no attach asked for", after)
+	}
+}
+
+// TestEnergyImport_ARefusedAttachKeepsItsPendingSwitch: a pending row the
+// attach refuses stays a pending switch — its switch_from as the attach read
+// it — rather than losing it and undercounting pendingSwitches.
+func TestEnergyImport_ARefusedAttachKeepsItsPendingSwitch(t *testing.T) {
+	t.Parallel()
+	h, c, dir := importHarness(t)
+	id1 := createPointByHand(t, c, gsrn1, "M-0012")
+	assignByHand(t, c, id1, 1002, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	done := importEnergyNow(t, h, c, fileOf(pointHeader, pointRow(gsrn1, orgA, "")), fullMapping("createOrUpdate"))
+	if done.Pending != 1 || done.PendingSwitches != 1 {
+		t.Fatalf("done = %+v, want one pending switch", done)
+	}
+	dir.archive(1001)
+	energyImportOf(t, postEnergyAttach(c, done.ID, time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), 1), http.StatusOK)
+	runEnergyImportWorker(t, h)
+	after := getEnergyImport(t, c, done.ID)
+	if after.State != "done" || after.Pending != 1 || after.PendingSwitches != 1 {
+		t.Errorf("after the refused attach = %+v, want one pending switch still", after)
+	}
+	if r := rowNamed(t, energyImportRows(t, c, done.ID, ""), 1); r.Link != "pending" || len(r.Errors) != 1 ||
+		r.SwitchFromCustomerID == nil || *r.SwitchFromCustomerID != 1002 {
+		t.Errorf("row 1 = %+v, want pending, refused, switching from 1002", r)
+	}
+}
+
+// TestEnergyImport_AConsumptionIsComparedAsStored: the expected annual
+// consumption is rounded to the column's three decimals before it is
+// compared, so a row whose value rounds to what is on file writes nothing,
+// and one that rounds to another value writes that value.
+func TestEnergyImport_AConsumptionIsComparedAsStored(t *testing.T) {
+	t.Parallel()
+	h, c, _ := importHarness(t)
+	id := createPointByHand(t, c, gsrn1, "M-0012")
+	h.Exec(t, `UPDATE energy.metering_points SET expected_annual_consumption_kwh = 1000, updated_at = '2000-01-01T00:00:00Z' WHERE id = $1`, id)
+	header := []string{"gsrn", "expectedAnnualConsumptionKwh"}
+	mapping := mappingByFields(header, "update", header...)
+
+	importEnergyNow(t, h, c, fileOf(header, []string{gsrn1, "1000,0004"}), mapping)
+	if n := h.Count(t, `SELECT count(*) FROM energy.metering_points WHERE id = $1 AND updated_at = '2000-01-01T00:00:00Z'`, id); n != 1 {
+		t.Error("a value rounding to what is on file moved updated_at")
+	}
+
+	importEnergyNow(t, h, c, fileOf(header, []string{gsrn1, "1000,0005"}), mapping)
+	if n := h.Count(t, `SELECT count(*) FROM energy.metering_points WHERE id = $1 AND expected_annual_consumption_kwh = 1000.001
+		AND updated_at <> '2000-01-01T00:00:00Z'`, id); n != 1 {
+		t.Error("a value rounding to 1000.001 was not written as 1000.001")
 	}
 }
 

@@ -48,11 +48,12 @@ Klikk **Nytt målepunkt** i listen. Fyll inn:
 - **Gateadresse**, **Postnummer**, **By**, **Landskode**: alle påkrevd; landskoden er
   to bokstaver og er `NO` som standard.
 - **Prisområde**: NO1 til NO5.
-- **Nettområde**: valgfritt.
+- **Nettområde**: valgfritt, høyst 64 tegn.
 - **Tilkoblingsstatus**: **Ny**, **Tilkoblet** eller **Frakoblet**; nye punkter
   starter som **Ny**.
 - **Forventet årsforbruk (kWh)**, **Breddegrad**, **Lengdegrad**: valgfrie.
-  Breddegraden må ligge mellom -90 og 90, lengdegraden mellom -180 og 180.
+  Forventet årsforbruk må være under 100 000 000 000 kWh; breddegraden må ligge mellom
+  -90 og 90, lengdegraden mellom -180 og 180.
 
 **Opprett målepunkt** lagrer det og bekrefter med *Målepunktet er opprettet*. Dialogen
 markerer feltene som mangler eller har feil form; en GSRN som allerede finnes avvises

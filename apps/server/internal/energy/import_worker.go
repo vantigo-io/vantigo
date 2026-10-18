@@ -203,8 +203,14 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 		return errors.New("energy: the import has no mapping")
 	}
 	l := layoutFor(*mapping, len(imp.Header))
-	if err := q.StartImport(ctx, store.StartImportParams{ID: imp.ID, StartedAt: w.now()}); err != nil {
+	started, err := q.StartImport(ctx, store.StartImportParams{ID: imp.ID, State: imp.State, StartedAt: w.now()})
+	if err != nil {
 		return fmt.Errorf("energy: start import %d: %w", imp.ID, err)
+	}
+	if started == 0 {
+		// Stopped, deleted or moved on since the queue was read: nothing to
+		// take up as read, and the queue is read again.
+		return nil
 	}
 	if importRunHookForTest != nil {
 		if err := importRunHookForTest(ctx, imp.ID); err != nil {
@@ -487,7 +493,7 @@ func (w *ImportWorker) runAttach(ctx context.Context, conn *pgxpool.Conn, imp st
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			link, switchFrom, refusal, err := w.attachRow(ctx, conn, imp.ID, row, start, entries, &budget)
+			link, refusal, err := w.attachRow(ctx, conn, imp.ID, row, start, entries, &budget)
 			if err != nil {
 				return err
 			}
@@ -496,9 +502,8 @@ func (w *ImportWorker) runAttach(ctx context.Context, conn *pgxpool.Conn, imp st
 				if err != nil {
 					return err
 				}
-				pending := linkPending
-				if err := q.WriteImportRowAttach(ctx, store.WriteImportRowAttachParams{
-					ImportID: imp.ID, RowNo: row.RowNo, Link: &pending, SwitchFrom: switchFrom, Errors: errsJSON,
+				if err := q.WriteImportRowAttachRefusal(ctx, store.WriteImportRowAttachRefusalParams{
+					ImportID: imp.ID, RowNo: row.RowNo, Errors: errsJSON,
 				}); err != nil {
 					return fmt.Errorf("energy: write import %d row %d's attach: %w", imp.ID, row.RowNo, err)
 				}
@@ -548,17 +553,17 @@ func (w *ImportWorker) attachCustomers(ctx context.Context, q *store.Queries, im
 // written in the same one. A refusal is answered as its message, the row
 // written as still pending by the caller; any other error is the run's.
 func (w *ImportWorker) attachRow(ctx context.Context, conn *pgxpool.Conn, importID int32, row store.PendingRowsChunkRow, start time.Time,
-	entries map[int32]contracts.CustomerEntry, budget *switchBudget) (string, *int32, string, error) {
+	entries map[int32]contracts.CustomerEntry, budget *switchBudget) (string, string, error) {
 	if row.CustomerID == nil || row.MeteringPointID == nil {
-		return "", nil, "This row names no customer or no metering point to attach", nil
+		return "", "This row names no customer or no metering point to attach", nil
 	}
 	switch entry, ok := entries[*row.CustomerID]; {
 	case w.deps.Directory == nil:
-		return "", nil, customersModuleOffMessage, nil
+		return "", customersModuleOffMessage, nil
 	case !ok:
-		return "", nil, fmt.Sprintf("Customer %d no longer exists", *row.CustomerID), nil
+		return "", fmt.Sprintf("Customer %d no longer exists", *row.CustomerID), nil
 	case customerRefusal(entry) != "":
-		return "", nil, customerRefusal(entry), nil
+		return "", customerRefusal(entry), nil
 	}
 	var link string
 	var switchFrom *int32
@@ -587,11 +592,11 @@ func (w *ImportWorker) attachRow(ctx context.Context, conn *pgxpool.Conn, import
 	var refused *importRowRefusal
 	switch {
 	case errors.As(err, &refused):
-		return "", nil, refused.errs[0].Message, nil
+		return "", refused.errs[0].Message, nil
 	case err != nil:
-		return "", nil, "", err
+		return "", "", err
 	}
-	return link, switchFrom, "", nil
+	return link, "", nil
 }
 
 // attachLink is one pending row's link at attach time (design D6), the

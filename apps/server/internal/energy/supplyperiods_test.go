@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // TestGetSupplyPeriods_ListsOrderedByStart is GetSupplyPeriodsEndpoint's
@@ -188,6 +190,44 @@ func TestCreateSupplyPeriod_UnknownCustomer_Returns400NotFound(t *testing.T) {
 	got := problem.Errors["customerId"]
 	if len(got) != 1 || got[0] != want {
 		t.Errorf("Errors[customerId] = %v, want [%q]", got, want)
+	}
+}
+
+// TestSupplyPeriods_AMissingStartIsRefused: the router does not enforce a
+// body's required fields, so a create without start or a switch without
+// switchAt decoded to the zero time — UTC, so it passed — and wrote a period
+// from year 1. Each is the field's 400 now, and nothing is written.
+func TestSupplyPeriods_AMissingStartIsRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, allEnergyPermissions...)
+	point := createMeteringPoint(t, c)
+	skip := modtest.SkipContract("the body leaves out a field the contract requires, which is the point")
+
+	cases := []struct {
+		name, path string
+		body       map[string]any
+		field, msg string
+	}{
+		{"create without start", fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods", point.Id),
+			map[string]any{"customerId": 1001}, "start", "Start is required."},
+		{"switch without switchAt", fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods/switch", point.Id),
+			map[string]any{"customerId": 1001}, "switchAt", "Switch at is required."},
+	}
+	for _, tc := range cases {
+		r := c.Do(http.MethodPost, tc.path, tc.body, skip)
+		if r.Status != http.StatusBadRequest {
+			t.Errorf("%s: status %d body %s, want 400", tc.name, r.Status, r.Body)
+			continue
+		}
+		var problem validationProblemJSON
+		r.JSON(&problem)
+		if got := problem.Errors[tc.field]; len(got) != 1 || got[0] != tc.msg {
+			t.Errorf("%s: Errors[%s] = %v, want [%q]", tc.name, tc.field, got, tc.msg)
+		}
+	}
+	if n := h.Count(t, `SELECT count(*) FROM energy.supply_periods WHERE metering_point_id = $1`, point.Id); n != 0 {
+		t.Errorf("%d supply periods written, want none", n)
 	}
 }
 
