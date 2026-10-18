@@ -645,3 +645,35 @@ func TestRetention_TheRunAnswersHealthKindsToPersonalDataAlone(t *testing.T) {
 		}
 	}
 }
+
+// An event of a pregnancy or health type whose payload the erase cannot read
+// fails that person's erase, logged, rather than being passed over (the
+// migration and retention review, item 7): passed over, the event kept
+// naming the type, the person stayed due and took a batch slot every cycle
+// with nothing erased of it. The person's whole erase waits — their due row
+// keeps its type — and runs once the payload reads again.
+func TestRetention_AnUnreadableEventFailsThePregnancyErase(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	visit := register(t, hrPD, w.kari.Id, absence(t, h, "helse", "2024-03-05", "2024-03-05", "hours", 2))
+	h.Exec(t, `UPDATE staff.events SET at = '2024-03-05T10:00:00Z' WHERE (payload->>'absenceId')::bigint = $1`, visit.Id)
+	event := modtest.One[int64](t, h.Harness, `SELECT id FROM staff.events WHERE kind = 'absence_registered' AND (payload->>'absenceId')::bigint = $1`, visit.Id)
+	h.Exec(t, `UPDATE staff.events SET payload = jsonb_set(payload, '{absenceId}', '"unreadable"') WHERE id = $1`, event)
+
+	setEraseSettings(t, w.hr, map[string]any{"erasePregnancyHealthTypes": true})
+	runCycle(t, h)
+	typeOf := func() int64 {
+		t.Helper()
+		return modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, visit.Id)
+	}
+	if got := typeOf(); got != typeID(t, h, "helse") {
+		t.Errorf("with an unreadable event the row's type = %d, want helse kept: the person's erase failed whole", got)
+	}
+	h.Exec(t, `UPDATE staff.events SET payload = jsonb_set(payload, '{absenceId}', to_jsonb($2::bigint)) WHERE id = $1`, event, visit.Id)
+	runCycle(t, h)
+	if got := typeOf(); got != typeID(t, h, "absent_hours") {
+		t.Errorf("once the event reads the row's type = %d, want absent_hours", got)
+	}
+}

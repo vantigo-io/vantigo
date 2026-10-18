@@ -2848,7 +2848,10 @@ since the cycle chose the person is seen there:
   **whatever class they were recorded in** (B wrote them as C): the `type` field reads
   `"changed"` and each such id in `typeIds` becomes the reserved type chosen the same
   way. An event naming such a type whose row no longer has one goes by the year it was
-  recorded in. The days, the status and the dates stay. An HR-only row keeps its
+  recorded in. An event whose payload cannot be read fails the person's erase — rolled
+  back and logged, due again — rather than being passed over (review item 7), so a
+  person whose event stayed naming the type is never silently due every cycle with
+  nothing erased. The days, the status and the dates stay. An HR-only row keeps its
   `revision` and `updated_at` (review H1): HR without `staff:personal-data` holds an
   opaque `etag` of the revision, and only this erase rewrites an HR-only row, so a tag
   that moved would say what it was. A value already one of the four reserved types is

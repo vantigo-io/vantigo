@@ -1000,7 +1000,10 @@ func (s *server) erasePregnancyHealth(ctx context.Context, txq *store.Queries, p
 	for _, ev := range events {
 		var about eventIDs
 		if err := json.Unmarshal(ev.Payload, &about); err != nil {
-			continue
+			// Failed, not passed over (review item 7): passed over, the
+			// event kept naming the type and the person stayed due, taking
+			// a batch slot every cycle with nothing erased.
+			return 0, fmt.Errorf("staff: read event %d's payload: %w", ev.ID, err)
 		}
 		yearEnd := time.Date(ev.At.In(plan.loc).Year(), time.December, 31, 0, 0, 0, 0, time.UTC)
 		switch {
