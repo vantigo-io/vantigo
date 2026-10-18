@@ -127,7 +127,7 @@ acts on it arrives with the next part of the delivery.
    earliest employment that has not ended; set a date to choose another day. Choose
    `private` to give identity the person's private email instead of the work email.
    The request is a full replace: send all three fields — one without
-   `provisionAccount` is refused (400) and changes nothing.
+   `provisionAccount`, or with it `null`, is refused (400) and changes nothing.
 4. Verify: the answer's `provisionFromEffective` is the day the account is enabled,
    and `address.present` is `true`. A flag turned on without the chosen address is
    accepted, but no account is made until the person has it. The person's history

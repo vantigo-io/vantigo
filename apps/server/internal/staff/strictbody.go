@@ -158,6 +158,21 @@ func bodyHas(ctx context.Context, property string) bool {
 	return ok
 }
 
+// bodyHasValue reports whether the request's JSON body names property at its
+// top level with a value other than JSON null — for a required, non-nullable
+// property the generated decoder reads as its zero value both when it is
+// left out and when it is null, such as the account flag's provisionAccount,
+// where false must be said, never inferred.
+func bodyHasValue(ctx context.Context, property string) bool {
+	body, _ := ctx.Value(rawBodyKey{}).([]byte)
+	var properties map[string]json.RawMessage
+	if json.Unmarshal(body, &properties) != nil {
+		return false
+	}
+	value, ok := properties[property]
+	return ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null"))
+}
+
 // checkClosedSchemas fails the mount unless the contract has every schema of
 // closedSchemas and closes each (additionalProperties false): the refusal
 // reads exactly that, so a contract that lost the schema, or opened it,

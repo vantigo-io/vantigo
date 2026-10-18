@@ -374,7 +374,7 @@ func TestAccount_AChangeIsInvisibleOutsideTheLinksGroup(t *testing.T) {
 }
 
 // The replace must name the flag (review M2): the decoder reads a body
-// without provisionAccount as false, and a replace that leaves it out is not
+// without provisionAccount, or with it null, as false, and a replace that leaves it out is not
 // "turn the account off". It is a 400 naming provisionAccount, and nothing
 // changes: the flag stays on, no event, the flag's revision where it was.
 func TestAccount_AReplaceMustNameTheFlag(t *testing.T) {
@@ -385,7 +385,7 @@ func TestAccount_AReplaceMustNameTheFlag(t *testing.T) {
 	acc := getAccount(t, hr, p.Id)
 	do(t, hr, http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": true}, http.StatusOK, &acc, ifMatch(acc.Revision))
 	events := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND kind = 'account_flag_updated'`, p.Id)
-	for _, body := range []map[string]any{{}, {"provisionFrom": nil, "accountEmailKind": "work"}} {
+	for _, body := range []map[string]any{{}, {"provisionFrom": nil, "accountEmailKind": "work"}, {"provisionAccount": nil}} {
 		pr := refused(t, hr.Do(http.MethodPut, accountPath(p.Id), body, ifMatch(acc.Revision)), http.StatusBadRequest, "")
 		if len(pr.Errors["provisionAccount"]) == 0 {
 			t.Errorf("%v: errors = %v, want provisionAccount named", body, pr.Errors)

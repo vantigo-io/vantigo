@@ -956,8 +956,9 @@ manager, an Approver, a colleague and anyone else get the person's 404.
     with no address to compare; the codes never carry an address or a driver's words.
 - **`PUT /people/{id}/account`** (`staff:manage`) replaces the three fields,
   `If-Match` on the flag's own revision (the `revision` `GET` answered, never the
-  person's), under the person's lock. The body must name `provisionAccount` — a body
-  without it is a 400 on the field, since the decoder would read it as false; what it leaves out is
+  person's), under the person's lock. The body must name `provisionAccount` with a value —
+  a body without it, or with it `null`, is a 400 on the field, since the decoder would
+  read either as false; what it leaves out is
   cleared — `provisionFrom` to none, `accountEmailKind` to `work`. An erased person is
   `person_erased` (409), a stale revision `revision_conflict`; an unknown kind or an
   unknown property is a 400. A change moves the flag's revision — not the person's —

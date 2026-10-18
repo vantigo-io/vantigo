@@ -221,6 +221,10 @@ func TestSettings_TheAccountSettings(t *testing.T) {
 			}
 		}
 	}
+	// A null is no zero: the required nextEmployeeNumber null is refused.
+	nullNext := settingsBody(nil)
+	nullNext["nextEmployeeNumber"] = nil
+	refused(t, hr.Do(http.MethodPut, settingsPath, nullNext, ifMatch(1)), http.StatusBadRequest, "")
 	var saved gen.StaffSettings
 	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"createBeforeDays": 0, "deleteExternalAfterDays": 3650}), http.StatusOK, &saved, ifMatch(1))
 	if saved.CreateBeforeDays != 0 || saved.DeleteExternalAfterDays == nil || *saved.DeleteExternalAfterDays != 3650 {
