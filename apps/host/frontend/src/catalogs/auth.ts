@@ -46,6 +46,9 @@ const en = {
   "auth.invitationFor": "Invitation for {{email}}",
   "auth.createAccount": "Create account",
   "auth.invitationUnavailable": "This invitation is invalid or no longer available.",
+  "auth.preparedAccount":
+    "Your employer has set up this account for you, with your name and roles. Choose a password to start using it.",
+  "auth.activateAccount": "Activate account",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -95,6 +98,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "auth.invitationFor": "Invitasjon for {{email}}",
   "auth.createAccount": "Opprett konto",
   "auth.invitationUnavailable": "Denne invitasjonen er ugyldig eller ikke lenger tilgjengelig.",
+  "auth.preparedAccount":
+    "Arbeidsgiveren din har satt opp denne kontoen til deg, med navnet og rollene dine. Velg et passord for å ta den i bruk.",
+  "auth.activateAccount": "Aktiver konto",
 };
 
 export const authCatalog = { en, nb } as const satisfies CatalogResources;

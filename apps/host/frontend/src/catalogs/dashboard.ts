@@ -53,6 +53,34 @@ const en = {
   "dashboard.staffHeadcountThreshold30": "{{count}} employees: a working environment committee (AMU) is required",
   "dashboard.staffHeadcountThreshold50":
     "{{count}} employees, more than 50: the activity and reporting duty on equality applies",
+  "dashboard.staffHrOnlySelfApproved": "{{name}} approved their own HR-only absence as the only personal-data holder",
+  "dashboard.staffAccountNoEmployment": "{{name}} is to have an account but has no employment to give it from",
+  "dashboard.staffAccountEmailMissing": "{{name}} has no address of the kind their account is to use",
+  "dashboard.staffAccountNotFound": "The identity provider has no account with {{name}}'s employee number yet",
+  "dashboard.staffAccountNotManaged": "{{name}}'s account is no longer managed by Staff",
+  "dashboard.staffAccountBlockedByOwner": "An Owner disabled {{name}}'s pending account, so Staff does not enable it",
+  "dashboard.staffAccountDisabledByOwner": "An Owner disabled {{name}}'s account while they are employed",
+  "dashboard.staffAccountUserGone": "The account linked to {{name}} no longer exists",
+  "dashboard.staffAccountPrivileged":
+    "{{name}}'s account is an Owner's or a system administrator's, which an Owner handles by hand",
+  "dashboard.staffAccountMismatch": "The account found for {{name}} carries another employee number",
+  "dashboard.staffAccountModeChanged":
+    "{{name}}'s pending account was made before single sign-on, which sends no invitations",
+  "dashboard.staffAccountEmailDiffers":
+    "{{name}}'s account has another address than the one chosen in Staff; an Owner changes it",
+  "dashboard.staffAccountEmailTaken": "Another account already has {{name}}'s address",
+  "dashboard.staffAccountNumberTaken": "An account Staff does not manage has {{name}}'s employee number",
+  "dashboard.staffAccountFailing": "{{name}}'s account could not be updated: the attempts keep failing",
+  "dashboard.staffInvitationUnanswered": "{{name}} has not answered three invitations to their account",
+  "dashboard.staffInvitationRevoked": "An Owner revoked {{name}}'s invitation to their account",
+  "dashboard.staffEmployeeRoleMissing_one": "{{count}} account waits: no Owner has named the roles Staff may give",
+  "dashboard.staffEmployeeRoleMissing_other": "{{count}} accounts wait: no Owner has named the roles Staff may give",
+  "dashboard.staffEmployeeRoleUnsafe_one": "{{count}} account waits: a role named for Staff grants administration",
+  "dashboard.staffEmployeeRoleUnsafe_other": "{{count}} accounts wait: a role named for Staff grants administration",
+  "dashboard.staffAccountModeMismatch_one":
+    "{{count}} account waits: a worker sees another sign-in mode than the server recorded",
+  "dashboard.staffAccountModeMismatch_other":
+    "{{count}} accounts wait: a worker sees another sign-in mode than the server recorded",
   "dashboard.invoicesOutstanding": "Outstanding",
   "dashboard.invoicesOverdueHint": "{{count}} overdue ({{amount}})",
   "dashboard.invoicesIssuedDelta": "issued vs previous period",
@@ -211,6 +239,35 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.staffHeadcountThreshold5": "{{count}} ansatte: virksomheten skal ha varslingsrutine og verneombud",
   "dashboard.staffHeadcountThreshold30": "{{count}} ansatte: virksomheten skal ha arbeidsmiljøutvalg (AMU)",
   "dashboard.staffHeadcountThreshold50": "{{count}} ansatte, over 50: aktivitets- og redegjørelsesplikten gjelder",
+  "dashboard.staffHrOnlySelfApproved": "{{name}} godkjente eget HR-fravær som eneste med personopplysningstilgang",
+  "dashboard.staffAccountNoEmployment": "{{name}} skal ha en konto, men har ikke noe arbeidsforhold å gi den fra",
+  "dashboard.staffAccountEmailMissing": "{{name}} mangler adressen kontoen skal bruke",
+  "dashboard.staffAccountNotFound": "Identitetsleverandøren har ennå ingen konto med ansattnummeret til {{name}}",
+  "dashboard.staffAccountNotManaged": "Kontoen til {{name}} styres ikke lenger av Ansatte",
+  "dashboard.staffAccountBlockedByOwner":
+    "En eier deaktiverte den ventende kontoen til {{name}}, så Ansatte aktiverer den ikke",
+  "dashboard.staffAccountDisabledByOwner": "En eier deaktiverte kontoen til {{name}} mens personen er ansatt",
+  "dashboard.staffAccountUserGone": "Kontoen som er koblet til {{name}}, finnes ikke lenger",
+  "dashboard.staffAccountPrivileged":
+    "Kontoen til {{name}} tilhører en eier eller en systemadministrator, som en eier tar seg av for hånd",
+  "dashboard.staffAccountMismatch": "Kontoen som ble funnet for {{name}}, har et annet ansattnummer",
+  "dashboard.staffAccountModeChanged":
+    "Den ventende kontoen til {{name}} ble laget før enkel pålogging, som ikke sender invitasjoner",
+  "dashboard.staffAccountEmailDiffers":
+    "Kontoen til {{name}} har en annen adresse enn den som er valgt i Ansatte; en eier endrer den",
+  "dashboard.staffAccountEmailTaken": "En annen konto har allerede adressen til {{name}}",
+  "dashboard.staffAccountNumberTaken": "En konto Ansatte ikke styrer, har ansattnummeret til {{name}}",
+  "dashboard.staffAccountFailing": "Kontoen til {{name}} kunne ikke oppdateres: forsøkene feiler",
+  "dashboard.staffInvitationUnanswered": "{{name}} har ikke svart på tre invitasjoner til kontoen sin",
+  "dashboard.staffInvitationRevoked": "En eier tilbakekalte invitasjonen til kontoen til {{name}}",
+  "dashboard.staffEmployeeRoleMissing_one": "{{count}} konto venter: ingen eier har valgt rollene Ansatte kan gi",
+  "dashboard.staffEmployeeRoleMissing_other": "{{count}} kontoer venter: ingen eier har valgt rollene Ansatte kan gi",
+  "dashboard.staffEmployeeRoleUnsafe_one": "{{count}} konto venter: en rolle valgt for Ansatte gir administrasjon",
+  "dashboard.staffEmployeeRoleUnsafe_other": "{{count}} kontoer venter: en rolle valgt for Ansatte gir administrasjon",
+  "dashboard.staffAccountModeMismatch_one":
+    "{{count}} konto venter: en jobb ser en annen påloggingsmodus enn serveren har registrert",
+  "dashboard.staffAccountModeMismatch_other":
+    "{{count}} kontoer venter: en jobb ser en annen påloggingsmodus enn serveren har registrert",
   "dashboard.invoicesOutstanding": "Utestående",
   "dashboard.invoicesOverdueHint": "{{count}} forfalte ({{amount}})",
   "dashboard.invoicesIssuedDelta": "fakturert mot forrige periode",

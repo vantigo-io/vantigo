@@ -50,6 +50,7 @@ import {
   translateHostRoleDescription,
 } from "../../i18n";
 import "../../i18n";
+import { ProvisioningRolesSection } from "./-provisioning-roles";
 
 const errorText = (error: unknown, requestFailed: string) => (error instanceof Error ? error.message : requestFailed);
 
@@ -163,7 +164,14 @@ const RolesPage = () => {
         message: t("admin.roleSaved"),
       });
     },
-    onError: mutationError(t("admin.roleSaveFailed")),
+    onError: (error) =>
+      (error as { code?: string }).code === "role_provisioning_protected"
+        ? notifications.show({
+            color: "red",
+            title: t("admin.roleSaveFailed"),
+            message: t("admin.refusalRoleProvisioningProtected"),
+          })
+        : mutationError(t("admin.roleSaveFailed"))(error),
   });
   const removeRole = useMutation({
     mutationFn: (role: AuthorizationRole) => deleteAuthorizationRole(role.id, role.version),
@@ -350,6 +358,11 @@ const RolesPage = () => {
               )}
             </Stack>
           </Card>
+          {isOwner && roles.data && catalog.data && (
+            <Stack mt="xl">
+              <ProvisioningRolesSection customRoles={customRoles} catalog={catalog.data} />
+            </Stack>
+          )}
         </Tabs.Panel>
 
         <Tabs.Panel value="assignments" pt="xl">

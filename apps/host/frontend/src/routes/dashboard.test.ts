@@ -730,6 +730,86 @@ describe("the dashboard's staff attention items", () => {
 });
 
 /**
+ * Staff's account items (delivery C): one per person, opening the person's
+ * Account tab; the sole personal-data holder's self-approved HR-only absence,
+ * opening the Absence tab; and three of the installation's, dealt with in
+ * Settings. The server's title is the person's name, so every sentence is
+ * worded here.
+ */
+describe("the dashboard's staff account attention items", () => {
+  const accountTypes = [
+    "accountNoEmployment",
+    "accountEmailMissing",
+    "accountNotFound",
+    "accountNotManaged",
+    "accountBlockedByOwner",
+    "accountDisabledByOwner",
+    "accountUserGone",
+    "accountPrivileged",
+    "accountMismatch",
+    "accountModeChanged",
+    "accountEmailDiffers",
+    "accountEmailTaken",
+    "accountNumberTaken",
+    "accountFailing",
+    "invitationUnanswered",
+    "invitationRevoked",
+  ];
+  const installationTypes = ["employeeRoleMissing", "employeeRoleUnsafe", "accountModeMismatch"];
+
+  it("opens the person's Account tab for an account item", () => {
+    for (const type of accountTypes) {
+      expect(attentionHref({ module: "staff", type, entityId: "1042" }), type).toBe("/staff/people/1042?tab=account");
+    }
+  });
+
+  it("opens the person's Absence tab for a self-approved HR-only absence", () => {
+    expect(attentionHref({ module: "staff", type: "hrOnlySelfApproved", entityId: "1042" })).toBe(
+      "/staff/people/1042?tab=absence",
+    );
+  });
+
+  it("opens Staff's Settings for the installation's items", () => {
+    for (const type of installationTypes) {
+      expect(attentionHref({ module: "staff", type, entityId: "settings" }), type).toBe("/staff/settings");
+    }
+  });
+
+  it("words every type in English and Norwegian, with the person's name or the count", () => {
+    for (const type of [...accountTypes, "hrOnlySelfApproved"]) {
+      const key = attentionTitleKey({ module: "staff", type });
+      expect(key, type).toBeDefined();
+      for (const lng of ["en", "nb"]) {
+        const sentence = i18n.t(key as string, { ns: "host", lng, name: "Kari Nordmann" });
+        expect(sentence, `${type} ${lng}`).not.toBe(key);
+        expect(sentence, `${type} ${lng}`).toContain("Kari Nordmann");
+      }
+    }
+    for (const type of installationTypes) {
+      const key = attentionTitleKey({ module: "staff", type });
+      expect(key, type).toBeDefined();
+      for (const lng of ["en", "nb"]) {
+        for (const count of [1, 3]) {
+          const sentence = i18n.t(key as string, { ns: "host", lng, count });
+          expect(sentence, `${type} ${lng}`).not.toBe(key);
+          expect(sentence, `${type} ${lng}`).toContain(String(count));
+        }
+      }
+    }
+  });
+
+  it("words the sole holder's self-approval as the owner decided, never naming the type", () => {
+    const key = attentionTitleKey({ module: "staff", type: "hrOnlySelfApproved" }) as string;
+    expect(i18n.t(key, { ns: "host", lng: "en", name: "Kari Nordmann" })).toBe(
+      "Kari Nordmann approved their own HR-only absence as the only personal-data holder",
+    );
+    expect(i18n.t(key, { ns: "host", lng: "nb", name: "Kari Nordmann" })).toBe(
+      "Kari Nordmann godkjente eget HR-fravær som eneste med personopplysningstilgang",
+    );
+  });
+});
+
+/**
  * Invoices' attention items (invoices payments and reminders design D12):
  * the server writes a buyer's name, a file's booking days, a cause or a
  * posting day in `title`, and the count apart, so every sentence is built

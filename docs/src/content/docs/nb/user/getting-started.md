@@ -37,11 +37,12 @@ konto, kan ikke inviteres.
 
 Når arbeidsplassen registrerer deg i Ansatte, kan kontoen din finnes allerede før du
 blir invitert: HR har satt den opp med navnet ditt, og invitasjonen lar deg bare
-velge hvordan du logger inn. Lenken åpner den samme siden **Bli med i Vantigo**; velg
-et **Passord** og **Opprett konto**, så blir du logget inn på kontoen som ble laget
-til deg, med rollene den fikk. Navnet ditt forblir det HR registrerte, uansett hva du
-skriver under **Visningsnavn**; endre det senere under
-[profilen din](#rediger-profilen-din).
+velge hvordan du logger inn. Lenken åpner den samme siden **Bli med i Vantigo**, som
+da sier "Arbeidsgiveren din har satt opp denne kontoen til deg, med navnet og rollene
+dine. Velg et passord for å ta den i bruk." Den spør ikke etter visningsnavn: navnet
+ditt er det HR registrerte, og du endrer det senere under
+[profilen din](#rediger-profilen-din). Velg et **Passord** og **Aktiver konto**, så blir
+du logget inn på kontoen som ble laget til deg, med rollene den fikk.
 
 En slik invitasjon virker bare mens kontoen fortsatt venter på deg. Er kontoen
 deaktivert, fullført eller endret i mellomtiden, åpner lenken på **Denne invitasjonen

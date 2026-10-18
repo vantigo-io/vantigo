@@ -42,8 +42,11 @@ skjermbildet; se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
 
 **Brukere** lister hver konto med **Profilbilde**, navn og e-post, **Rolle** (Bruker
 eller Eier), **Tilgang** og **2FA** (På eller Av). Tilgang viser **Aktiv**,
-**Deaktivert av administrator** eller **Midlertidig utestengt** — det siste etter
-fem feil passord på rad, og det går over av seg selv etter 15 minutter.
+**Venter** (en konto Ansatte har laget, som venter på at invitasjonen godtas),
+**Deaktivert av en eier**, **Deaktivert av Ansatte** eller **Midlertidig utestengt** —
+det siste etter fem feil passord på rad, og det går over av seg selv etter 15
+minutter. En konto Ansatte styrer, har **Styres av Ansatte · nr.** og ansattnummeret
+under adressen (se [Kontoer Ansatte styrer](#kontoer-ansatte-styrer)).
 
 Kortene over listen teller **Aktive**, **Deaktivert**, **SSO** (kontoer som logger
 inn gjennom identitetsleverandøren) og **Administratorer** (eiere); velg ett for å
@@ -113,7 +116,60 @@ eieren; en konto som ble klargjort av SCIM eller har logget inn gjennom
 identitetsleverandøren ("Denne brukeren har SCIM- eller føderert identitetshistorikk
 og kan ikke slettes." — deaktiver den i stedet, eller avklargjør den hos
 leverandøren); og en eier som har gitt delegeringer som fortsatt finnes —
-tilbakekall dem først.
+tilbakekall dem først. En konto Ansatte styrer, har ikke **Slett bruker** i det hele
+tatt; menyen sier i stedet hvorfor (nedenfor).
+
+## Kontoer Ansatte styrer
+
+Når HR slår på kontoflagget for en person i [Ansatte](/nb/user/staff/), oppretter
+Ansatte kontoen før første arbeidsdag, aktiverer den på dagen og deaktiverer den
+etter den siste — uten noen gang å slette den. En slik konto **styres av Ansatte**, med
+ansattnummeret som knytter den til personen, og brukersiden viser den slik. Ansatte
+gjør bare noe med kontoer den styrer: en konto noen hadde fra før, blir Ansattes først
+når en eier lar Ansatte styre den.
+
+**En ventende konto.** Ansatte oppretter kontoen som **Venter**: den finnes, med
+personens navn og rollene Ansatte kan gi, men kan ikke brukes før personen godtar
+invitasjonen Ansatte sender og velger et passord (se
+[Kom i gang](/nb/user/getting-started/#når-kontoen-din-ble-satt-opp-fra-ansattregisteret)).
+**Aktiver tilgang** i menyen er nedtonet — "Har ikke godtatt invitasjonen ennå:
+kontoen åpnes først når personen godtar den." — og å sette et passord eller gjøre
+kontoen til eier avvises av samme grunn. Du kan fortsatt velge **Deaktiver tilgang**;
+da aktiverer ikke Ansatte den, og HR ser hvorfor på personens kontofane.
+
+**Hvem som deaktiverte den.** Ansatte deaktiverer en konto dagen etter at personens
+siste arbeidsforhold er slutt; raden viser **Deaktivert av Ansatte**. Deaktiverer du
+en konto selv, viser den **Deaktivert av en eier**, også over Ansattes egen
+deaktivering, og Ansatte aktiverer aldri en konto en eier har deaktivert. **Aktiver
+tilgang** fjerner begge.
+
+**La Ansatte styre en konto.** For en person som hadde en konto før HR registrerte
+dem, åpner du kontoens meny og velger **La Ansatte styre**. Skriv personens
+**Ansattnummer** slik Ansatte har det — "1 til 16 tegn: bokstavene a–z, sifre og
+bindestreker." — og velg **La Ansatte styre**: "Ansatte styrer nå kontoen", og
+kontojobben i Ansatte tar over kontoen neste gang den kjører. Menyen tilbyr det ikke
+for en eier, og avviser, med ord:
+
+- "En annen bruker har allerede dette ansattnummeret." — en annen konto har det, med
+  store eller små bokstaver.
+- "En eier eller en systemadministrator kan ikke styres av Ansatte; slike kontoer tar
+  en eier seg av for hånd."
+- "Skriv 1 til 16 tegn, hvert en bokstav a–z, et siffer eller en bindestrek." — et
+  nummer utenfor Ansattes tegnsett, sagt før noe sendes.
+
+**Stopp styringen.** **Stopp styringen** på en konto Ansatte styrer, spør **Skal
+Ansatte slutte å styre denne kontoen?** — "Ansatte vil ikke lenger aktivere,
+deaktivere eller oppdatere _navn_. Kontoen blir værende slik den er nå; en ventende
+konto venter til personen godtar invitasjonen eller du sletter den." Etterpå lar
+Ansatte kontoen være, og HR ser at den ikke styres på personens kontofane. Gjør du en
+konto Ansatte styrer til eier, slutter Ansatte å styre den i samme endring.
+
+**Slett.** En konto Ansatte styrer, kan ikke slettes: menyen sier "Ansatte styrer
+denne kontoen, så den kan ikke slettes. Stopp styringen først." Stopp styringen, og
+slett den så som enhver annen.
+
+Hva Ansatte gjør på sin side, og når, er beskrevet i
+[administrasjonsveiledningen for Ansatte](/nb/admin/staff/).
 
 ## Følg opp invitasjoner
 
@@ -134,6 +190,17 @@ den tilbake. Handlingsmenyen på en ventende eller utløpt rad tilbyr:
 - **Tilbakekall** — etter **Tilbakekalle invitasjonen?** ("_e-post_ vil ikke lenger
   kunne bruke denne invitasjonen.") er lenken død. Ingenting kan gjøres med en
   godtatt eller tilbakekalt invitasjon.
+
+En tilbakekalt invitasjon sier hvorfor under statusen:
+
+- **Tilbakekalt av en eier** — du eller en annen eier tilbakekalte den.
+- **Erstattet av en nyere invitasjon eller en konto** — adressen ble invitert på nytt,
+  eller det ble laget en konto for den.
+- **E-posten kunne ikke sendes** — se nedenfor.
+- **Brukerens adresse ble endret** — kontoen invitasjonen gjaldt, fikk en annen
+  adresse.
+- **Ansatte deaktiverte kontoen** — Ansatte deaktiverte den ventende kontoen den
+  gjaldt.
 
 Kan e-posten ikke sendes, tilbakekalles invitasjonen umiddelbart og feilen vises,
 så en lenke ingen mottok aldri forblir aktiv. E-postmalene og lenkene er beskrevet
@@ -167,6 +234,30 @@ Velg minst én tillatelse og velg **Lagre rolle**. **Rediger** på en egendefine
 rolle åpner den samme dialogen; sletteknappen spør **Slette egendefinert rolle?** —
 "Tildelinger som bruker denne rollen kan endres." — fordi alle som hadde den, mister
 det den ga.
+
+### Roller Ansatte kan gi
+
+Under rollene ser en eier **Roller Ansatte kan gi**: de egendefinerte rollene hver
+konto [Ansatte styrer](#kontoer-ansatte-styrer) får når Ansatte aktiverer den, i
+tillegg til den innebygde rollen Bruker. Ansatte oppretter ingen konto før du har
+valgt minst én; til da sier delen "Ingen rolle valgt: Ansatte oppretter ingen kontoer
+før du velger en." og dashbordet i Ansatte lister personene som venter.
+
+Hver egendefinerte rolle står med en avkrysningsboks og tillatelsene den har. Kryss av
+rollene de ansatte skal ha, og velg **Lagre roller Ansatte kan gi**: hele settet lagres
+på en gang, så en rolle du fjerner krysset for, tas ut av det — "Roller Ansatte kan gi
+er lagret".
+
+En rolle som gir administrasjon, kan ikke være blant dem, slik at HR, som avgjør hvem
+som får en konto, aldri kan gi noen administrasjon: en rolle med **Administrer
+identitet**, **Administrere ansatte**, **Avgjøre fravær**, **Vise og slette
+personopplysninger** eller en annen tillatelse som ikke kan delegeres, er merket **Gir
+administrasjon**, og et sett med den avvises med rollen og tillatelsen navngitt —
+"_rolle_ har _tillatelse_ (_nøkkel_), som gir administrasjon; Ansatte kan ikke gi den."
+— og ingenting endres. En rolle i settet beholder den grensen når den redigeres: å gi
+den en slik tillatelse i rolledialogen avvises med "Denne rollen er en Ansatte kan gi,
+så den kan ikke få en tillatelse som gir administrasjon. Ta den ut av Roller Ansatte
+kan gi først." Sletter du en rolle, tas den ut av settet.
 
 Tillatelser er additive: en person har summen av rollenes tillatelser. Hva hver
 tillatelse låser opp i en app, er listet på appens referanseside, for eksempel

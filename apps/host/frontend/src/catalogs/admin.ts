@@ -822,6 +822,55 @@ const en = {
   "admin.descriptionValidation": "Enter a description",
   "admin.permissionValidation": "Select at least one permission",
   "admin.selectUserBeforeAccess": "Select a user before loading access.",
+  "admin.userPending": "Pending",
+  "admin.disabledByOwner": "Disabled by an Owner",
+  "admin.disabledByStaff": "Disabled by Staff",
+  "admin.managedByStaff": "Managed by Staff · no. {{number}}",
+  "admin.adoptForStaff": "Adopt for Staff",
+  "admin.adoptTitle": "Adopt {{user}} for Staff",
+  "admin.adoptDescription":
+    "Staff then enables, disables and updates this account for the person with this employee number in its register, as it does for the accounts it creates. Type the number the person has in Staff.",
+  "admin.employeeNumber": "Employee number",
+  "admin.employeeNumberHelp": "1 to 16 characters: letters a–z, digits and hyphens.",
+  "admin.employeeNumberInvalid": "Enter 1 to 16 characters, each a letter a–z, a digit or a hyphen.",
+  "admin.adopt": "Adopt",
+  "admin.adopted": "Staff now manages the account",
+  "admin.adoptedMessage": "Staff's accounts worker takes the account over on its next run.",
+  "admin.adoptFailed": "The account could not be adopted for Staff",
+  "admin.stopManaging": "Stop managing",
+  "admin.stopManagingQuestion": "Stop Staff managing this account?",
+  "admin.stopManagingWarning":
+    "Staff will no longer enable, disable or update {{user}}. The account stays as it is now; a pending account stays pending until the person accepts their invitation or you delete it.",
+  "admin.stoppedManaging": "Staff no longer manages the account",
+  "admin.stopManagingFailed": "Staff could not be stopped managing the account",
+  "admin.deleteManagedReason": "Staff manages this account, so it cannot be deleted. Stop managing it first.",
+  "admin.enablePendingReason": "Not accepted their invitation yet: the account opens only when they accept it.",
+  "admin.refusalAccountPrivileged":
+    "An Owner or a system administrator cannot be managed by Staff; an Owner looks after those accounts by hand.",
+  "admin.refusalEmployeeNumberTaken": "Another user already has this employee number.",
+  "admin.refusalAccountPending":
+    "This user has not accepted their invitation yet: the account opens only when they accept it.",
+  "admin.revokedReason.owner": "Revoked by an Owner",
+  "admin.revokedReason.replaced": "Replaced by a newer invitation or an account",
+  "admin.revokedReason.delivery_failed": "The email could not be sent",
+  "admin.revokedReason.email_changed": "The user's address changed",
+  "admin.revokedReason.deactivated": "Staff deactivated the account",
+  "admin.provisioningRoles": "Roles Staff may give",
+  "admin.provisioningRolesDescription":
+    "The custom roles every account Staff creates or enables is given, besides the built-in User role. Staff creates no account until you name at least one. A role that grants administration — Manage identity, Manage staff, Decide absence, Reveal and erase personal data, or any other permission that cannot be delegated — cannot be one of them.",
+  "admin.provisioningRolesPicker": "Employee roles",
+  "admin.provisioningRolesNone": "No role named: Staff creates no accounts until you name one.",
+  "admin.provisioningRoleGrantsAdministration": "Grants administration",
+  "admin.saveProvisioningRoles": "Save roles Staff may give",
+  "admin.provisioningRolesSaved": "Roles Staff may give saved",
+  "admin.provisioningRolesSavedMessage": "Staff gives these roles to the accounts it activates from now on.",
+  "admin.provisioningRolesSaveFailed": "The roles Staff may give could not be saved",
+  "admin.provisioningRolesLoadFailed": "The roles Staff may give could not be loaded",
+  "admin.refusalRoleNotAssignableKey":
+    "{{role}} carries {{permission}} ({{key}}), which grants administration; Staff may not give it.",
+  "admin.refusalRoleNotAssignable": "Only custom roles can be roles Staff may give.",
+  "admin.refusalRoleProvisioningProtected":
+    "This role is one Staff may give, so it cannot receive a permission that grants administration. Take it out of Roles Staff may give first.",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -1202,6 +1251,55 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.descriptionValidation": "Skriv inn en beskrivelse",
   "admin.permissionValidation": "Velg minst én tillatelse",
   "admin.selectUserBeforeAccess": "Velg en bruker før tilgang lastes.",
+  "admin.userPending": "Venter",
+  "admin.disabledByOwner": "Deaktivert av en eier",
+  "admin.disabledByStaff": "Deaktivert av Ansatte",
+  "admin.managedByStaff": "Styres av Ansatte · nr. {{number}}",
+  "admin.adoptForStaff": "La Ansatte styre",
+  "admin.adoptTitle": "La Ansatte styre {{user}}",
+  "admin.adoptDescription":
+    "Ansatte aktiverer, deaktiverer og oppdaterer da denne kontoen for personen med dette ansattnummeret i registeret, slik den gjør med kontoene den oppretter. Skriv nummeret personen har i Ansatte.",
+  "admin.employeeNumber": "Ansattnummer",
+  "admin.employeeNumberHelp": "1 til 16 tegn: bokstavene a–z, sifre og bindestreker.",
+  "admin.employeeNumberInvalid": "Skriv 1 til 16 tegn, hvert en bokstav a–z, et siffer eller en bindestrek.",
+  "admin.adopt": "La Ansatte styre",
+  "admin.adopted": "Ansatte styrer nå kontoen",
+  "admin.adoptedMessage": "Kontojobben i Ansatte tar over kontoen neste gang den kjører.",
+  "admin.adoptFailed": "Kunne ikke la Ansatte styre kontoen",
+  "admin.stopManaging": "Stopp styringen",
+  "admin.stopManagingQuestion": "Skal Ansatte slutte å styre denne kontoen?",
+  "admin.stopManagingWarning":
+    "Ansatte vil ikke lenger aktivere, deaktivere eller oppdatere {{user}}. Kontoen blir værende slik den er nå; en ventende konto venter til personen godtar invitasjonen eller du sletter den.",
+  "admin.stoppedManaging": "Ansatte styrer ikke lenger kontoen",
+  "admin.stopManagingFailed": "Kunne ikke stoppe Ansattes styring av kontoen",
+  "admin.deleteManagedReason": "Ansatte styrer denne kontoen, så den kan ikke slettes. Stopp styringen først.",
+  "admin.enablePendingReason": "Har ikke godtatt invitasjonen ennå: kontoen åpnes først når personen godtar den.",
+  "admin.refusalAccountPrivileged":
+    "En eier eller en systemadministrator kan ikke styres av Ansatte; slike kontoer tar en eier seg av for hånd.",
+  "admin.refusalEmployeeNumberTaken": "En annen bruker har allerede dette ansattnummeret.",
+  "admin.refusalAccountPending":
+    "Denne brukeren har ikke godtatt invitasjonen ennå: kontoen åpnes først når personen godtar den.",
+  "admin.revokedReason.owner": "Tilbakekalt av en eier",
+  "admin.revokedReason.replaced": "Erstattet av en nyere invitasjon eller en konto",
+  "admin.revokedReason.delivery_failed": "E-posten kunne ikke sendes",
+  "admin.revokedReason.email_changed": "Brukerens adresse ble endret",
+  "admin.revokedReason.deactivated": "Ansatte deaktiverte kontoen",
+  "admin.provisioningRoles": "Roller Ansatte kan gi",
+  "admin.provisioningRolesDescription":
+    "De egendefinerte rollene hver konto Ansatte oppretter eller aktiverer får, i tillegg til den innebygde rollen Bruker. Ansatte oppretter ingen konto før du har valgt minst én. En rolle som gir administrasjon — Administrer identitet, Administrere ansatte, Avgjøre fravær, Vise og slette personopplysninger eller en annen tillatelse som ikke kan delegeres — kan ikke være blant dem.",
+  "admin.provisioningRolesPicker": "Ansattroller",
+  "admin.provisioningRolesNone": "Ingen rolle valgt: Ansatte oppretter ingen kontoer før du velger en.",
+  "admin.provisioningRoleGrantsAdministration": "Gir administrasjon",
+  "admin.saveProvisioningRoles": "Lagre roller Ansatte kan gi",
+  "admin.provisioningRolesSaved": "Roller Ansatte kan gi er lagret",
+  "admin.provisioningRolesSavedMessage": "Ansatte gir disse rollene til kontoene den aktiverer fra nå av.",
+  "admin.provisioningRolesSaveFailed": "Kunne ikke lagre rollene Ansatte kan gi",
+  "admin.provisioningRolesLoadFailed": "Kunne ikke laste rollene Ansatte kan gi",
+  "admin.refusalRoleNotAssignableKey":
+    "{{role}} har {{permission}} ({{key}}), som gir administrasjon; Ansatte kan ikke gi den.",
+  "admin.refusalRoleNotAssignable": "Bare egendefinerte roller kan være roller Ansatte kan gi.",
+  "admin.refusalRoleProvisioningProtected":
+    "Denne rollen er en Ansatte kan gi, så den kan ikke få en tillatelse som gir administrasjon. Ta den ut av Roller Ansatte kan gi først.",
 };
 
 export const adminCatalog = { en, nb } as const satisfies CatalogResources;

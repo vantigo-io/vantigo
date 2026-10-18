@@ -18,8 +18,12 @@ export const AcceptInvitationPage = ({ token }: { token: string }) => {
     enabled: Boolean(token),
   });
   const form = useForm({ initialValues: { displayName: "", password: "" } });
+  // An invitation that completes an account Staff prepared names no role: the
+  // account keeps its own roles, and its name, so no display name is asked.
+  const prepared = invitation.data?.valid === true && !invitation.data.role;
   const mutation = useMutation({
-    mutationFn: () => acceptInvitation({ token, ...form.values }),
+    mutationFn: () =>
+      acceptInvitation(prepared ? { token, password: form.values.password } : { token, ...form.values }),
     onSuccess: async () => {
       const session = await queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 0 });
       queryClient.setQueryData(sessionQueryKey, session);
@@ -36,12 +40,17 @@ export const AcceptInvitationPage = ({ token }: { token: string }) => {
           {invitation.data?.valid && (
             <>
               <Text>{t("auth.invitationFor", { email: invitation.data.email })}</Text>
+              {prepared && (
+                <Text size="sm" c="dimmed">
+                  {t("auth.preparedAccount")}
+                </Text>
+              )}
               <form onSubmit={form.onSubmit(() => mutation.mutate())}>
                 <Stack>
-                  <TextInput label={t("common.displayName")} {...form.getInputProps("displayName")} />
+                  {!prepared && <TextInput label={t("common.displayName")} {...form.getInputProps("displayName")} />}
                   <PasswordInput label={t("common.password")} required {...form.getInputProps("password")} />
                   <Button type="submit" loading={mutation.isPending}>
-                    {t("auth.createAccount")}
+                    {prepared ? t("auth.activateAccount") : t("auth.createAccount")}
                   </Button>
                 </Stack>
               </form>

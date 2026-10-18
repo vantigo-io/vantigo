@@ -14,6 +14,14 @@ export interface OwnerUserResponse {
   twoFactorEnabled: boolean;
   avatarUrl?: string | null;
   ssoEnabled: boolean;
+  /** Staff created the user and they have not yet accepted their invitation; listed disabled and not active. */
+  pending?: boolean;
+  /** `staff` for a user Staff's provisioning manages; absent otherwise. */
+  managedBy?: "staff";
+  /** The employee number of a user Staff manages. */
+  employeeNumber?: string;
+  /** Who disabled the user; absent while enabled. */
+  disabledBy?: "owner" | "staff";
 }
 
 export type ManagedUser = OwnerUserResponse;
@@ -42,3 +50,7 @@ export const enableUser = (id: string) =>
   request<OwnerUserResponse>(`/api/v1/identity/owner/users/${id}/enable`, json({}));
 export const deleteUser = (id: string) =>
   request<OwnerUserResponse>(`/api/v1/identity/owner/users/${id}`, { method: "DELETE" });
+export const manageUser = (id: string, employeeNumber: string) =>
+  request<OwnerUserResponse>(`/api/v1/identity/owner/users/${id}/manage`, json({ module: "staff", employeeNumber }));
+export const unmanageUser = (id: string) =>
+  request<OwnerUserResponse>(`/api/v1/identity/owner/users/${id}/unmanage`, json({}));
