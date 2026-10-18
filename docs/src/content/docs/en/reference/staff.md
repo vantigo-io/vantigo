@@ -2815,9 +2815,12 @@ since the cycle chose the person is seen there:
   reads to a manager, an Approver and HR without `staff:personal-data` exactly as it
   did — *leave*, its events unlisted to them — and only the person and
   `staff:personal-data` see that it became a reserved type (the coordinator's
-  decision). Its kind is recorded in an `erased` event of its own, of class E, listed
-  to the health group's readers alone, so no reader without `staff:personal-data` sees
-  an entry about it.
+  decision). Its kind is recorded, with the other health kinds, in the `erased` event
+  of class E (below), so no reader without `staff:personal-data` sees an entry about
+  it. A payroll month re-exported after its rows were erased reports their days as
+  other days (`Other days`, kind `other`), and a leave of more than fourteen days among
+  them no longer as a leave row: the a-melding that reported them was sent long before
+  (accepted by the coordinator).
 - **withdrawal** nulls `self_cert_withdrawn_from`, `_until` and `_reason` when the
   withdrawal on file lapsed before the cutoff, and replaces the values of the
   withdrawal's events recorded before it — each event by its own instant, so one
@@ -2842,19 +2845,25 @@ A deleted document's row goes and its object's key is queued in the
 [deletion ledger](#the-deletion-ledger) in the same transaction; the erase never calls
 the object store.
 
-When anything was erased, the transaction records one **`erased`** event for the
-person, `{"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}`, its actor the
+When anything was erased, the transaction records an **`erased`** event for the
+person, `{"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}` —
+two when it erased both kinds of content: the health kinds (`health`, `cases`,
+`childSick`, `withdrawal`, `pregnancyHealth`) in one of their own, of class E, and the
+rest (`D`, `A`) in one of no class — its actor the
 installation (`system`) when the worker ran it and the caller when
 [`POST /retention/run`](#running-it-by-hand) did. `count` is the items the kind
 removed: each column value nulled, each row deleted (a next of kin, a document) and
 each event payload rewritten. A D erase is always reported, since it marks the
 person, even when it found nothing to remove (count 0); an A count sums the person's
-due employments. The event touches no class, so no later erase rewrites it. It is
-listed as the [hold's kinds](#the-history) are — not to a manager, to the person as its
-kind with an empty payload — and its kinds are read by `staff:manage` and
-`staff:personal-data`, the `health`, `cases`, `childSick`, `withdrawal` and
-`pregnancyHealth` entries — each says the person's health was on file — by
-`staff:personal-data` alone.
+due employments. Neither event holds a value an erase replaces, so no later erase
+rewrites it. The event of no class is listed as the [hold's kinds](#the-history) are —
+not to a manager, to the person as its kind with an empty payload — and read by
+`staff:manage` and `staff:personal-data`. The health kinds' event is listed, as every
+event of class E outside the absence family, to the health group's readers alone —
+the person and `staff:personal-data` — so HR without `staff:personal-data`, a manager
+and an Approver are listed and counted nothing new after an erase of health content
+alone: an entry they could not read would still say the person's health was on file
+(the coordinator's follow-up to Task 5b).
 
 The run is **idempotent**: a second run finds nothing due and writes nothing. That is
 what makes "once per civil day" hold whatever the poll and the clock do.
@@ -2924,7 +2933,9 @@ block, derived from the ledger and the history — no column holds it (plan read
 `pendingDeletions` (rows in the ledger), `failingDeletions` (rows the store has refused
 at least once), `oldestPendingSince` (when the oldest row was queued; absent when the
 ledger is empty) and `lastErasedAt` (the latest `erased` event; absent when nothing was
-ever erased).
+ever erased). `lastErasedAt` moves with every erase, the health ones included: it is
+the installation's, names no person, and is read by `staff:manage` alone (accepted by
+the coordinator).
 
 **The two erase settings** (`erasePregnancyHealthTypes`, `eraseSickCaseDates`; the
 owner's answer 7) are read by each cycle when it starts. Turned on, one applies from

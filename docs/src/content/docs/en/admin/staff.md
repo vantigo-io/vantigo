@@ -1008,7 +1008,8 @@ protection officer: each erases for good.
    as *leave* and see no entry about the erase; the person and `staff:personal-data`
    see *Absent (HR only)*. Their history keeps its dates and reads the type as
    *changed*; an entry about a row deleted or changed to another type goes by the year
-   it was recorded in.
+   it was recorded in. A payroll month re-exported after its pregnancy rows were erased
+   reports those days as other days, not as leave.
 3. **Erase a sick-leave case's dates and milestones** (`eraseSickCaseDates`): when a
    closed case's health content is erased, the case itself goes too — its dates, its
    milestones and its history, which keeps only the entries' kinds and dates. Its

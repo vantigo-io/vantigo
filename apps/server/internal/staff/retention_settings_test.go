@@ -450,3 +450,71 @@ func TestRetention_AnErasedHROnlyRowReadsAsBefore(t *testing.T) {
 		t.Errorf("the erased kinds = %v, want pregnancyHealth", counts)
 	}
 }
+
+// An erase of health content alone — a closed case, a year's child-sick
+// rows, a lapsed withdrawal — lists and counts nothing new to a reader
+// without staff:personal-data (the coordinator's follow-up to Task 5b): its
+// erased event is of class E, the health group's, so HR without
+// staff:personal-data and her manager are listed the same events, by id and
+// kind, and the same count before and after it — the erase blanks values in
+// events they already read, which is the erase. staff:personal-data reads
+// the erased entry with its kind.
+func TestRetention_AHealthEraseListsNothingNewToOthers(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, kind string
+		setup      func(w decisionWorld)
+	}{
+		{"a closed case", "cases", func(w decisionWorld) {
+			register(t, w.hr, w.kari.Id, absence(t, w.h, "sykmelding", "2025-03-03", "2025-03-14"))
+		}},
+		{"a child-sick year", "childSick", func(w decisionWorld) {
+			register(t, w.hr, w.kari.Id, absence(t, w.h, "sykt_barn", "2024-11-04", "2024-11-05"))
+		}},
+		{"a lapsed withdrawal", "withdrawal", func(w decisionWorld) {
+			do(t, w.hr, http.MethodPut, personPath(w.kari.Id)+"/self-certification/withdrawal",
+				map[string]any{"until": "2026-12-31", "reason": "Repeated short absences"}, http.StatusOK, nil)
+			// Lapsed in 2024 and recorded then: due now, with no clock to move
+			// past the sessions.
+			w.h.Exec(t, `UPDATE staff.people SET self_cert_withdrawn_from = '2024-01-01', self_cert_withdrawn_until = '2024-06-30' WHERE id = $1`, w.kari.Id)
+			w.h.Exec(t, `UPDATE staff.events SET at = '2024-01-01T10:00:00Z' WHERE person_id = $1 AND payload ? 'selfCertWithdrawal'`, w.kari.Id)
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			w := newDecisionWorld(t)
+			c.setup(w)
+			listed := func() map[string]string {
+				out := map[string]string{}
+				for name, cl := range map[string]*modtest.Client{"HR without personal-data": w.hr, "her manager": w.bossC, "an Approver": w.approver} {
+					r := cl.Do(http.MethodGet, pagedPath(eventsPath(w.kari.Id), 1, 100), nil)
+					var page struct {
+						Data []struct {
+							ID   int64  `json:"id"`
+							Kind string `json:"kind"`
+						} `json:"data"`
+						Pagination struct {
+							TotalCount int64 `json:"totalCount"`
+						} `json:"pagination"`
+					}
+					_ = json.Unmarshal(r.Body, &page)
+					out[name] = fmt.Sprintf("%d %d %v", r.Status, page.Pagination.TotalCount, page.Data)
+				}
+				return out
+			}
+			before := listed()
+			runCycle(t, w.h)
+			if counts := kindCounts(firstErased(t, w.h, w.kari.Id)); counts[c.kind] == 0 {
+				t.Fatalf("the erased kinds = %v, want %s", counts, c.kind)
+			}
+			for name, got := range listed() {
+				if want := before[name]; got != want {
+					t.Errorf("%s is listed something new after the erase:\n got %s\nwant %s", name, got, want)
+				}
+			}
+			if !strings.Contains(historyText(t, w.pd, w.kari.Id), `"kind":"`+c.kind+`"`) {
+				t.Errorf("staff:personal-data does not read the erased entry's %s", c.kind)
+			}
+		})
+	}
+}

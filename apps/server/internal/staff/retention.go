@@ -666,15 +666,17 @@ func (s *server) erasePerson(ctx context.Context, conn *pgxpool.Conn, personID i
 			return err
 		}
 		kinds = append(kinds, b...)
-		// The pregnancy and health erase is recorded in an erased event of its
-		// own, of class E, so it is listed to the health group's readers alone:
-		// an entry with no kind a leave-reader may read would still tell them,
-		// after the fact, that the person's HR-only rows were erased (the
-		// coordinator's decision on Task 5b).
-		var rest, pregnancy []erasedKind
+		// The health kinds are recorded in an erased event of their own, of
+		// class E, so it is listed to the health group's readers alone: an
+		// entry with no kind a reader may read would still tell HR without
+		// staff:personal-data, a manager or an Approver, after the fact, that
+		// the person's health content — a case, a child's sickness, a
+		// withdrawal, HR-only rows — was on file (the coordinator's decision on
+		// Task 5b). The other kinds keep their event, of no class.
+		var rest, healthKinds []erasedKind
 		for _, k := range kinds {
-			if k.Kind == eraseKindPregnancyHealth {
-				pregnancy = append(pregnancy, k)
+			if slices.Contains(healthEraseKinds, k.Kind) {
+				healthKinds = append(healthKinds, k)
 			} else {
 				rest = append(rest, k)
 			}
@@ -684,8 +686,8 @@ func (s *server) erasePerson(ctx context.Context, conn *pgxpool.Conn, personID i
 				return err
 			}
 		}
-		if len(pregnancy) > 0 {
-			return s.recordEvent(ctx, txq, &personID, eventErased, who, map[string]any{"kinds": pregnancy}, []string{healthClass})
+		if len(healthKinds) > 0 {
+			return s.recordEvent(ctx, txq, &personID, eventErased, who, map[string]any{"kinds": healthKinds}, []string{healthClass})
 		}
 		return nil
 	})
