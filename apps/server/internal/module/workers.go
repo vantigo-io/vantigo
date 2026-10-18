@@ -9,11 +9,11 @@ import "github.com/vantigo-io/vantigo/server/internal/worker"
 // enablement Compose itself applies) contributes none either, whether or
 // not it declares any.
 //
-// Unlike Directory, resolving Workers does not require Compose: worker mode
-// never mounts the HTTP API, so cmd/vantigo calls Workers directly instead
-// of reaching it through Compose's return value. It resolves each module's
-// contribution from deps as the caller passes it, plus Deps.CustomerPersonalData
-// and Deps.InvoicedWork, which it collects the way Compose does — the same base Deps Compose
+// Resolving Workers does not require Compose: worker mode never mounts the
+// HTTP API, so cmd/vantigo calls Workers directly instead of reaching it
+// through Compose's return value. It resolves each module's contribution from
+// deps as the caller passes it, plus Deps.CustomerPersonalData,
+// Deps.InvoicedWork and Deps.Directory, which it resolves the way Compose does — the same base Deps Compose
 // resolves Directory from, before any Mount runs, with no per-module Doc or
 // Catalog — since a background worker is a data-layer concern (Pool, Config,
 // Clock, Mail, Secrets, ...), not a contract one.
@@ -32,8 +32,21 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
+	enabled := enabledModules(deps, mods)
+	// The customer directory, resolved as Compose resolves it — from the
+	// enabled module that declares one — since a worker may read customers
+	// too: energy's import worker resolves a file's organisation numbers
+	// through it (energy import design D4), and worker mode never composes.
+	// With no such module enabled the slot stays as the caller set it.
+	provider, err := soleProvider(enabled, "a customer directory", func(m Module) bool { return m.Directory != nil })
+	if err != nil {
+		panic(err.Error())
+	}
+	if provider != nil {
+		deps.Directory = provider.Directory(deps)
+	}
 	var out []worker.Worker
-	for _, mod := range enabledModules(deps, mods) {
+	for _, mod := range enabled {
 		if mod.Workers == nil {
 			continue
 		}

@@ -91,7 +91,10 @@ Communications' outbox is the working example.
    collects `CustomerPersonalData` and `InvoicedWork` as well, because worker mode
    never composes: the anonymisation worker is where rule 9's erase runs, and the
    EHF workers build an Invoices server from worker-mode `Deps`, which must never
-   read an empty slot as "nothing to stamp".
+   read an empty slot as "nothing to stamp". It resolves `Directory` too, as
+   Compose does — from the one enabled module that declares it, the caller's own
+   left in place when none is enabled — because energy's import worker resolves a
+   file's organisation numbers through the customer directory.
    One order is not the module order: both Compose and Workers put the
    `CustomerReferences` and `CustomerPersonalData` of the modules that declare
    `InvoicedWork` **after every other module's**, each side in module order (a
@@ -239,7 +242,8 @@ Communications' outbox is the working example.
   `Deps.InvoicedWork` (a test harness's fake) claims its kinds first and is named
   `Deps.InvoicedWork`, and a nil one is dropped from the slot, which never hands an
   issue a nil holder. `module.Workers`, which has no error to return, panics on the
-  same kind claimed twice.
+  same kind claimed twice, and on two enabled modules both declaring a customer
+  directory.
 - **Rule 7**: `no-restricted-imports` in each module frontend's `eslint.config.js`,
   run by `bun run frontend:lint` locally and in CI.
 - **Rule 8**: by shape and by test. `RepointCustomer` is handed the caller's
