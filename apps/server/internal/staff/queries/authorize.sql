@@ -1,10 +1,15 @@
 -- name: PersonForUser :one
 -- PersonForUser is the person a signed-in user is, through the self-service
--- link (design S24): the identity provider's link keyed on the user's id,
--- whatever state the link is in, so delivery C's states never take the Self
--- audience away from a person. No row is a user linked to nobody.
+-- link (design S24): the identity provider's link keyed on the user's id, in
+-- whatever state the accounts worker left it — pending, disabled, failed —
+-- but one the worker blocked as someone else's account: a worker link whose
+-- user carries another employee number (mismatch) or whom Staff no longer
+-- manages (account_not_managed) gives its user no Self, nor anything else of
+-- the person (privacy review M1). HR's self-service link (linked) never
+-- carries either reason. No row is a user linked to nobody.
 SELECT person_id FROM staff.identity_links
-WHERE provider = 'identity' AND external_id = @external_id::text;
+WHERE provider = 'identity' AND external_id = @external_id::text
+  AND (state = 'linked' OR coalesce(blocked_reason, '') NOT IN ('mismatch', 'account_not_managed'));
 
 -- name: NamedAsManager :one
 -- NamedAsManager is whether any terms row or department names the person as

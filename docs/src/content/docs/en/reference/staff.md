@@ -421,8 +421,13 @@ from the response — never null.
 | Link | `user { id, displayName, active }` | ✓ | — | — | — | ✓ | ✓ |
 | Hold | `legalHold { held, reason, at }`, `erasedAt`, `reassessedAt` | — | — | — | — | ✓ | ✎ hold and reassess |
 
-- **Self** is the user a person's self-service link names, whatever state the link is
-  in. **Colleague** is `staff:view`, and only for a person **active today**: an
+- **Self** is the user a person's self-service link names, in whatever state the
+  accounts worker left it (pending, disabled, failed …) — except a worker link the
+  worker blocked as someone else's account: one whose user carries another employee
+  number (`mismatch`) or whom Staff no longer manages (`account_not_managed`) gives
+  that user nothing of the person, neither Self nor Manager; `GET /me` answers
+  `no_person` and `GET /people/{id}` the unknown id's 404, as for a user linked to
+  nobody. HR's self-service link (`linked`) never carries either reason. **Colleague** is `staff:view`, and only for a person **active today**: an
   unannounced hire, a leaver and someone with no employment stay out of the colleague
   directory, and since ids are sequential they answer the unknown id's 404.
   **Manager** is a caller whose self-service link names a manager of the person
