@@ -1,6 +1,7 @@
 package staff
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -253,5 +254,26 @@ func TestFieldGroups_ReasonIsNoHoldField(t *testing.T) {
 	}
 	if groupOf("legalHoldReason") != groupHold || fieldClasses["legalHoldReason"] != "F" {
 		t.Errorf("legalHoldReason = %s/%s, want the hold group and class F", groupOf("legalHoldReason"), fieldClasses["legalHoldReason"])
+	}
+}
+
+// An accounts worker's event (Task 4b) is the links group's whole: the
+// person, HR and staff:personal-data read its step, state, code, invitation
+// and flagOffMeanwhile; a manager, an Approver and a colleague read an empty
+// payload — the listing shows them none, and this is the second line.
+func TestShapePayload_TheAccountEvents(t *testing.T) {
+	t.Parallel()
+	stored := []byte(`{"step":"activate","state":"pending","code":"x","invitation":{"state":"active","issued":1},"flagOffMeanwhile":true}`)
+	want := map[string]any{"step": "activate", "state": "pending", "code": "x",
+		"invitation": map[string]any{"state": "active", "issued": float64(1)}, "flagOffMeanwhile": true}
+	for _, a := range []audience{{Self: true}, {Manage: true}, {PersonalData: true}} {
+		if got := shapePayload(stored, []string{"C"}, a); fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%+v reads %v, want %v", a, got, want)
+		}
+	}
+	for _, a := range []audience{{Manager: true}, {Approver: true}, {Colleague: true}} {
+		if got := shapePayload(stored, []string{"C"}, a); len(got) != 0 {
+			t.Errorf("%+v reads %v, want nothing", a, got)
+		}
 	}
 }

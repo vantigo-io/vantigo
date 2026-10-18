@@ -925,8 +925,8 @@ providing accounts, every link and unlink naming a user answers `accounts_unavai
 ## Accounts
 
 Delivery C's accounts give a person a user in identity on the dates their employments
-set (design S22–S27). This section is the flag and what reads it; the accounts worker
-that acts on it is described as it lands.
+set (design S22–S27). This section is the flag and what reads it, the decision table,
+and [the accounts worker](#the-accounts-worker) that acts on them.
 
 **The flag** is three columns of `staff.people` (00042's): `provision_account`,
 `provision_from` and `account_email_kind`, with its own revision,
@@ -1054,8 +1054,98 @@ a colleague, whose history and its count leave them out.
 `account_flag_updated {fields: {provisionAccount, provisionFrom, accountEmailKind}}`
 is HR's change of the flag; the worker's `account_prepared`, `account_activated`,
 `account_deactivated`, `account_updated`, `account_blocked`, `account_failed` and
-`account_mismatched` carry a step, a state and codes only — no address, no name, no
-user id beyond the link's own.
+`account_mismatched` carry `{step, state, code?, invitation?: {state, issued},
+flagOffMeanwhile?}` — the step, the link's state after it, a code, a pending user's
+invitation after an activation, and whether the flag was turned off while the step ran
+— and nothing else: no address, no name, no user id beyond the link's own. They name
+no field, so `payload_classes` is `{C}`, written as such; their payload is read whole
+by the links group and empty to anyone else.
+
+### The accounts worker
+
+`staff-accounts` (`accounts_worker.go`) runs every `STAFF_WORKERS_POLL` (default an
+hour) unless `STAFF_ACCOUNTS_ENABLED=0`, as the system actor
+`system:staff-accounts` in identity's audit and the installation in the history. With
+no module providing accounts it does nothing. **It holds no cycle-wide lock and no
+lease connection** (pre-flight B2): a cycle shares its work with any other — a second
+worker process, a run beside the ticker — through the link rows alone.
+
+1. **The mode** is asked once, on no connection. Identity unable to answer fails the
+   cycle, which the next poll runs again. `ErrModeMismatch` (this process's OIDC or
+   SCIM settings derive another mode than the API process recorded) holds every step
+   but a deactivation: see below.
+2. **The preparing links.** For each person whose flag is on, who is not erased and has
+   no link, the decision table is asked with no link; when it answers *prepare* the
+   cycle takes the person's lock, reads the flag again and writes a `preparing` link —
+   no user, managed — `INSERT … ON CONFLICT (person_id, provider) DO NOTHING`, so two
+   cycles write one.
+3. **The claims.** Up to fifty due links — `next_attempt_at` reached or never set, no
+   lease or a lapsed one, of a person whose flag is on and who is not erased — each
+   claimed alone by a conditional `UPDATE … FOR UPDATE OF l SKIP LOCKED` that sets
+   `lease_id` and `lease_until` (five minutes on) and commits at once. A link another
+   cycle holds is skipped. A `blocked` or `failed` link is claimed on its schedule like
+   any other: the table never reads `blocked` as an input, so a link recovers on the
+   next due run once what blocked it is gone — a user demoted and adopted again, the
+   employee roles named.
+4. **Per claim**: the person's facts — the flag, the addresses, the employee number,
+   the name, the language, the employments, the settings' zone and `createBeforeDays` —
+   in one read-only snapshot, closed; the link's user as identity reports them
+   (`Account`, with the person's own chosen address); the table; then each step
+   **called under a two-minute timeout with no transaction open and no connection
+   held**. After each successful call the user is read again and the table asked again
+   on the fresh answer, until it answers nothing or a report, or after **three calls**,
+   or when a call left the user as they were (pre-flight I2: prepared and enabled on
+   day one with `createBeforeDays` 0). After a successful `Prepare` or `Update` the
+   employee number written is the link's `synced_employee_number`; after an `Update` the
+   person's details hash is the link's `last_spec_hash` — SHA-256 over the address
+   (while the user is pending only), the display name, the language and the employee
+   number — so the next run asks for no second update.
+5. **The result**, under the person's lock and then the link `WHERE lease_id` is the
+   claim's (the lock order: the person, then the link): `state`, `managed`,
+   `external_id` (after `Prepare`), `blocked_reason`, `last_error`, `attempts`,
+   `next_attempt_at`, `last_synced_at`, `last_spec_hash`, `synced_employee_number`, the
+   events, the lease cleared. The flag is read again: one turned off meanwhile is
+   recorded on the events (`flagOffMeanwhile`) and the next cycle claims the link no
+   more (plan M9). **No worker write moves the person's `revision` or `updated_at`**,
+   and the worker writes only `account_*` events — never `user_linked` or
+   `user_unlinked`. A link claimed since by another cycle is not written. A link gone —
+   the person deleted after the lease lapsed — has the user a `Prepare` of this claim
+   made deactivated, outside any transaction, and logged (pre-flight I4).
+
+**The schedule.** A claim that ended — done, or answered with a refusal or a report —
+is acted on again at **the next civil midnight** in the settings zone: once per civil
+day, a 23- or 25-hour day of a daylight-saving change included. A call that could not
+be made (identity unreachable, a timeout, an answer that is not one of the contract's)
+is `last_error = accounts_unavailable`, `attempts` counted, retried at the next poll
+while `attempts < 3`, then daily; any answer resets `attempts` and clears `last_error`.
+A claim that spent its three calls with more to do, or a step held by the mode
+mismatch, is claimed again at the next poll.
+
+**What a call's refusal records**, as the link's `blocked_reason` (codes only, never an
+address or a driver's words):
+
+| Refusal | `blocked_reason` | The link |
+| --- | --- | --- |
+| `ErrAccountPrivileged`, `ErrLastOwner` | `account_privileged` | `blocked` |
+| `ErrBlockedByOwner` | `blocked_by_owner` | `blocked` |
+| `ErrAccountNotFound` (federated: the identity provider has not created the user yet) | `not_found` | `blocked` |
+| `ErrUserGone` | `user_gone` | `failed` |
+| `ErrAccountNotManaged` | `account_not_managed` | its state kept |
+| `ErrEmployeeRoleMissing` | `employee_role_missing` | `blocked` |
+| `ErrEmployeeRoleUnsafe` | `employee_role_unsafe` | `blocked` |
+| `ErrAccountEmailTaken` | `account_email_taken` | `blocked` |
+| `ErrEmployeeNumberTaken` | `employee_number_taken` | `blocked` |
+| `ErrModeMismatch` | `mode_mismatch` | its state kept |
+| `ErrInvalidActor` (a bug of Staff's, logged) | `invalid_actor` | `failed` |
+
+The table's own reports are written the same way, with the state it names. A user
+`Prepare` answered that another person's link already names is `mismatch`, `blocked`.
+
+**The mode mismatch.** Under `ErrModeMismatch` the cycle still runs every due
+deactivation — `Deactivate` reads no mode, so a leaver loses access whatever the
+configuration says — and holds every other step before any identity call: the links it
+holds record `blocked_reason = mode_mismatch`, their state kept, and are claimed again
+at the next poll, so the installation's item is derived from link rows (reading 21).
 
 **Calls out.** Every call to identity's `contracts.AccountProvisioning` goes through
 one accessor in `contractscalls.go` and is refused inside any of the module's

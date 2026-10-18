@@ -468,7 +468,12 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   ([Staff](/en/admin/staff/#import-and-export-the-register)), and the Staff retention
   worker's `STAFF_RETENTION_ENABLED` (default on) and `STAFF_WORKERS_POLL` (default
   `1h`, at least `1m`), which erase what the retention rules no longer let the register
-  keep and finish the deletion of documents' files ([Staff](/en/admin/staff/#retention)).
+  keep and finish the deletion of documents' files ([Staff](/en/admin/staff/#retention)),
+  and the Staff accounts worker's `STAFF_ACCOUNTS_ENABLED` (default on), which prepares,
+  enables and disables the users the account flag asks for on the poll it shares
+  ([Staff](/en/admin/staff/#the-accounts-worker)). The worker process must carry the same
+  `OIDC_*` and `SCIM_*` settings as the API process: where they differ it disables
+  leavers and holds every other step (`mode_mismatch`).
 - `vantigo.env.example` documents the static OIDC and SCIM settings. Configuration is
   deployment-bound and changes require a restart. Do not put provider or SCIM secrets
   in source-controlled files — inject `OIDC_CLIENT_SECRET`, `SCIM_TOKEN`,
@@ -548,7 +553,13 @@ If the database runs a least-privilege application role, grant it the `staff` sc
 above. An installation that lists `MODULES` explicitly gets Staff only once `staff` is
 added; it needs no other module. See [Staff](/en/admin/staff/).
 
-**The release with Staff's accounts.** Its Staff migration (`00051`) makes a person's
+**The release with Staff's accounts.** It brings two migrations, one per schema:
+identity's `00050` (Staff-managed users, the employee roles, the recorded authority
+mode) and Staff's `00051` (a link that names no user yet, the account flag's own
+revision, the link's synced employee number). It also starts the accounts worker,
+`staff-accounts`, on by default — it does nothing until HR turns a person's account flag
+on and an Owner names the employee roles; `STAFF_ACCOUNTS_ENABLED=0` keeps it off. The
+Staff migration (`00051`) makes a person's
 employee number unique by upper case under the `C` collation, so case is judged alike
 whatever locale the database was created with. Under a Turkish or Azeri locale the old
 index could have admitted two numbers that differ only by case (`i-1` beside `I-1`),

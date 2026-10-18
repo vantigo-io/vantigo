@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, slå på konto for en person, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien, oppbevaringstidene og kontoinnstillingene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, slå på konto for en person og kontoarbeideren, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien, oppbevaringstidene og kontoinnstillingene.
 sidebar:
   order: 44
 sources:
@@ -32,6 +32,7 @@ sources:
   - apps/server/internal/staff/account_flag.go
   - apps/server/internal/staff/account_settings.go
   - apps/server/internal/staff/accounts_decide.go
+  - apps/server/internal/staff/accounts_worker.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -112,8 +113,8 @@ og frakobling som navngir en bruker.
 ## Slå på konto for en person
 
 Ansatte kan gi en person en bruker i identity, klargjort før de begynner og aktivert på
-første arbeidsdag (leveranse C). Kontoflagget settes her; kontoarbeideren som handler på
-det, kommer med neste del av leveransen.
+første arbeidsdag (leveranse C). Kontoflagget settes her; kontoarbeideren
+([nedenfor](#kontoarbeideren)) handler på det.
 
 1. Før den første kontoen navngir en Owner rollene Ansatte kan gi i identity
    (ansattrollene). `GET /api/v1/staff/meta` svarer `provisioningRolesSet` til
@@ -142,6 +143,65 @@ Hvor mange dager før den dagen kontoen klargjøres, deaktivert, er innstillinge
 `createBeforeDays` ([Innstillingene](#innstillingene)). En slettet persons flagg kan ikke
 endres (`person_erased`). Har noen andre lagret personen først, svarer forespørselen
 `revision_conflict`; les flagget på nytt.
+
+### Kontoarbeideren
+
+Arbeideren `staff-accounts` handler på flagget hver `STAFF_WORKERS_POLL` (standard `1h`)
+— i worker-modus, og i api-modus med `WORKERS_IN_PROCESS=1`
+([Installasjon](/nb/admin/installation/)) — med mindre `STAFF_ACCOUNTS_ENABLED=0`. For en
+person med flagget på gjør den dette:
+
+- `createBeforeDays` før den effektive dagen oppretter den brukeren i identity, ventende
+  og deaktivert, og kobler den (lenkens `state` er `pending`);
+- på dagen aktiverer den brukeren med ansattrollene og sender en invitasjon til å velge
+  passord; lenken er `active` når invitasjonen er godtatt;
+- dagen etter at siste arbeidsforhold slutter, deaktiverer den brukeren og avslutter
+  øktene deres (`disabled`); en gjenansettelse aktiverer dem igjen på den nye startdatoen;
+- holder brukerens navn, språk og ansattnummer i takt med personen — og adressen bare
+  mens brukeren fortsatt venter.
+
+Hver person behandles én gang om dagen, ved første kjøring etter midnatt i
+forretningstidssonen. Flere arbeidere, eller en arbeider og en kjøring for hånd, deler
+arbeidet person for person; ingen venter på en annen.
+
+1. Forutsetning: en Owner har navngitt ansattrollene (`provisioningRolesSet` er `true`);
+   uten dem klargjøres en konto, men aktiveres aldri (`employee_role_missing`).
+2. Kontroller dagen etter at arbeideren har kjørt: `GET /api/v1/staff/people/{id}/account`
+   svarer en `link` med `state`, `reason` når den holdes tilbake, `attempts` og
+   `nextAttemptAt`. Personens historikk (som HR) viser `account_prepared`,
+   `account_activated`, `account_deactivated` og `account_updated`; en leder, en
+   godkjenner og en kollega ser ingen av dem.
+3. For å stoppe den: `STAFF_ACCOUNTS_ENABLED=0` og start på nytt. **Da gjøres ingenting
+   etter tidsplanen, heller ikke for dem som slutter**: en bruker hvis arbeidsforhold er
+   avsluttet, beholder tilgangen til arbeideren kjører igjen eller en Owner deaktiverer
+   dem i identity. Å slå av `staff`-modulen har samme virkning, og etterlater i tillegg
+   ventende brukere — klargjort, aldri invitert — som en Owner da fullfører eller sletter
+   i identity.
+
+**Føderert modus** (en identitetsleverandør eier kontoene): arbeideren oppretter eller
+inviterer aldri noen. Den finner brukeren leverandøren opprettet etter ansattnummeret,
+kobler den, aktiverer igjen en bruker den selv deaktiverte, og deaktiverer dem som
+slutter; til leverandøren har opprettet brukeren, holdes lenken tilbake med `not_found`
+og prøves igjen daglig. En ventende bruker laget i lokal modus før byttet holdes tilbake
+med `mode_changed` for en Owner.
+
+**Ulik modus.** Arbeiderens prosess må ha de samme OIDC- og SCIM-innstillingene som
+API-ets ([Installasjon](/nb/admin/installation/)). Er de ulike, deaktiverer arbeideren
+fortsatt dem som slutter, men holder alt annet tilbake: lenkene viser
+`reason: mode_mismatch`, og loggen sier det. Gjør innstillingene like og start på nytt;
+lenkene som ble holdt tilbake, prøves igjen ved neste kjøring.
+
+**En lenke som holdes tilbake** (`reason` satt) prøves igjen hver dag, så den løser seg
+selv når årsaken er borte. Årsakene en operatør møter: `employee_role_missing` og
+`employee_role_unsafe` (en Owner navngir, eller retter, ansattrollene),
+`account_email_taken` og `employee_number_taken` (en annen bruker i identity har
+adressen eller nummeret), `blocked_by_owner` og `disabled_by_owner` (en Owner deaktiverte
+brukeren; bare en Owner opphever det), `account_privileged` (brukeren er Owner eller
+SystemAdmin og håndteres for hånd), `account_not_managed` (en Owner lot Ansatte slutte å
+styre brukeren), `mismatch` (brukeren har et annet ansattnummer: en annens konto),
+`user_gone` (brukeren ble slettet i identity), `invitation_revoked` og
+`invitation_unanswered` (*Kjør nå* sender en ny invitasjon). En lenke der `attempts` når
+tre, kom ikke fram til identity: den prøves daglig fra da av, og loggen navngir feilen.
 
 ## Rettigheten for personopplysninger
 

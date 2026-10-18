@@ -39,3 +39,68 @@ SELECT external_id, state, managed, blocked_reason, attempts, next_attempt_at, l
 FROM staff.identity_links
 WHERE person_id = @person_id AND provider = 'identity'
 FOR UPDATE;
+
+-- The accounts worker (Task 4b). It holds no cycle-wide lock: a link is
+-- claimed alone, in a statement of its own that commits at once, by a lease
+-- (lease_id, lease_until) that every later write of the claim names; two
+-- cycles — two workers, a run beside the ticker — share the work by the
+-- claims. Every query takes the clock as @now (the clock rule).
+
+-- name: AccountCandidates :many
+-- AccountCandidates is every person whose account flag is on, who is not
+-- erased, and who has no link under the identity provider: the people the
+-- cycle may prepare a link for, once the decision table says it is due.
+SELECT p.id FROM staff.people p
+WHERE p.provision_account AND p.erased_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM staff.identity_links l WHERE l.person_id = p.id AND l.provider = 'identity')
+ORDER BY p.id;
+
+-- name: InsertPreparingLink :exec
+-- InsertPreparingLink writes the worker's preparing link — no user yet,
+-- managed — under the person's lock. A link already there (another cycle's,
+-- or HR's) is left as it is.
+INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
+VALUES (@person_id, 'identity', NULL, 'preparing', true, @now::timestamptz, @now::timestamptz)
+ON CONFLICT (person_id, provider) DO NOTHING;
+
+-- name: ClaimAccountLink :one
+-- ClaimAccountLink leases the next due link — its next attempt reached or
+-- never set, no lease or a lapsed one — of a person whose flag is on and who
+-- is not erased: the link row alone is locked (OF l), and one another cycle
+-- is claiming is skipped. Blocked and failed links are claimed on their
+-- schedule like any other: the decision table never reads blocked as an
+-- input, so a link recovers when what blocked it is gone.
+UPDATE staff.identity_links SET lease_id = @lease_id::uuid, lease_until = @lease_until::timestamptz
+WHERE id = (
+    SELECT l.id FROM staff.identity_links l
+    JOIN staff.people p ON p.id = l.person_id
+    WHERE l.provider = 'identity' AND p.provision_account AND p.erased_at IS NULL
+      AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= @now::timestamptz)
+      AND (l.lease_until IS NULL OR l.lease_until <= @now::timestamptz)
+    ORDER BY l.next_attempt_at NULLS FIRST, l.id
+    LIMIT 1
+    FOR UPDATE OF l SKIP LOCKED
+)
+RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error, attempts,
+    last_synced_at, last_spec_hash, synced_employee_number;
+
+-- name: WriteAccountResult :execrows
+-- WriteAccountResult records what a claim did, on its lease alone, and
+-- clears the lease: no row is a link gone (the person deleted) or claimed
+-- since by another cycle, whose lease it now is. Neither the person's
+-- revision nor updated_at moves: the link is the links group's.
+UPDATE staff.identity_links SET
+    external_id = sqlc.narg(external_id)::text,
+    state = @state,
+    managed = @managed,
+    blocked_reason = sqlc.narg(blocked_reason)::varchar,
+    last_error = sqlc.narg(last_error)::varchar,
+    attempts = @attempts,
+    next_attempt_at = @next_attempt_at::timestamptz,
+    last_synced_at = sqlc.narg(last_synced_at)::timestamptz,
+    last_spec_hash = sqlc.narg(last_spec_hash)::bytea,
+    synced_employee_number = sqlc.narg(synced_employee_number)::varchar,
+    lease_id = NULL,
+    lease_until = NULL,
+    updated_at = @now::timestamptz
+WHERE id = @id AND lease_id = @lease_id::uuid;

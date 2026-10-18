@@ -1378,6 +1378,21 @@ func TestLoad_StaffRetentionWorker(t *testing.T) {
 	}
 }
 
+// The Staff accounts worker's switch (accounts plan, Task 4b; reading 17):
+// on unless turned off — nothing is provisioned until HR turns a flag on and
+// an Owner names the employee roles — and only "0" or "1".
+func TestLoad_StaffAccountsWorker(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); !cfg.StaffAccountsEnabled {
+		t.Error("STAFF_ACCOUNTS_ENABLED unset did not default to on")
+	}
+	if cfg := mustLoad(t, with(validEnv(), "STAFF_ACCOUNTS_ENABLED", "0")); cfg.StaffAccountsEnabled || !cfg.StaffRetentionEnabled {
+		t.Errorf("STAFF_ACCOUNTS_ENABLED=0: accounts %v, retention %v; want the accounts worker alone off", cfg.StaffAccountsEnabled, cfg.StaffRetentionEnabled)
+	}
+	if msg := loadError(t, with(validEnv(), "STAFF_ACCOUNTS_ENABLED", "yes")); !strings.Contains(msg, `STAFF_ACCOUNTS_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
 // PUBLIC_BASE_URL (payments port design D14): the https URL the pay page is
 // reachable at from the internet, unset by default. https only; an origin
 // plus APP_BASE_PATH and nothing else — no user, query or fragment, and the

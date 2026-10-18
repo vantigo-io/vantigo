@@ -9,8 +9,106 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const accountCandidates = `-- name: AccountCandidates :many
+
+SELECT p.id FROM staff.people p
+WHERE p.provision_account AND p.erased_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM staff.identity_links l WHERE l.person_id = p.id AND l.provider = 'identity')
+ORDER BY p.id
+`
+
+// The accounts worker (Task 4b). It holds no cycle-wide lock: a link is
+// claimed alone, in a statement of its own that commits at once, by a lease
+// (lease_id, lease_until) that every later write of the claim names; two
+// cycles — two workers, a run beside the ticker — share the work by the
+// claims. Every query takes the clock as @now (the clock rule).
+// AccountCandidates is every person whose account flag is on, who is not
+// erased, and who has no link under the identity provider: the people the
+// cycle may prepare a link for, once the decision table says it is due.
+func (q *Queries) AccountCandidates(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.Query(ctx, accountCandidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const claimAccountLink = `-- name: ClaimAccountLink :one
+UPDATE staff.identity_links SET lease_id = $1::uuid, lease_until = $2::timestamptz
+WHERE id = (
+    SELECT l.id FROM staff.identity_links l
+    JOIN staff.people p ON p.id = l.person_id
+    WHERE l.provider = 'identity' AND p.provision_account AND p.erased_at IS NULL
+      AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= $3::timestamptz)
+      AND (l.lease_until IS NULL OR l.lease_until <= $3::timestamptz)
+    ORDER BY l.next_attempt_at NULLS FIRST, l.id
+    LIMIT 1
+    FOR UPDATE OF l SKIP LOCKED
+)
+RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error, attempts,
+    last_synced_at, last_spec_hash, synced_employee_number
+`
+
+type ClaimAccountLinkParams struct {
+	LeaseID    uuid.UUID
+	LeaseUntil time.Time
+	Now        time.Time
+}
+
+type ClaimAccountLinkRow struct {
+	ID                   int64
+	PersonID             int64
+	ExternalID           *string
+	State                string
+	Managed              bool
+	BlockedReason        *string
+	LastError            *string
+	Attempts             int32
+	LastSyncedAt         *time.Time
+	LastSpecHash         []byte
+	SyncedEmployeeNumber *string
+}
+
+// ClaimAccountLink leases the next due link — its next attempt reached or
+// never set, no lease or a lapsed one — of a person whose flag is on and who
+// is not erased: the link row alone is locked (OF l), and one another cycle
+// is claiming is skipped. Blocked and failed links are claimed on their
+// schedule like any other: the decision table never reads blocked as an
+// input, so a link recovers when what blocked it is gone.
+func (q *Queries) ClaimAccountLink(ctx context.Context, arg ClaimAccountLinkParams) (ClaimAccountLinkRow, error) {
+	row := q.db.QueryRow(ctx, claimAccountLink, arg.LeaseID, arg.LeaseUntil, arg.Now)
+	var i ClaimAccountLinkRow
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.ExternalID,
+		&i.State,
+		&i.Managed,
+		&i.BlockedReason,
+		&i.LastError,
+		&i.Attempts,
+		&i.LastSyncedAt,
+		&i.LastSpecHash,
+		&i.SyncedEmployeeNumber,
+	)
+	return i, err
+}
 
 const getPersonAccount = `-- name: GetPersonAccount :one
 
@@ -49,6 +147,25 @@ func (q *Queries) GetPersonAccount(ctx context.Context, id int64) (GetPersonAcco
 		&i.AccountRevision,
 	)
 	return i, err
+}
+
+const insertPreparingLink = `-- name: InsertPreparingLink :exec
+INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
+VALUES ($1, 'identity', NULL, 'preparing', true, $2::timestamptz, $2::timestamptz)
+ON CONFLICT (person_id, provider) DO NOTHING
+`
+
+type InsertPreparingLinkParams struct {
+	PersonID int64
+	Now      time.Time
+}
+
+// InsertPreparingLink writes the worker's preparing link — no user yet,
+// managed — under the person's lock. A link already there (another cycle's,
+// or HR's) is left as it is.
+func (q *Queries) InsertPreparingLink(ctx context.Context, arg InsertPreparingLinkParams) error {
+	_, err := q.db.Exec(ctx, insertPreparingLink, arg.PersonID, arg.Now)
+	return err
 }
 
 const lockPersonAccountLink = `-- name: LockPersonAccountLink :one
@@ -154,4 +271,64 @@ func (q *Queries) UpdatePersonAccount(ctx context.Context, arg UpdatePersonAccou
 	var account_revision int32
 	err := row.Scan(&account_revision)
 	return account_revision, err
+}
+
+const writeAccountResult = `-- name: WriteAccountResult :execrows
+UPDATE staff.identity_links SET
+    external_id = $1::text,
+    state = $2,
+    managed = $3,
+    blocked_reason = $4::varchar,
+    last_error = $5::varchar,
+    attempts = $6,
+    next_attempt_at = $7::timestamptz,
+    last_synced_at = $8::timestamptz,
+    last_spec_hash = $9::bytea,
+    synced_employee_number = $10::varchar,
+    lease_id = NULL,
+    lease_until = NULL,
+    updated_at = $11::timestamptz
+WHERE id = $12 AND lease_id = $13::uuid
+`
+
+type WriteAccountResultParams struct {
+	ExternalID           *string
+	State                string
+	Managed              bool
+	BlockedReason        *string
+	LastError            *string
+	Attempts             int32
+	NextAttemptAt        time.Time
+	LastSyncedAt         *time.Time
+	LastSpecHash         []byte
+	SyncedEmployeeNumber *string
+	Now                  time.Time
+	ID                   int64
+	LeaseID              uuid.UUID
+}
+
+// WriteAccountResult records what a claim did, on its lease alone, and
+// clears the lease: no row is a link gone (the person deleted) or claimed
+// since by another cycle, whose lease it now is. Neither the person's
+// revision nor updated_at moves: the link is the links group's.
+func (q *Queries) WriteAccountResult(ctx context.Context, arg WriteAccountResultParams) (int64, error) {
+	result, err := q.db.Exec(ctx, writeAccountResult,
+		arg.ExternalID,
+		arg.State,
+		arg.Managed,
+		arg.BlockedReason,
+		arg.LastError,
+		arg.Attempts,
+		arg.NextAttemptAt,
+		arg.LastSyncedAt,
+		arg.LastSpecHash,
+		arg.SyncedEmployeeNumber,
+		arg.Now,
+		arg.ID,
+		arg.LeaseID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

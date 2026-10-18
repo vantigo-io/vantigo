@@ -478,7 +478,12 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   oppbevaringsarbeiderens `STAFF_RETENTION_ENABLED` (standard på) og
   `STAFF_WORKERS_POLL` (standard `1h`, minst `1m`), som sletter det oppbevaringsreglene
   ikke lenger lar registeret beholde, og fullfører slettingen av dokumentenes filer
-  ([Ansatte](/nb/admin/staff/#oppbevaring)).
+  ([Ansatte](/nb/admin/staff/#oppbevaring)), og kontoarbeiderens
+  `STAFF_ACCOUNTS_ENABLED` (standard på), som klargjør, aktiverer og deaktiverer brukerne
+  kontoflagget ber om, på den samme kjøringsfrekvensen
+  ([Ansatte](/nb/admin/staff/#kontoarbeideren)). Arbeiderprosessen må ha de samme
+  `OIDC_*`- og `SCIM_*`-innstillingene som API-prosessen: der de er ulike, deaktiverer den
+  dem som slutter, og holder alle andre steg tilbake (`mode_mismatch`).
 - `vantigo.env.example` dokumenterer de statiske OIDC- og SCIM-innstillingene.
   Konfigurasjonen er bundet til utrullingen, og endringer krever omstart. Ikke legg
   leverandør- eller SCIM-hemmeligheter i filer under versjonskontroll — injiser
@@ -565,7 +570,13 @@ skjemaet `staff` som over. En installasjon som lister `MODULES` eksplisitt får 
 først når `staff` legges til; den trenger ingen annen modul. Se
 [Ansatte](/nb/admin/staff/).
 
-**Utgivelsen med Ansattes kontoer.** Ansatte-migreringen (`00051`) gjør en persons
+**Utgivelsen med Ansattes kontoer.** Den har to migreringer, én per skjema: identitys
+`00050` (brukere styrt av Ansatte, ansattrollene, den registrerte autoritetsmodusen) og
+Ansattes `00051` (en kobling som ennå ikke navngir en bruker, kontoflaggets egen
+revisjon, koblingens synkroniserte ansattnummer). Den starter også kontoarbeideren,
+`staff-accounts`, på som standard — den gjør ingenting før HR slår på en persons
+kontoflagg og en Owner navngir ansattrollene; `STAFF_ACCOUNTS_ENABLED=0` holder den av.
+Ansatte-migreringen (`00051`) gjør en persons
 ansattnummer unikt etter store bokstaver under sorteringen `C`, så store og små
 bokstaver vurderes likt uansett hvilken locale databasen ble opprettet med. Under en
 tyrkisk eller aserbajdsjansk locale kan den gamle indeksen ha godtatt to numre som bare
