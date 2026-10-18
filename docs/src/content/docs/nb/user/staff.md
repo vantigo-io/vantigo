@@ -369,7 +369,10 @@ og på hvilken adresse. HR endrer det:
 1. Slå på **Ansatte gir en konto**. Ansatte oppretter da personens bruker, deaktivert,
    det antallet dager før kontoens dag som **Forbered kontoen (dager før)** under
    [Kontoer](#kontoer) sier, aktiverer den den dagen og deaktiverer den dagen etter at
-   siste arbeidsforhold slutter. Den slettes aldri.
+   siste arbeidsforhold slutter. Den slettes aldri. Slår du av flagget, slutter Ansatte
+   å opprette og aktivere kontoen, men en som slutter, mister den likevel: dagen etter
+   siste arbeidsforhold deaktiverer Ansatte en konto den har laget, uansett hva flagget
+   sier (en konto HR koblet for hånd, blir latt være).
 2. **Konto fra** er dagen kontoen aktiveres. Står den tom, er det første dag i
    personens tidligste arbeidsforhold som ikke er avsluttet, og feltet sier hvilken dag
    det er — eller at det ikke finnes ennå, så det er ingen dag å aktivere kontoen på.

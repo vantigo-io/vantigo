@@ -1020,7 +1020,12 @@ not ended by today; between employments the later start, unless the stored date 
 after the earlier employment's end — the first that holds wins:
 
 1. An erased person: nothing (a legal hold does not stop the table). The flag off:
-   nothing, whatever the link.
+   nothing is created, enabled or updated, and a link is left as it is — but **leaving
+   disables anyway** (the owner's decision of 2026-10-18): once every employment has
+   ended, none later (item 4's phase), a Staff-managed user on the worker's link — not
+   HR's self-service link (`linked`) — who is not an Owner or a SystemAdmin, carries the
+   person's employee number (or the one last synced) and is still enabled is
+   deactivated, the day after the last end; anything else is nothing, with no report.
 2. No employment at all: `no_employment`.
 3. A link naming a user: a user identity no longer knows is `user_gone` (the link
    `failed`; never re-created) on the worker's link and nothing on HR's self-service
@@ -1102,7 +1107,9 @@ worker process, a run beside the ticker — through the link rows alone.
    cycles write one.
 3. **The claims.** Up to fifty due links — `next_attempt_at` reached or never set, no
    lease or a lapsed one, of a person whose flag is on and who is not erased, or carrying
-   a disable *Disable now* asked for ([below](#run-now-and-disable-now)) — each
+   a disable *Disable now* asked for ([below](#run-now-and-disable-now)), or — the flag
+   off, not erased — a leaver's: the worker's link to a Staff-managed user, every
+   employment ended before today in the settings zone and none later — each
    claimed alone by a conditional `UPDATE … FOR UPDATE OF l SKIP LOCKED` that sets
    `lease_id` and `lease_until` (five minutes on) and commits at once. A link another
    cycle holds is skipped; a link another transaction has locked at that instant (HR's

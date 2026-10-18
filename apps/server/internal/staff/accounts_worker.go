@@ -205,6 +205,10 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 	if err := s.prepareAccountLinks(ctx, mode); err != nil {
 		return tally, err
 	}
+	zone, err := s.settingsZone(ctx)
+	if err != nil {
+		return tally, err
+	}
 	for tally.attempted < accountsBatch {
 		now := s.deps.Clock()
 		if !run.until.IsZero() && !now.Before(run.until) {
@@ -212,7 +216,7 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 		}
 		lease := uuid.New()
 		claim, err := store.New(s.deps.Pool).ClaimAccountLink(ctx, store.ClaimAccountLinkParams{
-			LeaseID: lease, LeaseUntil: now.Add(accountsLeaseFor), Now: now,
+			LeaseID: lease, LeaseUntil: now.Add(accountsLeaseFor), Today: dayParam(civilToday(now, zone)), Now: now,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			break
@@ -228,6 +232,16 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 		}
 	}
 	return tally, nil
+}
+
+// settingsZone is the settings' business time zone, read on the pool: the
+// claim judges a leaver's last end on the civil day there.
+func (s *server) settingsZone(ctx context.Context) (*time.Location, error) {
+	set, err := settings(ctx, store.New(s.deps.Pool))
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the settings for the accounts cycle: %w", err)
+	}
+	return zoneOf(set), nil
 }
 
 // withCallTimeout runs one identity call under accountsCallTimeout.
@@ -456,15 +470,16 @@ func (r *accountResult) mismatched() {
 }
 
 // deactivationDue is whether the person's facts alone, the user unread, say
-// a Deactivate may be due: the flag on, not erased, an employment, and every
-// employment ended — or between employments before the later one is due.
+// a Deactivate may be due: not erased, an employment, and every employment
+// ended — or, the flag on, between employments before the later one is due
+// (with the flag off only a leaver's account is deactivated, D2).
 func deactivationDue(f accountFacts) bool {
 	p := f.decide
-	if p.Erased || !p.Flag || len(p.Employments) == 0 {
+	if p.Erased || len(p.Employments) == 0 {
 		return false
 	}
 	phase, between := accountPhaseOf(p, decideDay(f.today), f.createBeforeDays)
-	return phase == phaseEnded || (between && phase != phaseDue)
+	return phase == phaseEnded || (p.Flag && between && phase != phaseDue)
 }
 
 // stateOfRef is the link state ref's user reads as, current the link's: a

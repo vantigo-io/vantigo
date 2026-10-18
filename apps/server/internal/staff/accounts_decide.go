@@ -264,8 +264,13 @@ func accountEnabled(ref *contracts.AccountRef) bool {
 // account edge cases and the plan's Task 4a), first match wins:
 //
 //  1. Erased: nothing — a legal hold stops the erase only.
-//  2. The flag off: nothing; a link is left as it is (HR disables
-//     explicitly).
+//  2. The flag off: nothing is created, enabled or updated, and a link is
+//     left as it is — but leaving disables anyway (the owner's decision D2
+//     of 2026-10-18): once every employment has ended, none later (row 5's
+//     phase), a Staff-managed user on the worker's link (not HR's
+//     self-service link, linked) who is not privileged, carries the person's
+//     number (or the one last synced) and is still enabled is deactivated;
+//     anything else is nothing, with no report.
 //  3. No employment at all: report no_employment.
 //  4. A link naming a user: identity knows no such user — on HR's
 //     self-service link nothing, on the worker's report failed user_gone,
@@ -309,8 +314,11 @@ func accountEnabled(ref *contracts.AccountRef) bool {
 func decide(in accountDecision) accountStep {
 	none := accountStep{Kind: accountStepNone}
 	p := in.Person
-	if p.Erased || !p.Flag {
+	if p.Erased {
 		return none
+	}
+	if !p.Flag {
+		return decideFlagOff(in)
 	}
 	if len(p.Employments) == 0 {
 		return accountStep{Kind: accountStepReport, Reason: reasonNoEmployment}
@@ -368,6 +376,25 @@ func decide(in accountDecision) accountStep {
 		return step
 	}
 	return decideSpec(in, ref)
+}
+
+// decideFlagOff is row 2 of decide: with the flag off, only a leaver's
+// Staff-managed account on the worker's link is deactivated (D2).
+func decideFlagOff(in accountDecision) accountStep {
+	none := accountStep{Kind: accountStepNone}
+	ref := in.Ref
+	if len(in.Person.Employments) == 0 || in.Link == nil || in.Link.ExternalID == nil || in.Link.State == linkStateLinked ||
+		ref == nil || !ref.Managed || ref.Privileged {
+		return none
+	}
+	if !contracts.SameEmployeeNumber(ref.EmployeeNumber, in.Person.EmployeeNumber) &&
+		!contracts.SameEmployeeNumber(ref.EmployeeNumber, in.Link.SyncedEmployeeNumber) {
+		return none
+	}
+	if phase, _ := accountPhaseOf(in.Person, decideDay(in.Today), in.CreateBeforeDays); phase != phaseEnded || !accountEnabled(ref) {
+		return none
+	}
+	return accountStep{Kind: accountStepDeactivate}
 }
 
 // decideDue is row 11 of decide: the user's state, as it stands once the

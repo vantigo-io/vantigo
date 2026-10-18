@@ -171,7 +171,14 @@ person med flagget på gjør den dette:
 - dagen etter at siste arbeidsforhold slutter, deaktiverer den brukeren og avslutter
   øktene deres (`disabled`); en gjenansettelse aktiverer dem igjen på den nye startdatoen;
 - holder brukerens navn, språk og ansattnummer i takt med personen — og adressen bare
-  mens brukeren fortsatt venter.
+  mens brukeren fortsatt venter og ikke har fått tilsendt noen invitasjon.
+
+**Å slutte deaktiverer uansett.** Når flagget slås av, slutter Ansatte å opprette,
+aktivere og oppdatere personens konto, men ikke deaktiveringen ved slutten: når alle
+arbeidsforhold er avsluttet (ingen senere), deaktiveres en bruker Ansatte styrer gjennom
+sin egen lenke dagen etter siste sluttdag, uansett hva flagget sier. En bruker HR koblet
+for hånd (selvbetjeningslenken) er HRs og blir latt være; en Owner eller en SystemAdmin
+deaktiveres aldri av Ansatte — en annen Owner fratar dem rollen og deaktiverer dem.
 
 Hver person behandles én gang om dagen, ved første kjøring etter midnatt i
 forretningstidssonen. Flere arbeidere, eller en arbeider og en kjøring for hånd, deler

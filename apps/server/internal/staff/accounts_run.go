@@ -91,7 +91,14 @@ func (s *server) PostStaffAccountsRun(ctx context.Context, _ gen.PostStaffAccoun
 	if err != nil {
 		return nil, err
 	}
-	remaining, err := store.New(s.deps.Pool).CountDueAccountLinks(work, s.deps.Clock())
+	zone, err := s.settingsZone(work)
+	if err != nil {
+		return nil, err
+	}
+	now := s.deps.Clock()
+	remaining, err := store.New(s.deps.Pool).CountDueAccountLinks(work, store.CountDueAccountLinksParams{
+		Today: dayParam(civilToday(now, zone)), Now: now,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("staff: count the due account links: %w", err)
 	}

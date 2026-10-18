@@ -68,7 +68,11 @@ ON CONFLICT (person_id, provider) DO NOTHING;
 -- never set, no lease or a lapsed one — of a person whose flag is on and who
 -- is not erased, or whose link carries a disable Disable now asked for and
 -- identity has not confirmed (disable_requested_at, Task 4c review M1),
--- whatever the flag and the erasure: the link row alone is locked (OF l), and one another cycle
+-- whatever the flag and the erasure, or — the flag off, not erased — a
+-- leaver's: the worker's own link (not HR's self-service link, linked) to a
+-- Staff-managed user, every employment ended before @today and none later,
+-- which the decision table deactivates whatever the flag (the owner's
+-- decision D2): the link row alone is locked (OF l), and one another cycle
 -- is claiming is skipped. Blocked and failed links are claimed on their
 -- schedule like any other: the decision table never reads blocked as an
 -- input, so a link recovers when what blocked it is gone. LIMIT 1 with SKIP
@@ -81,7 +85,11 @@ WHERE id = (
     SELECT l.id FROM staff.identity_links l
     JOIN staff.people p ON p.id = l.person_id
     WHERE l.provider = 'identity'
-      AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL)
+      AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
+        OR (p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
+            AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+            AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
+                AND (e.end_date IS NULL OR e.end_date >= @today::date))))
       AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= @now::timestamptz)
       AND (l.lease_until IS NULL OR l.lease_until <= @now::timestamptz)
     ORDER BY l.next_attempt_at NULLS FIRST, l.id
@@ -183,7 +191,11 @@ WHERE id = @id AND lease_id = @lease_id::uuid;
 SELECT count(*) FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
 WHERE l.provider = 'identity'
-  AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL)
+  AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
+    OR (p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
+            AND (e.end_date IS NULL OR e.end_date >= @today::date))))
   AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= @now::timestamptz);
 
 -- The account attention items (Task 4c, accounts_attention.go), from Staff's

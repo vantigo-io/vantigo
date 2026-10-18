@@ -176,9 +176,13 @@ WHERE id = (
     SELECT l.id FROM staff.identity_links l
     JOIN staff.people p ON p.id = l.person_id
     WHERE l.provider = 'identity'
-      AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL)
-      AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= $3::timestamptz)
-      AND (l.lease_until IS NULL OR l.lease_until <= $3::timestamptz)
+      AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
+        OR (p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
+            AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+            AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
+                AND (e.end_date IS NULL OR e.end_date >= $3::date))))
+      AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= $4::timestamptz)
+      AND (l.lease_until IS NULL OR l.lease_until <= $4::timestamptz)
     ORDER BY l.next_attempt_at NULLS FIRST, l.id
     LIMIT 1
     FOR UPDATE OF l SKIP LOCKED
@@ -190,6 +194,7 @@ RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error
 type ClaimAccountLinkParams struct {
 	LeaseID    uuid.UUID
 	LeaseUntil time.Time
+	Today      pgtype.Date
 	Now        time.Time
 }
 
@@ -212,7 +217,11 @@ type ClaimAccountLinkRow struct {
 // never set, no lease or a lapsed one — of a person whose flag is on and who
 // is not erased, or whose link carries a disable Disable now asked for and
 // identity has not confirmed (disable_requested_at, Task 4c review M1),
-// whatever the flag and the erasure: the link row alone is locked (OF l), and one another cycle
+// whatever the flag and the erasure, or — the flag off, not erased — a
+// leaver's: the worker's own link (not HR's self-service link, linked) to a
+// Staff-managed user, every employment ended before @today and none later,
+// which the decision table deactivates whatever the flag (the owner's
+// decision D2): the link row alone is locked (OF l), and one another cycle
 // is claiming is skipped. Blocked and failed links are claimed on their
 // schedule like any other: the decision table never reads blocked as an
 // input, so a link recovers when what blocked it is gone. LIMIT 1 with SKIP
@@ -221,7 +230,12 @@ type ClaimAccountLinkRow struct {
 // relink of the person) — and the cycle then ends early: those links are
 // claimed by the next poll, never lost.
 func (q *Queries) ClaimAccountLink(ctx context.Context, arg ClaimAccountLinkParams) (ClaimAccountLinkRow, error) {
-	row := q.db.QueryRow(ctx, claimAccountLink, arg.LeaseID, arg.LeaseUntil, arg.Now)
+	row := q.db.QueryRow(ctx, claimAccountLink,
+		arg.LeaseID,
+		arg.LeaseUntil,
+		arg.Today,
+		arg.Now,
+	)
 	var i ClaimAccountLinkRow
 	err := row.Scan(
 		&i.ID,
@@ -311,14 +325,23 @@ const countDueAccountLinks = `-- name: CountDueAccountLinks :one
 SELECT count(*) FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
 WHERE l.provider = 'identity'
-  AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL)
-  AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= $1::timestamptz)
+  AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
+    OR (p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
+            AND (e.end_date IS NULL OR e.end_date >= $1::date))))
+  AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= $2::timestamptz)
 `
+
+type CountDueAccountLinksParams struct {
+	Today pgtype.Date
+	Now   time.Time
+}
 
 // CountDueAccountLinks is the due links ClaimAccountLink would still take,
 // leased or not: what POST /accounts/run reports as remaining.
-func (q *Queries) CountDueAccountLinks(ctx context.Context, now time.Time) (int64, error) {
-	row := q.db.QueryRow(ctx, countDueAccountLinks, now)
+func (q *Queries) CountDueAccountLinks(ctx context.Context, arg CountDueAccountLinksParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countDueAccountLinks, arg.Today, arg.Now)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
