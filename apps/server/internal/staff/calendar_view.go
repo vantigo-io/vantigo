@@ -9,7 +9,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/vantigo-io/vantigo/server/internal/calendar"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -48,7 +48,7 @@ func (s *server) GetStaffCalendar(ctx context.Context, req gen.GetStaffCalendarR
 	}
 	out := gen.StaffCalendar{
 		From: openapi_types.Date{Time: from}, To: openapi_types.Date{Time: to},
-		PublicHolidays: mapRows(calendar.PublicHolidays(from, to), func(d time.Time) openapi_types.Date { return openapi_types.Date{Time: d} }),
+		PublicHolidays: mapRows(holidays.PublicHolidays(from, to), func(d time.Time) openapi_types.Date { return openapi_types.Date{Time: d} }),
 		People:         []gen.StaffCalendarPerson{},
 	}
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {

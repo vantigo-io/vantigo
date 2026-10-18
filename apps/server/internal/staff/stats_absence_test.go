@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/vantigo-io/vantigo/server/internal/calendar"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 )
@@ -64,7 +64,7 @@ func TestStats_TheAbsenceFigures(t *testing.T) {
 	from := time.Date(2025, time.September, 13, 0, 0, 0, 0, time.UTC)
 	agreed := 0
 	for d := from; !d.After(time.Date(2026, time.September, 12, 0, 0, 0, 0, time.UTC)); d = d.AddDate(0, 0, 1) {
-		if calendar.BusinessDay(d) {
+		if holidays.BusinessDay(d) {
 			agreed++
 		}
 	}

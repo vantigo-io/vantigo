@@ -22,7 +22,7 @@ Communications' outbox is the working example.
 1. **No module→module dependencies.** A package under `internal/<module>/…` may
    import platform packages (`internal/config`, `internal/db`, `internal/httpx`,
    `internal/module`, `internal/contracts`, `internal/peppol` — the Peppol
-   SML/SMP lookup, shared by Customers and Invoices — `internal/calendar` — the
+   SML/SMP lookup, shared by Customers and Invoices — `internal/holidays` — the
    Norwegian public-holiday calendar, by which Invoices moves its due dates and Staff
    counts working days — `internal/netguard`
    — the shared table of addresses the guarded outbound clients refuse to
@@ -613,7 +613,7 @@ one the user directory would have to name; and the object store
 from the configuration, in the API and a worker alike, with a construction error kept
 for the calls that need a store rather than failing the process) for the bytes of
 people's documents. It counts the working days an absence takes by the platform
-calendar (`internal/calendar`), never a holiday list of its own. It reads no business module, provides no contract and fills no
+calendar (`internal/holidays`), never a holiday list of its own. It reads no business module, provides no contract and fills no
 slot, so switching it off strands nothing in another module — but it does strand its
 own objects and the rows of its ledger of objects still to remove
 (`staff.object_deletions`), which wait untouched until the module is on again. It keeps

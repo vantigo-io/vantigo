@@ -1,4 +1,4 @@
-// Package calendar is the platform's public-holiday calendar: which days are
+// Package holidays is the platform's public-holiday calendar: which days are
 // Norwegian public holidays, which are business days, and when Easter falls.
 // Invoices moves a due date and a reminder letter's deadline by it; Staff
 // counts the working days an absence deducts from the holiday account by it.
@@ -17,4 +17,4 @@
 // The calendar is Norway's only; a region beyond it would be a later setting
 // that callers pass in. It holds no data, reads no clock and imports the time
 // package only (purity_test.go): every day is an input.
-package calendar
+package holidays

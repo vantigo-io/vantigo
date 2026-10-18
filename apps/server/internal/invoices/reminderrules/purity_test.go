@@ -18,7 +18,7 @@ import (
 // rule by its own purity test.
 func TestReminderRules_ImportsNothingOfTheModule(t *testing.T) {
 	t.Parallel()
-	allowed := map[string]bool{"cmp": true, "fmt": true, "math/big": true, "slices": true, "sort": true, "strings": true, "time": true, "github.com/vantigo-io/vantigo/server/internal/calendar": true}
+	allowed := map[string]bool{"cmp": true, "fmt": true, "math/big": true, "slices": true, "sort": true, "strings": true, "time": true, "github.com/vantigo-io/vantigo/server/internal/holidays": true}
 	clock := map[string]bool{"Now": true, "Since": true, "Until": true, "After": true, "AfterFunc": true, "Tick": true, "NewTicker": true, "NewTimer": true, "Sleep": true, "Local": true}
 	files, err := filepath.Glob("*.go")
 	if err != nil {

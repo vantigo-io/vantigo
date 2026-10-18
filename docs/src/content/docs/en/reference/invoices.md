@@ -2822,7 +2822,7 @@ lock for one — and is:
 falls on a Saturday, a Sunday or a Norwegian public holiday (New Year's Day, Maundy
 Thursday, Good Friday, Easter Sunday and Monday, 1 May, 17 May, Ascension Day, Whit Sunday
 and Monday, Christmas Day, Boxing Day — the platform's calendar,
-[`internal/calendar`](/en/contributing/platform-packages/#the-calendar)). **A letter's deadline** is
+[`internal/holidays`](/en/contributing/platform-packages/#the-holidays)). **A letter's deadline** is
 `max(deadline_days, 14)` days after it is sent, moved off such a day the same way. Both
 only ever delay a charge: a payment order reaches no bank on a holiday.
 

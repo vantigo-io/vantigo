@@ -101,7 +101,7 @@ export const myCareDaysQueryOptions = (year: number) =>
 
 /**
  * The absence calendar of at most 93 days, with the public holidays in it
- * (`internal/calendar`), narrowed to a department when one is named — the
+ * (`internal/holidays`), narrowed to a department when one is named — the
  * server judges who is in it.
  */
 export const calendarQueryOptions = (from: string, to: string, departmentId?: number) =>
