@@ -295,12 +295,13 @@ func (f accountFacts) spec() contracts.AccountSpec {
 	}
 }
 
-// specHash is last_spec_hash: SHA-256 over the address (only while the user
-// is pending — afterwards identity's address is an Owner's, the owner's
-// answer 1), the display name, the language and the employee number.
-func (f accountFacts) specHash(pending bool) []byte {
+// specHash is last_spec_hash: SHA-256 over the address (only while it
+// follows the person's, AccountRef.EmailFollows — once the first invitation
+// went out identity's address is an Owner's, the owner's decision D1), the
+// display name, the language and the employee number.
+func (f accountFacts) specHash(follows bool) []byte {
 	email := ""
-	if pending {
+	if follows {
 		email = accountAddress(f.person)
 	}
 	sum := sha256.Sum256([]byte(strings.Join([]string{email, f.row.DisplayName, f.row.PreferredLanguage, f.row.EmployeeNumber}, "|")))
@@ -580,7 +581,7 @@ func (r *accountResult) succeeded(step accountStep, before *contracts.AccountRef
 		kind = eventAccountUpdated
 		number := f.row.EmployeeNumber
 		r.synced = &number
-		r.specHash = f.specHash(got.State == contracts.AccountStatePending)
+		r.specHash = f.specHash(got.EmailFollows)
 	}
 	r.events = append(r.events, accountEvent{kind: kind, payload: payload})
 }
@@ -754,7 +755,7 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 	initial := ref
 	link := accountLinkFacts{
 		State: claim.State, ExternalID: claim.ExternalID, Managed: claim.Managed,
-		SpecChanged:          ref != nil && !bytes.Equal(f.specHash(ref.State == contracts.AccountStatePending), claim.LastSpecHash),
+		SpecChanged:          ref != nil && !bytes.Equal(f.specHash(ref.EmailFollows), claim.LastSpecHash),
 		SyncedEmployeeNumber: deref(claim.SyncedEmployeeNumber),
 	}
 	in := accountDecision{Person: f.decide, Link: &link, Ref: ref, Mode: mode, CreateBeforeDays: f.createBeforeDays, Today: f.today, Fresh: run.fresh}
@@ -823,7 +824,7 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 		// wrote, so the re-run asks for no second; after a Prepare the user
 		// is compared with it for the first time.
 		link.SpecChanged = step.Kind != accountStepUpdate && ref != nil &&
-			!bytes.Equal(f.specHash(ref.State == contracts.AccountStatePending), r.specHash)
+			!bytes.Equal(f.specHash(ref.EmailFollows), r.specHash)
 		in.Link, in.Ref, in.Fresh = &link, ref, false
 		if unchanged {
 			if next := decide(in); !next.isCall() {

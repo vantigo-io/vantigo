@@ -209,7 +209,9 @@ func invitationState(invs []store.IdentityInvitation, now time.Time) contracts.I
 // reads pending, also while disabled (DisabledBy says by whom); a
 // directory-deactivated non-Owner under SCIM reads disabled by the
 // directory. EmailDiffers compares want with identity's address as identity
-// compares addresses, and is false for a placeholder address and for no want.
+// compares addresses, and is false for a placeholder address and for no want;
+// EmailFollows is a pending user to whom no invitation was delivered yet
+// (emailFollows).
 func (p *provisioning) ref(ctx context.Context, q *store.Queries, u provisionedUser, want string, now time.Time) (contracts.AccountRef, error) {
 	ref := contracts.AccountRef{
 		UserID:         u.ID,
@@ -242,7 +244,24 @@ func (p *provisioning) ref(ctx context.Context, q *store.Queries, u provisionedU
 		}
 		ref.Invitation = invitationState(invs, now)
 	}
+	follows, err := emailFollows(ctx, q, u)
+	if err != nil {
+		return contracts.AccountRef{}, err
+	}
+	ref.EmailFollows = follows
 	return ref, nil
+}
+
+// emailFollows is whether u's address still follows Staff's record (the
+// owner's decision of 2026-10-18, D1): u is pending and no invitation naming
+// them was delivered (UserInvitationDelivered). Once the first went out the
+// person was invited at that address, and Update writes it no more.
+func emailFollows(ctx context.Context, q *store.Queries, u provisionedUser) (bool, error) {
+	if u.PendingSince == nil {
+		return false, nil
+	}
+	delivered, err := q.UserInvitationDelivered(ctx, &u.ID)
+	return !delivered, err
 }
 
 // reread is the user id names as the contract reports them, on q.
@@ -661,7 +680,10 @@ type staffUpdatedAudit struct {
 
 // Update writes a managed user (ErrAccountNotManaged) to spec. In local mode
 // the display name, the language and the employee number, and — only while
-// the user is pending (the owner's answer 1) — the address: another user
+// the address follows Staff's record, the user pending and no invitation
+// naming them delivered yet (emailFollows; the owner's decision D1 of
+// 2026-10-18, which narrowed answer 1's "while pending") — the address:
+// another user
 // holding it is ErrAccountEmailTaken; the new address revokes the user's
 // acceptable invitations email_changed and an Owner's unnamed ones to the new
 // address replaced (named in the audit; an open Owner-role one refuses the
@@ -697,7 +719,11 @@ func (p *provisioning) Update(ctx context.Context, actor contracts.Actor, userID
 		var replaced []replacedInvitation
 		if local {
 			next.DisplayName = s.displayName
-			if u.PendingSince != nil && normalizeEmail(s.email) != u.NormalizedEmail {
+			follows, err := emailFollows(ctx, q, u)
+			if err != nil {
+				return err
+			}
+			if follows && normalizeEmail(s.email) != u.NormalizedEmail {
 				if _, taken, err := emailTaken(ctx, q, s.email); err != nil || taken {
 					return cmpOr(err, contracts.ErrAccountEmailTaken)
 				}

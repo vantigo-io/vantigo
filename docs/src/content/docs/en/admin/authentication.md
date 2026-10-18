@@ -156,7 +156,14 @@ Owner could disable one.
 A pending user's **invitation spell** begins when Staff creates them
 (`identity.users.invitations_since`): the invitations Staff's provisioning delivers to
 them since then count toward its three, and a fresh invitation (Staff's *Run now*) or a
-new address while they are pending starts another spell.
+new address before their first invitation was delivered starts another spell.
+
+A pending user's **address follows the person's record in Staff only until the first
+invitation naming the user has been delivered** (one whose delivery failed does not
+count). From then on the address is the one the person was invited at: Staff's
+provisioning no longer writes it, sends nothing to a new one, and reports the
+difference (`accountEmailDiffers` in Staff) for an Owner, who changes the address on
+the **Users** page — as for an active user.
 
 ### A pending user accepts their invitation
 
@@ -225,7 +232,7 @@ one it does nothing but deactivate.
 | Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's open invitation to that address is revoked `replaced` and named in the audit — but an open invitation to become an Owner keeps the address for its invitee. The answer says whether this call created the user (`Created`), so Staff never undoes a user it only found. | Finds the Staff-managed user with the number; creates nothing | `user.staff-prepared` |
 | Activate | Enables a user Staff disabled — a prepared user among them — giving them the [employee roles](#the-employee-roles) on that call only, so a role an Owner removes later stays removed; invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | `user.staff-activated` |
 | Deactivate | Disables the user as Staff's (`disabledBy: staff`) — also one the directory already deactivated — ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | `user.staff-deactivated` |
-| Update | Writes the display name, the language and the employee number; the address only while the user is pending, which revokes their invitations `email_changed` and an Owner's open invitations to the new address `replaced` (named in the audit) | Writes the language and the employee number only | `user.staff-updated` |
+| Update | Writes the display name, the language and the employee number; the address only while the user is pending and no invitation naming them has been delivered yet, which revokes their invitations `email_changed` and an Owner's open invitations to the new address `replaced` (named in the audit) | Writes the language and the employee number only | `user.staff-updated` |
 
 An activated pending user is enabled but still cannot sign in: password, passkey and
 OIDC sign-in refuse them — OIDC's first sign-in by their address answers

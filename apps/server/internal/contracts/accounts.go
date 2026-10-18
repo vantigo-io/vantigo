@@ -105,8 +105,10 @@ func (a Actor) Valid() bool {
 // be able to mint an account holding a role it names.
 type AccountSpec struct {
 	// Email is the address the caller chose for the account. Identity writes
-	// it only while the user is pending (no credential yet); afterwards the
-	// address is the Owner's to change in identity.
+	// it only while the address follows the caller's record
+	// (AccountRef.EmailFollows: the user is pending and no invitation naming
+	// them has been delivered); afterwards the address is identity's, which an
+	// Owner changes.
 	Email string
 	// DisplayName is the name identity shows for the user.
 	DisplayName string
@@ -148,10 +150,16 @@ type AccountRef struct {
 	// from the one the caller passed to Account, compared as identity
 	// compares addresses (normalised, so a difference of case alone is none).
 	// It is false when identity holds a placeholder no mail reaches, and when
-	// the caller passed none. A non-pending user's address is never written
-	// by Update, so a difference is the caller's to report to an Owner. The
-	// identity address itself never crosses into the caller.
+	// the caller passed none. Update writes the address only while
+	// EmailFollows, so any other difference is the caller's to report to an
+	// Owner. The identity address itself never crosses into the caller.
 	EmailDiffers bool
+	// EmailFollows reports whether the user's address still follows the
+	// caller's record: the user is pending and no invitation naming them has
+	// been delivered (one whose delivery failed is none; one issued and not
+	// yet sent counts as delivered). Once the first invitation went out, the
+	// address is the one the person was invited at, and Update keeps it.
+	EmailFollows bool
 	// Privileged reports whether the user is an Owner or a SystemAdmin, whom
 	// an Owner handles by hand: a provider refuses every write to them
 	// (ErrAccountPrivileged), managed or not — a managed user promoted to
@@ -295,7 +303,8 @@ type AccountProvisioning interface {
 	// ErrLastOwner, ErrUserGone.
 	Deactivate(ctx context.Context, actor Actor, userID uuid.UUID) (AccountRef, error)
 	// Update writes the display name, language and employee number of a
-	// managed user, and the email only while the user is pending; in
+	// managed user, and the email only while it follows the caller's record
+	// (AccountRef.EmailFollows: pending, no invitation delivered yet); in
 	// federated mode the language and the employee number only.
 	// ErrAccountNotManaged, ErrAccountEmailTaken, ErrEmployeeNumberTaken,
 	// ErrUserGone.

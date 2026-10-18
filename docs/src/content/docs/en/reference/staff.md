@@ -1053,8 +1053,11 @@ after the earlier employment's end — the first that holds wins:
    only, and a pending user is never activated there; a pending user's invitation:
    active, nothing; revoked by an Owner, `invitation_revoked`, and three unanswered,
    `invitation_unanswered`, unless HR runs the person now; otherwise activate.
-8. The details: a pending user whose address in identity differs, update (local mode);
-   a user past pending whose address differs, `email_differs` for an Owner to settle in
+8. The details: a pending user whose address in identity differs while it still follows
+   the person's — no invitation naming the user delivered yet
+   (`AccountRef.EmailFollows`; the owner's decision of 2026-10-18) — update (local
+   mode); any other user whose address differs — pending once the first invitation went
+   out, or past pending — `email_differs` for an Owner to settle in
    identity (local mode — in federated mode the identity provider owns the address),
    with an update when the person's other details changed; the details changed, or
    the person renumbered, update — before the window too.
@@ -1131,7 +1134,7 @@ worker process, a run beside the ticker — through the link rows alone.
    day one with `createBeforeDays` 0). After a successful `Prepare` or `Update` the
    employee number written is the link's `synced_employee_number`; after an `Update` the
    person's details hash is the link's `last_spec_hash` — SHA-256 over the address
-   (while the user is pending only), the display name, the language and the employee
+   (only while it follows the person's, `AccountRef.EmailFollows`), the display name, the language and the employee
    number — so the next run asks for no second update.
 5. **The result**, under the person's lock and then the link `WHERE lease_id` is the
    claim's (the lock order: the person, then the link): `state`, `managed`,
@@ -3143,7 +3146,7 @@ once the flag is off.
 | `accountPrivileged` | `account_privileged` | The user is an Owner or a SystemAdmin. |
 | `accountMismatch` | `mismatch` | Identity's employee number is not the person's. |
 | `accountModeChanged` | `mode_changed` | A pending user from local mode under federated mode. |
-| `accountEmailDiffers` | `email_differs` | A non-pending user's address differs from the person's. |
+| `accountEmailDiffers` | `email_differs` | The user's address in identity differs from the person's after the first invitation was delivered (pending or not): Staff no longer writes it, an Owner does. |
 | `accountEmailTaken` | `account_email_taken` | Another user holds the address. |
 | `accountNumberTaken` | `employee_number_taken` | An unmanaged user holds the employee number. |
 | `accountFailing` | `last_error`, `disable_requested_at` | The flag on and not erased: `attempts` ≥ 3 with `last_error` set, or `blocked_reason = invalid_actor` (Staff's own fault, folded in). Otherwise — the flag off, or erased — only from `disable_requested_at`: set with `last_error`, or set more than ten minutes ago (longer than a claim's lease, so a disable in hand raises nothing). A flag turned off after failures raises nothing (review L1). |

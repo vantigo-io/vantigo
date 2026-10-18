@@ -246,7 +246,8 @@ Communications' outbox is the working example.
     address never crosses into the caller**: `Account(ctx, userID, wantEmail)` takes
     the address the caller would set and answers only `AccountRef.EmailDiffers`, judged
     by identity's own address normalisation and false for a placeholder no mail
-    reaches. `AccountRef.Privileged` marks an Owner or a SystemAdmin, managed or not
+    reaches; `AccountRef.EmailFollows` says whether `Update` would still write it (the
+    user pending and no invitation naming them delivered yet). `AccountRef.Privileged` marks an Owner or a SystemAdmin, managed or not
     (a managed user promoted to Owner is unmanaged by the promotion), whom every write
     refuses with `ErrAccountPrivileged`, so a caller reports them without calling.
     `AccountRef.Created` is true only on the `Prepare` that created the user, so a

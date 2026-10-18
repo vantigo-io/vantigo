@@ -279,6 +279,7 @@ func (f *fakeAccounts) Prepare(_ context.Context, actor contracts.Actor, spec co
 	ref := contracts.AccountRef{
 		UserID: uuid.New(), State: contracts.AccountStatePending, DisabledBy: contracts.DisabledByStaff, Managed: true,
 		EmployeeNumber: spec.EmployeeNumber, Invitation: contracts.Invitation{State: contracts.InvitationNone},
+		EmailFollows: true,
 	}
 	f.users[ref.UserID] = ref
 	ref.Created = true
@@ -326,6 +327,8 @@ func (f *fakeAccounts) Activate(ctx context.Context, actor contracts.Actor, id u
 			issued = 1
 		}
 		ref.Invitation = contracts.Invitation{State: contracts.InvitationActive, Issued: issued}
+		// Delivered: the address follows the person's no more (D1).
+		ref.EmailFollows = false
 	}
 	f.users[id] = ref
 	return ref, nil
@@ -388,7 +391,7 @@ func (f *fakeAccounts) Update(_ context.Context, actor contracts.Actor, id uuid.
 		return contracts.AccountRef{}, contracts.ErrAccountNotManaged
 	}
 	ref.EmployeeNumber = spec.EmployeeNumber
-	ref.EmailDiffers = ref.EmailDiffers && ref.State != contracts.AccountStatePending
+	ref.EmailDiffers = ref.EmailDiffers && !ref.EmailFollows
 	f.users[id] = ref
 	return ref, nil
 }

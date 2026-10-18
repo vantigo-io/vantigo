@@ -398,7 +398,7 @@ funnet en bruker:
   ventende brukeren, som Ansatte da aldri aktiverer), brukeren er borte, kontoen hører
   til et annet ansattnummer (den er noen andres og blir latt være), en ventende bruker
   opprettet for lokale kontoer under føderert modus, adressen i identitet er en annen
-  enn personens etter at passordet ble valgt (en eier endrer den i identitet), en
+  enn personens etter at invitasjonen ble sendt (en eier endrer den i identitet), en
   invitasjon trukket tilbake av en eier eller tre ubesvarte, brukeren styres ikke lenger
   av Ansatte, en eier eller en systemadministrator, ingen bruker med ansattnummeret ennå
   hos identitetsleverandøren, adressen eller ansattnummeret holdt av en bruker Ansatte

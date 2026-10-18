@@ -496,7 +496,7 @@ export const staffCatalog = {
     accountReason_mode_changed:
       "The pending user was created for local accounts, but the installation is now federated and never invites.",
     accountReason_email_differs:
-      "The user's address in identity differs from the person's chosen address since they chose a password; an Owner changes it in identity.",
+      "The user's address in identity differs from the person's chosen address since their invitation was sent; an Owner changes it in identity.",
     accountReason_invitation_revoked: "An Owner revoked the invitation; Run now sends a fresh one.",
     accountReason_invitation_unanswered: "Three invitations went unanswered; Run now sends a fresh one.",
     accountReason_account_not_managed:
@@ -1922,7 +1922,7 @@ export const staffCatalog = {
     accountReason_mode_changed:
       "Den ventende brukeren ble opprettet for lokale kontoer, men installasjonen er nå føderert og inviterer aldri.",
     accountReason_email_differs:
-      "Brukerens adresse i identitet er en annen enn personens valgte adresse etter at passordet ble valgt; en eier endrer den i identitet.",
+      "Brukerens adresse i identitet er en annen enn personens valgte adresse etter at invitasjonen ble sendt; en eier endrer den i identitet.",
     accountReason_invitation_revoked: "En eier trakk tilbake invitasjonen; Kjør nå sender en ny.",
     accountReason_invitation_unanswered: "Tre invitasjoner ble ikke besvart; Kjør nå sender en ny.",
     accountReason_account_not_managed:
