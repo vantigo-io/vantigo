@@ -2,9 +2,15 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
+	"io/fs"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
@@ -160,13 +166,24 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("a link naming a user: %v", err)
 	}
 
-	// A row of each reserved type 00051 seeds, which the rollback gives
-	// 00047's absent.
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO staff.absences (person_id, type_id, first_day, last_day, hours, status, requested_by_user_id, created_at, updated_at)
-		SELECT $1, id, '2024-03-04', '2024-03-04', 2, 'registered', gen_random_uuid(), now(), now()
-		FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours')`, kari); err != nil {
-		t.Fatalf("the reserved rows: %v", err)
+	// A row naming a reserved type 00051 seeds makes the Down refuse, naming
+	// the types: it cannot give the row another type without widening who
+	// reads it (an HR-only erased row taking absent would read as absent to a
+	// manager). Each row alone is refused; with none, the Down runs.
+	for _, key := range []string{"absent_hours", "absent_hr_only", "absent_hr_only_hours"} {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO staff.absences (person_id, type_id, first_day, last_day, hours, status, requested_by_user_id, created_at, updated_at)
+			SELECT $1, id, '2024-03-04', '2024-03-04', 2, 'registered', gen_random_uuid(), now(), now()
+			FROM staff.absence_types WHERE key = $2`, kari, key); err != nil {
+			t.Fatalf("a %s row: %v", key, err)
+		}
+		err := migrateErr(url, staffAccountsVersion-1)
+		if err == nil || !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "00051") {
+			t.Errorf("the Down with a %s row: %v, want it refused naming %s", key, err, key)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM staff.absences WHERE person_id = $1`, kari); err != nil {
+			t.Fatalf("delete the %s row: %v", key, err)
+		}
 	}
 
 	migrateTo(t, url, staffAccountsVersion-1)
@@ -176,10 +193,6 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 	if got := staffCollect(t, ctx, pool, "the reserved types after the rollback", `
 		SELECT key FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours')`); len(got) != 0 {
 		t.Errorf("the rollback left %v", got)
-	}
-	if got := staffCollect(t, ctx, pool, "the rows' types after the rollback", `
-		SELECT t.key FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id WHERE a.person_id = $1`, kari); !equalStrings(got, []string{"absent", "absent", "absent"}) {
-		t.Errorf("after the rollback the reserved rows' types = %v, want absent", got)
 	}
 	if got := staffCollect(t, ctx, pool, "the erase settings after the rollback", `
 		SELECT column_name FROM information_schema.columns WHERE table_schema = 'staff' AND table_name = 'settings' AND column_name LIKE 'erase_%'`); len(got) != 0 {
@@ -220,5 +233,61 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 		if _, err := pool.Exec(ctx, sql); err != nil {
 			t.Fatalf("clean up (%s): %v", sql, err)
 		}
+	}
+}
+
+// migrateErr moves the database to version, up or down, and answers the
+// migration's error rather than failing the test.
+func migrateErr(databaseURL string, version int64) error {
+	ctx := context.Background()
+	cfg, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		return err
+	}
+	sqlDB := sql.OpenDB(stdlib.GetConnector(*cfg))
+	defer func() { _ = sqlDB.Close() }()
+	dir, err := fs.Sub(db.MigrationsFS, "migrations")
+	if err != nil {
+		return err
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, dir)
+	if err != nil {
+		return err
+	}
+	current, err := provider.GetDBVersion(ctx)
+	if err != nil {
+		return err
+	}
+	if version >= current {
+		_, err = provider.UpTo(ctx, version)
+		return err
+	}
+	_, err = provider.DownTo(ctx, version)
+	return err
+}
+
+// 00051 refuses to run, naming the key, when a company type already holds
+// one of the keys it reserves (review M3): a company type keyed absent_hours
+// would otherwise fail the seed's insert on the unique key with a bare
+// constraint error, or worse be mistaken for the reserved type.
+func TestStaffAccounts_RefusesACompanyTypeHoldingAReservedKey(t *testing.T) {
+	for _, key := range []string{"absent_hours", "absent_hr_only", "absent_hr_only_hours"} {
+		url := testdb.URL(t)
+		migrateTo(t, url, staffAccountsVersion-1)
+		ctx := context.Background()
+		pool, err := db.Open(ctx, url)
+		if err != nil {
+			t.Fatalf("open pool: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO staff.absence_types (key, name_en, name_nb, kind, unit, paid, needs_decision, sort, created_at, updated_at)
+			VALUES ($1, 'Ours', 'Vår', 'other', 'days', true, true, 50, now(), now())`, key); err != nil {
+			t.Fatalf("a company type keyed %s: %v", key, err)
+		}
+		err = migrateErr(url, staffAccountsVersion)
+		if err == nil || !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "reserved") {
+			t.Errorf("00051 over a company type keyed %s: %v, want it refused naming the key", key, err)
+		}
+		pool.Close()
 	}
 }
