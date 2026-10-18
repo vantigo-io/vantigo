@@ -57,6 +57,13 @@ CREATE TABLE identity.provisioning_roles (
 );
 
 -- +goose Down
+-- An operator's last resort, never a routine rollback (review item 4): the
+-- Down drops who manages a user, their employee number and whether they are
+-- pending, and the invitations' user. A Staff-managed pending user then reads
+-- as an ordinary disabled user with no credential, and a Down followed by an
+-- Up leaves them orphaned — managed by nobody, unknown to Staff's link by
+-- number, never invited again. Before rolling back, an Owner stops managing
+-- and deletes the pending users Staff made (admin/installation.md).
 DROP TABLE identity.provisioning_roles;
 ALTER TABLE identity.system_settings
     DROP COLUMN authority_mode_at,
