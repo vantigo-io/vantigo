@@ -112,7 +112,7 @@ an account that was provisioned by SCIM or signed in through the identity provid
 ("This user has SCIM or federated identity history and cannot be deleted." —
 disable it instead, or deprovision it from the provider); and an Owner who has
 granted delegations that still exist — revoke those first. An account Staff manages
-has no **Delete user** at all; its menu says why instead (below).
+has **Delete user** greyed out, with the reason beneath it (below).
 
 ## Accounts Staff manages
 
@@ -127,10 +127,11 @@ becomes Staff's only when an Owner adopts it.
 person's name and the roles Staff may give, but it cannot be used until the person
 accepts the invitation Staff sends them and chooses a password (see
 [Getting started](/en/user/getting-started/#when-your-account-was-set-up-from-the-staff-register)).
-Its menu's **Enable access** is greyed out — "Not accepted their invitation yet: the
-account opens only when they accept it." — and setting a password or making it an
-Owner is refused for the same reason. You may still **Disable access**; Staff then does
-not enable it, and HR sees why on the person's Account tab.
+Its menu's **Enable access**, **Send reset email** and **Set initial password** are
+greyed out — "Not accepted their invitation yet: the account opens only when they
+accept it." — and making it an Owner is refused: "A pending user cannot be made an
+Owner until they have accepted their invitation." You may still **Disable access**;
+Staff then does not enable it, and HR sees why on the person's Account tab.
 
 **Who disabled it.** Staff disables an account the day after the person's last
 employment ends; the row reads **Disabled by Staff**. When you disable an account
@@ -156,11 +157,14 @@ this account?** — "Staff will no longer enable, disable or update _name_. The 
 stays as it is now; a pending account stays pending until the person accepts their
 invitation or you delete it." Afterwards Staff leaves the account alone and HR sees
 "not managed" on the person's Account tab. Making a managed account an Owner stops
-Staff managing it in the same change.
+Staff managing it in the same change; the **Edit user** dialog says so when you choose
+**Owner**: "Making them an Owner stops Staff managing this account." To give an
+adopted account another employee number, stop managing it and adopt it again with the
+new one.
 
-**Delete.** A managed account cannot be deleted: its menu says "Staff manages this
-account, so it cannot be deleted. Stop managing it first." Stop managing it, then
-delete it as any other.
+**Delete.** A managed account cannot be deleted: **Delete user** is greyed out, with
+"Staff manages this account, so it cannot be deleted. Stop managing it first."
+beneath it. Stop managing it, then delete it as any other.
 
 What Staff does on its side, and when, is described in the
 [administration guide for Staff](/en/admin/staff/).
@@ -235,14 +239,16 @@ the section says "No role named: Staff creates no accounts until you name one." 
 Staff's dashboard lists the people waiting.
 
 Each custom role is listed with a box to tick and the permissions it carries. Tick the
-roles employees should have and choose **Save roles Staff may give**: the whole set is
-saved at once, so a role you untick is taken out of it — "Roles Staff may give saved".
+roles employees should have and choose **Save roles Staff may give**, which is available
+once you have changed the set: the whole set is saved at once, so a role you untick is
+taken out of it — "Roles Staff may give saved".
 
 A role that grants administration cannot be one of them, so that HR, who decides who
 gets an account, can never hand anyone administration: one carrying **Manage
 identity**, **Manage staff**, **Decide absence**, **Reveal and erase personal data** or
-any other permission that cannot be delegated is marked **Grants administration**, and
-saving a set with it is refused, naming the role and the permission — "_role_ carries
+any other permission that cannot be delegated is marked **Grants administration** and
+cannot be ticked. One that came to be in the set before can still be unticked; saving a
+set that keeps it is refused, naming the role and the permission — "_role_ carries
 _permission_ (_key_), which grants administration; Staff may not give it." — and
 nothing changes. A role in the set keeps that limit when edited: giving it such a
 permission in the role dialog is refused with "This role is one Staff may give, so it

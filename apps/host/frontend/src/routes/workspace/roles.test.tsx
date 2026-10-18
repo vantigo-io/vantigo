@@ -72,6 +72,8 @@ const roles = [
   role("r-timer", "Timekeeper", ["time:access"]),
   role("r-hr", "HR lead", ["staff:access", "staff:manage"]),
   role("r-meter", "Meter reader", ["energy:secret"]),
+  // Two denied keys, out of key order: identity names the first in key order.
+  role("r-boss", "Boss", ["staff:manage", "identity:manage"]),
 ];
 
 const refusal = (status: number, code: string) => Object.assign(new Error(`server text for ${code}`), { status, code });
@@ -146,12 +148,26 @@ describe("the roles page's Roles Staff may give", () => {
     await waitFor(() => expect(api.replaceProvisioningRoles).toHaveBeenCalledWith([]));
   });
 
-  it("puts role_not_assignable in words, naming the role and the key that grants administration", async () => {
-    api.replaceProvisioningRoles.mockRejectedValue(refusal(400, "role_not_assignable"));
+  /** The set as loaded holding these roles too, so a role that grants administration is already ticked. */
+  const setHolds = (...ids: string[]) =>
+    api.listProvisioningRoles.mockResolvedValue({
+      roles: ["r-employee", ...ids].map((id) => {
+        const r = roles.find((item) => item.id === id) as AuthorizationRole;
+        return { id, name: r.name, displayName: r.displayName, permissionKeys: r.permissions };
+      }),
+    });
+
+  const saveAfterTickingTimekeeper = async () => {
     const card = await section();
     await waitFor(() => expect(within(card).getByRole("checkbox", { name: "Employee" })).toBeChecked());
-    fireEvent.click(within(card).getByRole("checkbox", { name: "HR lead" }));
+    fireEvent.click(within(card).getByRole("checkbox", { name: "Timekeeper" }));
     fireEvent.click(within(card).getByRole("button", { name: "Save roles Staff may give" }));
+  };
+
+  it("puts role_not_assignable in words, naming the role and the key that grants administration", async () => {
+    setHolds("r-hr");
+    api.replaceProvisioningRoles.mockRejectedValue(refusal(400, "role_not_assignable"));
+    await saveAfterTickingTimekeeper();
     expect(
       await screen.findByText(
         "HR lead carries Manage staff (staff:manage), which grants administration; Staff may not give it.",
@@ -161,11 +177,9 @@ describe("the roles page's Roles Staff may give", () => {
   });
 
   it("names a non-delegable key the same way", async () => {
+    setHolds("r-meter");
     api.replaceProvisioningRoles.mockRejectedValue(refusal(400, "role_not_assignable"));
-    const card = await section();
-    await waitFor(() => expect(within(card).getByRole("checkbox", { name: "Employee" })).toBeChecked());
-    fireEvent.click(within(card).getByRole("checkbox", { name: "Meter reader" }));
-    fireEvent.click(within(card).getByRole("button", { name: "Save roles Staff may give" }));
+    await saveAfterTickingTimekeeper();
     expect(
       await screen.findByText(
         "Meter reader carries Secret energy (energy:secret), which grants administration; Staff may not give it.",
@@ -173,12 +187,43 @@ describe("the roles page's Roles Staff may give", () => {
     ).toBeInTheDocument();
   });
 
+  it("names the role's first denied key in key order, as identity does", async () => {
+    setHolds("r-boss");
+    api.replaceProvisioningRoles.mockRejectedValue(refusal(400, "role_not_assignable"));
+    await saveAfterTickingTimekeeper();
+    expect(
+      await screen.findByText(
+        "Boss carries Manage identity (identity:manage), which grants administration; Staff may not give it.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("says only custom roles may be given when no chosen role carries such a key", async () => {
     api.replaceProvisioningRoles.mockRejectedValue(refusal(400, "role_not_assignable"));
+    await saveAfterTickingTimekeeper();
+    expect(await screen.findByText("Only custom roles can be roles Staff may give.")).toBeInTheDocument();
+  });
+
+  it("keeps Save disabled until the set changes", async () => {
     const card = await section();
     await waitFor(() => expect(within(card).getByRole("checkbox", { name: "Employee" })).toBeChecked());
-    fireEvent.click(within(card).getByRole("button", { name: "Save roles Staff may give" }));
-    expect(await screen.findByText("Only custom roles can be roles Staff may give.")).toBeInTheDocument();
+    const save = within(card).getByRole("button", { name: "Save roles Staff may give" });
+    expect(save).toBeDisabled();
+    fireEvent.click(within(card).getByRole("checkbox", { name: "Timekeeper" }));
+    expect(save).toBeEnabled();
+    fireEvent.click(within(card).getByRole("checkbox", { name: "Timekeeper" }));
+    expect(save).toBeDisabled();
+  });
+
+  it("lets no role that grants administration be newly ticked, but one in the set be unticked", async () => {
+    setHolds("r-meter");
+    const card = await section();
+    await waitFor(() => expect(within(card).getByRole("checkbox", { name: "Meter reader" })).toBeChecked());
+    expect(within(card).getByRole("checkbox", { name: "HR lead" })).toBeDisabled();
+    const meter = within(card).getByRole("checkbox", { name: "Meter reader" });
+    expect(meter).toBeEnabled();
+    fireEvent.click(meter);
+    expect(meter).not.toBeChecked();
   });
 });
 

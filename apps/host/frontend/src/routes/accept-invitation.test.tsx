@@ -35,7 +35,16 @@ describe("accepting an invitation", () => {
     api.validateInvitation.mockResolvedValue({ valid: true, email: "kari@example.com", role: "User" });
     await renderAccept();
     expect(screen.getByLabelText("Display name")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Kari N" } });
+    fireEvent.change(screen.getByLabelText(/Password/), { target: { value: "Correct-horse-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() =>
+      expect(api.acceptInvitation).toHaveBeenCalledWith({
+        token: "tok-1",
+        displayName: "Kari N",
+        password: "Correct-horse-1",
+      }),
+    );
   });
 
   it("asks only a password for an account Staff prepared, and says the account is ready", async () => {

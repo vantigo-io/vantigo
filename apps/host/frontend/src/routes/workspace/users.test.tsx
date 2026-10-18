@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   enableUser: vi.fn(),
   disableUser: vi.fn(),
   deleteUser: vi.fn(),
+  updateUser: vi.fn(),
+  sendPasswordReset: vi.fn(),
   listInvitations: vi.fn(),
 }));
 
@@ -24,8 +26,8 @@ vi.mock("../../api/users", () => ({
   disableUser: api.disableUser,
   deleteUser: api.deleteUser,
   createUser: vi.fn(),
-  updateUser: vi.fn(),
-  sendPasswordReset: vi.fn(),
+  updateUser: api.updateUser,
+  sendPasswordReset: api.sendPasswordReset,
   setUserPassword: vi.fn(),
 }));
 
@@ -63,6 +65,12 @@ const renderUsers = async (users: ManagedUser[]) => {
 
 /** The desktop table's row for a user: the page also renders the mobile cards, hidden by CSS. */
 const row = (name: string) => screen.getAllByText(name)[0].closest("tr") as HTMLElement;
+
+/** The edit dialog's Role select: its visible input, not the hidden value field beside it. */
+const roleInput = async () =>
+  (await within(await screen.findByRole("dialog")).findAllByLabelText("Role")).find(
+    (element) => element.tagName === "INPUT" && (element as HTMLInputElement).type !== "hidden",
+  ) as HTMLElement;
 
 const openActions = (name: string) => {
   fireEvent.click(within(row(name)).getByRole("button", { name: `Actions for ${name}` }));
@@ -125,7 +133,7 @@ describe("adopting a user for Staff and stopping it", () => {
     await renderUsers([user({})]);
     openActions("Kari Nordmann");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Adopt for Staff" }));
-    fireEvent.change(await screen.findByLabelText("Employee number"), { target: { value: " 1042 " } });
+    fireEvent.change(await screen.findByLabelText(/Employee number/), { target: { value: " 1042 " } });
     fireEvent.click(screen.getByRole("button", { name: "Adopt" }));
     await waitFor(() => expect(api.manageUser).toHaveBeenCalledWith("u-1", "1042"));
     expect(await screen.findByText("Staff now manages the account")).toBeInTheDocument();
@@ -135,7 +143,10 @@ describe("adopting a user for Staff and stopping it", () => {
     await renderUsers([user({})]);
     openActions("Kari Nordmann");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Adopt for Staff" }));
-    fireEvent.change(await screen.findByLabelText("Employee number"), { target: { value: "10 42" } });
+    const input = await screen.findByLabelText(/Employee number/);
+    expect(input).toHaveAttribute("maxlength", "16");
+    expect(input.closest(".mantine-InputWrapper-root")?.querySelector(".mantine-InputWrapper-required")).not.toBeNull();
+    fireEvent.change(input, { target: { value: "10 42" } });
     fireEvent.click(screen.getByRole("button", { name: "Adopt" }));
     expect(
       await screen.findByText("Enter 1 to 16 characters, each a letter a–z, a digit or a hyphen."),
@@ -154,7 +165,7 @@ describe("adopting a user for Staff and stopping it", () => {
     await renderUsers([user({})]);
     openActions("Kari Nordmann");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Adopt for Staff" }));
-    fireEvent.change(await screen.findByLabelText("Employee number"), { target: { value: "1042" } });
+    fireEvent.change(await screen.findByLabelText(/Employee number/), { target: { value: "1042" } });
     fireEvent.click(screen.getByRole("button", { name: "Adopt" }));
     expect(await screen.findByText(words)).toBeInTheDocument();
     expect(screen.queryByText(`server text for ${code}`)).not.toBeInTheDocument();
@@ -188,13 +199,109 @@ describe("adopting a user for Staff and stopping it", () => {
 });
 
 describe("what a Staff-managed or pending user cannot have done", () => {
-  it("hides Delete for a user Staff manages, and says why", async () => {
+  it("greys out Delete for a user Staff manages, and says why", async () => {
     await renderUsers([user({ managedBy: "staff", employeeNumber: "1042" })]);
     openActions("Kari Nordmann");
-    await screen.findByRole("menuitem", { name: "Stop managing" });
-    expect(screen.queryByRole("menuitem", { name: "Delete user" })).not.toBeInTheDocument();
+    const del = await screen.findByRole("menuitem", { name: /Delete user/ });
+    expect(del).toBeDisabled();
     expect(
-      screen.getByText("Staff manages this account, so it cannot be deleted. Stop managing it first."),
+      within(del).getByText("Staff manages this account, so it cannot be deleted. Stop managing it first."),
+    ).toBeInTheDocument();
+  });
+
+  it("still offers Disable access for a pending user Staff disabled, beside the greyed Enable", async () => {
+    api.disableUser.mockResolvedValue(user({}));
+    await renderUsers([
+      user({
+        pending: true,
+        disabled: true,
+        active: false,
+        disabledBy: "staff",
+        managedBy: "staff",
+        employeeNumber: "1",
+      }),
+    ]);
+    openActions("Kari Nordmann");
+    expect(await screen.findByRole("menuitem", { name: /Enable access/ })).toBeDisabled();
+    const disable = screen.getByRole("menuitem", { name: "Disable access" });
+    expect(disable).toBeEnabled();
+    fireEvent.click(disable);
+    fireEvent.click(await screen.findByRole("button", { name: "Disable access" }));
+    await waitFor(() => expect(api.disableUser).toHaveBeenCalledWith("u-1"));
+  });
+
+  it("offers no Disable access for a pending user an Owner already disabled", async () => {
+    await renderUsers([
+      user({
+        pending: true,
+        disabled: true,
+        active: false,
+        disabledBy: "owner",
+        managedBy: "staff",
+        employeeNumber: "1",
+      }),
+    ]);
+    openActions("Kari Nordmann");
+    await screen.findByRole("menuitem", { name: /Enable access/ });
+    expect(screen.queryByRole("menuitem", { name: "Disable access" })).not.toBeInTheDocument();
+  });
+
+  it("greys out the password reset and the initial password for a pending user, and says why", async () => {
+    await renderUsers([
+      user({ pending: true, disabled: true, active: false, managedBy: "staff", employeeNumber: "1" }),
+    ]);
+    openActions("Kari Nordmann");
+    for (const name of [/Send reset email/, /Set initial password/]) {
+      const item = await screen.findByRole("menuitem", { name });
+      expect(item).toBeDisabled();
+      expect(
+        within(item).getByText("Not accepted their invitation yet: the account opens only when they accept it."),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("keeps the password reset for a user who is not pending", async () => {
+    await renderUsers([user({})]);
+    openActions("Kari Nordmann");
+    expect(await screen.findByRole("menuitem", { name: "Send reset email" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Set initial password" })).toBeEnabled();
+  });
+
+  const note = "Making them an Owner stops Staff managing this account.";
+  const chooseOwner = async (name: string) => {
+    openActions(name);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit details" }));
+    const role = await roleInput();
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+    fireEvent.click(role);
+    fireEvent.click(await screen.findByRole("option", { name: "Owner" }));
+    await waitFor(() => expect(role).toHaveValue("Owner"));
+  };
+
+  it("notes in the edit dialog that making a managed user an Owner stops Staff managing them", async () => {
+    await renderUsers([user({ managedBy: "staff", employeeNumber: "1" })]);
+    await chooseOwner("Kari Nordmann");
+    expect(screen.getByText(note)).toBeInTheDocument();
+  });
+
+  it("makes no such note for a user Staff does not manage", async () => {
+    await renderUsers([user({})]);
+    await chooseOwner("Kari Nordmann");
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+  });
+
+  it("words a refused promotion of a pending user as such", async () => {
+    api.updateUser.mockRejectedValue(refusal(409, "account_pending"));
+    await renderUsers([
+      user({ pending: true, disabled: true, active: false, managedBy: "staff", employeeNumber: "1" }),
+    ]);
+    openActions("Kari Nordmann");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit details" }));
+    fireEvent.click(await roleInput());
+    fireEvent.click(await screen.findByRole("option", { name: "Owner" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("A pending user cannot be made an Owner until they have accepted their invitation."),
     ).toBeInTheDocument();
   });
 
