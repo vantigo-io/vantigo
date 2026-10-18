@@ -17,7 +17,8 @@ SELECT * FROM staff.settings WHERE id = 1 FOR UPDATE;
 -- the caller resolved them from the row it locked. The account settings
 -- (delivery C) keep their values when left out: create_before_days when
 -- NULL, delete_external_after_days unless @set_delete_external_after_days —
--- its NULL is a value, "never".
+-- its NULL is a value, "never". The two erase settings (Task 5b) keep their
+-- values when NULL.
 UPDATE staff.settings SET
     time_zone = @time_zone,
     employee_number_prefix = @employee_number_prefix,
@@ -36,6 +37,8 @@ UPDATE staff.settings SET
     create_before_days = coalesce(sqlc.narg(create_before_days)::smallint, create_before_days),
     delete_external_after_days = CASE WHEN @set_delete_external_after_days::boolean
         THEN sqlc.narg(delete_external_after_days)::smallint ELSE delete_external_after_days END,
+    erase_pregnancy_health_types = coalesce(sqlc.narg(erase_pregnancy_health_types)::boolean, erase_pregnancy_health_types),
+    erase_sick_case_dates = coalesce(sqlc.narg(erase_sick_case_dates)::boolean, erase_sick_case_dates),
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = 1

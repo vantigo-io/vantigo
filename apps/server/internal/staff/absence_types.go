@@ -23,9 +23,14 @@ import (
 // the rules key on the kind and an absence counts in the unit. A seed changes
 // only its names, its order and whether it is hidden (seed_immutable
 // otherwise): its flags and its a-melding mapping are the vocabulary's, not
-// the installation's. The reserved absent, which the health erase writes in
-// place of a sick or child-sick type (plan reading 12), and absent_hours, its
-// hour counterpart (delivery C, Task 5b), are never shown.
+// the installation's — but for its pay (the owner's answer 7, Task 5b): a
+// company paying beyond the law says so on the seed, and the flag is
+// informational, read by no figure. ammefri is never set unpaid: aml. § 12-8
+// (2) pays up to an hour a day in the child's first year on a working day of
+// seven hours or more, and the seed holds that floor. The reserved absent,
+// which the health erase writes in place of a sick or child-sick type (plan
+// reading 12), and absent_hours, written in place of an hour type by the
+// pregnancy and health erase (Task 5b), are never shown.
 //
 // The a-melding descriptions a type maps to are the contract's enum,
 // StaffAmeldingLeave: the kodeverk PermisjonsOgPermitteringsBeskrivelse's six
@@ -60,6 +65,9 @@ const (
 func isReservedType(a store.StaffAbsenceType) bool {
 	return a.Seeded && (a.Key == reservedAbsenceType || a.Key == reservedAbsenceHoursType)
 }
+
+// ammefriType is the seed of nursing time, paid by law (aml. § 12-8 (2)).
+const ammefriType = "ammefri"
 
 // absenceTypeKeyPattern is a company type's key: 1 to 40 of a–z, 0–9 and the
 // underscore, the alphabet of the seeds' own keys.
@@ -307,9 +315,13 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 		if err := checkRevision("absence type", row.Revision, revision); err != nil {
 			return err
 		}
+		if row.Seeded && row.Key == ammefriType && !flags.Paid {
+			return refuseConflict(conflict(codeSeedImmutable, "Seeded absence type",
+				fmt.Sprintf("%s is paid by law: aml. § 12-8 (2) pays up to one hour a day in the child's first year on a working day of seven hours or more. Pay beyond that is the company's, marked by a company type or the absence's note.", row.NameEn)))
+		}
 		if row.Seeded && !seedChangeAllowed(row, flags) {
 			return refuseConflict(conflict(codeSeedImmutable, "Seeded absence type",
-				fmt.Sprintf("%s is one of the types every installation starts with: its names, its place and whether it is hidden change, nothing else.", row.NameEn)))
+				fmt.Sprintf("%s is one of the types every installation starts with: its names, its place, whether it is hidden and whether it is paid change, nothing else.", row.NameEn)))
 		}
 		if !row.Seeded {
 			judgeHROnlyFlags(flags, &f)
@@ -354,12 +366,13 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 }
 
 // seedChangeAllowed is whether a change of a seed keeps everything but its
-// names, its place and hidden as they are — and the reserved types hidden.
+// names, its place, hidden and its pay as they are — and the reserved types
+// hidden and unpaid. Ammefri's floor is judged before it.
 func seedChangeAllowed(row store.StaffAbsenceType, next absenceTypeFlags) bool {
-	if isReservedType(row) && !next.Hidden {
+	if isReservedType(row) && (!next.Hidden || next.Paid != row.Paid) {
 		return false
 	}
-	return next.Paid == row.Paid && next.DrawsHoliday == row.DrawsHoliday && next.AllowsPercent == row.AllowsPercent &&
+	return next.DrawsHoliday == row.DrawsHoliday && next.AllowsPercent == row.AllowsPercent &&
 		next.NeedsDecision == row.NeedsDecision && next.Visibility == row.Visibility && textEqual(next.AmeldingLeave, row.AmeldingLeave)
 }
 

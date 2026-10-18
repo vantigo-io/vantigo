@@ -34,7 +34,12 @@ describe("SettingsPage — the settings", () => {
   it("shows the next generated number and its length, and saves with the revision it read", async () => {
     // The account settings (delivery C) are sent back as read; "never" is null.
     const fetchMock = stubStaffApi({
-      settings: settings({ employeeNumberPrefix: "E-", nextEmployeeNumber: 8, createBeforeDays: 0 }),
+      settings: settings({
+        employeeNumberPrefix: "E-",
+        nextEmployeeNumber: 8,
+        createBeforeDays: 0,
+        eraseSickCaseDates: true,
+      }),
     });
     renderRoute("/staff/settings");
 
@@ -54,6 +59,8 @@ describe("SettingsPage — the settings", () => {
       injuryInsurer: "If Skadeforsikring",
       createBeforeDays: 0,
       deleteExternalAfterDays: null,
+      erasePregnancyHealthTypes: false,
+      eraseSickCaseDates: true,
     });
   });
 

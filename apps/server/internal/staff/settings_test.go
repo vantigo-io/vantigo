@@ -243,3 +243,59 @@ func TestSettings_TheAccountSettings(t *testing.T) {
 		t.Errorf("a null deleteExternalAfterDays: %d / %v, want 90 kept and it cleared", cleared.CreateBeforeDays, cleared.DeleteExternalAfterDays)
 	}
 }
+
+// The two erase settings the owner asked for (delivery C, Task 5b; B's open
+// questions 11 and 12): erasePregnancyHealthTypes and eraseSickCaseDates,
+// staff:manage's, false by default. Each keeps its value when a replace
+// leaves it out, as the other settings a form may not edit do; a null is
+// refused on the field — never read as false, which would turn the erase
+// off unasked — and so is a value that is no boolean.
+func TestSettings_TheEraseSettings(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	fresh := raw(t, hr.Do(http.MethodGet, settingsPath, nil))
+	for _, key := range []string{"erasePregnancyHealthTypes", "eraseSickCaseDates"} {
+		if fresh[key] != false {
+			t.Errorf("a fresh installation's %s = %v, want false", key, fresh[key])
+		}
+	}
+	saved := raw(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{"erasePregnancyHealthTypes": true}), ifMatch(1)))
+	if saved["erasePregnancyHealthTypes"] != true || saved["eraseSickCaseDates"] != false {
+		t.Errorf("saved %v / %v, want true / false", saved["erasePregnancyHealthTypes"], saved["eraseSickCaseDates"])
+	}
+	saved = raw(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{"eraseSickCaseDates": true}), ifMatch(2)))
+	if saved["erasePregnancyHealthTypes"] != true || saved["eraseSickCaseDates"] != true {
+		t.Errorf("left out, erasePregnancyHealthTypes = %v (want kept, true); eraseSickCaseDates = %v (want true)",
+			saved["erasePregnancyHealthTypes"], saved["eraseSickCaseDates"])
+	}
+	saved = raw(t, hr.Do(http.MethodPut, settingsPath, settingsBody(nil), ifMatch(3)))
+	if saved["erasePregnancyHealthTypes"] != true || saved["eraseSickCaseDates"] != true || saved["revision"] != float64(4) {
+		t.Errorf("both left out: %v / %v at %v, want both kept at revision 4", saved["erasePregnancyHealthTypes"], saved["eraseSickCaseDates"], saved["revision"])
+	}
+	for _, key := range []string{"erasePregnancyHealthTypes", "eraseSickCaseDates"} {
+		for _, bad := range []any{nil, "yes"} {
+			body := settingsBody(nil)
+			body[key] = bad
+			r := hr.Do(http.MethodPut, settingsPath, body, ifMatch(4))
+			if r.Status != http.StatusBadRequest {
+				t.Errorf("%s = %v: %d %s, want 400", key, bad, r.Status, r.Body)
+				continue
+			}
+			if bad == nil {
+				if pr := refused(t, r, http.StatusBadRequest, ""); len(pr.Errors[key]) == 0 {
+					t.Errorf("%s null: errors = %v, want %s named", key, pr.Errors, key)
+				}
+			}
+		}
+	}
+	saved = raw(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{"erasePregnancyHealthTypes": false, "eraseSickCaseDates": false}), ifMatch(4)))
+	if saved["erasePregnancyHealthTypes"] != false || saved["eraseSickCaseDates"] != false {
+		t.Errorf("turned off: %v / %v, want false / false", saved["erasePregnancyHealthTypes"], saved["eraseSickCaseDates"])
+	}
+	// staff:view reads neither: the settings are staff:manage's.
+	viewer, _ := signIn(t, h, "staff:view")
+	if r := viewer.Do(http.MethodGet, settingsPath, nil); r.Status != http.StatusForbidden {
+		t.Errorf("staff:view reading the settings: %d, want 403", r.Status)
+	}
+}

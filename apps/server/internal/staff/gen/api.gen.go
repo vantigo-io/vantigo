@@ -434,12 +434,13 @@ func (e StaffEndReason) Valid() bool {
 
 // Defines values for StaffErasedKindKind.
 const (
-	StaffErasedKindKindA          StaffErasedKindKind = "A"
-	StaffErasedKindKindCases      StaffErasedKindKind = "cases"
-	StaffErasedKindKindChildSick  StaffErasedKindKind = "childSick"
-	StaffErasedKindKindD          StaffErasedKindKind = "D"
-	StaffErasedKindKindHealth     StaffErasedKindKind = "health"
-	StaffErasedKindKindWithdrawal StaffErasedKindKind = "withdrawal"
+	StaffErasedKindKindA               StaffErasedKindKind = "A"
+	StaffErasedKindKindCases           StaffErasedKindKind = "cases"
+	StaffErasedKindKindChildSick       StaffErasedKindKind = "childSick"
+	StaffErasedKindKindD               StaffErasedKindKind = "D"
+	StaffErasedKindKindHealth          StaffErasedKindKind = "health"
+	StaffErasedKindKindPregnancyHealth StaffErasedKindKind = "pregnancyHealth"
+	StaffErasedKindKindWithdrawal      StaffErasedKindKind = "withdrawal"
 )
 
 // Valid indicates whether the value is a known member of the StaffErasedKindKind enum.
@@ -454,6 +455,8 @@ func (e StaffErasedKindKind) Valid() bool {
 	case StaffErasedKindKindD:
 		return true
 	case StaffErasedKindKindHealth:
+		return true
+	case StaffErasedKindKindPregnancyHealth:
 		return true
 	case StaffErasedKindKindWithdrawal:
 		return true
@@ -1133,7 +1136,7 @@ type StaffAbsenceShownAs string
 // StaffAbsenceStatus requested (waiting for a decision), approved, rejected, cancelled, or registered (a notification, needing none).
 type StaffAbsenceStatus string
 
-// StaffAbsenceType An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order and whether it is hidden (seed_immutable otherwise); the reserved absent is never shown and never offered.
+// StaffAbsenceType An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order, whether it is hidden and whether it is paid (seed_immutable otherwise) — ammefri never unpaid, aml. § 12-8 (2) paying up to one hour a day in the child's first year on a working day of seven hours or more; the reserved absent and absent_hours are never shown and never offered.
 type StaffAbsenceType struct {
 	// AllowsPercent Whether an absence of the type may be a percentage of each day. Never on a sick kind, whose share is the sykmelding's degree.
 	AllowsPercent bool `json:"allowsPercent"`
@@ -1157,9 +1160,11 @@ type StaffAbsenceType struct {
 
 	// NeedsDecision true — requested and decided (approved or rejected); false — a notification, registered when entered.
 	NeedsDecision bool `json:"needsDecision"`
-	Paid          bool `json:"paid"`
 
-	// Reserved The reserved type absent, which the health erase writes in place of a sick or child-sick type. Always hidden.
+	// Paid Whether the absence is paid. Informational — no figure, the payroll export included, reads it. A seed's is HR's to change but ammefri's, paid by law.
+	Paid bool `json:"paid"`
+
+	// Reserved One of the two reserved types the erase writes — absent in place of a sick or child-sick type, and of a pregnancy or health type counted in days; absent_hours in place of one counted in hours. Always hidden.
 	Reserved bool `json:"reserved"`
 
 	// Revision Send it back as If-Match on PUT /absence-types/{id}.
@@ -1176,7 +1181,7 @@ type StaffAbsenceType struct {
 	Visibility StaffAbsenceVisibility `json:"visibility"`
 }
 
-// StaffAbsenceTypeChangeRequest A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort and hidden alone — every other value as it is, else seed_immutable — and the reserved absent stays hidden.
+// StaffAbsenceTypeChangeRequest A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort, hidden and paid alone — every other value as it is, else seed_immutable — ammefri stays paid (aml. § 12-8 (2)), and the reserved absent and absent_hours stay hidden and unpaid.
 type StaffAbsenceTypeChangeRequest struct {
 	// AllowsPercent Only on a type counted in days.
 	AllowsPercent bool `json:"allowsPercent"`
@@ -1833,11 +1838,11 @@ type StaffEndReason string
 type StaffErasedKind struct {
 	Count int64 `json:"count"`
 
-	// Kind D — the personnel administration, a grace period after the last employment ended; health — the health documents not filed under a sick-leave case and the health content of the history no case owns, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended; cases — a closed sick-leave case's health content (its notes, its milestones' facts, its rows' sick type and degree, its documents and its events' health fields), healthRetentionDays after the case closed, whatever the employment; childSick — a year's child-sick rows' type and their events' health fields, healthRetentionDays after the year ended; withdrawal — a withdrawal of egenmelding and its events, healthRetentionDays after it lapsed.
+	// Kind D — the personnel administration, a grace period after the last employment ended; health — the health documents not filed under a sick-leave case and the health content of the history no case owns, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended; cases — a closed sick-leave case's health content (its notes, its milestones' facts, its rows' sick type and degree, its documents and its events' health fields), healthRetentionDays after the case closed, whatever the employment — and with eraseSickCaseDates on, the case itself: its milestones and the case row deleted, its rows unlinked keeping their days as absent, its events blanked to their kind; childSick — a year's child-sick rows' type and their events' health fields, healthRetentionDays after the year ended; withdrawal — a withdrawal of egenmelding and its events, healthRetentionDays after it lapsed; pregnancyHealth — with erasePregnancyHealthTypes on, a year's rows of svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and helse given the reserved absent (absent_hours for an hour row) and their events' type values replaced, healthRetentionDays after the year ended.
 	Kind StaffErasedKindKind `json:"kind"`
 }
 
-// StaffErasedKindKind D — the personnel administration, a grace period after the last employment ended; health — the health documents not filed under a sick-leave case and the health content of the history no case owns, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended; cases — a closed sick-leave case's health content (its notes, its milestones' facts, its rows' sick type and degree, its documents and its events' health fields), healthRetentionDays after the case closed, whatever the employment; childSick — a year's child-sick rows' type and their events' health fields, healthRetentionDays after the year ended; withdrawal — a withdrawal of egenmelding and its events, healthRetentionDays after it lapsed.
+// StaffErasedKindKind D — the personnel administration, a grace period after the last employment ended; health — the health documents not filed under a sick-leave case and the health content of the history no case owns, healthRetentionDays after it; A — one employment's pay terms, its contract and attest documents and the pay in its events, five years after the year it ended; cases — a closed sick-leave case's health content (its notes, its milestones' facts, its rows' sick type and degree, its documents and its events' health fields), healthRetentionDays after the case closed, whatever the employment — and with eraseSickCaseDates on, the case itself: its milestones and the case row deleted, its rows unlinked keeping their days as absent, its events blanked to their kind; childSick — a year's child-sick rows' type and their events' health fields, healthRetentionDays after the year ended; withdrawal — a withdrawal of egenmelding and its events, healthRetentionDays after it lapsed; pregnancyHealth — with erasePregnancyHealthTypes on, a year's rows of svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and helse given the reserved absent (absent_hours for an hour row) and their events' type values replaced, healthRetentionDays after the year ended.
 type StaffErasedKindKind string
 
 // StaffErasedPerson An erased person whose names and birth date match a new person's (POST /people/similar-erased), so a rehire is a choice rather than a duplicate made by accident.
@@ -1860,7 +1865,7 @@ type StaffEvent struct {
 	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the kinds grow with the module.
 	Kind string `json:"kind"`
 
-	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal", "count": n}]}, read by HR — the four health-side entries (health, cases, childSick, withdrawal) by staff:personal-data alone — and is listed as the hold's kinds are: not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone.
+	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}, read by HR — the five health-side entries (health, cases, childSick, withdrawal, pregnancyHealth) by staff:personal-data alone — and is listed as the hold's kinds are: not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone.
 	Payload map[string]interface{} `json:"payload"`
 }
 
@@ -2921,6 +2926,12 @@ type StaffSettings struct {
 	// EmployeeNumberPrefix What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none.
 	EmployeeNumberPrefix string `json:"employeeNumberPrefix"`
 
+	// ErasePregnancyHealthTypes Whether the retention run erases the pregnancy and health-appointment rows — svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and helse — on the health schedule (B's open question 11, decided by the owner): healthRetentionDays after the year a row ended, its type becomes the reserved absent (absent_hours for an hour row, which keeps its hours) and every type value of its events is replaced, whatever class they were written in; the days stay. false by default. Turned on, it applies from the next retention cycle to every row already due; turned off, it restores nothing.
+	ErasePregnancyHealthTypes bool `json:"erasePregnancyHealthTypes"`
+
+	// EraseSickCaseDates Whether a closed sick-leave case's erase also removes the case itself (B's open question 12, decided by the owner): its milestones and the case row are deleted, its rows unlinked — they keep their days as the reserved absent — and its events blanked to their kind. false by default: the case keeps its dates and its milestones' kinds and dates. Turned on, it applies from the next retention cycle to every case already due, those erased before included; turned off, it restores nothing.
+	EraseSickCaseDates bool `json:"eraseSickCaseDates"`
+
 	// HealthRetentionDays How many days after a person's last employment ended their health documents (those in a restricted category) are deleted by the retention run (design S15); 30 to 3650, 365 by default.
 	HealthRetentionDays int32 `json:"healthRetentionDays"`
 
@@ -2964,7 +2975,7 @@ type StaffSettings struct {
 	TimeZone string `json:"timeZone"`
 }
 
-// StaffSettingsRequest A replace of the settings. The two retention periods, the self-certification policy, the carry-over and the two account settings left out keep the values they have; everything else is replaced.
+// StaffSettingsRequest A replace of the settings. The two retention periods, the self-certification policy, the carry-over, the two account settings and the two erase settings left out keep the values they have; everything else is replaced.
 type StaffSettingsRequest struct {
 	// AutoCarryOver Left out, it keeps its value. Turning it on records today as autoCarryOverSince.
 	AutoCarryOver *bool `json:"autoCarryOver,omitempty"`
@@ -2977,6 +2988,12 @@ type StaffSettingsRequest struct {
 
 	// EmployeeNumberPrefix Up to eight letters, digits or hyphens. Left out, there is none.
 	EmployeeNumberPrefix *string `json:"employeeNumberPrefix,omitempty"`
+
+	// ErasePregnancyHealthTypes Left out, it keeps its value; null is refused, never read as false.
+	ErasePregnancyHealthTypes *bool `json:"erasePregnancyHealthTypes,omitempty"`
+
+	// EraseSickCaseDates Left out, it keeps its value; null is refused, never read as false.
+	EraseSickCaseDates *bool `json:"eraseSickCaseDates,omitempty"`
 
 	// HealthRetentionDays 30 to 3650 days. Left out, it keeps its value.
 	HealthRetentionDays *int32 `json:"healthRetentionDays,omitempty"`

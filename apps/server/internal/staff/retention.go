@@ -189,23 +189,32 @@ var columnClasses = map[string]string{
 var erasedTo = map[string]string{"sick_case_milestones.waived": "false"}
 
 // The kinds an erase reports, in the erased event and the run's answer:
-// A2's three, and delivery B's health schedules (Task 6) — a closed case's,
-// a year's child-sick rows', a lapsed withdrawal's.
+// A2's three, delivery B's health schedules (Task 6) — a closed case's, a
+// year's child-sick rows', a lapsed withdrawal's — and delivery C's
+// pregnancy and health rows' (Task 5b), when its setting is on.
 const (
-	eraseKindD          = "D"
-	eraseKindHealth     = "health"
-	eraseKindA          = "A"
-	eraseKindCases      = "cases"
-	eraseKindChildSick  = "childSick"
-	eraseKindWithdrawal = "withdrawal"
+	eraseKindD               = "D"
+	eraseKindHealth          = "health"
+	eraseKindA               = "A"
+	eraseKindCases           = "cases"
+	eraseKindChildSick       = "childSick"
+	eraseKindWithdrawal      = "withdrawal"
+	eraseKindPregnancyHealth = "pregnancyHealth"
 )
 
 // eraseKinds is the order the kinds are reported in.
-var eraseKinds = []string{eraseKindD, eraseKindHealth, eraseKindA, eraseKindCases, eraseKindChildSick, eraseKindWithdrawal}
+var eraseKinds = []string{eraseKindD, eraseKindHealth, eraseKindA, eraseKindCases, eraseKindChildSick, eraseKindWithdrawal, eraseKindPregnancyHealth}
 
 // healthEraseKinds are the kinds that say the person's health was erased:
-// an erased event names them to the health group's readers alone.
-var healthEraseKinds = []string{eraseKindHealth, eraseKindCases, eraseKindChildSick, eraseKindWithdrawal}
+// an erased event names them to the health group's readers alone — a
+// pregnancy's erase among them, whose kind alone says what the rows were.
+var healthEraseKinds = []string{eraseKindHealth, eraseKindCases, eraseKindChildSick, eraseKindWithdrawal, eraseKindPregnancyHealth}
+
+// pregnancyHealthTypes are the seeds erasePregnancyHealthTypes reaches (B's
+// open question 11, the owner's answer 7): the pregnancy check-up, pregnancy
+// leave, birth leave and a doctor's or dentist's visit — kept as class C, B's
+// default, while the setting is off.
+var pregnancyHealthTypes = []string{"svangerskapskontroll", "svangerskapspermisjon", "fodselspermisjon", "helse"}
 
 // documentEventKinds are the kinds of event about one document: the A erase
 // of a person's last employment finds those of a document that is gone by
@@ -385,6 +394,16 @@ type retentionPlan struct {
 	absentID         int64
 	caseColumns      []string
 	milestoneColumns []string
+	// The two erase settings the owner asked for (delivery C, Task 5b), as
+	// the cycle read them: the pregnancy and health rows on the health
+	// schedule — their types (pregnancyTypeIDs), the reserved hour type
+	// written in place of an hour one, and the zone an event's year is
+	// judged in — and a case's erase removing the case itself.
+	erasePregnancyHealth bool
+	pregnancyTypeIDs     []int64
+	absentHoursID        int64
+	loc                  *time.Location
+	removeCases          bool
 }
 
 // planRetention reads the settings on q and derives the cycle's dates.
@@ -397,20 +416,33 @@ func (s *server) planRetention(ctx context.Context, q *store.Queries) (retention
 	if err != nil {
 		return retentionPlan{}, fmt.Errorf("staff: read the reserved absent type: %w", err)
 	}
+	absentHoursID, err := q.AbsentHoursTypeID(ctx)
+	if err != nil {
+		return retentionPlan{}, fmt.Errorf("staff: read the reserved absent_hours type: %w", err)
+	}
+	pregnancyTypeIDs, err := q.SeededTypeIDs(ctx, pregnancyHealthTypes)
+	if err != nil {
+		return retentionPlan{}, fmt.Errorf("staff: read the pregnancy and health types: %w", err)
+	}
 	now := s.deps.Clock()
 	today := civilToday(now, zoneOf(row))
 	return retentionPlan{
-		dCutoff:          today.AddDate(0, 0, -int(row.RetentionGraceDays)),
-		healthCutoff:     today.AddDate(0, 0, -int(row.HealthRetentionDays)),
-		thisYear:         int32(today.Year()),
-		aColumns:         columnsOf("employment_terms", "A"),
-		aFields:          fieldsOfClass("A"),
-		zone:             zoneOf(row).String(),
-		healthCutoffAt:   now.AddDate(0, 0, -int(row.HealthRetentionDays)),
-		orphanCutoffAt:   now.AddDate(0, 0, -int(row.HealthRetentionDays)-caseClosesAfter),
-		absentID:         absentID,
-		caseColumns:      columnsOf("sick_cases", healthClass),
-		milestoneColumns: columnsOf("sick_case_milestones", healthClass),
+		erasePregnancyHealth: row.ErasePregnancyHealthTypes,
+		pregnancyTypeIDs:     pregnancyTypeIDs,
+		absentHoursID:        absentHoursID,
+		loc:                  zoneOf(row),
+		removeCases:          row.EraseSickCaseDates,
+		dCutoff:              today.AddDate(0, 0, -int(row.RetentionGraceDays)),
+		healthCutoff:         today.AddDate(0, 0, -int(row.HealthRetentionDays)),
+		thisYear:             int32(today.Year()),
+		aColumns:             columnsOf("employment_terms", "A"),
+		aFields:              fieldsOfClass("A"),
+		zone:                 zoneOf(row).String(),
+		healthCutoffAt:       now.AddDate(0, 0, -int(row.HealthRetentionDays)),
+		orphanCutoffAt:       now.AddDate(0, 0, -int(row.HealthRetentionDays)-caseClosesAfter),
+		absentID:             absentID,
+		caseColumns:          columnsOf("sick_cases", healthClass),
+		milestoneColumns:     columnsOf("sick_case_milestones", healthClass),
 	}, nil
 }
 
@@ -425,7 +457,13 @@ func (p retentionPlan) dueHealth(person *int64, limit int32) store.DuePeopleHeal
 func (p retentionPlan) dueCases(person *int64, limit int32) store.DueCasesEParams {
 	return store.DueCasesEParams{
 		PersonID: person, Zone: p.zone, Cutoff: dayParam(p.healthCutoff), CaseColumns: p.caseColumns,
-		MilestoneColumns: p.milestoneColumns, AbsentID: p.absentID, Blanked: changed, RowLimit: limit,
+		MilestoneColumns: p.milestoneColumns, AbsentID: p.absentID, RemoveCases: p.removeCases, Blanked: changed, RowLimit: limit,
+	}
+}
+
+func (p retentionPlan) duePregnancyHealth(person *int64, limit int32) store.DuePeoplePregnancyHealthParams {
+	return store.DuePeoplePregnancyHealthParams{
+		PersonID: person, TypeIds: p.pregnancyTypeIDs, Cutoff: dayParam(p.healthCutoff), Zone: p.zone, RowLimit: limit,
 	}
 }
 
@@ -500,6 +538,13 @@ func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor) 
 		return nil, fmt.Errorf("staff: select the people with orphaned sick events due: %w", err)
 	}
 	people = slices.Concat(people, childSick, withdrawal, orphans)
+	if plan.erasePregnancyHealth {
+		pregnancy, err := q.DuePeoplePregnancyHealth(ctx, plan.duePregnancyHealth(nil, retentionBatch))
+		if err != nil {
+			return nil, fmt.Errorf("staff: select the people due for the pregnancy and health erase: %w", err)
+		}
+		people = append(people, pregnancy...)
+	}
 	var due []int64
 	for _, id := range people {
 		if !slices.Contains(due, id) && len(due) < retentionBatch {
@@ -815,7 +860,167 @@ func (s *server) eraseAbsenceHealth(ctx context.Context, tx pgx.Tx, txq *store.Q
 			kinds = append(kinds, erasedKind{Kind: eraseKindWithdrawal, Count: n + e})
 		}
 	}
+	if plan.erasePregnancyHealth {
+		due, err := txq.DuePeoplePregnancyHealth(ctx, plan.duePregnancyHealth(&personID, 1))
+		if err != nil {
+			return nil, fmt.Errorf("staff: judge person %d's pregnancy and health rows: %w", personID, err)
+		}
+		if len(due) == 1 {
+			n, err := s.erasePregnancyHealth(ctx, txq, personID, plan, gone, now)
+			if err != nil {
+				return nil, err
+			}
+			if n > 0 {
+				kinds = append(kinds, erasedKind{Kind: eraseKindPregnancyHealth, Count: n})
+			}
+		}
+	}
 	return kinds, nil
+}
+
+// erasePregnancyHealth is the erase of a person's pregnancy and health rows
+// (erasePregnancyHealthTypes, Task 5b; B's open question 11): each row of
+// one of those types whose year ended healthRetentionDays ago — or every one,
+// once the person's own health cutoff has passed (gone) — given the reserved
+// type of its unit, its days and hours kept, and the type values of its
+// events replaced whatever class they were recorded in, B having written
+// them as class C. An event naming such a type whose row no longer has one —
+// deleted, or corrected to another type — goes by the year it was recorded
+// in. It answers the rows and the events rewritten.
+func (s *server) erasePregnancyHealth(ctx context.Context, txq *store.Queries, personID int64, plan retentionPlan, gone bool, now time.Time) (int64, error) {
+	ids, err := txq.DuePregnancyHealthRows(ctx, store.DuePregnancyHealthRowsParams{
+		PersonID: personID, TypeIds: plan.pregnancyTypeIDs, Cutoff: dayParam(plan.healthCutoff),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("staff: read person %d's pregnancy and health rows due: %w", personID, err)
+	}
+	// The rows still of such a type, due or not: an event of one not due waits for its row.
+	current := map[int64]bool{}
+	rows, err := txq.PersonAbsences(ctx, personID)
+	if err != nil {
+		return 0, fmt.Errorf("staff: read person %d's absences: %w", personID, err)
+	}
+	for _, r := range rows {
+		if slices.Contains(plan.pregnancyTypeIDs, r.StaffAbsence.TypeID) {
+			current[r.StaffAbsence.ID] = true
+		}
+	}
+	units, err := typeUnits(ctx, txq)
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) > 0 {
+		if err := txq.SetRowsReserved(ctx, store.SetRowsReservedParams{
+			AbsentHoursID: plan.absentHoursID, AbsentID: plan.absentID, Now: now, Ids: ids,
+		}); err != nil {
+			return 0, fmt.Errorf("staff: erase person %d's pregnancy and health rows' type: %w", personID, err)
+		}
+	}
+	events, err := txq.PersonEventsNamingTypes(ctx, store.PersonEventsNamingTypesParams{PersonID: &personID, TypeIds: plan.pregnancyTypeIDs})
+	if err != nil {
+		return 0, fmt.Errorf("staff: read person %d's events of pregnancy and health types: %w", personID, err)
+	}
+	reserved := func(id int64) int64 {
+		if units[id] == unitHours {
+			return plan.absentHoursID
+		}
+		return plan.absentID
+	}
+	count := int64(len(ids))
+	for _, ev := range events {
+		var about eventIDs
+		if err := json.Unmarshal(ev.Payload, &about); err != nil {
+			continue
+		}
+		yearEnd := time.Date(ev.At.In(plan.loc).Year(), time.December, 31, 0, 0, 0, 0, time.UTC)
+		switch {
+		case about.AbsenceID != nil && slices.Contains(ids, *about.AbsenceID):
+		case about.AbsenceID != nil && current[*about.AbsenceID]:
+			continue
+		case !gone && !yearEnd.Before(plan.healthCutoff):
+			continue
+		}
+		payload, rewritten, err := blankTypes(ev.Payload, plan.pregnancyTypeIDs, reserved)
+		if err != nil {
+			return 0, fmt.Errorf("staff: erase event %d's types: %w", ev.ID, err)
+		}
+		if !rewritten {
+			continue
+		}
+		if err := txq.SetEventPayload(ctx, store.SetEventPayloadParams{ID: ev.ID, Payload: payload}); err != nil {
+			return 0, fmt.Errorf("staff: rewrite event %d: %w", ev.ID, err)
+		}
+		count++
+	}
+	return count, nil
+}
+
+// typeUnits is every type's unit by id, hidden ones included.
+func typeUnits(ctx context.Context, q *store.Queries) (map[int64]string, error) {
+	rows, err := q.ListAbsenceTypes(ctx, true)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the absence types' units: %w", err)
+	}
+	out := make(map[int64]string, len(rows))
+	for _, r := range rows {
+		out[r.ID] = r.Unit
+	}
+	return out, nil
+}
+
+// blankTypes is an absence event's payload with its type values erased
+// whatever class they were recorded in (Task 5b): its type field replaced by
+// "changed", and each of its typeIds that is one of types replaced by its
+// reserved type (reserved) — the event's other fields, its classes and its
+// kind kept. It answers whether anything changed, so a second run writes
+// nothing.
+func blankTypes(stored []byte, types []int64, reserved func(int64) int64) ([]byte, bool, error) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(stored, &payload); err != nil {
+		return nil, false, err
+	}
+	blank, err := json.Marshal(changed)
+	if err != nil {
+		return nil, false, err
+	}
+	rewritten := false
+	if raw, ok := payload["fields"]; ok {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return nil, false, err
+		}
+		if value, ok := fields[fieldType]; ok && !bytes.Equal(value, blank) {
+			fields[fieldType] = blank
+			if payload["fields"], err = json.Marshal(fields); err != nil {
+				return nil, false, err
+			}
+			rewritten = true
+		}
+	}
+	if raw, ok := payload["typeIds"]; ok {
+		var ids []int64
+		if err := json.Unmarshal(raw, &ids); err != nil {
+			return nil, false, err
+		}
+		changedIDs := false
+		for i, id := range ids {
+			if slices.Contains(types, id) {
+				ids[i] = reserved(id)
+				changedIDs = true
+			}
+		}
+		if changedIDs {
+			if payload["typeIds"], err = json.Marshal(ids); err != nil {
+				return nil, false, err
+			}
+			rewritten = true
+		}
+	}
+	if !rewritten {
+		return stored, false, nil
+	}
+	out, err := json.Marshal(payload)
+	return out, true, err
 }
 
 // eraseCase is one closed case's health erase (design §4 Erase, plan Task
@@ -883,7 +1088,71 @@ func (s *server) eraseCase(ctx context.Context, tx pgx.Tx, txq *store.Queries, p
 	if err != nil {
 		return 0, err
 	}
-	return count + e, nil
+	count += e
+	if plan.removeCases {
+		n, err := s.removeCase(ctx, txq, personID, caseID, ownCases, now)
+		if err != nil {
+			return 0, err
+		}
+		count += n
+	}
+	return count, nil
+}
+
+// removeCase is what eraseSickCaseDates adds to a case's erase (Task 5b; B's
+// open question 12), after B's erase has blanked its health content: the
+// case's events — its own and those of the cases it took in — blanked to
+// their kind, keeping only their rows' reserved types (typeIds) by which
+// they are listed; its rows' events no longer naming it (rowCaseId); its
+// milestones deleted, its rows unlinked keeping their days as the reserved
+// absent, and the case row deleted. Its documents are gone already. It
+// answers the items removed: the events rewritten, the milestones, the rows
+// unlinked and the case.
+func (s *server) removeCase(ctx context.Context, txq *store.Queries, personID, caseID int64, ownCases []int64, now time.Time) (int64, error) {
+	events, err := txq.PersonEventsNamingCases(ctx, store.PersonEventsNamingCasesParams{PersonID: &personID, CaseIds: ownCases})
+	if err != nil {
+		return 0, fmt.Errorf("staff: read case %d's events: %w", caseID, err)
+	}
+	var count int64
+	for _, ev := range events {
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			return 0, fmt.Errorf("staff: read event %d: %w", ev.ID, err)
+		}
+		next := payload
+		if _, ofCase := payload["caseId"]; ofCase {
+			next = map[string]json.RawMessage{"fields": json.RawMessage(`{}`)}
+			for _, key := range []string{"typeIds", "typeClasses"} {
+				if v, ok := payload[key]; ok {
+					next[key] = v
+				}
+			}
+		} else {
+			delete(next, "rowCaseId")
+		}
+		out, err := json.Marshal(next)
+		if err != nil {
+			return 0, err
+		}
+		if err := txq.SetEventPayload(ctx, store.SetEventPayloadParams{ID: ev.ID, Payload: out}); err != nil {
+			return 0, fmt.Errorf("staff: rewrite event %d: %w", ev.ID, err)
+		}
+		count++
+	}
+	milestones, err := txq.EraseCaseMilestones(ctx, caseID)
+	if err != nil {
+		return 0, fmt.Errorf("staff: delete case %d's milestones: %w", caseID, err)
+	}
+	id := caseID
+	unlinked, err := txq.UnlinkCaseRows(ctx, store.UnlinkCaseRowsParams{Now: now, CaseID: &id})
+	if err != nil {
+		return 0, fmt.Errorf("staff: unlink case %d's rows: %w", caseID, err)
+	}
+	deleted, err := txq.EraseSickCase(ctx, caseID)
+	if err != nil {
+		return 0, fmt.Errorf("staff: delete case %d: %w", caseID, err)
+	}
+	return count + milestones + unlinked + deleted, nil
 }
 
 // eraseChildSick is the erase of a person's child-sick rows whose year ended

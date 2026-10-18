@@ -46,6 +46,8 @@ const ameldingLeaves: StaffAmeldingLeave[] = [
   "andreIkkeLovfestedePermisjoner",
   "permittering",
 ];
+/** The seed paid by law (aml. § 12-8 (2)), never set unpaid. */
+const ammefriKey = "ammefri";
 /** The kinds a company type may be; the sick kinds are the seeds'. */
 const companyKinds = ["holiday", "leave", "time_off", "other"] as const;
 
@@ -65,10 +67,12 @@ const changeOf = (row: StaffAbsenceType): StaffAbsenceTypeChange => ({
 /**
  * Settings' absence types (design S8, §7): the seeds — the statutory
  * vocabulary — shown read-only with their a-melding mapping and visibility,
- * whose names, order and hidden flag alone change, and the company's own
- * types, editable but for the key, kind and unit. The reserved `absent`,
- * which the health erase writes, is never listed. Widening an HR-only type
- * that absences name is refused (`absence_type_in_use`), in words.
+ * whose names, order, hidden flag and pay alone change (the owner's answer
+ * 7: a company paying beyond the law says so; ammefri stays paid, aml.
+ * § 12-8 (2)), and the company's own types, editable but for the key, kind
+ * and unit. The reserved `absent` and `absent_hours`, which the erases
+ * write, are never listed. Widening an HR-only type that absences name is
+ * refused (`absence_type_in_use`), in words.
  */
 export const AbsenceTypesTable = () => {
   const { t } = useStaffFormat();
@@ -224,8 +228,11 @@ const TypeForm = ({ row, onClose }: { row?: StaffAbsenceType; onClose: () => voi
   const { t } = useStaffFormat();
   const queryClient = useQueryClient();
   const [banner, setBanner] = useState<string | null>(null);
-  // A seed changes its names, its order and whether it is hidden alone.
+  // A seed changes its names, its order, whether it is hidden and its pay alone.
   const fixed = row?.seeded ?? false;
+  const paidByLaw = fixed && row?.key === ammefriKey;
+  const locale = useLocale();
+  const rowName = row ? (locale === "nb" ? row.names.nb : row.names.en) : "";
   const form = useForm<TypeValues>({
     initialValues: {
       key: row?.key ?? "",
@@ -246,6 +253,7 @@ const TypeForm = ({ row, onClose }: { row?: StaffAbsenceType; onClose: () => voi
       key: (value) => (row || /^[a-z0-9_]{1,40}$/.test(value) ? null : t("absenceTypeKeyInvalid")),
       nameEn: (value) => (value.trim() && value.trim().length <= 100 ? null : t("nameRequired100")),
       nameNb: (value) => (value.trim() && value.trim().length <= 100 ? null : t("nameRequired100")),
+      paid: (value) => (paidByLaw && !value ? t("ammefriStaysPaid", { name: rowName }) : null),
       sort: (value) =>
         value === ""
           ? row
@@ -271,11 +279,11 @@ const TypeForm = ({ row, onClose }: { row?: StaffAbsenceType; onClose: () => voi
       if (row)
         return updateAbsenceType(
           row.id,
-          // A seed sends its rules back exactly as read; the server refuses any
-          // other. A company type sends the form's rules — an a-melding mapping
-          // cleared in the form is left out, which clears it.
+          // A seed sends its rules back exactly as read but its pay; the server
+          // refuses any other. A company type sends the form's rules — an
+          // a-melding mapping cleared in the form is left out, which clears it.
           {
-            ...(fixed ? changeOf(row) : rules),
+            ...(fixed ? { ...changeOf(row), paid: values.paid } : rules),
             names,
             sort: Number(values.sort),
             hidden: values.hidden,
@@ -380,7 +388,11 @@ const TypeForm = ({ row, onClose }: { row?: StaffAbsenceType; onClose: () => voi
             disabled={fixed}
             {...form.getInputProps("needsDecision", { type: "checkbox" })}
           />
-          <Switch label={t("typePaidField")} disabled={fixed} {...form.getInputProps("paid", { type: "checkbox" })} />
+          <Switch
+            label={t("typePaidField")}
+            description={paidByLaw ? t("ammefriPaidByLaw") : undefined}
+            {...form.getInputProps("paid", { type: "checkbox" })}
+          />
           <Switch
             label={t("typeDrawsHolidayField")}
             disabled={fixed || !days}

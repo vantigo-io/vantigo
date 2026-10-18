@@ -419,11 +419,30 @@ export const casesAsApprover = (): Schemas["StaffCase"][] =>
 
 /**
  * Every absence type as `GET /absence-types` answers staff:manage: the
- * seeds `/meta` offers, a hidden seed, the reserved `absent` and a company
- * type of its own, HR-only.
+ * seeds `/meta` offers, ammefri — paid by law (aml. § 12-8 (2)) — a hidden
+ * seed, the reserved `absent` and `absent_hours`, and a company type of its
+ * own, HR-only.
  */
 export const allAbsenceTypes = (types: Schemas["StaffAbsenceType"][]): Schemas["StaffAbsenceType"][] => [
   ...types,
+  {
+    id: 1009,
+    key: "ammefri",
+    names: { en: "Nursing time", nb: "Ammefri" },
+    kind: "leave",
+    unit: "hours",
+    paid: true,
+    drawsHoliday: false,
+    allowsPercent: false,
+    needsDecision: true,
+    visibility: "absent",
+    ameldingLeave: "andreLovfestedePermisjoner",
+    seeded: true,
+    hidden: false,
+    reserved: false,
+    sort: 9,
+    revision: 2,
+  },
   {
     id: 1011,
     key: "velferdspermisjon",
@@ -457,6 +476,23 @@ export const allAbsenceTypes = (types: Schemas["StaffAbsenceType"][]): Schemas["
     hidden: true,
     reserved: true,
     sort: 999,
+    revision: 1,
+  },
+  {
+    id: 1100,
+    key: "absent_hours",
+    names: { en: "Absent (hours)", nb: "Fravær (timer)" },
+    kind: "other",
+    unit: "hours",
+    paid: false,
+    drawsHoliday: false,
+    allowsPercent: false,
+    needsDecision: false,
+    visibility: "absent",
+    seeded: true,
+    hidden: true,
+    reserved: true,
+    sort: 1000,
     revision: 1,
   },
   {

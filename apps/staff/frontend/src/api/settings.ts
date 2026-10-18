@@ -43,6 +43,18 @@ export const accountSettingsOf = (
 });
 
 /**
+ * The two erase settings (delivery C, Task 5b) as read, for a settings form
+ * that does not edit them to send back whole: the server keeps one left out,
+ * but a form sends what it read, as it does the account settings.
+ */
+export const eraseSettingsOf = (
+  settings: StaffSettings,
+): Pick<StaffSettingsInput, "erasePregnancyHealthTypes" | "eraseSickCaseDates"> => ({
+  erasePregnancyHealthTypes: settings.erasePregnancyHealthTypes,
+  eraseSickCaseDates: settings.eraseSickCaseDates,
+});
+
+/**
  * Acknowledges a threshold, once and for good: its dashboard item never
  * comes back. Acknowledging it again changes nothing. Answers every
  * acknowledgement so far; the settings' revision does not move.

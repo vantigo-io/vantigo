@@ -268,6 +268,8 @@ export const settings = (overrides: Partial<StaffSettings> = {}): StaffSettings 
   selfCertAfterMonths: 2,
   autoCarryOver: false,
   createBeforeDays: 14,
+  erasePregnancyHealthTypes: false,
+  eraseSickCaseDates: false,
   revision: 3,
   ...overrides,
 });

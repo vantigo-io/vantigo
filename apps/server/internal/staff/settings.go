@@ -22,8 +22,10 @@ import (
 // retention run's state, derived (delivery A2), and the self-certification
 // policy and automatic carry-over (delivery B, absence_settings.go; plan
 // reading 2: the contract grows with the deliveries), and the two account
-// settings (delivery C, account_settings.go). There is exactly one row, written by the
-// migration, and a replace is guarded by its revision.
+// settings (delivery C, account_settings.go) and the two erase settings the
+// owner asked for (delivery C, Task 5b; retention.go reads them). There is
+// exactly one row, written by the migration, and a replace is guarded by its
+// revision.
 
 // parsedSettings is one validated settings body. A retention period left
 // out is nil, and keeps its value.
@@ -123,6 +125,26 @@ func parseSettings(body gen.StaffSettingsRequest) (parsedSettings, fieldErrors) 
 	return out, f
 }
 
+// eraseSettings is the two erase settings of a replace (Task 5b), each nil
+// when left out, which keeps it.
+type eraseSettings struct {
+	pregnancyHealth *bool
+	sickCaseDates   *bool
+}
+
+// parseEraseSettings judges the two erase settings into f: each a boolean,
+// kept when left out. The decoder reads a null as left out, so a null is
+// refused on the field rather than kept — an erase setting is never changed
+// or kept by a client that meant to say something else.
+func parseEraseSettings(ctx context.Context, body gen.StaffSettingsRequest, f *fieldErrors) eraseSettings {
+	for _, field := range []string{"erasePregnancyHealthTypes", "eraseSickCaseDates"} {
+		if bodyHas(ctx, field) && !bodyHasValue(ctx, field) {
+			f.add(field, "An erase setting is true or false; left out, it keeps its value")
+		}
+	}
+	return eraseSettings{pregnancyHealth: body.ErasePregnancyHealthTypes, sickCaseDates: body.EraseSickCaseDates}
+}
+
 // settings reads the installation's settings row. Every path that needs the
 // zone or the sequence goes through it.
 func settings(ctx context.Context, q *store.Queries) (store.StaffSetting, error) {
@@ -182,8 +204,9 @@ func retentionState(ctx context.Context, q *store.Queries) (gen.StaffRetentionSt
 // (PUT /api/v1/staff/settings)
 //
 // A full replace of A1's five fields, guarded by If-Match; A2's retention
-// periods, B's self-certification policy and carry-over and C's two account
-// settings (account_settings.go) each keep their value when left out. The policy is resolved against the row as locked, and
+// periods, B's self-certification policy and carry-over, C's two account
+// settings (account_settings.go) and its two erase settings each keep their
+// value when left out. The policy is resolved against the row as locked, and
 // "today" for autoCarryOverSince is the stored zone's. The zone is judged
 // by Go, then — when it changes — by the database, before the transaction;
 // the revision is judged under the row's lock, so two replaces at once queue
@@ -199,6 +222,7 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 	}
 	parsed, f := parseSettings(body)
 	accounts := parseAccountSettings(body, bodyHas(ctx, "deleteExternalAfterDays"), &f)
+	erase := parseEraseSettings(ctx, body, &f)
 	q := store.New(s.deps.Pool)
 	if !f.failed() {
 		current, err := settings(ctx, q)
@@ -250,6 +274,8 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 			CreateBeforeDays:           accounts.createBeforeDays,
 			SetDeleteExternalAfterDays: accounts.deleteExternal,
 			DeleteExternalAfterDays:    accounts.deleteExternalAfterDays,
+			ErasePregnancyHealthTypes:  erase.pregnancyHealth,
+			EraseSickCaseDates:         erase.sickCaseDates,
 			Now:                        now,
 		})
 		if err != nil {

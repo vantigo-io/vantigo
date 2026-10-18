@@ -1,4 +1,4 @@
-import { Alert, Button, Group, NumberInput, SimpleGrid, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, NumberInput, SimpleGrid, Stack, Switch, Text } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
@@ -16,11 +16,15 @@ import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 interface PeriodValues {
   retentionGraceDays: number | string;
   healthRetentionDays: number | string;
+  erasePregnancyHealthTypes: boolean;
+  eraseSickCaseDates: boolean;
 }
 
 const periodsOf = (settings: StaffSettings): PeriodValues => ({
   retentionGraceDays: settings.retentionGraceDays,
   healthRetentionDays: settings.healthRetentionDays,
+  erasePregnancyHealthTypes: settings.erasePregnancyHealthTypes,
+  eraseSickCaseDates: settings.eraseSickCaseDates,
 });
 
 /** A whole number of days within the bounds `PUT /settings` takes. */
@@ -30,12 +34,15 @@ const withinDays = (value: number | string, min: number) => {
 };
 
 /**
- * Retention in Settings (design S15), `staff:manage`'s: the two periods,
- * saved through `PUT /settings` under the revision read — the replace carries
- * the general settings as read, since every field but the periods left out
- * is cleared — the derived block, read-only, and **Run retention now** after
- * a confirm, its result said in words; `retention_busy` while the worker
- * holds the lease.
+ * Retention in Settings (design S15), `staff:manage`'s: the two periods and
+ * the two erase settings the owner asked for (delivery C, Task 5b — the
+ * pregnancy and health rows on the health schedule, a sick-leave case's
+ * dates and milestones in its erase, each explained), saved through
+ * `PUT /settings` under the revision read — the replace carries the general
+ * settings as read, since every field but the periods left out is cleared —
+ * the derived block, read-only, and **Run retention now** after a confirm,
+ * its result said in words; `retention_busy` while the worker holds the
+ * lease.
  */
 export const RetentionPanel = ({ settings }: { settings: StaffSettings }) => {
   const { t, formatters } = useI18n("staff");
@@ -75,6 +82,8 @@ export const RetentionPanel = ({ settings }: { settings: StaffSettings }) => {
           retentionGraceDays: Number(values.retentionGraceDays),
           healthRetentionDays: Number(values.healthRetentionDays),
           ...accountSettingsOf(settings),
+          erasePregnancyHealthTypes: values.erasePregnancyHealthTypes,
+          eraseSickCaseDates: values.eraseSickCaseDates,
         },
         settings.revision,
       ),
@@ -163,6 +172,16 @@ export const RetentionPanel = ({ settings }: { settings: StaffSettings }) => {
               {...form.getInputProps("healthRetentionDays")}
             />
           </SimpleGrid>
+          <Switch
+            label={t("erasePregnancyHealthTypes")}
+            description={t("erasePregnancyHealthTypesDescription")}
+            {...form.getInputProps("erasePregnancyHealthTypes", { type: "checkbox" })}
+          />
+          <Switch
+            label={t("eraseSickCaseDates")}
+            description={t("eraseSickCaseDatesDescription")}
+            {...form.getInputProps("eraseSickCaseDates", { type: "checkbox" })}
+          />
           <Group justify="flex-end">
             <Button type="submit" variant="light" loading={save.isPending}>
               {t("savePeriods")}

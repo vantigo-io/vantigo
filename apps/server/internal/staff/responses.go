@@ -41,6 +41,9 @@ func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState)
 
 		CreateBeforeDays:        int32(row.CreateBeforeDays),
 		DeleteExternalAfterDays: int32Of(row.DeleteExternalAfterDays),
+
+		ErasePregnancyHealthTypes: row.ErasePregnancyHealthTypes,
+		EraseSickCaseDates:        row.EraseSickCaseDates,
 	}, nil
 }
 

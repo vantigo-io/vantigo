@@ -137,7 +137,7 @@ the app never re-derives a rule. For `staff:manage` alone it also answers the
 ## Settings
 
 One row, written by the migration. `GET /settings` and `PUT /settings` are
-`staff:manage`'s. The contract exposes fifteen fields, a derived block and the
+`staff:manage`'s. The contract exposes seventeen fields, a derived block and the
 acknowledged thresholds.
 
 | Field | Default | Rule |
@@ -157,6 +157,8 @@ acknowledged thresholds.
 | `autoCarryOver` | false | Carry holiday left at a year's end into the next as forced, without HR's action; left out, kept. |
 | `createBeforeDays` | 14 | 0 to 90 days before the account's effective date that the accounts worker prepares it, disabled ([accounts](#accounts)); left out, kept. |
 | `deleteExternalAfterDays` | — | 1 to 3650 days after the last employment ended that an external directory's account is deleted, or `null` for never; inert — no module reads it yet (the Entra module will); left out, kept, and absent on the wire when never. |
+| `erasePregnancyHealthTypes` | false | Put the pregnancy and health-appointment rows on the health schedule ([what is due](#what-is-due)); left out, kept; `null` refused on the field (400), never read as false. |
+| `eraseSickCaseDates` | false | Make a closed case's erase remove the case itself ([what an erase does](#what-an-erase-does)); left out, kept; `null` refused on the field (400). |
 
 **The self-certification policy.** A preset writes its own numbers, whatever the
 request carries: `minimum` — the statutory one — 3 days an occurrence and 4
@@ -501,7 +503,7 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `people_exported` | Installation-level (no person): `rows`, the people the [export](#the-registers-import-and-export) wrote. |
 | `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; no personal data, so no payload class. |
 | `threshold_acknowledged` | Installation-level (no person): `key`, the [threshold](#the-thresholds) acknowledged (`5`, `30`, `50` or `otp`); the actor is the caller; no payload class. |
-| `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`, `cases`, `childSick`, `withdrawal`), read by `staff:manage` and `staff:personal-data`, the four health-side entries (`health`, `cases`, `childSick`, `withdrawal`) by `staff:personal-data` alone; listed as the hold's kinds are; the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
+| `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`, `cases`, `childSick`, `withdrawal`, `pregnancyHealth`), read by `staff:manage` and `staff:personal-data`, the five health-side entries (`health`, `cases`, `childSick`, `withdrawal`, `pregnancyHealth`) by `staff:personal-data` alone; listed as the hold's kinds are; the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
 
 Delivery B's absence and adjustment events carry their classes per field and are
 shaped by the absence groups; they are described under
@@ -1497,11 +1499,18 @@ The seeds, every installation's, in their order:
   fødselspermisjon, which reveal special-category data: the manager sees "leave", the
   type is `staff:personal-data`'s and the person's own.
 - **The reserved `absent`** is what the health erase writes in place of a sick or
-  child-sick type; **`absent_hours`** is its counterpart counted in hours, for an hour
-  row an erase reaches, so it keeps its hours and counts no day. Both are hidden and
-  never shown again (`seed_immutable`); `reserved` is true on both. `ammefri` is seeded
-  **paid**: aml. § 12-8 (2) gives pay for up to one hour a day in the child's first
-  year on a working day of seven hours or more.
+  child-sick type, and of a pregnancy or health type counted in days; **`absent_hours`**
+  is what it writes in place of one counted in hours (svangerskapskontroll, helse), so
+  an erased visit keeps its hours and counts no day, as before. Both are hidden, unpaid
+  and never shown again (`seed_immutable`); `reserved` is true on both.
+- **Pay.** `paid` is informational: no figure reads it — the payroll export and its
+  totals count days and hours by kind, never by pay. A seed's pay is **HR's to change**
+  (the owner's answer 7): a company that pays beyond the law marks the seed paid, and
+  can take it back. `ammefri` is the exception: it is seeded **paid** — aml. § 12-8 (2)
+  gives pay for up to one hour a day in the child's first year on a working day of
+  seven hours or more — and is never set unpaid (`seed_immutable`, 409, the detail
+  naming the paragraph). Pay beyond that floor — more than an hour, or after the first
+  year — is the company's, marked by a company type of its own or the absence's note.
 - **Reading.** `GET /absence-types` answers every type that is not hidden to every
   caller — `hr_only` ones included: the type is public, who takes it is not — and the
   hidden ones too to `staff:manage`. `GET /meta` answers the same visible list as
@@ -1513,9 +1522,11 @@ The seeds, every installation's, in their order:
   after every type there is (1–1000 when given).
 - **A change** (`PUT /absence-types/{id}`, `staff:manage`, `If-Match`) replaces the
   names, the flags, the visibility, the mapping, `hidden` and `sort`; a body naming
-  `key`, `kind` or `unit` is a 400 naming it. A **seed** changes its names, its order
-  and whether it is hidden, nothing else: anything more, and showing a reserved type, is
-  `seed_immutable` (409). A company type's visibility is **widened** — `hr_only` to
+  `key`, `kind` or `unit` is a 400 naming it. A **seed** changes its names, its order,
+  whether it is hidden and whether it is paid, nothing else: anything more, `ammefri`
+  unpaid, and showing or paying a reserved type, is `seed_immutable` (409). The full
+  replace sends `paid` back like every other flag, so Settings' form sends what it read
+  and what HR changed. A company type's visibility is **widened** — `hr_only` to
   `absent` — only while no absence names it: once one does, widening is
   `absence_type_in_use` (409), since it would show colleagues and managers, after the
   fact, a type people took as HR-only. Narrowing is always allowed. A company type that
@@ -2650,9 +2661,11 @@ The register keeps what the law lets it keep, and the retention run erases the r
   the last employment ended.
 - **E** — health: a sick-leave case's notes, estimate and milestones' facts, a sick
   row's type and degree, a child-sick row's type, the withdrawal of egenmelding, health
-  documents (a restricted category) and the health fields of the events about them.
-  Erased on [three schedules of their own](#what-is-due) — a closed case's, a year's
-  child-sick rows', a lapsed withdrawal's — whatever the employment, and what none of
+  documents (a restricted category) and the health fields of the events about them —
+  and, with `erasePregnancyHealthTypes` on, a pregnancy or health-appointment row's
+  type. Erased on [schedules of their own](#what-is-due) — a closed case's, a year's
+  child-sick (or pregnancy and health) rows', a lapsed withdrawal's — whatever the
+  employment, and what none of
   them owns a longer period after the last employment ended.
 - **F** — the legal hold, which stops every erase and is erased by none.
 
@@ -2718,11 +2731,20 @@ time zone's civil day:
   over), whichever came first — before today minus `healthRetentionDays` (spec open question 1: 365 days, built as
   designed), with something of class E left: a value of the case's or its milestones'
   E columns, a row still of a sick type or with a degree, a document filed under it, or
-  a health field of an event it owns.
+  a health field of an event it owns — and, with `eraseSickCaseDates` on, the case
+  itself: a case B's erase reached before is due again until it is removed.
 - **childSick** — a person, not held, with a child-sick row whose year ended before
   today minus `healthRetentionDays` (plan reading 21).
+- **pregnancyHealth** — only with `erasePregnancyHealthTypes` on (B's open question
+  11; off by default, when these rows are class C, kept with the employment): a person,
+  not held, whatever their employment, with a row of `svangerskapskontroll`,
+  `svangerskapspermisjon`, `fodselspermisjon` or `helse` whose year ended before today
+  minus `healthRetentionDays` — never before the payroll month that reported it has
+  passed, which that bound guarantees — or with an event naming one of those types
+  whose row no longer has one (deleted, or corrected to another type), recorded in a
+  year that ended before then.
 
-  These three, and the orphaned events below, are **capped by the person's own health
+  These four, and the orphaned events below, are **capped by the person's own health
   cutoff** (whole-branch review): when every employment of the person ended before
   today minus `healthRetentionDays`, what a case, a child-sick row or a withdrawal
   owns is due with the rest of their health data, whichever comes first.
@@ -2766,9 +2788,21 @@ since the cycle chose the person is seen there:
   degree, deletes the documents filed under it, and replaces the health fields — and
   the `typeIds` of class E — of the events it owns: its own, those of the cases it took
   in by a merge, its rows', and those of a ferie split for one of its rows.
+  With `eraseSickCaseDates` on (B's open question 12), the case's erase then **removes
+  the case**: its events — its own and those of the cases it took in — are blanked to
+  their kind (no case, no milestone, no field; only their rows' reserved `typeIds`, by
+  which they are listed), its rows' events no longer name it (`rowCaseId`), its
+  milestones are deleted, its rows are unlinked (`case_id` null) keeping their days as
+  `absent`, and the case row is deleted. Its documents are deleted and queued as
+  before. The erased event's `cases` count keeps its meaning: the items removed.
 - **childSick** writes `absent` in place of the due rows' type and replaces the health
   fields of their events.
-- **withdrawal** nulls `self_cert_withdrawn_from`, `_until` and `_reason` when the
+- **pregnancyHealth** writes the reserved type of each due row's unit — `absent` on a
+  day row, `absent_hours` on an hour row, its hours kept — and replaces every type
+  value of its events **whatever class they were recorded in** (B wrote them as C): the
+  `type` field reads `"changed"` and each such id in `typeIds` becomes the reserved
+  type. An event naming such a type whose row no longer has one goes by the year it
+  was recorded in. The days, the status and the dates stay.- **withdrawal** nulls `self_cert_withdrawn_from`, `_until` and `_reason` when the
   withdrawal on file lapsed before the cutoff, and replaces the values of the
   withdrawal's events recorded before it — each event by its own instant, so one
   recorded since waits for its own time.
@@ -2793,7 +2827,7 @@ A deleted document's row goes and its object's key is queued in the
 the object store.
 
 When anything was erased, the transaction records one **`erased`** event for the
-person, `{"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal", "count": n}]}`, its actor the
+person, `{"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}`, its actor the
 installation (`system`) when the worker ran it and the caller when
 [`POST /retention/run`](#running-it-by-hand) did. `count` is the items the kind
 removed: each column value nulled, each row deleted (a next of kin, a document) and
@@ -2802,8 +2836,9 @@ person, even when it found nothing to remove (count 0); an A count sums the pers
 due employments. The event touches no class, so no later erase rewrites it. It is
 listed as the [hold's kinds](#the-history) are — not to a manager, to the person as its
 kind with an empty payload — and its kinds are read by `staff:manage` and
-`staff:personal-data`, the `health`, `cases`, `childSick` and `withdrawal` entries — each
-says the person's health was on file — by `staff:personal-data` alone.
+`staff:personal-data`, the `health`, `cases`, `childSick`, `withdrawal` and
+`pregnancyHealth` entries — each says the person's health was on file — by
+`staff:personal-data` alone.
 
 The run is **idempotent**: a second run finds nothing due and writes nothing. That is
 what makes "once per civil day" hold whatever the poll and the clock do.
@@ -2874,6 +2909,12 @@ block, derived from the ledger and the history — no column holds it (plan read
 at least once), `oldestPendingSince` (when the oldest row was queued; absent when the
 ledger is empty) and `lastErasedAt` (the latest `erased` event; absent when nothing was
 ever erased).
+
+**The two erase settings** (`erasePregnancyHealthTypes`, `eraseSickCaseDates`; the
+owner's answer 7) are read by each cycle when it starts. Turned on, one applies from
+the next cycle to **everything already due** — a year's rows long past, a case B's
+erase reached years ago. Turned off, it **restores nothing**: what was erased stays
+erased, and only what is not yet due is kept from then on.
 
 ## The erased state
 
