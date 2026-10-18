@@ -203,6 +203,12 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 	}
 	now := s.deps.Clock()
 	var user *string
+	// handLink is HR's own self-service link to a user Staff does not manage
+	// (Task 6 review): the worker never acts on it, and identity would only
+	// refuse it, so the flag is turned off as asked and nothing else — no
+	// disable recorded, nothing called; HR unlinks it, or an Owner disables
+	// the user in identity.
+	handLink := false
 	err = s.withPersonLock(ctx, req.Id, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := readAccountPerson(ctx, txq, req.Id)
 		if err != nil {
@@ -215,6 +221,8 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 			return fmt.Errorf("staff: lock person %d's link: %w", req.Id, err)
 		case link.LeaseUntil != nil && link.LeaseUntil.After(now):
 			return accountsBusy()
+		case link.State == linkStateLinked && !link.Managed:
+			handLink = true
 		default:
 			user = link.ExternalID
 		}
@@ -250,6 +258,10 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 	ctx = context.WithoutCancel(ctx)
 	if hook, ok := disableCommittedHooks.Load(disableHookKey{pool: s.deps.Pool, person: req.Id}); ok {
 		hook.(func())()
+	}
+	if handLink {
+		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(conflict(codeAccountNotManaged, "Not managed by Staff",
+			"The account flag is off, but the person is linked by hand to a user Staff does not manage, so Staff does not disable them. Unlink the person, or an Owner disables the user in identity.")), nil
 	}
 	if user != nil {
 		if resp, err := s.disableLinkedUser(ctx, run, req.Id, now); resp != nil || err != nil {

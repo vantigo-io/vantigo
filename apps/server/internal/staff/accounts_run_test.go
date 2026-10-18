@@ -2,6 +2,7 @@ package staff_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -780,10 +781,10 @@ func TestAccountsDisable_ARefusalIsAnAnswer(t *testing.T) {
 			w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, Privileged: true, EmployeeNumber: p.EmployeeNumber})
 			workerLink(t, w.h, p.Id, u, "active")
 		}},
-		{"a self-service link", "account_not_managed", gen.AccountNotManaged, func(w accountsWorld, p gen.StaffPerson) {
+		{"no longer managed", "account_not_managed", gen.AccountNotManaged, func(w accountsWorld, p gen.StaffPerson) {
 			u := uuid.New()
 			w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, EmployeeNumber: p.EmployeeNumber})
-			link(t, w.h, p.Id, u)
+			workerLink(t, w.h, p.Id, u, "active")
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1009,5 +1010,49 @@ func TestAccountsDisable_AMismatchedUserIsNotDisabled(t *testing.T) {
 	w.cycle(t)
 	if got := w.fake.user(u); got.State != contracts.AccountStateDisabled {
 		t.Errorf("once the number matches the user = %+v, want disabled", got)
+	}
+}
+
+// Disable now on HR's own self-service link (the Task 6 review): a link the
+// worker never acts on. The flag is turned off as asked, but no disable is
+// recorded and identity is not called: 409 account_not_managed, the flag
+// off; no item ten minutes on; and an Owner adopting the user afterwards
+// does not get them disabled — HR unlinks a hand link, or an Owner
+// disables the user in identity.
+func TestAccountsDisable_ASelfServiceLinkIsNotDisabled(t *testing.T) {
+	t.Parallel()
+	for _, flag := range []bool{true, false} {
+		t.Run(fmt.Sprintf("flag %v", flag), func(t *testing.T) {
+			w := newAccountsWorld(t)
+			p := w.employee(t, "Hand", "2026-01-01", nil)
+			if !flag {
+				w.h.Exec(t, `UPDATE staff.people SET provision_account = false WHERE id = $1`, p.Id)
+			}
+			u := uuid.New()
+			w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive})
+			link(t, w.h, p.Id, u)
+			refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusConflict, "account_not_managed")
+			if acc := getAccount(t, w.hr, p.Id); acc.ProvisionAccount {
+				t.Error("the flag is on")
+			}
+			if m := disableMarker(t, w.h, p.Id); m != nil {
+				t.Errorf("a disable was recorded on a hand link: %v", m)
+			}
+			if n := countWrites(w.fake, "Deactivate"); n != 0 {
+				t.Errorf("Deactivate called %d times for a hand link", n)
+			}
+			w.h.Advance(11 * time.Minute)
+			if a := accountItems(getAttention(t, w.hr)); len(a) != 0 {
+				t.Errorf("items for a hand link: %+v", a)
+			}
+			ref := w.fake.user(u)
+			ref.Managed, ref.EmployeeNumber = true, p.EmployeeNumber
+			w.fake.setUser(ref)
+			w.h.Advance(25 * time.Hour)
+			w.cycle(t)
+			if got := w.fake.user(u); got.State != contracts.AccountStateActive {
+				t.Errorf("after an Owner's adoption the user = %+v, want left active", got)
+			}
+		})
 	}
 }

@@ -278,8 +278,11 @@ until HR turns the flag on again.
      changed — try again in a few minutes. If the worker took the link in the instant
      after the flag was written, **the flag is already off**: the worker then finishes
      the disable by itself.
-   - `account_not_managed` (409): the person is linked by hand to a user Staff does not
-     manage; `account_privileged` (409): the user is an Owner or a SystemAdmin. The flag
+   - `account_not_managed` (409) on HR's own self-service link: Disable now acts only on
+     accounts Staff manages. The flag is off, nothing else is done and nothing is tried
+     again — unlink the person, or an Owner disables the user in identity.
+   - `account_not_managed` (409) on the worker's link, whose user an Owner stopped Staff
+     managing; `account_privileged` (409): the user is an Owner or a SystemAdmin. The flag
      is off, but the user stays enabled: an Owner disables them in identity, or adopts
      the user for Staff again (or demotes them). Staff tries the disable again daily —
      so once an Owner has re-adopted or demoted the user, the next try disables them —

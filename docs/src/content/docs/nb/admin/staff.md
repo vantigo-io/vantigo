@@ -283,9 +283,12 @@ HR slår flagget på igjen.
      endret — prøv igjen om noen minutter. Tok arbeideren koblingen i øyeblikket etter at
      flagget ble skrevet, **er flagget allerede av**: da gjør arbeideren deaktiveringen
      ferdig selv.
-   - `account_not_managed` (409): personen er koblet for hånd til en bruker Ansatte ikke
-     styrer; `account_privileged` (409): brukeren er Owner eller SystemAdmin. Flagget er
-     av, men brukeren forblir aktiv: en Owner deaktiverer dem i identity, eller tar
+   - `account_not_managed` (409) på HRs egen selvbetjente kobling: Deaktiver nå virker
+     bare på kontoer Ansatte styrer. Flagget er av, ingenting annet gjøres og ingenting
+     prøves igjen — fjern koblingen, eller en Owner deaktiverer brukeren i identity.
+   - `account_not_managed` (409) på arbeiderens kobling, der en Owner lot Ansatte slutte å
+     styre brukeren; `account_privileged` (409): brukeren er Owner eller SystemAdmin.
+     Flagget er av, men brukeren forblir aktiv: en Owner deaktiverer dem i identity, eller tar
      brukeren inn for Ansatte igjen (eller fjerner Owner-rollen). Ansatte prøver
      deaktiveringen igjen daglig — så når en Owner har tatt brukeren inn igjen eller
      fjernet rollen, deaktiverer neste forsøk dem — og dashbordet viser
