@@ -990,10 +990,13 @@ for godt.
    **Oppbevaring** har to brytere, hver forklart under seg.
 2. **Slett svangerskap og helsetimer** (`erasePregnancyHealthTypes`): rader med
    svangerskapskontroll, svangerskapspermisjon, fødselspermisjon og *Lege eller
-   tannlege* blir *Fravær* — *Fravær (timer)* for en timesrad, som beholder timene —
+   tannlege* får en reservert *Fravær*-type — en timesrad beholder timene —
    `healthRetentionDays` dager etter slutten av året de sluttet, aldri før lønnsmåneden
-   som rapporterte dem er passert. Historikken beholder datoene og viser typen som
-   *endret* for alle; en hendelse om en rad som er slettet eller endret til en annen
+   som rapporterte dem er passert. Typene som bare er for HR, får en reservert type som
+   også bare er for HR, så ledere, godkjennere og HR uten `staff:personal-data` fortsatt
+   ser raden som *permisjon* og ingen hendelse om slettingen; personen og
+   `staff:personal-data` ser *Fravær (bare HR)*. Historikken beholder datoene og viser
+   typen som *endret*; en hendelse om en rad som er slettet eller endret til en annen
    type, slettes etter året den ble registrert.
 3. **Slett sykefraværssakens datoer og milepæler** (`eraseSickCaseDates`): når
    helseinnholdet i en avsluttet sak slettes, går også selve saken — datoene,

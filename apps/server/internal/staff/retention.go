@@ -402,6 +402,8 @@ type retentionPlan struct {
 	erasePregnancyHealth bool
 	pregnancyTypeIDs     []int64
 	absentHoursID        int64
+	hrOnlyID             int64
+	hrOnlyHoursID        int64
 	loc                  *time.Location
 	removeCases          bool
 }
@@ -416,9 +418,18 @@ func (s *server) planRetention(ctx context.Context, q *store.Queries) (retention
 	if err != nil {
 		return retentionPlan{}, fmt.Errorf("staff: read the reserved absent type: %w", err)
 	}
-	absentHoursID, err := q.AbsentHoursTypeID(ctx)
+	reservedRows, err := q.SeededTypesByKey(ctx, reservedTypes)
 	if err != nil {
-		return retentionPlan{}, fmt.Errorf("staff: read the reserved absent_hours type: %w", err)
+		return retentionPlan{}, fmt.Errorf("staff: read the reserved types: %w", err)
+	}
+	reserved := map[string]int64{}
+	for _, r := range reservedRows {
+		reserved[r.Key] = r.ID
+	}
+	for _, key := range reservedTypes {
+		if reserved[key] == 0 {
+			return retentionPlan{}, fmt.Errorf("staff: the reserved type %s is missing", key)
+		}
 	}
 	pregnancyTypeIDs, err := q.SeededTypeIDs(ctx, pregnancyHealthTypes)
 	if err != nil {
@@ -429,7 +440,9 @@ func (s *server) planRetention(ctx context.Context, q *store.Queries) (retention
 	return retentionPlan{
 		erasePregnancyHealth: row.ErasePregnancyHealthTypes,
 		pregnancyTypeIDs:     pregnancyTypeIDs,
-		absentHoursID:        absentHoursID,
+		absentHoursID:        reserved[reservedAbsenceHoursType],
+		hrOnlyID:             reserved[reservedHROnlyType],
+		hrOnlyHoursID:        reserved[reservedHROnlyHoursType],
 		loc:                  zoneOf(row),
 		removeCases:          row.EraseSickCaseDates,
 		dCutoff:              today.AddDate(0, 0, -int(row.RetentionGraceDays)),
@@ -653,10 +666,28 @@ func (s *server) erasePerson(ctx context.Context, conn *pgxpool.Conn, personID i
 			return err
 		}
 		kinds = append(kinds, b...)
-		if len(kinds) == 0 {
-			return nil
+		// The pregnancy and health erase is recorded in an erased event of its
+		// own, of class E, so it is listed to the health group's readers alone:
+		// an entry with no kind a leave-reader may read would still tell them,
+		// after the fact, that the person's HR-only rows were erased (the
+		// coordinator's decision on Task 5b).
+		var rest, pregnancy []erasedKind
+		for _, k := range kinds {
+			if k.Kind == eraseKindPregnancyHealth {
+				pregnancy = append(pregnancy, k)
+			} else {
+				rest = append(rest, k)
+			}
 		}
-		return s.recordEvent(ctx, txq, &personID, eventErased, who, map[string]any{"kinds": kinds}, nil)
+		if len(rest) > 0 {
+			if err := s.recordEvent(ctx, txq, &personID, eventErased, who, map[string]any{"kinds": rest}, nil); err != nil {
+				return err
+			}
+		}
+		if len(pregnancy) > 0 {
+			return s.recordEvent(ctx, txq, &personID, eventErased, who, map[string]any{"kinds": pregnancy}, []string{healthClass})
+		}
+		return nil
 	})
 	if errors.Is(err, errPersonNotFound) {
 		// Deleted since the cycle chose them: nothing left to erase.
@@ -909,9 +940,14 @@ func (s *server) erasePregnancyHealth(ctx context.Context, txq *store.Queries, p
 	if err != nil {
 		return 0, err
 	}
+	visibilities, err := readTypeVisibilities(ctx, txq)
+	if err != nil {
+		return 0, err
+	}
 	if len(ids) > 0 {
 		if err := txq.SetRowsReserved(ctx, store.SetRowsReservedParams{
-			AbsentHoursID: plan.absentHoursID, AbsentID: plan.absentID, Now: now, Ids: ids,
+			HrOnlyHoursID: plan.hrOnlyHoursID, HrOnlyID: plan.hrOnlyID, AbsentHoursID: plan.absentHoursID, AbsentID: plan.absentID,
+			Now: now, Ids: ids,
 		}); err != nil {
 			return 0, fmt.Errorf("staff: erase person %d's pregnancy and health rows' type: %w", personID, err)
 		}
@@ -920,8 +956,16 @@ func (s *server) erasePregnancyHealth(ctx context.Context, txq *store.Queries, p
 	if err != nil {
 		return 0, fmt.Errorf("staff: read person %d's events of pregnancy and health types: %w", personID, err)
 	}
+	// The reserved type an erased type value becomes: by its visibility —
+	// an HR-only one stays HR-only, so a leave-reader reads it as before —
+	// and by its unit, as SetRowsReserved writes the row.
 	reserved := func(id int64) int64 {
-		if units[id] == unitHours {
+		switch hours := units[id] == unitHours; {
+		case visibilities[id] == visibilityHROnly && hours:
+			return plan.hrOnlyHoursID
+		case visibilities[id] == visibilityHROnly:
+			return plan.hrOnlyID
+		case hours:
 			return plan.absentHoursID
 		}
 		return plan.absentID

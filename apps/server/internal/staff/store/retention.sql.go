@@ -12,19 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const absentHoursTypeID = `-- name: AbsentHoursTypeID :one
-SELECT id FROM staff.absence_types WHERE key = 'absent_hours'
-`
-
-// AbsentHoursTypeID is the reserved hour type the pregnancy and health erase
-// writes in place of an hour type (Task 5b), as AbsentTypeID is absent's.
-func (q *Queries) AbsentHoursTypeID(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, absentHoursTypeID)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
-}
-
 const caseDocuments = `-- name: CaseDocuments :many
 SELECT id, object_key FROM staff.documents WHERE case_id = $1 ORDER BY id
 `
@@ -1273,6 +1260,37 @@ func (q *Queries) SeededTypeIDs(ctx context.Context, keys []string) ([]int64, er
 	return items, nil
 }
 
+const seededTypesByKey = `-- name: SeededTypesByKey :many
+SELECT id, key FROM staff.absence_types WHERE seeded AND key = ANY($1::text[]) ORDER BY id
+`
+
+type SeededTypesByKeyRow struct {
+	ID  int64
+	Key string
+}
+
+// SeededTypesByKey is the seeds named by @keys with their ids: the reserved
+// types the pregnancy and health erase writes (Task 5b).
+func (q *Queries) SeededTypesByKey(ctx context.Context, keys []string) ([]SeededTypesByKeyRow, error) {
+	rows, err := q.db.Query(ctx, seededTypesByKey, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SeededTypesByKeyRow
+	for rows.Next() {
+		var i SeededTypesByKeyRow
+		if err := rows.Scan(&i.ID, &i.Key); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setCaseRowsAbsent = `-- name: SetCaseRowsAbsent :execrows
 UPDATE staff.absences SET type_id = $1::bigint, revision = revision + 1, updated_at = $2::timestamptz
 WHERE case_id = $3 AND type_id <> $1::bigint
@@ -1329,24 +1347,35 @@ func (q *Queries) SetRowsAbsent(ctx context.Context, arg SetRowsAbsentParams) er
 
 const setRowsReserved = `-- name: SetRowsReserved :exec
 UPDATE staff.absences a SET
-    type_id = CASE WHEN t.unit = 'hours' THEN $1::bigint ELSE $2::bigint END,
+    type_id = CASE
+        WHEN t.visibility = 'hr_only' AND t.unit = 'hours' THEN $1::bigint
+        WHEN t.visibility = 'hr_only' THEN $2::bigint
+        WHEN t.unit = 'hours' THEN $3::bigint
+        ELSE $4::bigint END,
     revision = a.revision + 1,
-    updated_at = $3::timestamptz
+    updated_at = $5::timestamptz
 FROM staff.absence_types t
-WHERE t.id = a.type_id AND a.id = ANY($4::bigint[])
+WHERE t.id = a.type_id AND a.id = ANY($6::bigint[])
 `
 
 type SetRowsReservedParams struct {
+	HrOnlyHoursID int64
+	HrOnlyID      int64
 	AbsentHoursID int64
 	AbsentID      int64
 	Now           time.Time
 	Ids           []int64
 }
 
-// SetRowsReserved writes a reserved type on @ids by each row's unit: absent
-// on a day row, absent_hours on an hour row, which keeps its hours (Task 5b).
+// SetRowsReserved writes a reserved type on @ids by each row's type's
+// visibility and unit (Task 5b): an HR-only row absent_hr_only, or
+// absent_hr_only_hours for an hour row — so it reads "leave" to every reader
+// who read it so — any other absent, or absent_hours; an hour row keeps its
+// hours.
 func (q *Queries) SetRowsReserved(ctx context.Context, arg SetRowsReservedParams) error {
 	_, err := q.db.Exec(ctx, setRowsReserved,
+		arg.HrOnlyHoursID,
+		arg.HrOnlyID,
 		arg.AbsentHoursID,
 		arg.AbsentID,
 		arg.Now,

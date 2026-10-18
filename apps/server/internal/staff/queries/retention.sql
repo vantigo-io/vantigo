@@ -229,10 +229,10 @@ ORDER BY a.id;
 UPDATE staff.absences SET type_id = @absent_id::bigint, revision = revision + 1, updated_at = @now::timestamptz
 WHERE id = ANY(@ids::bigint[]);
 
--- name: AbsentHoursTypeID :one
--- AbsentHoursTypeID is the reserved hour type the pregnancy and health erase
--- writes in place of an hour type (Task 5b), as AbsentTypeID is absent's.
-SELECT id FROM staff.absence_types WHERE key = 'absent_hours';
+-- name: SeededTypesByKey :many
+-- SeededTypesByKey is the seeds named by @keys with their ids: the reserved
+-- types the pregnancy and health erase writes (Task 5b).
+SELECT id, key FROM staff.absence_types WHERE seeded AND key = ANY(@keys::text[]) ORDER BY id;
 
 -- name: SeededTypeIDs :many
 -- SeededTypeIDs is the ids of the seeds named by @keys: the pregnancy and
@@ -283,10 +283,17 @@ WHERE a.person_id = @person_id AND a.type_id = ANY(@type_ids::bigint[])
 ORDER BY a.id;
 
 -- name: SetRowsReserved :exec
--- SetRowsReserved writes a reserved type on @ids by each row's unit: absent
--- on a day row, absent_hours on an hour row, which keeps its hours (Task 5b).
+-- SetRowsReserved writes a reserved type on @ids by each row's type's
+-- visibility and unit (Task 5b): an HR-only row absent_hr_only, or
+-- absent_hr_only_hours for an hour row — so it reads "leave" to every reader
+-- who read it so — any other absent, or absent_hours; an hour row keeps its
+-- hours.
 UPDATE staff.absences a SET
-    type_id = CASE WHEN t.unit = 'hours' THEN @absent_hours_id::bigint ELSE @absent_id::bigint END,
+    type_id = CASE
+        WHEN t.visibility = 'hr_only' AND t.unit = 'hours' THEN @hr_only_hours_id::bigint
+        WHEN t.visibility = 'hr_only' THEN @hr_only_id::bigint
+        WHEN t.unit = 'hours' THEN @absent_hours_id::bigint
+        ELSE @absent_id::bigint END,
     revision = a.revision + 1,
     updated_at = @now::timestamptz
 FROM staff.absence_types t

@@ -977,11 +977,14 @@ protection officer: each erases for good.
    two switches, each explained beneath it.
 2. **Erase pregnancy and health appointments** (`erasePregnancyHealthTypes`): rows of
    svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and *Doctor or
-   dentist* become *Absent* — *Absent (hours)* for an hour row, which keeps its hours —
+   dentist* become a reserved *Absent* type — an hour row keeps its hours —
    `healthRetentionDays` after the end of the year they ended, never before the payroll
-   month that reported them has passed. Their history keeps its dates and reads the
-   type as *changed* for everyone; an entry about a row deleted or changed to another
-   type goes by the year it was recorded in.
+   month that reported them has passed. The HR-only types take an HR-only reserved
+   type, so managers, Approvers and HR without `staff:personal-data` still read the row
+   as *leave* and see no entry about the erase; the person and `staff:personal-data`
+   see *Absent (HR only)*. Their history keeps its dates and reads the type as
+   *changed*; an entry about a row deleted or changed to another type goes by the year
+   it was recorded in.
 3. **Erase a sick-leave case's dates and milestones** (`eraseSickCaseDates`): when a
    closed case's health content is erased, the case itself goes too — its dates, its
    milestones and its history, which keeps only the entries' kinds and dates. Its
