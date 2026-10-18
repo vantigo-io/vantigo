@@ -484,7 +484,8 @@ func TestAccountsDisable_APersonWithNoLink(t *testing.T) {
 // Both runs and Disable now need no second connection (the lock rule): on a
 // pool of one each finishes, identity called on no connection.
 func TestAccountsRun_OnAPoolOfOne(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): a seam or pool-of-one test runs alone (plan Global
+	// Constraints, "Races").
 	w := newAccountsWorld(t, modtest.WithPoolMaxConns(1))
 	w.h.Exec(t, `UPDATE staff.settings SET create_before_days = 0`)
 	a := w.employee(t, "Alle", today(t, w.h), nil)
@@ -859,7 +860,8 @@ func TestAccountsDisable_ARefusalIsAnAnswer(t *testing.T) {
 // failed, after which an Owner disabled the user in identity, is cleared by
 // the next cycle with no call, and accountFailing goes.
 func TestAccountsDisable_AUserDisabledMeanwhileClearsTheMarker(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel(): a seam or pool-of-one test runs alone (plan Global
+	// Constraints, "Races").
 	w := newAccountsWorld(t)
 	p := w.employee(t, "Eiervekk", "2026-01-01", nil)
 	u := uuid.New()
