@@ -216,6 +216,12 @@ var healthEraseKinds = []string{eraseKindHealth, eraseKindCases, eraseKindChildS
 // default, while the setting is off.
 var pregnancyHealthTypes = []string{"svangerskapskontroll", "svangerskapspermisjon", "fodselspermisjon", "helse"}
 
+// pregnancyLeaveTypes are the leaves among them erased no earlier than a
+// full year after their year ended, whatever healthRetentionDays says (the
+// coordinator's decision on review L5): the holiday-pay year after a leave,
+// and a payroll re-export of it, still read the leave.
+var pregnancyLeaveTypes = []string{"svangerskapspermisjon", "fodselspermisjon"}
+
 // documentEventKinds are the kinds of event about one document: the A erase
 // of a person's last employment finds those of a document that is gone by
 // them.
@@ -404,8 +410,15 @@ type retentionPlan struct {
 	absentHoursID        int64
 	hrOnlyID             int64
 	hrOnlyHoursID        int64
-	loc                  *time.Location
-	removeCases          bool
+	// reservedIDs are the four reserved types: a value already one of them
+	// is erased already (review L2). floorTypeIDs are the pregnancy leaves
+	// erased no earlier than floorCutoff, a full year after their year ended
+	// (review L5).
+	reservedIDs  []int64
+	floorTypeIDs []int64
+	floorCutoff  time.Time
+	loc          *time.Location
+	removeCases  bool
 }
 
 // planRetention reads the settings on q and derives the cycle's dates.
@@ -426,10 +439,16 @@ func (s *server) planRetention(ctx context.Context, q *store.Queries) (retention
 	for _, r := range reservedRows {
 		reserved[r.Key] = r.ID
 	}
+	var reservedIDs []int64
 	for _, key := range reservedTypes {
 		if reserved[key] == 0 {
 			return retentionPlan{}, fmt.Errorf("staff: the reserved type %s is missing", key)
 		}
+		reservedIDs = append(reservedIDs, reserved[key])
+	}
+	floorTypeIDs, err := q.SeededTypeIDs(ctx, pregnancyLeaveTypes)
+	if err != nil {
+		return retentionPlan{}, fmt.Errorf("staff: read the pregnancy leave types: %w", err)
 	}
 	pregnancyTypeIDs, err := q.SeededTypeIDs(ctx, pregnancyHealthTypes)
 	if err != nil {
@@ -443,6 +462,9 @@ func (s *server) planRetention(ctx context.Context, q *store.Queries) (retention
 		absentHoursID:        reserved[reservedAbsenceHoursType],
 		hrOnlyID:             reserved[reservedHROnlyType],
 		hrOnlyHoursID:        reserved[reservedHROnlyHoursType],
+		reservedIDs:          reservedIDs,
+		floorTypeIDs:         floorTypeIDs,
+		floorCutoff:          today.AddDate(-1, 0, 0),
 		loc:                  zoneOf(row),
 		removeCases:          row.EraseSickCaseDates,
 		dCutoff:              today.AddDate(0, 0, -int(row.RetentionGraceDays)),
@@ -464,25 +486,26 @@ func (p retentionPlan) dueD(person *int64, limit int32) store.DuePeopleDParams {
 }
 
 func (p retentionPlan) dueHealth(person *int64, limit int32) store.DuePeopleHealthParams {
-	return store.DuePeopleHealthParams{PersonID: person, Cutoff: dayParam(p.healthCutoff), Blanked: changed, AbsentID: p.absentID, RowLimit: limit}
+	return store.DuePeopleHealthParams{PersonID: person, Cutoff: dayParam(p.healthCutoff), Blanked: changed, ReservedIds: p.reservedIDs, RowLimit: limit}
 }
 
 func (p retentionPlan) dueCases(person *int64, limit int32) store.DueCasesEParams {
 	return store.DueCasesEParams{
 		PersonID: person, Zone: p.zone, Cutoff: dayParam(p.healthCutoff), CaseColumns: p.caseColumns,
-		MilestoneColumns: p.milestoneColumns, AbsentID: p.absentID, RemoveCases: p.removeCases, Blanked: changed, RowLimit: limit,
+		MilestoneColumns: p.milestoneColumns, ReservedIds: p.reservedIDs, RemoveCases: p.removeCases, Blanked: changed, RowLimit: limit,
 	}
 }
 
 func (p retentionPlan) duePregnancyHealth(person *int64, limit int32) store.DuePeoplePregnancyHealthParams {
 	return store.DuePeoplePregnancyHealthParams{
-		PersonID: person, TypeIds: p.pregnancyTypeIDs, Cutoff: dayParam(p.healthCutoff), Zone: p.zone, RowLimit: limit,
+		PersonID: person, TypeIds: p.pregnancyTypeIDs, Cutoff: dayParam(p.healthCutoff), Zone: p.zone,
+		FloorTypeIds: p.floorTypeIDs, FloorCutoff: dayParam(p.floorCutoff), RowLimit: limit,
 	}
 }
 
 func (p retentionPlan) dueOrphans(person *int64, limit int32) store.DuePeopleOrphanedSickEventsParams {
 	return store.DuePeopleOrphanedSickEventsParams{
-		PersonID: person, CutoffAt: p.orphanCutoffAt, Cutoff: dayParam(p.healthCutoff), Blanked: changed, AbsentID: p.absentID, RowLimit: limit,
+		PersonID: person, CutoffAt: p.orphanCutoffAt, Cutoff: dayParam(p.healthCutoff), Blanked: changed, ReservedIds: p.reservedIDs, RowLimit: limit,
 	}
 }
 
@@ -923,6 +946,7 @@ func (s *server) eraseAbsenceHealth(ctx context.Context, tx pgx.Tx, txq *store.Q
 func (s *server) erasePregnancyHealth(ctx context.Context, txq *store.Queries, personID int64, plan retentionPlan, gone bool, now time.Time) (int64, error) {
 	ids, err := txq.DuePregnancyHealthRows(ctx, store.DuePregnancyHealthRowsParams{
 		PersonID: personID, TypeIds: plan.pregnancyTypeIDs, Cutoff: dayParam(plan.healthCutoff),
+		FloorTypeIds: plan.floorTypeIDs, FloorCutoff: dayParam(plan.floorCutoff),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("staff: read person %d's pregnancy and health rows due: %w", personID, err)
@@ -984,6 +1008,8 @@ func (s *server) erasePregnancyHealth(ctx context.Context, txq *store.Queries, p
 		case about.AbsenceID != nil && current[*about.AbsenceID]:
 			continue
 		case !gone && !yearEnd.Before(plan.healthCutoff):
+			continue
+		case slices.ContainsFunc(about.TypeIDs, func(id int64) bool { return slices.Contains(plan.floorTypeIDs, id) }) && !yearEnd.Before(plan.floorCutoff):
 			continue
 		}
 		payload, rewritten, err := blankTypes(ev.Payload, plan.pregnancyTypeIDs, reserved)
@@ -1318,6 +1344,9 @@ type eventIDs struct {
 	RowCaseID     *int64 `json:"rowCaseId"`
 	SickAbsenceID *int64 `json:"sickAbsenceId"`
 	Withdrawal    bool   `json:"selfCertWithdrawal"`
+	// TypeIDs are an absence event's types (Task 5b): the pregnancy leave
+	// floor reads them.
+	TypeIDs []int64 `json:"typeIds"`
 	// At is when the event was recorded, from its row rather than its
 	// payload: the withdrawal's and the orphaned events' erases judge by it.
 	At time.Time `json:"-"`
@@ -1343,6 +1372,11 @@ func (s *server) blankEvents(ctx context.Context, txq *store.Queries, personID i
 	if err != nil {
 		return 0, fmt.Errorf("staff: read the reserved absent type: %w", err)
 	}
+	reservedRows, err := txq.SeededTypesByKey(ctx, reservedTypes)
+	if err != nil {
+		return 0, fmt.Errorf("staff: read the reserved types: %w", err)
+	}
+	reserved := mapRows(reservedRows, func(r store.SeededTypesByKeyRow) int64 { return r.ID })
 	var count int64
 	for _, row := range rows {
 		var ids eventIDs
@@ -1353,7 +1387,7 @@ func (s *server) blankEvents(ctx context.Context, txq *store.Queries, personID i
 		if !include(ids) {
 			continue
 		}
-		payload, rewritten, err := blankPayload(row.Payload, class, absentID)
+		payload, rewritten, err := blankPayload(row.Payload, class, absentID, reserved...)
 		if err != nil {
 			return 0, fmt.Errorf("staff: erase event %d's values of class %s: %w", row.ID, class, err)
 		}
@@ -1381,7 +1415,11 @@ func (s *server) blankEvents(ctx context.Context, txq *store.Queries, personID i
 // (typeClasses, leak 3): each one of class's is replaced with absentID, the
 // reserved type the erase writes in place of a sick one; an entry without a
 // class is replaced by every erase (fail closed).
-func blankPayload(stored []byte, class string, absentID int64) ([]byte, bool, error) {
+//
+// An entry already one of the reserved types (reserved) is erased already
+// and left as it is (review L2): an HR-only reserved id rewritten to absent
+// would widen who reads the event.
+func blankPayload(stored []byte, class string, absentID int64, reserved ...int64) ([]byte, bool, error) {
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(stored, &payload); err != nil {
 		return nil, false, err
@@ -1444,7 +1482,7 @@ func blankPayload(stored []byte, class string, absentID int64) ([]byte, bool, er
 		}
 		idsRewritten := false
 		for i, id := range ids {
-			if (i >= len(classes) || classes[i] == class) && id != absentID {
+			if (i >= len(classes) || classes[i] == class) && id != absentID && !slices.Contains(reserved, id) {
 				ids[i] = absentID
 				idsRewritten = true
 			}

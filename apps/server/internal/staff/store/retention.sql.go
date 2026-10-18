@@ -113,7 +113,7 @@ WHERE NOT p.legal_hold
           WHERE m.case_id = c.id AND j.key = ANY($5::text[]) AND j.value NOT IN ('null'::jsonb, 'false'::jsonb))
       OR EXISTS (
           SELECT 1 FROM staff.absences a
-          WHERE a.case_id = c.id AND (a.type_id <> $6::bigint OR a.degree_percent IS NOT NULL))
+          WHERE a.case_id = c.id AND (NOT (a.type_id = ANY($6::bigint[])) OR a.degree_percent IS NOT NULL))
       OR EXISTS (SELECT 1 FROM staff.documents d WHERE d.case_id = c.id)
       -- With eraseSickCaseDates on (delivery C, Task 5b) the case itself is
       -- what is left, until its erase deletes it: a case B's erase reached
@@ -134,7 +134,7 @@ WHERE NOT p.legal_hold
                 OR EXISTS (
                     SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
                     WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
-                      AND ti.id::bigint <> $6::bigint))))
+                      AND NOT (ti.id::bigint = ANY($6::bigint[]))))))
 ORDER BY least(coalesce((c.closed_at AT TIME ZONE $2::text)::date, c.last_day + 17), c.last_day + 17), c.id
 LIMIT $9
 `
@@ -145,7 +145,7 @@ type DueCasesEParams struct {
 	Cutoff           pgtype.Date
 	CaseColumns      []string
 	MilestoneColumns []string
-	AbsentID         int64
+	ReservedIds      []int64
 	RemoveCases      bool
 	Blanked          string
 	RowLimit         int32
@@ -173,7 +173,7 @@ func (q *Queries) DueCasesE(ctx context.Context, arg DueCasesEParams) ([]DueCase
 		arg.Cutoff,
 		arg.CaseColumns,
 		arg.MilestoneColumns,
-		arg.AbsentID,
+		arg.ReservedIds,
 		arg.RemoveCases,
 		arg.Blanked,
 		arg.RowLimit,
@@ -496,17 +496,17 @@ WHERE NOT p.legal_hold
                 OR EXISTS (
                     SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
                     WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
-                      AND ti.id::bigint <> $4::bigint))))
+                      AND NOT (ti.id::bigint = ANY($4::bigint[]))))))
 ORDER BY (SELECT max(e.end_date) FROM staff.employments e WHERE e.person_id = p.id), p.id
 LIMIT $5
 `
 
 type DuePeopleHealthParams struct {
-	PersonID *int64
-	Cutoff   pgtype.Date
-	Blanked  string
-	AbsentID int64
-	RowLimit int32
+	PersonID    *int64
+	Cutoff      pgtype.Date
+	Blanked     string
+	ReservedIds []int64
+	RowLimit    int32
 }
 
 // DuePeopleHealth is the people whose health content is due (plan reading 3):
@@ -519,7 +519,7 @@ func (q *Queries) DuePeopleHealth(ctx context.Context, arg DuePeopleHealthParams
 		arg.PersonID,
 		arg.Cutoff,
 		arg.Blanked,
-		arg.AbsentID,
+		arg.ReservedIds,
 		arg.RowLimit,
 	)
 	if err != nil {
@@ -570,18 +570,18 @@ WHERE NOT p.legal_hold
       OR EXISTS (
           SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
           WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
-            AND ti.id::bigint <> $5::bigint))
+            AND NOT (ti.id::bigint = ANY($5::bigint[]))))
 ORDER BY person_id
 LIMIT $6
 `
 
 type DuePeopleOrphanedSickEventsParams struct {
-	PersonID *int64
-	CutoffAt time.Time
-	Cutoff   pgtype.Date
-	Blanked  string
-	AbsentID int64
-	RowLimit int32
+	PersonID    *int64
+	CutoffAt    time.Time
+	Cutoff      pgtype.Date
+	Blanked     string
+	ReservedIds []int64
+	RowLimit    int32
 }
 
 // DuePeopleOrphanedSickEvents is the people, not held, whatever their
@@ -596,7 +596,7 @@ func (q *Queries) DuePeopleOrphanedSickEvents(ctx context.Context, arg DuePeople
 		arg.CutoffAt,
 		arg.Cutoff,
 		arg.Blanked,
-		arg.AbsentID,
+		arg.ReservedIds,
 		arg.RowLimit,
 	)
 	if err != nil {
@@ -627,28 +627,35 @@ WHERE NOT p.legal_hold
           SELECT 1 FROM staff.absences a
           WHERE a.person_id = p.id AND a.type_id = ANY($2::bigint[])
             AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $3::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
-                 AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= $3::date)))))
+                 AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= $3::date))))
+            AND (NOT (a.type_id = ANY($4::bigint[])) OR make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $5::date))
       OR EXISTS (
           SELECT 1 FROM staff.events ev
           WHERE ev.person_id = p.id
-            AND (make_date(EXTRACT(YEAR FROM (ev.at AT TIME ZONE $4::text))::int, 12, 31) < $3::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+            AND (make_date(EXTRACT(YEAR FROM (ev.at AT TIME ZONE $6::text))::int, 12, 31) < $3::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
                  AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= $3::date))))
             AND NOT EXISTS (
                 SELECT 1 FROM staff.absences a
                 WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND a.type_id = ANY($2::bigint[]))
             AND EXISTS (
                 SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) ti(id)
-                WHERE ti.id::bigint = ANY($2::bigint[]))))
+                WHERE ti.id::bigint = ANY($2::bigint[]))
+            AND (make_date(EXTRACT(YEAR FROM (ev.at AT TIME ZONE $6::text))::int, 12, 31) < $5::date
+                 OR NOT EXISTS (
+                     SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) ti(id)
+                     WHERE ti.id::bigint = ANY($4::bigint[])))))
 ORDER BY p.id
-LIMIT $5
+LIMIT $7
 `
 
 type DuePeoplePregnancyHealthParams struct {
-	PersonID *int64
-	TypeIds  []int64
-	Cutoff   pgtype.Date
-	Zone     string
-	RowLimit int32
+	PersonID     *int64
+	TypeIds      []int64
+	Cutoff       pgtype.Date
+	FloorTypeIds []int64
+	FloorCutoff  pgtype.Date
+	Zone         string
+	RowLimit     int32
 }
 
 // DuePeoplePregnancyHealth is the people, not held, whatever their
@@ -658,13 +665,18 @@ type DuePeoplePregnancyHealthParams struct {
 // child-sick row's — or an event naming one of those types in its typeIds
 // whose row no longer has one (deleted, or corrected to another type),
 // recorded in a year in @zone that ended before @cutoff; either one sooner
-// when every employment ended before @cutoff. An erased row has the reserved
+// when every employment ended before @cutoff — but a row of @floor_type_ids
+// (svangerskapspermisjon, fodselspermisjon), or an event naming one, never
+// before its year ended before @floor_cutoff, a full year ago (review L5):
+// the holiday-pay year after it still reads the leave. An erased row has the reserved
 // type and its events the reserved ids, so nothing is due twice.
 func (q *Queries) DuePeoplePregnancyHealth(ctx context.Context, arg DuePeoplePregnancyHealthParams) ([]int64, error) {
 	rows, err := q.db.Query(ctx, duePeoplePregnancyHealth,
 		arg.PersonID,
 		arg.TypeIds,
 		arg.Cutoff,
+		arg.FloorTypeIds,
+		arg.FloorCutoff,
 		arg.Zone,
 		arg.RowLimit,
 	)
@@ -751,19 +763,28 @@ SELECT a.id FROM staff.absences a
 WHERE a.person_id = $1 AND a.type_id = ANY($2::bigint[])
   AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $3::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id)
        AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id AND (ge.end_date IS NULL OR ge.end_date >= $3::date))))
+  AND (NOT (a.type_id = ANY($4::bigint[])) OR make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $5::date)
 ORDER BY a.id
 `
 
 type DuePregnancyHealthRowsParams struct {
-	PersonID int64
-	TypeIds  []int64
-	Cutoff   pgtype.Date
+	PersonID     int64
+	TypeIds      []int64
+	Cutoff       pgtype.Date
+	FloorTypeIds []int64
+	FloorCutoff  pgtype.Date
 }
 
 // DuePregnancyHealthRows is one person's rows of @type_ids due, as
-// DuePeoplePregnancyHealth judges them.
+// DuePeoplePregnancyHealth judges them, the full-year floor included.
 func (q *Queries) DuePregnancyHealthRows(ctx context.Context, arg DuePregnancyHealthRowsParams) ([]int64, error) {
-	rows, err := q.db.Query(ctx, duePregnancyHealthRows, arg.PersonID, arg.TypeIds, arg.Cutoff)
+	rows, err := q.db.Query(ctx, duePregnancyHealthRows,
+		arg.PersonID,
+		arg.TypeIds,
+		arg.Cutoff,
+		arg.FloorTypeIds,
+		arg.FloorCutoff,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1352,8 +1373,12 @@ UPDATE staff.absences a SET
         WHEN t.visibility = 'hr_only' THEN $2::bigint
         WHEN t.unit = 'hours' THEN $3::bigint
         ELSE $4::bigint END,
-    revision = a.revision + 1,
-    updated_at = $5::timestamptz
+    -- An HR-only row keeps its revision and updated_at (review H1): HR
+    -- without staff:personal-data is sent an opaque tag of the revision, and
+    -- only this erase rewrites an HR-only row, so a tag that moved would say
+    -- it was a pregnancy type.
+    revision = CASE WHEN t.visibility = 'hr_only' THEN a.revision ELSE a.revision + 1 END,
+    updated_at = CASE WHEN t.visibility = 'hr_only' THEN a.updated_at ELSE $5::timestamptz END
 FROM staff.absence_types t
 WHERE t.id = a.type_id AND a.id = ANY($6::bigint[])
 `
