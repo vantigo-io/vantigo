@@ -138,3 +138,60 @@ WHERE id = @id AND lease_id = @lease_id::uuid AND external_id IS NULL;
 -- AccountLinkClaim is a link's lease and user, for the log line of a result
 -- the link refused. No row is a link gone.
 SELECT lease_id, external_id FROM staff.identity_links WHERE id = @id;
+
+-- Run now and Disable now (Task 4c): one person's link, claimed as the cycle
+-- claims, by the caller's request.
+
+-- name: ClaimPersonAccountLink :one
+-- ClaimPersonAccountLink leases one person's link whatever its next attempt
+-- and whatever the flag — Disable now turns the flag off before it claims —
+-- when no live lease holds it. The link row alone is locked (OF l), waiting
+-- out another cycle's claim of it, whose short statement then holds the
+-- lease: no row is a link with a live lease, or no link at all.
+UPDATE staff.identity_links SET lease_id = @lease_id::uuid, lease_until = @lease_until::timestamptz
+WHERE id = (
+    SELECT l.id FROM staff.identity_links l
+    WHERE l.person_id = @person_id AND l.provider = 'identity'
+      AND (l.lease_until IS NULL OR l.lease_until <= @now::timestamptz)
+    FOR UPDATE OF l
+)
+RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error, attempts,
+    last_synced_at, last_spec_hash, synced_employee_number;
+
+-- name: CountDueAccountLinks :one
+-- CountDueAccountLinks is the due links ClaimAccountLink would still take,
+-- leased or not: what POST /accounts/run reports as remaining.
+SELECT count(*) FROM staff.identity_links l
+JOIN staff.people p ON p.id = l.person_id
+WHERE l.provider = 'identity' AND p.provision_account AND p.erased_at IS NULL
+  AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= @now::timestamptz);
+
+-- The account attention items (Task 4c, accounts_attention.go), from Staff's
+-- own rows alone: identity is never asked at read time.
+
+-- name: AccountLinkAttention :many
+-- AccountLinkAttention is every link of a person not erased that the worker
+-- left a reason or an error on, with the person's name and flag.
+SELECT l.person_id, p.display_name, p.provision_account, l.state, (l.external_id IS NOT NULL)::boolean AS has_user,
+    l.blocked_reason, l.last_error, l.attempts, l.updated_at
+FROM staff.identity_links l
+JOIN staff.people p ON p.id = l.person_id
+WHERE l.provider = 'identity' AND p.erased_at IS NULL
+  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL)
+ORDER BY l.person_id;
+
+-- name: AccountPersonAttention :many
+-- AccountPersonAttention is every person not erased whose flag is on with
+-- no employment at all, or with one not ended by @today and without the
+-- address the flag names.
+SELECT id, display_name, has_employment FROM (
+    SELECT p.id, p.display_name,
+        EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id) AS has_employment,
+        EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
+            AND (e.end_date IS NULL OR e.end_date >= @today::date)) AS employed,
+        coalesce(CASE WHEN p.account_email_kind = 'private' THEN p.private_email ELSE p.work_email END, '') <> '' AS address_present
+    FROM staff.people p
+    WHERE p.provision_account AND p.erased_at IS NULL
+) c
+WHERE NOT c.has_employment OR (c.employed AND NOT c.address_present)
+ORDER BY id;

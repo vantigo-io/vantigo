@@ -1185,6 +1185,61 @@ transactions; with no module providing it (`Deps.Accounts` nil) each answers
 "unavailable", which a read leaves out and a write answers `accounts_unavailable`
 (503).
 
+### Run now and Disable now
+
+Three operations run the worker's code by hand (`accounts_run.go`), `staff:manage`'s,
+the caller the actor identity audits (`contracts.Actor{UserID}`) and the account events
+name. Each keeps the worker's disciplines: no cycle-wide lock — a link is claimed alone,
+by a lease, in a statement that commits at once, so a run and the worker's ticker share
+the work — every identity call on no connection under the two-minute timeout, the
+result written under the person's lock on the claim's lease and only onto the user the
+claim knew.
+
+- **`POST /accounts/run`** runs one cycle: the preparing links of the people now due,
+  then the due links claimed one at a time, at most fifty, **none begun after sixty
+  seconds** on the module's clock (a claim begun finishes under its calls' own bounds).
+  It answers `StaffAccountsRun {attempted, done, failed, remaining}`: the links claimed;
+  those whose step identity answered — carried out, or refused with the reason the link
+  now records; those whose call could not be made (`last_error`, retried by the
+  worker); and the due links left, counted after the run whether or not another cycle
+  holds them (`CountDueAccountLinks`). No provider, or a mode identity cannot say, is
+  503 `accounts_unavailable` and nothing runs. A mode mismatch runs the deactivations
+  alone, as the worker does.
+- **`POST /people/{id}/account/run`** works one person: when their flag is on, the
+  preparing link written if the table says they are due and they have none, then their
+  link claimed **whatever its `next_attempt_at`** (`ClaimPersonAccountLink`, which waits
+  out another cycle's claim statement rather than skipping it), and worked with
+  `Fresh` — identity's `ActivateOpts.FreshInvitation` — on the **first** `decide` of the
+  claim only. A flag that is off runs nothing. It answers
+  `StaffPersonAccountRun {invitationSent, account}`: `invitationSent` is whether the
+  pending user's invitation became one that can be accepted during the run (none open
+  before, one open after). Identity never re-sends an open invitation and, within ten
+  minutes of the last invitation naming the user, treats a fresh one as an ordinary
+  `Activate`, which sends nothing for a revoked or exhausted invitation: the run is
+  **done** (200, `invitationSent: false`), the link keeping `invitation_revoked`. An
+  erased person is 409 `person_erased`; a link with a live lease 409 `accounts_busy`;
+  a call that could not be made 503 `accounts_unavailable`, recorded on the link.
+- **`POST /people/{id}/account/disable`** — *Disable now*, the owner's answer 2. Under
+  the person's lock, the link locked last: a live lease is 409 `accounts_busy` and
+  nothing is written; otherwise the flag is written off — `account_flag_updated`
+  `{fields: {provisionAccount: {from: true, to: false}}}`, `account_revision` moved, the
+  person's `revision` and `updated_at` not — and committed. Then the link is claimed
+  (`ClaimPersonAccountLink`, the flag no longer on), the lease renewed, `Deactivate`
+  called for its user with the caller as the actor, and the result written as the
+  worker writes one (`account_deactivated`, the link `disabled`). With the flag off no
+  cycle claims the link again, so the user stays disabled until HR turns the flag on.
+  A person with no link, or a link naming no user yet, has the flag turned off alone
+  (200). An erased person may be disabled. `ErrAccountNotManaged` is 409
+  `account_not_managed` and `ErrAccountPrivileged` or `ErrLastOwner` 409
+  `account_privileged` — the flag off, the reason on the link; `ErrUserGone` is done
+  (200, the link `failed: user_gone`). A call that could not be made is **503
+  `accounts_unavailable` with the flag already off**: the link's `last_error`
+  `accounts_unavailable`, `attempts` counted, and `accountFailing` raised, since no
+  cycle retries a link whose flag is off — HR sends it again. A link claimed by a cycle
+  in the instant between the commit and the claim is 409 `accounts_busy` with the flag
+  off; that cycle reads the flag off (`flagOffMeanwhile`), and the request sent again
+  disables the user.
+
 ## My page
 
 `/me` is the caller's own person, found through their self-service link and read as
@@ -2792,8 +2847,8 @@ erasure.
 The dashboard's two reads (design S20). Both are read in one snapshot — the people,
 every employment with its terms, the departments, and the manager graph built from
 those same rows, each table read once — and judged in Go on today, the day in the
-settings' [time zone](#the-business-time-zone). The account items arrive with
-delivery C.
+settings' [time zone](#the-business-time-zone). Delivery C's account items are read in
+the same snapshot, from Staff's own rows.
 
 ### The figures
 
@@ -2859,6 +2914,44 @@ the caller's roles find is listed once.
 | `sickMilestoneDue` | manage, approve; a manager today of the person | A [milestone](#the-arbeidsgiverperiode-and-the-milestones) due — the case open and lasted to within a week of the date, neither done nor waived (pre-flight I5) — dated within seven days or past. The end of the arbeidsgiverperiode is a date, never an action, and raises none; a three-day case raises none. One per milestone; `id` `sickMilestoneDue/<case id>/<kind>`. | The milestone's date. | The person. |
 | `holidayUntaken` | manage | In January: a person with an employment in force today whose [holiday account](#the-holiday-account) for last year has days remaining and no carry-over from it recorded — a carry-in [automatic carry-over](#adjustments-and-carry-over) derives counts as recorded (pre-flight M6). One per person. | 1 January. | The person. |
 | `mainPeriodShort` | manage | From 1 April to 30 September (reading 23): a person with an employment in force today that began before 1 June, with fewer approved ferie working days in 1 June – 30 September than the main period, converted, of the scheme the holiday account reads — the earliest employment's in the year (whole-branch review) — 18 virkedager are 15 days (ferieloven § 7 (1)). One per person. | 1 April. | The person. |
+
+**The account items** (delivery C, `accounts_attention.go`; pre-flight I8) are
+`staff:manage`'s alone — never `staff:personal-data` without it, a manager, an Approver
+or a colleague — and are derived from Staff's own rows in the snapshot, never by asking
+identity: the links as the [accounts worker](#the-accounts-worker) wrote them
+(`AccountLinkAttention`: every link of a person not erased with a `blocked_reason` or a
+`last_error`) and one person query (`AccountPersonAttention`). A person's item is listed
+only while their flag is on and they are not erased — but for `accountFailing` after a
+failed *Disable now* — with `id` `<type>/<person id>`, `entityId` the person, `title`
+the person's display name and nothing more (no address, no reason beyond the type) and
+`occurredAt` the link's `updated_at` (today for the two person-query items).
+
+| `type` | Source | Trigger |
+| --- | --- | --- |
+| `accountNoEmployment` | the person query | The flag on and no employment at all. |
+| `accountEmailMissing` | the person query | The flag on, an employment not ended by today, and the address the flag names (work or private) missing or empty. |
+| `accountNotFound` | `blocked_reason = not_found` | Federated: no managed user holds the employee number yet. |
+| `accountNotManaged` | `account_not_managed` | The link's user is no longer Staff-managed. |
+| `accountBlockedByOwner` | `blocked_by_owner` | An Owner disabled the pending user. |
+| `accountDisabledByOwner` | `disabled_by_owner` | An Owner disabled the user while employed. |
+| `accountUserGone` | `user_gone` | The user no longer exists. |
+| `accountPrivileged` | `account_privileged` | The user is an Owner or a SystemAdmin. |
+| `accountMismatch` | `mismatch` | Identity's employee number is not the person's. |
+| `accountModeChanged` | `mode_changed` | A pending user from local mode under federated mode. |
+| `accountEmailDiffers` | `email_differs` | A non-pending user's address differs from the person's. |
+| `accountEmailTaken` | `account_email_taken` | Another user holds the address. |
+| `accountNumberTaken` | `employee_number_taken` | An unmanaged user holds the employee number. |
+| `accountFailing` | `last_error` | `attempts` ≥ 3 with `last_error` set; or `blocked_reason = invalid_actor` (Staff's own fault, folded in); or the flag off with `last_error` set on a link naming a user not `disabled` — a *Disable now* identity did not answer. |
+| `invitationUnanswered` | `invitation_unanswered` | Three invitations unanswered in the spell. |
+| `invitationRevoked` | `invitation_revoked` | An Owner revoked the pending user's invitation. |
+| `employeeRoleMissing` | `employee_role_missing` | Installation item: one, `id` the type, `entityId` `settings`, `count` the links, `occurredAt` the oldest such write. |
+| `employeeRoleUnsafe` | `employee_role_unsafe` | Installation item, as above: a role named for Staff grants administration. Its own item rather than folded into `employeeRoleMissing`: the Owner's remedy differs. |
+| `accountModeMismatch` | `mode_mismatch` | Installation item, as above. |
+
+Every `blocked_reason` the worker writes maps to one item — a test walks the `reason*`
+constants of `accounts_decide.go` and `accounts_worker.go` — and `no_employment` and
+`account_email_missing` are judged by the person query rather than read off the link,
+so the item stands while the condition does.
 
 `id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for
 the person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
@@ -2972,8 +3065,10 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `retention_busy` | 409 | `POST /retention/run` while the retention lease is held — by the worker, here or on another replica, or another run by hand. Nothing ran. |
 | `threshold_unknown` | 404 | `POST /thresholds/{key}/acknowledge` with a key other than `5`, `30`, `50` and `otp`. |
 | `link_managed` | 409 | `PUT /people/{id}/user` naming, or unlinking, a Staff-managed user, or on a link in one of the accounts worker's states. |
-| `accounts_busy` | 409 | `DELETE /people/{id}` while the accounts worker holds the person's `preparing` link. |
-| `accounts_unavailable` | 503 | `PUT /people/{id}/user` when identity cannot say whether the user is Staff-managed. Nothing was changed. |
+| `accounts_busy` | 409 | `DELETE /people/{id}` while the accounts worker holds the person's `preparing` link; `POST /people/{id}/account/run` and `/disable` while a live lease holds the person's link. |
+| `account_not_managed` | 409 | `POST /people/{id}/account/disable` on a user Staff does not manage. The flag is off. |
+| `account_privileged` | 409 | `POST /people/{id}/account/disable` on an Owner, a SystemAdmin or the last active Owner. The flag is off. |
+| `accounts_unavailable` | 503 | `PUT /people/{id}/user` when identity cannot say whether the user is Staff-managed (nothing changed); `POST /accounts/run` and `/people/{id}/account/run` with no provider or identity unreachable; `POST /people/{id}/account/disable` when identity could not be reached — the flag already off. |
 
 An unknown id is a bare 404 with no body.
 
@@ -3077,7 +3172,7 @@ All under `/api/v1/staff`.
 | `POST /people`, `PUT /people/{id}`, `DELETE /people/{id}`, `PUT /people/{id}/next-of-kin`, `PUT /people/{id}/roles` | `staff:manage` |
 | `GET /people/{id}/user` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `GET /people/{id}/account` | `staff:access`, then the person, `staff:manage` or `staff:personal-data` (otherwise 404) |
-| `PUT /people/{id}/account` | `staff:manage` |
+| `PUT /people/{id}/account`, `POST /people/{id}/account/run`, `POST /people/{id}/account/disable`, `POST /accounts/run` | `staff:manage` |
 | `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |
 | `PUT /people/{id}/national-id`, `POST /people/{id}/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST /people/{id}/bank-account/reveal` | `staff:personal-data` |
 | `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents`, `GET /me/export` | `staff:access`, then a self-service link (otherwise `no_person`) |

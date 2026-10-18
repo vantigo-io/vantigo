@@ -786,11 +786,30 @@ func (e StaffSelfCertPolicy) Valid() bool {
 // Defines values for StaffStatsAttentionItemType.
 const (
 	AbsenceAwaitingDecision   StaffStatsAttentionItemType = "absenceAwaitingDecision"
+	AccountBlockedByOwner     StaffStatsAttentionItemType = "accountBlockedByOwner"
+	AccountDisabledByOwner    StaffStatsAttentionItemType = "accountDisabledByOwner"
+	AccountEmailDiffers       StaffStatsAttentionItemType = "accountEmailDiffers"
+	AccountEmailMissing       StaffStatsAttentionItemType = "accountEmailMissing"
+	AccountEmailTaken         StaffStatsAttentionItemType = "accountEmailTaken"
+	AccountFailing            StaffStatsAttentionItemType = "accountFailing"
+	AccountMismatch           StaffStatsAttentionItemType = "accountMismatch"
+	AccountModeChanged        StaffStatsAttentionItemType = "accountModeChanged"
+	AccountModeMismatch       StaffStatsAttentionItemType = "accountModeMismatch"
+	AccountNoEmployment       StaffStatsAttentionItemType = "accountNoEmployment"
+	AccountNotFound           StaffStatsAttentionItemType = "accountNotFound"
+	AccountNotManaged         StaffStatsAttentionItemType = "accountNotManaged"
+	AccountNumberTaken        StaffStatsAttentionItemType = "accountNumberTaken"
+	AccountPrivileged         StaffStatsAttentionItemType = "accountPrivileged"
+	AccountUserGone           StaffStatsAttentionItemType = "accountUserGone"
 	ContractOverdue           StaffStatsAttentionItemType = "contractOverdue"
+	EmployeeRoleMissing       StaffStatsAttentionItemType = "employeeRoleMissing"
+	EmployeeRoleUnsafe        StaffStatsAttentionItemType = "employeeRoleUnsafe"
 	HeadcountThreshold        StaffStatsAttentionItemType = "headcountThreshold"
 	HolidayAffectedBySickness StaffStatsAttentionItemType = "holidayAffectedBySickness"
 	HolidayUntaken            StaffStatsAttentionItemType = "holidayUntaken"
 	HrOnlyAwaitingDecision    StaffStatsAttentionItemType = "hrOnlyAwaitingDecision"
+	InvitationRevoked         StaffStatsAttentionItemType = "invitationRevoked"
+	InvitationUnanswered      StaffStatsAttentionItemType = "invitationUnanswered"
 	MainPeriodShort           StaffStatsAttentionItemType = "mainPeriodShort"
 	OtpThreshold              StaffStatsAttentionItemType = "otpThreshold"
 	ProbationEnding           StaffStatsAttentionItemType = "probationEnding"
@@ -808,7 +827,41 @@ func (e StaffStatsAttentionItemType) Valid() bool {
 	switch e {
 	case AbsenceAwaitingDecision:
 		return true
+	case AccountBlockedByOwner:
+		return true
+	case AccountDisabledByOwner:
+		return true
+	case AccountEmailDiffers:
+		return true
+	case AccountEmailMissing:
+		return true
+	case AccountEmailTaken:
+		return true
+	case AccountFailing:
+		return true
+	case AccountMismatch:
+		return true
+	case AccountModeChanged:
+		return true
+	case AccountModeMismatch:
+		return true
+	case AccountNoEmployment:
+		return true
+	case AccountNotFound:
+		return true
+	case AccountNotManaged:
+		return true
+	case AccountNumberTaken:
+		return true
+	case AccountPrivileged:
+		return true
+	case AccountUserGone:
+		return true
 	case ContractOverdue:
+		return true
+	case EmployeeRoleMissing:
+		return true
+	case EmployeeRoleUnsafe:
 		return true
 	case HeadcountThreshold:
 		return true
@@ -817,6 +870,10 @@ func (e StaffStatsAttentionItemType) Valid() bool {
 	case HolidayUntaken:
 		return true
 	case HrOnlyAwaitingDecision:
+		return true
+	case InvitationRevoked:
+		return true
+	case InvitationUnanswered:
 		return true
 	case MainPeriodShort:
 		return true
@@ -1226,6 +1283,21 @@ type StaffAccountLink struct {
 
 // StaffAccountMode The installation's authority mode as identity records it: local (identity holds the passwords, so Staff creates and invites) or federated (an identity provider owns the accounts, so Staff only finds, re-enables what it disabled and disables).
 type StaffAccountMode string
+
+// StaffAccountsRun What one accounts cycle run by hand did (POST /accounts/run): the links it claimed, those whose step identity answered — carried out, or refused with a reason the link now records — those that failed to be called and are retried, and the due links it did not reach.
+type StaffAccountsRun struct {
+	// Attempted The links the run claimed and worked.
+	Attempted int32 `json:"attempted"`
+
+	// Done Of those, the links whose step was carried out, or answered with a reason (blocked) — none to retry.
+	Done int32 `json:"done"`
+
+	// Failed Of those, the links whose call could not be made (identity unreachable or timed out); last_error is set and the worker retries them.
+	Failed int32 `json:"failed"`
+
+	// Remaining The due links left when the run ended — its budget of sixty seconds or fifty links spent, or claimed meanwhile by the worker — which the worker's next cycle takes.
+	Remaining int32 `json:"remaining"`
+}
 
 // StaffAmeldingLeave The a-melding's permisjonsOgPermitteringsBeskrivelse a leave of the type is reported as — the six leave descriptions and permittering, in NAV's spellings. Absent when the type is not reported as leave. The codes velferdspermisjon and utdanningspermisjon expired on 31 December 2022 and are not among them.
 type StaffAmeldingLeave string
@@ -2388,6 +2460,15 @@ type StaffPersonAccountRequest struct {
 // StaffPersonAccountRequestAccountEmailKind work or private; null or left out reads work.
 type StaffPersonAccountRequestAccountEmailKind string
 
+// StaffPersonAccountRun What Run now did for one person (POST /people/{id}/account/run), and their account after it.
+type StaffPersonAccountRun struct {
+	// Account A person's account flag (design S22) with the dates it derives and the link it drives: whether Staff provides the person with a user, from when, at which of their addresses, the authority mode, and the link's state. The person themselves, staff:manage and staff:personal-data read it (the links group); anyone else gets the unknown id's 404.
+	Account StaffPersonAccount `json:"account"`
+
+	// InvitationSent Whether identity sent the person a new invitation to choose a password. False when none was due, when one that can still be accepted is open, and when the last was made less than ten minutes ago — identity sends nothing then, and the run is still done.
+	InvitationSent bool `json:"invitationSent"`
+}
+
 // StaffPersonBankAccount The bank account on file, as its kind and its last four digits. Present for the person themselves, staff:manage and staff:personal-data, when one is on file.
 type StaffPersonBankAccount struct {
 	Kind  StaffBankAccountKind `json:"kind"`
@@ -2726,7 +2807,7 @@ type StaffPersonalDataPerson struct {
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), link_managed (409: the user is Staff-managed, or the link is the accounts worker's) and accounts_busy (409: the accounts worker holds the person's link right now). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), link_managed (409: the user is Staff-managed, or the link is the accounts worker's) and accounts_busy (409: the accounts worker holds the person's link right now). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -2964,12 +3045,12 @@ type StaffStats struct {
 
 // StaffStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. The host words the sentence from `type`; `title` is the name of the thing — a person's name — or, for the three items about the installation, an English sentence the host replaces. "Today" is the day in the settings' time zone; a date-only occurredAt is that day at midnight UTC.
 //
-// Sixteen types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie”s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt the ferie”s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, so the only holder of staff:personal-data sees their own request stall, which nobody else may decide; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
+// Thirty-five types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie”s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt the ferie”s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, so the only holder of staff:personal-data sees their own request stall, which nobody else may decide; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased; one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (federated mode): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created in local mode, now under federated mode, which never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the user chose a password; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: the worker's calls for the person have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor) — and, whatever the flag, a Disable now identity did not answer: the flag is off, the link names a user who is not disabled and last_error is set, which no cycle retries. `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
 type StaffStatsAttentionItem struct {
-	// Count How many the item stands for — the failing ledger rows, the headcount of a threshold, or the requests waiting. Absent on the other types.
+	// Count How many the item stands for — the failing ledger rows, the headcount of a threshold, the requests waiting, or the links an installation account item stands for. Absent on the other types.
 	Count *int32 `json:"count,omitempty"`
 
-	// EntityId The person's id, or the literal 'retention', 'thresholds' or 'approvals', or the headcount threshold ('5', '30', '50').
+	// EntityId The person's id, or the literal 'retention', 'thresholds', 'approvals' or 'settings', or the headcount threshold ('5', '30', '50').
 	EntityId   string                      `json:"entityId"`
 	Id         string                      `json:"id"`
 	OccurredAt time.Time                   `json:"occurredAt"`
@@ -3682,6 +3763,9 @@ type ServerInterface interface {
 	// PostStaffAbsencesByIdReject Reject an absence request
 	// (POST /api/v1/staff/absences/{id}/reject)
 	PostStaffAbsencesByIdReject(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffAccountsRun Run the accounts now
+	// (POST /api/v1/staff/accounts/run)
+	PostStaffAccountsRun(w http.ResponseWriter, r *http.Request)
 	// GetStaffApprovals List the requests I decide
 	// (GET /api/v1/staff/approvals)
 	GetStaffApprovals(w http.ResponseWriter, r *http.Request, params GetStaffApprovalsParams)
@@ -3880,6 +3964,12 @@ type ServerInterface interface {
 	// PutStaffPeopleByIdAccount Change a person's account flag
 	// (PUT /api/v1/staff/people/{id}/account)
 	PutStaffPeopleByIdAccount(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPeopleByIdAccountParams)
+	// PostStaffPeopleByIdAccountDisable Disable a person's account now
+	// (POST /api/v1/staff/people/{id}/account/disable)
+	PostStaffPeopleByIdAccountDisable(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdAccountRun Run a person's account now
+	// (POST /api/v1/staff/people/{id}/account/run)
+	PostStaffPeopleByIdAccountRun(w http.ResponseWriter, r *http.Request, id int64)
 	// PutStaffPeopleByIdBankAccount Set a person's bank account
 	// (PUT /api/v1/staff/people/{id}/bank-account)
 	PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request, id int64)
@@ -4442,6 +4532,20 @@ func (siw *ServerInterfaceWrapper) PostStaffAbsencesByIdReject(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostStaffAbsencesByIdReject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffAccountsRun operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffAccountsRun(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffAccountsRun(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6596,6 +6700,58 @@ func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdAccount(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// PostStaffPeopleByIdAccountDisable operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdAccountDisable(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdAccountDisable(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleByIdAccountRun operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdAccountRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdAccountRun(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutStaffPeopleByIdBankAccount operation middleware
 func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request) {
 
@@ -7729,6 +7885,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/absences/{id}/correct", wrapper.PostStaffAbsencesByIdCorrect)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/absences/{id}/postpone-holiday", wrapper.PostStaffAbsencesByIdPostponeHoliday)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/absences/{id}/reject", wrapper.PostStaffAbsencesByIdReject)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/accounts/run", wrapper.PostStaffAccountsRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/approvals", wrapper.GetStaffApprovals)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/assignable-users", wrapper.GetStaffAssignableUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/business-units", wrapper.GetStaffBusinessUnits)
@@ -7795,6 +7952,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}", wrapper.PutStaffPeopleById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/account", wrapper.GetStaffPeopleByIdAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/account", wrapper.PutStaffPeopleByIdAccount)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/account/disable", wrapper.PostStaffPeopleByIdAccountDisable)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/account/run", wrapper.PostStaffPeopleByIdAccountRun)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account", wrapper.PutStaffPeopleByIdBankAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account/reveal", wrapper.PostStaffPeopleByIdBankAccountReveal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/care-days", wrapper.GetStaffPeopleByIdCareDays)
@@ -8869,6 +9028,69 @@ func (response PostStaffAbsencesByIdReject409ApplicationProblemPlusJSONResponse)
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAccountsRunRequestObject struct {
+}
+
+type PostStaffAccountsRunResponseObject interface {
+	VisitPostStaffAccountsRunResponse(w http.ResponseWriter) error
+}
+
+type PostStaffAccountsRun200JSONResponse StaffAccountsRun
+
+func (response PostStaffAccountsRun200JSONResponse) VisitPostStaffAccountsRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAccountsRun401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffAccountsRun401JSONResponse) VisitPostStaffAccountsRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAccountsRun403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffAccountsRun403JSONResponse) VisitPostStaffAccountsRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffAccountsRun503ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffAccountsRun503ApplicationProblemPlusJSONResponse) VisitPostStaffAccountsRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13534,6 +13756,178 @@ func (response PutStaffPeopleByIdAccount409ApplicationProblemPlusJSONResponse) V
 	return err
 }
 
+type PostStaffPeopleByIdAccountDisableRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostStaffPeopleByIdAccountDisableResponseObject interface {
+	VisitPostStaffPeopleByIdAccountDisableResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdAccountDisable200JSONResponse StaffPersonAccount
+
+func (response PostStaffPeopleByIdAccountDisable200JSONResponse) VisitPostStaffPeopleByIdAccountDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountDisable401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdAccountDisable401JSONResponse) VisitPostStaffPeopleByIdAccountDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountDisable403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdAccountDisable403JSONResponse) VisitPostStaffPeopleByIdAccountDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountDisable404Response struct {
+}
+
+func (response PostStaffPeopleByIdAccountDisable404Response) VisitPostStaffPeopleByIdAccountDisableResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdAccountDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountDisable503ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdAccountDisable503ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdAccountDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountRunRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostStaffPeopleByIdAccountRunResponseObject interface {
+	VisitPostStaffPeopleByIdAccountRunResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdAccountRun200JSONResponse StaffPersonAccountRun
+
+func (response PostStaffPeopleByIdAccountRun200JSONResponse) VisitPostStaffPeopleByIdAccountRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountRun401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdAccountRun401JSONResponse) VisitPostStaffPeopleByIdAccountRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountRun403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdAccountRun403JSONResponse) VisitPostStaffPeopleByIdAccountRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountRun404Response struct {
+}
+
+func (response PostStaffPeopleByIdAccountRun404Response) VisitPostStaffPeopleByIdAccountRunResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdAccountRun409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdAccountRun409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdAccountRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountRun503ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdAccountRun503ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdAccountRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutStaffPeopleByIdBankAccountRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PutStaffPeopleByIdBankAccountJSONRequestBody
@@ -16042,6 +16436,9 @@ type StrictServerInterface interface {
 	// PostStaffAbsencesByIdReject Reject an absence request
 	// (POST /api/v1/staff/absences/{id}/reject)
 	PostStaffAbsencesByIdReject(ctx context.Context, request PostStaffAbsencesByIdRejectRequestObject) (PostStaffAbsencesByIdRejectResponseObject, error)
+	// PostStaffAccountsRun Run the accounts now
+	// (POST /api/v1/staff/accounts/run)
+	PostStaffAccountsRun(ctx context.Context, request PostStaffAccountsRunRequestObject) (PostStaffAccountsRunResponseObject, error)
 	// GetStaffApprovals List the requests I decide
 	// (GET /api/v1/staff/approvals)
 	GetStaffApprovals(ctx context.Context, request GetStaffApprovalsRequestObject) (GetStaffApprovalsResponseObject, error)
@@ -16240,6 +16637,12 @@ type StrictServerInterface interface {
 	// PutStaffPeopleByIdAccount Change a person's account flag
 	// (PUT /api/v1/staff/people/{id}/account)
 	PutStaffPeopleByIdAccount(ctx context.Context, request PutStaffPeopleByIdAccountRequestObject) (PutStaffPeopleByIdAccountResponseObject, error)
+	// PostStaffPeopleByIdAccountDisable Disable a person's account now
+	// (POST /api/v1/staff/people/{id}/account/disable)
+	PostStaffPeopleByIdAccountDisable(ctx context.Context, request PostStaffPeopleByIdAccountDisableRequestObject) (PostStaffPeopleByIdAccountDisableResponseObject, error)
+	// PostStaffPeopleByIdAccountRun Run a person's account now
+	// (POST /api/v1/staff/people/{id}/account/run)
+	PostStaffPeopleByIdAccountRun(ctx context.Context, request PostStaffPeopleByIdAccountRunRequestObject) (PostStaffPeopleByIdAccountRunResponseObject, error)
 	// PutStaffPeopleByIdBankAccount Set a person's bank account
 	// (PUT /api/v1/staff/people/{id}/bank-account)
 	PutStaffPeopleByIdBankAccount(ctx context.Context, request PutStaffPeopleByIdBankAccountRequestObject) (PutStaffPeopleByIdBankAccountResponseObject, error)
@@ -16773,6 +17176,30 @@ func (sh *strictHandler) PostStaffAbsencesByIdReject(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostStaffAbsencesByIdRejectResponseObject); ok {
 		if err := validResponse.VisitPostStaffAbsencesByIdRejectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffAccountsRun operation middleware
+func (sh *strictHandler) PostStaffAccountsRun(w http.ResponseWriter, r *http.Request) {
+	var request PostStaffAccountsRunRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffAccountsRun(ctx, request.(PostStaffAccountsRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffAccountsRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffAccountsRunResponseObject); ok {
+		if err := validResponse.VisitPostStaffAccountsRunResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -18652,6 +19079,58 @@ func (sh *strictHandler) PutStaffPeopleByIdAccount(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffPeopleByIdAccountResponseObject); ok {
 		if err := validResponse.VisitPutStaffPeopleByIdAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdAccountDisable operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdAccountDisable(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdAccountDisableRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdAccountDisable(ctx, request.(PostStaffPeopleByIdAccountDisableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdAccountDisable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdAccountDisableResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdAccountDisableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdAccountRun operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdAccountRun(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdAccountRunRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdAccountRun(ctx, request.(PostStaffPeopleByIdAccountRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdAccountRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdAccountRunResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdAccountRunResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

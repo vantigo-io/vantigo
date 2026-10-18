@@ -80,6 +80,8 @@ export interface StaffServer {
   importTally?: Omit<StaffImportResult, "dryRun">;
   /** What `POST /retention/run` answers. */
   retentionRun?: StaffRetentionRun;
+  /** What `POST /accounts/run` answers (delivery C); nothing attempted by default. */
+  accountsRun?: Schemas["StaffAccountsRun"];
   /** Absence as the server answers it for the caller (delivery B): the fake hands it out as it is. */
   absence?: AbsenceServer;
   pageSize?: number;
@@ -1615,10 +1617,26 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       "/api/v1/staff/people/import-template.csv",
       "/api/v1/staff/payroll/export",
       "/api/v1/staff/retention/run",
+      "/api/v1/staff/accounts/run",
     ];
     const threshold = /^\/api\/v1\/staff\/thresholds\/([^/]+)\/acknowledge$/.exec(path);
-    if (!known.includes(path) && !threshold) return undefined;
+    // Run now and Disable now (delivery C): the person's account as it stands
+    // after them — a run done with no invitation sent, a disable with the flag off.
+    const accountAction = /^\/api\/v1\/staff\/people\/\d+\/account\/(run|disable)$/.exec(path);
+    if (!known.includes(path) && !threshold && !accountAction) return undefined;
     if (!manages(role)) return forbidden();
+
+    if (path === "/api/v1/staff/accounts/run" && method === "POST")
+      return jsonResponse(200, server.accountsRun ?? { attempted: 0, done: 0, failed: 0, remaining: 0 });
+    if (accountAction && method === "POST") {
+      const account: Schemas["StaffPersonAccount"] = {
+        provisionAccount: accountAction[1] === "run",
+        accountEmailKind: "work",
+        address: { kind: "work", present: true },
+        revision: 1,
+      };
+      return jsonResponse(200, accountAction[1] === "run" ? { invitationSent: false, account } : account);
+    }
 
     if (path === "/api/v1/staff/people/import" && method === "POST") {
       const dryRun = url.searchParams.get("dryRun") ?? "true";

@@ -33,6 +33,8 @@ sources:
   - apps/server/internal/staff/account_settings.go
   - apps/server/internal/staff/accounts_decide.go
   - apps/server/internal/staff/accounts_worker.go
+  - apps/server/internal/staff/accounts_run.go
+  - apps/server/internal/staff/accounts_attention.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -206,6 +208,86 @@ ikke besvart). En lenke der `attempts` når tre, kom ikke fram til identity: den
 daglig fra da av, og loggen navngir feilen — men deaktiveringen av en som har sluttet,
 prøves ved hver kjøring så lenge den feiler, så tilgangen forsvinner så snart identity
 svarer.
+
+### Kjør kontoene nå
+
+Arbeideren kan kjøres for hånd, for alle eller for én person, med deg som aktøren
+identity registrerer og historikken navngir.
+
+- **Alle**: `POST /api/v1/staff/accounts/run` (`staff:manage`) kjører én runde nå og
+  svarer `{attempted, done, failed, remaining}`: koblingene den arbeidet med, de identity
+  svarte på (et steg utført, eller en årsak registrert), de den ikke nådde identity for
+  (prøves igjen av arbeideren), og de forfalte koblingene den lot ligge. Den begynner
+  ingen kobling etter seksti sekunder og tar høyst femti; `remaining` er for arbeiderens
+  neste runde, eller kjør den igjen. Den kjører side om side med arbeiderens egne runder
+  uten å vente på dem.
+- **Én person**: `POST /api/v1/staff/people/{id}/account/run` arbeider med personen nå,
+  uansett neste forsøk, og ber identity om en **ny invitasjon**: en ventende bruker der
+  en Owner trakk invitasjonen tilbake, eller som lot tre være ubesvart
+  (`invitation_revoked`, `invitation_unanswered`), inviteres på nytt. Svaret er
+  `{invitationSent, account}`. Identity sender aldri på nytt en invitasjon som fortsatt
+  kan godtas, og sender ingen innen ti minutter etter den forrige; kjøringen er like fullt
+  gjort, med `invitationSent: false` — prøv igjen etter ti minutter om det trengs. En
+  person med flagget av får ingenting kjørt.
+
+Hva kan gå galt: `accounts_busy` (409) — arbeideren arbeider med personen akkurat nå;
+prøv igjen om noen minutter. `person_erased` (409) — en slettet persons konto kjøres
+ikke. `accounts_unavailable` (503) — ingen modul tilbyr kontoer, eller identity svarte
+ikke; koblingen registrerer feilen og arbeideren prøver igjen.
+
+### Deaktiver en konto nå
+
+`POST /api/v1/staff/people/{id}/account/disable` (`staff:manage`) **slår av personens
+kontoflagg** og deaktiverer brukeren straks, så arbeideren lar den være deaktivert til
+HR slår flagget på igjen.
+
+1. Send forespørselen. Flagget slås av først (historikken viser `account_flag_updated`),
+   så deaktiverer identity brukeren (`account_deactivated`) og avslutter øktene. Personens
+   egen revisjon flytter seg ikke.
+2. Kontroller: svaret (personens konto) har `provisionAccount: false` og koblingen
+   `state: disabled`. En person uten kobling, eller der brukeren ikke er opprettet ennå,
+   får bare flagget slått av.
+3. Hva kan gå galt:
+   - `accounts_busy` (409): arbeideren holder personens kobling; ingenting ble endret.
+     Prøv igjen om noen minutter.
+   - `account_not_managed` (409): personen er koblet for hånd til en bruker Ansatte ikke
+     styrer; `account_privileged` (409): brukeren er Owner eller SystemAdmin. Flagget er
+     av, men brukeren forblir aktiv: en Owner deaktiverer dem i identity.
+   - `accounts_unavailable` (503): identity svarte ikke. **Flagget er allerede av**, men
+     brukeren er fortsatt aktiv: koblingen registrerer feilen og dashbordet viser
+     *accountFailing*. Ingen runde prøver igjen — send forespørselen på nytt.
+
+En slettet persons konto kan også deaktiveres.
+
+### Kontopunktene på dashbordet
+
+`staff:manage` ser ett punkt per person på dashbordet når arbeideren står fast for dem,
+lest fra Ansattes egne data (identity spørres ikke når dashbordet lastes). Hvert punkt
+navngir personen og ikke noe mer; åpne Konto-fanen deres for detaljene. Bare personer
+med flagget på som ikke er slettet listes, unntatt *accountFailing* for en Deaktiver nå
+som feilet.
+
+| Punkt | Hva det betyr | Hva du gjør |
+| --- | --- | --- |
+| `accountNoEmployment` | Flagget er på, men personen har ikke noe arbeidsforhold | Legg til arbeidsforholdet, eller slå flagget av |
+| `accountEmailMissing` | Personen har ingen adresse av typen flagget navngir | Legg til jobb- (eller privat) e-post, eller bytt adressevalget |
+| `accountNotFound` | Føderert: identitetsleverandøren har ikke opprettet brukeren ennå | Opprett brukeren hos leverandøren med personens ansattnummer |
+| `accountNotManaged` | En Owner lot Ansatte slutte å styre brukeren | En Owner tar brukeren inn igjen, eller HR slår flagget av |
+| `accountBlockedByOwner` | En Owner deaktiverte den ventende brukeren | En Owner aktiverer dem i identity, om de skal begynne |
+| `accountDisabledByOwner` | En Owner deaktiverte brukeren mens personen er ansatt | En Owner avgjør; Ansatte opphever det ikke |
+| `accountUserGone` | Brukeren ble slettet i identity | Fjern koblingen, eller en Owner gjenoppretter kontoen |
+| `accountPrivileged` | Brukeren er Owner eller SystemAdmin | Håndteres av en Owner for hånd |
+| `accountMismatch` | Brukeren har et annet ansattnummer: en annens konto | Sjekk personens ansattnummer |
+| `accountModeChanged` | En ventende bruker laget i lokal modus, nå i føderert modus | En Owner fullfører eller sletter brukeren |
+| `accountEmailDiffers` | Brukerens adresse i identity er ulik personens | En Owner endrer den i identity (Ansatte endrer den bare mens brukeren venter) |
+| `accountEmailTaken` | En annen bruker i identity har adressen | Rydd opp i duplikatet i identity, eller endre personens adresse |
+| `accountNumberTaken` | En bruker Ansatte ikke styrer har ansattnummeret | En Owner tar den brukeren inn for Ansatte, eller rydder i nummeret |
+| `accountFailing` | Identity svarte ikke tre ganger på rad, eller en Deaktiver nå feilet | Sjekk identity og loggen; send Deaktiver nå igjen |
+| `invitationUnanswered` | Tre invitasjoner ble ikke besvart | Sjekk adressen; Kjør nå sender en ny |
+| `invitationRevoked` | En Owner trakk invitasjonen tilbake | Kjør nå sender en ny, om personen skal ha den |
+| `employeeRoleMissing` | Ingen ansattrolle er navngitt (ett punkt, med antall) | En Owner navngir rollene Ansatte kan gi |
+| `employeeRoleUnsafe` | En rolle navngitt for Ansatte gir administrasjon (ett punkt) | En Owner tar den nøkkelen ut av rollen, eller rollen ut av settet |
+| `accountModeMismatch` | En arbeiders OIDC- eller SCIM-innstillinger er ulike API-ets (ett punkt) | Gjør innstillingene like og start arbeideren på nytt |
 
 ## Rettigheten for personopplysninger
 

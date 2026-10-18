@@ -18,7 +18,7 @@ import (
 // staff:approve's and a manager's for the people they manage today. The rules
 // are pure over the register's snapshot (stats.go) and the caller's today;
 // delivery B's absence items are read in the same snapshot (absence
-// attention below); the account items arrive with delivery C. Each item's entityId is a
+// attention below), and delivery C's account items (accounts_attention.go). Each item's entityId is a
 // person's id, or the literal 'retention' or 'thresholds', or a headcount
 // threshold — what the host's link is built from.
 
@@ -83,6 +83,9 @@ type attentionInput struct {
 	untaken     []int64
 	mainShort   []int64
 	holidayYear int
+	// accounts is staff:manage's account items' rows (delivery C, Task 4c,
+	// accounts_attention.go).
+	accounts accountAttention
 }
 
 // attentionFor is the caller's items, oldest first, then by type and id, each
@@ -101,6 +104,7 @@ func attentionFor(in attentionInput, c *callerContext) []gen.StaffStatsAttention
 		items = append(items, in.thresholds(c.Today)...)
 		items = append(items, in.selfApprovedItems()...)
 		items = append(items, in.holidayAffectedItems()...)
+		items = append(items, in.accounts.items()...)
 	}
 	if c.PersonalData {
 		items = append(items, in.reassessmentDue(c.Today)...)
@@ -533,6 +537,9 @@ func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerC
 		}
 		if in.affected, err = q.HolidayAffectedBySickness(ctx, dayParam(c.Today)); err != nil {
 			return nil, fmt.Errorf("staff: read the ferie affected by sickness: %w", err)
+		}
+		if in.accounts, err = readAccountAttention(ctx, q, c.Today); err != nil {
+			return nil, err
 		}
 	}
 	return attentionFor(in, c), nil

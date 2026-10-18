@@ -361,7 +361,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-## staff (113 uncovered)
+## staff (116 uncovered)
 
 - `DELETE /api/v1/staff/absences/{id}` (deleteStaffAbsencesById)
 - `DELETE /api/v1/staff/documents/{id}` (deleteStaffDocumentsById)
@@ -423,6 +423,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/staff/absences/{id}/postpone-holiday` (postStaffAbsencesByIdPostponeHoliday)
 - `POST /api/v1/staff/absences/{id}/reject` (postStaffAbsencesByIdReject)
 - `POST /api/v1/staff/absences` (postStaffAbsences)
+- `POST /api/v1/staff/accounts/run` (postStaffAccountsRun)
 - `POST /api/v1/staff/business-units/{id}/archive` (postStaffBusinessUnitsByIdArchive)
 - `POST /api/v1/staff/business-units` (postStaffBusinessUnits)
 - `POST /api/v1/staff/cases/{id}/close` (postStaffCasesByIdClose)
@@ -442,6 +443,8 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/staff/me/absences` (postStaffMeAbsences)
 - `POST /api/v1/staff/people/import` (postStaffPeopleImport)
 - `POST /api/v1/staff/people/similar-erased` (postStaffPeopleSimilarErased)
+- `POST /api/v1/staff/people/{id}/account/disable` (postStaffPeopleByIdAccountDisable)
+- `POST /api/v1/staff/people/{id}/account/run` (postStaffPeopleByIdAccountRun)
 - `POST /api/v1/staff/people/{id}/bank-account/reveal` (postStaffPeopleByIdBankAccountReveal)
 - `POST /api/v1/staff/people/{id}/carry-over` (postStaffPeopleByIdCarryOver)
 - `POST /api/v1/staff/people/{id}/documents` (postStaffPeopleByIdDocuments)
@@ -477,4 +480,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/staff/settings` (putStaffSettings)
 - `PUT /api/v1/staff/terms/{id}` (putStaffTermsById)
 
-Total: 445 of 580 operations have no recorded exchange.
+Total: 448 of 583 operations have no recorded exchange.

@@ -107,12 +107,15 @@ const (
 )
 
 // accountsRun is who a cycle acts for: the actor identity audits, the actor
-// the account events name, and whether HR asked for a fresh invitation (Run
-// now, Task 4c), which only the first decide of a claim is given.
+// the account events name, whether HR asked for a fresh invitation (Run
+// now, Task 4c), which only the first decide of a claim is given, and the
+// instant after which a cycle run by hand begins no new claim (zero: none —
+// the worker's own cycle).
 type accountsRun struct {
 	actor contracts.Actor
 	who   actor
 	fresh bool
+	until time.Time
 }
 
 // accountsWorkerRun is the worker's own: the system actor in identity, the
@@ -204,6 +207,9 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 	}
 	for tally.attempted < accountsBatch {
 		now := s.deps.Clock()
+		if !run.until.IsZero() && !now.Before(run.until) {
+			break
+		}
 		lease := uuid.New()
 		claim, err := store.New(s.deps.Pool).ClaimAccountLink(ctx, store.ClaimAccountLinkParams{
 			LeaseID: lease, LeaseUntil: now.Add(accountsLeaseFor), Now: now,
@@ -215,7 +221,7 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 			return tally, fmt.Errorf("staff: claim an account link: %w", err)
 		}
 		tally.attempted++
-		if s.workAccountLink(ctx, run, claim, lease, mode, mismatch, now) {
+		if s.workAccountLink(ctx, run, claim, lease, mode, mismatch, now).ok() {
 			tally.done++
 		} else {
 			tally.failed++
@@ -328,29 +334,37 @@ func (s *server) prepareAccountLinks(ctx context.Context, mode string) error {
 				"person_id", id, "error", err.Error())
 			continue
 		}
-		step := decide(accountDecision{Person: f.decide, Mode: mode, CreateBeforeDays: f.createBeforeDays, Today: f.today})
-		if step.Kind != accountStepPrepare {
-			continue
-		}
-		err = s.withPersonLock(ctx, id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-			p, err := readAccountPerson(ctx, txq, id)
-			if err != nil || !p.provisionAccount {
-				return err
-			}
-			if err := txq.InsertPreparingLink(ctx, store.InsertPreparingLinkParams{PersonID: id, Now: now}); err != nil {
-				return fmt.Errorf("staff: write person %d's preparing link: %w", id, err)
-			}
-			return nil
-		})
-		if _, refused := asRefusal(err); refused || errors.Is(err, errPersonNotFound) {
-			continue
-		}
-		if err != nil {
+		if err := s.prepareAccountLink(ctx, id, f, mode, now); err != nil {
 			s.logger().ErrorContext(ctx, "staff: write a preparing link", "worker", accountsWorkerName,
 				"person_id", id, "error", err.Error())
 		}
 	}
 	return nil
+}
+
+// prepareAccountLink writes personID's preparing link when the decision
+// table, on f (read at now), says the account is due to be prepared and the
+// person has no link: under the person's lock, the flag and the erasure
+// judged again there. A person gone or erased meanwhile is nothing to do.
+func (s *server) prepareAccountLink(ctx context.Context, id int64, f accountFacts, mode string, now time.Time) error {
+	step := decide(accountDecision{Person: f.decide, Mode: mode, CreateBeforeDays: f.createBeforeDays, Today: f.today})
+	if step.Kind != accountStepPrepare {
+		return nil
+	}
+	err := s.withPersonLock(ctx, id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		p, err := readAccountPerson(ctx, txq, id)
+		if err != nil || !p.provisionAccount {
+			return err
+		}
+		if err := txq.InsertPreparingLink(ctx, store.InsertPreparingLinkParams{PersonID: id, Now: now}); err != nil {
+			return fmt.Errorf("staff: write person %d's preparing link: %w", id, err)
+		}
+		return nil
+	})
+	if _, refused := asRefusal(err); refused || errors.Is(err, errPersonNotFound) {
+		return nil
+	}
+	return err
 }
 
 // accountEventPayload is an account event's payload (plan Global
@@ -656,18 +670,39 @@ func (s *server) callAccountStep(ctx context.Context, run accountsRun, step acco
 	})
 }
 
-// workAccountLink works one claimed link and writes its result, answering
-// whether it ended without a failure to retry.
-func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim store.ClaimAccountLinkRow, lease uuid.UUID, mode string, mismatch bool, now time.Time) bool {
+// accountWorked is how one claim ended: whether a call could not be made
+// (failed, retried), whether its facts or its result could not be read or
+// written (err), and whether identity sent the person a new invitation.
+type accountWorked struct {
+	failed         bool
+	err            error
+	invitationSent bool
+}
+
+// ok is whether the claim ended without a failure to retry.
+func (w accountWorked) ok() bool { return !w.failed && w.err == nil }
+
+// invitationSent is whether a pending user's invitation became one that can
+// be accepted between before (nil: no user yet) and after: identity never
+// re-sends an open invitation, so an open one before is none sent.
+func invitationSent(before, after *contracts.AccountRef) bool {
+	if after == nil || after.State != contracts.AccountStatePending || after.Invitation.State != contracts.InvitationActive {
+		return false
+	}
+	return before == nil || before.Invitation.State != contracts.InvitationActive
+}
+
+// workAccountLink works one claimed link and writes its result.
+func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim store.ClaimAccountLinkRow, lease uuid.UUID, mode string, mismatch bool, now time.Time) accountWorked {
 	log := s.logger().With("worker", accountsWorkerName, "person_id", claim.PersonID)
 	r := newAccountResult(claim)
 	f, err := s.readAccountFacts(ctx, claim.PersonID, now)
 	if errors.Is(err, errPersonNotFound) {
-		return true
+		return accountWorked{}
 	}
 	if err != nil {
 		log.ErrorContext(ctx, "staff: read a person's account facts", "error", err.Error())
-		return false
+		return accountWorked{err: err}
 	}
 	var user *uuid.UUID
 	if claim.ExternalID != nil {
@@ -676,7 +711,7 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 			log.ErrorContext(ctx, "staff: a link names no user id identity could know")
 			r.answered(reasonUserGone)
 			r.state = linkStateFailed
-			return s.writeAccountResult(ctx, run, r, lease, f, now)
+			return accountWorked{failed: r.failed, err: s.writeAccountResult(ctx, run, r, lease, f, now)}
 		}
 		user = &id
 	}
@@ -691,9 +726,10 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 			if claim.State != linkStateDisabled && deactivationDue(f) {
 				r.soon = true
 			}
-			return s.writeAccountResult(ctx, run, r, lease, f, now)
+			return accountWorked{failed: r.failed, err: s.writeAccountResult(ctx, run, r, lease, f, now)}
 		}
 	}
+	initial := ref
 	link := accountLinkFacts{
 		State: claim.State, ExternalID: claim.ExternalID, Managed: claim.Managed,
 		SpecChanged:          ref != nil && !bytes.Equal(f.specHash(ref.State == contracts.AccountStatePending), claim.LastSpecHash),
@@ -776,16 +812,17 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 			break
 		}
 	}
-	return s.writeAccountResult(ctx, run, r, lease, f, now)
+	err = s.writeAccountResult(ctx, run, r, lease, f, now)
+	return accountWorked{failed: r.failed, err: err, invitationSent: err == nil && invitationSent(initial, ref)}
 }
 
 // writeAccountResult writes r under the person's lock, then the link on the
 // claim's lease, re-reading the flag (plan M9). A link gone has the user a
 // Prepare of this claim made deactivated, outside the transaction; a link
 // claimed since is left to its new holder. A user another link already names
-// is recorded as a mismatch instead. It answers whether the claim ended
-// without a failure to retry.
-func (s *server) writeAccountResult(ctx context.Context, run accountsRun, r *accountResult, lease uuid.UUID, f accountFacts, now time.Time) bool {
+// is recorded as a mismatch instead. It answers the error the result could
+// not be written with, logged.
+func (s *server) writeAccountResult(ctx context.Context, run accountsRun, r *accountResult, lease uuid.UUID, f accountFacts, now time.Time) error {
 	log := s.logger().With("worker", accountsWorkerName, "person_id", r.claim.PersonID)
 	next := f.nextMidnight()
 	switch {
@@ -843,7 +880,7 @@ func (s *server) writeAccountResult(ctx context.Context, run accountsRun, r *acc
 	}
 	if err != nil {
 		log.ErrorContext(ctx, "staff: write an account result", "error", err.Error())
-		return false
+		return fmt.Errorf("staff: write person %d's account result: %w", r.claim.PersonID, err)
 	}
 	if gone && r.created != nil {
 		if _, err := withCallTimeout(ctx, func(ctx context.Context) (contracts.AccountRef, error) {
@@ -856,7 +893,7 @@ func (s *server) writeAccountResult(ctx context.Context, run accountsRun, r *acc
 				slog.String("user_id", r.created.String()))
 		}
 	}
-	return !r.failed
+	return nil
 }
 
 // deref is *s, "" for nil.
