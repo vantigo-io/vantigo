@@ -345,7 +345,6 @@ type StaffPersonRole struct {
 
 type StaffSetting struct {
 	ID                         int16
-	TimeZone                   string
 	EmployeeNumberPrefix       string
 	NextEmployeeNumber         int64
 	SelfCertPolicy             string

@@ -39,8 +39,9 @@ applikasjonen.
   gir deg OCR-giro- eller camt.054-filer med innbetalinger, hvor hver bank lar deg laste
   dem ned, og formatet hver kontos filer importeres i.
 - **Ansatte.** [Ansatte](/nb/admin/staff/) slår på registeret over de ansatte, gir folk
-  tilgang til det med de fem rettighetene, og setter forretningstidssonen og
-  ansattnummerserien.
+  tilgang til det med de fem rettighetene, og setter ansattnummerserien.
+  Forretningstidssonen hver modul dømmer en dag etter, er arbeidsområdets, satt under
+  [Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet).
 
 ## Den komplette konfigurasjonsreferansen
 

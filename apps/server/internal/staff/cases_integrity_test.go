@@ -34,8 +34,9 @@ func TestCases_AnErasedCaseOutlivesANewSickRow(t *testing.T) {
 	// Its close is the derived one — its last day + 17, at midnight in the
 	// settings' zone — not an HR-style close dated the erase (retention
 	// re-check).
-	if n := h.Count(t, `SELECT count(*) FROM staff.sick_cases c, staff.settings s
-		WHERE c.id = $1 AND c.closed_at = ((c.last_day + 17)::timestamp AT TIME ZONE s.time_zone)`, erased); n != 1 {
+	if n := h.Count(t, `SELECT count(*) FROM staff.sick_cases c
+		WHERE c.id = $1 AND c.closed_at = ((c.last_day + 17)::timestamp AT TIME ZONE
+		    coalesce((SELECT business_time_zone FROM identity.system_settings WHERE id = 1), 'Europe/Oslo'))`, erased); n != 1 {
 		t.Error("the erased case's closed_at is not its derived close")
 	}
 }

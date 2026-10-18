@@ -39,8 +39,9 @@ application.
   gives you OCR giro or camt.054 files of incoming payments, where each bank lets you
   download them, and the format each account's files are imported in.
 - **Staff.** [Staff](/en/admin/staff/) turns the workforce register on, gives people
-  access to it with its five permissions, and sets its business time zone and the
-  employee number sequence.
+  access to it with its five permissions, and sets the employee number sequence. The
+  business time zone every module judges a day in is the workspace's, set under
+  [Workspace administration](/en/user/workspace-administration/#workspace-settings).
 
 ## The complete configuration reference
 

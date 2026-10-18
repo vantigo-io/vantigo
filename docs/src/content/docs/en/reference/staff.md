@@ -211,21 +211,32 @@ judged before anything is written.
 ## The business time zone
 
 Every date in this module — a start, an end, "today" — is a calendar day in the
-installation's business time zone. "Today" is computed once per request, in Go, as the
-zone's calendar day of the server clock, and handed to SQL as a date parameter; SQL's
-`current_date` is never used, since it is the database session's day in the database's
-own zone. `GET /meta` answers the zone and `today`, so the app's notion of today is the
-server's: at 22:30 UTC on 30 September the Oslo day is already 1 October.
+**workspace's business time zone**: one setting for the installation, on identity's
+system settings, read through `contracts.BusinessCalendar` (`Deps.Calendar`, always
+set once composed, in worker mode too) and set by an Owner with
+`PUT /api/v1/identity/owner/workspace`
+([Workspace administration](/en/user/workspace-administration/#workspace-settings)).
+Until the time zones design
+([`docs/superpowers/specs/2026-10-19-time-zones-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-19-time-zones-design.md))
+it was this module's own column, `staff.settings.time_zone`; migration `00053` drops
+it, warning in the log when its value was not `Europe/Oslo`, and `PUT /settings` no
+longer takes `timeZone`. `GET /settings` and `GET /meta` still answer it, as the
+workspace's.
 
-A zone is checked twice when it changes. Go must know the name (`Local` and an empty
-name are refused: they say nothing about the company's calendar), and then the
-database is asked what it means by the same name, at a winter and a summer instant of
-the current year, and the two answers are compared. They can differ: PostgreSQL
-resolves its abbreviations before its zone names, so `CET` is a fixed +01:00 to it and
-a zone with summer time to Go. Such a name is refused on `timeZone` — use a city zone
-such as `Europe/Oslo`. A row that somehow holds a name Go cannot load (written by hand)
-is read as UTC rather than failing every request; setting the zone again is the way
-back.
+"Today" is computed once per request, in Go, as the zone's calendar day of the server
+clock (`holidays.DayIn`), and handed to SQL as a date parameter; SQL's `current_date`
+is never used, since it is the database session's day in the database's own zone.
+`GET /meta` answers the zone and `today`, so the app's notion of today is the server's:
+at 22:30 UTC on 30 September the Oslo day is already 1 October. The zone is read
+before any transaction opens — the calendar's read takes a pool connection of its
+own, which a transaction holding locks must not wait for — and kept for the request.
+
+The checks a zone is put through when it changes (Go must load the name; the database
+must read it the same way at a winter and a summer instant, which `CET` fails) are
+identity's now, documented under
+[Administration](/en/admin/authentication/#the-authority-mode). A stored name Go
+cannot load is read as UTC by the calendar rather than failing every request; setting
+the zone again is the way back.
 
 ## The structure
 

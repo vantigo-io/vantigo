@@ -305,11 +305,13 @@ func link(t *testing.T, h *harness, personID int64, userID uuid.UUID) {
 }
 
 // today is the installation's calendar day at the harness clock, in the
-// business time zone the settings row holds — the day the module must judge
-// "today" by.
+// workspace's business time zone — the day the module must judge "today" by.
+// No system settings row yet means the default, as the business calendar
+// reads it.
 func today(t *testing.T, h *harness) string {
 	t.Helper()
-	zone := modtest.One[string](t, h.Harness, `SELECT time_zone FROM staff.settings`)
+	zone := modtest.One[string](t, h.Harness,
+		`SELECT coalesce((SELECT business_time_zone FROM identity.system_settings WHERE id = 1), 'Europe/Oslo')`)
 	loc, err := time.LoadLocation(zone)
 	if err != nil {
 		t.Fatalf("load %q: %v", zone, err)

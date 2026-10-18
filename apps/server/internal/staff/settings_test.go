@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -20,7 +21,7 @@ func getSettings(t *testing.T, c *modtest.Client) gen.StaffSettings {
 
 // settingsBody is a valid settings replace with fields overridden.
 func settingsBody(fields map[string]any) map[string]any {
-	body := map[string]any{"timeZone": "Europe/Oslo", "nextEmployeeNumber": 1}
+	body := map[string]any{"nextEmployeeNumber": 1}
 	for k, v := range fields {
 		if v == nil {
 			delete(body, k)
@@ -55,10 +56,10 @@ func TestSettings_RoundTrip(t *testing.T) {
 
 	var saved gen.StaffSettings
 	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{
-		"timeZone": "Europe/Stockholm", "employeeNumberPrefix": "EMP-", "nextEmployeeNumber": 100,
+		"employeeNumberPrefix": "EMP-", "nextEmployeeNumber": 100,
 		"pensionProvider": "Storebrand", "injuryInsurer": "Gjensidige",
 	}), http.StatusOK, &saved, ifMatch(1))
-	if saved.TimeZone != "Europe/Stockholm" || saved.EmployeeNumberPrefix != "EMP-" || saved.NextEmployeeNumber != 100 ||
+	if saved.TimeZone != "Europe/Oslo" || saved.EmployeeNumberPrefix != "EMP-" || saved.NextEmployeeNumber != 100 ||
 		saved.PensionProvider == nil || *saved.PensionProvider != "Storebrand" ||
 		saved.InjuryInsurer == nil || *saved.InjuryInsurer != "Gjensidige" || saved.Revision != 2 {
 		t.Errorf("saved = %+v, want what was sent at revision 2", saved)
@@ -121,26 +122,42 @@ func TestSettings_IfMatchGuardsTheReplace(t *testing.T) {
 	do(t, hr, http.MethodPut, settingsPath, settingsBody(nil), http.StatusOK, nil, modtest.Header("If-Match", `"2"`))
 }
 
-// The zone is validated twice — by Go's tzdata and by the database's — and
-// what is compared is what each means by the name: 'CET' is a zone with
-// summer time to Go and a fixed +01:00 abbreviation to Postgres, so it is
-// refused even though both "know" it.
-func TestSettings_TheZoneIsCheckedByGoAndByTheDatabase(t *testing.T) {
+// The business time zone is the workspace's (time zones design D2): the
+// settings and meta answer it, a replace neither takes nor touches it, and
+// "today" follows it — half past midnight on 1 July in Oslo is still 30 June
+// in New York.
+func TestSettings_TheZoneIsTheWorkspaces(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	hr, _ := signIn(t, h, "staff:manage")
 
-	for _, zone := range []string{"", "Local", "Mars/Olympus_Mons", "CET"} {
-		p := refused(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{"timeZone": zone}), ifMatch(1)),
-			http.StatusBadRequest, "")
-		if len(p.Errors["timeZone"]) == 0 {
-			t.Errorf("zone %q: errors %v, want one on timeZone", zone, p.Errors)
-		}
+	if got := getSettings(t, hr); got.TimeZone != "Europe/Oslo" {
+		t.Errorf("a fresh installation's zone = %q, want the workspace's default", got.TimeZone)
 	}
-	if got := getSettings(t, hr); got.TimeZone != "Europe/Oslo" || got.Revision != 1 {
-		t.Errorf("after the refusals = %+v, want the zone untouched", got)
+	h.SetBusinessTimeZone(t, "America/New_York")
+	if got := getSettings(t, hr); got.TimeZone != "America/New_York" || got.Revision != 1 {
+		t.Errorf("after the workspace changed = %+v, want America/New_York at revision 1", got)
 	}
-	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"timeZone": "America/New_York"}), http.StatusOK, nil, ifMatch(1))
+	var saved gen.StaffSettings
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"timeZone": "Europe/Oslo"}), http.StatusOK, &saved, ifMatch(1))
+	if saved.TimeZone != "America/New_York" {
+		t.Errorf("a replace naming a zone answered %q, want the workspace's kept", saved.TimeZone)
+	}
+	var meta gen.StaffMeta
+	do(t, hr, http.MethodGet, metaPath, nil, http.StatusOK, &meta)
+	if meta.TimeZone != "America/New_York" || meta.Today.Format("2006-01-02") != civilDay(t, h, "America/New_York") {
+		t.Errorf("meta = %s today %s, want America/New_York and its day", meta.TimeZone, meta.Today.Format("2006-01-02"))
+	}
+}
+
+// civilDay is the harness clock's calendar day in zone, as yyyy-MM-dd.
+func civilDay(t *testing.T, h *harness, zone string) string {
+	t.Helper()
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h.Now().In(loc).Format("2006-01-02")
 }
 
 // The prefix and the next number must make an employee number of at most 16
@@ -183,7 +200,6 @@ func TestSettings_EachBadFieldIsA400OnThatField(t *testing.T) {
 		{"pensionProvider", long},
 		{"pensionProvider", "   "},
 		{"injuryInsurer", long},
-		{"timeZone", "Europe/Nowhere"},
 	} {
 		p := refused(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{c.field: c.value}), ifMatch(1)),
 			http.StatusBadRequest, "")

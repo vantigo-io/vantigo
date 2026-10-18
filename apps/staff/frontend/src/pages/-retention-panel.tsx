@@ -74,7 +74,6 @@ export const RetentionPanel = ({ settings }: { settings: StaffSettings }) => {
     mutationFn: (values: PeriodValues) =>
       updateStaffSettings(
         {
-          timeZone: settings.timeZone,
           ...(settings.employeeNumberPrefix ? { employeeNumberPrefix: settings.employeeNumberPrefix } : {}),
           nextEmployeeNumber: settings.nextEmployeeNumber,
           ...(settings.pensionProvider ? { pensionProvider: settings.pensionProvider } : {}),

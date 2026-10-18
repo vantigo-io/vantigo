@@ -334,7 +334,6 @@ describe("Settings — the self-certification policy and carry-over", () => {
     const [put] = sent(fetchMock, "PUT", /\/settings$/);
     expect(put.ifMatch).toBe("3");
     expect(put.body).toEqual({
-      timeZone: "Europe/Oslo",
       employeeNumberPrefix: "E-",
       nextEmployeeNumber: 8,
       pensionProvider: "Storebrand",

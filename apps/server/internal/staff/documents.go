@@ -548,7 +548,7 @@ func (s *server) PutStaffDocumentsById(ctx context.Context, req gen.PutStaffDocu
 		}
 		if caseID != nil && body.CaseId != nil {
 			found, err := txq.PersonCaseExists(ctx, store.PersonCaseExistsParams{
-				CaseID: *caseID, PersonID: d.PersonID, Zone: zoneOf(caller.Settings).String(),
+				CaseID: *caseID, PersonID: d.PersonID, Zone: caller.Zone.String(),
 				Cutoff: dayParam(caller.Today.AddDate(0, 0, -int(caller.Settings.HealthRetentionDays))),
 			})
 			if err != nil {

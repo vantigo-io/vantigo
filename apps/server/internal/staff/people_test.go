@@ -92,7 +92,7 @@ func setPrefix(t *testing.T, h *harness, hr *modtest.Client, prefix string, next
 	var current gen.StaffSettings
 	do(t, hr, http.MethodGet, settingsPath, nil, http.StatusOK, &current)
 	do(t, hr, http.MethodPut, settingsPath, map[string]any{
-		"timeZone": current.TimeZone, "employeeNumberPrefix": prefix, "nextEmployeeNumber": next,
+		"employeeNumberPrefix": prefix, "nextEmployeeNumber": next,
 	}, http.StatusOK, nil, ifMatch(current.Revision))
 }
 

@@ -316,6 +316,10 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 		return nil, err
 	}
 	var saved store.StaffAbsenceType
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		row, err := txq.LockAbsenceType(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -364,12 +368,8 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 			// see, and an HR-only row its own person approved is the sole
 			// personal-data holder's alone — narrowed under it, the row would
 			// read as that.
-			set, err := settings(ctx, txq)
-			if err != nil {
-				return err
-			}
 			running, err := txq.AbsenceTypeSelfApprovedRunning(ctx, store.AbsenceTypeSelfApprovedRunningParams{
-				ID: row.ID, Today: dayParam(civilToday(s.deps.Clock(), zoneOf(set))),
+				ID: row.ID, Today: dayParam(civilToday(s.deps.Clock(), zone)),
 			})
 			if err != nil {
 				return fmt.Errorf("staff: read whether absence type %d has a running self-approved absence: %w", row.ID, err)

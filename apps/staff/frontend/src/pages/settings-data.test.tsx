@@ -409,7 +409,6 @@ describe("Settings — retention", () => {
     expect(put.ifMatch).toBe("3");
     // The replace carries the general settings as read, so nothing else is cleared.
     expect(put.body).toEqual({
-      timeZone: "Europe/Oslo",
       employeeNumberPrefix: "E-",
       nextEmployeeNumber: 8,
       pensionProvider: "Storebrand",
@@ -441,7 +440,6 @@ describe("Settings — retention", () => {
     await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/settings$/)).toHaveLength(1));
     const [put] = sent(fetchMock, "PUT", /\/staff\/settings$/);
     expect(put.body).toEqual({
-      timeZone: "Europe/Oslo",
       employeeNumberPrefix: "E-",
       nextEmployeeNumber: 8,
       pensionProvider: "Storebrand",

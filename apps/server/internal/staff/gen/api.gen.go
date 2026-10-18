@@ -2212,7 +2212,7 @@ type StaffMeta struct {
 	// Structure The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out.
 	Structure *StaffStructure `json:"structure,omitempty"`
 
-	// TimeZone The installation's business time zone, an IANA name. Every date of this module — a start, an end, "today" — is a calendar day in it.
+	// TimeZone The workspace's business time zone, an IANA name, set under Workspace administration. Every date of this module — a start, an end, "today" — is a calendar day in it.
 	TimeZone string `json:"timeZone"`
 
 	// Today Today's calendar day in the business time zone, as the server judges it — the day a form should start from, so the app and the server never disagree about which day it is around midnight.
@@ -2971,7 +2971,7 @@ type StaffSettings struct {
 	// ThresholdsAcknowledged When each threshold was acknowledged (design S20) — once and permanently, by staff:manage; a threshold not yet acknowledged is absent. Who acknowledged it is in the threshold_acknowledged event.
 	ThresholdsAcknowledged StaffThresholdsAcknowledged `json:"thresholdsAcknowledged"`
 
-	// TimeZone The business time zone, an IANA name.
+	// TimeZone The workspace's business time zone, an IANA name — answered here, never set here (an Owner sets it under Workspace administration, PUT /api/v1/identity/owner/workspace). Every date in Staff — a start, an end, "today" — is a calendar day in it.
 	TimeZone string `json:"timeZone"`
 }
 
@@ -3024,9 +3024,6 @@ type StaffSettingsRequest struct {
 
 	// SelfCertPolicy The self-certification (egenmelding) policy (design S10): minimum — the statutory one, 3 calendar days an occurrence and 4 occurrences in a rolling year; extended — 8 days an occurrence and 24 days in a rolling year; custom — the numbers as set.
 	SelfCertPolicy *StaffSelfCertPolicy `json:"selfCertPolicy,omitempty"`
-
-	// TimeZone An IANA name such as Europe/Oslo, which this server and its database must read the same way.
-	TimeZone string `json:"timeZone"`
 }
 
 // StaffSimilarErasedRequest A new person's names and birth date, to find an erased person they may be (the rehire warning). Sent as a body, not a query, so the names stay out of access logs.

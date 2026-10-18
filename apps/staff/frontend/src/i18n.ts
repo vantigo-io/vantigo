@@ -37,8 +37,7 @@ export const staffCatalog = {
     generalSettings: "General",
     businessTimeZone: "Business time zone",
     businessTimeZoneDescription:
-      "Every date in Staff — a start, an end, today — is a calendar day in this zone, whatever the reader's browser says.",
-    timeZoneRequired: "Choose the business time zone",
+      "Every date in Staff — a start, an end, today — is a calendar day in this zone, whatever the reader's browser says. It is the workspace's: an Owner changes it under Workspace administration.",
     employeeNumberPrefix: "Employee number prefix",
     employeeNumberPrefixDescription: "Up to {{max}} letters, digits or hyphens; empty for none.",
     nextEmployeeNumber: "Next employee number",
@@ -1469,8 +1468,7 @@ export const staffCatalog = {
     generalSettings: "Generelt",
     businessTimeZone: "Virksomhetens tidssone",
     businessTimeZoneDescription:
-      "Hver dato i Ansatte — en start, en slutt, i dag — er en kalenderdag i denne sonen, uansett hva leserens nettleser sier.",
-    timeZoneRequired: "Velg virksomhetens tidssone",
+      "Hver dato i Ansatte — en start, en slutt, i dag — er en kalenderdag i denne sonen, uansett hva leserens nettleser sier. Den er arbeidsområdets: en eier endrer den under Administrasjon av arbeidsområdet.",
     employeeNumberPrefix: "Prefiks for ansattnummer",
     employeeNumberPrefixDescription: "Opptil {{max}} bokstaver, sifre eller bindestreker; tomt for ingen.",
     nextEmployeeNumber: "Neste ansattnummer",

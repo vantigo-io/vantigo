@@ -421,8 +421,9 @@ type retentionPlan struct {
 	removeCases  bool
 }
 
-// planRetention reads the settings on q and derives the cycle's dates.
-func (s *server) planRetention(ctx context.Context, q *store.Queries) (retentionPlan, error) {
+// planRetention reads the settings on q and derives the cycle's dates in
+// zone, the business time zone the caller read before holding anything.
+func (s *server) planRetention(ctx context.Context, q *store.Queries, zone *time.Location) (retentionPlan, error) {
 	row, err := settings(ctx, q)
 	if err != nil {
 		return retentionPlan{}, err
@@ -455,7 +456,7 @@ func (s *server) planRetention(ctx context.Context, q *store.Queries) (retention
 		return retentionPlan{}, fmt.Errorf("staff: read the pregnancy and health types: %w", err)
 	}
 	now := s.deps.Clock()
-	today := civilToday(now, zoneOf(row))
+	today := civilToday(now, zone)
 	return retentionPlan{
 		erasePregnancyHealth: row.ErasePregnancyHealthTypes,
 		pregnancyTypeIDs:     pregnancyTypeIDs,
@@ -465,14 +466,14 @@ func (s *server) planRetention(ctx context.Context, q *store.Queries) (retention
 		reservedIDs:          reservedIDs,
 		floorTypeIDs:         floorTypeIDs,
 		floorCutoff:          today.AddDate(-1, 0, 0),
-		loc:                  zoneOf(row),
+		loc:                  zone,
 		removeCases:          row.EraseSickCaseDates,
 		dCutoff:              today.AddDate(0, 0, -int(row.RetentionGraceDays)),
 		healthCutoff:         today.AddDate(0, 0, -int(row.HealthRetentionDays)),
 		thisYear:             int32(today.Year()),
 		aColumns:             columnsOf("employment_terms", "A"),
 		aFields:              fieldsOfClass("A"),
-		zone:                 zoneOf(row).String(),
+		zone:                 zone.String(),
 		healthCutoffAt:       now.AddDate(0, 0, -int(row.HealthRetentionDays)),
 		orphanCutoffAt:       now.AddDate(0, 0, -int(row.HealthRetentionDays)-caseClosesAfter),
 		absentID:             absentID,
@@ -534,7 +535,11 @@ func (p retentionPlan) dueA(person *int64, limit int32) store.DueEmploymentsAPar
 // summed.
 func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor) ([]erasedKind, error) {
 	q := store.New(conn)
-	plan, err := s.planRetention(ctx, q)
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := s.planRetention(ctx, q, zone)
 	if err != nil {
 		return nil, err
 	}

@@ -3182,7 +3182,7 @@ export interface components {
             /** @description staff:manage only — whether an Owner has named the roles Staff may give (identity's employee roles), without which a local account cannot be enabled. Absent to anyone else, and when accounts are unavailable. */
             provisioningRolesSet?: boolean;
             structure?: components["schemas"]["StaffStructure"];
-            /** @description The installation's business time zone, an IANA name. Every date of this module — a start, an end, "today" — is a calendar day in it. */
+            /** @description The workspace's business time zone, an IANA name, set under Workspace administration. Every date of this module — a start, an end, "today" — is a calendar day in it. */
             timeZone: string;
             /**
              * Format: date
@@ -3896,7 +3896,7 @@ export interface components {
             selfCertOccurrencesPerYear: number;
             selfCertPolicy: components["schemas"]["StaffSelfCertPolicy"];
             thresholdsAcknowledged: components["schemas"]["StaffThresholdsAcknowledged"];
-            /** @description The business time zone, an IANA name. */
+            /** @description The workspace's business time zone, an IANA name — answered here, never set here (an Owner sets it under Workspace administration, PUT /api/v1/identity/owner/workspace). Every date in Staff — a start, an end, "today" — is a calendar day in it. */
             timeZone: string;
         };
         /** @description A replace of the settings. The two retention periods, the self-certification policy, the carry-over, the two account settings and the two erase settings left out keep the values they have; everything else is replaced. */
@@ -3959,8 +3959,6 @@ export interface components {
              */
             selfCertOccurrencesPerYear?: number;
             selfCertPolicy?: components["schemas"]["StaffSelfCertPolicy"];
-            /** @description An IANA name such as Europe/Oslo, which this server and its database must read the same way. */
-            timeZone: string;
         };
         /** @description A new person's names and birth date, to find an erased person they may be (the rehire warning). Sent as a body, not a query, so the names stay out of access logs. */
         StaffSimilarErasedRequest: {
