@@ -1235,6 +1235,8 @@ and a person's `/account/run` and `/account/disable` together at most 120 an hou
 - **`POST /accounts/run`** runs one cycle: the preparing links of the people now due,
   then the due links claimed one at a time, at most fifty, **none begun after sixty
   seconds** on the module's clock (a claim begun finishes under its calls' own bounds).
+  The budget bounds the preparing links too: once it is spent no more is written, and
+  the people left are prepared by the worker's next cycle.
   It answers `StaffAccountsRun {attempted, done, failed, remaining}`: the links claimed;
   those whose step identity answered — carried out, or refused with the reason the link
   now records; those whose call could not be made (`last_error`, retried by the

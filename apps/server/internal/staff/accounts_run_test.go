@@ -265,6 +265,43 @@ func TestAccountsRun_TheBudget(t *testing.T) {
 	}
 }
 
+// The budget bounds the preparing links too (the law-and-locks review, minor
+// 6): once it is spent before the run reaches them, no preparing link is
+// written and none is claimed; the people due wait for the worker's cycle,
+// which prepares them.
+func TestAccountsRun_TheBudgetBoundsThePreparing(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	people := []gen.StaffPerson{
+		w.employee(t, "En", "2026-01-01", nil),
+		w.employee(t, "To", "2026-01-01", nil),
+	}
+	// The request asks the mode before the budget starts, and the cycle asks
+	// it again: the budget is spent at the cycle's own ask.
+	var calls int
+	w.fake.set(func(f *fakeAccounts) {
+		f.onMode = func() {
+			if calls++; calls == 2 {
+				w.h.Advance(61 * time.Second)
+			}
+		}
+	})
+	var got gen.StaffAccountsRun
+	do(t, w.hr, http.MethodPost, accountsRunPath, nil, http.StatusOK, &got)
+	if got.Attempted != 0 {
+		t.Errorf("the run = %+v, want nothing attempted once the budget was spent", got)
+	}
+	for _, p := range people {
+		if _, ok := linkOf(t, w.h, p.Id); ok {
+			t.Errorf("person %d has a link after a run whose budget was spent, want none", p.Id)
+		}
+	}
+	w.cycle(t)
+	if n := countWrites(w.fake, "Prepare"); n != len(people) {
+		t.Errorf("after the worker's cycle Prepare was called %d times, want %d", n, len(people))
+	}
+}
+
 // With no module providing accounts, Run accounts now is 503
 // accounts_unavailable, as is a person's run.
 func TestAccountsRun_WithoutAccounts(t *testing.T) {

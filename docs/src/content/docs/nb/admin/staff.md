@@ -241,7 +241,7 @@ identity registrerer og historikken navngir.
   og hvor mange som er igjen (`{attempted, done, failed, remaining}`): koblingene den arbeidet med, de identity
   svarte på (et steg utført, eller en årsak registrert), de den ikke nådde identity for
   (prøves igjen av arbeideren), og de forfalte koblingene den lot ligge. Den begynner
-  ingen kobling etter seksti sekunder og tar høyst femti; `remaining` er for arbeiderens
+  ingen kobling — og klargjør ingen — etter seksti sekunder og tar høyst femti; `remaining` er for arbeiderens
   neste runde, eller kjør den igjen. Den kjører side om side med arbeiderens egne runder
   uten å vente på dem.
 - **Én person**: **Kjør nå** på personens Konto-fane
