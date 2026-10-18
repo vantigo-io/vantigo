@@ -9101,6 +9101,30 @@ func (response PostStaffAccountsRun403JSONResponse) VisitPostStaffAccountsRunRes
 	return err
 }
 
+type PostStaffAccountsRun429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostStaffAccountsRun429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostStaffAccountsRun429ResponseHeaders
+}
+
+func (response PostStaffAccountsRun429JSONResponse) VisitPostStaffAccountsRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostStaffAccountsRun503ApplicationProblemPlusJSONResponse StaffProblem
 
 func (response PostStaffAccountsRun503ApplicationProblemPlusJSONResponse) VisitPostStaffAccountsRunResponse(w http.ResponseWriter) error {
@@ -13848,6 +13872,30 @@ func (response PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONRes
 	return err
 }
 
+type PostStaffPeopleByIdAccountDisable429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostStaffPeopleByIdAccountDisable429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostStaffPeopleByIdAccountDisable429ResponseHeaders
+}
+
+func (response PostStaffPeopleByIdAccountDisable429JSONResponse) VisitPostStaffPeopleByIdAccountDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostStaffPeopleByIdAccountDisable503ApplicationProblemPlusJSONResponse StaffProblem
 
 func (response PostStaffPeopleByIdAccountDisable503ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdAccountDisableResponse(w http.ResponseWriter) error {
@@ -13930,6 +13978,30 @@ func (response PostStaffPeopleByIdAccountRun409ApplicationProblemPlusJSONRespons
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdAccountRun429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostStaffPeopleByIdAccountRun429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostStaffPeopleByIdAccountRun429ResponseHeaders
+}
+
+func (response PostStaffPeopleByIdAccountRun429JSONResponse) VisitPostStaffPeopleByIdAccountRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }

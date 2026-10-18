@@ -5148,6 +5148,16 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
+            /** @description Too Many Requests — at most 30 runs of the accounts an hour from one client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
             /** @description Service Unavailable — accounts_unavailable: no module provides accounts, or identity could not say the authority mode. Nothing was run. */
             503: {
                 headers: {
@@ -8890,6 +8900,16 @@ export interface operations {
                     "application/problem+json": components["schemas"]["StaffProblem"];
                 };
             };
+            /** @description Too Many Requests — at most 120 of a person's Run now and Disable now together an hour from one client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
             /** @description Service Unavailable — accounts_unavailable: identity could not be reached. The flag is already off; the link records the error (last_error) and the disable asked for, which the accounts worker retries at every poll, and accountFailing is raised meanwhile. */
             503: {
                 headers: {
@@ -8953,6 +8973,16 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Too Many Requests — at most 120 of a person's Run now and Disable now together an hour from one client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
             /** @description Service Unavailable — accounts_unavailable: no module provides accounts, or identity could not be reached; a call that failed is recorded on the link (last_error) and retried by the worker. */

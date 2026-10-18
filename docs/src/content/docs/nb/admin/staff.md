@@ -254,6 +254,9 @@ identity registrerer og historikken navngir.
   innen ti minutter etter den forrige; kjøringen er like fullt gjort — prøv igjen etter
   ti minutter om det trengs. En person med flagget av får ingenting kjørt, og fanen
   tilbyr ikke Kjør nå.
+- **Grenser**: fra én klientadresse høyst 30 kjøringer av alle kontoer i timen, og
+  høyst 120 av en persons Kjør nå og Deaktiver nå til sammen i timen; over grensen
+  avvises forespørselen (429) — vent, eller la arbeiderens egen runde gjøre det.
 
 Hva kan gå galt, hvert sagt med ord på fanen eller kortet: `accounts_busy` (409) —
 arbeideren arbeider med personen akkurat nå; prøv igjen om noen minutter. `person_erased` (409) — en slettet persons konto kjøres

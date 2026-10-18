@@ -249,6 +249,9 @@ identity records and the history names.
   re-sends an invitation that can still be accepted and sends none within ten minutes of
   the last; the run is done all the same — try again after ten minutes if one is needed.
   A person whose flag is off has nothing run, and the tab offers no Run now.
+- **Limits**: from one client address, Run accounts now at most 30 times an hour, and a
+  person's Run now and Disable now together at most 120 times an hour; past either the
+  request is refused (429) — wait, or let the worker's own cycle do it.
 
 What can go wrong, each said in words on the tab or the card: `accounts_busy` (409) —
 the worker is working the person right now; try again in a few minutes. `person_erased` (409) — an erased person's account is not
