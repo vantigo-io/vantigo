@@ -218,22 +218,23 @@ type StaffHolidayScheme struct {
 }
 
 type StaffIdentityLink struct {
-	ID            int64
-	PersonID      int64
-	Provider      string
-	ExternalID    *string
-	State         string
-	Managed       bool
-	BlockedReason *string
-	LastError     *string
-	Attempts      int32
-	NextAttemptAt *time.Time
-	LeaseID       *uuid.UUID
-	LeaseUntil    *time.Time
-	LastSyncedAt  *time.Time
-	LastSpecHash  []byte
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                   int64
+	PersonID             int64
+	Provider             string
+	ExternalID           *string
+	State                string
+	Managed              bool
+	BlockedReason        *string
+	LastError            *string
+	Attempts             int32
+	NextAttemptAt        *time.Time
+	LeaseID              *uuid.UUID
+	LeaseUntil           *time.Time
+	LastSyncedAt         *time.Time
+	LastSpecHash         []byte
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	SyncedEmployeeNumber *string
 }
 
 type StaffLegalEntity struct {

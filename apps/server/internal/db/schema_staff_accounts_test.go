@@ -36,7 +36,8 @@ const (
 // naming none do not collide on the (provider, external_id) index; the
 // employee number is unique on upper() under the "C" collation, so i-1 is
 // refused beside I-1; and the account flag has its own revision,
-// people.account_revision, 1 by default. The Down deletes the links that name no user — the
+// people.account_revision, 1 by default; and the link keeps the employee
+// number the worker last synced, identity_links.synced_employee_number. The Down deletes the links that name no user — the
 // preparing ones — restores NOT NULL and the collation-dependent index, and
 // leaves the links that name a user as they were.
 func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
@@ -63,6 +64,15 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 		WHERE table_schema = 'staff' AND table_name = 'people' AND column_name = 'account_revision'`)
 	if !equalStrings(accountRevision, []string{"integer:NO:1"}) {
 		t.Errorf("people.account_revision = %v, want integer:NO:1", accountRevision)
+	}
+	// The employee number the accounts worker last wrote to identity for the
+	// link (Task 4b): a person HR renumbered is still known by the number
+	// identity holds.
+	synced := staffCollect(t, ctx, pool, "synced_employee_number", `
+		SELECT data_type || ':' || character_maximum_length || ':' || is_nullable FROM information_schema.columns
+		WHERE table_schema = 'staff' AND table_name = 'identity_links' AND column_name = 'synced_employee_number'`)
+	if !equalStrings(synced, []string{"character varying:16:YES"}) {
+		t.Errorf("identity_links.synced_employee_number = %v, want character varying:16:YES", synced)
 	}
 	index := staffCollect(t, ctx, pool, "the employee number index", `
 		SELECT indexdef FROM pg_indexes WHERE schemaname = 'staff' AND indexname = 'ux_people_employee_number_upper'`)
@@ -132,6 +142,11 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 		SELECT column_name FROM information_schema.columns
 		WHERE table_schema = 'staff' AND table_name = 'people' AND column_name = 'account_revision'`); len(left) != 0 {
 		t.Errorf("the rollback left people.account_revision")
+	}
+	if left := staffCollect(t, ctx, pool, "synced_employee_number after the rollback", `
+		SELECT column_name FROM information_schema.columns
+		WHERE table_schema = 'staff' AND table_name = 'identity_links' AND column_name = 'synced_employee_number'`); len(left) != 0 {
+		t.Errorf("the rollback left identity_links.synced_employee_number")
 	}
 	for _, sql := range []string{`DELETE FROM staff.identity_links`, `DELETE FROM staff.people`} {
 		if _, err := pool.Exec(ctx, sql); err != nil {
