@@ -11,6 +11,7 @@ sql:
       - ../db/migrations/00014_expenses_to_invoice_index.sql
       - ../db/migrations/00033_expenses_supplier_invoices.sql
       - ../db/migrations/00038_expenses_invoiced_by.sql
+      - ../db/migrations/00054_expenses_time_zone_to_workspace.sql
     queries: queries
     gen:
       go:

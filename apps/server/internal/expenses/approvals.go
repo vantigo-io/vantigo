@@ -55,14 +55,14 @@ func (s *server) GetExpensesApprovals(ctx context.Context, req gen.GetExpensesAp
 
 	total, err := q.CountApprovalGroups(ctx, store.CountApprovalGroupsParams{
 		SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
-		TimeZone: c.Settings.TimeZone,
+		TimeZone: c.zone().String(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("expenses: count the approval queue's groups: %w", err)
 	}
 	userIDs, err := q.ListApprovalGroups(ctx, store.ListApprovalGroupsParams{
 		SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
-		TimeZone: c.Settings.TimeZone,
+		TimeZone: c.zone().String(),
 		PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 	})
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *server) GetExpensesApprovals(ctx context.Context, req gen.GetExpensesAp
 	}
 	claims, err := q.ListApprovalGroupClaims(ctx, store.ListApprovalGroupClaimsParams{
 		SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
-		TimeZone: c.Settings.TimeZone, UserIds: userIDs,
+		TimeZone: c.zone().String(), UserIds: userIDs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("expenses: list the travel claims awaiting approval: %w", err)

@@ -406,7 +406,8 @@ func TestExpensesClaims_ADeparturesDayIsItsDayInTheBusinessZone(t *testing.T) {
 	// An installation that keeps its calendar in UTC reads the very same
 	// instant as the thirtieth of June — which is the whole reason the setting
 	// exists, and what every Norwegian installation had before it.
-	putSettings(t, admin, settingsBody(map[string]any{"lockedBefore": "2026-07-01", "timeZone": "UTC"}))
+	h.SetBusinessTimeZone(t, "UTC")
+	putSettings(t, admin, settingsBody(map[string]any{"lockedBefore": "2026-07-01"}))
 	if got := claimIDsOf(listClaims(t, owner, "?from=2026-06-30&to=2026-06-30")); len(got) != 1 || got[0] != claim.Id {
 		t.Errorf("claims departing on 2026-06-30 = %v, want the very same trip, read in UTC", got)
 	}

@@ -285,9 +285,9 @@ markup** a billable outlay is charged on above its net unless the project says
 otherwise; the **Receipt rule** — **Off**, **Always** or **Over an amount** with
 **Receipt needed above**; **Locked before**, the first open day of the period lock
 (leave it empty for no lock; changing it asks **Change the lock?**); and the **Business
-time zone**, which decides which day a trip's departure and return fall on. Changing
-the zone moves the days of trips already recorded and is confirmed out loud — set it
-once, when the installation is set up.
+time zone**, which decides which day a trip's departure and return fall on. The zone
+is shown, not changed, here: it is the workspace's, and an Owner changes it under
+[Workspace administration](/en/user/workspace-administration/#workspace-settings).
 
 **Rates**: every rate kind is listed whether it has rows or not — **Mileage**,
 **Passenger supplement**, **Customer rate per kilometre**, the four per diem kinds and

@@ -331,14 +331,7 @@ export const expensesCatalog = {
     lockClearConfirm: "The lock goes away and every day is open again.",
     businessTimeZone: "Business time zone",
     businessTimeZoneDescription:
-      "The calendar the company works by. A travel claim stores the instant somebody left and the instant they came back, and this decides which day each of those is — the day the period lock judges, the days a per diem may fall on, and the days a trip is suggested for.",
-    timeZoneRequired: "Choose the zone the company works in",
-    timeZoneMovesDays: "Changing it moves the days of trips already recorded",
-    timeZoneChangeTitle: "Change the business time zone?",
-    timeZoneChangeConfirm:
-      "Every trip already recorded is re-read in {{to}} instead of {{from}}. A departure just after midnight may move to the day before or the day after, a per diem day may end up outside its own trip, and the period lock will judge different days. Nothing puts them back but changing it again.",
-    timeZoneMovesDaysDescription:
-      "A trip that departed just after midnight may move to the day before, or the day after, and a per diem day may end up outside the trip it belongs to. Set it once, when the installation is set up.",
+      "The calendar the company works by. A travel claim stores the instant somebody left and the instant they came back, and this decides which day each of those is — the day the period lock judges, the days a per diem may fall on, and the days a trip is suggested for. It is the workspace's: an Owner changes it under Workspace administration.",
     settingsSaved: "Settings saved",
     couldNotSaveSettings: "Could not save the settings",
 
@@ -915,14 +908,7 @@ export const expensesCatalog = {
     lockClearConfirm: "Låsen fjernes og alle dager er åpne igjen.",
     businessTimeZone: "Tidssone for virksomheten",
     businessTimeZoneDescription:
-      "Kalenderen selskapet arbeider etter. En reiseregning lagrer øyeblikket noen dro og øyeblikket de kom hjem, og dette avgjør hvilken dag hvert av dem er — dagen periodelåsen dømmer etter, dagene en diett kan falle på, og dagene en reise får forslag for.",
-    timeZoneRequired: "Velg tidssonen selskapet arbeider i",
-    timeZoneMovesDays: "Endrer du den, flyttes dagene for reiser som allerede er ført",
-    timeZoneChangeTitle: "Endre tidssonen for virksomheten?",
-    timeZoneChangeConfirm:
-      "Alle reiser som alt er ført leses på nytt i {{to}} i stedet for {{from}}. En avreise like etter midnatt kan flytte seg til dagen før eller dagen etter, en diettdag kan havne utenfor sin egen reise, og periodelåsen vil dømme andre dager. Ingenting setter dem tilbake annet enn å endre den igjen.",
-    timeZoneMovesDaysDescription:
-      "En reise som startet like etter midnatt kan flytte seg til dagen før eller dagen etter, og en diettdag kan havne utenfor reisen den hører til. Sett den én gang, når installasjonen settes opp.",
+      "Kalenderen selskapet arbeider etter. En reiseregning lagrer øyeblikket noen dro og øyeblikket de kom hjem, og dette avgjør hvilken dag hvert av dem er — dagen periodelåsen dømmer etter, dagene en diett kan falle på, og dagene en reise får forslag for. Den er arbeidsområdets: en eier endrer den under Administrasjon av arbeidsområdet.",
     settingsSaved: "Innstillingene er lagret",
     couldNotSaveSettings: "Kunne ikke lagre innstillingene",
 

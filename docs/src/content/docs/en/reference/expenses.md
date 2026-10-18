@@ -481,18 +481,26 @@ yesterday's rate.
 
 **Which day is which.** A claim stores two instants, and `timestamptz` keeps the
 instant rather than the offset it was typed in, so *which calendar day* a trip
-departed on depends on where you are standing. The installation says where: its
-**business time zone**, `expenses.settings.timeZone` — an IANA name,
-`Europe/Oslo` by default, because that is whose per diem agreement this module
-implements — and `businessDay(instant, zone)` is the module's one derivation of
-"the day". It is what the period lock is judged on, what `GET /claims`'
-`from`/`to` filter applies in SQL (the same stored name, as
+departed on depends on where you are standing. The workspace says where: its
+**business time zone**, one setting for the installation on identity's system
+settings (`Europe/Oslo` by default), read once per request through
+`contracts.BusinessCalendar` (`Deps.Calendar`) and set by an Owner under
+[Workspace administration](/en/user/workspace-administration/#workspace-settings).
+It was this module's own `expenses.settings.time_zone` until the time zones design
+([`docs/superpowers/specs/2026-10-19-time-zones-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-19-time-zones-design.md));
+migration `00054` drops the column, warning in the log when its value was not
+`Europe/Oslo`, `PUT /settings` no longer takes `timeZone`, and `GET /settings` and
+`GET /meta` answer the workspace's. `businessDay(instant, zone)` — the platform's
+`holidays.DayIn` — is the module's one derivation of "the day". It is what the
+period lock is judged on, what `GET /claims`' `from`/`to` filter applies in SQL
+(the same resolved name, passed as a parameter, as
 `(departure_at AT TIME ZONE …)::date`, so Go and the database can never
 disagree), what the within-the-trip rule compares against, and what the
 suggestion dates a day by — one rule, so a day the server proposes can never
 fall outside the trip the save then judges it against. **"Today"** is today in
 that zone too: the payroll run's not-in-the-future rule and the export's file
-name.
+name. The checks a zone is put through when it changes (Go must load the name;
+the database must read it the same way, which `CET` fails) are identity's now.
 
 A departure typed `2026-07-01T00:30+02:00` is therefore a trip that departed on
 **1 July**, which is what the calendar on the office wall says; under a UTC rule

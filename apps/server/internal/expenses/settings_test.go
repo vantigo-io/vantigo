@@ -162,106 +162,40 @@ func TestExpensesSettings_ChangingThemNeedsManage(t *testing.T) {
 	}
 }
 
-// The installation's business time zone is what every date derived from a
-// travel claim's two instants is taken in, so it has to be a name **both**
-// halves of the system know: Go derives those dates in the handlers and
-// Postgres derives the same ones in the claims list's filter, and the two carry
-// their own copies of the world's time zones.
-func TestExpensesSettings_TheBusinessTimeZoneMustBeOneBothHalvesKnow(t *testing.T) {
+// The business time zone is the workspace's (time zones design D2): everyone
+// reads it on the settings — a client that labels a trip's days has to label
+// them in it and not in the browser's — a replace neither takes nor touches
+// it, and an Owner's change under Workspace administration is what moves it.
+func TestExpensesSettings_TheBusinessTimeZoneIsTheWorkspaces(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	admin, _ := signIn(t, h, "expenses:manage")
 	employee, _ := signIn(t, h)
 
-	// Everyone reads it: a client that labels a trip's days has to label them
-	// in this zone and not in the browser's.
 	if zone := getSettings(t, employee).TimeZone; zone != "Europe/Oslo" {
-		t.Errorf("time zone = %q, want the shipped default", zone)
+		t.Errorf("time zone = %q, want the workspace's default", zone)
 	}
-
-	for name, value := range map[string]any{
-		"a name nobody has heard of":   "Europe/Osloo",
-		"an offset rather than a zone": "+02:00",
-		// "Local" is whatever zone the server process happens to run in, which
-		// is not a statement about the company's calendar.
-		"the process's own zone": "Local",
-		"nothing at all":         "  ",
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			errs := refused(t, admin, http.MethodPut, settingsPath,
-				settingsBody(map[string]any{"timeZone": value}), invalidSettingsTitle)
-			if len(errs["timeZone"]) == 0 {
-				t.Errorf("errors = %v, want one on timeZone", errs)
-			}
-		})
+	h.SetBusinessTimeZone(t, "America/New_York")
+	if zone := getSettings(t, employee).TimeZone; zone != "America/New_York" {
+		t.Errorf("time zone after the workspace changed = %q, want America/New_York", zone)
 	}
-
-	// A name both of them know is stored, and a replace that leaves the field
-	// out keeps it — every trip in the installation is dated by it, so an
-	// omission must not move them all.
-	if zone := putSettings(t, admin, settingsBody(map[string]any{"timeZone": "America/New_York"})).TimeZone; zone != "America/New_York" {
-		t.Errorf("time zone = %q, want the one set", zone)
-	}
-	if zone := putSettings(t, admin, settingsBody(nil)).TimeZone; zone != "America/New_York" {
-		t.Errorf("time zone after a replace that left it out = %q, want it kept", zone)
+	if zone := putSettings(t, admin, settingsBody(map[string]any{"timeZone": "Europe/Oslo"})).TimeZone; zone != "America/New_York" {
+		t.Errorf("time zone after a replace naming one = %q, want the workspace's kept", zone)
 	}
 }
 
-// Knowing a name is not enough: the two halves must **mean the same thing** by
-// it. 'CET' is an IANA zone with summer time to Go and a fixed +01:00
-// abbreviation to Postgres, which resolves its abbreviation table first — so a
-// trip departing at 00:30 local on 1 July would be dated 1 July by Go and 30
-// June by every filter, order and export written in SQL. A name the two read
-// differently is refused, and the message says what to write instead.
-func TestExpensesSettings_RefusesAZoneGoAndPostgresReadDifferently(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-	admin, _ := signIn(t, h, "expenses:manage")
-
-	for _, name := range []string{"CET", "EET", "MET", "WET"} {
-		errs := refused(t, admin, http.MethodPut, settingsPath,
-			settingsBody(map[string]any{"timeZone": name}), invalidSettingsTitle)
-		if len(errs["timeZone"]) == 0 {
-			t.Fatalf("%q was accepted, want a refusal on timeZone: %v", name, errs)
-		}
-		if !mentions(errs["timeZone"], "Europe/Oslo") {
-			t.Errorf("%q was refused with %v, want a message naming a city zone to use instead", name, errs["timeZone"])
-		}
-	}
-	// Postgres reads its abbreviation table case-insensitively; Go's tzdata is
-	// case-sensitive, so a lower-case one never reaches the comparison at all.
-	// It is refused either way, which is what matters.
-	if errs := refused(t, admin, http.MethodPut, settingsPath,
-		settingsBody(map[string]any{"timeZone": "cet"}), invalidSettingsTitle); len(errs["timeZone"]) == 0 {
-		t.Errorf("'cet' was accepted, want a refusal on timeZone: %v", errs)
-	}
-	// The setting is unchanged by every one of those refusals.
-	if zone := getSettings(t, admin).TimeZone; zone != "Europe/Oslo" {
-		t.Errorf("time zone = %q, want the default still", zone)
-	}
-	// City zones, and the two fixed ones that mean the same to both, are
-	// accepted — the check refuses disagreement, not abbreviation-shaped names.
-	for _, name := range []string{"Europe/Oslo", "UTC", "America/New_York", "Asia/Kolkata"} {
-		if zone := putSettings(t, admin, settingsBody(map[string]any{"timeZone": name})).TimeZone; zone != name {
-			t.Errorf("time zone = %q, want %q accepted", zone, name)
-		}
-	}
-}
-
-// The property the setting exists for, over the zones it accepts: the day Go
-// derives from an instant and the day Postgres derives from the same instant
-// are the same day. It is the sentence docs/src/content/docs/en/reference/expenses.md states as absolute, so
+// The property the zone exists for, over the zones the workspace accepts:
+// the day Go derives from an instant and the day Postgres derives from the
+// same instant are the same day. It is the sentence docs/src/content/docs/en/reference/expenses.md states as absolute, so
 // it is a test rather than an assertion — instants either side of local
 // midnight, in January and in July, so a zone the two disagree about only in
 // summer cannot slip through.
 func TestExpensesSettings_GoAndPostgresNameTheSameDay(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	admin, _ := signIn(t, h, "expenses:manage")
 
 	for _, name := range []string{"Europe/Oslo", "UTC", "America/New_York", "Asia/Kolkata", "Pacific/Chatham"} {
-		putSettings(t, admin, settingsBody(map[string]any{"timeZone": name}))
+		h.SetBusinessTimeZone(t, name)
 		loc, err := time.LoadLocation(name)
 		if err != nil {
 			t.Fatalf("load %s: %v", name, err)

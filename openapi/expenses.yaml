@@ -1219,7 +1219,7 @@ components:
                     format: double
                     type: number
                 timeZone:
-                    description: 'The installation''s business time zone, an IANA name (''Europe/Oslo'' by default): the zone every date derived from a travel claim''s departure and return instants is taken in. A form labelling a trip''s days has to label them in it rather than in the browser''s, or it will disagree with the server about which day a save lands on. The same value GET /settings answers, here because meta is the one read an expense form makes.'
+                    description: 'The workspace''s business time zone, an IANA name (''Europe/Oslo'' by default, set under Workspace administration): the zone every date derived from a travel claim''s departure and return instants is taken in. A form labelling a trip''s days has to label them in it rather than in the browser''s, or it will disagree with the server about which day a save lands on. The same value GET /settings answers, here because meta is the one read an expense form makes.'
                     type: string
             required:
                 - projectsAvailable
@@ -1607,10 +1607,6 @@ components:
                     description: Zero or greater, at most two decimals. Zero means every employee-paid outlay needs a receipt; leaving it out turns the rule off.
                     format: double
                     type: number
-                timeZone:
-                    description: 'The installation''s own business time zone, as an IANA name (''Europe/Oslo''). It is what every date derived from a travel claim''s two instants is taken in — the day the period lock judges, the day GET /claims'' from/to filter matches, the days a per diem line may fall on and the days the suggestion proposes — because a claim stores instants and the company''s own calendar is what a period lock and a payroll month mean. A name neither Go nor Postgres knows is refused on this field. Leaving it out keeps the zone the installation already has.'
-                    maxLength: 64
-                    type: string
             required:
                 - defaultCurrency
                 - defaultMarkupPercent
@@ -1633,7 +1629,7 @@ components:
                     format: double
                     type: number
                 timeZone:
-                    description: 'The installation''s own business time zone, an IANA name. Every date derived from a travel claim''s two instants is the calendar day of that instant here: the day the period lock judges, the day GET /claims'' from/to filter matches, the days a per diem line may fall on and the days the suggestion proposes. A client showing a trip''s days labels them in this zone and not in the browser''s, or it will disagree with the server about which day a save lands on. Read by every expenses:access holder.'
+                    description: 'The workspace''s business time zone, an IANA name — answered here, never set here (an Owner sets it under Workspace administration, PUT /api/v1/identity/owner/workspace). Every date derived from a travel claim''s two instants is the calendar day of that instant here: the day the period lock judges, the day GET /claims'' from/to filter matches, the days a per diem line may fall on and the days the suggestion proposes. A client showing a trip''s days labels them in this zone and not in the browser''s, or it will disagree with the server about which day a save lands on. Read by every expenses:access holder.'
                     type: string
             required:
                 - defaultCurrency
