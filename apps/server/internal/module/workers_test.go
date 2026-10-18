@@ -3,14 +3,15 @@ package module
 import (
 	"context"
 	"fmt"
-	"github.com/vantigo-io/vantigo/server/internal/config"
-	"github.com/vantigo-io/vantigo/server/internal/contracts"
-	"github.com/vantigo-io/vantigo/server/internal/worker"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 // fakeWorker is a minimal worker.Worker: these tests only need a distinct,
@@ -187,30 +188,6 @@ func TestWorkers_PanicsOnAKindClaimedTwice(t *testing.T) {
 	Workers(Deps{}, Module{Name: "alpha", InvoicedWork: holder}, Module{Name: "beta", InvoicedWork: holder})
 }
 
-// Worker mode never composes, yet energy's import worker resolves a file's
-// organisation numbers through the customer directory (energy import design
-// D4): Workers resolves the slot as Compose does — from the enabled module
-// that declares one, never a disabled one — before any module builds its
-// workers, and leaves the caller's own when none is enabled.
-func TestWorkers_HandTheWorkersTheCustomerDirectory(t *testing.T) {
-	enabled, disabled, preset := &fakeDirectory{}, &fakeDirectory{}, &fakeDirectory{}
-	var seen contracts.CustomerDirectory
-	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
-		seen = d.Directory
-		return nil
-	}}
-	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}},
-		reader, Module{Name: "owner", Directory: func(Deps) contracts.CustomerDirectory { return enabled }})
-	if seen != enabled {
-		t.Errorf("the workers saw Deps.Directory = %v, want the enabled owner's", seen)
-	}
-	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, Directory: preset},
-		reader, Module{Name: "owner", Directory: func(Deps) contracts.CustomerDirectory { return disabled }})
-	if seen != preset {
-		t.Errorf("the workers saw Deps.Directory = %v, want the caller's, the owner being disabled", seen)
-	}
-}
-
 // Worker mode never composes, yet a worker writes identity's accounts and
 // reads its users (the staff-accounts worker): Workers resolves the Users
 // and Accounts slots itself, from the enabled providers, Users first so the
@@ -284,5 +261,29 @@ func TestWorkers_PanicsOnTwoProvidersOfASlot(t *testing.T) {
 			}()
 			Workers(Deps{}, tc.mods...)
 		})
+	}
+}
+
+// Worker mode never composes, yet energy's import worker resolves a file's
+// organisation numbers through the customer directory (energy import design
+// D4): Workers resolves the slot as Compose does — from the enabled module
+// that declares one, never a disabled one — before any module builds its
+// workers, and leaves the caller's own when none is enabled.
+func TestWorkers_HandTheWorkersTheCustomerDirectory(t *testing.T) {
+	enabled, disabled, preset := &fakeDirectory{}, &fakeDirectory{}, &fakeDirectory{}
+	var seen contracts.CustomerDirectory
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d.Directory
+		return nil
+	}}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}},
+		reader, Module{Name: "owner", Directory: func(Deps) contracts.CustomerDirectory { return enabled }})
+	if seen != enabled {
+		t.Errorf("the workers saw Deps.Directory = %v, want the enabled owner's", seen)
+	}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, Directory: preset},
+		reader, Module{Name: "owner", Directory: func(Deps) contracts.CustomerDirectory { return disabled }})
+	if seen != preset {
+		t.Errorf("the workers saw Deps.Directory = %v, want the caller's, the owner being disabled", seen)
 	}
 }
