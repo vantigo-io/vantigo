@@ -79,7 +79,7 @@ WHERE NOT p.legal_hold
                 OR EXISTS (
                     SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
                     WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
-                      AND ti.id::bigint <> @absent_id::bigint))))
+                      AND NOT (ti.id::bigint = ANY(@reserved_ids::bigint[]))))))
 ORDER BY (SELECT max(e.end_date) FROM staff.employments e WHERE e.person_id = p.id), p.id
 LIMIT @row_limit;
 
@@ -113,7 +113,7 @@ WHERE NOT p.legal_hold
           WHERE m.case_id = c.id AND j.key = ANY(@milestone_columns::text[]) AND j.value NOT IN ('null'::jsonb, 'false'::jsonb))
       OR EXISTS (
           SELECT 1 FROM staff.absences a
-          WHERE a.case_id = c.id AND (a.type_id <> @absent_id::bigint OR a.degree_percent IS NOT NULL))
+          WHERE a.case_id = c.id AND (NOT (a.type_id = ANY(@reserved_ids::bigint[])) OR a.degree_percent IS NOT NULL))
       OR EXISTS (SELECT 1 FROM staff.documents d WHERE d.case_id = c.id)
       -- With eraseSickCaseDates on (delivery C, Task 5b) the case itself is
       -- what is left, until its erase deletes it: a case B's erase reached
@@ -134,7 +134,7 @@ WHERE NOT p.legal_hold
                 OR EXISTS (
                     SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
                     WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
-                      AND ti.id::bigint <> @absent_id::bigint))))
+                      AND NOT (ti.id::bigint = ANY(@reserved_ids::bigint[]))))))
 ORDER BY least(coalesce((c.closed_at AT TIME ZONE @zone::text)::date, c.last_day + 17), c.last_day + 17), c.id
 LIMIT @row_limit;
 
@@ -247,7 +247,10 @@ SELECT id FROM staff.absence_types WHERE seeded AND key = ANY(@keys::text[]) ORD
 -- child-sick row's — or an event naming one of those types in its typeIds
 -- whose row no longer has one (deleted, or corrected to another type),
 -- recorded in a year in @zone that ended before @cutoff; either one sooner
--- when every employment ended before @cutoff. An erased row has the reserved
+-- when every employment ended before @cutoff — but a row of @floor_type_ids
+-- (svangerskapspermisjon, fodselspermisjon), or an event naming one, never
+-- before its year ended before @floor_cutoff, a full year ago (review L5):
+-- the holiday-pay year after it still reads the leave. An erased row has the reserved
 -- type and its events the reserved ids, so nothing is due twice.
 SELECT p.id
 FROM staff.people p
@@ -258,7 +261,8 @@ WHERE NOT p.legal_hold
           SELECT 1 FROM staff.absences a
           WHERE a.person_id = p.id AND a.type_id = ANY(@type_ids::bigint[])
             AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
-                 AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date)))))
+                 AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
+            AND (NOT (a.type_id = ANY(@floor_type_ids::bigint[])) OR make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @floor_cutoff::date))
       OR EXISTS (
           SELECT 1 FROM staff.events ev
           WHERE ev.person_id = p.id
@@ -269,17 +273,22 @@ WHERE NOT p.legal_hold
                 WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND a.type_id = ANY(@type_ids::bigint[]))
             AND EXISTS (
                 SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) ti(id)
-                WHERE ti.id::bigint = ANY(@type_ids::bigint[]))))
+                WHERE ti.id::bigint = ANY(@type_ids::bigint[]))
+            AND (make_date(EXTRACT(YEAR FROM (ev.at AT TIME ZONE @zone::text))::int, 12, 31) < @floor_cutoff::date
+                 OR NOT EXISTS (
+                     SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) ti(id)
+                     WHERE ti.id::bigint = ANY(@floor_type_ids::bigint[])))))
 ORDER BY p.id
 LIMIT @row_limit;
 
 -- name: DuePregnancyHealthRows :many
 -- DuePregnancyHealthRows is one person's rows of @type_ids due, as
--- DuePeoplePregnancyHealth judges them.
+-- DuePeoplePregnancyHealth judges them, the full-year floor included.
 SELECT a.id FROM staff.absences a
 WHERE a.person_id = @person_id AND a.type_id = ANY(@type_ids::bigint[])
   AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id)
        AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
+  AND (NOT (a.type_id = ANY(@floor_type_ids::bigint[])) OR make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @floor_cutoff::date)
 ORDER BY a.id;
 
 -- name: SetRowsReserved :exec
@@ -294,8 +303,12 @@ UPDATE staff.absences a SET
         WHEN t.visibility = 'hr_only' THEN @hr_only_id::bigint
         WHEN t.unit = 'hours' THEN @absent_hours_id::bigint
         ELSE @absent_id::bigint END,
-    revision = a.revision + 1,
-    updated_at = @now::timestamptz
+    -- An HR-only row keeps its revision and updated_at (review H1): HR
+    -- without staff:personal-data is sent an opaque tag of the revision, and
+    -- only this erase rewrites an HR-only row, so a tag that moved would say
+    -- it was a pregnancy type.
+    revision = CASE WHEN t.visibility = 'hr_only' THEN a.revision ELSE a.revision + 1 END,
+    updated_at = CASE WHEN t.visibility = 'hr_only' THEN a.updated_at ELSE @now::timestamptz END
 FROM staff.absence_types t
 WHERE t.id = a.type_id AND a.id = ANY(@ids::bigint[]);
 
@@ -371,7 +384,7 @@ WHERE NOT p.legal_hold
       OR EXISTS (
           SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
           WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
-            AND ti.id::bigint <> @absent_id::bigint))
+            AND NOT (ti.id::bigint = ANY(@reserved_ids::bigint[]))))
 ORDER BY person_id
 LIMIT @row_limit;
 

@@ -2751,7 +2751,13 @@ time zone's civil day:
   minus `healthRetentionDays` — never before the payroll month that reported it has
   passed, which that bound guarantees — or with an event naming one of those types
   whose row no longer has one (deleted, or corrected to another type), recorded in a
-  year that ended before then.
+  year that ended before then. **`svangerskapspermisjon` and `fodselspermisjon` are
+  never due before a full year after their year ended** (today minus one year),
+  whatever `healthRetentionDays` says or the person's own cutoff — an event naming one
+  of them likewise by its year — so the holiday-pay year after the leave, and a payroll
+  re-export of it, still read the leave (the coordinator's decision on review L5).
+  Only the type is erased: an absence's `note` and `decision_note` are class D and go
+  with the D erase.
 
   These four, and the orphaned events below, are **capped by the person's own health
   cutoff** (whole-branch review): when every employment of the person ended before
@@ -2813,7 +2819,12 @@ since the cycle chose the person is seen there:
   **whatever class they were recorded in** (B wrote them as C): the `type` field reads
   `"changed"` and each such id in `typeIds` becomes the reserved type chosen the same
   way. An event naming such a type whose row no longer has one goes by the year it was
-  recorded in. The days, the status and the dates stay. An erased HR-only row therefore
+  recorded in. The days, the status and the dates stay. An HR-only row keeps its
+  `revision` and `updated_at` (review H1): HR without `staff:personal-data` holds an
+  opaque `etag` of the revision, and only this erase rewrites an HR-only row, so a tag
+  that moved would say what it was. A value already one of the four reserved types is
+  erased already: no "not yet erased" check counts it and no erase rewrites it
+  (review L2). An erased HR-only row therefore
   reads to a manager, an Approver and HR without `staff:personal-data` exactly as it
   did — *leave*, its events unlisted to them — and only the person and
   `staff:personal-data` see that it became a reserved type (the coordinator's

@@ -1003,13 +1003,20 @@ protection officer: each erases for good.
    svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and *Doctor or
    dentist* become a reserved *Absent* type — an hour row keeps its hours —
    `healthRetentionDays` after the end of the year they ended, never before the payroll
-   month that reported them has passed. The HR-only types take an HR-only reserved
+   month that reported them has passed — and **svangerskapspermisjon and
+   fødselspermisjon never before a full year after the end of their year**, whatever
+   the period, so the holiday pay of the year after them, and a payroll re-export of
+   that year, still read the leave. Only the type is erased: an absence's note and the
+   decision's note stay, and go with the personnel administration. The HR-only types
+   take an HR-only reserved
    type, so managers, Approvers and HR without `staff:personal-data` still read the row
    as *leave* and see no entry about the erase; the person and `staff:personal-data`
    see *Absent (HR only)*. Their history keeps its dates and reads the type as
    *changed*; an entry about a row deleted or changed to another type goes by the year
-   it was recorded in. A payroll month re-exported after its pregnancy rows were erased
-   reports those days as other days, not as leave.
+   it was recorded in. An erased HR-only row keeps its revision, so the tag HR without
+   `staff:personal-data` holds for it does not change either. A payroll month
+   re-exported after its pregnancy rows were erased reports those days as other days,
+   not as leave.
 3. **Erase a sick-leave case's dates and milestones** (`eraseSickCaseDates`): when a
    closed case's health content is erased, the case itself goes too — its dates, its
    milestones and its history, which keeps only the entries' kinds and dates. Its

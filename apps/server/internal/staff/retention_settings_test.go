@@ -393,12 +393,15 @@ func TestRetention_AnErasedHROnlyRowReadsAsBefore(t *testing.T) {
 	check := register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapskontroll", "2024-04-09", "2024-04-09", "hours", 1.5))
 	leave := register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapspermisjon", "2024-05-06", "2024-05-17"))
 	birth := register(t, hrPD, w.kari.Id, absence(t, h, "fodselspermisjon", "2024-06-03", "2024-06-14"))
+	// Approved, so every leave-reader is shown them — as leave (review H2).
+	approved(t, w.pd, leave.Id)
+	approved(t, w.pd, birth.Id)
 	rows := []int64{check.Id, leave.Id, birth.Id}
 	setEraseSettings(t, w.hr, map[string]any{"erasePregnancyHealthTypes": true})
 
 	paths := []string{
-		fmt.Sprintf("%s?personId=%d", absencesPath, w.kari.Id),
-		calendarPath + "?from=2024-01-01&to=2024-12-31",
+		fmt.Sprintf("%s?personId=%d&from=2024-04-01&to=2024-06-30", absencesPath, w.kari.Id),
+		calendarPath + "?from=2024-04-01&to=2024-06-30",
 		approvalsPath,
 		pagedPath(eventsPath(w.kari.Id), 1, 100),
 		statsPath,
@@ -412,12 +415,25 @@ func TestRetention_AnErasedHROnlyRowReadsAsBefore(t *testing.T) {
 		for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "an Approver": w.approver, "HR without personal-data": w.hr} {
 			for _, path := range paths {
 				r := c.Do(http.MethodGet, path, nil)
-				out[name+" GET "+path] = fmt.Sprintf("%d %s", r.Status, scrubRandom(string(r.Body)))
+				out[name+" GET "+path] = fmt.Sprintf("%d %s %s", r.Status, r.Header("ETag"), scrubRandom(string(r.Body)))
 			}
 		}
 		return out
 	}
 	before := reads()
+	// The comparison compares something: rows read as leave, with their tags.
+	shown := 0
+	for key, got := range before {
+		if strings.HasPrefix(got, "200 ") && strings.Contains(got, `"shownAs":"leave"`) {
+			shown++
+			if strings.HasPrefix(key, "HR without personal-data") && !strings.Contains(got, `"etag":`) {
+				t.Errorf("%s reads no etag: %s", key, got)
+			}
+		}
+	}
+	if shown < 6 {
+		t.Fatalf("%d reads show a row as leave, want the list, the calendar and the rows by id to each reader: %v", shown, before)
+	}
 	runCycle(t, h)
 	hrOnly, hrOnlyHours := typeID(t, h, "absent_hr_only"), typeID(t, h, "absent_hr_only_hours")
 	for id, want := range map[int64]string{check.Id: "absent_hr_only_hours", leave.Id: "absent_hr_only", birth.Id: "absent_hr_only"} {
@@ -516,5 +532,69 @@ func TestRetention_AHealthEraseListsNothingNewToOthers(t *testing.T) {
 				t.Errorf("staff:personal-data does not read the erased entry's %s", c.kind)
 			}
 		})
+	}
+}
+
+// svangerskapspermisjon and fødselspermisjon are erased no earlier than a
+// full year after their year ended, whatever healthRetentionDays says (the
+// coordinator's decision on review L5): the holiday-pay year after them, and
+// a payroll re-export of it, still read the leave. svangerskapskontroll and
+// helse follow healthRetentionDays alone. With 30 days, on 12 September 2026:
+// the 2025 check-up and visit go, the 2025 leaves wait for 2027; the 2024
+// leave, a full year past, goes.
+func TestRetention_PregnancyLeaveWaitsAFullYear(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	setEraseSettings(t, w.hr, map[string]any{"erasePregnancyHealthTypes": true, "healthRetentionDays": 30})
+	leave := register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapspermisjon", "2025-03-03", "2025-03-14"))
+	birth := register(t, hrPD, w.kari.Id, absence(t, h, "fodselspermisjon", "2025-04-07", "2025-04-18"))
+	check := register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapskontroll", "2025-05-06", "2025-05-06", "hours", 1))
+	visit := register(t, hrPD, w.kari.Id, absence(t, h, "helse", "2025-06-03", "2025-06-03", "hours", 2))
+	old := register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapspermisjon", "2024-02-05", "2024-02-16"))
+	runCycle(t, h)
+	for _, c := range []struct {
+		id   int64
+		want string
+	}{
+		{leave.Id, "svangerskapspermisjon"}, {birth.Id, "fodselspermisjon"},
+		{check.Id, "absent_hr_only_hours"}, {visit.Id, "absent_hours"}, {old.Id, "absent_hr_only"},
+	} {
+		if key, _, _ := rowType(t, h, c.id); key != c.want {
+			t.Errorf("row %d: %s, want %s", c.id, key, c.want)
+		}
+	}
+	if f := eventFields(t, h, firstKind(t, h, leave.Id), "absenceId", leave.Id); f["type"] == "changed" {
+		t.Error("the 2025 leave's event was erased before a full year had run")
+	}
+	runCycle(t, h)
+	if events := erasedEvents(t, h, w.kari.Id); len(events) != 1 {
+		t.Errorf("a second cycle erased again: %v", events)
+	}
+}
+
+// What is already a reserved type is erased (review L2): an event whose
+// typeIds name the HR-only reserved type — classed E, or with no class —
+// is never due again and never rewritten to absent, which would widen who
+// reads it.
+func TestRetention_AReservedTypeIsAlreadyErased(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	h := w.h
+	hrOnly := typeID(t, h, "absent_hr_only")
+	h.Exec(t, `INSERT INTO staff.events (person_id, kind, actor_kind, at, payload, payload_classes)
+		VALUES ($1, 'absence_registered', 'system', '2023-03-01T10:00:00Z',
+		        jsonb_build_object('absenceId', 999999, 'fields', '{}'::jsonb, 'classes', '{}'::jsonb,
+		                           'typeIds', jsonb_build_array($2::bigint), 'typeClasses', '["E"]'::jsonb), '{E}'),
+		       ($1, 'case_opened', 'system', '2023-03-01T10:00:00Z',
+		        jsonb_build_object('caseId', 999999, 'fields', '{}'::jsonb, 'typeIds', jsonb_build_array($2::bigint)), '{E}')`,
+		w.kari.Id, hrOnly)
+	runCycle(t, h)
+	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND payload->'typeIds' = jsonb_build_array($2::bigint)`, w.kari.Id, hrOnly); n != 2 {
+		t.Errorf("%d of the two events still name the HR-only reserved type, want both", n)
+	}
+	if events := erasedEvents(t, h, w.kari.Id); len(events) != 0 {
+		t.Errorf("an erase ran on what is erased already: %v", events)
 	}
 }

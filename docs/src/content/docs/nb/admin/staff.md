@@ -1014,12 +1014,18 @@ for godt.
    svangerskapskontroll, svangerskapspermisjon, fødselspermisjon og *Lege eller
    tannlege* får en reservert *Fravær*-type — en timesrad beholder timene —
    `healthRetentionDays` dager etter slutten av året de sluttet, aldri før lønnsmåneden
-   som rapporterte dem er passert. Typene som bare er for HR, får en reservert type som
+   som rapporterte dem er passert — og **svangerskapspermisjon og fødselspermisjon
+   aldri før et helt år etter slutten av året sitt**, uansett fristen, så feriepengene
+   for året etter dem, og en ny lønnseksport av det året, fortsatt leser permisjonen.
+   Bare typen slettes: fraværets notat og avgjørelsens notat står, og slettes med
+   personaladministrasjonen. Typene som bare er for HR, får en reservert type som
    også bare er for HR, så ledere, godkjennere og HR uten `staff:personal-data` fortsatt
    ser raden som *permisjon* og ingen hendelse om slettingen; personen og
    `staff:personal-data` ser *Fravær (bare HR)*. Historikken beholder datoene og viser
    typen som *endret*; en hendelse om en rad som er slettet eller endret til en annen
-   type, slettes etter året den ble registrert. En lønnsmåned som eksporteres på nytt
+   type, slettes etter året den ble registrert. En slettet rad som bare er for HR,
+   beholder revisjonen sin, så merket HR uten `staff:personal-data` har for den, endres
+   heller ikke. En lønnsmåned som eksporteres på nytt
    etter at svangerskapsradene er slettet, rapporterer de dagene som annet fravær, ikke
    som permisjon.
 3. **Slett sykefraværssakens datoer og milepæler** (`eraseSickCaseDates`): når
