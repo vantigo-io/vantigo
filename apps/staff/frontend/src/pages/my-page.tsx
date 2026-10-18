@@ -27,6 +27,7 @@ import type { MyPageSearch, MyPageTab } from "../lib/search";
 import { MyAbsence } from "./-my-absence";
 import { MyTeam } from "./-my-team";
 import { NextOfKinFields } from "./-next-of-kin-fields";
+import { PersonAccount } from "./-person-account";
 import { PersonEmployments } from "./-person-employments";
 import { PersonHistory } from "./-person-history";
 import { PersonProfile } from "./-person-profile";
@@ -37,7 +38,8 @@ import { PersonProfile } from "./-person-profile";
  * private group theirs to edit (`PUT /me`), their employments and terms with
  * the pay (it is their contract), their history, and their documents with
  * the copy of their data they may take (design S16), their absence with the
- * request sheet, and — for a caller who manages anyone — My team. A caller HR has not
+ * request sheet, their account read-only (delivery C), and — for a caller
+ * who manages anyone — My team. A caller HR has not
  * linked yet gets a plain explanation, not an error: `no_person` is the
  * expected state of somebody new. Laid out for a phone first.
  */
@@ -84,6 +86,7 @@ export const MyPage = () => {
           { value: "history", label: t("tab_history") },
           { value: "documents", label: t("tab_documents") },
           { value: "absence", label: t("tab_absence") },
+          { value: "account", label: t("tab_account") },
           ...(managesAnyone ? [{ value: "team", label: t("tab_team") }] : []),
         ]}
         value={current}
@@ -121,6 +124,10 @@ export const MyPage = () => {
               onArrivalDone={() => navigate({ search: { tab: "absence" }, replace: true })}
             />
           )}
+        </Tabs.Panel>
+        <Tabs.Panel value="account" pt="lg">
+          {/* My own account, read as myself: read-only, whatever else I hold. */}
+          {current === "account" && <PersonAccount person={person} timeZone={meta.data.timeZone} />}
         </Tabs.Panel>
         {managesAnyone && (
           <Tabs.Panel value="team" pt="lg">

@@ -49,8 +49,11 @@ export const validatePeopleSearch = (search: Record<string, unknown>): PeopleSea
   create: search.create === "person" ? "person" : undefined,
 });
 
-/** The tabs of the person page and My page (design §7); the Account tab comes with delivery C. */
-export const personTabs = ["profile", "employments", "absence", "history", "documents"] as const;
+/**
+ * The tabs of the person page and My page (design §7), with delivery C's
+ * Account — the tab the host's dashboard links an account item to.
+ */
+export const personTabs = ["profile", "employments", "absence", "history", "documents", "account"] as const;
 export type PersonTab = (typeof personTabs)[number];
 
 /** The person page's and My page's URL search: the tab, so a refresh or a pasted link opens the same view. */

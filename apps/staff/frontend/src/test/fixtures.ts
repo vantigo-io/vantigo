@@ -249,6 +249,8 @@ export const meta = (role: Role = "manage", overrides: Partial<StaffMeta> = {}):
   holidaySchemes: holidaySchemes(),
   // The structure is staff:view's and staff:manage's (plan reading 15).
   ...(readsDirectory(role) ? { structure: structure() } : {}),
+  // The authority mode and the employee roles' state are staff:manage's (delivery C).
+  ...(manages(role) ? { accountMode: "local" as const, provisioningRolesSet: true } : {}),
   ...overrides,
 });
 

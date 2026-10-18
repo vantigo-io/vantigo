@@ -16,6 +16,7 @@ import type { PersonSearch, PersonTab } from "../lib/search";
 import { ErasedBanner } from "./-erased-banner";
 import { LegalHoldAlert, LegalHoldButton } from "./-legal-hold";
 import { PersonAbsence } from "./-person-absence";
+import { PersonAccount } from "./-person-account";
 import { PersonDocuments } from "./-person-documents";
 import { PersonEmployments } from "./-person-employments";
 import { PersonHistory } from "./-person-history";
@@ -26,8 +27,10 @@ import { PersonalDataDownload } from "./-personal-data-download";
  * The person page (design §7): Profile, Employments, Absence, History and
  * Documents, the tab in the URL. What it shows is what `GET /people/{id}`
  * and its sub-resources answer this reader (§5); what it offers follows the
- * person's capabilities. The Account tab belongs to delivery C and is not
- * drawn until it exists.
+ * person's capabilities. The Account tab (delivery C) is HR's
+ * (`canManageAccount`) and the person's own, read-only for them; a manager,
+ * an Approver and a colleague get the unknown id's 404 for it, so it is not
+ * drawn for them.
  *
  * The hold group (design S15) sits above the tabs: the legal hold and an
  * erased record's banner for `staff:manage` and `staff:personal-data`, and
@@ -35,7 +38,9 @@ import { PersonalDataDownload } from "./-personal-data-download";
  * complete personal-data file. An erased record is read-only but for those,
  * an unlink and a rehire, so the tabs are handed the person without the
  * capabilities to change anything else — the page offers nothing the
- * server would refuse with `person_erased`.
+ * server would refuse with `person_erased`. The Account tab stays for HR on
+ * an erased record with *Disable now* alone, which the server takes there:
+ * the access must end too.
  */
 export const PersonPage = () => {
   const { t } = useI18n("staff");
@@ -88,6 +93,7 @@ export const PersonPage = () => {
       }
     : data;
   const timeZone = meta.data.timeZone;
+  const readsAccount = data.capabilities.canManageAccount || data.capabilities.self;
 
   const tabs = [
     { value: "profile" as const, label: t("tab_profile") },
@@ -95,6 +101,7 @@ export const PersonPage = () => {
     ...(absenceReadable ? [{ value: "absence" as const, label: t("tab_absence") }] : []),
     ...(historyReadable ? [{ value: "history" as const, label: t("tab_history") }] : []),
     ...(readsDocuments(data) ? [{ value: "documents" as const, label: t("tab_documents") }] : []),
+    ...(readsAccount ? [{ value: "account" as const, label: t("tab_account") }] : []),
   ];
   const current: PersonTab = tabs.some((one) => one.value === tab) ? tab : "profile";
 
@@ -171,6 +178,11 @@ export const PersonPage = () => {
                 canSeeHealth={meta.data.capabilities.canSeeHealth}
               />
             )}
+          </Tabs.Panel>
+        )}
+        {readsAccount && (
+          <Tabs.Panel value="account" pt="lg">
+            {current === "account" && <PersonAccount person={data} timeZone={timeZone} erased={erased} />}
           </Tabs.Panel>
         )}
       </PageTabs>

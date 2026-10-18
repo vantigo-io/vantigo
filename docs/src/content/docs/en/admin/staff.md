@@ -93,21 +93,27 @@ user the person themselves to Staff and nothing else: it grants no permission, a
 never puts the user under Staff's management. Any active user can be linked, the Owner
 included.
 
-1. As a user with `staff:manage`, find the user: `GET /api/v1/staff/assignable-users?q=`
-   with part of their name lists up to twenty active users.
-2. Link them: `PUT /api/v1/staff/people/{id}/user` with `{"userId": "<the user's id>"}`.
-   To unlink, send `{"userId": null}`.
-3. Verify: the person signs in and `GET /api/v1/staff/me` answers their record rather
-   than `no_person`. The person's history shows `user_linked`.
+1. As a user with `staff:manage`, open the person's page. Under **Self-service** on the
+   Profile tab, type part of the user's name in **User** — up to twenty active users
+   are offered — choose them and press **Link**
+   ([the user guide](/en/user/staff/#link-the-person-to-their-user-hr)). **Unlink**
+   removes the link. Through the API: `GET /api/v1/staff/assignable-users?q=`, then
+   `PUT /api/v1/staff/people/{id}/user` with `{"userId": "<the user's id>"}`, or
+   `{"userId": null}` to unlink.
+2. Verify: the group reads *… — linked, not managed by Staff*; the person signs in and
+   My page shows their record (`GET /api/v1/staff/me` answers it rather than
+   `no_person`). The person's history shows `user_linked`.
 
 A user can be linked to one person only, and a person to one user; linking a person to
 another user replaces the link. A disabled user cannot be linked.
 
-A user Staff's accounts manage is not linked or unlinked here: the request answers
-`link_managed` (409), and so does a person whose link is the accounts worker's
-(`GET /api/v1/staff/people/{id}/account` shows its state). If identity cannot be asked
-whether the user is managed, the request answers `accounts_unavailable` (503) and
-changes nothing; try again. An installation where no module provides accounts answers
+A user Staff's accounts manage is not linked or unlinked here: Self-service names such
+a link *… — managed by Staff; see the Account tab* and offers neither **Link** nor
+**Unlink**, and the request answers `link_managed` (409), which the page says in words
+— as it does for a person whose link is the accounts worker's (the person's Account tab
+shows its state). If identity cannot be asked whether the user is managed, the request
+answers `accounts_unavailable` (503), the page says identity could not be reached, and
+nothing is changed; try again. An installation where no module provides accounts answers
 every link and unlink naming a user that way.
 
 ## Turn on accounts for a person
@@ -117,32 +123,39 @@ their first day (delivery C). The account flag is set here; the accounts worker
 ([below](#the-accounts-worker)) acts on it.
 
 1. Before the first account, an Owner names the roles Staff may give in identity (the
-   employee roles). `GET /api/v1/staff/meta` answers `provisioningRolesSet` to
-   `staff:manage`: `false` until an Owner has named at least one. `accountMode` says
-   whether identity holds the passwords (`local`) or an identity provider owns the
-   accounts (`federated`); it is absent when this process's OIDC or SCIM settings
-   disagree with the API's, and when identity could not be asked.
-2. As a user with `staff:manage`, read the person's flag:
-   `GET /api/v1/staff/people/{id}/account`, and note its `revision` — the flag's own,
-   not the person's: changing the flag never moves the person's revision.
-3. Turn it on: `PUT /api/v1/staff/people/{id}/account` with `If-Match` set to that
-   revision and `{"provisionAccount": true, "provisionFrom": null, "accountEmailKind": "work"}`.
-   Leave `provisionFrom` null to enable the account on the first day of the person's
-   earliest employment that has not ended; set a date to choose another day. Between
-   two employments a date from before the first one ended is that one's, and the
-   account follows the later start; a date after it is honoured. Choose
-   `private` to give identity the person's private email instead of the work email.
-   The request is a full replace: send all three fields — one without
+   employee roles, under **Roles Staff may give** on the Roles and access page). The
+   **Accounts** card in Staff settings warns *No Owner has named the roles Staff may
+   give* until one has, with **Open Roles and access**, and says the authority mode:
+   *Local accounts* (identity holds the passwords) or *Federated* (an identity provider
+   owns the accounts) — or *Accounts are unavailable* when this process's OIDC or SCIM
+   settings disagree with the API's, or identity could not be asked. Through the API,
+   `GET /api/v1/staff/meta` answers `provisioningRolesSet` and `accountMode` to
+   `staff:manage`.
+2. As a user with `staff:manage`, open the person's **Account** tab
+   (`/staff/people/<id>?tab=account`). Under **Account flag**, turn on **Staff provides
+   an account**.
+3. Leave **Account from** empty to enable the account on the first day of the person's
+   earliest employment that has not ended — the field says which day that is — or
+   choose another day. Between two employments a day from before the first one ended
+   is that one's, and the account follows the later start; a day after it is honoured.
+   Choose **Private email** under **Address** to give identity the person's private
+   email instead of the work email. Press **Save the account flag**. Through the API
+   it is `PUT /api/v1/staff/people/{id}/account` with `If-Match` set to the flag's own
+   `revision` from `GET` — never the person's: changing the flag never moves the
+   person's revision — and all three fields, `{"provisionAccount": true,
+   "provisionFrom": null, "accountEmailKind": "work"}`; one without
    `provisionAccount`, or with it `null`, is refused (400) and changes nothing.
-4. Verify: the answer's `provisionFromEffective` is the day the account is enabled,
-   and `address.present` is `true`. A flag turned on without the chosen address is
-   accepted, but no account is made until the person has it. The person's history
-   shows `account_flag_updated`.
+4. Verify: **Account from** names the day the account is enabled
+   (`provisionFromEffective`), and the tab shows no warning that the person *has no
+   work email on file* (`address.present` is `true`). A flag turned on without the
+   chosen address is accepted, but no account is made until the person has it. The
+   person's history shows `account_flag_updated`.
 
-How many days before that day the account is prepared, disabled, is the setting
-`createBeforeDays` ([The settings](#the-settings)). An erased person's flag cannot be
-changed (`person_erased`). Someone else saving the person first answers
-`revision_conflict`; read the flag again.
+How many days before that day the account is prepared, disabled, is **Prepare the
+account (days before)** on the Accounts card (`createBeforeDays`, [The
+settings](#the-settings)). An erased person's flag cannot be changed (`person_erased`):
+the tab offers HR only **Disable now** on an erased record. Someone else saving the flag
+first answers `revision_conflict`: the tab reloads and says so.
 
 ### The accounts worker
 
@@ -167,9 +180,11 @@ person; none waits for another.
 1. Precondition: an Owner has named the employee roles (`provisioningRolesSet` is
    `true`). Without them the worker still creates the pending, disabled users of the
    people whose flag is on, but never enables one (`employee_role_missing`).
-2. Verify, the day after the worker has run: `GET /api/v1/staff/people/{id}/account`
-   answers a `link` with its `state`, its `reason` when it is held, `attempts` and
-   `nextAttemptAt`. The person's history (as HR) shows `account_prepared`,
+2. Verify, the day after the worker has run: the person's Account tab, under **User
+   account**, shows the **State** in words, why the link is held when it is, *The last
+   … attempts failed* after a failure, the **Invitation** and the **Next attempt**
+   (`GET /api/v1/staff/people/{id}/account` answers the same as a `link` with its
+   `state`, `reason`, `attempts` and `nextAttemptAt`). The person's history (as HR) shows `account_prepared`,
    `account_activated`, `account_deactivated` and `account_updated`; a manager, an
    Approver and a colleague see none of them.
 3. To stop it: `STAFF_ACCOUNTS_ENABLED=0` and restart. **Nothing is then done on a
@@ -190,7 +205,8 @@ still disables leavers but holds everything else: the links read
 `reason: mode_mismatch`, and the log says so. Align the settings and restart; the held
 links are tried again at the next poll.
 
-**A held link** (`reason` set) is tried again every day, so it clears by itself once its
+**A held link** (`reason` set; the Account tab says each reason in a sentence) is tried
+again every day, so it clears by itself once its
 cause is gone. The reasons an operator meets: `employee_role_missing` and
 `employee_role_unsafe` (an Owner names, or fixes, the employee roles),
 `account_email_taken` and `employee_number_taken` (another user in identity holds the
@@ -209,23 +225,26 @@ as long as it fails, so the leaver loses access as soon as identity answers.
 The worker can be run by hand, for everyone or for one person, with you as the actor
 identity records and the history names.
 
-- **Everyone**: `POST /api/v1/staff/accounts/run` (`staff:manage`) runs one cycle now and
-  answers `{attempted, done, failed, remaining}`: the links it worked, those identity
+- **Everyone**: **Run accounts now** on the **Accounts** card in Staff settings
+  (`POST /api/v1/staff/accounts/run`, `staff:manage`) runs one cycle now; the card then
+  says how many accounts it worked, how many were done, how many failed and how many are
+  left (`{attempted, done, failed, remaining}`): the links it worked, those identity
   answered (a step carried out, or a reason recorded), those it could not reach identity
   for (retried by the worker), and the due links it left. It begins no link after
   sixty seconds and takes at most fifty; `remaining` is for the worker's next cycle, or
   run it again. It runs beside the worker's own cycles without waiting for them.
-- **One person**: `POST /api/v1/staff/people/{id}/account/run` works the person now,
-  whatever their next attempt, and asks identity for a **fresh invitation**: a pending
-  user whose invitation an Owner revoked, or who left three unanswered
-  (`invitation_revoked`, `invitation_unanswered`), is invited again. The answer is
-  `{invitationSent, account}`. Identity never re-sends an invitation that can still be
-  accepted and sends none within ten minutes of the last; the run is done all the same,
-  with `invitationSent: false` — try again after ten minutes if one is needed. A person
-  whose flag is off has nothing run.
+- **One person**: **Run now** on the person's Account tab
+  (`POST /api/v1/staff/people/{id}/account/run`) works the person now, whatever their
+  next attempt, and asks identity for a **fresh invitation**: a pending user whose
+  invitation an Owner revoked, or who left three unanswered (`invitation_revoked`,
+  `invitation_unanswered`), is invited again. The tab says *Done: a new invitation was
+  sent* or *Done: no invitation was sent* (`{invitationSent, account}`). Identity never
+  re-sends an invitation that can still be accepted and sends none within ten minutes of
+  the last; the run is done all the same — try again after ten minutes if one is needed.
+  A person whose flag is off has nothing run, and the tab offers no Run now.
 
-What can go wrong: `accounts_busy` (409) — the worker is working the person right now;
-try again in a few minutes. `person_erased` (409) — an erased person's account is not
+What can go wrong, each said in words on the tab or the card: `accounts_busy` (409) —
+the worker is working the person right now; try again in a few minutes. `person_erased` (409) — an erased person's account is not
 run. `accounts_unavailable` (503) — no module provides accounts, or identity could not
 be reached; the link records the error and the worker retries.
 
@@ -237,20 +256,24 @@ again afterwards rather than running it twice.
 
 ### Disable an account now
 
-`POST /api/v1/staff/people/{id}/account/disable` (`staff:manage`) **turns the person's
+**Disable now** on the person's Account tab
+(`POST /api/v1/staff/people/{id}/account/disable`, `staff:manage`) **turns the person's
 account flag off** and disables their user at once, so the worker leaves it disabled
 until HR turns the flag on again.
 
-1. Send the request. The flag is turned off first (the history shows
+1. Press **Disable now** and confirm — the dialog says *This also turns the account flag
+   off*. The flag is turned off first (the history shows
    `account_flag_updated`) together with a note on the link that a disable was asked
    for, then identity disables the user (`account_deactivated`) and ends their
    sessions. The person's own revision does not move. If the browser gives up waiting,
    the disable still goes on; whatever does not reach identity, the worker finishes at
    its next polls.
-2. Verify: the answer (the person's account) has `provisionAccount: false` and the link
-   `state: disabled`. A person with no link, or whose user is not created yet, only has
+2. Verify: the tab says *The account is disabled and the account flag is off*, **Staff
+   provides an account** is off and the **State** reads *Disabled by Staff* (the answer
+   has `provisionAccount: false` and the link `state: disabled`). A person with no link, or whose user is not created yet, only has
    the flag turned off.
-3. What can go wrong:
+3. What can go wrong — the tab says each in words, and those after the flag's write say
+   that the flag is already off:
    - `accounts_busy` (409): the worker holds the person's link. Usually nothing was
      changed — try again in a few minutes. If the worker took the link in the instant
      after the flag was written, **the flag is already off**: the worker then finishes
@@ -271,7 +294,8 @@ until HR turns the flag on again.
      retries the disable at every poll, and the dashboard shows *accountFailing* until
      identity answers. Send the request again if it persists.
 
-An erased person's account can be disabled too.
+An erased person's account can be disabled too: on an erased record the Account tab
+offers HR **Disable now** and nothing else.
 
 ### The account items on the dashboard
 
@@ -1218,8 +1242,10 @@ changing the settings at once cannot overwrite each other unseen.
   `selfCertAfterMonths`) and **automatic carry-over** (`autoCarryOver`, off, with the
   read-only `autoCarryOverSince`): [The self-certification policy](#the-self-certification-policy).
   Left out of a replace, each keeps its value.
-- **Accounts** (`createBeforeDays`, 14, from 0 to 90, and `deleteExternalAfterDays`,
-  none, from 1 to 3650 or `null` for never): how many days before an account's
+- **Accounts** — the **Accounts** card, with **Prepare the account (days before)** and
+  **Delete an external account (days after the end)**, empty for never
+  (`createBeforeDays`, 14, from 0 to 90, and `deleteExternalAfterDays`, none, from 1 to
+  3650 or `null` for never): how many days before an account's
   effective date it is prepared, disabled ([Turn on accounts for a
   person](#turn-on-accounts-for-a-person)), and when an external directory's account is
   deleted after the last employment ended — stored but not used yet; the Entra module

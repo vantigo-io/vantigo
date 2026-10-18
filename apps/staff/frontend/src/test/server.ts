@@ -82,6 +82,13 @@ export interface StaffServer {
   retentionRun?: StaffRetentionRun;
   /** What `POST /accounts/run` answers (delivery C); nothing attempted by default. */
   accountsRun?: Schemas["StaffAccountsRun"];
+  /**
+   * Each person's account (delivery C) as `GET /people/{id}/account` answers
+   * it; a person not here has the flag off, the work address and — for one
+   * HR linked by hand — the self-service link. Read the writes back from
+   * the stub's `state`.
+   */
+  accounts?: Record<number, Schemas["StaffPersonAccount"]>;
   /** Absence as the server answers it for the caller (delivery B): the fake hands it out as it is. */
   absence?: AbsenceServer;
   pageSize?: number;
@@ -144,6 +151,7 @@ export interface StaffState {
   personAbsence: Record<number, PersonAbsence>;
   absenceTypes: Schemas["StaffAbsenceType"][];
   holidaySchemes: Schemas["StaffHolidayScheme"][];
+  accounts: Record<number, Schemas["StaffPersonAccount"]>;
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -178,6 +186,23 @@ const dayBefore = (date: string): string => {
   day.setUTCDate(day.getUTCDate() - 1);
   return day.toISOString().slice(0, 10);
 };
+
+/** The self-service link's refusal of a user Staff's accounts manage (delivery C, plan reading 8). */
+export const linkManaged = () =>
+  staffProblem(409, {
+    code: "link_managed",
+    title: "Managed by Staff",
+    detail:
+      "This account is managed by Staff's accounts, so it is not linked or unlinked by hand. Use the person's Account tab.",
+  });
+
+/** Disable now's refusals once the flag is off (delivery C): the user is not Staff's to disable. */
+const disableRefusal = (code: "account_not_managed" | "account_privileged" | "account_mismatch") =>
+  staffProblem(409, {
+    code,
+    title: "Account not disabled",
+    detail: "The account flag is off; the user was not disabled.",
+  });
 
 /** The access layer's uniform 403. */
 const forbidden = () => jsonResponse(403, { error: { code: "forbidden", message: "Forbidden" } });
@@ -451,6 +476,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     personAbsence: server.absence?.people ?? {},
     absenceTypes: server.absence?.types ?? allAbsenceTypes(defaultMeta(role).absenceTypes),
     holidaySchemes: server.absence?.schemes ?? defaultHolidaySchemes(),
+    accounts: server.accounts ?? {},
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -664,6 +690,43 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
   };
 
   const findPerson = (id: number) => state.people.find((one) => one.id === id);
+
+  /**
+   * An account with what the server derives (design S22): the address the
+   * kind names and whether the person has it, and the day the account is
+   * enabled — provisionFrom, else the first day of the earliest employment
+   * that has not ended by today.
+   */
+  const derivedAccount = (
+    stored: StoredPerson,
+    account: Omit<Schemas["StaffPersonAccount"], "address" | "provisionFromEffective">,
+  ): Schemas["StaffPersonAccount"] => {
+    const kind = account.accountEmailKind;
+    const present = Boolean(kind === "work" ? stored.workEmail : stored.record?.privateEmail);
+    const earliest = state.employments
+      .filter((one) => one.personId === stored.id && (!one.endDate || one.endDate >= TODAY))
+      .map((one) => one.startDate)
+      .sort()[0];
+    const effective = account.provisionFrom ?? earliest;
+    const derived: Schemas["StaffPersonAccount"] = { ...account, address: { kind, present } };
+    delete derived.provisionFromEffective;
+    if (effective) derived.provisionFromEffective = effective;
+    return derived;
+  };
+
+  /** A person's account as stored, or the flag off with HR's self-service link, if any. */
+  const accountOf = (stored: StoredPerson): Schemas["StaffPersonAccount"] => {
+    const kept = state.accounts[stored.id];
+    if (kept) return kept;
+    const user = stored.record?.user;
+    return derivedAccount(stored, {
+      provisionAccount: false,
+      accountEmailKind: "work",
+      mode: "local",
+      revision: 1,
+      ...(user ? { link: { state: "linked", managed: false, attempts: 0, user } } : {}),
+    });
+  };
 
   /** The person and who the caller is to them, or nothing — the unknown id's 404 — for an outsider. */
   const seen = (id: number) => {
@@ -978,11 +1041,13 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       // reassessment, an unlink and the reads — a reveal among them, which
       // finds nothing. The rehire is `POST …/employments`, routed before.
       const unlink = sub === "user" && method === "PUT" && (body as { userId?: unknown })?.userId === null;
+      // Disable now is allowed on an erased person, whose access must end too.
       if (
         stored.erasedAt &&
         method !== "GET" &&
         sub !== "legal-hold" &&
         sub !== "reassessed" &&
+        sub !== "account/disable" &&
         !unlink &&
         !/\/reveal$/.test(sub ?? "")
       )
@@ -1104,11 +1169,28 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         }
       }
       if (sub === "user" && reads(audience, "sealed")) {
+        // The worker's link (delivery C) is the same row: read here as it
+        // stands, and never linked or unlinked by hand (link_managed).
+        const workers = state.accounts[stored.id]?.link;
+        const managedLink = workers && workers.state !== "linked" ? workers : undefined;
         const linkOf = () =>
-          record.user ? { linked: true, state: "linked", managed: false, user: record.user } : { linked: false };
+          managedLink
+            ? {
+                linked: managedLink.user !== undefined,
+                state: managedLink.state,
+                managed: managedLink.managed,
+                ...(managedLink.user ? { user: managedLink.user } : {}),
+              }
+            : record.user
+              ? { linked: true, state: "linked", managed: false, user: record.user }
+              : { linked: false };
         if (method === "GET") return jsonResponse(200, linkOf());
         if (method === "PUT") {
           const userId = (body as { userId: string | null }).userId;
+          const managedElsewhere = Object.values(state.accounts).some(
+            (one) => one.link?.managed && one.link.user?.id === userId,
+          );
+          if (managedLink || managedElsewhere) return linkManaged();
           if (userId === null) {
             delete record.user;
             return jsonResponse(200, linkOf());
@@ -1130,6 +1212,73 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
             });
           record.user = { id: user.id, displayName: user.displayName, active: true };
           return jsonResponse(200, linkOf());
+        }
+      }
+      if (sub === "account" || sub === "account/run" || sub === "account/disable") {
+        // The links group's (plan reading 11): the person, HR and personal-data; anyone else the 404.
+        if (!audience.self && !audience.hr && !audience.personalData) return notFound();
+        const current = accountOf(stored);
+        if (sub === "account" && method === "GET") return jsonResponse(200, current);
+        if (sub === "account" && method === "PUT") {
+          const strict = unknownProperties(body, ["provisionAccount", "provisionFrom", "accountEmailKind"]);
+          if (strict) return strict;
+          const stale = staleRevision(init, current.revision, "account flag");
+          if (stale) return stale;
+          const input = body as Schemas["StaffPersonAccountRequest"];
+          if (typeof input.provisionAccount !== "boolean")
+            return staffProblem(400, {
+              title: "Invalid account",
+              errors: { provisionAccount: ["provisionAccount is true or false"] },
+            });
+          // A full replace: a day left out is cleared.
+          const kept: Partial<Schemas["StaffPersonAccount"]> = { ...current };
+          delete kept.provisionFrom;
+          state.accounts[stored.id] = derivedAccount(stored, {
+            ...(kept as Schemas["StaffPersonAccount"]),
+            provisionAccount: input.provisionAccount,
+            ...(input.provisionFrom ? { provisionFrom: input.provisionFrom } : {}),
+            accountEmailKind: input.accountEmailKind ?? "work",
+            revision: current.revision + 1,
+          });
+          return jsonResponse(200, state.accounts[stored.id]);
+        }
+        if (sub === "account/run" && method === "POST") {
+          // A fresh invitation for a pending user whose last one cannot be
+          // accepted; identity never re-sends an open one.
+          const link = current.link;
+          const due = current.provisionAccount && link?.state === "pending" && link.invitation?.state !== "active";
+          if (!due || !link) return jsonResponse(200, { invitationSent: false, account: current });
+          const fresh = link.invitation?.state === "revoked_by_owner" || link.invitation?.state === "exhausted";
+          const { reason, ...rest } = link;
+          const after: Schemas["StaffPersonAccount"] = {
+            ...current,
+            link: {
+              ...rest,
+              ...(reason === "invitation_revoked" || reason === "invitation_unanswered" ? {} : { reason }),
+              attempts: 0,
+              invitation: { state: "active", issued: fresh ? 1 : (link.invitation?.issued ?? 0) + 1 },
+            },
+          };
+          state.accounts[stored.id] = after;
+          return jsonResponse(200, { invitationSent: true, account: after });
+        }
+        if (sub === "account/disable" && method === "POST") {
+          // The flag goes off first, committed whatever identity answers then.
+          const off: Schemas["StaffPersonAccount"] = {
+            ...current,
+            provisionAccount: false,
+            revision: current.revision + (current.provisionAccount ? 1 : 0),
+          };
+          state.accounts[stored.id] = off;
+          const link = off.link;
+          if (!link?.user) return jsonResponse(200, off);
+          if (!link.managed) return disableRefusal("account_not_managed");
+          if (link.reason === "account_privileged") return disableRefusal("account_privileged");
+          if (link.reason === "mismatch") return disableRefusal("account_mismatch");
+          const disabled: Schemas["StaffAccountLink"] = { ...link, state: "disabled", attempts: 0 };
+          delete disabled.reason;
+          state.accounts[stored.id] = { ...off, link: disabled };
+          return jsonResponse(200, state.accounts[stored.id]);
         }
       }
       if (sub === "org" && method === "GET") return jsonResponse(200, orgOf(stored));
@@ -1623,23 +1772,11 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       "/api/v1/staff/accounts/run",
     ];
     const threshold = /^\/api\/v1\/staff\/thresholds\/([^/]+)\/acknowledge$/.exec(path);
-    // Run now and Disable now (delivery C): the person's account as it stands
-    // after them — a run done with no invitation sent, a disable with the flag off.
-    const accountAction = /^\/api\/v1\/staff\/people\/\d+\/account\/(run|disable)$/.exec(path);
-    if (!known.includes(path) && !threshold && !accountAction) return undefined;
+    if (!known.includes(path) && !threshold) return undefined;
     if (!manages(role)) return forbidden();
 
     if (path === "/api/v1/staff/accounts/run" && method === "POST")
       return jsonResponse(200, server.accountsRun ?? { attempted: 0, done: 0, failed: 0, remaining: 0 });
-    if (accountAction && method === "POST") {
-      const account: Schemas["StaffPersonAccount"] = {
-        provisionAccount: accountAction[1] === "run",
-        accountEmailKind: "work",
-        address: { kind: "work", present: true },
-        revision: 1,
-      };
-      return jsonResponse(200, accountAction[1] === "run" ? { invitationSent: false, account } : account);
-    }
 
     if (path === "/api/v1/staff/people/import" && method === "POST") {
       const dryRun = url.searchParams.get("dryRun") ?? "true";
