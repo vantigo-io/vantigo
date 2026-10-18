@@ -562,7 +562,7 @@ func seedIdentityAndStaff(ctx context.Context, tx pgx.Tx, now time.Time, pwHash 
 				'NO', 'nb', $11, 'bban',
 				$12, $12
 			)
-			ON CONFLICT (upper(employee_number))
+			ON CONFLICT (upper(employee_number COLLATE "C"))
 			DO UPDATE SET updated_at = EXCLUDED.updated_at
 			RETURNING id
 		`,
