@@ -56,14 +56,22 @@ const absenceTypeKeyIndex = "ux_absence_types_key"
 // reservedAbsenceType is the key of the type the health erase writes, and
 // reservedAbsenceHoursType its hour counterpart (Task 5b): an hour row erased
 // keeps its hours and counts no day, as it did.
+// reservedHROnlyType and reservedHROnlyHoursType are the HR-only pair the
+// pregnancy and health erase writes in place of an HR-only type, so the row
+// reads "leave" to every reader who read it so (the coordinator's decision).
 const (
 	reservedAbsenceType      = "absent"
 	reservedAbsenceHoursType = "absent_hours"
+	reservedHROnlyType       = "absent_hr_only"
+	reservedHROnlyHoursType  = "absent_hr_only_hours"
 )
+
+// reservedTypes are the reserved seeds' keys.
+var reservedTypes = []string{reservedAbsenceType, reservedAbsenceHoursType, reservedHROnlyType, reservedHROnlyHoursType}
 
 // isReservedType reports whether a type is one of the reserved seeds.
 func isReservedType(a store.StaffAbsenceType) bool {
-	return a.Seeded && (a.Key == reservedAbsenceType || a.Key == reservedAbsenceHoursType)
+	return a.Seeded && slices.Contains(reservedTypes, a.Key)
 }
 
 // ammefriType is the seed of nursing time, paid by law (aml. § 12-8 (2)).

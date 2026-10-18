@@ -101,12 +101,13 @@ queries that look a number up or skip past taken ones, which ask the same expres
 judges case the way identity's key does (`contracts.NormalizeEmployeeNumber`) on
 Staff's alphabet of a–z, digits and hyphens, whatever the installation's locale. For
 the absence settings the owner asked for (B's open questions 11–13), it also marks the
-seed `ammefri` paid, seeds the reserved hour type `absent_hours` beside `absent`, and
+seed `ammefri` paid, seeds the reserved `absent_hours`, `absent_hr_only` and
+`absent_hr_only_hours` beside `absent`, and
 adds `settings.erase_pregnancy_health_types` and `settings.erase_sick_case_dates`
 (booleans, false) — two more settings columns against 00042's comment, as B added
 one. The Down deletes the links naming no user and restores both, drops the two
-settings, gives the rows the erase gave `absent_hours` the type `absent`, deletes
-`absent_hours` and makes `ammefri` unpaid again.
+settings, gives the rows of the three reserved types it seeded the type `absent`,
+deletes them and makes `ammefri` unpaid again.
 
 ## Permissions
 
@@ -1491,6 +1492,8 @@ The seeds, every installation's, in their order:
 | `annen_ikke_lovfestet` | leave | days | no | — | yes | yes | absent | `andreIkkeLovfestedePermisjoner` |
 | `absent` | other | days | no | — | — | no | absent | — (reserved, always hidden) |
 | `absent_hours` | other | hours | no | — | — | no | absent | — (reserved, always hidden) |
+| `absent_hr_only` | other | days | no | — | — | no | hr_only | — (reserved, always hidden) |
+| `absent_hr_only_hours` | other | hours | no | — | — | no | hr_only | — (reserved, always hidden) |
 
 - **No percentage on the sick kinds.** A sykmelding's share of each day is its degree
   (`degree_percent`), not a percentage; ferie is whole days.
@@ -1498,11 +1501,15 @@ The seeds, every installation's, in their order:
   `hr_only` — religiøs høytid, svangerskapskontroll, svangerskapspermisjon and
   fødselspermisjon, which reveal special-category data: the manager sees "leave", the
   type is `staff:personal-data`'s and the person's own.
-- **The reserved `absent`** is what the health erase writes in place of a sick or
-  child-sick type, and of a pregnancy or health type counted in days; **`absent_hours`**
-  is what it writes in place of one counted in hours (svangerskapskontroll, helse), so
-  an erased visit keeps its hours and counts no day, as before. Both are hidden, unpaid
-  and never shown again (`seed_immutable`); `reserved` is true on both.
+- **The reserved types** are what the erases write in place of a type: `absent` in
+  place of a sick or child-sick type and of a plain pregnancy or health type counted in
+  days, **`absent_hours`** in place of one counted in hours (helse), so an erased visit
+  keeps its hours and counts no day; and, for an HR-only type (svangerskapskontroll,
+  svangerskapspermisjon, fødselspermisjon), **`absent_hr_only`** (days) and
+  **`absent_hr_only_hours`** (hours), HR-only themselves, so an erased HR-only row still
+  reads *leave* to every reader who read it so and its events stay unlisted to them;
+  only the person and `staff:personal-data` see it became a reserved type. All four are
+  hidden, unpaid and never shown again (`seed_immutable`); `reserved` is true on each.
 - **Pay.** `paid` is informational: no figure reads it — the payroll export and its
   totals count days and hours by kind, never by pay. A seed's pay is **HR's to change**
   (the owner's answer 7): a company that pays beyond the law marks the seed paid, and

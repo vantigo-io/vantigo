@@ -92,12 +92,19 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 	if !equalStrings(pay, []string{"true"}) {
 		t.Errorf("ammefri paid = %v, want true", pay)
 	}
-	reserved := staffCollect(t, ctx, pool, "the reserved hour type", `
+	// The reserved types 00051 seeds (Task 5b): absent_hours beside absent,
+	// and the two HR-only ones an erased HR-only row takes, so it reads to
+	// every leave-reader as it did (the coordinator's decision).
+	reserved := staffCollect(t, ctx, pool, "the reserved types", `
 		SELECT key || ':' || kind || ':' || unit || ':' || paid::text || ':' || needs_decision::text || ':' || visibility || ':'
 		    || coalesce(amelding_leave, '-') || ':' || hidden::text || ':' || seeded::text || ':' || sort
-		FROM staff.absence_types WHERE key = 'absent_hours'`)
-	if want := []string{"absent_hours:other:hours:false:false:absent:-:true:true:24"}; !equalStrings(reserved, want) {
-		t.Errorf("absent_hours = %v, want %v", reserved, want)
+		FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours') ORDER BY sort`)
+	if want := []string{
+		"absent_hours:other:hours:false:false:absent:-:true:true:24",
+		"absent_hr_only:other:days:false:false:hr_only:-:true:true:25",
+		"absent_hr_only_hours:other:hours:false:false:hr_only:-:true:true:26",
+	}; !equalStrings(reserved, want) {
+		t.Errorf("the reserved types = %v, want %v", reserved, want)
 	}
 	erase := staffCollect(t, ctx, pool, "the erase settings", `
 		SELECT column_name || ':' || data_type || ':' || is_nullable || ':' || coalesce(column_default, '') FROM information_schema.columns
@@ -153,24 +160,26 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("a link naming a user: %v", err)
 	}
 
-	// A row the erase gave absent_hours, which the rollback gives absent.
+	// A row of each reserved type 00051 seeds, which the rollback gives
+	// 00047's absent.
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO staff.absences (person_id, type_id, first_day, last_day, hours, status, requested_by_user_id, created_at, updated_at)
 		SELECT $1, id, '2024-03-04', '2024-03-04', 2, 'registered', gen_random_uuid(), now(), now()
-		FROM staff.absence_types WHERE key = 'absent_hours'`, kari); err != nil {
-		t.Fatalf("an absent_hours row: %v", err)
+		FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours')`, kari); err != nil {
+		t.Fatalf("the reserved rows: %v", err)
 	}
 
 	migrateTo(t, url, staffAccountsVersion-1)
 	if got := staffCollect(t, ctx, pool, "ammefri's pay after the rollback", `SELECT paid::text FROM staff.absence_types WHERE key = 'ammefri'`); !equalStrings(got, []string{"false"}) {
 		t.Errorf("after the rollback ammefri paid = %v, want false", got)
 	}
-	if got := staffCollect(t, ctx, pool, "absent_hours after the rollback", `SELECT key FROM staff.absence_types WHERE key = 'absent_hours'`); len(got) != 0 {
-		t.Errorf("the rollback left absent_hours")
+	if got := staffCollect(t, ctx, pool, "the reserved types after the rollback", `
+		SELECT key FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours')`); len(got) != 0 {
+		t.Errorf("the rollback left %v", got)
 	}
-	if got := staffCollect(t, ctx, pool, "the row's type after the rollback", `
-		SELECT t.key FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id WHERE a.person_id = $1`, kari); !equalStrings(got, []string{"absent"}) {
-		t.Errorf("after the rollback the absent_hours row's type = %v, want absent", got)
+	if got := staffCollect(t, ctx, pool, "the rows' types after the rollback", `
+		SELECT t.key FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id WHERE a.person_id = $1`, kari); !equalStrings(got, []string{"absent", "absent", "absent"}) {
+		t.Errorf("after the rollback the reserved rows' types = %v, want absent", got)
 	}
 	if got := staffCollect(t, ctx, pool, "the erase settings after the rollback", `
 		SELECT column_name FROM information_schema.columns WHERE table_schema = 'staff' AND table_name = 'settings' AND column_name LIKE 'erase_%'`); len(got) != 0 {

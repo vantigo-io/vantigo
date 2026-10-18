@@ -371,8 +371,8 @@ På skjermen, som en bruker med `staff:manage`: åpne **Ansatteinnstillinger** o
 
 1. Tabellen viser alle typene: navnet, **Art**, **Hvem ser typen** (*Leder og HR*, eller
    *Bare HR*), hva den **Rapporteres i a-meldingen som**, reglene og om den er
-   **Forhåndsdefinert** eller **Skjult**. De to reserverte typene slettingene skriver
-   (*Fravær* og *Fravær (timer)*), vises ikke.
+   **Forhåndsdefinert** eller **Skjult**. De fire reserverte typene slettingene skriver
+   (*Fravær*, *Fravær (timer)* og de to tilsvarende bare for HR), vises ikke.
 2. **Ny fraværstype** legger til en egen: en **Nøkkel**, **Navn på engelsk** og **Navn på
    norsk**, **Art** og hva den **Telles i** (begge låst fra da av), hvem som ser den,
    permisjonsbeskrivelsen og bryterne **Må avgjøres**, **Lønnet**, **Trekkes fra
