@@ -327,7 +327,7 @@ erased person».
 | `accountPrivileged` | Brukeren er Owner eller SystemAdmin — også etter en Deaktiver nå som ble avvist for dem, prøvd igjen daglig | En Owner deaktiverer dem i identity, eller fjerner rollen (neste forsøk deaktiverer dem) |
 | `accountMismatch` | Brukeren har et annet ansattnummer: en annens konto — også etter en Deaktiver nå som ikke gjorde noe med den | Sjekk personens ansattnummer; når det er riktig, kjøres deaktiveringen |
 | `accountModeChanged` | En ventende bruker laget i lokal modus, nå i føderert modus | En Owner fullfører eller sletter brukeren |
-| `accountEmailDiffers` | Brukerens adresse i identity er ulik personens | En Owner endrer den i identity (Ansatte endrer den bare mens brukeren venter) |
+| `accountEmailDiffers` | Brukerens adresse i identity er ulik personens | En Owner endrer den i identity (Ansatte endrer den bare mens brukeren venter og ingen invitasjon er levert til dem) |
 | `accountEmailTaken` | En annen bruker i identity har adressen | Rydd opp i duplikatet i identity, eller endre personens adresse |
 | `accountNumberTaken` | En bruker Ansatte ikke styrer har ansattnummeret | En Owner tar den brukeren inn for Ansatte, eller rydder i nummeret |
 | `accountFailing` (flagget på) | Identity svarte ikke tre ganger på rad | Sjekk identity og loggen, og kjør så Kjør nå |

@@ -168,7 +168,14 @@ siden bare en eier kunne deaktivere en bruker.
 En ventende brukers **invitasjonsrunde** begynner når Ansatte oppretter brukeren
 (`identity.users.invitations_since`): invitasjonene Ansattes klargjøring leverer til
 brukeren fra da av, teller mot de tre, og en ny invitasjon (Ansattes *Kjør nå*) eller en
-ny adresse mens brukeren venter, starter en ny runde.
+ny adresse før den første invitasjonen er levert, starter en ny runde.
+
+En ventende brukers **adresse følger personens oppføring i Ansatte bare til den første
+invitasjonen som navngir brukeren, er levert** (en som ikke kunne leveres, teller ikke).
+Fra da av er adressen den personen ble invitert til: Ansattes klargjøring skriver den
+ikke lenger, sender ingenting til en ny adresse, og melder forskjellen
+(`accountEmailDiffers` i Ansatte) til en eier, som endrer adressen på siden
+**Brukere** — som for en aktiv bruker.
 
 ### En ventende bruker godtar invitasjonen sin
 
@@ -241,7 +248,7 @@ registrerte, gjør den ingenting annet enn å deaktivere.
 | Klargjør | Finner brukeren Ansatte styrer med ansattnummeret, ellers oppretter den en: styrt av Ansatte, ventende, deaktivert av Ansatte, med den innebygde rollen `User`, uten innloggingsmetode og med ubekreftet adresse. En eiers åpne invitasjon til adressen trekkes tilbake `replaced` og navngis i revisjonsloggen — men en åpen invitasjon til å bli eier holder adressen for den inviterte. Svaret sier om kallet opprettet brukeren (`Created`), så Ansatte aldri omgjør en bruker den bare fant. | Finner brukeren Ansatte styrer med nummeret; oppretter ingenting | `user.staff-prepared` |
 | Aktiver | Aktiverer en bruker Ansatte har deaktivert — også en klargjort bruker — og gir dem [ansattrollene](#ansattrollene) bare ved det kallet, så en rolle en eier fjerner senere, forblir fjernet; inviterer en ventende bruker uten innloggingsmetode ved navn | Aktiverer igjen en bruker Ansatte deaktiverte; gir ingen rolle og sender ingen invitasjon | `user.staff-activated` |
 | Deaktiver | Deaktiverer brukeren som Ansattes (`disabledBy: staff`) — også en katalogen allerede har deaktivert — avslutter øktene og tilbakestillingslenkene, og trekker tilbake de åpne invitasjonene `deactivated` | Det samme | `user.staff-deactivated` |
-| Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter, og da trekkes invitasjonene tilbake `email_changed` og en eiers åpne invitasjoner til den nye adressen `replaced` (navngitt i revisjonsloggen) | Skriver bare språket og ansattnummeret | `user.staff-updated` |
+| Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter og ingen invitasjon som navngir dem, er levert ennå, og da trekkes invitasjonene tilbake `email_changed` og en eiers åpne invitasjoner til den nye adressen `replaced` (navngitt i revisjonsloggen) | Skriver bare språket og ansattnummeret | `user.staff-updated` |
 
 En aktivert ventende bruker er aktivert, men kan fortsatt ikke logge inn: innlogging med
 passord, passnøkkel og OIDC avviser dem — OIDCs første innlogging med adressen deres

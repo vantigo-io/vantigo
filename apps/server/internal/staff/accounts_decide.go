@@ -298,10 +298,12 @@ func accountEnabled(ref *contracts.AccountRef) bool {
 //     (local); pending and enabled with no credential, by the invitation —
 //     active nothing, revoked by an Owner invitation_revoked and exhausted
 //     invitation_unanswered unless the run is fresh, else activate.
-//  12. The spec: a pending user whose address differs, update (local — the
-//     address is written while pending); a non-pending user's differing
-//     address, report email_differs (local; in federated mode the identity
-//     provider owns it), riding with an update when the spec changed; the
+//  12. The spec: a pending user whose address differs and still follows the
+//     person's (AccountRef.EmailFollows: no invitation delivered yet — the
+//     owner's decision D1 of 2026-10-18), update (local); any other differing
+//     address — once the first invitation went out, pending or not — report
+//     email_differs (local; in federated mode the identity provider owns it),
+//     riding with an update when the spec changed; the
 //     spec changed, or identity holds the synced number of a person HR
 //     renumbered, update.
 func decide(in accountDecision) accountStep {
@@ -365,7 +367,7 @@ func decide(in accountDecision) accountStep {
 		(phase == phaseDue || step.Kind != accountStepActivate) {
 		return step
 	}
-	return decideSpec(in, ref, pending)
+	return decideSpec(in, ref)
 }
 
 // decideDue is row 11 of decide: the user's state, as it stands once the
@@ -421,13 +423,13 @@ func decideDue(in accountDecision, ref *contracts.AccountRef, pending bool) acco
 }
 
 // decideSpec is row 12 of decide: what the user's details need.
-func decideSpec(in accountDecision, ref *contracts.AccountRef, pending bool) accountStep {
+func decideSpec(in accountDecision, ref *contracts.AccountRef) accountStep {
 	federated := in.Mode == contracts.AccountModeFederated
 	// A person HR renumbered: identity still holds the synced number, which
 	// the update rewrites (the owner's answer 1: the number still syncs).
 	changed := in.Link.SpecChanged || !contracts.SameEmployeeNumber(ref.EmployeeNumber, in.Person.EmployeeNumber)
 	switch {
-	case !federated && pending && ref.EmailDiffers:
+	case !federated && ref.EmailFollows && ref.EmailDiffers:
 		return accountStep{Kind: accountStepUpdate}
 	case !federated && ref.EmailDiffers && changed:
 		return accountStep{Kind: accountStepUpdate, Reason: reasonEmailDiffers}

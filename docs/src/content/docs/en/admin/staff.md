@@ -321,7 +321,7 @@ erased person".
 | `accountPrivileged` | The user is an Owner or a SystemAdmin — also after a Disable now refused for them, tried again daily | An Owner disables them in identity, or demotes them (the next try disables them) |
 | `accountMismatch` | The user carries another employee number: someone else's account — also after a Disable now that did nothing for it | Check the person's employee number; once it is right the disable runs |
 | `accountModeChanged` | A pending user made in local mode, now under federated mode | An Owner finishes or deletes the user |
-| `accountEmailDiffers` | The user's address in identity differs from the person's | An Owner changes it in identity (Staff changes it only while pending) |
+| `accountEmailDiffers` | The user's address in identity differs from the person's | An Owner changes it in identity (Staff changes it only while the user is pending and no invitation has been delivered to them) |
 | `accountEmailTaken` | Another user in identity holds the address | Resolve the duplicate in identity, or change the person's address |
 | `accountNumberTaken` | A user Staff does not manage holds the employee number | An Owner adopts that user for Staff, or resolves the number |
 | `accountFailing` (flag on) | Identity could not be reached three times in a row | Check identity's health and the log, then Run now |

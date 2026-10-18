@@ -252,12 +252,21 @@ func TestDecide(t *testing.T) {
 			local: reportWant(reasonEmailDiffers, ""), federated: stepNoneWant},
 		{name: "the email differs, active, the spec changed", edit: all(withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.EmailDiffers = true; return r }()), func(in *accountDecision) { in.Link.SpecChanged = true }),
 			local: accountStep{Kind: accountStepUpdate, Reason: reasonEmailDiffers}, federated: stepUpdateWant},
-		{name: "the email differs, pending", edit: withUser(linkStatePending, func() *contracts.AccountRef {
+		// The owner's decision D1: a pending user's address follows the
+		// person's only until the first invitation is delivered.
+		{name: "the email differs, pending in the window, never invited", edit: all(employed(span("2026-10-25", "")), withUser(linkStatePending, func() *contracts.AccountRef {
+			r := invited(contracts.InvitationNone)
+			r.DisabledBy = contracts.DisabledByStaff
+			r.EmailDiffers, r.EmailFollows = true, true
+			return r
+		}())),
+			local: stepUpdateWant, federated: reportWant(reasonModeChanged, linkStatePending)},
+		{name: "the email differs, pending, invited", edit: withUser(linkStatePending, func() *contracts.AccountRef {
 			r := invited(contracts.InvitationActive)
 			r.EmailDiffers = true
 			return r
 		}()),
-			local: stepUpdateWant, federated: reportWant(reasonModeChanged, linkStatePending)},
+			local: reportWant(reasonEmailDiffers, ""), federated: reportWant(reasonModeChanged, linkStatePending)},
 
 		// The address.
 		both("due, the address missing, no link", func(in *accountDecision) { in.Person.AddressPresent = false }, reportWant(reasonEmailMissing, "")),

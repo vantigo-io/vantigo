@@ -397,7 +397,7 @@ identity recorded. Then, once Staff has created or found a user:
   pending user, whom Staff then never enables), the user gone, the account belonging to
   another employee number (someone else's, left alone), a pending user made for local
   accounts under a federated mode, the address in identity differing from the person's
-  after they chose a password (an Owner changes it in identity), an invitation revoked
+  after their invitation was sent (an Owner changes it in identity), an invitation revoked
   by an Owner or three left unanswered, the user no longer managed by Staff, an Owner or
   a system administrator, no user with the employee number yet in the identity
   provider, the address or the employee number held by a user Staff does not manage,

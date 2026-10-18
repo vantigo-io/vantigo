@@ -577,11 +577,11 @@ func TestProvisioning_AFreshInvitationNeverResendsAnOpenOne(t *testing.T) {
 	}
 }
 
-// Every invitation, not only a fresh one, waits ten minutes after the last
-// naming the user: a pending user moved from A to B and back within ten
-// minutes, activated after each move, is mailed once; after ten minutes the
-// next Activate invites again.
-func TestProvisioning_AddressChangesSendOneInvitationPerTenMinutes(t *testing.T) {
+// Once the first invitation naming a pending user went out, the address is
+// the one they were invited at (the owner's decision D1): moved from A to B
+// and back, activated after each move, the user keeps A, B is never mailed,
+// and the one open invitation stays the only one sent.
+func TestProvisioning_AddressChangesAfterTheFirstInvitationSendNothing(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	employeeRole(t, h)
@@ -598,15 +598,14 @@ func TestProvisioning_AddressChangesSendOneInvitationPerTenMinutes(t *testing.T)
 	}
 	update(b)
 	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
-	h.advance(2 * time.Minute)
+	h.advance(11 * time.Minute)
 	update(a)
 	got := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
-	if n := len(h.mailTo(a)) + len(h.mailTo(b)); n != 2 || got.Invitation.State != contracts.InvitationNone {
-		t.Errorf("%d mails in all and ref %+v, want the first and one for B only, none open", n, got.Invitation)
+	if len(h.mailTo(a)) != 1 || len(h.mailTo(b)) != 0 || got.Invitation != (contracts.Invitation{State: contracts.InvitationActive, Issued: 1}) {
+		t.Errorf("%d mails to A, %d to B and ref %+v, want the first to A alone, still open", len(h.mailTo(a)), len(h.mailTo(b)), got.Invitation)
 	}
-	h.advance(10 * time.Minute)
-	if again := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{}); again.Invitation.State != contracts.InvitationActive || len(h.mailTo(a)) != 2 {
-		t.Errorf("after ten minutes = %+v and %d mails to A, want an open invitation and a second mail", again.Invitation, len(h.mailTo(a)))
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND email = $2`, ref.UserID, a); n != 1 {
+		t.Errorf("the address moved: %s", userState(t, h, ref.UserID))
 	}
 }
 
@@ -715,32 +714,41 @@ func TestProvisioning_DeactivateRefusals(t *testing.T) {
 }
 
 // Update of a pending user in local mode writes the name, the language, the
-// number and the address; the new address revokes the user's invitations
-// email_changed and starts a new spell. A user who accepted keeps their
-// address — the ref says it differs — while the rest still syncs.
-func TestProvisioning_UpdateWritesTheAddressOnlyWhilePending(t *testing.T) {
+// number and — until the first invitation naming the user is delivered (the
+// owner's decision D1 of 2026-10-18) — the address, which starts a new spell:
+// a failed delivery is none, so the address still follows. Once an invitation
+// went out the address is kept, also while the user is still pending, the ref
+// saying it differs and EmailFollows false, and no invitation goes to the
+// new address; the rest still syncs, and so after the acceptance.
+func TestProvisioning_UpdateWritesTheAddressOnlyUntilAnInvitationIsDelivered(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	employeeRole(t, h)
 	p := h.accounts(t)
 	ref := mustPrepare(t, p, spec("first@example.test", "U-1"))
-	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
-	h.advance(11 * time.Minute) // past the ten minutes since the first invitation
+	if !ref.EmailFollows {
+		t.Errorf("a prepared user's ref = %+v, want the address following", ref)
+	}
+	h.mail.FailNext(errors.New("the mail server is away"))
+	if _, err := p.Activate(context.Background(), systemActor, ref.UserID, contracts.ActivateOpts{}); err == nil {
+		t.Fatal("Activate succeeded although its invitation was not delivered")
+	}
+	if got := accountOf(t, p, ref.UserID, ""); !got.EmailFollows {
+		t.Errorf("after a failed delivery the ref = %+v, want the address still following", got)
+	}
+	h.advance(11 * time.Minute) // past the ten minutes since the undelivered one
 
 	got, err := p.Update(context.Background(), systemActor, ref.UserID,
 		contracts.AccountSpec{Email: "second@example.test", DisplayName: "Renamed", PreferredLanguage: "en", EmployeeNumber: "U-2"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.EmployeeNumber != "U-2" || got.Invitation != (contracts.Invitation{State: contracts.InvitationNone}) {
-		t.Errorf("ref = %+v, want U-2 and a new spell with nothing issued", got)
+	if got.EmployeeNumber != "U-2" || !got.EmailFollows || got.Invitation != (contracts.Invitation{State: contracts.InvitationNone}) {
+		t.Errorf("ref = %+v, want U-2, the address following and a new spell with nothing issued", got)
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND email = 'second@example.test' AND normalized_email = 'SECOND@EXAMPLE.TEST'
 	                     AND display_name = 'Renamed' AND preferred_language = 'en' AND employee_number_key = 'U-2' AND invitations_since = $2`, ref.UserID, h.now()); n != 1 {
 		t.Errorf("the user is not as updated: %s", userState(t, h, ref.UserID))
-	}
-	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE user_id = $1 AND revoked_reason = 'email_changed'`, ref.UserID); n != 1 {
-		t.Error("the invitation to the old address was not revoked email_changed")
 	}
 	if events := h.auditEvents(t, "user.staff-updated"); len(events) != 1 {
 		t.Errorf("%d user.staff-updated rows, want 1", len(events))
@@ -755,22 +763,42 @@ func TestProvisioning_UpdateWritesTheAddressOnlyWhilePending(t *testing.T) {
 		t.Errorf("a case-only address and a respelled number: %s", userState(t, h, ref.UserID))
 	}
 
-	if invited := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{}); invited.Invitation != (contracts.Invitation{State: contracts.InvitationActive, Issued: 1}) {
-		t.Errorf("the new address's invitation = %+v, want active, one in the new spell", invited.Invitation)
+	invited := mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	if invited.Invitation != (contracts.Invitation{State: contracts.InvitationActive, Issued: 1}) || invited.EmailFollows {
+		t.Errorf("the new address's invitation = %+v (follows %v), want active, one in the new spell, the address no longer following", invited.Invitation, invited.EmailFollows)
 	}
-	if r := accept(h.client(t), inviteToken(t, h, "second@example.test"), inviteePassword, ""); r.status != http.StatusCreated {
-		t.Fatalf("accept: %d %s", r.status, r.body)
-	}
+	// Still pending, invited at second@: the address is kept.
 	got, err = p.Update(context.Background(), systemActor, ref.UserID,
 		contracts.AccountSpec{Email: "third@example.test", DisplayName: "Renamed Again", PreferredLanguage: "nb", EmployeeNumber: "U-3"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got.State != contracts.AccountStatePending || got.EmailFollows || got.Invitation.State != contracts.InvitationActive {
+		t.Errorf("a pending invited user's ref = %+v, want pending, the address not following, the invitation open", got)
+	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND email = 'second@example.test' AND display_name = 'Renamed Again'
 	                     AND preferred_language = 'nb' AND employee_number = 'U-3'`, ref.UserID); n != 1 {
+		t.Errorf("a pending invited user's update: %s, want the address kept and the rest written", userState(t, h, ref.UserID))
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE normalized_email = 'THIRD@EXAMPLE.TEST'`); n != 0 || len(h.mailTo("third@example.test")) != 0 {
+		t.Errorf("%d invitations to the new address, want none, and no mail", n)
+	}
+	if !accountOf(t, p, ref.UserID, "third@example.test").EmailDiffers {
+		t.Error("the kept address does not read as differing")
+	}
+
+	if r := accept(h.client(t), inviteToken(t, h, "second@example.test"), inviteePassword, ""); r.status != http.StatusCreated {
+		t.Fatalf("accept: %d %s", r.status, r.body)
+	}
+	if _, err = p.Update(context.Background(), systemActor, ref.UserID,
+		contracts.AccountSpec{Email: "fourth@example.test", DisplayName: "Renamed Thrice", PreferredLanguage: "nb", EmployeeNumber: "U-4"}); err != nil {
+		t.Fatal(err)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND email = 'second@example.test' AND display_name = 'Renamed Thrice'
+	                     AND employee_number = 'U-4'`, ref.UserID); n != 1 {
 		t.Errorf("an active user's update: %s, want the address kept and the rest written", userState(t, h, ref.UserID))
 	}
-	if !accountOf(t, p, ref.UserID, "third@example.test").EmailDiffers || accountOf(t, p, ref.UserID, "Second@Example.test").EmailDiffers {
+	if !accountOf(t, p, ref.UserID, "fourth@example.test").EmailDiffers || accountOf(t, p, ref.UserID, "Second@Example.test").EmailDiffers {
 		t.Error("EmailDiffers does not compare the address as identity does")
 	}
 }

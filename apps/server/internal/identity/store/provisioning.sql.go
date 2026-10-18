@@ -525,3 +525,21 @@ func (q *Queries) UpdateProvisionedUser(ctx context.Context, arg UpdateProvision
 	)
 	return err
 }
+
+const userInvitationDelivered = `-- name: UserInvitationDelivered :one
+SELECT EXISTS (
+    SELECT 1 FROM identity.invitations
+    WHERE user_id = $1 AND revoked_reason IS DISTINCT FROM 'delivery_failed'
+)::boolean AS delivered
+`
+
+// UserInvitationDelivered is whether an invitation naming the user, of any
+// spell, went out: every one but a failed delivery's (an invitation issued
+// and not yet sent counts, since its mail is on its way). Until one has, the
+// pending user's address follows Staff's record (AccountRef.EmailFollows).
+func (q *Queries) UserInvitationDelivered(ctx context.Context, userID *uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, userInvitationDelivered, userID)
+	var delivered bool
+	err := row.Scan(&delivered)
+	return delivered, err
+}

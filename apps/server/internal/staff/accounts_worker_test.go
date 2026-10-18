@@ -1179,3 +1179,73 @@ func TestAccountsWorker_APreparedUserOfAPersonErasedOrTurnedOffIsLeft(t *testing
 		})
 	}
 }
+
+// employeeRoleForStaff names one custom role, carrying staff:access, as the
+// roles Staff may give — the Owner's step before any account is enabled.
+func employeeRoleForStaff(t *testing.T, h *harness) {
+	t.Helper()
+	role := uuid.New()
+	h.Exec(t, `INSERT INTO identity.roles (id, name, normalized_name, display_name, version, created_at, updated_at)
+	           VALUES ($1, 'Employee', 'EMPLOYEE', 'Employee', $2, $3, $3)`, role, uuid.New(), h.Now())
+	h.Exec(t, `INSERT INTO identity.role_permissions (role_id, permission_key) VALUES ($1, 'staff:access')`, role)
+	h.Exec(t, `INSERT INTO identity.provisioning_roles (role_id, created_at) VALUES ($1, $2)`, role, h.Now())
+}
+
+// A pending account's address follows the person's record only until the
+// first invitation is delivered (the owner's decision D1 of 2026-10-18),
+// against identity's real provider. Prepared in the window and never invited,
+// a new address is written to identity. Activated on the start day — the
+// invitation delivered — a later change is not: identity keeps the address
+// the person was invited at, nothing is sent to the new one, and the link
+// reports email_differs for an Owner to settle.
+func TestAccountsWorker_AnInvitedUsersAddressIsKeptAgainstIdentity(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	employeeRoleForStaff(t, h)
+	start := shiftDay(t, today(t, h), 3)
+	p := accountEmployee(t, h, hr, "Adresse", start, nil)
+	userEmail := func() string {
+		t.Helper()
+		return modtest.One[string](t, h.Harness, `SELECT email FROM identity.users WHERE id = $1`, mustLink(t, h, p.Id).User)
+	}
+	box := h.Deps().Mail.(*mail.Fake)
+
+	// In the window: prepared, never invited — the address follows.
+	runAccounts(t, h)
+	if l := mustLink(t, h, p.Id); l.State != "pending" || l.User == "" {
+		t.Fatalf("in the window the link = %+v, want pending with the user", l)
+	}
+	const before = "before.invite@example.test"
+	h.Exec(t, `UPDATE staff.people SET work_email = $2 WHERE id = $1`, p.Id, before)
+	setClock(t, h, h.Now().Add(24*time.Hour))
+	runAccounts(t, h)
+	if got := userEmail(); got != before {
+		t.Errorf("before any invitation identity's address = %q, want %q", got, before)
+	}
+
+	// The start day: enabled and invited at that address.
+	setClock(t, h, osloAt(start, 7))
+	runAccounts(t, h)
+	if n := len(invitesTo(box, before)); n != 1 {
+		t.Fatalf("%d invitations to %s on the start day, want one", n, before)
+	}
+
+	// After the delivery: a new address is not written, nor invited.
+	const after = "after.invite@example.test"
+	h.Exec(t, `UPDATE staff.people SET work_email = $2 WHERE id = $1`, p.Id, after)
+	setClock(t, h, osloAt(shiftDay(t, start, 1), 7))
+	runAccounts(t, h)
+	if got := userEmail(); got != before {
+		t.Errorf("after the invitation identity's address = %q, want %q kept", got, before)
+	}
+	if n := len(invitesTo(box, after)); n != 0 {
+		t.Errorf("%d mails to the new address, want none", n)
+	}
+	if n := modtest.One[int64](t, h.Harness, `SELECT count(*) FROM identity.invitations WHERE normalized_email = upper($1)`, after); n != 0 {
+		t.Errorf("%d invitations to the new address, want none", n)
+	}
+	if l := mustLink(t, h, p.Id); l.Reason != "email_differs" || l.State != "pending" {
+		t.Errorf("the link = %+v, want pending, email_differs", l)
+	}
+}

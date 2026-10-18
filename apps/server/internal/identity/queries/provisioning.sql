@@ -102,6 +102,16 @@ SELECT * FROM identity.invitations
 WHERE user_id = @user_id AND created_at >= @since::timestamptz
 ORDER BY (revoked_at IS NULL AND accepted_at IS NULL) DESC, created_at DESC, id DESC;
 
+-- name: UserInvitationDelivered :one
+-- UserInvitationDelivered is whether an invitation naming the user, of any
+-- spell, went out: every one but a failed delivery's (an invitation issued
+-- and not yet sent counts, since its mail is on its way). Until one has, the
+-- pending user's address follows Staff's record (AccountRef.EmailFollows).
+SELECT EXISTS (
+    SELECT 1 FROM identity.invitations
+    WHERE user_id = @user_id AND revoked_reason IS DISTINCT FROM 'delivery_failed'
+)::boolean AS delivered;
+
 -- name: RevokeUserInvitations :exec
 -- RevokeUserInvitations revokes every invitation naming the user that could
 -- still be accepted, recording why (deactivated, email_changed).
