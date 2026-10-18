@@ -241,7 +241,7 @@ components:
                 - registered
             type: string
         StaffAbsenceType:
-            description: An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order, whether it is hidden and whether it is paid (seed_immutable otherwise) — ammefri never unpaid, aml. § 12-8 (2) paying up to one hour a day in the child's first year on a working day of seven hours or more; the reserved absent and absent_hours are never shown and never offered.
+            description: An absence type (design S8, §3.5) — one of the seeds, the statutory vocabulary, or the company's own. key, kind and unit never change. A seed changes only its names, its order, whether it is hidden and whether it is paid (seed_immutable otherwise) — ammefri never unpaid, aml. § 12-8 (2) paying up to one hour a day in the child's first year on a working day of seven hours or more; the reserved types are never shown and never offered.
             properties:
                 allowsPercent:
                     description: Whether an absence of the type may be a percentage of each day. Never on a sick kind, whose share is the sykmelding's degree.
@@ -270,7 +270,7 @@ components:
                     description: Whether the absence is paid. Informational — no figure, the payroll export included, reads it. A seed's is HR's to change but ammefri's, paid by law.
                     type: boolean
                 reserved:
-                    description: One of the two reserved types the erase writes — absent in place of a sick or child-sick type, and of a pregnancy or health type counted in days; absent_hours in place of one counted in hours. Always hidden.
+                    description: One of the four reserved types the erases write — absent in place of a sick or child-sick type; absent_hours in place of helse, counted in hours; absent_hr_only and absent_hr_only_hours (visibility hr_only) in place of an HR-only pregnancy type, days or hours, so the row reads as before to everyone who read it as leave. Always hidden.
                     type: boolean
                 revision:
                     description: Send it back as If-Match on PUT /absence-types/{id}.
@@ -305,7 +305,7 @@ components:
             type: object
         StaffAbsenceTypeChangeRequest:
             additionalProperties: false
-            description: A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort, hidden and paid alone — every other value as it is, else seed_immutable — ammefri stays paid (aml. § 12-8 (2)), and the reserved absent and absent_hours stay hidden and unpaid.
+            description: A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort, hidden and paid alone — every other value as it is, else seed_immutable — ammefri stays paid (aml. § 12-8 (2)), and the reserved types stay hidden and unpaid.
             properties:
                 allowsPercent:
                     description: Only on a type counted in days.
@@ -2926,7 +2926,7 @@ components:
                     format: int64
                     type: integer
                 kind:
-                    description: 'D — the personnel administration, a grace period after the last employment ended; health — the health documents not filed under a sick-leave case and the health content of the history no case owns, healthRetentionDays after it; A — one employment''s pay terms, its contract and attest documents and the pay in its events, five years after the year it ended; cases — a closed sick-leave case''s health content (its notes, its milestones'' facts, its rows'' sick type and degree, its documents and its events'' health fields), healthRetentionDays after the case closed, whatever the employment — and with eraseSickCaseDates on, the case itself: its milestones and the case row deleted, its rows unlinked keeping their days as absent, its events blanked to their kind; childSick — a year''s child-sick rows'' type and their events'' health fields, healthRetentionDays after the year ended; withdrawal — a withdrawal of egenmelding and its events, healthRetentionDays after it lapsed; pregnancyHealth — with erasePregnancyHealthTypes on, a year''s rows of svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and helse given the reserved absent (absent_hours for an hour row) and their events'' type values replaced, healthRetentionDays after the year ended.'
+                    description: 'D — the personnel administration, a grace period after the last employment ended; health — the health documents not filed under a sick-leave case and the health content of the history no case owns, healthRetentionDays after it; A — one employment''s pay terms, its contract and attest documents and the pay in its events, five years after the year it ended; cases — a closed sick-leave case''s health content (its notes, its milestones'' facts, its rows'' sick type and degree, its documents and its events'' health fields), healthRetentionDays after the case closed, whatever the employment — and with eraseSickCaseDates on, the case itself: its milestones and the case row deleted, its rows unlinked keeping their days as absent, its events blanked to their kind; childSick — a year''s child-sick rows'' type and their events'' health fields, healthRetentionDays after the year ended; withdrawal — a withdrawal of egenmelding and its events, healthRetentionDays after it lapsed; pregnancyHealth — with erasePregnancyHealthTypes on, a year''s rows of svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and helse given a reserved type — the HR-only pair for an HR-only type, absent_hours for helse, by unit — and their events'' type values replaced, healthRetentionDays after the year ended.'
                     enum:
                         - D
                         - health
@@ -3086,7 +3086,7 @@ components:
                     description: What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none.
                     type: string
                 erasePregnancyHealthTypes:
-                    description: 'Whether the retention run erases the pregnancy and health-appointment rows — svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and helse — on the health schedule (B''s open question 11, decided by the owner): healthRetentionDays after the year a row ended, its type becomes the reserved absent (absent_hours for an hour row, which keeps its hours) and every type value of its events is replaced, whatever class they were written in; the days stay. false by default. Turned on, it applies from the next retention cycle to every row already due; turned off, it restores nothing.'
+                    description: 'Whether the retention run erases the pregnancy and health-appointment rows — svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and helse — on the health schedule (B''s open question 11, decided by the owner): healthRetentionDays after the year a row ended, its type becomes a reserved one — absent_hr_only or absent_hr_only_hours for an HR-only type, so it still reads as leave to everyone who read it so, absent_hours for helse, an hour row keeping its hours — and every type value of its events is replaced, whatever class they were written in; the days stay. false by default. Turned on, it applies from the next retention cycle to every row already due; turned off, it restores nothing.'
                     type: boolean
                 eraseSickCaseDates:
                     description: 'Whether a closed sick-leave case''s erase also removes the case itself (B''s open question 12, decided by the owner): its milestones and the case row are deleted, its rows unlinked — they keep their days as the reserved absent — and its events blanked to their kind. false by default: the case keeps its dates and its milestones'' kinds and dates. Turned on, it applies from the next retention cycle to every case already due, those erased before included; turned off, it restores nothing.'
@@ -3762,7 +3762,7 @@ openapi: 3.0.3
 paths:
     /api/v1/staff/absence-types:
         get:
-            description: The absence types in their order — every caller reads every type that is not hidden, hr_only ones included (the type is public, who takes it is not); staff:manage reads the hidden ones too, the reserved absent and absent_hours among them.
+            description: The absence types in their order — every caller reads every type that is not hidden, hr_only ones included (the type is public, who takes it is not); staff:manage reads the hidden ones too, the reserved types among them.
             operationId: getStaffAbsenceTypes
             responses:
                 "200":

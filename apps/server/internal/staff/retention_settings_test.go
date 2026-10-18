@@ -2,6 +2,7 @@ package staff_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -54,8 +55,9 @@ func historyText(t *testing.T, c *modtest.Client, personID int64) string {
 
 // With erasePregnancyHealthTypes on, a row of svangerskapskontroll,
 // svangerskapspermisjon, fødselspermisjon or helse goes to a reserved type
-// healthRetentionDays after its year ended — absent for a day row,
-// absent_hours for an hour row, which keeps its hours — and the type values
+// healthRetentionDays after its year ended — absent_hours for helse, an hour
+// row keeping its hours; the HR-only pair, absent_hr_only and
+// absent_hr_only_hours, for the HR-only types — and the type values
 // of its events are replaced whatever class they were written in: the type
 // field changed, the typeIds the reserved type, for every reader of the
 // history. A row whose year has not run, a ferie row and a held person's row
@@ -97,8 +99,8 @@ func TestRetention_PregnancyAndHealthRows(t *testing.T) {
 		description string
 	}{
 		{visit.Id, "absent_hours", "2.00", "the 2024 helse visit"},
-		{checkup.Id, "absent_hours", "1.50", "the 2024 svangerskapskontroll"},
-		{leave.Id, "absent", "", "the 2024 svangerskapspermisjon"},
+		{checkup.Id, "absent_hr_only_hours", "1.50", "the 2024 svangerskapskontroll, HR-only"},
+		{leave.Id, "absent_hr_only", "", "the 2024 svangerskapspermisjon, HR-only"},
 		{recent.Id, "fodselspermisjon", "", "the 2025 fødselspermisjon, whose year has not run"},
 		{holiday.Id, "ferie", "", "the ferie row"},
 		{heldVisit.Id, "helse", "2.00", "the held person's visit"},
@@ -111,8 +113,8 @@ func TestRetention_PregnancyAndHealthRows(t *testing.T) {
 		t.Error("the erased leave lost its days, which stay")
 	}
 
-	absentID, hoursID := typeID(t, h, "absent"), typeID(t, h, "absent_hours")
-	for id, reserved := range map[int64]int64{visit.Id: hoursID, checkup.Id: hoursID, leave.Id: absentID} {
+	hrOnlyID, hrOnlyHoursID, hoursID := typeID(t, h, "absent_hr_only"), typeID(t, h, "absent_hr_only_hours"), typeID(t, h, "absent_hours")
+	for id, reserved := range map[int64]int64{visit.Id: hoursID, checkup.Id: hrOnlyHoursID, leave.Id: hrOnlyID} {
 		kind := firstKind(t, h, id)
 		if f := eventFields(t, h, kind, "absenceId", id); f["type"] != "changed" || f["firstDay"] == "changed" {
 			t.Errorf("row %d's event fields = %v, want the type changed and the days kept", id, f)
@@ -174,8 +176,8 @@ func TestRetention_PregnancyAndHealthRows(t *testing.T) {
 	// Turned off, nothing is restored.
 	setEraseSettings(t, w.hr, map[string]any{"erasePregnancyHealthTypes": false})
 	runCycle(t, h)
-	if key, _, _ := rowType(t, h, leave.Id); key != "absent" {
-		t.Errorf("turned off: the erased leave's type = %s, want absent kept", key)
+	if key, _, _ := rowType(t, h, leave.Id); key != "absent_hr_only" {
+		t.Errorf("turned off: the erased leave's type = %s, want absent_hr_only kept", key)
 	}
 	if f := eventFields(t, h, "absence_registered", "absenceId", visit.Id); f["type"] != "changed" {
 		t.Errorf("turned off: the erased visit's event = %v, want its type still changed", f)
@@ -370,5 +372,81 @@ func TestRetention_TheCaseEraseSettingReachesCasesErasedBefore(t *testing.T) {
 	}
 	if events := erasedEvents(t, h, w.kari.Id); len(events) != 2 {
 		t.Errorf("turned off, a cycle erased again: %v", events)
+	}
+}
+
+// An erased HR-only row reads to every leave-reader exactly as it did (the
+// coordinator's decision on Task 5b): svangerskapskontroll,
+// svangerskapspermisjon and fødselspermisjon take the reserved HR-only pair
+// — absent_hr_only for a day row, absent_hr_only_hours for an hour row — so
+// for her manager, an Approver and HR without staff:personal-data every read
+// of the rows and of Kari's history — the absence list, each row by id, the
+// calendar, the inbox, the events page and its count, /stats and the
+// attention items — is byte-equal before and after the erase: still
+// "leave", the events still unlisted, no erased entry. Kari and
+// staff:personal-data read the reserved type.
+func TestRetention_AnErasedHROnlyRowReadsAsBefore(t *testing.T) {
+	t.Parallel()
+	w := newDecisionWorld(t)
+	h := w.h
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	check := register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapskontroll", "2024-04-09", "2024-04-09", "hours", 1.5))
+	leave := register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapspermisjon", "2024-05-06", "2024-05-17"))
+	birth := register(t, hrPD, w.kari.Id, absence(t, h, "fodselspermisjon", "2024-06-03", "2024-06-14"))
+	rows := []int64{check.Id, leave.Id, birth.Id}
+	setEraseSettings(t, w.hr, map[string]any{"erasePregnancyHealthTypes": true})
+
+	paths := []string{
+		fmt.Sprintf("%s?personId=%d", absencesPath, w.kari.Id),
+		calendarPath + "?from=2024-01-01&to=2024-12-31",
+		approvalsPath,
+		pagedPath(eventsPath(w.kari.Id), 1, 100),
+		statsPath,
+		attentionPath,
+	}
+	for _, id := range rows {
+		paths = append(paths, absencePath(id))
+	}
+	reads := func() map[string]string {
+		out := map[string]string{}
+		for name, c := range map[string]*modtest.Client{"her manager": w.bossC, "an Approver": w.approver, "HR without personal-data": w.hr} {
+			for _, path := range paths {
+				r := c.Do(http.MethodGet, path, nil)
+				out[name+" GET "+path] = fmt.Sprintf("%d %s", r.Status, scrubRandom(string(r.Body)))
+			}
+		}
+		return out
+	}
+	before := reads()
+	runCycle(t, h)
+	hrOnly, hrOnlyHours := typeID(t, h, "absent_hr_only"), typeID(t, h, "absent_hr_only_hours")
+	for id, want := range map[int64]string{check.Id: "absent_hr_only_hours", leave.Id: "absent_hr_only", birth.Id: "absent_hr_only"} {
+		if key, _, _ := rowType(t, h, id); key != want {
+			t.Errorf("row %d's type = %s, want %s", id, key, want)
+		}
+	}
+	after := reads()
+	for key, got := range after {
+		if want := before[key]; got != want {
+			t.Errorf("%s differs after the erase:\n got %s\nwant %s", key, got, want)
+		}
+	}
+	if len(after) != 3*len(paths) {
+		t.Errorf("%d reads compared, want %d", len(after), 3*len(paths))
+	}
+	// Kari and staff:personal-data read the reserved type.
+	for name, c := range map[string]*modtest.Client{"Kari": w.kariC, "personal-data": w.pd} {
+		for id, want := range map[int64]int64{check.Id: hrOnlyHours, leave.Id: hrOnly} {
+			var got struct {
+				TypeID int64 `json:"typeId"`
+			}
+			do(t, c, http.MethodGet, absencePath(id), nil, http.StatusOK, &got)
+			if got.TypeID != want {
+				t.Errorf("%s reads row %d's type as %d, want %d", name, id, got.TypeID, want)
+			}
+		}
+	}
+	if counts := kindCounts(firstErased(t, h, w.kari.Id)); counts["pregnancyHealth"] == 0 {
+		t.Errorf("the erased kinds = %v, want pregnancyHealth", counts)
 	}
 }

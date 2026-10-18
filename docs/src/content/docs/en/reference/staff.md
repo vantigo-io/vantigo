@@ -2804,12 +2804,21 @@ since the cycle chose the person is seen there:
   before. The erased event's `cases` count keeps its meaning: the items removed.
 - **childSick** writes `absent` in place of the due rows' type and replaces the health
   fields of their events.
-- **pregnancyHealth** writes the reserved type of each due row's unit — `absent` on a
-  day row, `absent_hours` on an hour row, its hours kept — and replaces every type
-  value of its events **whatever class they were recorded in** (B wrote them as C): the
-  `type` field reads `"changed"` and each such id in `typeIds` becomes the reserved
-  type. An event naming such a type whose row no longer has one goes by the year it
-  was recorded in. The days, the status and the dates stay.- **withdrawal** nulls `self_cert_withdrawn_from`, `_until` and `_reason` when the
+- **pregnancyHealth** writes a reserved type on each due row by its type's visibility
+  and unit — for an HR-only type (svangerskapskontroll, svangerskapspermisjon,
+  fødselspermisjon) `absent_hr_only`, or `absent_hr_only_hours` on an hour row; for
+  helse `absent_hours` — its hours kept, and replaces every type value of its events
+  **whatever class they were recorded in** (B wrote them as C): the `type` field reads
+  `"changed"` and each such id in `typeIds` becomes the reserved type chosen the same
+  way. An event naming such a type whose row no longer has one goes by the year it was
+  recorded in. The days, the status and the dates stay. An erased HR-only row therefore
+  reads to a manager, an Approver and HR without `staff:personal-data` exactly as it
+  did — *leave*, its events unlisted to them — and only the person and
+  `staff:personal-data` see that it became a reserved type (the coordinator's
+  decision). Its kind is recorded in an `erased` event of its own, of class E, listed
+  to the health group's readers alone, so no reader without `staff:personal-data` sees
+  an entry about it.
+- **withdrawal** nulls `self_cert_withdrawn_from`, `_until` and `_reason` when the
   withdrawal on file lapsed before the cutoff, and replaces the values of the
   withdrawal's events recorded before it — each event by its own instant, so one
   recorded since waits for its own time.
