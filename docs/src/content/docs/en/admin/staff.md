@@ -229,6 +229,12 @@ try again in a few minutes. `person_erased` (409) — an erased person's account
 run. `accounts_unavailable` (503) — no module provides accounts, or identity could not
 be reached; the link records the error and the worker retries.
 
+A run goes on when the browser or a proxy gives up waiting. The realistic worst case is
+several minutes — each call to identity may wait up to two minutes, and identity mails
+the invitations — so when identity or the mail server is slow the request can time out
+in the browser while the work still finishes: read the Account tab, or the dashboard,
+again afterwards rather than running it twice.
+
 ### Disable an account now
 
 `POST /api/v1/staff/people/{id}/account/disable` (`staff:manage`) **turns the person's
@@ -236,20 +242,28 @@ account flag off** and disables their user at once, so the worker leaves it disa
 until HR turns the flag on again.
 
 1. Send the request. The flag is turned off first (the history shows
-   `account_flag_updated`), then identity disables the user (`account_deactivated`) and
-   ends their sessions. The person's own revision does not move.
+   `account_flag_updated`) together with a note on the link that a disable was asked
+   for, then identity disables the user (`account_deactivated`) and ends their
+   sessions. The person's own revision does not move. If the browser gives up waiting,
+   the disable still goes on; whatever does not reach identity, the worker finishes at
+   its next polls.
 2. Verify: the answer (the person's account) has `provisionAccount: false` and the link
    `state: disabled`. A person with no link, or whose user is not created yet, only has
    the flag turned off.
 3. What can go wrong:
-   - `accounts_busy` (409): the worker holds the person's link; nothing was changed. Try
-     again in a few minutes.
+   - `accounts_busy` (409): the worker holds the person's link. Usually nothing was
+     changed — try again in a few minutes. If the worker took the link in the instant
+     after the flag was written, **the flag is already off**: the worker then finishes
+     the disable by itself.
    - `account_not_managed` (409): the person is linked by hand to a user Staff does not
      manage; `account_privileged` (409): the user is an Owner or a SystemAdmin. The flag
-     is off, but the user stays enabled: an Owner disables them in identity.
+     is off, but the user stays enabled: an Owner disables them in identity. The worker
+     tries again daily, and the dashboard shows *accountFailing* while the user is
+     enabled.
    - `accounts_unavailable` (503): identity could not be reached. **The flag is already
-     off**, but the user is still enabled: the link records the error and the dashboard
-     shows *accountFailing*. No cycle retries it — send the request again.
+     off**, but the user is still enabled: the link records the error, the worker
+     retries the disable at every poll, and the dashboard shows *accountFailing* until
+     identity answers. Send the request again if it persists.
 
 An erased person's account can be disabled too.
 
@@ -259,7 +273,8 @@ An erased person's account can be disabled too.
 them, read from Staff's own records (identity is not asked when the dashboard loads).
 Each names the person and nothing more; open their Account tab for the details. Only
 people whose flag is on and who are not erased are listed, except *accountFailing* for a
-Disable now that failed.
+disable asked for that has not reached identity — for an erased person too, titled "An
+erased person".
 
 | Item | What it means | What to do |
 | --- | --- | --- |
@@ -276,7 +291,8 @@ Disable now that failed.
 | `accountEmailDiffers` | The user's address in identity differs from the person's | An Owner changes it in identity (Staff changes it only while pending) |
 | `accountEmailTaken` | Another user in identity holds the address | Resolve the duplicate in identity, or change the person's address |
 | `accountNumberTaken` | A user Staff does not manage holds the employee number | An Owner adopts that user for Staff, or resolves the number |
-| `accountFailing` | Identity could not be reached three times in a row, or a Disable now failed | Check identity's health and the log; send Disable now again |
+| `accountFailing` (flag on) | Identity could not be reached three times in a row | Check identity's health and the log, then Run now |
+| `accountFailing` (flag off, or an erased person) | A Disable now has not reached identity — failed, or waiting more than ten minutes | The worker retries at every poll; send Disable now again if it persists |
 | `invitationUnanswered` | Three invitations went unanswered | Check the address; Run now sends a fresh one |
 | `invitationRevoked` | An Owner revoked the invitation | Run now sends a fresh one, if the person should have it |
 | `employeeRoleMissing` | No employee role named (one item, with a count) | An Owner names the roles Staff may give |

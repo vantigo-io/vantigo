@@ -1,9 +1,11 @@
 package staff_test
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/staff"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 )
 
@@ -380,9 +383,9 @@ func TestAccountsDisable_TheRefusals(t *testing.T) {
 }
 
 // Identity failing on Disable now: 503 accounts_unavailable, the flag
-// already off, the link's last_error set and accountFailing raised for HR —
-// no cycle retries a flag that is off, so HR does — and the next cycle
-// does nothing. A retry once identity answers disables the user.
+// already off, the link's last_error set and accountFailing raised for HR;
+// the worker retries the disable asked for at every poll (review M1) until
+// identity answers, and then does nothing more.
 func TestAccountsDisable_IdentityFailingLeavesTheFlagOff(t *testing.T) {
 	t.Parallel()
 	w := newAccountsWorld(t)
@@ -402,16 +405,25 @@ func TestAccountsDisable_IdentityFailingLeavesTheFlagOff(t *testing.T) {
 	if !slices.ContainsFunc(getAttention(t, w.hr), func(i gen.StaffStatsAttentionItem) bool { return i.Id == id }) {
 		t.Errorf("HR's items lack %s", id)
 	}
+	// The flag is off, but the disable asked for is the worker's to finish
+	// (review M1): retried at every poll while it fails.
+	deactivations := countWrites(w.fake, "Deactivate")
+	w.h.Advance(time.Hour + time.Minute)
+	w.cycle(t)
+	if n := countWrites(w.fake, "Deactivate"); n != deactivations+1 {
+		t.Errorf("the next poll called Deactivate %d more times, want once", n-deactivations)
+	}
+	w.fake.failWith("Deactivate", nil)
+	w.h.Advance(time.Hour + time.Minute)
+	w.cycle(t)
+	if ref := w.fake.user(u); ref.State != contracts.AccountStateDisabled {
+		t.Errorf("after identity answered the user = %+v, want disabled by the worker", ref)
+	}
 	writes := len(w.fake.writeCalls())
 	setClock(t, w.h, osloAt("2026-09-14", 8))
 	w.cycle(t)
 	if n := len(w.fake.writeCalls()); n != writes {
-		t.Errorf("the next cycle wrote %v, want nothing", w.fake.writeCalls()[writes:])
-	}
-	w.fake.failWith("Deactivate", nil)
-	do(t, w.hr, http.MethodPost, accountDisablePath(p.Id), nil, http.StatusOK, nil)
-	if ref := w.fake.user(u); ref.State != contracts.AccountStateDisabled {
-		t.Errorf("after the retry the user = %+v, want disabled", ref)
+		t.Errorf("a cycle after the disable wrote %v, want nothing", w.fake.writeCalls()[writes:])
 	}
 }
 
@@ -471,5 +483,276 @@ func TestAccountsRun_OnAPoolOfOne(t *testing.T) {
 	})
 	if l := mustLink(t, w.h, b.Id); l.State != "disabled" {
 		t.Errorf("after Disable now the link = %+v, want disabled", l)
+	}
+}
+
+// disableMarker is personID's link's disable_requested_at, nil when unset.
+func disableMarker(t *testing.T, h *harness, personID int64) *time.Time {
+	t.Helper()
+	return modtest.One[*time.Time](t, h.Harness, `SELECT disable_requested_at FROM staff.identity_links WHERE person_id = $1`, personID)
+}
+
+// hasItem is whether c's attention items carry id.
+func hasItem(t *testing.T, c *modtest.Client, id string) (gen.StaffStatsAttentionItem, bool) {
+	t.Helper()
+	items := getAttention(t, c)
+	i := slices.IndexFunc(items, func(i gen.StaffStatsAttentionItem) bool { return i.Id == id })
+	if i < 0 {
+		return gen.StaffStatsAttentionItem{}, false
+	}
+	return items[i], true
+}
+
+// waitFor polls cond for up to fifteen seconds.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A Disable now whose client goes away while identity is still disabling
+// the user (review M1): the work goes on without the request, the link
+// records that a disable was asked for (disable_requested_at), the failure
+// raises accountFailing, and the next cycle — the flag off — deactivates
+// the user and clears the marker.
+func TestAccountsDisable_AnInterruptedDisableIsFinished(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Avbrutt", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber})
+	workerLink(t, w.h, p.Id, u, "active")
+	release := make(chan struct{})
+	w.fake.blockUntil("Deactivate", release)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil, modtest.Context(ctx))
+	}()
+	waitFor(t, "the claim", func() bool { return mustLeased(t, w.h, p.Id) })
+	cancel()
+	<-done
+	if disableMarker(t, w.h, p.Id) == nil {
+		t.Fatal("no disable recorded on the link after the client went away")
+	}
+	w.fake.failWith("Deactivate", errFakeDown)
+	close(release)
+	w.fake.blockUntil("Deactivate", nil)
+	waitFor(t, "the result", func() bool { return !mustLeased(t, w.h, p.Id) })
+	if l, _ := linkOf(t, w.h, p.Id); l.LastError != "accounts_unavailable" {
+		t.Errorf("the link = %+v, want the failure recorded", l)
+	}
+	id := "accountFailing/" + strconv.FormatInt(p.Id, 10)
+	if _, ok := hasItem(t, w.hr, id); !ok {
+		t.Errorf("HR's items lack %s", id)
+	}
+	w.fake.failWith("Deactivate", nil)
+	w.h.Advance(time.Hour + time.Minute)
+	w.cycle(t)
+	if ref := w.fake.user(u); ref.State != contracts.AccountStateDisabled {
+		t.Errorf("after the next cycle the user = %+v, want disabled", ref)
+	}
+	if m := disableMarker(t, w.h, p.Id); m != nil {
+		t.Errorf("the marker is still set: %v", m)
+	}
+	if _, ok := hasItem(t, w.hr, id); ok {
+		t.Errorf("%s is still raised", id)
+	}
+}
+
+// mustLeased is whether personID's link holds a live lease.
+func mustLeased(t *testing.T, h *harness, personID int64) bool {
+	t.Helper()
+	return modtest.One[bool](t, h.Harness, `SELECT coalesce(lease_until > $2, false) FROM staff.identity_links WHERE person_id = $1`, personID, h.Now())
+}
+
+// A cycle that takes the link between Disable now's commit and its claim
+// (review M1): accounts_busy with the flag already off — and the marker
+// left, which the worker finishes once that lease has gone.
+func TestAccountsDisable_ALinkClaimedAfterTheCommitIsFinished(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Mellom", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber})
+	workerLink(t, w.h, p.Id, u, "active")
+	staff.OnDisableCommitted(t, p.Id, func() { leaseLink(t, w.h, p.Id) })
+	refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusConflict, "accounts_busy")
+	if acc := getAccount(t, w.hr, p.Id); acc.ProvisionAccount {
+		t.Error("the flag is on")
+	}
+	if disableMarker(t, w.h, p.Id) == nil {
+		t.Fatal("no disable recorded on the link")
+	}
+	w.h.Advance(6 * time.Minute)
+	w.cycle(t)
+	if ref := w.fake.user(u); ref.State != contracts.AccountStateDisabled {
+		t.Errorf("after the lease lapsed the user = %+v, want disabled by the worker", ref)
+	}
+	if l := mustLink(t, w.h, p.Id); l.State != "disabled" || disableMarker(t, w.h, p.Id) != nil {
+		t.Errorf("the link = %+v, want disabled and the marker cleared\n%s", l, w.h.Logs())
+	}
+}
+
+// An erased person's account (review M2): Disable now disables it; when
+// identity fails, accountFailing is raised for the erased record under a
+// neutral title, and the worker finishes the disable.
+func TestAccountsDisable_AnErasedPerson(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	erase := func(given string) (gen.StaffPerson, uuid.UUID) {
+		p := w.employee(t, given, "2020-01-01", dayPtr("2026-06-30"))
+		u := uuid.New()
+		w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber})
+		workerLink(t, w.h, p.Id, u, "active")
+		w.h.Exec(t, `UPDATE staff.identity_links SET next_attempt_at = $2 WHERE person_id = $1`, p.Id, w.h.Now().Add(48*time.Hour))
+		w.h.Exec(t, `UPDATE staff.people SET erased_at = $2 WHERE id = $1`, p.Id, w.h.Now())
+		return p, u
+	}
+	ok, uOK := erase("Slettetja")
+	var got gen.StaffPersonAccount
+	do(t, w.hr, http.MethodPost, accountDisablePath(ok.Id), nil, http.StatusOK, &got)
+	if got.Link == nil || got.Link.State != "disabled" || w.fake.user(uOK).State != contracts.AccountStateDisabled {
+		t.Errorf("an erased person's Disable now = %+v, want the user disabled", got.Link)
+	}
+
+	failing, uFail := erase("Slettetnei")
+	w.fake.failWith("Deactivate", errFakeDown)
+	refused(t, w.hr.Do(http.MethodPost, accountDisablePath(failing.Id), nil), http.StatusServiceUnavailable, "accounts_unavailable")
+	item, found := hasItem(t, w.hr, "accountFailing/"+strconv.FormatInt(failing.Id, 10))
+	if !found {
+		t.Fatal("no accountFailing item for the erased person")
+	}
+	if item.Title != "An erased person" || strings.Contains(item.Title, "Slettetnei") {
+		t.Errorf("the item's title = %q, want the neutral title", item.Title)
+	}
+	w.fake.failWith("Deactivate", nil)
+	w.h.Advance(time.Hour + time.Minute)
+	w.cycle(t)
+	if ref := w.fake.user(uFail); ref.State != contracts.AccountStateDisabled {
+		t.Errorf("after the next cycle the erased person's user = %+v, want disabled", ref)
+	}
+	if disableMarker(t, w.h, failing.Id) != nil {
+		t.Error("the marker is still set")
+	}
+}
+
+// A hand run whose client goes away (review M3) finishes all the same: the
+// result is written and no live lease is left.
+func TestAccountsRun_AnInterruptedRunFinishes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		path func(id int64) string
+	}{
+		{"one person", accountRunPath},
+		{"everyone", func(int64) string { return accountsRunPath }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newAccountsWorld(t)
+			p := w.employee(t, "Brutt", "2026-01-01", nil)
+			release, inside := make(chan struct{}), make(chan struct{})
+			var once bool
+			w.fake.whenWriting(func(method string, _ uuid.UUID) {
+				if method == "Activate" && !once {
+					once = true
+					close(inside)
+				}
+			})
+			w.fake.blockUntil("Activate", release)
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				w.hr.Do(http.MethodPost, tc.path(p.Id), nil, modtest.Context(ctx))
+			}()
+			<-inside
+			cancel()
+			<-done
+			close(release)
+			waitFor(t, "the result", func() bool { return !mustLeased(t, w.h, p.Id) })
+			l := mustLink(t, w.h, p.Id)
+			if l.LastError != "" || l.State != "pending" {
+				t.Errorf("the link = %+v, want the activation written, no failure", l)
+			}
+			if ref := w.fake.user(uuid.MustParse(l.User)); ref.Invitation.State != contracts.InvitationActive {
+				t.Errorf("the user = %+v, want invited", ref)
+			}
+		})
+	}
+}
+
+// accountFailing for a person whose flag is off comes only from a disable
+// requested (review L1): three failures, then the flag turned off, raise
+// nothing.
+func TestAccountAttention_AFlagTurnedOffAfterFailuresRaisesNothing(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Tre", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStatePending, Managed: true, EmployeeNumber: p.EmployeeNumber,
+		Invitation: contracts.Invitation{State: contracts.InvitationNone}})
+	workerLink(t, w.h, p.Id, u, "pending")
+	w.h.Exec(t, `UPDATE staff.identity_links SET last_error = 'accounts_unavailable', attempts = 3 WHERE person_id = $1`, p.Id)
+	id := "accountFailing/" + strconv.FormatInt(p.Id, 10)
+	if _, ok := hasItem(t, w.hr, id); !ok {
+		t.Fatalf("HR's items lack %s with the flag on", id)
+	}
+	acc := getAccount(t, w.hr, p.Id)
+	do(t, w.hr, http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": false}, http.StatusOK, nil, ifMatch(acc.Revision))
+	if item, ok := hasItem(t, w.hr, id); ok {
+		t.Errorf("with the flag off HR still reads %+v", item)
+	}
+}
+
+// A failure after the claim releases the lease (review L3): the facts
+// unreadable, Disable now and the worker's cycle leave no live lease, so the
+// next request is not accounts_busy.
+func TestAccountsRun_AFailureAfterTheClaimReleasesTheLease(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Slipp", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber})
+	workerLink(t, w.h, p.Id, u, "active")
+	w.h.Exec(t, `ALTER TABLE staff.settings RENAME TO settings_away`)
+	_ = accountsWorker(t, w.h, w.h.Deps()).RunCycle(context.Background())
+	if mustLeased(t, w.h, p.Id) {
+		t.Error("the cycle left a live lease after its facts read failed")
+	}
+	if r := w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil, modtest.SkipContract("a fault the test injected")); r.Status != http.StatusInternalServerError {
+		t.Fatalf("Disable now with the facts unreadable: %d, want 500", r.Status)
+	}
+	w.h.Exec(t, `ALTER TABLE staff.settings_away RENAME TO settings`)
+	do(t, w.hr, http.MethodPost, accountDisablePath(p.Id), nil, http.StatusOK, nil)
+	if ref := w.fake.user(u); ref.State != contracts.AccountStateDisabled {
+		t.Errorf("the user = %+v, want disabled", ref)
+	}
+}
+
+// A person's manager without staff:manage is refused all three (review
+// L6), as the contract's access rule says.
+func TestAccountsRun_AManagerIsRefused(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	boss := createPerson(t, w.hr, newPerson("Sjef", "Sjefsen"))
+	seedEmploymentDated(t, w.h, boss.Id, 0, "2020-01-01", nil)
+	bossC, bossUser := signIn(t, w.h)
+	link(t, w.h, boss.Id, bossUser)
+	p := createPerson(t, w.hr, newPerson("Ansatt", "Konto"))
+	seedEmploymentDated(t, w.h, p.Id, boss.Id, "2026-01-01", nil)
+	for _, path := range []string{accountsRunPath, accountRunPath(p.Id), accountDisablePath(p.Id)} {
+		if r := bossC.Do(http.MethodPost, path, nil); r.Status != http.StatusForbidden {
+			t.Errorf("the manager's POST %s: %d, want 403", path, r.Status)
+		}
+	}
+	if n := len(w.fake.writeCalls()); n != 0 {
+		t.Errorf("writes = %v, want none", w.fake.writeCalls())
 	}
 }

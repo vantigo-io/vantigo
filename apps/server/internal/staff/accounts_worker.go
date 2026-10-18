@@ -422,7 +422,10 @@ type accountResult struct {
 	// (AccountRef.Created): deactivated when the result finds the link gone.
 	// A user Prepare only found is never deactivated for it.
 	created *uuid.UUID
-	events  []accountEvent
+	// disableRequested is the link's disable_requested_at: the disable
+	// Disable now asked for, kept until identity confirms it (review M1).
+	disableRequested *time.Time
+	events           []accountEvent
 }
 
 func newAccountResult(claim store.ClaimAccountLinkRow) *accountResult {
@@ -430,7 +433,7 @@ func newAccountResult(claim store.ClaimAccountLinkRow) *accountResult {
 		claim: claim, externalID: claim.ExternalID, state: claim.State, managed: claim.Managed,
 		reason: claim.BlockedReason, lastError: claim.LastError, attempts: claim.Attempts,
 		syncedAt: claim.LastSyncedAt, specHash: claim.LastSpecHash, synced: claim.SyncedEmployeeNumber,
-		current: claim.ExternalID,
+		current: claim.ExternalID, disableRequested: claim.DisableRequestedAt,
 	}
 }
 
@@ -702,6 +705,7 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 	}
 	if err != nil {
 		log.ErrorContext(ctx, "staff: read a person's account facts", "error", err.Error())
+		s.releaseAccountLease(ctx, claim.ID, lease)
 		return accountWorked{err: err}
 	}
 	var user *uuid.UUID
@@ -711,9 +715,25 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 			log.ErrorContext(ctx, "staff: a link names no user id identity could know")
 			r.answered(reasonUserGone)
 			r.state = linkStateFailed
+			r.disableRequested = nil
 			return accountWorked{failed: r.failed, err: s.writeAccountResult(ctx, run, r, lease, f, now)}
 		}
 		user = &id
+	}
+	// A disable Disable now asked for, the flag still off: the table's
+	// "flag off, nothing" does not hold for it — the user is deactivated, at
+	// every poll while it fails, as a leaver's is (review M1). The flag on
+	// again is HR's wish for the account: the request lapses.
+	if r.disableRequested != nil {
+		if !f.decide.Flag {
+			if user == nil {
+				r.disableRequested = nil
+				return accountWorked{err: s.writeAccountResult(ctx, run, r, lease, f, now)}
+			}
+			worked, _ := s.deactivateClaimed(ctx, run, r, lease, *user, f, now)
+			return worked
+		}
+		r.disableRequested = nil
 	}
 	var ref *contracts.AccountRef
 	if user != nil {
@@ -841,7 +861,7 @@ func (s *server) writeAccountResult(ctx context.Context, run accountsRun, r *acc
 				ID: r.claim.ID, LeaseID: lease, ExternalID: r.externalID, State: r.state, Managed: r.managed,
 				BlockedReason: r.reason, LastError: r.lastError, Attempts: r.attempts, NextAttemptAt: next,
 				LastSyncedAt: r.syncedAt, LastSpecHash: r.specHash, SyncedEmployeeNumber: r.synced, Now: now,
-				ClaimedExternalID: r.current,
+				ClaimedExternalID: r.current, DisableRequestedAt: r.disableRequested,
 			})
 			if err != nil {
 				return err
@@ -916,6 +936,46 @@ func (s *server) renewAccountLease(ctx context.Context, id int64, lease uuid.UUI
 		return false
 	}
 	return n == 1
+}
+
+// releaseAccountLease ends a claim that writes no result (review L3), so the
+// link is free at once rather than when the lease lapses.
+func (s *server) releaseAccountLease(ctx context.Context, id int64, lease uuid.UUID) {
+	if err := store.New(s.deps.Pool).ReleaseAccountLease(ctx, store.ReleaseAccountLeaseParams{ID: id, LeaseID: lease}); err != nil {
+		s.logger().ErrorContext(ctx, "staff: release an account claim's lease", "worker", accountsWorkerName, "error", err.Error())
+	}
+}
+
+// errAccountLeaseLost is deactivateClaimed's answer when the claim's lease
+// lapsed or was taken before the call: nothing was called or written.
+var errAccountLeaseLost = errors.New("staff: the account claim's lease was lost")
+
+// deactivateClaimed deactivates user on the claim r was built from, for run
+// — Disable now's call, and the worker's for a disable it asked for — the
+// lease renewed first, and writes the result: a deactivation (or a user gone)
+// clears the disable requested; a refusal or a failure keeps it, a failure
+// retried at the next poll. It answers the call's error — the refusal or
+// failure the caller reports — and how the claim ended.
+func (s *server) deactivateClaimed(ctx context.Context, run accountsRun, r *accountResult, lease, user uuid.UUID, f accountFacts, now time.Time) (accountWorked, error) {
+	if !s.renewAccountLease(ctx, r.claim.ID, lease) {
+		return accountWorked{}, errAccountLeaseLost
+	}
+	step := accountStep{Kind: accountStepDeactivate}
+	got, err := s.callAccountStep(ctx, run, step, &user, f)
+	if err != nil {
+		if _, _, answer := accountCallCode(err); !answer {
+			s.logger().WarnContext(ctx, "staff: a deactivation failed", "worker", accountsWorkerName,
+				"person_id", r.claim.PersonID, "error", err.Error())
+		}
+		r.failedCall(step, err)
+		if errors.Is(err, contracts.ErrUserGone) {
+			r.disableRequested = nil
+		}
+	} else {
+		r.succeeded(step, nil, got, f, now)
+		r.disableRequested = nil
+	}
+	return accountWorked{failed: r.failed, err: s.writeAccountResult(ctx, run, r, lease, f, now)}, err
 }
 
 // recordPreparedUser writes the user a Prepare answered onto the claim's

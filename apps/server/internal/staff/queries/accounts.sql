@@ -66,7 +66,9 @@ ON CONFLICT (person_id, provider) DO NOTHING;
 -- name: ClaimAccountLink :one
 -- ClaimAccountLink leases the next due link — its next attempt reached or
 -- never set, no lease or a lapsed one — of a person whose flag is on and who
--- is not erased: the link row alone is locked (OF l), and one another cycle
+-- is not erased, or whose link carries a disable Disable now asked for and
+-- identity has not confirmed (disable_requested_at, Task 4c review M1),
+-- whatever the flag and the erasure: the link row alone is locked (OF l), and one another cycle
 -- is claiming is skipped. Blocked and failed links are claimed on their
 -- schedule like any other: the decision table never reads blocked as an
 -- input, so a link recovers when what blocked it is gone. LIMIT 1 with SKIP
@@ -78,7 +80,8 @@ UPDATE staff.identity_links SET lease_id = @lease_id::uuid, lease_until = @lease
 WHERE id = (
     SELECT l.id FROM staff.identity_links l
     JOIN staff.people p ON p.id = l.person_id
-    WHERE l.provider = 'identity' AND p.provision_account AND p.erased_at IS NULL
+    WHERE l.provider = 'identity'
+      AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL)
       AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= @now::timestamptz)
       AND (l.lease_until IS NULL OR l.lease_until <= @now::timestamptz)
     ORDER BY l.next_attempt_at NULLS FIRST, l.id
@@ -86,7 +89,7 @@ WHERE id = (
     FOR UPDATE OF l SKIP LOCKED
 )
 RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error, attempts,
-    last_synced_at, last_spec_hash, synced_employee_number;
+    last_synced_at, last_spec_hash, synced_employee_number, disable_requested_at;
 
 -- name: WriteAccountResult :execrows
 -- WriteAccountResult records what a claim did, on its lease alone, and
@@ -106,6 +109,7 @@ UPDATE staff.identity_links SET
     last_synced_at = sqlc.narg(last_synced_at)::timestamptz,
     last_spec_hash = sqlc.narg(last_spec_hash)::bytea,
     synced_employee_number = sqlc.narg(synced_employee_number)::varchar,
+    disable_requested_at = sqlc.narg(disable_requested_at)::timestamptz,
     lease_id = NULL,
     lease_until = NULL,
     updated_at = @now::timestamptz
@@ -156,28 +160,47 @@ WHERE id = (
     FOR UPDATE OF l
 )
 RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error, attempts,
-    last_synced_at, last_spec_hash, synced_employee_number;
+    last_synced_at, last_spec_hash, synced_employee_number, disable_requested_at;
+
+-- name: RequestAccountDisable :exec
+-- RequestAccountDisable records on the person's link, when it names a user,
+-- that Disable now asked for the user to be disabled — the first request's
+-- instant kept — in the transaction that turns the flag off, so a disable
+-- that never reaches identity is the worker's to finish (Task 4c review M1).
+UPDATE staff.identity_links SET disable_requested_at = coalesce(disable_requested_at, @now::timestamptz)
+WHERE person_id = @person_id AND provider = 'identity' AND external_id IS NOT NULL;
+
+-- name: ReleaseAccountLease :exec
+-- ReleaseAccountLease ends a claim that writes no result — its facts could
+-- not be read — so the link is not held for five minutes for nothing (Task
+-- 4c review L3).
+UPDATE staff.identity_links SET lease_id = NULL, lease_until = NULL
+WHERE id = @id AND lease_id = @lease_id::uuid;
 
 -- name: CountDueAccountLinks :one
 -- CountDueAccountLinks is the due links ClaimAccountLink would still take,
 -- leased or not: what POST /accounts/run reports as remaining.
 SELECT count(*) FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
-WHERE l.provider = 'identity' AND p.provision_account AND p.erased_at IS NULL
+WHERE l.provider = 'identity'
+  AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL)
   AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= @now::timestamptz);
 
 -- The account attention items (Task 4c, accounts_attention.go), from Staff's
 -- own rows alone: identity is never asked at read time.
 
 -- name: AccountLinkAttention :many
--- AccountLinkAttention is every link of a person not erased that the worker
--- left a reason or an error on, with the person's name and flag.
-SELECT l.person_id, p.display_name, p.provision_account, l.state, (l.external_id IS NOT NULL)::boolean AS has_user,
-    l.blocked_reason, l.last_error, l.attempts, l.updated_at
+-- AccountLinkAttention is every link the worker left a reason or an error
+-- on, or that carries a disable requested, of a person not erased — or of an
+-- erased one whose link carries a disable requested (Task 4c review M2) —
+-- with the person's name, flag and erasure.
+SELECT l.person_id, p.display_name, p.provision_account, (p.erased_at IS NOT NULL)::boolean AS erased,
+    l.blocked_reason, l.last_error, l.attempts, l.disable_requested_at, l.updated_at
 FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
-WHERE l.provider = 'identity' AND p.erased_at IS NULL
-  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL)
+WHERE l.provider = 'identity'
+  AND (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL)
+  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL OR l.disable_requested_at IS NOT NULL)
 ORDER BY l.person_id;
 
 -- name: AccountPersonAttention :many

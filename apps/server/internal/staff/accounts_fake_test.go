@@ -49,6 +49,40 @@ type fakeAccounts struct {
 	recentInvitation bool
 	// actors is the actor of every write, in order.
 	actors []contracts.Actor
+	// blocks holds a method's calls, after they are recorded, until the
+	// channel is closed or the call's context ends — which they then answer.
+	blocks map[string]chan struct{}
+}
+
+// blockUntil holds every call of method until release is closed or the
+// call's own context ends, nil to stop.
+func (f *fakeAccounts) blockUntil(method string, release chan struct{}) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.blocks == nil {
+		f.blocks = map[string]chan struct{}{}
+	}
+	if release == nil {
+		delete(f.blocks, method)
+		return
+	}
+	f.blocks[method] = release
+}
+
+// wait is a held call's wait: the context's error when it ended first.
+func (f *fakeAccounts) wait(ctx context.Context, method string) error {
+	f.mu.Lock()
+	release := f.blocks[method]
+	f.mu.Unlock()
+	if release == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-release:
+		return nil
+	}
 }
 
 // askedAccount is one Account call: the user and the address to compare.
@@ -235,7 +269,7 @@ func (f *fakeAccounts) Prepare(_ context.Context, actor contracts.Actor, spec co
 	return ref, nil
 }
 
-func (f *fakeAccounts) Activate(_ context.Context, actor contracts.Actor, id uuid.UUID, opts contracts.ActivateOpts) (contracts.AccountRef, error) {
+func (f *fakeAccounts) Activate(ctx context.Context, actor contracts.Actor, id uuid.UUID, opts contracts.ActivateOpts) (contracts.AccountRef, error) {
 	if !actor.Valid() {
 		return contracts.AccountRef{}, contracts.ErrInvalidActor
 	}
@@ -244,6 +278,9 @@ func (f *fakeAccounts) Activate(_ context.Context, actor contracts.Actor, id uui
 		note = "fresh"
 	}
 	if err := f.begin("Activate", note, id, actor); err != nil {
+		return contracts.AccountRef{}, err
+	}
+	if err := f.wait(ctx, "Activate"); err != nil {
 		return contracts.AccountRef{}, err
 	}
 	f.mu.Lock()
@@ -278,9 +315,12 @@ func (f *fakeAccounts) Activate(_ context.Context, actor contracts.Actor, id uui
 	return ref, nil
 }
 
-func (f *fakeAccounts) Deactivate(_ context.Context, actor contracts.Actor, id uuid.UUID) (contracts.AccountRef, error) {
+func (f *fakeAccounts) Deactivate(ctx context.Context, actor contracts.Actor, id uuid.UUID) (contracts.AccountRef, error) {
 	if !actor.Valid() {
 		return contracts.AccountRef{}, contracts.ErrInvalidActor
+	}
+	if err := f.wait(ctx, "Deactivate"); err != nil {
+		return contracts.AccountRef{}, err
 	}
 	if err := f.begin("Deactivate", "", id, actor); err != nil {
 		return contracts.AccountRef{}, err

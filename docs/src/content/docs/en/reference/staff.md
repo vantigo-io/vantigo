@@ -1082,7 +1082,8 @@ worker process, a run beside the ticker — through the link rows alone.
    no user, managed — `INSERT … ON CONFLICT (person_id, provider) DO NOTHING`, so two
    cycles write one.
 3. **The claims.** Up to fifty due links — `next_attempt_at` reached or never set, no
-   lease or a lapsed one, of a person whose flag is on and who is not erased — each
+   lease or a lapsed one, of a person whose flag is on and who is not erased, or carrying
+   a disable *Disable now* asked for ([below](#run-now-and-disable-now)) — each
    claimed alone by a conditional `UPDATE … FOR UPDATE OF l SKIP LOCKED` that sets
    `lease_id` and `lease_until` (five minutes on) and commits at once. A link another
    cycle holds is skipped; a link another transaction has locked at that instant (HR's
@@ -1195,7 +1196,12 @@ name. Each keeps the worker's disciplines: no cycle-wide lock — a link is clai
 by a lease, in a statement that commits at once, so a run and the worker's ticker share
 the work — every identity call on no connection under the two-minute timeout, the
 result written under the person's lock on the claim's lease and only onto the user the
-claim knew.
+claim knew. Each runs on the request's values but not its cancellation
+(`context.WithoutCancel`, review M3): a client or a proxy that gives up does not cut a
+call in flight, record a false failure or leave a live lease — the work finishes, which
+when identity or the mail server is slow can take minutes. A claim that writes no
+result (its facts unreadable, or naming no user) releases its lease at once
+(`ReleaseAccountLease`, review L3).
 
 - **`POST /accounts/run`** runs one cycle: the preparing links of the people now due,
   then the due links claimed one at a time, at most fifty, **none begun after sixty
@@ -1225,22 +1231,32 @@ claim knew.
   the person's lock, the link locked last: a live lease is 409 `accounts_busy` and
   nothing is written; otherwise the flag is written off — `account_flag_updated`
   `{fields: {provisionAccount: {from: true, to: false}}}`, `account_revision` moved, the
-  person's `revision` and `updated_at` not — and committed. Then the link is claimed
+  person's `revision` and `updated_at` not — and, when the link names a user,
+  **`identity_links.disable_requested_at`** set (the first request's instant kept,
+  review M1), and committed. Then the link is claimed
   (`ClaimPersonAccountLink`, the flag no longer on), the lease renewed, `Deactivate`
   called for its user with the caller as the actor, and the result written as the
   worker writes one (`account_deactivated`, the link `disabled`). With the flag off no
-  cycle claims the link again, so the user stays disabled until HR turns the flag on.
+  cycle claims the link again — once the disable is done — so the user stays disabled
+  until HR turns the flag on. **The disable asked for is the worker's to finish**:
+  `disable_requested_at` is cleared only by a `Deactivate` identity carried out, or by
+  `ErrUserGone`; a refusal or a failure keeps it. `ClaimAccountLink` also claims a link
+  carrying it whatever the flag and the erasure, and the worker, outside the decision
+  table (whose "flag off: nothing" it overrides, a documented branch), deactivates its
+  user — a failure retried at every poll, as a leaver's, a refusal daily. HR's turning
+  the flag on again lets the request lapse; `SetPersonLink` clears it with the worker's
+  other columns. So a Disable now cut short — the client gone mid-call, identity down,
+  the link claimed between the commit and the claim — is finished by the worker.
   A person with no link, or a link naming no user yet, has the flag turned off alone
   (200). An erased person may be disabled. `ErrAccountNotManaged` is 409
   `account_not_managed` and `ErrAccountPrivileged` or `ErrLastOwner` 409
   `account_privileged` — the flag off, the reason on the link; `ErrUserGone` is done
   (200, the link `failed: user_gone`). A call that could not be made is **503
   `accounts_unavailable` with the flag already off**: the link's `last_error`
-  `accounts_unavailable`, `attempts` counted, and `accountFailing` raised, since no
-  cycle retries a link whose flag is off — HR sends it again. A link claimed by a cycle
-  in the instant between the commit and the claim is 409 `accounts_busy` with the flag
-  off; that cycle reads the flag off (`flagOffMeanwhile`), and the request sent again
-  disables the user.
+  `accounts_unavailable`, `attempts` counted, `disable_requested_at` kept, and
+  `accountFailing` raised while the worker retries. A link claimed by a cycle in the
+  instant between the commit and the claim is 409 `accounts_busy` with the flag off;
+  the cycle holding it, or the next, deactivates the user from the marker.
 
 ## My page
 
@@ -2966,10 +2982,12 @@ the caller's roles find is listed once.
 `staff:manage`'s alone — never `staff:personal-data` without it, a manager, an Approver
 or a colleague — and are derived from Staff's own rows in the snapshot, never by asking
 identity: the links as the [accounts worker](#the-accounts-worker) wrote them
-(`AccountLinkAttention`: every link of a person not erased with a `blocked_reason` or a
-`last_error`) and one person query (`AccountPersonAttention`). A person's item is listed
-only while their flag is on and they are not erased — but for `accountFailing` after a
-failed *Disable now* — with `id` `<type>/<person id>`, `entityId` the person, `title`
+(`AccountLinkAttention`: every link with a `blocked_reason`, a `last_error` or a
+`disable_requested_at`, of a person not erased — or of an erased one whose link carries
+`disable_requested_at`) and one person query (`AccountPersonAttention`). A person's item is listed
+only while their flag is on and they are not erased — but for `accountFailing` from a
+disable requested, raised for an erased record too (review M2) under the neutral title
+"An erased person" — with `id` `<type>/<person id>`, `entityId` the person, `title`
 the person's display name and nothing more (no address, no reason beyond the type) and
 `occurredAt` the link's `updated_at` (today for the two person-query items).
 
@@ -2988,7 +3006,7 @@ the person's display name and nothing more (no address, no reason beyond the typ
 | `accountEmailDiffers` | `email_differs` | A non-pending user's address differs from the person's. |
 | `accountEmailTaken` | `account_email_taken` | Another user holds the address. |
 | `accountNumberTaken` | `employee_number_taken` | An unmanaged user holds the employee number. |
-| `accountFailing` | `last_error` | `attempts` ≥ 3 with `last_error` set; or `blocked_reason = invalid_actor` (Staff's own fault, folded in); or the flag off with `last_error` set on a link naming a user not `disabled` — a *Disable now* identity did not answer. |
+| `accountFailing` | `last_error`, `disable_requested_at` | The flag on and not erased: `attempts` ≥ 3 with `last_error` set, or `blocked_reason = invalid_actor` (Staff's own fault, folded in). Otherwise — the flag off, or erased — only from `disable_requested_at`: set with `last_error`, or set more than ten minutes ago (longer than a claim's lease, so a disable in hand raises nothing). A flag turned off after failures raises nothing (review L1). |
 | `invitationUnanswered` | `invitation_unanswered` | Three invitations unanswered in the spell. |
 | `invitationRevoked` | `invitation_revoked` | An Owner revoked the pending user's invitation. |
 | `employeeRoleMissing` | `employee_role_missing` | Installation item: one, `id` the type, `entityId` `settings`, `count` the links, `occurredAt` the oldest such write. |

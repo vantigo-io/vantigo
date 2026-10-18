@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -80,12 +81,15 @@ func (s *server) PostStaffAccountsRun(ctx context.Context, _ gen.PostStaffAccoun
 	if _, _, unavailable := s.runMode(ctx); unavailable {
 		return gen.PostStaffAccountsRun503ApplicationProblemPlusJSONResponse(accountsUnavailable()), nil
 	}
+	// The cycle goes on if the client goes away (review M3): a claim cut
+	// mid-call would record a false failure and leave its lease live.
+	work := context.WithoutCancel(ctx)
 	run.until = s.deps.Clock().Add(accountsRunBudget)
-	tally, err := s.accountsCycle(ctx, run)
+	tally, err := s.accountsCycle(work, run)
 	if err != nil {
 		return nil, err
 	}
-	remaining, err := store.New(s.deps.Pool).CountDueAccountLinks(ctx, s.deps.Clock())
+	remaining, err := store.New(s.deps.Pool).CountDueAccountLinks(work, s.deps.Clock())
 	if err != nil {
 		return nil, fmt.Errorf("staff: count the due account links: %w", err)
 	}
@@ -133,6 +137,8 @@ func (s *server) PostStaffPeopleByIdAccountRun(ctx context.Context, req gen.Post
 	if unavailable {
 		return gen.PostStaffPeopleByIdAccountRun503ApplicationProblemPlusJSONResponse(accountsUnavailable()), nil
 	}
+	// The run goes on if the client goes away (review M3).
+	ctx = context.WithoutCancel(ctx)
 	now := s.deps.Clock()
 	f, err := s.readAccountFacts(ctx, req.Id, now)
 	if errors.Is(err, errPersonNotFound) {
@@ -210,6 +216,13 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 		default:
 			user = link.ExternalID
 		}
+		// The disable asked for, recorded with the flag (review M1): what
+		// does not reach identity below is the worker's to finish.
+		if user != nil {
+			if err := txq.RequestAccountDisable(ctx, store.RequestAccountDisableParams{PersonID: req.Id, Now: now}); err != nil {
+				return fmt.Errorf("staff: record person %d's disable: %w", req.Id, err)
+			}
+		}
 		if !current.provisionAccount {
 			return nil
 		}
@@ -230,6 +243,11 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 	}
 	if err != nil {
 		return nil, err
+	}
+	// Committed: the rest goes on if the client goes away (review M1).
+	ctx = context.WithoutCancel(ctx)
+	if hook, ok := disableCommittedHooks.Load(req.Id); ok {
+		hook.(func())()
 	}
 	if user != nil {
 		if resp, err := s.disableLinkedUser(ctx, run, req.Id, now); resp != nil || err != nil {
@@ -256,7 +274,6 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 // or a failure; nil, nil when the user is disabled (or gone: nothing left
 // to disable).
 func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personID int64, now time.Time) (gen.PostStaffPeopleByIdAccountDisableResponseObject, error) {
-	log := s.logger().With("person_id", personID)
 	claim, lease, busy, err := s.claimPersonLink(ctx, personID, now)
 	switch {
 	case err != nil:
@@ -264,41 +281,40 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 	case busy:
 		r, _ := asRefusal(accountsBusy())
 		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(r.problem), nil
-	case claim == nil || claim.ExternalID == nil:
+	case claim == nil:
+		return nil, nil
+	case claim.ExternalID == nil:
+		s.releaseAccountLease(ctx, claim.ID, lease)
 		return nil, nil
 	}
 	f, err := s.readAccountFacts(ctx, personID, now)
-	if errors.Is(err, errPersonNotFound) {
-		return gen.PostStaffPeopleByIdAccountDisable404Response{}, nil
-	}
 	if err != nil {
+		s.releaseAccountLease(ctx, claim.ID, lease)
+		if errors.Is(err, errPersonNotFound) {
+			return gen.PostStaffPeopleByIdAccountDisable404Response{}, nil
+		}
 		return nil, err
 	}
 	r := newAccountResult(*claim)
-	step := accountStep{Kind: accountStepDeactivate}
 	id, perr := uuid.Parse(*claim.ExternalID)
 	var refusal error
-	switch {
-	case perr != nil:
+	if perr != nil {
 		r.answered(reasonUserGone)
 		r.state = linkStateFailed
-	case !s.renewAccountLease(ctx, claim.ID, lease):
-		r, _ := asRefusal(accountsBusy())
-		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(r.problem), nil
-	default:
-		got, err := s.callAccountStep(ctx, run, step, &id, f)
-		if err != nil {
-			if _, _, answer := accountCallCode(err); !answer {
-				log.WarnContext(ctx, "staff: Disable now's call failed", "error", err.Error())
-			}
-			r.failedCall(step, err)
-			refusal = err
-		} else {
-			r.succeeded(step, nil, got, f, now)
+		r.disableRequested = nil
+		if err := s.writeAccountResult(ctx, run, r, lease, f, now); err != nil {
+			return nil, err
 		}
-	}
-	if err := s.writeAccountResult(ctx, run, r, lease, f, now); err != nil {
-		return nil, err
+	} else {
+		worked, callErr := s.deactivateClaimed(ctx, run, r, lease, id, f, now)
+		if errors.Is(callErr, errAccountLeaseLost) {
+			b, _ := asRefusal(accountsBusy())
+			return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(b.problem), nil
+		}
+		if worked.err != nil {
+			return nil, worked.err
+		}
+		refusal = callErr
 	}
 	switch {
 	case refusal == nil:
@@ -320,3 +336,8 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 		return nil, fmt.Errorf("staff: Disable now for person %d: %w", personID, refusal)
 	}
 }
+
+// disableCommittedHooks is what a test runs, by person, when Disable now has
+// committed the flag off and not yet claimed the link (export_test.go); empty
+// in production.
+var disableCommittedHooks sync.Map

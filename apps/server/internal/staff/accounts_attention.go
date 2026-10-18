@@ -21,6 +21,16 @@ import (
 // the settings.
 const settingsEntity = "settings"
 
+// disableOverdueAfter is how long a disable Disable now asked for may wait
+// unconfirmed before accountFailing is raised for it: longer than a claim's
+// lease, so a disable still in hand raises nothing (Task 4c review M1).
+const disableOverdueAfter = 10 * time.Minute
+
+// erasedPersonTitle is an account item's title for an erased record (Task 4c
+// review M2): the item says that an erased person's account still needs its
+// disable, and names nobody.
+const erasedPersonTitle = "An erased person"
+
 // accountReasonItems is the item every reason the worker writes as a link's
 // blocked_reason raises (accounts_decide.go, accounts_worker.go; the walk in
 // accounts_attention_internal_test.go keeps it whole). no_employment and
@@ -63,17 +73,18 @@ var accountInstallationItems = map[gen.StaffStatsAttentionItemType]string{
 }
 
 // accountAttention is what the account items are judged on: the links the
-// worker left a reason or an error on, and the people the person query
-// found, at today.
+// worker left a reason, an error or a disable requested on, and the people
+// the person query found, at today and now.
 type accountAttention struct {
 	links  []store.AccountLinkAttentionRow
 	people []store.AccountPersonAttentionRow
 	today  time.Time
+	now    time.Time
 }
 
 // readAccountAttention reads the account items' rows on q, a snapshot's.
-func readAccountAttention(ctx context.Context, q *store.Queries, today time.Time) (accountAttention, error) {
-	a := accountAttention{today: today}
+func readAccountAttention(ctx context.Context, q *store.Queries, today, now time.Time) (accountAttention, error) {
+	a := accountAttention{today: today, now: now}
 	var err error
 	if a.links, err = q.AccountLinkAttention(ctx); err != nil {
 		return a, fmt.Errorf("staff: read the account links for attention: %w", err)
@@ -84,21 +95,17 @@ func readAccountAttention(ctx context.Context, q *store.Queries, today time.Time
 	return a, nil
 }
 
-// failing is whether l raises accountFailing: three failed attempts in a
-// row, a fault of Staff's own, or a Disable now identity did not answer —
-// the flag off, the link naming a user not disabled, the error set — which
-// no cycle retries, the flag being off.
-func accountLinkFailing(l store.AccountLinkAttentionRow) bool {
-	switch {
-	case deref(l.BlockedReason) == reasonInvalidActor:
-		return true
-	case l.LastError == nil:
-		return false
-	case l.Attempts >= accountsMaxAttempts:
-		return true
-	default:
-		return !l.ProvisionAccount && l.HasUser && l.State != linkStateDisabled
+// accountLinkFailing is whether l raises accountFailing at now. For a
+// person whose flag is on and who is not erased: three failed attempts in a
+// row, or a fault of Staff's own (invalid_actor). Otherwise only from a
+// disable Disable now asked for that identity has not confirmed — failed
+// once, or waiting longer than disableOverdueAfter (review M1, L1); the
+// worker retries it at every poll meanwhile.
+func accountLinkFailing(l store.AccountLinkAttentionRow, now time.Time) bool {
+	if l.Erased || !l.ProvisionAccount {
+		return l.DisableRequestedAt != nil && (l.LastError != nil || !now.Before(l.DisableRequestedAt.Add(disableOverdueAfter)))
 	}
+	return deref(l.BlockedReason) == reasonInvalidActor || (l.LastError != nil && l.Attempts >= accountsMaxAttempts)
 }
 
 // items is the account items.
@@ -113,12 +120,16 @@ func (a accountAttention) items() []gen.StaffStatsAttentionItem {
 	}
 	installation := map[gen.StaffStatsAttentionItemType]*gen.StaffStatsAttentionItem{}
 	for _, l := range a.links {
-		if accountLinkFailing(l) {
-			out = append(out, personItem(gen.AccountFailing, l.PersonID, l.PersonID, l.DisplayName, l.UpdatedAt))
+		if accountLinkFailing(l, a.now) {
+			title := l.DisplayName
+			if l.Erased {
+				title = erasedPersonTitle
+			}
+			out = append(out, personItem(gen.AccountFailing, l.PersonID, l.PersonID, title, l.UpdatedAt))
 		}
 		reason := deref(l.BlockedReason)
 		kind, ok := accountReasonItems[reason]
-		if !l.ProvisionAccount || !ok || accountPersonReasons[reason] || kind == gen.AccountFailing {
+		if l.Erased || !l.ProvisionAccount || !ok || accountPersonReasons[reason] || kind == gen.AccountFailing {
 			continue
 		}
 		title, isInstallation := accountInstallationItems[kind]
