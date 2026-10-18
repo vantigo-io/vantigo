@@ -848,6 +848,8 @@ const en = {
   "admin.refusalAccountPrivileged":
     "An Owner or a system administrator cannot be managed by Staff; an Owner looks after those accounts by hand.",
   "admin.refusalEmployeeNumberTaken": "Another user already has this employee number.",
+  "admin.refusalPendingPromotion": "A pending user cannot be made an Owner until they have accepted their invitation.",
+  "admin.promotionStopsManaging": "Making them an Owner stops Staff managing this account.",
   "admin.refusalAccountPending":
     "This user has not accepted their invitation yet: the account opens only when they accept it.",
   "admin.revokedReason.owner": "Revoked by an Owner",
@@ -1277,6 +1279,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.refusalAccountPrivileged":
     "En eier eller en systemadministrator kan ikke styres av Ansatte; slike kontoer tar en eier seg av for hånd.",
   "admin.refusalEmployeeNumberTaken": "En annen bruker har allerede dette ansattnummeret.",
+  "admin.refusalPendingPromotion":
+    "En ventende bruker kan ikke gjøres til eier før vedkommende har godtatt invitasjonen.",
+  "admin.promotionStopsManaging": "Gjør du vedkommende til eier, slutter Ansatte å styre denne kontoen.",
   "admin.refusalAccountPending":
     "Denne brukeren har ikke godtatt invitasjonen ennå: kontoen åpnes først når personen godtar den.",
   "admin.revokedReason.owner": "Tilbakekalt av en eier",

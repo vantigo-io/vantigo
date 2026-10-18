@@ -798,6 +798,39 @@ describe("the dashboard's staff account attention items", () => {
     }
   });
 
+  it("words an erased person's failing account fully in the reader's language", () => {
+    // The server's title for an erased record is this English constant
+    // (accounts_attention.go, erasedPersonTitle), never a name.
+    const item = { module: "staff" as const, type: "accountFailing", entityId: "1042", title: "An erased person" };
+    const key = attentionTitleKey(item) as string;
+    expect(key).toBe("dashboard.staffAccountFailingErased");
+    const nb = i18n.t(key, { ns: "host", lng: "nb" });
+    expect(nb).not.toBe(key);
+    expect(nb).not.toContain("erased");
+    expect(nb).not.toContain("An erased person");
+    expect(i18n.t(key, { ns: "host", lng: "en" })).toContain("erased person");
+    // A person named otherwise keeps the sentence with the name.
+    expect(attentionTitleKey({ ...item, title: "Kari Nordmann" })).toBe("dashboard.staffAccountFailing");
+  });
+
+  it("has a link and a sentence for every type staff.yaml lists", () => {
+    const yaml = Object.values(
+      import.meta.glob<string>("../../../../../openapi/staff.yaml", { query: "?raw", import: "default", eager: true }),
+    )[0];
+    if (!yaml) throw new Error("openapi/staff.yaml was not found");
+    const schema = yaml.slice(yaml.indexOf("        StaffStatsAttentionItem:"));
+    const block = schema.slice(schema.indexOf("                type:\n                    enum:"));
+    const types = [
+      ...block.slice(0, block.indexOf("                    type: string")).matchAll(/^ {24}- (\w+)$/gm),
+    ].map((match) => match[1]);
+    expect(types.length).toBeGreaterThan(30);
+    for (const type of types) {
+      const entityId = type === "headcountThreshold" ? "5" : "1042";
+      expect(attentionHref({ module: "staff", type, entityId }), type).not.toBe("/staff");
+      expect(attentionTitleKey({ module: "staff", type, entityId }), type).toBeDefined();
+    }
+  });
+
   it("words the sole holder's self-approval as the owner decided, never naming the type", () => {
     const key = attentionTitleKey({ module: "staff", type: "hrOnlySelfApproved" }) as string;
     expect(i18n.t(key, { ns: "host", lng: "en", name: "Kari Nordmann" })).toBe(

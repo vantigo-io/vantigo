@@ -71,6 +71,8 @@ const en = {
   "dashboard.staffAccountEmailTaken": "Another account already has {{name}}'s address",
   "dashboard.staffAccountNumberTaken": "An account Staff does not manage has {{name}}'s employee number",
   "dashboard.staffAccountFailing": "{{name}}'s account could not be updated: the attempts keep failing",
+  "dashboard.staffAccountFailingErased":
+    "An erased person's account could not be disabled yet: the attempts keep failing",
   "dashboard.staffInvitationUnanswered": "{{name}} has not answered three invitations to their account",
   "dashboard.staffInvitationRevoked": "An Owner revoked {{name}}'s invitation to their account",
   "dashboard.staffEmployeeRoleMissing_one": "{{count}} account waits: no Owner has named the roles Staff may give",
@@ -258,6 +260,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.staffAccountEmailTaken": "En annen konto har allerede adressen til {{name}}",
   "dashboard.staffAccountNumberTaken": "En konto Ansatte ikke styrer, har ansattnummeret til {{name}}",
   "dashboard.staffAccountFailing": "Kontoen til {{name}} kunne ikke oppdateres: forsøkene feiler",
+  "dashboard.staffAccountFailingErased": "Kontoen til en slettet person er ennå ikke deaktivert: forsøkene feiler",
   "dashboard.staffInvitationUnanswered": "{{name}} har ikke svart på tre invitasjoner til kontoen sin",
   "dashboard.staffInvitationRevoked": "En eier tilbakekalte invitasjonen til kontoen til {{name}}",
   "dashboard.staffEmployeeRoleMissing_one": "{{count}} konto venter: ingen eier har valgt rollene Ansatte kan gi",

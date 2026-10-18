@@ -22,6 +22,8 @@ const deniedKeys = (catalog: PermissionDescriptor[]) =>
     ...catalog.filter((p) => !p.delegable).map((p) => p.key),
   ]);
 
+const codePoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 const provisioningRolesKey = ["owner", "provisioning-roles"] as const;
 
 /**
@@ -41,9 +43,12 @@ export const ProvisioningRolesSection = ({
   const current = useQuery({ queryKey: provisioningRolesKey, queryFn: listProvisioningRoles });
   // The Owner's edits, over the set as loaded; undefined until they tick or untick a role.
   const [edited, setEdited] = useState<string[] | undefined>(undefined);
-  const selected = edited ?? current.data?.roles.map((role) => role.id) ?? [];
+  const saved = current.data?.roles.map((role) => role.id) ?? [];
+  const selected = edited ?? saved;
+  const changed = selected.length !== saved.length || selected.some((id) => !saved.includes(id));
   const denied = deniedKeys(catalog);
-  const deniedKeyOf = (role: AuthorizationRole) => role.permissions.find((key) => denied.has(key));
+  // Identity names a role's first refused key in key order (plain code-point order, as Go sorts).
+  const deniedKeyOf = (role: AuthorizationRole) => role.permissions.filter((key) => denied.has(key)).sort(codePoint)[0];
   const save = useMutation({
     mutationFn: (roleIds: string[]) => replaceProvisioningRoles(roleIds),
     onSuccess: (data) => {
@@ -62,7 +67,7 @@ export const ProvisioningRolesSection = ({
         // same is found here so the sentence is in the reader's language.
         const offending = customRoles
           .filter((role) => roleIds.includes(role.id) && deniedKeyOf(role))
-          .sort((a, b) => a.name.localeCompare(b.name))[0];
+          .sort((a, b) => codePoint(a.name, b.name))[0];
         const key = offending && deniedKeyOf(offending);
         message =
           offending && key
@@ -108,6 +113,8 @@ export const ProvisioningRolesSection = ({
                 <Checkbox
                   label={role.displayName}
                   checked={selected.includes(role.id)}
+                  // A role that grants administration is never newly given; one already in the set may be taken out.
+                  disabled={!!deniedKeyOf(role) && !selected.includes(role.id)}
                   onChange={(event) => toggle(role.id, event.currentTarget.checked)}
                 />
                 <Group gap={4} pl={32}>
@@ -125,7 +132,7 @@ export const ProvisioningRolesSection = ({
               </Stack>
             ))}
             <Group>
-              <Button onClick={() => save.mutate(selected)} loading={save.isPending}>
+              <Button onClick={() => save.mutate(selected)} loading={save.isPending} disabled={!changed}>
                 {t("admin.saveProvisioningRoles")}
               </Button>
             </Group>

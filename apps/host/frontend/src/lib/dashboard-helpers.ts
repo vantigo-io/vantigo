@@ -355,6 +355,14 @@ const staffAttentionTitleKeys: Record<string, string> = {
   accountModeMismatch: "dashboard.staffAccountModeMismatch",
 };
 
+/**
+ * The title Staff's server gives an account item about an erased record, in
+ * place of a name: `erasedPersonTitle` in
+ * apps/server/internal/staff/accounts_attention.go. An interim match on the
+ * English words, until the item carries a marker of its own.
+ */
+export const staffErasedPersonTitle = "An erased person";
+
 const staffHeadcountThresholdKeys: Record<string, string> = {
   "5": "dashboard.staffHeadcountThreshold5",
   "30": "dashboard.staffHeadcountThreshold30",
@@ -428,6 +436,8 @@ export const attentionTitleKey = (item: {
   if (item.module === "staff") {
     if (item.type === "headcountThreshold")
       return item.entityId ? staffHeadcountThresholdKeys[item.entityId] : undefined;
+    if (item.type === "accountFailing" && item.title === staffErasedPersonTitle)
+      return "dashboard.staffAccountFailingErased";
     return staffAttentionTitleKeys[item.type];
   }
   return undefined;

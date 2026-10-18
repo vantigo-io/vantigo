@@ -81,6 +81,19 @@ const refusalMessage = (error: unknown, t: (key: string) => string) => {
   return error instanceof Error ? error.message : t("common.requestFailed");
 };
 
+/** A menu item's label with, when it cannot be used, the reason beneath it. */
+const withReason = (label: string, reason?: string) =>
+  reason ? (
+    <Stack gap={0}>
+      <span>{label}</span>
+      <Text size="xs" c="dimmed" maw={260}>
+        {reason}
+      </Text>
+    </Stack>
+  ) : (
+    label
+  );
+
 const showUserFormError = (
   error: unknown,
   form: { setErrors: (errors: Record<string, string>) => void },
@@ -164,7 +177,15 @@ const UsersPage = () => {
         color: "teal",
       });
     },
-    onError: (e) => showUserFormError(e, form, t("admin.userSaveFailed"), t),
+    onError: (e) =>
+      // Identity refuses promoting a pending user account_pending: said as a refused promotion.
+      editing?.pending && form.values.role === "Owner" && (e as { code?: string }).code === "account_pending"
+        ? notifications.show({
+            color: "red",
+            title: t("admin.userSaveFailed"),
+            message: t("admin.refusalPendingPromotion"),
+          })
+        : showUserFormError(e, form, t("admin.userSaveFailed"), t),
   });
   const action = useMutation({
     mutationFn: ({ user, kind }: { user: ManagedUser; kind: "disable" | "enable" | "delete" }) =>
@@ -321,8 +342,12 @@ const UsersPage = () => {
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Item onClick={() => openEdit(u)}>{t("admin.editDetails")}</Menu.Item>
-          <Menu.Item leftSection={<IconMail size={15} />} onClick={() => reset.mutate(u.id)} disabled={reset.isPending}>
-            {t("admin.sendResetEmail")}
+          <Menu.Item
+            leftSection={<IconMail size={15} />}
+            onClick={() => reset.mutate(u.id)}
+            disabled={reset.isPending || u.pending}
+          >
+            {withReason(t("admin.sendResetEmail"), u.pending ? t("admin.enablePendingReason") : undefined)}
           </Menu.Item>
           <Menu.Item
             leftSection={<IconLock size={15} />}
@@ -330,8 +355,9 @@ const UsersPage = () => {
               setPasswordUser(u);
               passwordForm.reset();
             }}
+            disabled={u.pending}
           >
-            {t("admin.setInitialPassword")}
+            {withReason(t("admin.setInitialPassword"), u.pending ? t("admin.enablePendingReason") : undefined)}
           </Menu.Item>
           {staffManaged(u) ? (
             <Menu.Item
@@ -356,14 +382,21 @@ const UsersPage = () => {
           )}
           <Menu.Divider />
           {u.pending ? (
-            <Menu.Item leftSection={<IconUserCheck size={15} />} disabled>
-              <Stack gap={0}>
-                <span>{t("admin.enableAccess")}</span>
-                <Text size="xs" c="dimmed">
-                  {t("admin.enablePendingReason")}
-                </Text>
-              </Stack>
-            </Menu.Item>
+            <>
+              <Menu.Item leftSection={<IconUserCheck size={15} />} disabled>
+                {withReason(t("admin.enableAccess"), t("admin.enablePendingReason"))}
+              </Menu.Item>
+              {/* Staff creates a pending user disabled by Staff; an Owner may still disable them, which Staff never undoes. */}
+              {u.disabledBy !== "owner" && (
+                <Menu.Item
+                  leftSection={<IconUserOff size={15} />}
+                  onClick={() => confirm(u, "disable")}
+                  disabled={action.isPending}
+                >
+                  {t("admin.disableAccess")}
+                </Menu.Item>
+              )}
+            </>
           ) : u.disabled ? (
             <Menu.Item
               leftSection={<IconUserCheck size={15} />}
@@ -381,20 +414,14 @@ const UsersPage = () => {
               {t("admin.disableAccess")}
             </Menu.Item>
           )}
-          {staffManaged(u) ? (
-            <Text size="xs" c="dimmed" px="sm" py={6} maw={260}>
-              {t("admin.deleteManagedReason")}
-            </Text>
-          ) : (
-            <Menu.Item
-              color="red"
-              leftSection={<IconTrash size={15} />}
-              onClick={() => confirm(u, "delete")}
-              disabled={action.isPending}
-            >
-              {t("admin.deleteUser")}
-            </Menu.Item>
-          )}
+          <Menu.Item
+            color="red"
+            leftSection={<IconTrash size={15} />}
+            onClick={() => confirm(u, "delete")}
+            disabled={action.isPending || staffManaged(u)}
+          >
+            {withReason(t("admin.deleteUser"), staffManaged(u) ? t("admin.deleteManagedReason") : undefined)}
+          </Menu.Item>
         </Menu.Dropdown>
       </Menu>
     );
@@ -654,6 +681,11 @@ const UsersPage = () => {
               }))}
               {...form.getInputProps("role")}
             />
+            {editing && staffManaged(editing) && form.values.role === "Owner" && editing.role !== "Owner" && (
+              <Text size="sm" c="orange">
+                {t("admin.promotionStopsManaging")}
+              </Text>
+            )}
             {!editing && mode === "initial" && (
               <PasswordInput
                 label={t("admin.initialPassword")}
@@ -685,7 +717,8 @@ const UsersPage = () => {
             <TextInput
               label={t("admin.employeeNumber")}
               description={t("admin.employeeNumberHelp")}
-              maxLength={40}
+              maxLength={16}
+              withAsterisk
               {...adoptForm.getInputProps("employeeNumber")}
             />
             <Button type="submit" loading={adopt.isPending}>
