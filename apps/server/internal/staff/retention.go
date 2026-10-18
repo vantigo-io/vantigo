@@ -94,7 +94,8 @@ var columnClasses = map[string]string{
 	"identity_links.blocked_reason": "C", "identity_links.last_error": "C", "identity_links.attempts": "C",
 	"identity_links.next_attempt_at": "C", "identity_links.lease_id": "C", "identity_links.lease_until": "C",
 	"identity_links.last_synced_at": "C", "identity_links.last_spec_hash": "C", "identity_links.synced_employee_number": "C",
-	"identity_links.created_at": "C", "identity_links.updated_at": "C",
+	"identity_links.disable_requested_at": "C",
+	"identity_links.created_at":           "C", "identity_links.updated_at": "C",
 
 	// The terms (§3.3): what the job was is C; the pay, the seniority date
 	// and the pay grade are A, kept five years past the end year; the note is

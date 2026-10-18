@@ -235,6 +235,7 @@ type StaffIdentityLink struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	SyncedEmployeeNumber *string
+	DisableRequestedAt   *time.Time
 }
 
 type StaffLegalEntity struct {
