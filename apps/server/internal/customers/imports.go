@@ -440,16 +440,24 @@ func (s *server) PostCustomersImportsByImportIdCheck(ctx context.Context, req ge
 			map[string][]string{"mapping": {"Map the file's columns before checking it"}})), nil
 	}
 	now := s.deps.Clock()
+	// The state moves first and the results are cleared only when it moved:
+	// the worker may have taken the import up since the read above, and a
+	// run under way keeps the outcomes it has written.
+	queued := false
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		if err := txq.ClearImportRowResults(ctx, imp.ID); err != nil {
+		n, err := txq.RequestImportCheck(ctx, store.RequestImportCheckParams{ID: imp.ID, RequestedAt: ptrTime(now)})
+		if err != nil || n == 0 {
 			return err
 		}
-		_, err := txq.RequestImportCheck(ctx, store.RequestImportCheckParams{ID: imp.ID, RequestedAt: ptrTime(now)})
-		return err
+		queued = true
+		return txq.ClearImportRowResults(ctx, imp.ID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: queue a check: %w", err)
+	}
+	if !queued {
+		return gen.PostCustomersImportsByImportIdCheck409ApplicationProblemPlusJSONResponse(importRunningConflict()), nil
 	}
 	nudgeImportWorker()
 	view, err := s.importByID(ctx, imp.ID)
