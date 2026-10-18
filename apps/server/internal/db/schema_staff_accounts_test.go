@@ -37,7 +37,9 @@ const (
 // employee number is unique on upper() under the "C" collation, so i-1 is
 // refused beside I-1; and the account flag has its own revision,
 // people.account_revision, 1 by default; and the link keeps the employee
-// number the worker last synced, identity_links.synced_employee_number. The Down deletes the links that name no user — the
+// number the worker last synced, identity_links.synced_employee_number, and
+// when Disable now asked for its user to be disabled,
+// identity_links.disable_requested_at. The Down deletes the links that name no user — the
 // preparing ones — restores NOT NULL and the collation-dependent index, and
 // leaves the links that name a user as they were.
 func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
@@ -73,6 +75,15 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 		WHERE table_schema = 'staff' AND table_name = 'identity_links' AND column_name = 'synced_employee_number'`)
 	if !equalStrings(synced, []string{"character varying:16:YES"}) {
 		t.Errorf("identity_links.synced_employee_number = %v, want character varying:16:YES", synced)
+	}
+	// When Disable now asked for the link's user to be disabled and that is
+	// not yet confirmed (Task 4c review M1): what the worker finishes, and
+	// what raises accountFailing.
+	requested := staffCollect(t, ctx, pool, "disable_requested_at", `
+		SELECT data_type || ':' || is_nullable FROM information_schema.columns
+		WHERE table_schema = 'staff' AND table_name = 'identity_links' AND column_name = 'disable_requested_at'`)
+	if !equalStrings(requested, []string{"timestamp with time zone:YES"}) {
+		t.Errorf("identity_links.disable_requested_at = %v, want timestamp with time zone:YES", requested)
 	}
 	index := staffCollect(t, ctx, pool, "the employee number index", `
 		SELECT indexdef FROM pg_indexes WHERE schemaname = 'staff' AND indexname = 'ux_people_employee_number_upper'`)
@@ -147,6 +158,11 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 		SELECT column_name FROM information_schema.columns
 		WHERE table_schema = 'staff' AND table_name = 'identity_links' AND column_name = 'synced_employee_number'`); len(left) != 0 {
 		t.Errorf("the rollback left identity_links.synced_employee_number")
+	}
+	if left := staffCollect(t, ctx, pool, "disable_requested_at after the rollback", `
+		SELECT column_name FROM information_schema.columns
+		WHERE table_schema = 'staff' AND table_name = 'identity_links' AND column_name = 'disable_requested_at'`); len(left) != 0 {
+		t.Errorf("the rollback left identity_links.disable_requested_at")
 	}
 	for _, sql := range []string{`DELETE FROM staff.identity_links`, `DELETE FROM staff.people`} {
 		if _, err := pool.Exec(ctx, sql); err != nil {

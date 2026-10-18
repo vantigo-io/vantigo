@@ -1,7 +1,7 @@
 -- +goose Up
 -- Staff's accounts (staff foundation design S22–S27, §3.6, delivery C). The
 -- account flag, its dates and the link's worker columns are 00042's already;
--- this file changes two things of 00042's and adds two columns.
+-- this file changes two things of 00042's and adds three columns.
 --
 -- identity_links.external_id becomes nullable (plan reading 7): the accounts
 -- worker writes a preparing link — under the person's lock, before it calls
@@ -30,8 +30,16 @@
 -- other columns whenever the link names another user (SetPersonLink), so a
 -- person HR renumbered is still known by the number identity holds — and a
 -- user who holds an old number of someone else's is not.
+-- identity_links.disable_requested_at is when HR's Disable now asked for the
+-- link's user to be disabled, until identity has confirmed it (Task 4c review
+-- M1): Disable now turns the flag off and commits before it calls identity,
+-- so a call that never finished — the client gone, identity down, the link
+-- claimed meanwhile — leaves the marker, which the worker finishes (a link
+-- whose flag is off is claimed only while it is set) and from which the
+-- attention item is raised.
 ALTER TABLE staff.identity_links ALTER COLUMN external_id DROP NOT NULL;
 ALTER TABLE staff.identity_links ADD COLUMN synced_employee_number varchar(16);
+ALTER TABLE staff.identity_links ADD COLUMN disable_requested_at timestamptz;
 
 ALTER TABLE staff.people ADD COLUMN account_revision integer NOT NULL DEFAULT 1;
 
@@ -42,7 +50,8 @@ CREATE UNIQUE INDEX ux_people_employee_number_upper ON staff.people (upper(emplo
 -- An operator's last resort, never a routine rollback: a link naming no user
 -- is a preparing one, which 00042 cannot hold, so it is deleted — the person
 -- keeps their flag for the worker to prepare again — and the flag's own
--- revision and the synced employee number go.
+-- revision, the synced employee number and the disable marker go.
+ALTER TABLE staff.identity_links DROP COLUMN disable_requested_at;
 ALTER TABLE staff.identity_links DROP COLUMN synced_employee_number;
 ALTER TABLE staff.people DROP COLUMN account_revision;
 DROP INDEX staff.ux_people_employee_number_upper;
