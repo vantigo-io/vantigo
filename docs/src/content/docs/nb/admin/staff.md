@@ -264,9 +264,16 @@ HR slår flagget på igjen.
      ferdig selv.
    - `account_not_managed` (409): personen er koblet for hånd til en bruker Ansatte ikke
      styrer; `account_privileged` (409): brukeren er Owner eller SystemAdmin. Flagget er
-     av, men brukeren forblir aktiv: en Owner deaktiverer dem i identity. Ansatte prøver
-     ikke igjen; dashbordet viser *accountNotManaged* eller *accountPrivileged* for
-     personen til HR slår flagget på igjen eller fjerner koblingen.
+     av, men brukeren forblir aktiv: en Owner deaktiverer dem i identity, eller tar
+     brukeren inn for Ansatte igjen (eller fjerner Owner-rollen). Ansatte prøver
+     deaktiveringen igjen daglig — så når en Owner har tatt brukeren inn igjen eller
+     fjernet rollen, deaktiverer neste forsøk dem — og dashbordet viser
+     *accountNotManaged* eller *accountPrivileged* til det er gjort eller brukeren er
+     deaktivert i identity.
+   - `account_mismatch` (409): brukeren koblingen navngir har et annet ansattnummer — en
+     annens konto — og ingenting gjøres med dem. Flagget er av; koblingen viser
+     `mismatch` og dashbordet viser *accountMismatch*. Rett personens ansattnummer: neste
+     daglige forsøk deaktiverer da brukeren.
    - `accounts_unavailable` (503): identity svarte ikke. **Flagget er allerede av**, men
      brukeren er fortsatt aktiv: koblingen registrerer feilen, arbeideren prøver
      deaktiveringen igjen ved hver kjøring, og dashbordet viser *accountFailing* til
@@ -288,12 +295,12 @@ erased person».
 | `accountNoEmployment` | Flagget er på, men personen har ikke noe arbeidsforhold | Legg til arbeidsforholdet, eller slå flagget av |
 | `accountEmailMissing` | Personen har ingen adresse av typen flagget navngir | Legg til jobb- (eller privat) e-post, eller bytt adressevalget |
 | `accountNotFound` | Føderert: identitetsleverandøren har ikke opprettet brukeren ennå | Opprett brukeren hos leverandøren med personens ansattnummer |
-| `accountNotManaged` | En Owner lot Ansatte slutte å styre brukeren — eller, med flagget av, en Deaktiver nå som ble avvist for en bruker Ansatte ikke styrer | En Owner tar brukeren inn igjen eller deaktiverer dem i identity; HR slår flagget av, eller fjerner en selvbetjent kobling |
+| `accountNotManaged` | En Owner lot Ansatte slutte å styre brukeren — eller, med flagget av, en Deaktiver nå som ble avvist for en bruker Ansatte ikke styrer, prøvd igjen daglig | En Owner tar brukeren inn igjen (neste forsøk deaktiverer dem) eller deaktiverer dem i identity; HR fjerner en selvbetjent kobling |
 | `accountBlockedByOwner` | En Owner deaktiverte den ventende brukeren | En Owner aktiverer dem i identity, om de skal begynne |
 | `accountDisabledByOwner` | En Owner deaktiverte brukeren mens personen er ansatt | En Owner avgjør; Ansatte opphever det ikke |
 | `accountUserGone` | Brukeren ble slettet i identity | Fjern koblingen, eller en Owner gjenoppretter kontoen |
-| `accountPrivileged` | Brukeren er Owner eller SystemAdmin — også etter en Deaktiver nå som ble avvist for dem | En Owner deaktiverer dem i identity, for hånd |
-| `accountMismatch` | Brukeren har et annet ansattnummer: en annens konto | Sjekk personens ansattnummer |
+| `accountPrivileged` | Brukeren er Owner eller SystemAdmin — også etter en Deaktiver nå som ble avvist for dem, prøvd igjen daglig | En Owner deaktiverer dem i identity, eller fjerner rollen (neste forsøk deaktiverer dem) |
+| `accountMismatch` | Brukeren har et annet ansattnummer: en annens konto — også etter en Deaktiver nå som ikke gjorde noe med den | Sjekk personens ansattnummer; når det er riktig, kjøres deaktiveringen |
 | `accountModeChanged` | En ventende bruker laget i lokal modus, nå i føderert modus | En Owner fullfører eller sletter brukeren |
 | `accountEmailDiffers` | Brukerens adresse i identity er ulik personens | En Owner endrer den i identity (Ansatte endrer den bare mens brukeren venter) |
 | `accountEmailTaken` | En annen bruker i identity har adressen | Rydd opp i duplikatet i identity, eller endre personens adresse |
