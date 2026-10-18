@@ -42,6 +42,8 @@ type fakeAccounts struct {
 	writes     []string
 	onWrite    func(method string, user uuid.UUID)
 	onRead     func(user uuid.UUID)
+	// onMode runs at the start of every Mode call, outside the lock.
+	onMode func()
 	// readErr is an Account failure for one user alone.
 	readErr map[uuid.UUID]error
 	// recentInvitation makes a FreshInvitation an ordinary Activate, as
@@ -136,6 +138,12 @@ func (f *fakeAccounts) accountCalls() []askedAccount {
 }
 
 func (f *fakeAccounts) Mode(context.Context) (string, error) {
+	f.mu.Lock()
+	hook := f.onMode
+	f.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.mode, f.modeErr

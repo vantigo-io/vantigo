@@ -237,8 +237,8 @@ identity records and the history names.
   says how many accounts it worked, how many were done, how many failed and how many are
   left (`{attempted, done, failed, remaining}`): the links it worked, those identity
   answered (a step carried out, or a reason recorded), those it could not reach identity
-  for (retried by the worker), and the due links it left. It begins no link after
-  sixty seconds and takes at most fifty; `remaining` is for the worker's next cycle, or
+  for (retried by the worker), and the due links it left. It begins no link — nor
+  prepares one — after sixty seconds and takes at most fifty; `remaining` is for the worker's next cycle, or
   run it again. It runs beside the worker's own cycles without waiting for them.
 - **One person**: **Run now** on the person's Account tab
   (`POST /api/v1/staff/people/{id}/account/run`) works the person now, whatever their

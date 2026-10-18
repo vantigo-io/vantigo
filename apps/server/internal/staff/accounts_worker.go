@@ -202,7 +202,7 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 	case err != nil:
 		return tally, fmt.Errorf("staff: read the authority mode: %w", err)
 	}
-	if err := s.prepareAccountLinks(ctx, mode); err != nil {
+	if err := s.prepareAccountLinks(ctx, mode, run.until); err != nil {
 		return tally, err
 	}
 	zone, err := s.settingsZone(ctx)
@@ -332,14 +332,19 @@ func (f accountFacts) nextMidnight() time.Time {
 
 // prepareAccountLinks writes a preparing link for every person the decision
 // table says is due to be prepared, each under the person's lock, the flag
-// and the erasure judged again there.
-func (s *server) prepareAccountLinks(ctx context.Context, mode string) error {
+// and the erasure judged again there. A run by hand stops at its budget
+// (until; zero for the worker's own cycle): the people left wait for the
+// worker's next cycle (the law-and-locks review, minor 6).
+func (s *server) prepareAccountLinks(ctx context.Context, mode string, until time.Time) error {
 	ids, err := store.New(s.deps.Pool).AccountCandidates(ctx)
 	if err != nil {
 		return fmt.Errorf("staff: read the people due an account: %w", err)
 	}
 	for _, id := range ids {
 		now := s.deps.Clock()
+		if !until.IsZero() && !now.Before(until) {
+			break
+		}
 		f, err := s.readAccountFacts(ctx, id, now)
 		if errors.Is(err, errPersonNotFound) {
 			continue
