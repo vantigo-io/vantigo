@@ -1039,6 +1039,10 @@ func duplicateIdentityRowMessage(problem *gen.CustomerConflictProblem) string {
 	return message + ". Tick 'Allow a customer to share a legal identity' to keep both."
 }
 
+// importValueRefusal is a row's error when the database refuses one of its
+// values as too long or out of range (SQLSTATE class 22).
+const importValueRefusal = "A value is out of range or too long for its field."
+
 // errImportDryRun rolls a dry-run row's transaction back once the row ran.
 var errImportDryRun = errors.New("customers: import dry run rolled back")
 
@@ -1086,6 +1090,12 @@ func (s *server) runImportRow(ctx context.Context, on db.TxBeginner, importID in
 			})
 		})
 	})
+	// A data exception is a value of the row's the column cannot hold that
+	// the checks above let through: the row's refusal, never the run's, so
+	// one cell cannot stall the import and every import queued behind it.
+	if db.IsDataException(err) {
+		err = refuseRow(p.Row, "", importValueRefusal)
+	}
 	var refused *importRowRefusal
 	switch {
 	case errors.Is(err, errImportDryRun):

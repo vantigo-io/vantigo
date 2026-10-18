@@ -115,6 +115,48 @@ func TestImportWorker_ResumesAtTheFirstRowWithoutAnOutcome(t *testing.T) {
 	}
 }
 
+// TestImportWorker_AnImportStoppedAsItIsTakenUpIsNotRun: a stop that sends
+// an unstarted check back to draft between the worker's read of the queue and
+// its taking the import up leaves nothing to take up. The worker used to
+// start it anyway and finish a check nobody wanted any more.
+func TestImportWorker_AnImportStoppedAsItIsTakenUpIsNotRun(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := uploadClient(t, h)
+	imp := uploadImport(t, c, manyRows(3))
+	importOf(t, putMapping(t, c, imp.ID, mappingOf("create", "", "name", "email")), http.StatusOK)
+	importOf(t, postCheck(t, c, imp.ID), http.StatusOK)
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// The stop endpoint's own statement, not yet committed when the worker
+	// reads the queue.
+	if _, err := tx.Exec(ctx, `UPDATE customers.imports SET state = 'draft', requested_at = NULL WHERE id = $1 AND started_at IS NULL`, imp.ID); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	cycle := make(chan error, 1)
+	go func() {
+		_, err := customers.NewImportWorker(h.Deps()).RunCycle(context.Background())
+		cycle <- err
+	}()
+	waitForALockWait(t, h)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if err := <-cycle; err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	if after := getImport(t, c, imp.ID); after.State != "draft" || after.StartedAt != nil || after.Processed != 0 {
+		t.Errorf("after = %+v, want draft and never started", after)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.import_rows WHERE import_id = $1 AND outcome IS NOT NULL`, imp.ID); n != 0 {
+		t.Errorf("%d rows carry an outcome, want none", n)
+	}
+}
+
 // Not parallel: it sets the package's run hook.
 func TestImportWorker_AWholeRunFailureIsWrittenAndRetried(t *testing.T) {
 	h := newHarness(t)

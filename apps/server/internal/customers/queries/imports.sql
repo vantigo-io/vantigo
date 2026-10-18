@@ -81,10 +81,13 @@ WHERE state IN ('checking', 'importing')
 ORDER BY requested_at, id
 LIMIT 1;
 
--- name: StartImport :exec
+-- The worker taking up the import it read from the queue, only while the
+-- import is still in the state it was read in: a stop or a delete in between
+-- leaves nothing to take up, and the worker goes on to the next.
+-- name: StartImport :execrows
 UPDATE customers.imports
 SET started_at = COALESCE(started_at, sqlc.arg(started_at)::timestamptz), error = NULL, updated_at = sqlc.arg(started_at)::timestamptz
-WHERE id = $1;
+WHERE id = sqlc.arg(id) AND state = sqlc.arg(state);
 
 -- name: ImportStopRequested :one
 SELECT stop_requested

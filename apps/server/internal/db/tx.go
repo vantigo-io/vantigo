@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -150,6 +151,16 @@ func IsForeignKeyViolation(err error, constraints ...string) bool {
 // stop into a 500.
 func IsRestrictViolation(err error, constraints ...string) bool {
 	return isConstraintViolation(err, "23001", constraints)
+}
+
+// IsDataException reports whether err is a PostgreSQL data exception, any
+// SQLSTATE of class 22: a value too long for its column (22001), a number out
+// of its column's range (22003), an invalid text representation and the like.
+// It is the value's fault, not the statement's or the database's, so a caller
+// writing one row of many may refuse that row and go on.
+func IsDataException(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && strings.HasPrefix(pgErr.Code, "22")
 }
 
 // isConstraintViolation is the matching every exported check above does,

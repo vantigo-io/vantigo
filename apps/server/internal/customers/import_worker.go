@@ -181,8 +181,14 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 	}
 	l := layoutFor(*mapping, len(imp.Header))
 	dryRun := imp.State == string(gen.Checking)
-	if err := q.StartImport(ctx, store.StartImportParams{ID: imp.ID, StartedAt: w.now()}); err != nil {
+	started, err := q.StartImport(ctx, store.StartImportParams{ID: imp.ID, State: imp.State, StartedAt: w.now()})
+	if err != nil {
 		return fmt.Errorf("customers: start import %d: %w", imp.ID, err)
+	}
+	if started == 0 {
+		// Stopped, deleted or moved on since the queue was read: nothing to
+		// take up as read, and the queue is read again.
+		return nil
 	}
 	if importRunHookForTest != nil {
 		if err := importRunHookForTest(ctx, imp.ID); err != nil {

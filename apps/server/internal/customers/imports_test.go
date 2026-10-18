@@ -2,6 +2,7 @@ package customers_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -803,6 +804,93 @@ func TestImportRows_ATypeChangeIsRefused_AndATooLongRow(t *testing.T) {
 	errs := importResultOf(t, c, done).Errors
 	if done.Failed != 2 || len(errs) != 2 || !strings.Contains(errs[0].Message, "never by an import") || errs[1].Message != "This row has 3 cells, but the header has 2" {
 		t.Errorf("done = %+v errors %v", done, errs)
+	}
+}
+
+// TestImportRows_ADataExceptionFailsTheRowNotTheRun: a value the database
+// refuses as too long or out of range (SQLSTATE class 22) — one the checks
+// let through — fails its row with a generic message, in the check and the
+// run alike. It used to fail the whole run, which the worker retried every
+// cycle, oldest first, so the import behind it never ran.
+func TestImportRows_ADataExceptionFailsTheRowNotTheRun(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := uploadClient(t, h)
+	// A trigger stands in for a column the checks do not know the limit of.
+	h.Exec(t, `CREATE FUNCTION customers.refuse_poison_for_test() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF NEW.name = 'Poison AS' THEN
+				RAISE EXCEPTION 'numeric field overflow' USING ERRCODE = '22003';
+			END IF;
+			RETURN NEW;
+		END $$`)
+	h.Exec(t, `CREATE TRIGGER refuse_poison_for_test BEFORE INSERT OR UPDATE ON customers.customers
+		FOR EACH ROW EXECUTE FUNCTION customers.refuse_poison_for_test()`)
+	mapping := mappingOf("create", "", "name", "email")
+	first := uploadImport(t, c, csvFileOf([]string{"name", "email"}, []string{"Good AS", "good@example.test"}, []string{"Poison AS", "poison@example.test"}))
+	second := uploadImport(t, c, csvFileOf([]string{"name", "email"}, []string{"Behind AS", "behind@example.test"}))
+	for _, imp := range []importJSON{first, second} {
+		importOf(t, putMapping(t, c, imp.ID, mapping), http.StatusOK)
+		importOf(t, postCheck(t, c, imp.ID), http.StatusOK)
+	}
+	runImportWorker(t, h)
+	checked := getImport(t, c, first.ID)
+	if checked.State != "checked" || checked.Error != "" || checked.Created != 1 || checked.Failed != 1 {
+		t.Fatalf("the first check = %+v, want checked with one row created and the poisoned one failed", checked)
+	}
+	if behind := getImport(t, c, second.ID); behind.State != "checked" || behind.Created != 1 {
+		t.Errorf("the import behind it = %+v, want checked in the same cycle", behind)
+	}
+	failed := importRowsOf(t, c, first.ID, "failed").Data
+	if len(failed) != 1 || failed[0].Row != 2 || len(failed[0].Errors) != 1 || failed[0].Errors[0].Column != nil ||
+		failed[0].Errors[0].Message != "A value is out of range or too long for its field." {
+		t.Errorf("failed rows = %+v, want row 2 with the one generic message on no column", failed)
+	}
+	importOf(t, postRun(t, c, first.ID), http.StatusOK)
+	runImportWorker(t, h)
+	if done := getImport(t, c, first.ID); done.State != "done" || done.Error != "" || done.Created != 1 || done.Failed != 1 {
+		t.Errorf("the run = %+v, want done with one created and the poisoned row failed", done)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE name = 'Poison AS'`); n != 0 {
+		t.Errorf("the poisoned row wrote %d customers, want none", n)
+	}
+}
+
+// TestImportLifecycle_ACheckAskedAsARunIsTakenUpKeepsTheRunsOutcomes: a
+// check asked for while the worker takes the import's run up — the handler
+// having read a state that allows the check — is the running import's 409,
+// and the outcomes the run writes are kept. It used to clear every row's
+// outcome before finding the import no longer checkable.
+func TestImportLifecycle_ACheckAskedAsARunIsTakenUpKeepsTheRunsOutcomes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := uploadClient(t, h)
+	checked := checkNow(t, c, h, manyRows(2), mappingOf("create", "", "name", "email"))
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// The worker under way, not yet committed: the import importing, its
+	// first row's outcome written.
+	if _, err := tx.Exec(ctx, `UPDATE customers.imports SET state = 'importing', started_at = now() WHERE id = $1`, checked.ID); err != nil {
+		t.Fatalf("take the run up: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE customers.import_rows SET outcome = 'created' WHERE import_id = $1 AND row_no = 1`, checked.ID); err != nil {
+		t.Fatalf("write the first outcome: %v", err)
+	}
+	answered := make(chan *modtest.Response, 1)
+	go func() { answered <- postCheck(t, c, checked.ID) }()
+	waitForALockWait(t, h)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if code := conflictCodeOf(t, <-answered); code != "import_running" {
+		t.Errorf("code %q, want import_running", code)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.import_rows WHERE import_id = $1 AND row_no = 1 AND outcome = 'created'`, checked.ID); n != 1 {
+		t.Error("the run's outcome on row 1 was cleared by the check")
 	}
 }
 

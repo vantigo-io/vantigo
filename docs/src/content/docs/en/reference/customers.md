@@ -1421,7 +1421,9 @@ draft ──check──▶ checking ──(worker)──▶ checked ──run─
 ```
 
 - `POST …/check` on a `draft` with a mapping, or on a `checked` import (checked
-  again), clears the rows' results and queues the check; the worker runs every row
+  again), queues the check and then clears the rows' results — the state first, so a
+  check asked for as the worker takes a run up is 409 `import_running` and the run's
+  outcomes stay; the worker runs every row
   exactly as the real run would, each in its own transaction rolled back at its end
   — no customer, no number, no event kept — and writes each row's outcome and errors
   after it. A row repeating an earlier row's legal identity is skipped or refused
@@ -1446,7 +1448,12 @@ draft ──check──▶ checking ──(worker)──▶ checked ──run─
   is 409 `import_running`. The customers a done import wrote are untouched.
 - A whole-run failure inside the worker — a database gone, a mapping it cannot read
   — is logged, written to `error` on the import, and retried next cycle from where
-  the run stood; it is never silently dropped, and the page shows it.
+  the run stood; it is never silently dropped, and the page shows it. A row's own
+  value is never one: a value the database refuses as too long or out of range
+  (SQLSTATE class `22`) that the row's checks let through fails that row, with
+  "A value is out of range or too long for its field." for the row as a whole, in
+  the check and the run alike — otherwise the retry would meet it every cycle and
+  hold up every import queued behind it.
 
 The counts on the import are the worker's progress while it runs (`processed`,
 `created`, `updated`, `failed`, `skipped`, written after every chunk) and the totals recounted
@@ -1461,8 +1468,10 @@ oldest queued import, resolves the actor (from the import's own snapshot), the g
 and tag vocabularies and the in-file duplicates once, then walks the rows with no
 outcome in **chunks of 500** in file order — each row a transaction (import.go's
 `runImportRow`), the chunk's outcomes written, `processed` and the counts updated,
-the stop flag read — then the next queued import, then the sweep. One import
-failing as a whole ends the cycle there; the next cycle takes it up again.
+the stop flag read — then the next queued import, then the sweep. The worker takes
+an import up only while it is still in the state it was read in (`StartImport`), so
+one stopped or deleted in between is passed over. One import failing as a whole ends
+the cycle there; the next cycle takes it up again.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
