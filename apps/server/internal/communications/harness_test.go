@@ -80,6 +80,10 @@ func (fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.Conta
 	return nil, nil
 }
 
+func (fakeDirectory) CustomersByLegalID(context.Context, string, []string) (map[string][]contracts.CustomerEntry, error) {
+	return map[string][]contracts.CustomerEntry{}, nil
+}
+
 func (fakeDirectory) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
 	if id == 1001 || id == 1002 {
 		return &contracts.CustomerBillingProfile{ID: id, Name: "Test customer"}, nil

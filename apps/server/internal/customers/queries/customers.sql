@@ -584,6 +584,24 @@ LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 WHERE c.id = ANY(@ids::int[])
 ORDER BY c.id;
 
+-- name: DirectoryCustomersByLegalID :many
+-- DirectoryCustomersByLegalID is contracts.CustomerDirectory.CustomersByLegalID's
+-- rows (energy import design D4): every customer holding @country with one of
+-- @legal_ids, the batch twin of CustomersByLegalIdentity above for an import
+-- that resolves every organisation number of its file before the first row.
+-- Both sides are compared as stored — the caller normalises the inputs the way
+-- validateLegalIdentity stored them (a lower-cased country, an id without
+-- whitespace) — so the plain equality and ANY keep ix_customers_legal_identity
+-- usable. Unlike the duplicate guard, archived and merged-away customers are
+-- returned, with the columns that say so: the caller decides what a merged-away
+-- holder means. The other columns are DirectoryCustomer's own, joined the same
+-- way, ordered by id.
+SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.legal_country = @country::text AND c.legal_id = ANY(@legal_ids::text[])
+ORDER BY c.id;
+
 -- name: DirectoryBillingProfile :one
 -- DirectoryBillingProfile is contracts.CustomerDirectory.BillingProfile's
 -- customer row (invoice-ready customer design D5): identity (all five

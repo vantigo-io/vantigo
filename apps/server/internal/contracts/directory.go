@@ -145,15 +145,16 @@ type CustomerBillingProfile struct {
 //     failure. Customers is the batch exception: a missing id is simply
 //     absent from the result slice, never an entry in it, and never an
 //     error either — the same rule, restated for a slice instead of a
-//     pointer.
+//     pointer; and so is CustomersByLegalID, whose unheld id is absent from
+//     the map.
 //   - Archived customers still resolve, from every one of Customer,
-//     Customers and BillingProfile. A consumer (a supply period, a past
-//     invoice) can hold a long-lived reference to a customer that has since
-//     been archived, and must still be able to show its name — so a past
-//     invoice can be shown and credited; Archived tells the caller to
-//     decorate that reference, not that the lookup failed. Invoices refuses a
-//     new invoice to an archived or disabled customer (the billing profile's
-//     Status, invoices foundation design D10).
+//     Customers, CustomersByLegalID and BillingProfile. A consumer (a supply
+//     period, a past invoice) can hold a long-lived reference to a customer
+//     that has since been archived, and must still be able to show its name
+//     — so a past invoice can be shown and credited; Archived tells the
+//     caller to decorate that reference, not that the lookup failed. Invoices
+//     refuses a new invoice to an archived or disabled customer (the billing
+//     profile's Status, invoices foundation design D10).
 //   - More than one candidate from ContactsByEmail is ambiguous. A contact's
 //     email is not unique across customers, and the directory does not
 //     guess which customer the caller means: it returns every candidate,
@@ -178,6 +179,20 @@ type CustomerDirectory interface {
 	// result. The result is ordered by ascending id, not by ids' own order,
 	// so two callers asking for the same set always see it the same way.
 	Customers(ctx context.Context, ids []int32) ([]CustomerEntry, error)
+	// CustomersByLegalID finds the customers holding each organisation
+	// number in ids, in one round trip, keyed by the id as given (energy
+	// import design D4: an import resolves every number in its file once,
+	// before the first row). The comparison is the duplicate-identity
+	// guard's own — country case-insensitive, the id with its whitespace
+	// removed — so "923 609 016" finds the customer stored as "923609016",
+	// under the key "923 609 016". An id nobody holds is absent from the
+	// map, not an error; a nil or empty ids is an empty, non-nil map with no
+	// query made. More than one holder is ambiguous, and as with
+	// ContactsByEmail the caller decides what that means. Archived and
+	// merged-away customers are returned, with Archived and MergedInto set,
+	// so the caller decides what a holder it cannot write to means. Each
+	// id's customers are ordered by ascending id.
+	CustomersByLegalID(ctx context.Context, country string, ids []string) (map[string][]CustomerEntry, error)
 	// Contact looks up a contact by ID. It returns (nil, nil) if id does not
 	// exist.
 	Contact(ctx context.Context, id int32) (*ContactEntry, error)

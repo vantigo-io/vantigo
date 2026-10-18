@@ -77,6 +77,10 @@ func (c *customerRates) ContactsByEmail(context.Context, string) ([]contracts.Co
 	return []contracts.ContactMatch{}, nil
 }
 
+func (*customerRates) CustomersByLegalID(context.Context, string, []string) (map[string][]contracts.CustomerEntry, error) {
+	return map[string][]contracts.CustomerEntry{}, nil
+}
+
 func (c *customerRates) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

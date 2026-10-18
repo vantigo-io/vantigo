@@ -13,9 +13,9 @@ import (
 // fixed map and counting how many times it was called: this file's own proof
 // that customerNamesForPage's doc comment (projects_list.go) is true — one
 // call for the whole page, never one per row and never one per distinct
-// customer id either. Customer, Contact, ContactsByEmail and BillingProfile
-// are never exercised by customerNamesForPage; they are implemented only to
-// satisfy the interface.
+// customer id either. Customer, Contact, ContactsByEmail, CustomersByLegalID
+// and BillingProfile are never exercised by customerNamesForPage; they are
+// implemented only to satisfy the interface.
 type countingDirectory struct {
 	customers map[int32]contracts.CustomerEntry
 	calls     int
@@ -44,6 +44,10 @@ func (d *countingDirectory) Contact(context.Context, int32) (*contracts.ContactE
 
 func (d *countingDirectory) ContactsByEmail(context.Context, string) ([]contracts.ContactMatch, error) {
 	return nil, nil
+}
+
+func (*countingDirectory) CustomersByLegalID(context.Context, string, []string) (map[string][]contracts.CustomerEntry, error) {
+	return map[string][]contracts.CustomerEntry{}, nil
 }
 
 func (d *countingDirectory) BillingProfile(context.Context, int32) (*contracts.CustomerBillingProfile, error) {

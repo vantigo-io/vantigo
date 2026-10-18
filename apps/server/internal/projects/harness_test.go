@@ -192,9 +192,9 @@ const (
 // fakeDirectory is contracts.CustomerDirectory over three customers.
 // Everything else does not exist, which is what makes the unknown-customer
 // validation rule testable without composing customers beside this module.
-// Contact, ContactsByEmail and BillingProfile satisfy the interface and are
-// never exercised here: projects never resolves a contact or a billing
-// profile. Customers (the batch lookup the list page uses,
+// Contact, ContactsByEmail, CustomersByLegalID and BillingProfile satisfy the
+// interface and are never exercised here: projects never resolves a contact, a
+// billing profile or an organisation number. Customers (the batch lookup the list page uses,
 // customerNamesForPage/projects_list.go) answers from the same three
 // customers as Customer, in ascending-id order, the same order
 // contracts.CustomerDirectory.Customers promises.
@@ -239,6 +239,10 @@ func (fakeDirectory) Contact(context.Context, int32) (*contracts.ContactEntry, e
 
 func (fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.ContactMatch, error) {
 	return nil, nil
+}
+
+func (fakeDirectory) CustomersByLegalID(context.Context, string, []string) (map[string][]contracts.CustomerEntry, error) {
+	return map[string][]contracts.CustomerEntry{}, nil
 }
 
 func (fakeDirectory) BillingProfile(context.Context, int32) (*contracts.CustomerBillingProfile, error) {
