@@ -1274,7 +1274,12 @@ result (its facts unreadable, or naming no user) releases its lease at once
   manage. So a Disable now cut short — the client gone mid-call, identity down,
   the link claimed between the commit and the claim — is finished by the worker.
   A person with no link, or a link naming no user yet, has the flag turned off alone
-  (200). An erased person may be disabled. `ErrAccountNotManaged` is 409
+  (200). **Disable now acts only on accounts Staff manages**: HR's own self-service
+  link (`linked`, not `managed` — a link the worker never acts on) has the flag turned
+  off and nothing more — no `disable_requested_at`, no call — and answers 409
+  `account_not_managed` (the Task 6 review); HR unlinks it, or an Owner disables the user
+  in identity, and an Owner's adopting the user later disables nobody. An erased person
+  may be disabled. Otherwise `ErrAccountNotManaged` is 409
   `account_not_managed` and `ErrAccountPrivileged` or `ErrLastOwner` 409
   `account_privileged` — the flag off, the reason on the link; `ErrUserGone` is done
   (200, the link `failed: user_gone`). A call that could not be made is **503
@@ -3263,7 +3268,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `link_managed` | 409 | `PUT /people/{id}/user` naming, or unlinking, a Staff-managed user, or on a link in one of the accounts worker's states. |
 | `account_mismatch` | 409 | `POST /people/{id}/account/disable` on a link whose user carries another employee number: someone else's account, left alone. The flag is off. |
 | `accounts_busy` | 409 | `DELETE /people/{id}` while the accounts worker holds the person's `preparing` link; `POST /people/{id}/account/run` and `/disable` while a live lease holds the person's link. |
-| `account_not_managed` | 409 | `POST /people/{id}/account/disable` on a user Staff does not manage. The flag is off. |
+| `account_not_managed` | 409 | `POST /people/{id}/account/disable` on HR's self-service link (nothing more is done) or on a user Staff does not manage. The flag is off. |
 | `account_privileged` | 409 | `POST /people/{id}/account/disable` on an Owner, a SystemAdmin or the last active Owner. The flag is off. |
 | `accounts_unavailable` | 503 | `PUT /people/{id}/user` when identity cannot say whether the user is Staff-managed (nothing changed); `POST /accounts/run` and `/people/{id}/account/run` with no provider or identity unreachable; `POST /people/{id}/account/disable` when identity could not be reached — the flag already off. |
 
