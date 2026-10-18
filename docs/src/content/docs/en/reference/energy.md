@@ -1,6 +1,6 @@
 ---
 title: "Energy module"
-description: "Metering points, meters, supply periods, consumption, the metering-point import and permissions."
+description: "Metering points, meters, supply periods, consumption, the metering-point and consumption imports and permissions."
 sources:
   - apps/server/internal/energy
   - openapi/energy.yaml
@@ -41,7 +41,9 @@ periods, with the point's address and the monthly consumption inside each).
   `end` (open-ended when absent) and `status` — `Active`, `Ended` or `Cancelled`.
   Every timestamp a request gives must be UTC.
 - **Consumption interval** — `start`, `end` (after `start`), `quantityKwh` (≥ 0),
-  `quality` and `source`, in a table partitioned by month.
+  `quality` (`Measured`, `Estimated`, `Corrected` or `Manual`) and `source` (`Manual`
+  for a manual reading, `Import` for a consumption import, `Elhub`), in a table
+  partitioned by month.
 
 ## Supply periods and the no-overlap rule
 
@@ -75,7 +77,8 @@ The create's write (`insertSupplyPeriod`) and the switch's transaction body
 - `POST …/metering-points/{id}/consumption` adds a manual interval (`source` and
   `quality` `Manual`). An interval with exactly the same start and end as a current
   one supersedes it: the old row stays as history (`is_current` false) and the new one
-  points at it. Nothing else is checked for overlap.
+  points at it. Nothing else is checked for overlap. A file of readings is imported
+  under the same rules ([below](#importing-consumption)).
 - `GET …/consumption?from&to` lists the current intervals, `start ≥ from` and
   `end ≤ to`.
 - `GET …/consumption/aggregate?from&to&resolution=hour|day|month` sums the current
@@ -333,6 +336,82 @@ conflict, so the two orders cannot deadlock. `module.Workers` hands the worker t
 
 In the default deployment the check, run and attach handlers also nudge the worker
 in-process; in a split deployment the poll is the bound.
+
+## Importing consumption
+
+`POST /metering-points/{id}/consumption/import?dryRun=true|false` imports one point's
+readings from a file in one request (design D8): no import record, no worker. Its rule
+is `permission:energy:consumption-manage+energy:consumption-view+energy:import` — the
+manual reading's keys behind the import's door. It is rate-limited at 600 calls an
+hour per client address (`EnergyConsumptionImport`) and its body is capped at
+10 MiB + 64 KiB.
+
+The body is multipart: a part `file` and, optionally, a part `mapping` holding a
+`ConsumptionImportMapping` as JSON. The answer is a `ConsumptionImportResult` on every
+call: the file's `encoding`, `separator`, `header`, the first ten rows as `sample`,
+`rows` and the `suggested` mapping.
+
+| Call | What happens |
+| --- | --- |
+| No `mapping` part, `dryRun` true or absent | The file is only read: `evaluated` false, every count zero. This is the modal's first call. |
+| No `mapping` part, `dryRun=false` | `400` on `mapping`. |
+| `mapping`, `dryRun` true or absent | Every row checked and compared; nothing written. `200` with the counts, `errorCount`, the first 200 `errors` and `rangeStart`/`rangeEnd`. |
+| `mapping`, `dryRun=false` | In one transaction: the point locked (`FOR NO KEY UPDATE`), every row checked and compared again, and — when no row has an error — the partitions of every month a row starts in created, the replaced intervals set not current, every row copied in; `200` with `imported` true. With any row error, `422` with the dry run's body and nothing written. |
+
+**Reading.** `internal/fileimport` with this import's limits: 10 MiB, **50 000** data
+rows, 50 columns; a refused file is a `400` on `file`, an unknown point a `404`.
+
+**The mapping.** Each entry is a 0-based column: `start` and `quantityKwh` required,
+exactly one of `end` and `resolution` (`PT1H` or `PT15M`, the end then being the start
+plus that), `quality` and `gsrn` optional; a column at most once, every column within
+the header. An unknown key or a body that is not one JSON object is a `400` on
+`mapping`; the rest are `400`s on the field. The suggestion takes each field from the
+first column whose `fileimport.HeaderKey` is one of these, and `resolution` `PT1H` when
+no column names an end:
+
+| Field | Header words |
+| --- | --- |
+| `start` | `fra`, `fra og med`, `start`, `from`, `starttid` |
+| `end` | `til`, `til og med`, `end`, `to`, `slutt` |
+| `quantityKwh` | `kwh`, `forbruk`, `volum`, `quantity`, `mengde`, `forbruk kwh`, `quantityKwh` |
+| `quality` | `kvalitet`, `quality` |
+| `gsrn` | `målepunkt`, `målepunktid`, `gsrn`, `meteringpointid` |
+
+**A row.** Every problem is a `ConsumptionImportError`: the row as the import counts
+it (the first under the header is 1, blank rows unnumbered), the column, the message.
+
+- **Timestamps** are read as ISO 8601 (`2006-01-02T15:04[:05]`, `T` or a space, a
+  fraction of a second allowed), `d.m.yyyy h:mm[:ss]` or `d/m/yyyy h:mm[:ss]`. With an
+  offset (`Z`, `+01:00`, `+0100`) a timestamp is that instant. Without one it is a wall
+  time in the point's market time zone (the aggregation's, above), stored in UTC:
+  - a start the clocks skip (spring) is the row's error;
+  - a start the clocks repeat (autumn) is the **earlier** instant the first time the
+    file has that wall time and the **later** one every time after, in file order;
+  - an end is read as the moment its interval closes: a wall time names an instant
+    when the clock read it at that instant or just before it, so 03:00 on the autumn
+    day names both 01:00Z and 02:00Z (CEST and CET), and 03:00 on the spring day
+    names 01:00Z. Of the instants an end names, the earliest after the row's start is
+    taken; an end that names none is the row's error.
+- **`quantityKwh`**: spaces dropped, a decimal comma read as a point (a cell with both
+  is refused), digits only — no exponent; rounded to three decimals as
+  `numeric(14,3)` stores it, then `≥ 0` and `< 100 000 000 000`.
+- **`quality`**: `Measured`, `Estimated`, `Corrected`, `Manual` or `målt`, `estimert`,
+  `stipulert`, `korrigert`, `manuell`, any case, stored canonical; blank or unmapped is
+  `Measured`.
+- **`gsrn`**: when mapped, the cell must be the point's own GSRN.
+- The interval follows `validateConsumptionInterval` (the manual reading's): the end
+  after the start. A row with the same UTC start and end as an earlier row is an error
+  on the later one ("The same interval as row N").
+
+**Comparing.** The rows without an error are compared with the point's current
+intervals by exact `(start, end)`: the same `quantity_kwh` and `quality` is
+**unchanged** (nothing written), another is **replacing** (the old row `is_current`
+false, the new one's `supersedes_id`/`supersedes_start` pointing at it, as the manual
+add does), none is **new**. As with the manual add, intervals that overlap without
+being equal are not compared, and the source is ignored: a manual reading repeated by
+an import is unchanged. Written rows have `source` **`Import`** and `received_at` the
+request's time. The current-row unique index backs a race with a manual add: the
+loser is a `409`.
 
 ## Permissions
 

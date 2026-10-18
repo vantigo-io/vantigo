@@ -320,6 +320,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/energy/metering-points/{id}/consumption/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import consumption readings from a file
+         * @description Imports consumption readings for this metering point from a file (energy import design D8). One endpoint, called as the page needs it: multipart, a part named file (one CSV file of at most 10 MiB and 50 000 data rows, read as the metering-point import reads its file) and, optionally, a part named mapping holding a ConsumptionImportMapping as JSON.
+         *
+         *     Without a mapping part the file is only read: the answer carries the header, the first ten rows and the suggested mapping, evaluated is false, and nothing is checked or written. With one, every row is checked; dryRun (true when absent) decides whether anything is written. A dry run answers the counts, the first 200 errors and the range the file covers. A run (dryRun=false) writes every row in one transaction, or — when any row has an error — nothing at all, and answers 422 with the same body.
+         *
+         *     Each row: start and, when mapped, end are read as ISO 8601 (2025-01-31T13:00, with or without seconds, T or a space) or as dd.mm.yyyy hh:mm[:ss] or dd/mm/yyyy hh:mm[:ss]; a timestamp with an offset or Z is that instant, one without is a local clock time in the metering point's market time zone (Europe/Oslo for NO price areas). A local time the clocks skip in spring is the row's error; a local start the clocks repeat in autumn is the earlier instant the first time the file has that time and the later one after that, and a repeated local end is the earliest of its instants after the row's start (an end is read as the moment its interval closes). With resolution instead of end, the end is the start plus PT1H or PT15M. quantityKwh takes a decimal point or comma, must be zero or greater and below 100 000 000 000 once rounded to three decimals, as stored. quality is Measured, Estimated, Corrected or Manual, or målt, estimert, stipulert, korrigert or manuell, any case, Measured when blank or unmapped. A mapped gsrn must be this metering point's. The end must be after the start, and two rows with the same start and end are the second one's error.
+         *
+         *     A row whose start and end equal a current interval's, with the same quantity and quality, is unchanged and writes nothing; with another quantity or quality it replaces that interval, which is kept as history (as a manual reading replaces one); otherwise it is new. Intervals that overlap without being equal are not compared, as with manual readings. Written rows have source Import. Rate-limited at 600 calls an hour per client address.
+         */
+        post: operations["postEnergyMeteringPointsByIdConsumptionImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/energy/metering-points/{id}/meters": {
         parameters: {
             query?: never;
@@ -485,6 +511,61 @@ export interface components {
             /** Format: double */
             quantityKwh: number;
         };
+        /** @description One problem with one row of a consumption import. row is the row's number as the import counts it (the first row under the header is 1, blank rows take no number); column is the 0-based index of the file column the offending cell is in, absent for a problem with the row as a whole (an interval the file repeats, an end not after its start). */
+        ConsumptionImportError: {
+            /** Format: int32 */
+            column?: number;
+            message: string;
+            /** Format: int32 */
+            row: number;
+        };
+        /** @description Which columns of a consumption file hold what (energy import design D8), each a 0-based column of the file. start and quantityKwh are required; exactly one of end (a column) and resolution (PT1H or PT15M: the end is the start plus that length) is given; quality is optional (every row Measured when unmapped); gsrn is optional and, when mapped, every row must name this metering point. A column holds one field at most. As the server suggests it, any field it found no column for is absent, and resolution is PT1H when no end column was found. */
+        ConsumptionImportMapping: {
+            /** Format: int32 */
+            end?: number;
+            /** Format: int32 */
+            gsrn?: number;
+            /** Format: int32 */
+            quality?: number;
+            /** Format: int32 */
+            quantityKwh?: number;
+            /** @enum {string} */
+            resolution?: "PT1H" | "PT15M";
+            /** Format: int32 */
+            start?: number;
+        };
+        /** @description What a consumption import read and did (energy import design D8). header, sample (the first ten rows), rows (the number of data rows) and suggested (the mapping proposed from the header) are answered on every call, with the encoding and the separator the file was read with. evaluated is false when no mapping was sent: the file was only read, and the counts are zero. Otherwise new, replacing and unchanged count the rows without an error — new where no current interval has the row's start and end, replacing where one has them with another quantity or quality, unchanged where one has them with the same quantity and quality — and rangeStart and rangeEnd are the earliest start and the latest end among them. errorCount counts every problem found, errors lists the first 200 in file order. imported is true only when the readings were written: a run (dryRun=false) with no error, all of them in one transaction. */
+        ConsumptionImportResult: {
+            dryRun: boolean;
+            encoding: string;
+            /** Format: int32 */
+            errorCount: number;
+            errors: components["schemas"]["ConsumptionImportError"][];
+            evaluated: boolean;
+            header: string[];
+            imported: boolean;
+            /** Format: int32 */
+            new: number;
+            /** Format: date-time */
+            rangeEnd?: string;
+            /** Format: date-time */
+            rangeStart?: string;
+            /** Format: int32 */
+            replacing: number;
+            /** Format: int32 */
+            rows: number;
+            sample: components["schemas"]["ConsumptionImportSampleRow"][];
+            separator: string;
+            suggested: components["schemas"]["ConsumptionImportMapping"];
+            /** Format: int32 */
+            unchanged: number;
+        };
+        /** @description One of the first rows of a consumption file, as the file has it. */
+        ConsumptionImportSampleRow: {
+            cells: string[];
+            /** Format: int32 */
+            row: number;
+        };
         ConsumptionResponse: {
             /** Format: date-time */
             end: string;
@@ -492,11 +573,13 @@ export interface components {
             id: number;
             /** Format: int32 */
             meteringPointId: number;
+            /** @description Measured, Estimated, Corrected or Manual. */
             quality: string;
             /** Format: double */
             quantityKwh: number;
             /** Format: date-time */
             receivedAt: string;
+            /** @description Where the interval came from — Manual (added by hand), Import (a consumption import from a file) or Elhub. */
             source: string;
             /** Format: date-time */
             start: string;
@@ -2042,6 +2125,93 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    postEnergyMeteringPointsByIdConsumptionImport: {
+        parameters: {
+            query?: {
+                /** @description true (the default) checks the file and writes nothing; false writes every row, or nothing when any row has an error. */
+                dryRun?: boolean;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @description A ConsumptionImportMapping as JSON. Absent, the file is only read. */
+                    mapping?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK — the file read, checked when a mapping was sent, and written when dryRun was false. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumptionImportResult"];
+                };
+            };
+            /** @description Bad Request — on 'file' for the file itself (no part named file or two of them, an empty file, one past 10 MiB, no header row, more than 50 columns, more than 50 000 rows, or a line the CSV reader cannot parse); on 'mapping' for a mapping that is not JSON of the right shape or is missing from a run; on start, end, resolution, quantityKwh, quality or gsrn for a mapping that names a column the file does not have, a column twice, or not exactly one of end and resolution. A body that is not multipart at all is a bare 400. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Content — a run (dryRun=false) over a file with at least one row error; nothing was written, and the body is the dry run's. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumptionImportResult"];
+                };
+            };
+            /** @description Too Many Requests — at most 600 calls an hour from one client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
             };
         };
     };

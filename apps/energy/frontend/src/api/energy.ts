@@ -6,7 +6,7 @@ export { ApiValidationError, NotFoundError } from "./request";
 export type PriceArea = "NO1" | "NO2" | "NO3" | "NO4" | "NO5";
 export type ConnectionStatus = "New" | "Connected" | "Disconnected";
 export type ConsumptionQuality = "Measured" | "Estimated" | "Corrected" | "Manual";
-export type ConsumptionSource = "Elhub" | "Manual";
+export type ConsumptionSource = "Elhub" | "Manual" | "Import";
 export type SupplyPeriodStatus = "Active" | "Ended" | "Cancelled";
 export type ConsumptionResolution = "hour" | "day" | "month";
 
@@ -201,6 +201,78 @@ export const addConsumption = (id: number, input: ConsumptionInput) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+
+/**
+ * The consumption import's mapping (energy import design D8): the 0-based
+ * column of each field. `start` and `quantityKwh` are required, and exactly
+ * one of `end` and `resolution`; as the server suggests it, a field it found
+ * no column for is absent.
+ */
+export interface ConsumptionImportMapping {
+  start?: number;
+  end?: number;
+  resolution?: "PT1H" | "PT15M";
+  quantityKwh?: number;
+  quality?: number;
+  gsrn?: number;
+}
+
+/** One problem of one row: `column` is the file's 0-based column, absent for the row as a whole. */
+export interface ConsumptionImportError {
+  row: number;
+  column?: number;
+  message: string;
+}
+
+/**
+ * What the consumption import read and did: the file's facts on every call,
+ * and — when a mapping was sent (`evaluated`) — the counts, the first 200
+ * errors and the range the readings cover. `imported` is true only when the
+ * readings were written.
+ */
+export interface ConsumptionImportResult {
+  dryRun: boolean;
+  evaluated: boolean;
+  imported: boolean;
+  encoding: string;
+  separator: string;
+  header: string[];
+  sample: { row: number; cells: string[] }[];
+  rows: number;
+  suggested: ConsumptionImportMapping;
+  new: number;
+  replacing: number;
+  unchanged: number;
+  errorCount: number;
+  errors: ConsumptionImportError[];
+  rangeStart?: string;
+  rangeEnd?: string;
+}
+
+/** The server's own cap: a larger file is refused here rather than sent to be refused. */
+export const MAX_CONSUMPTION_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * `POST /energy/metering-points/{id}/consumption/import`: the file, and the
+ * mapping when there is one. Without a mapping the file is only read; with
+ * one, `dryRun` checks it and `dryRun: false` writes every row, or — answered
+ * 422 — nothing. Needs `energy:import`, `energy:consumption-manage` and
+ * `energy:consumption-view`.
+ */
+export const importConsumption = (
+  id: number,
+  file: File,
+  mapping: ConsumptionImportMapping | null,
+  dryRun = true,
+): Promise<ConsumptionImportResult> => {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  if (mapping) form.append("mapping", JSON.stringify(mapping));
+  return request<ConsumptionImportResult>(`/api/v1/energy/metering-points/${id}/consumption/import?dryRun=${dryRun}`, {
+    method: "POST",
+    body: form,
+  });
+};
 
 export const supplyPeriodsQueryOptions = (id: number) =>
   queryOptions({

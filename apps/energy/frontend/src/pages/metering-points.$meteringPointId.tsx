@@ -1,7 +1,7 @@
 import { Badge, Button, Card, Group, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
-import { IconCalendar, IconPencil, IconPlus } from "@tabler/icons-react";
+import { IconCalendar, IconFileImport, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
@@ -18,6 +18,7 @@ import {
 } from "../api/energy";
 import { MARKET_TIME_ZONE, marketDayKey } from "../lib/market-time";
 import { ConsumptionChart } from "./-consumption-chart";
+import { ImportReadingsModal } from "./-import-readings-modal";
 import { ManualReadingModal } from "./-manual-reading-modal";
 import { MeteringPointFormModal, type MeteringPointModalState } from "./-metering-point-form-modal";
 import { ReplaceMeterModal } from "./-replace-meter-modal";
@@ -31,7 +32,13 @@ const defaultFrom = () => {
 };
 const defaultTo = () => new Date().toISOString().slice(0, 10);
 
-export const MeteringPointDetailsPage = () => {
+/**
+ * One metering point: its details, meters, supply periods and consumption.
+ * `canImportReadings` — `energy:import`, `energy:consumption-manage` and
+ * `energy:consumption-view` together, which the host reads — puts **Import
+ * readings** in the Consumption card (energy import design D8).
+ */
+export const MeteringPointDetailsPage = ({ canImportReadings = false }: { canImportReadings?: boolean }) => {
   const { t, formatters } = useI18n("energy");
   const { meteringPointId } = useParams({ strict: false }) as { meteringPointId: number };
   const client = useQueryClient();
@@ -47,6 +54,7 @@ export const MeteringPointDetailsPage = () => {
   const [editState, setEditState] = useState<MeteringPointModalState | null>(null);
   const [supplyPeriodModalOpen, setSupplyPeriodModalOpen] = useState(false);
   const [readingOpen, setReadingOpen] = useState(false);
+  const [importReadingsOpen, setImportReadingsOpen] = useState(false);
   const [replaceMeterOpen, setReplaceMeterOpen] = useState(false);
   const endMutation = useMutation({
     mutationFn: (periodId: number) => endSupplyPeriod(meteringPointId, periodId, new Date().toISOString()),
@@ -209,9 +217,20 @@ export const MeteringPointDetailsPage = () => {
         <Stack>
           <Group justify="space-between">
             <Title order={3}>{t("consumption")}</Title>
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setReadingOpen(true)}>
-              {t("addManualReading")}
-            </Button>
+            <Group gap="xs">
+              {canImportReadings && (
+                <Button
+                  variant="default"
+                  leftSection={<IconFileImport size={16} />}
+                  onClick={() => setImportReadingsOpen(true)}
+                >
+                  {t("importReadings")}
+                </Button>
+              )}
+              <Button leftSection={<IconPlus size={16} />} onClick={() => setReadingOpen(true)}>
+                {t("addManualReading")}
+              </Button>
+            </Group>
           </Group>
           <Group>
             <DateInput
@@ -330,6 +349,13 @@ export const MeteringPointDetailsPage = () => {
             opened={readingOpen}
             onClose={() => setReadingOpen(false)}
           />
+          {canImportReadings && (
+            <ImportReadingsModal
+              meteringPointId={meteringPointId}
+              opened={importReadingsOpen}
+              onClose={() => setImportReadingsOpen(false)}
+            />
+          )}
         </Stack>
       </Card>
     </Stack>

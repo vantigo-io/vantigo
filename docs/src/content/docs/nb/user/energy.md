@@ -238,7 +238,7 @@ oppløsning: **Time**, **Dag** eller **Måned**. Diagrammet summerer kWh per bø
 
 - **Time** lister hver avlesning i intervallet, gruppert per dag, med **Start**,
   **Slutt**, **Mengde (kWh)**, **Kvalitet** (**Målt**, **Estimert**, **Korrigert**
-  eller **Manuell**) og **Kilde** (**Elhub** eller **Manuell**).
+  eller **Manuell**) og **Kilde** (**Elhub**, **Manuell** eller **Import**).
 - **Dag** og **Måned** lister én rad per bøtte med summert **Mengde (kWh)**, antall
   **Intervaller** bak den, og **Målt** eller **Inneholder estimert** som kvalitet.
 
@@ -253,6 +253,72 @@ Avlesningen lagres med kvaliteten **Manuell** og kilden **Manuell**. En avlesnin
 nøyaktig samme start og slutt som en eksisterende erstatter den i listene og summene;
 den gamle beholdes som historikk. En avvisning vises som *Kunne ikke legge til
 avlesningen*. Krever `energy:consumption-manage`.
+
+## Importer avlesninger
+
+For å hente inn et målepunkts historikk fra et annet system klikker du **Importer
+avlesninger** under **Forbruk**. Knappen vises når du har `energy:import`,
+`energy:consumption-manage` og `energy:consumption-view`. Én fil inneholder
+avlesningene for dette ene målepunktet.
+
+1. **Velg en CSV-fil** på høyst 10 MB og 50 000 rader (mer enn fem år med timeverdier):
+   den første raden navngir kolonnene, skilletegnet kan være semikolon, komma eller
+   tabulator, og filen kan være UTF-8 eller en norsk Excels egen tegnkoding.
+2. Si hvilken kolonne som inneholder hva. Kolonnene foreslås ut fra navnene (*Fra*,
+   *Fra og med*, *Start* eller *From* for starten; *Til*, *Slutt*, *End* eller *To* for
+   slutten; *kWh*, *Forbruk*, *Volum* eller *Mengde* for mengden; *Kvalitet* for
+   kvaliteten; *Målepunkt* eller *GSRN* for målepunktet), og du kan endre hver av dem:
+   - **Start** og **Mengde (kWh)** må være med.
+   - **Slutt**, eller, når filen har ett tidspunkt per linje, en **Oppløsning**: **Én
+     time (PT1H)** eller **15 minutter (PT15M)**, og hver avlesning slutter så lenge
+     etter at den starter.
+   - **Kvalitet** er valgfri; uten den er hver avlesning **Målt**. Filen kan skrive
+     Measured, Estimated, Corrected eller Manual, eller *målt*, *estimert*,
+     *stipulert*, *korrigert* eller *manuell*, med store eller små bokstaver; en tom
+     celle er målt.
+   - **Målepunkt (GSRN)** er valgfri. Når du knytter den til en kolonne, må hver rad
+     nevne dette målepunktet, slik at en fil ment for et annet punkt avvises før noe
+     skrives.
+3. Klikk **Kontroller**. Ingenting lagres; du ser hvor mange avlesninger som er
+   **nye**, hvor mange som **erstatter** en som allerede ligger på målepunktet, og hvor
+   mange som er **uendret**, perioden filen dekker, og, når rader har feil, de første
+   200 av dem med rad (den første raden under overskriften er rad 1) og kolonne.
+4. Når kontrollen ikke fant noen feil, klikker du **Importer**. Den sier hva den vil
+   gjøre – *Legger til 12 avlesninger og erstatter 3.* – og **Importer** der skriver
+   dem. Forbruket på siden oppdateres med en gang.
+
+Slik leses filen:
+
+- **Tidspunkt.** En dato og et klokkeslett kan skrives som `2025-01-31 13:00` eller
+  `2025-01-31T13:00` (sekunder valgfritt), `31.01.2025 13:00` eller
+  `31/01/2025 13:00`. Et tidspunkt med tidssoneforskyvning, som
+  `2025-01-31T13:00+01:00` eller `…Z`, er akkurat det øyeblikket. Et tidspunkt uten er
+  målepunktets lokale tid: norsk tid for et norsk prisområde.
+- **Sommertid.** Natten om våren da klokkene hopper fra 02:00 til 03:00, finnes ikke et
+  tidspunkt imellom, som 02:30, og raden avvises. Natten om høsten da klokkene går
+  tilbake fra 03:00 til 02:00, skjer timen fra 02:00 to ganger: den første raden som
+  starter på et gjentatt tidspunkt, er den første forekomsten (sommertid), den neste
+  raden som starter på samme tidspunkt, den andre (normaltid). Hold radene i den
+  rekkefølgen de skjedde. En slutt på et gjentatt tidspunkt er det første øyeblikket
+  med det navnet etter avlesningens start, så *02:00–03:00* to ganger leses som to
+  timer etter hverandre.
+- **Mengder** godtar desimalkomma eller -punktum (`1,5` og `1.5`; mellomrom som
+  tusenskille ignoreres), må være null eller større, og lagres med tre desimaler.
+- **Hver rad** følger reglene for manuelle avlesninger: slutten må være senere enn
+  starten. To rader i filen med samme start og slutt er en feil på den andre.
+
+Dette skriver importen:
+
+- En rad med samme start og slutt som en avlesning som allerede ligger på
+  målepunktet, og med samme mengde og kvalitet, er **uendret**: ingenting skrives for
+  den, så å importere den samme filen to ganger endrer ingenting.
+- En rad med samme start og slutt, men en annen mengde eller kvalitet, **erstatter**
+  den avlesningen, slik en manuell avlesning gjør; den gamle beholdes som historikk.
+- Alle andre rader er **nye**. En avlesning som bare overlapper en rad uten å ha samme
+  start og slutt, blir liggende som den er.
+- Importerte avlesninger har kilden **Import**.
+- **Alt eller ingenting.** Når en rad har en feil, importeres ingenting; rett filen og
+  kontroller den på nytt.
 
 ## Energi-fanen på kundesiden
 
@@ -289,4 +355,4 @@ leveranseperiodene til den oppslukte kunden over til den som består.
 | `energy:supply-periods-manage` | Tildele, bytte, avslutte og knytte til leveranseperioder |
 | `energy:consumption-view` | Se forbruk og Energi-fanens forbrukstall |
 | `energy:consumption-manage` | Legge til manuelle avlesninger |
-| `energy:import` | Importere målepunkter fra en fil, sammen med `energy:metering-points-manage`; det importen skriver, krever rettighetene over |
+| `energy:import` | Importere målepunkter fra en fil, sammen med `energy:metering-points-manage`; importere avlesninger, sammen med `energy:consumption-manage` og `energy:consumption-view`; det en import skriver, krever rettighetene over |
