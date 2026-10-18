@@ -525,6 +525,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     if (outside(body.retentionGraceDays, 0)) errors.retentionGraceDays = ["The grace period is 0 to 3650 days"];
     if (outside(body.healthRetentionDays, 30))
       errors.healthRetentionDays = ["The health documents' period is 30 to 3650 days"];
+    // An erase setting is true or false; a null is refused, never read as false (Task 5b).
+    for (const key of ["erasePregnancyHealthTypes", "eraseSickCaseDates"])
+      if ((body as Record<string, unknown>)[key] === null) errors[key] = ["An erase setting is true or false"];
     if (Object.keys(errors).length > 0) return staffProblem(400, { title: "Invalid Staff settings", errors });
     const longest = `${body.employeeNumberPrefix ?? ""}${body.nextEmployeeNumber}`;
     if (longest.length <= 16) return undefined;
@@ -2061,12 +2064,18 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       const stale = staleRevision(init, type.revision, "absence type");
       if (stale) return stale;
       const input = body as Schemas["StaffAbsenceTypeChangeRequest"];
-      const fixed = ["allowsPercent", "drawsHoliday", "needsDecision", "paid", "visibility", "ameldingLeave"] as const;
-      if (type.seeded && fixed.some((key) => input[key] !== type[key]))
+      // A seed's pay is HR's to change — but ammefri's, paid by law (aml. § 12-8 (2)), and a reserved type's.
+      const fixed = ["allowsPercent", "drawsHoliday", "needsDecision", "visibility", "ameldingLeave"] as const;
+      if (
+        type.seeded &&
+        (fixed.some((key) => input[key] !== type[key]) ||
+          (type.key === "ammefri" && !input.paid) ||
+          (type.reserved && input.paid !== type.paid))
+      )
         return staffProblem(409, {
           code: "seed_immutable",
           title: "Seeded type",
-          detail: "A seeded type changes only its names, its order and whether it is hidden.",
+          detail: "A seeded type changes only its names, its order, whether it is hidden and whether it is paid.",
         });
       delete type.ameldingLeave;
       Object.assign(type, input, { revision: type.revision + 1 });
@@ -2163,6 +2172,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           healthRetentionDays,
           createBeforeDays,
           deleteExternalAfterDays,
+          erasePregnancyHealthTypes,
+          eraseSickCaseDates,
           ...kept
         } = state.settings;
         // The self-certification policy and the carry-over left out keep theirs too.
@@ -2183,6 +2194,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           retentionGraceDays,
           healthRetentionDays,
           createBeforeDays,
+          // The two erase settings left out keep theirs too (Task 5b).
+          erasePregnancyHealthTypes,
+          eraseSickCaseDates,
           selfCertPolicy,
           selfCertDaysPerOccurrence,
           selfCertOccurrencesPerYear,

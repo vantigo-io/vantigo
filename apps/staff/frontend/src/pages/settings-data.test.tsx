@@ -383,6 +383,7 @@ describe("Settings — retention", () => {
       settings: settings({
         createBeforeDays: 30,
         deleteExternalAfterDays: 90,
+        eraseSickCaseDates: true,
         retention: {
           pendingDeletions: 3,
           failingDeletions: 1,
@@ -416,7 +417,42 @@ describe("Settings — retention", () => {
       healthRetentionDays: 365,
       createBeforeDays: 30,
       deleteExternalAfterDays: 90,
+      erasePregnancyHealthTypes: false,
+      eraseSickCaseDates: true,
     });
+  });
+
+  it("turns the two erase settings on and off, each explained, every other setting sent back", async () => {
+    const fetchMock = stubStaffApi({ settings: settings({ createBeforeDays: 30 }) });
+    renderRoute("/staff/settings");
+
+    const card = await region("Retention");
+    const pregnancy = within(card).getByRole("switch", { name: /^Erase pregnancy and health appointments/ });
+    const cases = within(card).getByRole("switch", { name: /^Erase a sick-leave case's dates and milestones/ });
+    expect(pregnancy).not.toBeChecked();
+    expect(cases).not.toBeChecked();
+    expect(
+      within(card).getByText(/Svangerskapskontroll, pregnancy leave, birth leave and doctor or dentist/),
+    ).toBeInTheDocument();
+    expect(within(card).getAllByText(/Turning it off restores nothing/)).toHaveLength(2);
+    await userEvent.click(pregnancy);
+    await userEvent.click(within(card).getByRole("button", { name: "Save periods" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/settings$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /\/staff\/settings$/);
+    expect(put.body).toEqual({
+      timeZone: "Europe/Oslo",
+      employeeNumberPrefix: "E-",
+      nextEmployeeNumber: 8,
+      pensionProvider: "Storebrand",
+      retentionGraceDays: 90,
+      healthRetentionDays: 365,
+      createBeforeDays: 30,
+      deleteExternalAfterDays: null,
+      erasePregnancyHealthTypes: true,
+      eraseSickCaseDates: false,
+    });
+    await waitFor(() => expect(within(card).getByRole("switch", { name: /^Erase pregnancy/ })).toBeChecked());
   });
 
   it("says nothing is failing when no deletion has failed, and nothing was erased yet", async () => {

@@ -379,12 +379,14 @@ På skjermen, som en bruker med `staff:manage`: åpne **Ansatteinnstillinger** o
    feriekontoen** og **Kan være en prosent av dagen** (de to siste for en type som telles
    i dager). Trykk **Legg til**.
 3. Blyanten (**Endre** *type*) åpner en type. En forhåndsdefinert type endrer bare
-   navnene, **Rekkefølge** og om den er **Skjult** — de andre feltene vises nedtonet; en
-   egen type endrer alt unntatt nøkkel, art og enhet.
+   navnene, **Rekkefølge**, om den er **Skjult** og om den er **Lønnet** — de andre
+   feltene vises nedtonet; en egen type endrer alt unntatt nøkkel, art og enhet.
+   **Ammefri** forblir lønnet: skjemaet sier hvorfor og nekter å lagre den ulønnet.
 4. **Skjul** slutter å tilby en type for nytt fravær (fravær som har den, beholder den);
    **Tilby** tar den tilbake. Alle felt du ikke endret, sendes tilbake som de var.
-5. En avvisning står i skjemaet: en endring av en forhåndsdefinert types regler, eller å
-   åpne en type som bare er for HR, for kolleger mens fravær har den.
+5. En avvisning står i skjemaet: en endring av en forhåndsdefinert types regler, ammefri
+   satt til ulønnet, eller å åpne en type som bare er for HR, for kolleger mens fravær
+   har den.
 
 Gjennom API-et, som en bruker med `staff:manage`:
 
@@ -398,8 +400,9 @@ Gjennom API-et, som en bruker med `staff:manage`:
    en permisjon, `ameldingLeave` den rapporteres som. Typen og enheten endres aldri.
 3. For å gi en type nytt navn, flytte den eller slutte å tilby den, sender du den tilbake
    til `PUT /api/v1/staff/absence-types/{id}` med `hidden` og `sort` slik du vil ha dem og
-   revisjonen i `If-Match`. En standardtype endrer bare navnene, plassen og om den er
-   skjult; alt annet avvises med `seed_immutable`. En egen type kan når som helst gjøres
+   revisjonen i `If-Match`. En standardtype endrer bare navnene, plassen, om den er
+   skjult og `paid`; alt annet — og `ammefri` med `paid: false` — avvises med
+   `seed_immutable`. En egen type kan når som helst gjøres
    til bare for HR, men når noen har tatt den som bare for HR, kan den ikke åpnes for
    kolleger og ledere (`absence_type_in_use`): legg heller til en ny type. Å gjøre en
    type som er i bruk til bare for HR virker bakover: fra da av viser radene som alt er
@@ -408,6 +411,16 @@ Gjennom API-et, som en bruker med `staff:manage`:
    feriekontoen: skjemaet avviser begge, siden en andel eller et feriefradrag ville
    fortelle ledere hva slags permisjon det er.
 4. Kontroller: `GET /api/v1/staff/meta` lister typene folk kan velge — uten de skjulte.
+
+**Merk en standardtype lønnet når dere betaler utover loven.** Standardtypene sier hva
+loven gir lønn for: en virksomhet der avtalen gir lønn under for eksempel
+foreldrepermisjon eller omsorgspermisjon, slår **Lønnet** på for den typen, og av igjen
+om avtalen opphører. Flagget er til opplysning — ingen tall leser det, heller ikke
+lønnseksporten, som rapporterer dager og timer etter art — så det forteller HR og lønn
+hva virksomheten har bestemt, ikke mer. **Ammefri** er lønnet etter loven og forblir
+lønnet: aml. § 12-8 (2) gir lønn for inntil én time per dag i barnets første leveår ved
+arbeidsdag på sju timer eller mer. Lønn utover det — en lengre pause, eller etter det
+første året — er virksomhetens; merk den med en egen type eller i fraværets notat.
 
 **Velg a-meldingskoden etter permisjonens rettsgrunnlag.** A-meldingen tar imot seks
 permisjonsbeskrivelser og permittering. Velferdspermisjon er avtalt, ikke lovfestet, så
@@ -932,7 +945,14 @@ er blitt forfalt. Hva som forfaller, og hva hver sletting fjerner, står i
   eller alt sammen med personens øvrige helseopplysninger, når siste arbeidsforhold
   sluttet for mer enn `healthRetentionDays` dager siden og det kommer først. Dagene står:
   hvem som var borte når, beholdes, og en slettet sak beholder datoene sine og
-  milepælenes navn og datoer (et åpent spørsmål til eieren).
+  milepælenes navn og datoer — med mindre du [sletter sakenes datoer og
+  milepæler](#slett-svangerskapsrader-og-sykefraværssakers-datoer) også.
+- **Svangerskap og helsetimer** — svangerskapskontroll, svangerskapspermisjon,
+  fødselspermisjon og lege- eller tannlegetimer — beholdes med arbeidsforholdets
+  opplysninger som standard. Med innstillingen på slettes de som dager med sykt barn:
+  **`healthRetentionDays`** dager etter slutten av året raden sluttet, blir raden
+  *Fravær*, med dagene og timene beholdt, og historikken sier ikke lenger hvilken type
+  den var.
 - **Andre helsedokumenter** — de i en begrenset kategori som ikke er lagt på en sak —
   slettes **`healthRetentionDays`** dager etter at det siste arbeidsforholdet sluttet.
 - **Lønn** — et arbeidsforholds lønnsvilkår, ansiennitetsdato og lønnstrinn,
@@ -959,6 +979,36 @@ slettes aldri.
 3. Kontroller: kortet viser de nye tidene. Neste kjøring bedømmer etter dem; en tid som
    gjøres kortere kan gjøre mange personer forfalt på én gang, og arbeideren tar femti
    per kjøring.
+
+### Slett svangerskapsrader og sykefraværssakers datoer
+
+To innstillinger, av som standard, sletter mer enn loven krever at dere beholder (eierens
+avgjørelse av Bs åpne spørsmål 11 og 12). Avgjør dem med personvernombudet: hver sletter
+for godt.
+
+1. Som en bruker med `staff:manage`, åpne **Ansatteinnstillinger**; kortet
+   **Oppbevaring** har to brytere, hver forklart under seg.
+2. **Slett svangerskap og helsetimer** (`erasePregnancyHealthTypes`): rader med
+   svangerskapskontroll, svangerskapspermisjon, fødselspermisjon og *Lege eller
+   tannlege* blir *Fravær* — *Fravær (timer)* for en timesrad, som beholder timene —
+   `healthRetentionDays` dager etter slutten av året de sluttet, aldri før lønnsmåneden
+   som rapporterte dem er passert. Historikken beholder datoene og viser typen som
+   *endret* for alle; en hendelse om en rad som er slettet eller endret til en annen
+   type, slettes etter året den ble registrert.
+3. **Slett sykefraværssakens datoer og milepæler** (`eraseSickCaseDates`): når
+   helseinnholdet i en avsluttet sak slettes, går også selve saken — datoene,
+   milepælene og historikken, som bare beholder hendelsestypene og datoene. Fraværet
+   står igjen som *Fravær*-dager uten sak; dokumentene slettes som før.
+4. Trykk **Lagre fristene**. Gjennom API-et er det `PUT /api/v1/staff/settings` med ett
+   av feltene og revisjonen i `If-Match`; en forespørsel som utelater et felt, beholder
+   det, og `null` avvises.
+5. Kontroller: neste kjøring — av seg selv innen en time, eller **Kjør sletting nå**
+   — sletter **alt som allerede er forfalt**, også saker som er slettet før, og svaret
+   nevner *svangerskap og helsetimer* eller *sykefraværssaker* med et antall.
+
+**Å slå en innstilling av gjenoppretter ingenting**: det som er slettet, forblir
+slettet; den hindrer bare at neste kjøringer sletter mer. En person med slettesperre
+hoppes over av begge, og `STAFF_RETENTION_ENABLED=0` stopper begge sammen med resten.
 
 ### Slå av arbeideren, eller endre hvor ofte den ser etter
 

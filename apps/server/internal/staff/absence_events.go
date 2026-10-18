@@ -321,6 +321,10 @@ func shapeClassedFields(fields map[string]any, groupOf func(string) fieldGroup, 
 		case !a.reads(g) && g == groupHRNotes:
 		case !a.reads(g):
 			out[name] = changed
+		case value == changed:
+			// A value the retention run erased reads "changed" to everyone
+			// (a type among them, which is otherwise a change of two sides).
+			out[name] = changed
 		case g == groupAbsenceType:
 			change, _ := value.(map[string]any)
 			shaped := map[string]any{}

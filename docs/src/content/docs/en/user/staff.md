@@ -866,8 +866,16 @@ part of a day**, **Paid** or **Unpaid**) and whether it is **Seeded** or **Hidde
 - **New absence type** adds one of your own: a **Key**, the **Name in English** and
   **Name in Norwegian**, the **Kind** and what it is **Counted in** — fixed from then on
   — **Who sees the type**, the a-melding description and the switches. Press **Add**.
-- The pencil changes a type. A seeded type changes only its names, its **Order** and
-  whether it is **Hidden**; its rules are the statute's and shown greyed out.
+- The pencil changes a type. A seeded type changes only its names, its **Order**,
+  whether it is **Hidden** and whether it is **Paid**; its other rules are the statute's
+  and shown greyed out. Turn **Paid** on for a seed when your company pays for that
+  absence beyond what the law requires — the flag is for your records, and the payroll
+  export does not read it.
+- **Ammefri** (nursing time) is **Paid**, and stays so: the law (aml. § 12-8 (2)) pays
+  up to one hour a day in the child's first year on a working day of seven hours or
+  more. The form says so, and refuses to save it unpaid. Pay beyond that — more than an
+  hour, or after the first year — is the company's: use a type of your own, or the
+  absence's note.
 - **Hide** stops offering a type for new absence; **Offer** brings it back. Absences
   that name it keep it.
 
@@ -987,9 +995,21 @@ rest on its own every hour; what each erase removes is in the
   sick-leave case closed erases its sick-leave data, whatever the employment ([the
   administration guide](/en/admin/staff/#retention)).
 
-  Change either and press **Save periods**. A period outside its bounds is refused on
-  its field before anything is saved. If somebody else saved the settings since you
-  opened the page, they are reloaded and the page says so.
+- **Erase pregnancy and health appointments** — off unless turned on. On, rows of
+  svangerskapskontroll, pregnancy leave, birth leave and doctor or dentist visits
+  become *Absent* the health period after the end of their year, their days and hours
+  kept, and the history no longer says which type they were.
+- **Erase a sick-leave case's dates and milestones** — off unless turned on. On, a
+  closed case's erase removes the case itself: its dates, its milestones and its
+  history; its absences stay as *Absent* days.
+
+  Each switch is explained beneath it. Turned on, the next run erases everything
+  already due; turning it off restores nothing ([the administration
+  guide](/en/admin/staff/#erase-pregnancy-rows-and-sick-leave-cases-dates)).
+
+  Change any of these and press **Save periods**. A period outside its bounds is
+  refused on its field before anything is saved. If somebody else saved the settings
+  since you opened the page, they are reloaded and the page says so.
 - **Pending deletions** and **Failing deletions** — files the erases and the document
   deletes have queued for removal from the object store, and those the store has
   refused at least once. While any are failing, the card asks you to check that the
@@ -1000,8 +1020,9 @@ rest on its own every hour; what each erase removes is in the
 **Run retention now** runs the hourly erase now, after asking: it erases for good what
 is due, and cannot be undone. People under a legal hold are passed over. The card then
 says what was erased — the personnel administration, health documents, pay and
-contract, sick-leave cases, sick-child days and withdrawals of egenmelding, each with a
-count — and how many files were deleted from the store. The
+contract, sick-leave cases, sick-child days, withdrawals of egenmelding and pregnancy
+and health appointments, each with a count — and how many files were deleted from the
+store. The
 deletions stop after 30 seconds: what is not finished, the worker finishes on its next
 look. While the worker is running already, the page says so: try again in a moment.
 

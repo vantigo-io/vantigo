@@ -5,7 +5,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { StaffSelfCertPolicy } from "../api/absence";
 import { STAFF_QUERY_KEY } from "../api/request";
-import { accountSettingsOf, type StaffSettings, type StaffSettingsInput, updateStaffSettings } from "../api/settings";
+import {
+  accountSettingsOf,
+  eraseSettingsOf,
+  type StaffSettings,
+  type StaffSettingsInput,
+  updateStaffSettings,
+} from "../api/settings";
 import { FieldGroup } from "../components/field-group";
 import "../i18n";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
@@ -118,6 +124,7 @@ export const SelfCertPolicyForm = ({ settings }: { settings: StaffSettings }) =>
           selfCertAfterMonths: Number(values.afterMonths),
           autoCarryOver: values.autoCarryOver,
           ...accountSettingsOf(settings),
+          ...eraseSettingsOf(settings),
         },
         settings.revision,
       ),

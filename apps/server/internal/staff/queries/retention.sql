@@ -115,6 +115,10 @@ WHERE NOT p.legal_hold
           SELECT 1 FROM staff.absences a
           WHERE a.case_id = c.id AND (a.type_id <> @absent_id::bigint OR a.degree_percent IS NOT NULL))
       OR EXISTS (SELECT 1 FROM staff.documents d WHERE d.case_id = c.id)
+      -- With eraseSickCaseDates on (delivery C, Task 5b) the case itself is
+      -- what is left, until its erase deletes it: a case B's erase reached
+      -- before is due again.
+      OR @remove_cases::boolean
       OR EXISTS (
           SELECT 1 FROM staff.events ev
           WHERE ev.person_id = c.person_id AND 'E' = ANY(ev.payload_classes)
@@ -133,6 +137,34 @@ WHERE NOT p.legal_hold
                       AND ti.id::bigint <> @absent_id::bigint))))
 ORDER BY least(coalesce((c.closed_at AT TIME ZONE @zone::text)::date, c.last_day + 17), c.last_day + 17), c.id
 LIMIT @row_limit;
+
+-- name: EraseCaseMilestones :execrows
+-- EraseCaseMilestones deletes a case's milestones, kinds and dates with them
+-- (eraseSickCaseDates, Task 5b).
+DELETE FROM staff.sick_case_milestones WHERE case_id = @case_id;
+
+-- name: UnlinkCaseRows :execrows
+-- UnlinkCaseRows takes a case's rows out of it before the case is deleted
+-- (eraseSickCaseDates, Task 5b): the rows keep their days, as the reserved
+-- absent the case's erase gave them.
+UPDATE staff.absences SET case_id = NULL, revision = revision + 1, updated_at = @now::timestamptz
+WHERE case_id = @case_id;
+
+-- name: EraseSickCase :execrows
+-- EraseSickCase deletes the case row itself, its dates with it
+-- (eraseSickCaseDates, Task 5b), once its milestones, rows and documents no
+-- longer name it.
+DELETE FROM staff.sick_cases WHERE id = @id;
+
+-- name: PersonEventsNamingCases :many
+-- PersonEventsNamingCases is a person's events that name one of @case_ids as
+-- their case (caseId) or their row's (rowCaseId), oldest first: what the
+-- removal of a case blanks to the kind, or unlinks.
+SELECT id, payload
+FROM staff.events
+WHERE person_id = @person_id
+  AND ((payload ->> 'caseId')::bigint = ANY(@case_ids::bigint[]) OR (payload ->> 'rowCaseId')::bigint = ANY(@case_ids::bigint[]))
+ORDER BY id;
 
 -- name: CaseRowIDs :many
 -- CaseRowIDs is the ids of a case's rows: the events the case's erase owns
@@ -196,6 +228,80 @@ ORDER BY a.id;
 -- SetRowsAbsent writes the reserved absent type on @ids.
 UPDATE staff.absences SET type_id = @absent_id::bigint, revision = revision + 1, updated_at = @now::timestamptz
 WHERE id = ANY(@ids::bigint[]);
+
+-- name: AbsentHoursTypeID :one
+-- AbsentHoursTypeID is the reserved hour type the pregnancy and health erase
+-- writes in place of an hour type (Task 5b), as AbsentTypeID is absent's.
+SELECT id FROM staff.absence_types WHERE key = 'absent_hours';
+
+-- name: SeededTypeIDs :many
+-- SeededTypeIDs is the ids of the seeds named by @keys: the pregnancy and
+-- health types the erase setting reaches (Task 5b).
+SELECT id FROM staff.absence_types WHERE seeded AND key = ANY(@keys::text[]) ORDER BY id;
+
+-- name: DuePeoplePregnancyHealth :many
+-- DuePeoplePregnancyHealth is the people, not held, whatever their
+-- employment, with pregnancy or health content due (erasePregnancyHealthTypes,
+-- Task 5b): a row of one of @type_ids whose year ended before @cutoff —
+-- healthRetentionDays after 31 December of its last day's year, as a
+-- child-sick row's — or an event naming one of those types in its typeIds
+-- whose row no longer has one (deleted, or corrected to another type),
+-- recorded in a year in @zone that ended before @cutoff; either one sooner
+-- when every employment ended before @cutoff. An erased row has the reserved
+-- type and its events the reserved ids, so nothing is due twice.
+SELECT p.id
+FROM staff.people p
+WHERE NOT p.legal_hold
+  AND (sqlc.narg(person_id)::bigint IS NULL OR p.id = sqlc.narg(person_id)::bigint)
+  AND (
+      EXISTS (
+          SELECT 1 FROM staff.absences a
+          WHERE a.person_id = p.id AND a.type_id = ANY(@type_ids::bigint[])
+            AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+                 AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date)))))
+      OR EXISTS (
+          SELECT 1 FROM staff.events ev
+          WHERE ev.person_id = p.id
+            AND (make_date(EXTRACT(YEAR FROM (ev.at AT TIME ZONE @zone::text))::int, 12, 31) < @cutoff::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+                 AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
+            AND NOT EXISTS (
+                SELECT 1 FROM staff.absences a
+                WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND a.type_id = ANY(@type_ids::bigint[]))
+            AND EXISTS (
+                SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) ti(id)
+                WHERE ti.id::bigint = ANY(@type_ids::bigint[]))))
+ORDER BY p.id
+LIMIT @row_limit;
+
+-- name: DuePregnancyHealthRows :many
+-- DuePregnancyHealthRows is one person's rows of @type_ids due, as
+-- DuePeoplePregnancyHealth judges them.
+SELECT a.id FROM staff.absences a
+WHERE a.person_id = @person_id AND a.type_id = ANY(@type_ids::bigint[])
+  AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < @cutoff::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id)
+       AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id AND (ge.end_date IS NULL OR ge.end_date >= @cutoff::date))))
+ORDER BY a.id;
+
+-- name: SetRowsReserved :exec
+-- SetRowsReserved writes a reserved type on @ids by each row's unit: absent
+-- on a day row, absent_hours on an hour row, which keeps its hours (Task 5b).
+UPDATE staff.absences a SET
+    type_id = CASE WHEN t.unit = 'hours' THEN @absent_hours_id::bigint ELSE @absent_id::bigint END,
+    revision = a.revision + 1,
+    updated_at = @now::timestamptz
+FROM staff.absence_types t
+WHERE t.id = a.type_id AND a.id = ANY(@ids::bigint[]);
+
+-- name: PersonEventsNamingTypes :many
+-- PersonEventsNamingTypes is a person's events whose typeIds name one of
+-- @type_ids, oldest first: the pregnancy and health erase's to rewrite.
+SELECT ev.id, ev.at, ev.payload
+FROM staff.events ev
+WHERE ev.person_id = @person_id
+  AND EXISTS (
+      SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) ti(id)
+      WHERE ti.id::bigint = ANY(@type_ids::bigint[]))
+ORDER BY ev.id;
 
 -- name: DuePeopleWithdrawal :many
 -- DuePeopleWithdrawal is the people whose withdrawal of egenmelding is due

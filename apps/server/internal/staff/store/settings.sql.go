@@ -160,8 +160,10 @@ UPDATE staff.settings SET
     create_before_days = coalesce($15::smallint, create_before_days),
     delete_external_after_days = CASE WHEN $16::boolean
         THEN $17::smallint ELSE delete_external_after_days END,
+    erase_pregnancy_health_types = coalesce($18::boolean, erase_pregnancy_health_types),
+    erase_sick_case_dates = coalesce($19::boolean, erase_sick_case_dates),
     revision = revision + 1,
-    updated_at = $18::timestamptz
+    updated_at = $20::timestamptz
 WHERE id = 1
 RETURNING id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates
 `
@@ -184,6 +186,8 @@ type UpdateSettingsParams struct {
 	CreateBeforeDays           *int16
 	SetDeleteExternalAfterDays bool
 	DeleteExternalAfterDays    *int16
+	ErasePregnancyHealthTypes  *bool
+	EraseSickCaseDates         *bool
 	Now                        time.Time
 }
 
@@ -193,7 +197,8 @@ type UpdateSettingsParams struct {
 // the caller resolved them from the row it locked. The account settings
 // (delivery C) keep their values when left out: create_before_days when
 // NULL, delete_external_after_days unless @set_delete_external_after_days —
-// its NULL is a value, "never".
+// its NULL is a value, "never". The two erase settings (Task 5b) keep their
+// values when NULL.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (StaffSetting, error) {
 	row := q.db.QueryRow(ctx, updateSettings,
 		arg.TimeZone,
@@ -213,6 +218,8 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.CreateBeforeDays,
 		arg.SetDeleteExternalAfterDays,
 		arg.DeleteExternalAfterDays,
+		arg.ErasePregnancyHealthTypes,
+		arg.EraseSickCaseDates,
 		arg.Now,
 	)
 	var i StaffSetting

@@ -3,6 +3,7 @@ package staff_test
 import (
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -262,7 +263,6 @@ func TestAbsenceTypes_Change(t *testing.T) {
 		field string
 		value any
 	}{
-		{"paid", "paid", false},
 		{"the holiday account", "drawsHoliday", false},
 		{"a percentage", "allowsPercent", true},
 		{"the decision", "needsDecision", false},
@@ -391,4 +391,57 @@ func TestAbsenceTypes_HROnlyTakesNoShareAndNoHoliday(t *testing.T) {
 		}
 	}
 	do(t, hr, http.MethodPost, absenceTypesPath, companyType("hr_plain", map[string]any{"visibility": "hr_only", "allowsPercent": false}), http.StatusCreated, nil)
+}
+
+// A seed's pay is HR's to say (the owner's answer 7, Task 5b): a company
+// paying beyond the law marks it on the seed, and takes it back — paid on
+// for velferdspermisjon's unpaid siblings and off again, off for a paid seed
+// and on again, each an absence_type_updated event naming paid. Ammefri is
+// the exception: aml. § 12-8 (2) pays up to an hour a day in the child's
+// first year, so it is never set unpaid (seed_immutable, saying why); its
+// other changes stand.
+func TestAbsenceTypes_ASeedsPay(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	types := absenceTypesAs(t, h, "staff:manage")
+	for _, key := range []string{"omsorgspermisjon", "pleie_naerstaende", "foreldrepermisjon", "ferie", "avspasering"} {
+		seed := absenceTypeByKey(t, types, key)
+		body := changeOf(seed)
+		body["paid"] = !seed.Paid
+		var flipped gen.StaffAbsenceType
+		do(t, hr, http.MethodPut, absenceTypePath(seed.Id), body, http.StatusOK, &flipped, ifMatch(seed.Revision))
+		if flipped.Paid == seed.Paid || flipped.Revision != seed.Revision+1 {
+			t.Errorf("%s: paid %v at %d, want %v at %d", key, flipped.Paid, flipped.Revision, !seed.Paid, seed.Revision+1)
+		}
+		body["paid"] = seed.Paid
+		var back gen.StaffAbsenceType
+		do(t, hr, http.MethodPut, absenceTypePath(seed.Id), body, http.StatusOK, &back, ifMatch(flipped.Revision))
+		if back.Paid != seed.Paid {
+			t.Errorf("%s: paid %v after setting it back, want %v", key, back.Paid, seed.Paid)
+		}
+		if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id IS NULL AND kind = 'absence_type_updated'
+			AND (payload->>'absenceTypeId')::bigint = $1 AND payload->'fields' ? 'paid'`, seed.Id); n != 2 {
+			t.Errorf("%s: absence_type_updated events naming paid = %d, want 2", key, n)
+		}
+	}
+	ammefri := absenceTypeByKey(t, types, "ammefri")
+	unpaid := changeOf(ammefri)
+	unpaid["paid"] = false
+	p := refused(t, hr.Do(http.MethodPut, absenceTypePath(ammefri.Id), unpaid, ifMatch(ammefri.Revision)), http.StatusConflict, "seed_immutable")
+	if !strings.Contains(p.Detail, "12-8") {
+		t.Errorf("ammefri unpaid: detail %q, want it to name aml. § 12-8", p.Detail)
+	}
+	if got := absenceTypeByKey(t, absenceTypesAs(t, h, "staff:manage"), "ammefri"); !got.Paid || got.Revision != ammefri.Revision {
+		t.Errorf("after the refusal ammefri = %+v, want paid and unchanged", got)
+	}
+	renamed := changeOf(ammefri)
+	renamed["names"] = map[string]any{"en": "Nursing hour", "nb": "Ammefri"}
+	do(t, hr, http.MethodPut, absenceTypePath(ammefri.Id), renamed, http.StatusOK, nil, ifMatch(ammefri.Revision))
+	// A seed's other flags stay the vocabulary's: pay changed beside one is refused whole.
+	velferd := absenceTypeByKey(t, types, "velferdspermisjon")
+	both := changeOf(velferd)
+	both["paid"] = false
+	both["needsDecision"] = false
+	refused(t, hr.Do(http.MethodPut, absenceTypePath(velferd.Id), both, ifMatch(velferd.Revision)), http.StatusConflict, "seed_immutable")
 }

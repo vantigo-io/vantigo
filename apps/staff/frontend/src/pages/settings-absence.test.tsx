@@ -83,6 +83,64 @@ describe("Settings — absence types", () => {
     expect(await within(dialog).findByText(/A seeded type changes only its names, its order/)).toBeInTheDocument();
   });
 
+  it("lets HR say a seed is paid, every other field sent as it was", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    renderRoute("/staff/settings");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Change Parental leave" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change Parental leave" });
+    const paid = within(dialog).getByRole("switch", { name: "Paid" });
+    expect(paid).toBeEnabled();
+    expect(within(dialog).getByRole("switch", { name: "Needs a decision" })).toBeDisabled();
+    await userEvent.click(paid);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /absence-types\/1007$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /absence-types\/1007$/);
+    expect(put.body).toEqual({
+      names: { en: "Parental leave", nb: "Foreldrepermisjon" },
+      sort: 7,
+      hidden: false,
+      allowsPercent: true,
+      drawsHoliday: false,
+      needsDecision: true,
+      paid: true,
+      visibility: "absent",
+      ameldingLeave: "permisjonMedForeldrepenger",
+    });
+    expect(await tableRow("Absence types", "Parental leave")).toHaveTextContent("Paid");
+  });
+
+  it("keeps ammefri paid, saying why, without asking the server", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    renderRoute("/staff/settings");
+
+    expect(await tableRow("Absence types", "Nursing time")).toHaveTextContent("Paid");
+    await userEvent.click(screen.getByRole("button", { name: "Change Nursing time" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change Nursing time" });
+    expect(within(dialog).getByText(/aml\. § 12-8 \(2\)/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("switch", { name: /^Paid/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByText(/Nursing time stays paid/)).toBeInTheDocument();
+    expect(sent(fetchMock, "PUT", /absence-types\/1009$/)).toHaveLength(0);
+  });
+
+  it("says ammefri's seed_immutable in words", async () => {
+    stubStaffApi({
+      role: "manage",
+      write: (method, path) =>
+        method === "PUT" && path.endsWith("/absence-types/1009")
+          ? staffProblem(409, { code: "seed_immutable", title: "Seed", detail: "English" })
+          : undefined,
+    });
+    renderRoute("/staff/settings");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Change Nursing time" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change Nursing time" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByText(/whether it is paid — ammefri always/)).toBeInTheDocument();
+  });
+
   it("edits a company type, keeping what it does not touch, and says absence_type_in_use in words", async () => {
     const fetchMock = stubStaffApi({
       role: "manage",
@@ -241,7 +299,12 @@ describe("Settings — the self-certification policy and carry-over", () => {
     // The account settings (delivery C) are sent back as read, too.
     const fetchMock = stubStaffApi({
       role: "manage",
-      settings: settings({ injuryInsurer: "If", createBeforeDays: 21, deleteExternalAfterDays: 400 }),
+      settings: settings({
+        injuryInsurer: "If",
+        createBeforeDays: 21,
+        deleteExternalAfterDays: 400,
+        erasePregnancyHealthTypes: true,
+      }),
     });
     renderRoute("/staff/settings");
 
@@ -270,6 +333,8 @@ describe("Settings — the self-certification policy and carry-over", () => {
       autoCarryOver: true,
       createBeforeDays: 21,
       deleteExternalAfterDays: 400,
+      erasePregnancyHealthTypes: true,
+      eraseSickCaseDates: false,
     });
   });
 

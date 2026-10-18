@@ -864,8 +864,16 @@ eller **Ulønnet**) og om den er **Forhåndsdefinert** eller **Skjult**.
 - **Ny fraværstype** legger til en egen: en **Nøkkel**, **Navn på engelsk** og **Navn på
   norsk**, **Art** og hva den **Telles i** — som ikke endres senere — **Hvem ser
   typen**, permisjonsbeskrivelsen i a-meldingen og bryterne. Trykk **Legg til**.
-- Blyanten endrer en type. En forhåndsdefinert type endrer bare navnene, **Rekkefølge**
-  og om den er **Skjult**; reglene er lovens og vises nedtonet.
+- Blyanten endrer en type. En forhåndsdefinert type endrer bare navnene, **Rekkefølge**,
+  om den er **Skjult** og om den er **Lønnet**; de andre reglene er lovens og vises
+  nedtonet. Slå **Lønnet** på for en forhåndsdefinert type når virksomheten betaler for
+  fraværet utover det loven krever — flagget er til deres oversikt, og lønnseksporten
+  leser det ikke.
+- **Ammefri** er **Lønnet**, og forblir det: loven (aml. § 12-8 (2)) gir lønn for inntil
+  én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer.
+  Skjemaet sier det, og nekter å lagre den ulønnet. Lønn utover det — mer enn en time,
+  eller etter det første året — er virksomhetens: bruk en egen type, eller fraværets
+  notat.
 - **Skjul** slutter å tilby en type for nytt fravær; **Tilby** tar den tilbake. Fravær
   som har typen, beholder den.
 
@@ -984,7 +992,19 @@ sletter resten av seg selv hver time; hva hver sletting fjerner, står i
   etter at en sykefraværssak ble avsluttet, slettes sykefraværsopplysningene, uansett
   arbeidsforhold ([administrasjonsveiledningen](/nb/admin/staff/#oppbevaring)).
 
-  Endre en av dem og trykk **Lagre fristene**. En frist utenfor grensene avvises på
+- **Slett svangerskap og helsetimer** — av med mindre den slås på. På blir rader med
+  svangerskapskontroll, svangerskapspermisjon, fødselspermisjon og lege- eller
+  tannlegetimer *Fravær* helsefristen etter slutten av året sitt, med dagene og timene
+  beholdt, og historikken sier ikke lenger hvilken type de var.
+- **Slett sykefraværssakens datoer og milepæler** — av med mindre den slås på. På
+  fjerner slettingen av en avsluttet sak selve saken: datoene, milepælene og
+  historikken; fraværet står igjen som *Fravær*-dager.
+
+  Hver bryter er forklart under seg. Slått på sletter neste kjøring alt som allerede er
+  forfalt; å slå den av gjenoppretter ingenting
+  ([administrasjonsveiledningen](/nb/admin/staff/#slett-svangerskapsrader-og-sykefraværssakers-datoer)).
+
+  Endre noe av dette og trykk **Lagre fristene**. En frist utenfor grensene avvises på
   feltet før noe lagres. Har noen andre lagret innstillingene siden du åpnet siden,
   lastes de inn på nytt og siden sier fra.
 - **Ventende slettinger** og **Feilede slettinger** — filer slettingene og
@@ -997,8 +1017,9 @@ sletter resten av seg selv hver time; hva hver sletting fjerner, står i
 **Kjør sletting nå** kjører timeslettingen nå, etter å ha spurt: den sletter for godt
 det som er forfalt, og kan ikke angres. Personer med slettesperre hoppes over. Kortet
 sier så hva som ble slettet — personaladministrasjon, helsedokumenter, lønn og
-avtale, sykefraværssaker, dager med sykt barn og tilbaketrekkinger av egenmelding, hver
-med et antall — og hvor mange filer som ble slettet fra lageret.
+avtale, sykefraværssaker, dager med sykt barn, tilbaketrekkinger av egenmelding og
+svangerskap og helsetimer, hver med et antall — og hvor mange filer som ble slettet fra
+lageret.
 Slettingene stopper etter 30 sekunder: det som ikke er ferdig, gjør
 oppbevaringsarbeideren ferdig neste gang den ser etter. Kjører arbeideren allerede, sier
 siden fra: prøv igjen om et øyeblikk.

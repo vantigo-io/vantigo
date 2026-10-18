@@ -12,6 +12,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const absentHoursTypeID = `-- name: AbsentHoursTypeID :one
+SELECT id FROM staff.absence_types WHERE key = 'absent_hours'
+`
+
+// AbsentHoursTypeID is the reserved hour type the pregnancy and health erase
+// writes in place of an hour type (Task 5b), as AbsentTypeID is absent's.
+func (q *Queries) AbsentHoursTypeID(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, absentHoursTypeID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const caseDocuments = `-- name: CaseDocuments :many
 SELECT id, object_key FROM staff.documents WHERE case_id = $1 ORDER BY id
 `
@@ -115,6 +128,10 @@ WHERE NOT p.legal_hold
           SELECT 1 FROM staff.absences a
           WHERE a.case_id = c.id AND (a.type_id <> $6::bigint OR a.degree_percent IS NOT NULL))
       OR EXISTS (SELECT 1 FROM staff.documents d WHERE d.case_id = c.id)
+      -- With eraseSickCaseDates on (delivery C, Task 5b) the case itself is
+      -- what is left, until its erase deletes it: a case B's erase reached
+      -- before is due again.
+      OR $7::boolean
       OR EXISTS (
           SELECT 1 FROM staff.events ev
           WHERE ev.person_id = c.person_id AND 'E' = ANY(ev.payload_classes)
@@ -125,14 +142,14 @@ WHERE NOT p.legal_hold
             AND (
                 EXISTS (
                     SELECT 1 FROM jsonb_each(ev.payload -> 'fields') f
-                    WHERE f.value <> to_jsonb($7::text)
+                    WHERE f.value <> to_jsonb($8::text)
                       AND coalesce(ev.payload -> 'classes' ->> f.key, 'E') = 'E')
                 OR EXISTS (
                     SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) WITH ORDINALITY ti(id, n)
                     WHERE coalesce(ev.payload -> 'typeClasses' ->> (ti.n::int - 1), 'E') = 'E'
                       AND ti.id::bigint <> $6::bigint))))
 ORDER BY least(coalesce((c.closed_at AT TIME ZONE $2::text)::date, c.last_day + 17), c.last_day + 17), c.id
-LIMIT $8
+LIMIT $9
 `
 
 type DueCasesEParams struct {
@@ -142,6 +159,7 @@ type DueCasesEParams struct {
 	CaseColumns      []string
 	MilestoneColumns []string
 	AbsentID         int64
+	RemoveCases      bool
 	Blanked          string
 	RowLimit         int32
 }
@@ -169,6 +187,7 @@ func (q *Queries) DueCasesE(ctx context.Context, arg DueCasesEParams) ([]DueCase
 		arg.CaseColumns,
 		arg.MilestoneColumns,
 		arg.AbsentID,
+		arg.RemoveCases,
 		arg.Blanked,
 		arg.RowLimit,
 	)
@@ -611,6 +630,75 @@ func (q *Queries) DuePeopleOrphanedSickEvents(ctx context.Context, arg DuePeople
 	return items, nil
 }
 
+const duePeoplePregnancyHealth = `-- name: DuePeoplePregnancyHealth :many
+SELECT p.id
+FROM staff.people p
+WHERE NOT p.legal_hold
+  AND ($1::bigint IS NULL OR p.id = $1::bigint)
+  AND (
+      EXISTS (
+          SELECT 1 FROM staff.absences a
+          WHERE a.person_id = p.id AND a.type_id = ANY($2::bigint[])
+            AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $3::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+                 AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= $3::date)))))
+      OR EXISTS (
+          SELECT 1 FROM staff.events ev
+          WHERE ev.person_id = p.id
+            AND (make_date(EXTRACT(YEAR FROM (ev.at AT TIME ZONE $4::text))::int, 12, 31) < $3::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id)
+                 AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = p.id AND (ge.end_date IS NULL OR ge.end_date >= $3::date))))
+            AND NOT EXISTS (
+                SELECT 1 FROM staff.absences a
+                WHERE a.id = (ev.payload ->> 'absenceId')::bigint AND a.type_id = ANY($2::bigint[]))
+            AND EXISTS (
+                SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) ti(id)
+                WHERE ti.id::bigint = ANY($2::bigint[]))))
+ORDER BY p.id
+LIMIT $5
+`
+
+type DuePeoplePregnancyHealthParams struct {
+	PersonID *int64
+	TypeIds  []int64
+	Cutoff   pgtype.Date
+	Zone     string
+	RowLimit int32
+}
+
+// DuePeoplePregnancyHealth is the people, not held, whatever their
+// employment, with pregnancy or health content due (erasePregnancyHealthTypes,
+// Task 5b): a row of one of @type_ids whose year ended before @cutoff —
+// healthRetentionDays after 31 December of its last day's year, as a
+// child-sick row's — or an event naming one of those types in its typeIds
+// whose row no longer has one (deleted, or corrected to another type),
+// recorded in a year in @zone that ended before @cutoff; either one sooner
+// when every employment ended before @cutoff. An erased row has the reserved
+// type and its events the reserved ids, so nothing is due twice.
+func (q *Queries) DuePeoplePregnancyHealth(ctx context.Context, arg DuePeoplePregnancyHealthParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, duePeoplePregnancyHealth,
+		arg.PersonID,
+		arg.TypeIds,
+		arg.Cutoff,
+		arg.Zone,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const duePeopleWithdrawal = `-- name: DuePeopleWithdrawal :many
 SELECT p.id
 FROM staff.people p
@@ -671,6 +759,42 @@ func (q *Queries) DuePeopleWithdrawal(ctx context.Context, arg DuePeopleWithdraw
 	return items, nil
 }
 
+const duePregnancyHealthRows = `-- name: DuePregnancyHealthRows :many
+SELECT a.id FROM staff.absences a
+WHERE a.person_id = $1 AND a.type_id = ANY($2::bigint[])
+  AND (make_date(EXTRACT(YEAR FROM a.last_day)::int, 12, 31) < $3::date OR (EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id)
+       AND NOT EXISTS (SELECT 1 FROM staff.employments ge WHERE ge.person_id = a.person_id AND (ge.end_date IS NULL OR ge.end_date >= $3::date))))
+ORDER BY a.id
+`
+
+type DuePregnancyHealthRowsParams struct {
+	PersonID int64
+	TypeIds  []int64
+	Cutoff   pgtype.Date
+}
+
+// DuePregnancyHealthRows is one person's rows of @type_ids due, as
+// DuePeoplePregnancyHealth judges them.
+func (q *Queries) DuePregnancyHealthRows(ctx context.Context, arg DuePregnancyHealthRowsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, duePregnancyHealthRows, arg.PersonID, arg.TypeIds, arg.Cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const employmentDocumentsA = `-- name: EmploymentDocumentsA :many
 SELECT d.id, d.object_key
 FROM staff.documents d
@@ -712,6 +836,35 @@ func (q *Queries) EmploymentDocumentsA(ctx context.Context, arg EmploymentDocume
 		return nil, err
 	}
 	return items, nil
+}
+
+const eraseCaseMilestones = `-- name: EraseCaseMilestones :execrows
+DELETE FROM staff.sick_case_milestones WHERE case_id = $1
+`
+
+// EraseCaseMilestones deletes a case's milestones, kinds and dates with them
+// (eraseSickCaseDates, Task 5b).
+func (q *Queries) EraseCaseMilestones(ctx context.Context, caseID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, eraseCaseMilestones, caseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const eraseSickCase = `-- name: EraseSickCase :execrows
+DELETE FROM staff.sick_cases WHERE id = $1
+`
+
+// EraseSickCase deletes the case row itself, its dates with it
+// (eraseSickCaseDates, Task 5b), once its milestones, rows and documents no
+// longer name it.
+func (q *Queries) EraseSickCase(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, eraseSickCase, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const goneDocumentsWithEventsA = `-- name: GoneDocumentsWithEventsA :many
@@ -911,6 +1064,90 @@ func (q *Queries) PersonDocumentsOfClass(ctx context.Context, arg PersonDocument
 	return items, nil
 }
 
+const personEventsNamingCases = `-- name: PersonEventsNamingCases :many
+SELECT id, payload
+FROM staff.events
+WHERE person_id = $1
+  AND ((payload ->> 'caseId')::bigint = ANY($2::bigint[]) OR (payload ->> 'rowCaseId')::bigint = ANY($2::bigint[]))
+ORDER BY id
+`
+
+type PersonEventsNamingCasesParams struct {
+	PersonID *int64
+	CaseIds  []int64
+}
+
+type PersonEventsNamingCasesRow struct {
+	ID      int64
+	Payload []byte
+}
+
+// PersonEventsNamingCases is a person's events that name one of @case_ids as
+// their case (caseId) or their row's (rowCaseId), oldest first: what the
+// removal of a case blanks to the kind, or unlinks.
+func (q *Queries) PersonEventsNamingCases(ctx context.Context, arg PersonEventsNamingCasesParams) ([]PersonEventsNamingCasesRow, error) {
+	rows, err := q.db.Query(ctx, personEventsNamingCases, arg.PersonID, arg.CaseIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PersonEventsNamingCasesRow
+	for rows.Next() {
+		var i PersonEventsNamingCasesRow
+		if err := rows.Scan(&i.ID, &i.Payload); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const personEventsNamingTypes = `-- name: PersonEventsNamingTypes :many
+SELECT ev.id, ev.at, ev.payload
+FROM staff.events ev
+WHERE ev.person_id = $1
+  AND EXISTS (
+      SELECT 1 FROM jsonb_array_elements_text(coalesce(ev.payload -> 'typeIds', '[]'::jsonb)) ti(id)
+      WHERE ti.id::bigint = ANY($2::bigint[]))
+ORDER BY ev.id
+`
+
+type PersonEventsNamingTypesParams struct {
+	PersonID *int64
+	TypeIds  []int64
+}
+
+type PersonEventsNamingTypesRow struct {
+	ID      int64
+	At      time.Time
+	Payload []byte
+}
+
+// PersonEventsNamingTypes is a person's events whose typeIds name one of
+// @type_ids, oldest first: the pregnancy and health erase's to rewrite.
+func (q *Queries) PersonEventsNamingTypes(ctx context.Context, arg PersonEventsNamingTypesParams) ([]PersonEventsNamingTypesRow, error) {
+	rows, err := q.db.Query(ctx, personEventsNamingTypes, arg.PersonID, arg.TypeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PersonEventsNamingTypesRow
+	for rows.Next() {
+		var i PersonEventsNamingTypesRow
+		if err := rows.Scan(&i.ID, &i.At, &i.Payload); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const personEventsOfClass = `-- name: PersonEventsOfClass :many
 SELECT id, at, payload, payload_classes
 FROM staff.events
@@ -1010,6 +1247,32 @@ func (q *Queries) RetentionLedgerState(ctx context.Context) (RetentionLedgerStat
 	return i, err
 }
 
+const seededTypeIDs = `-- name: SeededTypeIDs :many
+SELECT id FROM staff.absence_types WHERE seeded AND key = ANY($1::text[]) ORDER BY id
+`
+
+// SeededTypeIDs is the ids of the seeds named by @keys: the pregnancy and
+// health types the erase setting reaches (Task 5b).
+func (q *Queries) SeededTypeIDs(ctx context.Context, keys []string) ([]int64, error) {
+	rows, err := q.db.Query(ctx, seededTypeIDs, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setCaseRowsAbsent = `-- name: SetCaseRowsAbsent :execrows
 UPDATE staff.absences SET type_id = $1::bigint, revision = revision + 1, updated_at = $2::timestamptz
 WHERE case_id = $3 AND type_id <> $1::bigint
@@ -1062,4 +1325,53 @@ type SetRowsAbsentParams struct {
 func (q *Queries) SetRowsAbsent(ctx context.Context, arg SetRowsAbsentParams) error {
 	_, err := q.db.Exec(ctx, setRowsAbsent, arg.AbsentID, arg.Now, arg.Ids)
 	return err
+}
+
+const setRowsReserved = `-- name: SetRowsReserved :exec
+UPDATE staff.absences a SET
+    type_id = CASE WHEN t.unit = 'hours' THEN $1::bigint ELSE $2::bigint END,
+    revision = a.revision + 1,
+    updated_at = $3::timestamptz
+FROM staff.absence_types t
+WHERE t.id = a.type_id AND a.id = ANY($4::bigint[])
+`
+
+type SetRowsReservedParams struct {
+	AbsentHoursID int64
+	AbsentID      int64
+	Now           time.Time
+	Ids           []int64
+}
+
+// SetRowsReserved writes a reserved type on @ids by each row's unit: absent
+// on a day row, absent_hours on an hour row, which keeps its hours (Task 5b).
+func (q *Queries) SetRowsReserved(ctx context.Context, arg SetRowsReservedParams) error {
+	_, err := q.db.Exec(ctx, setRowsReserved,
+		arg.AbsentHoursID,
+		arg.AbsentID,
+		arg.Now,
+		arg.Ids,
+	)
+	return err
+}
+
+const unlinkCaseRows = `-- name: UnlinkCaseRows :execrows
+UPDATE staff.absences SET case_id = NULL, revision = revision + 1, updated_at = $1::timestamptz
+WHERE case_id = $2
+`
+
+type UnlinkCaseRowsParams struct {
+	Now    time.Time
+	CaseID *int64
+}
+
+// UnlinkCaseRows takes a case's rows out of it before the case is deleted
+// (eraseSickCaseDates, Task 5b): the rows keep their days, as the reserved
+// absent the case's erase gave them.
+func (q *Queries) UnlinkCaseRows(ctx context.Context, arg UnlinkCaseRowsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, unlinkCaseRows, arg.Now, arg.CaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

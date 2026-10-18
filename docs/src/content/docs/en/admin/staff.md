@@ -370,13 +370,14 @@ On the screen, as a user with `staff:manage`: open **Staff settings** and find
    decision**, **Paid**, **Draws on the holiday account** and **May be a percentage of
    the day** (the last two for a type counted in days). Press **Add**.
 3. The pencil (**Change** *type*) opens a type. A seed changes only its names, its
-   **Order** and whether it is **Hidden** — its other fields are shown greyed out; a
-   type of your own changes everything but its key, kind and unit.
+   **Order**, whether it is **Hidden** and whether it is **Paid** — its other fields are
+   shown greyed out; a type of your own changes everything but its key, kind and unit.
+   **Ammefri** stays paid: the form says why and refuses to save it unpaid.
 4. **Hide** stops offering a type for new absence (absences that name it keep it);
    **Offer** brings it back. Every field you did not change is sent back as it was.
 5. A refusal is said in the form: a change to a seed's rules ("only its names, its
-   order and whether it is hidden"), or opening an HR-only type to colleagues while
-   absences name it.
+   order, whether it is hidden and whether it is paid"), ammefri set unpaid, or opening
+   an HR-only type to colleagues while absences name it.
 
 Through the API, as a user with `staff:manage`:
 
@@ -390,8 +391,9 @@ Through the API, as a user with `staff:manage`:
    leave, the `ameldingLeave` it is reported as. The kind and the unit never change.
 3. To rename a type, re-order it or stop offering it, send it back to
    `PUT /api/v1/staff/absence-types/{id}` with `hidden` and `sort` as you want them and
-   its revision in `If-Match`. A seed changes only its names, its place and whether it
-   is hidden; anything else is refused `seed_immutable`. A type of your own may be made
+   its revision in `If-Match`. A seed changes only its names, its place, whether it is
+   hidden and `paid`; anything else — and `ammefri` with `paid: false` — is refused
+   `seed_immutable`. A type of your own may be made
    HR-only at any time, but once someone has taken it as HR-only it cannot be opened to
    colleagues and managers (`absence_type_in_use`): add another type instead. Making a
    type in use HR-only reaches back: from then on its rows already entered show
@@ -401,6 +403,16 @@ Through the API, as a user with `staff:manage`:
    tell managers what kind of leave it is.
 4. Verify: `GET /api/v1/staff/meta` lists the types people may pick — the hidden ones
    left out.
+
+**Mark a seed paid when you pay beyond the law.** The seeds say what the law pays: a
+company whose agreement pays, say, foreldrepermisjon or omsorgspermisjon turns **Paid**
+on for that seed, and off again if the agreement ends. The flag is informational — no
+figure reads it, the payroll export included, which reports days and hours by kind —
+so it tells HR and payroll what the company has decided, nothing more. **Ammefri** is
+paid by law and stays paid: aml. § 12-8 (2) gives pay for up to one hour a day in the
+child's first year on a working day of seven hours or more. Pay beyond that — a longer
+break, or after the first year — is the company's; mark it with a type of your own or
+in the absence's note.
 
 **Choose the a-melding mapping by the leave's legal basis.** The a-melding accepts six
 leave descriptions and permittering. Welfare leave is agreed, not statutory, so the
@@ -923,7 +935,13 @@ become due. What is due, and what each erase removes, is in
   lapsed — or all of it with the person's other health data, when their last
   employment ended more than `healthRetentionDays` ago and that comes first. The days
   stay: who was away when is kept, and an erased case keeps its dates and its
-  milestones' names and dates (an open question with the owner).
+  milestones' names and dates — unless you [erase cases' dates and
+  milestones](#erase-pregnancy-rows-and-sick-leave-cases-dates) too.
+- **Pregnancy and health appointments** — svangerskapskontroll, svangerskapspermisjon,
+  fødselspermisjon and doctor's or dentist's visits — are kept with the employment's
+  record by default. With the setting on, they go like sick-child days:
+  **`healthRetentionDays`** after the end of the year a row ended, the row becomes
+  *Absent*, its days and hours kept, and its history no longer says which type it was.
 - **Other health documents** — those in a restricted category not filed under a case —
   are deleted **`healthRetentionDays`** after the last employment ended.
 - **Pay** — an employment's pay terms, seniority date and pay grade, its contracts and
@@ -948,6 +966,36 @@ employment, or one still employed, is never erased.
    `If-Match`; a body that leaves either period out keeps it.
 3. Verify: the card shows the new periods. The next run judges by them; a period made
    shorter can make many people due at once, and the worker takes fifty a run.
+
+### Erase pregnancy rows and sick-leave cases' dates
+
+Two settings, off by default, erase more than the law requires you to keep (the
+owner's decision on B's open questions 11 and 12). Decide them with your data
+protection officer: each erases for good.
+
+1. As a user with `staff:manage`, open **Staff settings**; the **Retention** card has
+   two switches, each explained beneath it.
+2. **Erase pregnancy and health appointments** (`erasePregnancyHealthTypes`): rows of
+   svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and *Doctor or
+   dentist* become *Absent* — *Absent (hours)* for an hour row, which keeps its hours —
+   `healthRetentionDays` after the end of the year they ended, never before the payroll
+   month that reported them has passed. Their history keeps its dates and reads the
+   type as *changed* for everyone; an entry about a row deleted or changed to another
+   type goes by the year it was recorded in.
+3. **Erase a sick-leave case's dates and milestones** (`eraseSickCaseDates`): when a
+   closed case's health content is erased, the case itself goes too — its dates, its
+   milestones and its history, which keeps only the entries' kinds and dates. Its
+   absences stay as *Absent* days, in no case; its documents are deleted as before.
+4. Press **Save periods**. Through the API it is `PUT /api/v1/staff/settings` with
+   either field and the revision in `If-Match`; a body that leaves one out keeps it,
+   and a `null` is refused.
+5. Verify: the next run — on its own within the hour, or **Run retention now** —
+   erases **everything already due**, cases erased before included, and its answer
+   names *pregnancy and health appointments* or *sick-leave cases* with a count.
+
+**Turning a setting off restores nothing**: what it erased stays erased; it only stops
+the next runs erasing more. A person under a legal hold is passed over by both, and
+`STAFF_RETENTION_ENABLED=0` stops both with the rest.
 
 ### Turn the worker off, or change how often it looks
 

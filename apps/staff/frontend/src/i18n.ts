@@ -732,6 +732,12 @@ export const staffCatalog = {
     retentionGraceDaysDescription: "Days from the last employment's end until the personnel administration is erased.",
     healthRetentionDays: "Health documents (days)",
     healthRetentionDaysDescription: "Days from the last employment's end until the health documents are deleted.",
+    erasePregnancyHealthTypes: "Erase pregnancy and health appointments",
+    erasePregnancyHealthTypesDescription:
+      "Svangerskapskontroll, pregnancy leave, birth leave and doctor or dentist visits are erased like sick-child days: once the health period has run after the year an absence ended, it becomes “Absent” in the history and the calendar, its days and hours kept. Off, they are kept with the employment's record. Turned on, the next retention run erases every one already due. Turning it off restores nothing.",
+    eraseSickCaseDates: "Erase a sick-leave case's dates and milestones",
+    eraseSickCaseDatesDescription:
+      "When a closed case's health content is erased, the case itself goes too: its dates, its milestones and its history, its absences kept as “Absent” days. Off, the case keeps its dates and its milestones' dates. Turned on, the next retention run reaches every case already due, those erased before included. Turning it off restores nothing.",
     retentionGraceInvalid: "0 to 3650 days",
     healthRetentionInvalid: "30 to 3650 days",
     savePeriods: "Save periods",
@@ -760,6 +766,7 @@ export const staffCatalog = {
     erasedKind_cases: "sick-leave cases",
     erasedKind_childSick: "sick-child days",
     erasedKind_withdrawal: "withdrawals of egenmelding",
+    erasedKind_pregnancyHealth: "pregnancy and health appointments",
     retentionBusy: "The retention worker is running right now. Try again in a moment.",
     couldNotRunRetention: "Could not run retention",
 
@@ -1175,7 +1182,11 @@ export const staffCatalog = {
     nameInEnglish: "Name in English",
     nameInNorwegian: "Name in Norwegian",
     nameRequired100: "1 to 100 characters",
-    seededTypeExplained: "Its rules are the statute's: only its names, its order and whether it is offered change.",
+    seededTypeExplained:
+      "Its rules are the statute's: only its names, its order, whether it is offered and whether it is paid change. Mark it paid when the company pays beyond the law.",
+    ammefriPaidByLaw:
+      "Paid by law: aml. § 12-8 (2) pays up to one hour a day in the child's first year on a working day of seven hours or more. Pay beyond that is the company's, marked by a type of its own or the absence's note.",
+    ammefriStaysPaid: "{{name}} stays paid: the law pays nursing time in the child's first year (aml. § 12-8 (2)).",
     sortInvalid: "1 to 1000",
     typeSort: "Order",
     typeSortDescription: "Left empty, after every type there is.",
@@ -1244,7 +1255,8 @@ export const staffCatalog = {
     autoCarryOverDescription:
       "Off by default. Turned on, a year's remaining holiday is carried into the next, from the year it is turned on.",
     autoCarryOverSince: "On since {{date}}; no year before it is carried over automatically.",
-    "refusal.seed_immutable": "A seeded type changes only its names, its order and whether it is hidden.",
+    "refusal.seed_immutable":
+      "A seeded type changes only its names, its order, whether it is hidden and whether it is paid — ammefri always stays paid, as aml. § 12-8 (2) pays it.",
     "refusal.absence_type_in_use":
       "An HR-only type is not opened to colleagues while an absence names it: their rows were taken on the promise they stayed HR's.",
     "refusal.holiday_scheme_in_use": "The default scheme, or one an employment follows, is not archived.",
@@ -1985,6 +1997,12 @@ export const staffCatalog = {
     retentionGraceDaysDescription: "Dager fra siste arbeidsforhold sluttet til personaladministrasjonen slettes.",
     healthRetentionDays: "Helsedokumenter (dager)",
     healthRetentionDaysDescription: "Dager fra siste arbeidsforhold sluttet til helsedokumentene slettes.",
+    erasePregnancyHealthTypes: "Slett svangerskap og helsetimer",
+    erasePregnancyHealthTypesDescription:
+      "Svangerskapskontroll, svangerskapspermisjon, fødselspermisjon og lege- eller tannlegetimer slettes som dager med sykt barn: når helsefristen har løpt etter året fraværet sluttet, blir det «Fravær» i historikken og kalenderen, med dagene og timene beholdt. Av beholdes de med arbeidsforholdets opplysninger. Slått på sletter neste oppbevaringskjøring alle som allerede er forfalt. Å slå den av gjenoppretter ingenting.",
+    eraseSickCaseDates: "Slett sykefraværssakens datoer og milepæler",
+    eraseSickCaseDatesDescription:
+      "Når helseinnholdet i en avsluttet sak slettes, går også selve saken: datoene, milepælene og historikken, mens fraværet beholdes som «Fravær»-dager. Av beholder saken datoene sine og milepælenes datoer. Slått på når neste oppbevaringskjøring alle saker som allerede er forfalt, også de som er slettet før. Å slå den av gjenoppretter ingenting.",
     retentionGraceInvalid: "0 til 3650 dager",
     healthRetentionInvalid: "30 til 3650 dager",
     savePeriods: "Lagre fristene",
@@ -2013,6 +2031,7 @@ export const staffCatalog = {
     erasedKind_cases: "sykefraværssaker",
     erasedKind_childSick: "dager med sykt barn",
     erasedKind_withdrawal: "tilbaketrekkinger av egenmelding",
+    erasedKind_pregnancyHealth: "svangerskap og helsetimer",
     retentionBusy: "Oppbevaringsarbeideren kjører akkurat nå. Prøv igjen om et øyeblikk.",
     couldNotRunRetention: "Kunne ikke kjøre sletting",
 
@@ -2429,7 +2448,11 @@ export const staffCatalog = {
     nameInEnglish: "Navn på engelsk",
     nameInNorwegian: "Navn på norsk",
     nameRequired100: "1 til 100 tegn",
-    seededTypeExplained: "Reglene er lovens: bare navn, rekkefølge og om den tilbys, endres.",
+    seededTypeExplained:
+      "Reglene er lovens: bare navn, rekkefølge, om den tilbys og om den er lønnet, endres. Merk den lønnet når virksomheten betaler utover loven.",
+    ammefriPaidByLaw:
+      "Lønnet etter loven: aml. § 12-8 (2) gir lønn for inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer. Lønn utover det er virksomhetens, merket med en egen type eller fraværets notat.",
+    ammefriStaysPaid: "{{name}} forblir lønnet: loven gir lønn for ammefri i barnets første leveår (aml. § 12-8 (2)).",
     sortInvalid: "1 til 1000",
     typeSort: "Rekkefølge",
     typeSortDescription: "Står det tomt, kommer den etter alle typene som finnes.",
@@ -2498,7 +2521,8 @@ export const staffCatalog = {
     autoCarryOverDescription:
       "Av som standard. Slått på overføres årets gjenstående ferie til neste år, fra året det slås på.",
     autoCarryOverSince: "På siden {{date}}; ingen år før det overføres automatisk.",
-    "refusal.seed_immutable": "En forhåndsdefinert type endrer bare navn, rekkefølge og om den er skjult.",
+    "refusal.seed_immutable":
+      "En forhåndsdefinert type endrer bare navn, rekkefølge, om den er skjult og om den er lønnet — ammefri forblir alltid lønnet, slik aml. § 12-8 (2) gir lønn for den.",
     "refusal.absence_type_in_use":
       "En type som bare er for HR, åpnes ikke for kolleger mens fravær har den: de ble registrert med løfte om å forbli HRs.",
     "refusal.holiday_scheme_in_use": "Standardordningen, eller en ordning et arbeidsforhold følger, arkiveres ikke.",
