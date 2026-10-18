@@ -963,6 +963,13 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 			return refuseConflict(conflict(codeAbsenceStatusChange, "Another kind of absence",
 				"A change keeps a request a request and a registration a registration: a type that needs a decision and one that is a notification are not swapped. Remove this absence and enter the other."))
 		}
+		// An HR-only type and any other are not swapped either: the row
+		// would leave one audience's inbox and mail for the other's, telling
+		// a leave-reader what it was (privacy review MEDIUM-1).
+		if hrOnlyType(t.Visibility) != hrOnlyType(beforeType.Visibility) {
+			return refuseConflict(conflict(codeAbsenceVisibilityChange, "Another kind of absence",
+				"A change keeps an HR-only type HR-only and any other type not: they are decided and shown by different people. Remove this absence and enter the other."))
+		}
 		row, err := txq.UpdateAbsence(ctx, store.UpdateAbsenceParams{
 			ID: before.ID, TypeID: t.ID, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last), Hours: p.Hours,
 			Percent: p.Percent, DegreePercent: p.Degree, Sick: sickKind(t.Kind), Note: p.Note, Status: statusFor(t), Now: s.deps.Clock(),

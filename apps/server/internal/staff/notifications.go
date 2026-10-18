@@ -244,7 +244,11 @@ func (s *server) holderMails(ctx context.Context, caller *callerContext, n absen
 	}
 	rows, err := store.New(s.deps.Pool).MailRecipients(ctx, []int64{n.personID})
 	if err != nil || len(rows) == 0 {
-		s.deps.Logger.WarnContext(ctx, "staff: absence mail skipped: the person could not be read", "person_id", n.personID)
+		args := []any{"person_id", n.personID}
+		if err != nil {
+			args = append(args, "error", err.Error())
+		}
+		s.deps.Logger.WarnContext(ctx, "staff: absence mail skipped: the person could not be read", args...)
 		return nil
 	}
 	link := s.appLink(absencePage)

@@ -125,6 +125,11 @@ const (
 	// codeAbsenceStatusChange is a change of an absence's type between one
 	// that needs a decision and one that is a notification (review L2).
 	codeAbsenceStatusChange = "absence_status_change"
+	// codeAbsenceVisibilityChange is a change of an absence's type between
+	// an HR-only one and any other (privacy review of delivery C's Task 5):
+	// the row would move between the managers' inbox and mail and the
+	// personal-data holders'.
+	codeAbsenceVisibilityChange = "absence_visibility_change"
 	// codeCarryOverRecorded is the plan's own (pre-flight I8): a second
 	// carry-over for one person and the year it comes from.
 	codeCarryOverRecorded = "carry_over_recorded"

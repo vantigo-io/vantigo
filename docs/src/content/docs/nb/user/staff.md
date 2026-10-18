@@ -585,7 +585,9 @@ dagene ved **Første dag**; en egenmelding utover det reglene tillater, før du 
 ansatt lenge nok, eller mens retten din er trukket tilbake ved **Type**, med beskjed om å
 registrere en sykmelding i stedet. For å endre en søknad som venter, trykker du **Endre**,
 retter og trykker **Lagre**; har noen endret den imens, lastes den inn på nytt, og siden
-sier fra.
+sier fra. En endring beholder slaget fravær: en søknad forblir en søknad, og en type som
+røper helse eller familieforhold byttes ikke mot en som ikke gjør det, eller omvendt — de
+avgjøres av forskjellige personer. Trykk **Trekk tilbake** og søk om det andre i stedet.
 
 ### Mitt team
 
@@ -645,8 +647,9 @@ dashbordet til fraværet er over.
 #### E-postene den som avgjør, får
 
 - **En leder** får e-post til jobb-e-posten (ellers den private) når noen de avgjør for,
-  søker om fravær eller registrerer det — personen, typen (*permisjon* for en type som
-  røper helse eller familieforhold, *fravær* for sykdom) og dagene.
+  søker om fravær — personen, typen (*fravær* for sykdom) og dagene — eller registrerer
+  det — personen, *fravær* og dagene. En leder får aldri e-post om en type som røper
+  helse eller familieforhold.
 - **Godkjenneren og HR** får e-post bare om en person uten noen leder som kan avgjøre —
   ingen i arbeidsvilkårene eller avdelingen, eller ingen koblet til en aktiv bruker — og
   bare om søknader, til adressen brukeren deres har; det samme gjør en **Owner**.

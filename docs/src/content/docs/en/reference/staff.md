@@ -1647,7 +1647,13 @@ warning, never a refusal.
 row is with the row itself left out of the overlap. A change never swaps a type that
 needs a decision for one that is a notification, or the other way round
 (`absence_status_change`): a request stays a request and a registration a
-registration — remove the row and enter the other. The
+registration — remove the row and enter the other. Nor does it swap an HR-only type for
+any other, or the other way round (`absence_visibility_change`, 409; delivery C's
+privacy review): the two are decided, mailed and shown by different people, so a
+request of ferie turned into svangerskapspermisjon would leave its manager's inbox for
+the `staff:personal-data` holders' — telling the manager what it became — and the other
+way round arrive in a manager's inbox after those holders were mailed; the row is
+removed and the other entered. The
 person changes their own row while it is `requested`; a `registered` row — a sick one
 included — is `staff:manage`'s to change: ending a sykmelding early or fixing its days
 is HR's job, the person asks. `DELETE /absences/{id}` removes a row nobody decided: a
@@ -1856,7 +1862,10 @@ like the manager-deciders: a holder added in the same instant is not seen by tha
 write (accepted). The approval records `self_approved` and `absence_self_approved`,
 listed and shaped as every HR-only row's events (reading 32 — a leave-reader is listed
 none of them), sends no mail, and raises [`hrOnlySelfApproved`](#attention-items) to
-`staff:personal-data` alone. The request is in the sole holder's own inbox and
+`staff:personal-data` alone. The item is listed while the absence lasts — until its last
+day has passed — and goes then; the `absence_self_approved` event stays in the person's
+history for whoever reads the row's events (the person and `staff:personal-data`), so
+the self-approval remains on record after the item is gone. The request is in the sole holder's own inbox and
 `absenceAwaitingDecision` count (`@sole_personal_data` on `RequestedAbsences` and
 `CountRequestedAbsences`; B's by-right self-approval, `@self_approves`, stays a type of
 visibility `absent`), and `hrOnlyAwaitingDecision` leaves it out while they may decide
@@ -1892,7 +1901,14 @@ racing the person's cancel, finds the row no longer a request.
   (pre-flight M7), and a correction keeps the status, so never across the line between
   a request and a registration (`absence_status_change`); never HR's own row but the
   self-approver's. Recorded as `absence_corrected`, both types shaped by their own
-  visibility.
+  visibility. A correction **may** cross the line between an HR-only type and any
+  other (decided with delivery C's privacy review): only HR holding
+  `staff:personal-data` can make it — HR without it gets an HR-only target's
+  unknown-type 400 and an HR-only row's 404 — it corrects a decided row, which no
+  inbox holds and no decider is mailed about (only the person), and every reader reads
+  the row afterwards by its current type, and an event of it is listed to a
+  leave-reader only when neither the types it names nor the row's current type are
+  HR-only — so the correction itself and everything before it stay unlisted to them.
 
 ### The absence mails
 
@@ -3112,6 +3128,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `absence_not_cancellable` | 409 | Cancelling an absence that is neither a request nor an approved row its decider may still cancel (begun: HR alone); correcting one that is neither approved nor registered. |
 | `own_request` | 403 | Deciding, cancelling or correcting one's own absence, but for the self-approver. |
 | `absence_status_change` | 409 | Changing an absence's type between one that needs a decision and one that is a notification. |
+| `absence_visibility_change` | 409 | Changing an absence's type between an HR-only one and any other (`PUT /absences/{id}`); remove it and enter the other. |
 | `carry_over_recorded` | 409 | A second carry-over for one person from one year. |
 | `self_certification_exhausted` | 409 | An egenmelding past the policy's days of one occurrence, its twelve months' occurrences or days, or its case's sixteenth sick day. |
 | `self_certification_too_early` | 409 | An egenmelding before the policy's months of employment. |

@@ -278,31 +278,45 @@ func TestHolderMails_NoAddressInTheLogs(t *testing.T) {
 }
 
 // soleWorld is an installation where Kari is the one active holder of
-// staff:personal-data: her manager Bjørn, HR holding staff:manage alone, an
-// Approver. second, when set, is another holder of staff:personal-data,
-// created disabled unless active — so two worlds differ in that alone.
+// staff:personal-data: her manager Bjørn (none when built unmanaged), HR
+// holding staff:manage alone, an Approver and a colleague (staff:view); Kari
+// and Bjørn have work emails. second is another holder of
+// staff:personal-data, created disabled unless active — so two worlds differ
+// in that alone.
 type soleWorld struct {
-	h                    *harness
-	hr, approver, bossC  *modtest.Client
-	kariC, secondC       *modtest.Client
-	kari, boss           gen.StaffPerson
-	kariUser, secondUser uuid.UUID
+	h                            *harness
+	hr, approver, bossC, viewerC *modtest.Client
+	kariC, secondC               *modtest.Client
+	kari, boss                   gen.StaffPerson
+	kariUser, secondUser         uuid.UUID
 }
 
 func newSoleWorld(t *testing.T, secondActive bool, opts ...modtest.Option) soleWorld {
+	t.Helper()
+	return buildSoleWorld(t, secondActive, true, opts...)
+}
+
+func buildSoleWorld(t *testing.T, secondActive, managed bool, opts ...modtest.Option) soleWorld {
 	t.Helper()
 	h := newHarness(t, opts...)
 	w := soleWorld{h: h}
 	w.hr, _ = signIn(t, h, "staff:manage")
 	company(t, w.hr)
 	w.boss, _ = employed(t, w.hr, "Bjørn", "2019-01-01", terms())
-	w.kari, _ = employed(t, w.hr, "Kari", "2020-01-01", terms("managerPersonId", w.boss.Id))
+	kariTerms := terms()
+	if managed {
+		kariTerms = terms("managerPersonId", w.boss.Id)
+	}
+	w.kari, _ = employed(t, w.hr, "Kari", "2020-01-01", kariTerms)
+	h.Exec(t, `UPDATE staff.people SET work_email = 'kari@example.test' WHERE id = $1`, w.kari.Id)
+	h.Exec(t, `UPDATE staff.people SET work_email = 'bjorn@example.test' WHERE id = $1`, w.boss.Id)
 	w.kariC, w.kariUser = signIn(t, h, "staff:personal-data")
 	link(t, h, w.kari.Id, w.kariUser)
 	var bossUser uuid.UUID
 	w.bossC, bossUser = signIn(t, h)
 	link(t, h, w.boss.Id, bossUser)
 	w.approver, _ = signIn(t, h, "staff:approve")
+	w.viewerC, _ = signIn(t, h, "staff:view")
 	w.secondC, w.secondUser = signIn(t, h, "staff:personal-data")
 	h.Exec(t, `UPDATE identity.users SET is_disabled = $2 WHERE id = $1`, w.secondUser, !secondActive)
 	return w
@@ -434,37 +448,62 @@ func TestSoleHolder_NotStalledOnceSelfApprovable(t *testing.T) {
 	}
 }
 
-// No leak (pre-flight I9): to a manager, an Approver and HR without
-// staff:personal-data, a sole holder's self-approval of an HR-only request
-// reads exactly as the same row approved by another holder of
-// staff:personal-data — the inbox, the attention items and their counts,
-// /stats, the person's events (the page and its count), the absence list,
+// No leak (pre-flight I9, privacy review LOW-2): to a manager, an Approver,
+// HR without staff:personal-data and a colleague, a sole holder's
+// self-approval of an HR-only request reads exactly as the same row approved
+// by another holder of staff:personal-data — while it waits and once it is
+// approved: the inbox, the attention items and their counts, /stats, the
+// person's events (the page and its count), the absence list and its spans,
 // the calendar and the person's own record with its revision, byte for byte
-// once the random user ids are taken out.
+// once the random user ids are taken out. And every mail to someone who
+// holds no staff:personal-data is the same in both worlds and is the ferie
+// request's alone: nothing about the HR-only request reaches them. Both with
+// Kari's manager deciding and with no manager (the holders' fallback).
 func TestSoleHolder_NoLeak(t *testing.T) {
 	t.Parallel()
-	reads := func(w soleWorld) map[string]string {
-		out := map[string]string{}
-		for name, c := range map[string]*modtest.Client{"the manager": w.bossC, "an Approver": w.approver, "HR without personal-data": w.hr} {
-			for _, path := range []string{
-				approvalsPath,
-				"/api/v1/staff/stats/attention",
-				statsPath,
-				pagedPath(eventsPath(w.kari.Id), 1, 100),
-				fmt.Sprintf("%s?personId=%d", absencesPath, w.kari.Id),
-				calendarPath + "?from=2026-10-01&to=2026-12-31",
-				personPath(w.kari.Id),
-			} {
+	paths := func(w soleWorld) []string {
+		return []string{
+			approvalsPath,
+			"/api/v1/staff/stats/attention",
+			statsPath,
+			pagedPath(eventsPath(w.kari.Id), 1, 100),
+			fmt.Sprintf("%s?personId=%d", absencesPath, w.kari.Id),
+			calendarPath + "?from=2026-10-01&to=2026-12-31",
+			personPath(w.kari.Id),
+		}
+	}
+	reads := func(w soleWorld, stage string, out map[string]string) {
+		for name, c := range map[string]*modtest.Client{"the manager": w.bossC, "an Approver": w.approver,
+			"HR without personal-data": w.hr, "a colleague": w.viewerC} {
+			for _, path := range paths(w) {
 				r := c.Do(http.MethodGet, path, nil)
-				out[name+" GET "+path] = fmt.Sprintf("%d %s", r.Status, scrubRandom(string(r.Body)))
+				out[stage+": "+name+" GET "+path] = fmt.Sprintf("%d %s", r.Status, scrubRandom(string(r.Body)))
 			}
+		}
+	}
+	// othersMails is every mail to someone holding no staff:personal-data:
+	// not Kari (her work email, her user's address) nor the second holder.
+	othersMails := func(w soleWorld) []string {
+		holders := []string{"kari@example.test", emailOf(t, w.h, w.kariUser), emailOf(t, w.h, w.secondUser)}
+		var out []string
+		for _, m := range w.h.mail.messages() {
+			if slices.ContainsFunc(m.To, func(to string) bool { return slices.Contains(holders, to) }) {
+				continue
+			}
+			out = append(out, scrubRandom(strings.Join(m.To, ",")+"\n"+m.Subject+"\n"+m.TextBody))
 		}
 		return out
 	}
-	world := func(secondDecides bool) map[string]string {
-		w := newSoleWorld(t, secondDecides)
+	world := func(secondDecides, managed bool) map[string]string {
+		w := buildSoleWorld(t, secondDecides, managed)
+		out := map[string]string{}
 		requestOwn(t, w.kariC, absence(t, w.h, "ferie", "2026-10-05", "2026-10-09"))
+		ferieMails := othersMails(w)
+		if len(ferieMails) == 0 {
+			t.Fatalf("the ferie request mailed nobody (managed %v)", managed)
+		}
 		a := requestOwn(t, w.kariC, absence(t, w.h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
+		reads(w, "pending", out)
 		decider := w.kariC
 		if secondDecides {
 			decider = w.secondC
@@ -473,15 +512,70 @@ func TestSoleHolder_NoLeak(t *testing.T) {
 		if got := modtest.One[bool](t, w.h.Harness, `SELECT self_approved FROM staff.absences WHERE id = $1`, a.Id); got == secondDecides {
 			t.Fatalf("self_approved = %v with the second deciding %v", got, secondDecides)
 		}
-		return reads(w)
+		reads(w, "approved", out)
+		mails := othersMails(w)
+		if !slices.Equal(mails, ferieMails) {
+			t.Errorf("someone without staff:personal-data was mailed about the HR-only request (managed %v, second deciding %v):\n%s",
+				managed, secondDecides, strings.Join(mails[min(len(ferieMails), len(mails)):], "\n---\n"))
+		}
+		out["mails"] = strings.Join(mails, "\n---\n")
+		return out
 	}
-	sole, other := world(false), world(true)
-	for key, got := range sole {
-		if want := other[key]; got != want {
-			t.Errorf("%s differs after a sole holder's self-approval:\n got %s\nwant %s", key, got, want)
+	for _, managed := range []bool{true, false} {
+		sole, other := world(false, managed), world(true, managed)
+		for key, got := range sole {
+			if want := other[key]; got != want {
+				t.Errorf("managed %v: %s differs after a sole holder's self-approval:\n got %s\nwant %s", managed, key, got, want)
+			}
+		}
+		if len(sole) != 2*4*7+1 {
+			t.Errorf("%d reads compared, want %d", len(sole), 2*4*7+1)
 		}
 	}
-	if len(sole) != 21 {
-		t.Errorf("%d reads compared, want 21", len(sole))
+}
+
+// A change never moves a row across the line between an HR-only type and
+// any other (privacy review MEDIUM-1): a request of ferie turned into
+// svangerskapspermisjon would leave the manager's inbox and land in the
+// personal-data holders', and the other way round arrive in the manager's
+// after the holders were mailed; a registration likewise. Each is
+// absence_visibility_change (409) — remove the absence and enter the other
+// — the row unchanged and no mail sent.
+func TestHolderMails_ATypeChangeAcrossHROnly(t *testing.T) {
+	t.Parallel()
+	w := newDecisionWorld(t)
+	h := w.h
+	h.Exec(t, `UPDATE staff.people SET work_email = 'bjorn@example.test' WHERE id = $1`, w.boss.Id)
+	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+	ferie := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-10-05", "2026-10-09"))
+	perm := requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
+	check := register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapskontroll", "2026-10-14", "2026-10-14", "hours", 2))
+	for _, c := range []struct {
+		name string
+		by   *modtest.Client
+		id   int64
+		body map[string]any
+	}{
+		{"ferie to an HR-only type", w.kariC, ferie.Id, absence(t, h, "svangerskapspermisjon", "2026-10-05", "2026-10-09")},
+		{"an HR-only type to ferie", w.kariC, perm.Id, absence(t, h, "ferie", "2026-11-02", "2026-11-06")},
+		{"HR, ferie to an HR-only type", hrPD, ferie.Id, absence(t, h, "religios_hoytid", "2026-10-05", "2026-10-09")},
+		{"an HR-only registration to a plain one", hrPD, check.Id, absence(t, h, "helse", "2026-10-14", "2026-10-14", "hours", 2)},
+	} {
+		typeBefore := modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, c.id)
+		revBefore := modtest.One[int32](t, h.Harness, `SELECT revision FROM staff.absences WHERE id = $1`, c.id)
+		sent := len(h.mail.messages())
+		refused(t, c.by.Do(http.MethodPut, absencePath(c.id), c.body, ifMatchAs(t, c.by, c.id)), http.StatusConflict, "absence_visibility_change")
+		if got := modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, c.id); got != typeBefore {
+			t.Errorf("%s: the type became %d, was %d", c.name, got, typeBefore)
+		}
+		if got := modtest.One[int32](t, h.Harness, `SELECT revision FROM staff.absences WHERE id = $1`, c.id); got != revBefore {
+			t.Errorf("%s: the revision moved to %d from %d", c.name, got, revBefore)
+		}
+		if n := len(h.mail.messages()); n != sent {
+			t.Errorf("%s: %d mails", c.name, n-sent)
+		}
 	}
+	// Within one side the change stands.
+	do(t, w.kariC, http.MethodPut, absencePath(perm.Id), absence(t, h, "fodselspermisjon", "2026-11-02", "2026-11-06"),
+		http.StatusOK, nil, ifMatchAs(t, w.kariC, perm.Id))
 }
