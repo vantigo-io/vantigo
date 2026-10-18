@@ -89,17 +89,32 @@ func newHarness(t *testing.T, opts ...modtest.Option) *harness {
 }
 
 // mailbox is the SMTP seam's fake: every mail the module hands to
-// Deps.SMTPSend, kept in order. It is safe for concurrent use.
+// Deps.SMTPSend, kept in order — unless fail, when a test set it
+// (failWith), refuses the mail, which is then not kept. It is safe for
+// concurrent use.
 type mailbox struct {
 	mu   sync.Mutex
 	sent []mail.Outbound
+	fail func(out mail.Outbound) error
 }
 
 func (m *mailbox) send(_ context.Context, _ config.MailConfig, out mail.Outbound) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.fail != nil {
+		if err := m.fail(out); err != nil {
+			return err
+		}
+	}
 	m.sent = append(m.sent, out)
 	return nil
+}
+
+// failWith makes the mailbox answer every send fn's error (nil delivers).
+func (m *mailbox) failWith(fn func(out mail.Outbound) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fail = fn
 }
 
 func (m *mailbox) messages() []mail.Outbound {

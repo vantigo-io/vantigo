@@ -67,8 +67,11 @@ type attentionInput struct {
 	failing      store.FailingDeletionsRow
 	acknowledged map[string]time.Time
 	// selfApproved is the approved absences their persons approved
-	// themselves that have not ended (delivery B, Task 4).
-	selfApproved []store.SelfApprovedAbsencesRow
+	// themselves that have not ended (delivery B, Task 4), never of an
+	// HR-only type; hrOnlySelfApproved the HR-only ones the sole holder of
+	// staff:personal-data approved (delivery C, Task 5).
+	selfApproved       []store.SelfApprovedAbsencesRow
+	hrOnlySelfApproved []store.HROnlySelfApprovedAbsencesRow
 	// affected is the approved ferie a 100 % sykmelding lies over (Task 5
 	// review H1).
 	affected []store.HolidayAffectedBySicknessRow
@@ -109,6 +112,7 @@ func attentionFor(in attentionInput, c *callerContext) []gen.StaffStatsAttention
 	if c.PersonalData {
 		items = append(items, in.reassessmentDue(c.Today)...)
 		items = append(items, in.hrOnlyStalled()...)
+		items = append(items, in.hrOnlySelfApprovedItems()...)
 	}
 	items = append(items, in.awaitingDecision()...)
 	items = append(items, in.milestonesDue(c)...)
@@ -381,6 +385,25 @@ func (in attentionInput) selfApprovedItems() []gen.StaffStatsAttentionItem {
 	return out
 }
 
+// hrOnlySelfApprovedItems is staff:personal-data's one item per HR-only
+// absence its person approved as the sole holder of staff:personal-data,
+// until it has ended (delivery C, Task 5; the owner's decision on B's open
+// question 9): entityId the person, keyed by the absence, named by the
+// person and never by the type — every holder of staff:personal-data reads
+// it, a holder added later the second pair of eyes the rule lacked (reading
+// 22) — occurredAt when it was approved.
+func (in attentionInput) hrOnlySelfApprovedItems() []gen.StaffStatsAttentionItem {
+	out := make([]gen.StaffStatsAttentionItem, 0, len(in.hrOnlySelfApproved))
+	for _, r := range in.hrOnlySelfApproved {
+		var at time.Time
+		if r.DecidedAt != nil {
+			at = *r.DecidedAt
+		}
+		out = append(out, personItem(gen.HrOnlySelfApproved, r.ID, r.PersonID, r.DisplayName, at))
+	}
+	return out
+}
+
 // holidayAffectedItems is one item per approved ferie a 100 % sykmelding
 // lies over, until four weeks after the ferie's last day (Task 5 review H1):
 // the employee may demand to postpone it (ferieloven § 9), which HR records.
@@ -465,7 +488,9 @@ func (s *server) GetStaffStatsAttention(ctx context.Context, _ gen.GetStaffStats
 		return nil, err
 	}
 	// Whether the caller approves their own requests is the directory's to
-	// say, asked before the snapshot (deciders.go), as GET /approvals asks.
+	// say, asked before the snapshot (deciders.go), as GET /approvals asks:
+	// a plain one by B's rule, an HR-only one as the sole holder of
+	// staff:personal-data (holders.go).
 	selfApproves := false
 	if (caller.Approve || caller.Manage) && caller.Person != nil {
 		d, err := s.judgeDecider(ctx, caller, *caller.Person, false)
@@ -474,10 +499,11 @@ func (s *server) GetStaffStatsAttention(ctx context.Context, _ gen.GetStaffStats
 		}
 		selfApproves = d.selfApproves
 	}
+	solePersonalData := s.solePersonalData(ctx, caller)
 	var items []gen.StaffStatsAttentionItem
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
-		items, err = s.readAttention(ctx, q, caller, acknowledged, selfApproves)
+		items, err = s.readAttention(ctx, q, caller, acknowledged, selfApproves, solePersonalData)
 		return err
 	})
 	if err != nil {
@@ -492,7 +518,7 @@ func (s *server) GetStaffStatsAttention(ctx context.Context, _ gen.GetStaffStats
 // is judged as a manager — the employments, their terms and the departments
 // first, and nothing more when they manage nobody today; else the names of
 // the people they manage, for the one item a manager has.
-func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerContext, acknowledged map[string]time.Time, selfApproves bool) ([]gen.StaffStatsAttentionItem, error) {
+func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerContext, acknowledged map[string]time.Time, selfApproves, solePersonalData bool) ([]gen.StaffStatsAttentionItem, error) {
 	in := attentionInput{acknowledged: acknowledged, signed: map[int64]bool{}}
 	var err error
 	if in.register, err = loadEmployments(ctx, q); err != nil {
@@ -515,7 +541,7 @@ func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerC
 	} else if err := in.loadPeople(ctx, q); err != nil {
 		return nil, err
 	}
-	if err := s.readAbsenceAttention(ctx, q, c, selfApproves, &in); err != nil {
+	if err := s.readAbsenceAttention(ctx, q, c, selfApproves, solePersonalData, &in); err != nil {
 		return nil, err
 	}
 	if !c.Manage {
@@ -569,13 +595,17 @@ type requestsWaiting struct {
 // on, for their roles alone: the requests they decide (the approvals
 // inbox's count — an HR-only one only for staff:personal-data, so no count
 // reveals one to anybody else), staff:personal-data's stalled HR-only
-// requests, the open cases' milestones for a manager, staff:approve and
-// staff:manage, and staff:manage's holiday items.
-func (s *server) readAbsenceAttention(ctx context.Context, q *store.Queries, c *callerContext, selfApproves bool, in *attentionInput) error {
+// requests and the HR-only absences the sole holder approved, the open
+// cases' milestones for a manager, staff:approve and staff:manage, and
+// staff:manage's holiday items. solePersonalData is whether the caller is
+// the sole active holder of staff:personal-data, who decides their own
+// HR-only request — so it counts as awaiting their decision, not as stalled.
+func (s *server) readAbsenceAttention(ctx context.Context, q *store.Queries, c *callerContext, selfApproves, solePersonalData bool, in *attentionInput) error {
 	everyone := c.Approve || c.Manage
 	if everyone || c.PersonalData || len(in.reports) > 0 {
 		params := store.CountRequestedAbsencesParams{
 			Everyone: everyone, PersonIds: in.reports, PersonalData: c.PersonalData, SelfID: c.Person, SelfApproves: selfApproves,
+			SolePersonalData: solePersonalData,
 		}
 		count, err := q.CountRequestedAbsences(ctx, params)
 		if err != nil {
@@ -585,7 +615,8 @@ func (s *server) readAbsenceAttention(ctx context.Context, q *store.Queries, c *
 		if count > 0 {
 			oldest, err := q.RequestedAbsences(ctx, store.RequestedAbsencesParams{
 				Everyone: everyone, PersonIds: in.reports, PersonalData: c.PersonalData, SelfID: c.Person, SelfApproves: selfApproves,
-				PageSize: 1,
+				SolePersonalData: solePersonalData,
+				PageSize:         1,
 			})
 			if err != nil {
 				return fmt.Errorf("staff: read the oldest request the caller decides: %w", err)
@@ -597,8 +628,15 @@ func (s *server) readAbsenceAttention(ctx context.Context, q *store.Queries, c *
 	}
 	if c.PersonalData {
 		var err error
-		if in.stalled, err = q.StalledHROnlyRequests(ctx, s.deps.Clock().AddDate(0, 0, -hrOnlyStalledDays)); err != nil {
+		params := store.StalledHROnlyRequestsParams{Before: s.deps.Clock().AddDate(0, 0, -hrOnlyStalledDays)}
+		if solePersonalData {
+			params.SoleSelfID = c.Person
+		}
+		if in.stalled, err = q.StalledHROnlyRequests(ctx, params); err != nil {
 			return fmt.Errorf("staff: count the stalled HR-only requests: %w", err)
+		}
+		if in.hrOnlySelfApproved, err = q.HROnlySelfApprovedAbsences(ctx, dayParam(c.Today)); err != nil {
+			return fmt.Errorf("staff: read the HR-only absences the sole holder approved: %w", err)
 		}
 	}
 	if everyone || len(in.reports) > 0 {
@@ -727,9 +765,10 @@ func (in attentionInput) awaitingDecision() []gen.StaffStatsAttentionItem {
 }
 
 // hrOnlyStalled is staff:personal-data's one item of the HR-only requests
-// waiting more than hrOnlyStalledDays — the caller's own included, so the
-// only holder of the permission, whose own request nobody may decide, sees
-// it stall (open question 9) — dated the oldest's seventh day.
+// waiting more than hrOnlyStalledDays — the caller's own included, so a
+// holder whose own request another holder must decide sees it stall (open
+// question 9), unless the caller is the sole holder, who decides it
+// themselves — dated the oldest's seventh day.
 func (in attentionInput) hrOnlyStalled() []gen.StaffStatsAttentionItem {
 	if in.stalled.Waiting == 0 {
 		return nil

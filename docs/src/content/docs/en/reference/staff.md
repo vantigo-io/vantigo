@@ -1813,16 +1813,37 @@ row is there in a status they may not act on. The person's capabilities carry
 (b), reading 33, open question 9): §5 gives those types to that permission. A request of
 an HR-only type is in no manager's, Approver's or HR-without-`staff:personal-data`'s
 inbox, mail, list or calendar; any holder of `staff:personal-data` but the person decides
-it, and there is no self-approval for it — with no other holder it waits. That lasts
-until delivery C: the owner has decided (2026-10-14) that the sole active holder of
-`staff:personal-data` approves their own, which needs the user directory to name the
-permission's holders, a contract C widens. Its change,
+it. Its change,
 delete and correction are the person's (as for any row) and HR's with
 `staff:personal-data`; an approved one is also cancelled by its decider — any holder of
 `staff:personal-data` — until its first day has passed; anyone else gets the uniform 404. So to every reader of the type as
 leave, every HR-only row, requested-then-approved or registered, is one approved leave
 they never saw asked for, refused or withdrawn: no note, no decision field, no history —
 svangerskapskontroll reads as any other.
+
+**The sole holder of `staff:personal-data` decides their own HR-only request** (the
+owner's decision on B's open question 9, delivery C; `holders.go`, `deciders.go`). The
+caller decides their own request of an HR-only type when they hold
+`staff:personal-data` and the user directory's `PermissionHolders("staff:personal-data")`
+names exactly one user — the caller. The **holders** are the users holding the key
+through a role of their own, a role mapped to an active access group they are
+effectively a member of, or the Owner role, which holds every key (a delegation grants
+none); **active** is what a session needs: not disabled, not pending, and — while SCIM
+is configured — not deactivated by the directory unless an Owner (a lockout is
+ignored). So an Owner counts: with an Owner and one other holder, neither is sole. The
+holders are read through `usersPermissionHolders` before any transaction and once per
+request; a read that fails makes nobody sole, so the rule fails toward waiting
+(`own_request`). It is judged before the decision's transaction takes the person's lock,
+like the manager-deciders: a holder added in the same instant is not seen by that
+write (accepted). The approval records `self_approved` and `absence_self_approved`,
+listed and shaped as every HR-only row's events (reading 32 — a leave-reader is listed
+none of them), sends no mail, and raises [`hrOnlySelfApproved`](#attention-items) to
+`staff:personal-data` alone. The request is in the sole holder's own inbox and
+`absenceAwaitingDecision` count (`@sole_personal_data` on `RequestedAbsences` and
+`CountRequestedAbsences`; B's by-right self-approval, `@self_approves`, stays a type of
+visibility `absent`), and `hrOnlyAwaitingDecision` leaves it out while they may decide
+it. With a second active holder it is theirs to decide again, and the first holder's
+own is `own_request`.
 
 **An HR-only type is a target only for the person and `staff:personal-data`**
 (whole-branch review): HR without that permission cannot register, change or correct
@@ -1858,27 +1879,50 @@ racing the person's cancel, finds the row no longer a request.
 ### The absence mails
 
 Sent after the write has committed, outside every transaction, through the module's one
-SMTP accessor; skipped with a log line when the mail driver is not `smtp`, and never
-failing the write (reading 26). Staff mails only addresses it holds: a person's work
-email, else their private one, in that person's language — **on a request and a
-registration to each manager-decider**, never for an HR-only type (review H3) (holders of `staff:approve` and `staff:manage`
-by right get the inbox and the attention list, since the user directory names no
-address: reading 4, open question 1), **on an approval, a rejection, a decider's cancel
-and a correction to the person**. A recipient without an address is skipped with a log
+SMTP accessor, one after the other under one budget of 30 seconds for all of a notice's
+mails (what the budget leaves unsent is logged by count); skipped with a log line when
+the mail driver is not `smtp`, and never failing the write (reading 26). Who is mailed
+(`notifications.go`):
+
+- **A request or a registration, to each manager-decider** at the address Staff holds —
+  the person's work email, else their private one — in that person's language; never
+  for an HR-only type (review H3).
+- **A request whose person has no manager-decider with an active user** (the owner's
+  answer 3, delivery C): every active holder of `staff:approve` or `staff:manage` instead
+  — Owners by the wildcard — each once (by user id), never the person's own user, at the
+  address identity holds (`Holder.Email`, the first Staff mail not to an address of its
+  own register; reading 18). A holder identity holds no reachable address for (a SCIM or
+  identity provider placeholder) is skipped with a log line naming the user's id. The
+  language is that of the person the holder's user is linked to, else the user's own,
+  else Norwegian. The mail links to the absence area. A registration falls back to no
+  one. The inbox and `absenceAwaitingDecision` are unchanged.
+- **A request of an HR-only type** to no manager and no holder of `staff:approve` or
+  `staff:manage`, but to each other active holder of `staff:personal-data` — its only
+  deciders (reading 20), Owners included — in a **neutral** mail: "An absence request
+  awaits your decision" and a link to the absence area, with no person, type or dates.
+  An HR-only registration mails nobody.
+- **An approval, a rejection, a decider's cancel and a correction, to the person**; the
+  self-approvals send none.
+
+The holders are read through the directory before any send and never inside a
+transaction; a read that fails mails no holder and is logged, and the request stands.
+No log line carries an address: a failed send's error has the recipient's address
+replaced, and every line names a person's or a user's id. A recipient without an address is skipped with a log
 line naming the person's id. A mail names the type only when it is neither a sick kind
 nor HR-only — an HR-only type is "leave", a sick or child-sick one "an absence" — and
 never in a registration's notice to a manager, which always reads "an absence" (only
 the notification types are registered, so a doctor's visit named would tell the rest
 apart as sickness; whole-branch review) — and
 never a degree, the hours, a note or a decision's reason (reading 15); it carries the
-dates and a link to My page.
+dates and a link to My page (a holder's, to the absence area).
 
 ### The approvals inbox
 
 `GET /approvals?page&pageSize` lists the requests the caller decides, oldest first by
 when they were made: every person's of a plain type to `staff:approve` and
 `staff:manage`, a manager's reports' today, an HR-only type's to `staff:personal-data`
-alone; never the caller's own but the self-approver's. Each item is
+alone; never the caller's own but the self-approver's — B's by-right self-approver's
+plain request, and the sole holder of `staff:personal-data`'s HR-only one. Each item is
 `{absence, person}` — the person as the work group names them, the row shaped as
 `GET /absences` shapes it for the caller.
 
@@ -2910,7 +2954,8 @@ the caller's roles find is listed once.
 | `holidayAffectedBySickness` | manage | Approved ferie a 100 % sykmelding lies over, until four weeks after the ferie's last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed: the employee may demand to postpone it ([ferieloven § 9](#a-sykmelding-over-other-rows)). One per ferie row; `id` `holidayAffectedBySickness/<absence id>`. | The ferie's first day. | The person. |
 | `headcountThreshold` | manage | For each of 5, 30 and 50 the `headcount` has crossed — 5 or more, 30 or more, more than 50 — and that is not [acknowledged](#the-thresholds). | Today. | The threshold (`5`, `30`, `50`); `count` the headcount. |
 | `absenceAwaitingDecision` | a decider: approve, manage, a manager today of the person; an HR-only type's requests personal-data alone | The requests the caller decides — the [approvals inbox](#the-approvals-inbox)'s count, never their own (but the self-approver's). A request of an HR-only type counts for `staff:personal-data` alone. One item; `id` `absenceAwaitingDecision`. | When the oldest was made. | `approvals`; `count` the requests. |
-| `hrOnlyAwaitingDecision` | personal-data (never manage without it) | Requests of an HR-only type undecided for more than seven days — the caller's own included, so the only holder of `staff:personal-data`, whose own request nobody may decide ([decisions](#decisions)), sees it stall until delivery C brings their self-approval (open question 9). One item; `id` `hrOnlyAwaitingDecision`. | The oldest's seventh day. | `approvals`; `count` the requests. |
+| `hrOnlyAwaitingDecision` | personal-data (never manage without it) | Requests of an HR-only type undecided for more than seven days — the caller's own included, so a holder whose own request another holder must decide sees it stall, unless the caller is the sole active holder of `staff:personal-data`, who decides their own ([decisions](#decisions)) and counts it under `absenceAwaitingDecision`. One item; `id` `hrOnlyAwaitingDecision`. | The oldest's seventh day. | `approvals`; `count` the requests. |
+| `hrOnlySelfApproved` | personal-data (never manage without it) | An approved absence of an HR-only type its person approved as the sole active holder of `staff:personal-data` ([decisions](#decisions)) that has not ended — read by every holder of `staff:personal-data`, so a holder added later sees it while it lasts (reading 22). One per absence; `id` `hrOnlySelfApproved/<absence id>`; the title the person's name, never the type (`HROnlySelfApprovedAbsences`; `SelfApprovedAbsences` keeps leaving HR-only rows out for `selfApproved`). | When it was approved. | The person. |
 | `sickMilestoneDue` | manage, approve; a manager today of the person | A [milestone](#the-arbeidsgiverperiode-and-the-milestones) due — the case open and lasted to within a week of the date, neither done nor waived (pre-flight I5) — dated within seven days or past. The end of the arbeidsgiverperiode is a date, never an action, and raises none; a three-day case raises none. One per milestone; `id` `sickMilestoneDue/<case id>/<kind>`. | The milestone's date. | The person. |
 | `holidayUntaken` | manage | In January: a person with an employment in force today whose [holiday account](#the-holiday-account) for last year has days remaining and no carry-over from it recorded — a carry-in [automatic carry-over](#adjustments-and-carry-over) derives counts as recorded (pre-flight M6). One per person. | 1 January. | The person. |
 | `mainPeriodShort` | manage | From 1 April to 30 September (reading 23): a person with an employment in force today that began before 1 June, with fewer approved ferie working days in 1 June – 30 September than the main period, converted, of the scheme the holiday account reads — the earliest employment's in the year (whole-branch review) — 18 virkedager are 15 days (ferieloven § 7 (1)). One per person. | 1 April. | The person. |

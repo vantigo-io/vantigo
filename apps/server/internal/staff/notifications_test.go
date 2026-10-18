@@ -52,8 +52,11 @@ func leaksIn(t *testing.T, what, text string, words ...string) {
 // and a correction — at the work email, else the private one, in the
 // recipient's language. A mail names the type only when it is neither a sick
 // kind nor HR-only (an HR-only one is "leave"), and never a note or a
-// degree. Holders of staff:approve and staff:manage get no mail; a refusal
-// sends none; every send is made outside a transaction.
+// degree. Holders of staff:approve and staff:manage get no mail while the
+// person has a manager-decider, and are mailed instead when the manager's
+// user is disabled (holders_test.go has the fallback whole); an HR-only
+// request goes to the holders of staff:personal-data alone, neutrally; a
+// refusal sends none; every send is made outside a transaction.
 func TestNotifications_TheAbsenceMails(t *testing.T) {
 	t.Parallel()
 	w := newDecisionWorld(t)
@@ -114,13 +117,20 @@ func TestNotifications_TheAbsenceMails(t *testing.T) {
 		t.Errorf("the correction's mail to Kari:\n%s", m)
 	}
 
-	// Nobody holding a right is mailed: their addresses are not Staff's.
+	// Nobody holding a right is mailed while Kari has a manager-decider,
+	// but the holder of staff:personal-data, once, about the HR-only request.
+	pdAddress := modtest.One[string](t, h.Harness, `
+		SELECT u.email FROM identity.users u JOIN identity.user_roles ur ON ur.user_id = u.id
+		JOIN identity.role_permissions rp ON rp.role_id = ur.role_id WHERE rp.permission_key = 'staff:personal-data'`)
 	for _, msg := range h.mail.messages() {
 		for _, to := range msg.To {
-			if to != "bjorn@example.test" && to != "kari@example.test" {
+			if to != "bjorn@example.test" && to != "kari@example.test" && to != pdAddress {
 				t.Errorf("a mail to %s", to)
 			}
 		}
+	}
+	if n := len(mailsTo(h, pdAddress)); n != 1 {
+		t.Errorf("%d mails to the holder of staff:personal-data, want the HR-only request's one", n)
 	}
 	// Every send outside a transaction: the harness fails any test whose
 	// request calls out from inside one; the person's and the manager's own
@@ -134,15 +144,38 @@ func TestNotifications_TheAbsenceMails(t *testing.T) {
 	}
 
 	// A manager whose user is disabled is no manager-decider, and is not
-	// told; neither is one with no address.
+	// told: the holders by right are instead, each once. A manager with no
+	// address still decides, so nobody is told.
 	sent = len(h.mail.messages())
 	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, w.bossUser)
 	requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-12-14", "2026-12-14"))
 	h.Exec(t, `UPDATE identity.users SET is_disabled = false WHERE id = $1`, w.bossUser)
+	var byRight []string
+	rows, err := h.Pool().Query(context.Background(), `
+		SELECT DISTINCT u.email FROM identity.users u JOIN identity.user_roles ur ON ur.user_id = u.id
+		JOIN identity.role_permissions rp ON rp.role_id = ur.role_id
+		WHERE rp.permission_key IN ('staff:approve', 'staff:manage') ORDER BY 1`)
+	if err != nil {
+		t.Fatalf("read the holders by right: %v", err)
+	}
+	for rows.Next() {
+		var to string
+		if err := rows.Scan(&to); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		byRight = append(byRight, to)
+	}
+	rows.Close()
+	got := recipients(h)[sent:]
+	slices.Sort(got)
+	if len(byRight) != 4 || !slices.Equal(got, byRight) {
+		t.Errorf("with the manager's user disabled the request mailed %v, want the holders by right %v", got, byRight)
+	}
+	sent = len(h.mail.messages())
 	h.Exec(t, `UPDATE staff.people SET work_email = NULL, private_email = NULL WHERE id = $1`, w.boss.Id)
 	requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-12-15", "2026-12-15"))
 	if n := len(h.mail.messages()); n != sent {
-		t.Errorf("%d mails to a manager who cannot decide or has no address", n-sent)
+		t.Errorf("%d mails to a manager who has no address", n-sent)
 	}
 	if !strings.Contains(h.Logs(), "no email") {
 		t.Error("the skipped mail is not logged")

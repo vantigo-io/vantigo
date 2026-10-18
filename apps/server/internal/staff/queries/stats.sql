@@ -60,7 +60,11 @@ ORDER BY m.due_date, m.case_id, m.kind;
 -- name: StalledHROnlyRequests :one
 -- StalledHROnlyRequests is the requests of an HR-only type made before
 -- @before and still undecided, and when the oldest was made (@before when
--- there is none): the attention item hrOnlyAwaitingDecision.
+-- there is none): the attention item hrOnlyAwaitingDecision. The person
+-- @sole_self_id names — the caller, when they are the sole active holder of
+-- staff:personal-data and so decide their own (delivery C) — is left out:
+-- their own request is one they may decide, not one stalled.
 SELECT count(*)::int AS waiting, coalesce(min(a.created_at), @before::timestamptz)::timestamptz AS oldest
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
-WHERE a.status = 'requested' AND t.visibility <> 'absent' AND a.created_at < @before::timestamptz;
+WHERE a.status = 'requested' AND t.visibility <> 'absent' AND a.created_at < @before::timestamptz
+  AND a.person_id IS DISTINCT FROM sqlc.narg('sole_self_id')::bigint;

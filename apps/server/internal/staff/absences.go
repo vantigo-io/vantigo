@@ -565,7 +565,7 @@ func (s *server) notifyCreated(ctx context.Context, caller *callerContext, w abs
 	if w.row.Status == absenceRequested {
 		kind = noticeRequested
 	}
-	s.notifyAbsence(ctx, caller.Today, noticeOf(kind, w.row, w.typ))
+	s.notifyAbsence(ctx, caller, noticeOf(kind, w.row, w.typ))
 }
 
 // PostStaffAbsences Request or register an absence

@@ -55,6 +55,10 @@ type callerContext struct {
 	// database session's day in the database's own zone.
 	Zone  *time.Location
 	Today time.Time
+
+	// holders is the request's memo of the permission holders it read
+	// (holders.go), by key: the directory is asked once per key and request.
+	holders map[string]holdersRead
 }
 
 // callerFor reads the request's caller: the permissions, the person they are

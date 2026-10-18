@@ -49,3 +49,12 @@ WHERE person_id = ANY(@person_ids::bigint[]) AND provider = 'identity';
 -- name, the addresses Staff holds and the language (plan reading 26).
 SELECT id, display_name, work_email, private_email, preferred_language
 FROM staff.people WHERE id = ANY(@person_ids::bigint[]);
+
+-- name: LinkedPeopleOfUsers :many
+-- LinkedPeopleOfUsers is the people @user_ids' users are linked to under the
+-- identity provider, by user: the name and the language a mail to a holder
+-- by right greets them in (notifications.go) — the person's own, before the
+-- user's.
+SELECT l.external_id::text AS user_id, p.display_name, p.preferred_language
+FROM staff.identity_links l JOIN staff.people p ON p.id = l.person_id
+WHERE l.provider = 'identity' AND l.external_id = ANY(@user_ids::text[]);

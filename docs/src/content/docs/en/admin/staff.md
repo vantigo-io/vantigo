@@ -35,6 +35,7 @@ sources:
   - apps/server/internal/staff/accounts_worker.go
   - apps/server/internal/staff/accounts_run.go
   - apps/server/internal/staff/accounts_attention.go
+  - apps/server/internal/staff/holders.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -1018,15 +1019,28 @@ manager, and HR's to another holder of `staff:approve` or `staff:manage`. A mana
 decides only once their person is linked to an active user
 ([Link people to their users](#link-people-to-their-users)).
 
-**HR-only leave is decided by `staff:personal-data`** (for now, awaiting the owner's
-word): a request of an HR-only type — pregnancy leave, a religious holiday, any company
-type marked HR-only — goes to no manager, no holder of `staff:approve` and no HR without
-`staff:personal-data`, and none of them is mailed about it. Anyone holding
-`staff:personal-data` but the person decides it in their approvals inbox, and only HR
-with `staff:personal-data` registers, changes, cancels or corrects such a row — HR
-without it is answered as for a type that does not exist. Give that
-permission to whoever should decide such leave; with no other holder, the person's
-request waits. To everyone else the leave appears only once approved, as *leave*.
+**HR-only leave is decided by `staff:personal-data`**: a request of an HR-only type —
+pregnancy leave, a religious holiday, any company type marked HR-only — goes to no
+manager, no holder of `staff:approve` and no HR without `staff:personal-data`, and none
+of them is mailed about it. Anyone holding `staff:personal-data` but the person decides
+it in their approvals inbox, and only HR with `staff:personal-data` registers, changes,
+cancels or corrects such a row — HR without it is answered as for a type that does not
+exist. Give that permission to whoever should decide such leave. To everyone else the
+leave appears only once approved, as *leave*.
+
+**The sole holder of `staff:personal-data` decides their own HR-only request** (the
+owner's rule). When exactly one active user holds `staff:personal-data` — and it is the
+person asking — they approve their own request in their approvals inbox. Who holds the
+permission is what identity says: a role of the user's own, a role mapped to an access
+group they belong to, or the **Owner** role, which holds every permission — so with an
+Owner and one other holder, neither is the sole holder, and the request goes to the
+other. A delegation gives no permission. A disabled user, a user who has not yet
+accepted their invitation and, with SCIM, a user the directory deactivated do not
+count. If Staff cannot read the holders from identity, nobody is the sole holder and the
+request waits. Each such approval is the attention item `hrOnlySelfApproved` for every
+holder of `staff:personal-data` (the person's name, never the type) until the absence
+ends: give a second person the permission and they see it — the second pair of eyes the
+rule lacks. To avoid the rule, give `staff:personal-data` to two people.
 
 **The one exception, for now** (provisional, awaiting the owner's word): someone holding
 `staff:approve` or `staff:manage` who heads the structure — they manage a department
@@ -1042,23 +1056,39 @@ person is mailed about a correction. A decided absence that has begun is cancell
 
 ## The absence mails
 
-Staff mails about absence only addresses it holds itself — a person's work email, else
-their private one — in that person's language:
+Who is mailed about absence, and when:
 
 - a **request** or a **registration** goes to the person's managers who decide it (the
-  manager today, linked to an active user);
+  manager today, linked to an active user), at the work email Staff holds for them,
+  else their private one, in that person's language;
+- a **request** of a person with **no such manager** goes instead to everyone holding
+  `staff:approve` or `staff:manage` — **Owners included**, who hold every permission —
+  once each, never to the person themselves, at the address the user has in identity,
+  in the language of the person they are linked to, else their own, else Norwegian. A
+  registration of such a person mails nobody. Give the person a manager linked to an
+  active user to keep these mails to the manager;
+- a **request of an HR-only type** goes to no manager and no holder of `staff:approve`
+  or `staff:manage`, but to every other holder of `staff:personal-data` (Owners
+  included), as a neutral mail — "An absence request awaits your decision" — that names
+  no person, type or day;
 - an **approval**, a **rejection**, a **cancel** of an approved absence by its decider and HR's **correction** go to
-  the person.
+  the person. A self-approval mails nobody.
 
-Holders of `staff:approve` and `staff:manage` are **not** mailed — Staff does not know
-their addresses — and see what waits for them in the approvals inbox instead. A mail
-names the type only when it is neither sickness nor an HR-only type: an HR-only type is
+Everyone who decides also sees what waits for them in the approvals inbox. A mail names
+the type only when it is neither sickness nor an HR-only type: an HR-only type is
 "leave", a sick or child-sick absence "an absence"; it never carries a degree, hours, a
 note or a rejection's reason. Like the bank-change mail below, it needs
 `MAIL_DRIVER=smtp`; with another driver the server logs
 `staff: absence mail skipped: the mail driver is not smtp`, and a manager without any
-email is skipped with `staff: absence mail skipped: the recipient has no email`. A send
-that fails is logged as a warning naming the person's id; the absence stays saved.
+email is skipped with `staff: absence mail skipped: the recipient has no email`. A
+holder whose identity address is an identity provider's or a directory's placeholder is
+skipped with `staff: absence mail skipped: the holder has no address a mail reaches`,
+naming the user's id; when Staff cannot read the holders from identity it logs
+`staff: absence mail skipped: the holders could not be read` and mails none of them. A
+notice's mails are sent one after the other within 30 seconds together; what is left
+when the time runs out is logged with its count. A send that fails is logged as a
+warning naming the person's or the user's id, never an address; the absence stays
+saved.
 
 ## The bank-change mail
 

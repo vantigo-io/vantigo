@@ -199,15 +199,18 @@ SELECT count(*) FROM staff.absences a JOIN staff.absence_types t ON t.id = a.typ
 WHERE a.status = 'requested'
   AND ((t.visibility = 'absent' AND ($1::boolean OR a.person_id = ANY($2::bigint[])))
        OR (t.visibility <> 'absent' AND $3::boolean))
-  AND (a.person_id IS DISTINCT FROM $4::bigint OR (t.visibility = 'absent' AND $5::boolean))
+  AND (a.person_id IS DISTINCT FROM $4::bigint
+       OR (t.visibility = 'absent' AND $5::boolean)
+       OR (t.visibility <> 'absent' AND $6::boolean))
 `
 
 type CountRequestedAbsencesParams struct {
-	Everyone     bool
-	PersonIds    []int64
-	PersonalData bool
-	SelfID       *int64
-	SelfApproves bool
+	Everyone         bool
+	PersonIds        []int64
+	PersonalData     bool
+	SelfID           *int64
+	SelfApproves     bool
+	SolePersonalData bool
 }
 
 // CountRequestedAbsences counts what RequestedAbsences pages through.
@@ -218,6 +221,7 @@ func (q *Queries) CountRequestedAbsences(ctx context.Context, arg CountRequested
 		arg.PersonalData,
 		arg.SelfID,
 		arg.SelfApproves,
+		arg.SolePersonalData,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -364,6 +368,52 @@ func (q *Queries) GetAbsenceType(ctx context.Context, id int64) (StaffAbsenceTyp
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const hROnlySelfApprovedAbsences = `-- name: HROnlySelfApprovedAbsences :many
+SELECT a.id, a.person_id, a.decided_at, p.display_name
+FROM staff.absences a
+JOIN staff.absence_types t ON t.id = a.type_id AND t.visibility <> 'absent'
+JOIN staff.people p ON p.id = a.person_id
+WHERE a.self_approved AND a.status = 'approved' AND a.last_day >= $1::date
+ORDER BY a.decided_at, a.id
+`
+
+type HROnlySelfApprovedAbsencesRow struct {
+	ID          int64
+	PersonID    int64
+	DecidedAt   *time.Time
+	DisplayName string
+}
+
+// HROnlySelfApprovedAbsences is every approved row of an HR-only type its
+// person approved as the sole active holder of staff:personal-data that has
+// not ended by @today: the attention item hrOnlySelfApproved, read by
+// staff:personal-data alone (delivery C). SelfApprovedAbsences keeps
+// leaving these out for selfApproved, which staff:manage reads.
+func (q *Queries) HROnlySelfApprovedAbsences(ctx context.Context, today pgtype.Date) ([]HROnlySelfApprovedAbsencesRow, error) {
+	rows, err := q.db.Query(ctx, hROnlySelfApprovedAbsences, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []HROnlySelfApprovedAbsencesRow
+	for rows.Next() {
+		var i HROnlySelfApprovedAbsencesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.DecidedAt,
+			&i.DisplayName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const holidayAbsences = `-- name: HolidayAbsences :many
@@ -1013,19 +1063,22 @@ FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE a.status = 'requested'
   AND ((t.visibility = 'absent' AND ($1::boolean OR a.person_id = ANY($2::bigint[])))
        OR (t.visibility <> 'absent' AND $3::boolean))
-  AND (a.person_id IS DISTINCT FROM $4::bigint OR (t.visibility = 'absent' AND $5::boolean))
+  AND (a.person_id IS DISTINCT FROM $4::bigint
+       OR (t.visibility = 'absent' AND $5::boolean)
+       OR (t.visibility <> 'absent' AND $6::boolean))
 ORDER BY a.created_at, a.id
-LIMIT $7 OFFSET $6
+LIMIT $8 OFFSET $7
 `
 
 type RequestedAbsencesParams struct {
-	Everyone     bool
-	PersonIds    []int64
-	PersonalData bool
-	SelfID       *int64
-	SelfApproves bool
-	PageOffset   int32
-	PageSize     int32
+	Everyone         bool
+	PersonIds        []int64
+	PersonalData     bool
+	SelfID           *int64
+	SelfApproves     bool
+	SolePersonalData bool
+	PageOffset       int32
+	PageSize         int32
 }
 
 type RequestedAbsencesRow struct {
@@ -1040,7 +1093,9 @@ type RequestedAbsencesRow struct {
 // @person_ids' people's — everyone's with @everyone; one of an HR-only type
 // is decided by staff:personal-data alone (@personal_data, review H4). Never
 // the caller's own (@self_id), but a plain one when they approve their own
-// (@self_approves). The partial index on requested rows serves it.
+// (@self_approves, B's by-right self-approver) and an HR-only one when they
+// are the sole active holder of staff:personal-data (@sole_personal_data,
+// delivery C). The partial index on requested rows serves it.
 func (q *Queries) RequestedAbsences(ctx context.Context, arg RequestedAbsencesParams) ([]RequestedAbsencesRow, error) {
 	rows, err := q.db.Query(ctx, requestedAbsences,
 		arg.Everyone,
@@ -1048,6 +1103,7 @@ func (q *Queries) RequestedAbsences(ctx context.Context, arg RequestedAbsencesPa
 		arg.PersonalData,
 		arg.SelfID,
 		arg.SelfApproves,
+		arg.SolePersonalData,
 		arg.PageOffset,
 		arg.PageSize,
 	)
