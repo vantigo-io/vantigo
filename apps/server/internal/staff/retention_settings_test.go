@@ -598,3 +598,50 @@ func TestRetention_AReservedTypeIsAlreadyErased(t *testing.T) {
 		t.Errorf("an erase ran on what is erased already: %v", events)
 	}
 }
+
+// POST /retention/run answers the health kinds — health, cases, childSick,
+// withdrawal, pregnancyHealth — to a caller holding staff:personal-data
+// alone, and GET /settings's lastErasedAt leaves out the health erases for a
+// caller without it (review M1): HR without staff:personal-data would
+// otherwise read, in the run's answer, that a pregnancy erase ran, or see
+// the last erase move when only health content went.
+func TestRetention_TheRunAnswersHealthKindsToPersonalDataAlone(t *testing.T) {
+	t.Parallel()
+	for _, pd := range []bool{false, true} {
+		w := newAbsenceWorld(t)
+		h := w.h
+		hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+		register(t, hrPD, w.kari.Id, absence(t, h, "svangerskapspermisjon", "2024-02-05", "2024-02-16"))
+		register(t, w.hr, w.kari.Id, absence(t, h, "sykt_barn", "2024-11-04", "2024-11-05"))
+		setEraseSettings(t, w.hr, map[string]any{"erasePregnancyHealthTypes": true})
+		caller := w.hr
+		if pd {
+			caller = hrPD
+		}
+		var run struct {
+			Erased struct {
+				Kinds []struct {
+					Kind  string `json:"kind"`
+					Count int64  `json:"count"`
+				} `json:"kinds"`
+			} `json:"erased"`
+		}
+		do(t, caller, http.MethodPost, retentionRunPath, nil, http.StatusOK, &run)
+		var kinds []string
+		for _, k := range run.Erased.Kinds {
+			kinds = append(kinds, k.Kind)
+		}
+		want := []string(nil)
+		if pd {
+			want = []string{"childSick", "pregnancyHealth"}
+		}
+		if !slices.Equal(kinds, want) {
+			t.Errorf("personal-data %v: the run answers %v, want %v", pd, kinds, want)
+		}
+		settings := raw(t, caller.Do(http.MethodGet, settingsPath, nil))
+		retention, _ := settings["retention"].(map[string]any)
+		if _, ok := retention["lastErasedAt"]; ok != pd {
+			t.Errorf("personal-data %v: lastErasedAt = %v, want it present only to personal-data", pd, retention["lastErasedAt"])
+		}
+	}
+}

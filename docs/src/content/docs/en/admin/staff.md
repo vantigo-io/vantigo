@@ -1049,8 +1049,11 @@ queued for deletion wait; the run by hand below still works.
 **Run retention now** on the **Retention** card in **Staff settings** (`staff:manage`;
 `POST /api/v1/staff/retention/run`) runs the worker's erase and a pass over the
 deletion ledger now, with you as the erased entries' author, after you confirm. The
-card then says what was erased per kind and how many objects were deleted from the
-store. Its pass over the deletion ledger stops after thirty seconds, so a slow object
+card then says what was erased per kind — the health kinds (sick-leave cases,
+sick-child days, withdrawals, pregnancy and health appointments, health documents)
+only to a user who also holds `staff:personal-data` — and how many objects were
+deleted from the store. **Last erased** likewise leaves out the health erases for a
+user without it. Its pass over the deletion ledger stops after thirty seconds, so a slow object
 store does not hold the request; the worker deletes the rest on its next look. While
 the worker is running, the card says so (`retention_busy`, 409); try again in a minute.
 

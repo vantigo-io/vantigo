@@ -2797,7 +2797,7 @@ export interface components {
             id: number;
             /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the kinds grow with the module. */
             kind: string;
-            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}, read by HR — the five health-side entries (health, cases, childSick, withdrawal, pregnancyHealth) by staff:personal-data alone — and is listed as the hold's kinds are: not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone. */
+            /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}. An erase records up to two: the health kinds (health, cases, childSick, withdrawal, pregnancyHealth) in one of class E, listed to the person and staff:personal-data alone, and D and A in one read by HR and listed as the hold's kinds are — not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone. */
             payload: {
                 [key: string]: unknown;
             };
@@ -3741,7 +3741,7 @@ export interface components {
              */
             succeeded: number;
         };
-        /** @description What one erase cycle removed, per kind, summed over the people it erased; a kind no erase ran for is absent. */
+        /** @description What one erase cycle removed, per kind, summed over the people it erased; a kind no erase ran for is absent. The health kinds (health, cases, childSick, withdrawal, pregnancyHealth) are answered to a caller holding staff:personal-data alone. */
         StaffRetentionErased: {
             kinds: components["schemas"]["StaffErasedKind"][];
         };
@@ -3759,7 +3759,7 @@ export interface components {
             failingDeletions: number;
             /**
              * Format: date-time
-             * @description When the retention run last erased anything — the latest erased event. Absent when it never has.
+             * @description When the retention run last erased anything — the latest erased event; to a caller without staff:personal-data, the latest that erased something other than health content. Absent when it never has.
              */
             lastErasedAt?: string;
             /**

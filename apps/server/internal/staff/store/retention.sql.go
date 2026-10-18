@@ -932,13 +932,18 @@ func (q *Queries) LastEmploymentID(ctx context.Context, personID int64) (int64, 
 }
 
 const lastErasedAt = `-- name: LastErasedAt :one
-SELECT at FROM staff.events WHERE kind = 'erased' ORDER BY at DESC, id DESC LIMIT 1
+SELECT at FROM staff.events
+WHERE kind = 'erased' AND ($1::boolean OR NOT ('E' = ANY(payload_classes)))
+ORDER BY at DESC, id DESC LIMIT 1
 `
 
 // LastErasedAt is the instant of the latest erased event; no row when the
-// run has never erased anything.
-func (q *Queries) LastErasedAt(ctx context.Context) (time.Time, error) {
-	row := q.db.QueryRow(ctx, lastErasedAt)
+// run has never erased anything. Without @with_health the health kinds'
+// events, of class E, are left out (review M1): a reader without
+// staff:personal-data must not see the last erase move when only health
+// content went.
+func (q *Queries) LastErasedAt(ctx context.Context, withHealth bool) (time.Time, error) {
+	row := q.db.QueryRow(ctx, lastErasedAt, withHealth)
 	var at time.Time
 	err := row.Scan(&at)
 	return at, err

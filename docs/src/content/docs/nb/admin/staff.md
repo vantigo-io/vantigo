@@ -1060,8 +1060,11 @@ venter; kjøringen for hånd nedenfor virker fortsatt.
 **Kjør sletting nå** på kortet **Oppbevaring** i **Ansatteinnstillinger**
 (`staff:manage`; `POST /api/v1/staff/retention/run`) kjører arbeiderens sletting og en
 runde i sletteloggen nå, med deg som forfatter av slettehendelsene, etter at du har
-bekreftet. Kortet sier så hva som ble slettet per type, og hvor mange filer som ble
-slettet fra objektlageret. Runden i sletteloggen stopper etter tretti sekunder, så et
+bekreftet. Kortet sier så hva som ble slettet per type — helsetypene
+(sykefraværssaker, dager med sykt barn, tilbaketrekkinger, svangerskap og helsetimer,
+helsedokumenter) bare til en bruker som også har `staff:personal-data` — og hvor mange
+filer som ble slettet fra objektlageret. **Sist slettet** utelater på samme måte
+helseslettingene for en bruker uten den. Runden i sletteloggen stopper etter tretti sekunder, så et
 tregt objektlager ikke holder igjen forespørselen; arbeideren sletter resten neste gang
 den ser etter. Mens arbeideren kjører, sier kortet fra (`retention_busy`, 409); prøv
 igjen om et minutt.

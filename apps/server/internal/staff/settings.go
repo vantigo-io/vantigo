@@ -166,7 +166,7 @@ func (s *server) GetStaffSettings(ctx context.Context, _ gen.GetStaffSettingsReq
 	if err != nil {
 		return nil, err
 	}
-	state, err := retentionState(ctx, q)
+	state, err := retentionState(ctx, q, s.has(ctx, permPersonalData))
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +181,10 @@ func (s *server) GetStaffSettings(ctx context.Context, _ gen.GetStaffSettingsReq
 // derived from the deletion ledger and the history — no column holds it:
 // the objects waiting, those the store has refused at least once, the oldest
 // queued and the latest erased event.
-func retentionState(ctx context.Context, q *store.Queries) (gen.StaffRetentionState, error) {
+//
+// withHealth is whether the caller reads health (staff:personal-data): the
+// health erases' instants are theirs alone (review M1).
+func retentionState(ctx context.Context, q *store.Queries, withHealth bool) (gen.StaffRetentionState, error) {
 	ledger, err := q.RetentionLedgerState(ctx)
 	if err != nil {
 		return gen.StaffRetentionState{}, fmt.Errorf("staff: read the deletion ledger: %w", err)
@@ -192,7 +195,7 @@ func retentionState(ctx context.Context, q *store.Queries) (gen.StaffRetentionSt
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return gen.StaffRetentionState{}, fmt.Errorf("staff: read the oldest ledger row: %w", err)
 	}
-	if last, err := q.LastErasedAt(ctx); err == nil {
+	if last, err := q.LastErasedAt(ctx, withHealth); err == nil {
 		out.LastErasedAt = &last
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return gen.StaffRetentionState{}, fmt.Errorf("staff: read the last erase: %w", err)
@@ -289,7 +292,7 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 	if stale != nil {
 		return gen.PutStaffSettings409ApplicationProblemPlusJSONResponse(revisionConflict("settings", *stale, revision)), nil
 	}
-	state, err := retentionState(ctx, q)
+	state, err := retentionState(ctx, q, s.has(ctx, permPersonalData))
 	if err != nil {
 		return nil, err
 	}
