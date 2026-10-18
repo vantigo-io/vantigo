@@ -1921,7 +1921,9 @@ racing the person's cancel, finds the row no longer a request.
   review): the row would keep its decision — a sole holder's self-approval among it,
   which would then be listed to `staff:manage` as `selfApproved` and named on the row's
   later events — under the other audience, and the same row id would read as another
-  kind of leave. HR cancels the decided row and enters the other anew.
+  kind of leave. HR cancels a decided row — or removes a registered one, which cannot
+  be cancelled (`DELETE /absences/{id}`) — and enters the other anew; the refusal's
+  detail says so.
 
 ### The absence mails
 
