@@ -347,7 +347,9 @@ Dette kan gå galt:
 `POST /api/v1/identity/owner/users/<id>/unmanage` fjerner merkingen og ansattnummeret,
 logget som `user.staff-unmanaged`. En bruker som Ansatte ikke styrer, blir som den er.
 En ventende bruker forblir ventende: å fullføre eller slette den brukeren er da eierens
-sak.
+sak. Personen Ansatte koblet brukeren til, **mister Min side** (Ansattes egen visning)
+til HR kobler brukeren til dem igjen for hånd på personsiden i Ansatte; da blir det en
+vanlig selvbetjent kobling som Ansatte aldri handler på.
 
 ### Ansattrollene
 

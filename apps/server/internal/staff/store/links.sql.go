@@ -144,26 +144,32 @@ func (q *Queries) PeopleLinks(ctx context.Context, personIds []int64) ([]PeopleL
 
 const personLink = `-- name: PersonLink :one
 
-SELECT external_id, state, managed
+SELECT external_id, state, managed, blocked_reason
 FROM staff.identity_links
 WHERE person_id = $1 AND provider = 'identity'
 `
 
 type PersonLinkRow struct {
-	ExternalID *string
-	State      string
-	Managed    bool
+	ExternalID    *string
+	State         string
+	Managed       bool
+	BlockedReason *string
 }
 
 // The self-service link (design S24 as amended, §3.6): HR ties a person to an
 // existing user under the identity provider — state linked, not managed —
 // which makes the user the person themselves to this module and nothing else.
-// PersonLink is a person's link under the identity provider. No row is a
-// person linked to nobody.
+// PersonLink is a person's link under the identity provider, with the
+// reason the worker left on it. No row is a person linked to nobody.
 func (q *Queries) PersonLink(ctx context.Context, personID int64) (PersonLinkRow, error) {
 	row := q.db.QueryRow(ctx, personLink, personID)
 	var i PersonLinkRow
-	err := row.Scan(&i.ExternalID, &i.State, &i.Managed)
+	err := row.Scan(
+		&i.ExternalID,
+		&i.State,
+		&i.Managed,
+		&i.BlockedReason,
+	)
 	return i, err
 }
 
@@ -201,10 +207,11 @@ type SetPersonLinkParams struct {
 // and a claim the worker holds on it is ended — its result, which names the
 // old user, is no longer written (WriteAccountResult). Clearing a disable
 // Disable now asked for (disable_requested_at) is safe here: a link in one of
-// the worker's states, or naming a Staff-managed user, is refused
-// link_managed before this runs (links.go), so the only marked link this
-// replaces is a self-service link to a user Staff does not manage, whom
-// Deactivate refuses (account_not_managed) and only an Owner disables.
+// the worker's states — but one the worker left account_not_managed, which HR
+// repairs (links.go) — or naming a Staff-managed user, is refused
+// link_managed before this runs, so the only marked link this replaces names
+// a user Staff does not manage, whom Deactivate refuses
+// (account_not_managed) and only an Owner disables.
 func (q *Queries) SetPersonLink(ctx context.Context, arg SetPersonLinkParams) error {
 	_, err := q.db.Exec(ctx, setPersonLink, arg.PersonID, arg.ExternalID, arg.Now)
 	return err

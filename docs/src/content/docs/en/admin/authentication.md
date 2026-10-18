@@ -328,6 +328,9 @@ What can go wrong:
 `POST /api/v1/identity/owner/users/<id>/unmanage` clears the marking and the employee
 number, audited `user.staff-unmanaged`. A user Staff does not manage is left as it is.
 A pending user stays pending: finishing or deleting that user is then the Owner's.
+The person Staff linked the user to **loses their My page** (Staff's Self view) until HR
+links the user to them again by hand on the person's page in Staff, which makes it an
+ordinary self-service link Staff never acts on.
 
 ### The employee roles
 

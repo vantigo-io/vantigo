@@ -937,7 +937,12 @@ the worker's employee-number lookup, never by tying a person to them by hand —
 identity unable to say is `accounts_unavailable` (503); nothing is written either way.
 Under the person's lock, a link in any state but `linked` — the worker's `preparing`,
 `pending`, `active`, `disabled`, `failed` or `blocked` — is `link_managed` too, for a
-relink and an unlink alike. A link naming no user (the worker's `preparing` link) reads
+relink and an unlink alike, but for one the worker left `account_not_managed` (an
+Owner stopped Staff managing the user, the final re-check's M-b): it gives the user no
+Self, and HR repairs it — unlinks it, or sets it to a user, the same or another, which
+makes it an ordinary self-service link (`linked`, not managed, the worker's columns
+reset; a `user_linked` event) and gives the user the person's Self again. The
+managed-user refusal still applies to that user, and a `mismatch` link stays refused. A link naming no user (the worker's `preparing` link) reads
 `linked: false`.
 
 The managed-link check is a check-then-act: identity is asked before the transaction,
@@ -3183,7 +3188,7 @@ once the flag is off.
 | `accountNoEmployment` | the person query | The flag on and no employment at all. |
 | `accountEmailMissing` | the person query | The flag on, an employment not ended by today, and the address the flag names (work or private) missing or empty. |
 | `accountNotFound` | `blocked_reason = not_found` | Federated: no managed user holds the employee number yet. |
-| `accountNotManaged` | `account_not_managed` | The link's user is no longer Staff-managed. |
+| `accountNotManaged` | `account_not_managed` | The link's user is no longer Staff-managed; the link gives them no Self until HR links the user again by hand. |
 | `accountBlockedByOwner` | `blocked_by_owner` | An Owner disabled the pending user. |
 | `accountDisabledByOwner` | `disabled_by_owner` | An Owner disabled the user while employed. |
 | `accountUserGone` | `user_gone` | The user no longer exists. |
@@ -3317,7 +3322,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `payroll_format_unsupported` | 400 | A payroll export's `format` other than `csv`. |
 | `retention_busy` | 409 | `POST /retention/run` while the retention lease is held — by the worker, here or on another replica, or another run by hand. Nothing ran. |
 | `threshold_unknown` | 404 | `POST /thresholds/{key}/acknowledge` with a key other than `5`, `30`, `50` and `otp`. |
-| `link_managed` | 409 | `PUT /people/{id}/user` naming, or unlinking, a Staff-managed user, or on a link in one of the accounts worker's states. |
+| `link_managed` | 409 | `PUT /people/{id}/user` naming, or unlinking, a Staff-managed user, or on a link in one of the accounts worker's states — but one blocked `account_not_managed`, which HR may unlink or relink. |
 | `account_mismatch` | 409 | `POST /people/{id}/account/disable` on a link whose user carries another employee number: someone else's account, left alone. The flag is off. |
 | `accounts_busy` | 409 | `DELETE /people/{id}` while the accounts worker holds the person's `preparing` link; `POST /people/{id}/account/run` and `/disable` while a live lease holds the person's link. |
 | `account_not_managed` | 409 | `POST /people/{id}/account/disable` on HR's self-service link (nothing more is done) or on a user Staff does not manage. The flag is off. |

@@ -330,7 +330,7 @@ erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk
 | `accountNoEmployment` | Flagget er på, men personen har ikke noe arbeidsforhold | Legg til arbeidsforholdet, eller slå flagget av |
 | `accountEmailMissing` | Personen har ingen adresse av typen flagget navngir | Legg til jobb- (eller privat) e-post, eller bytt adressevalget |
 | `accountNotFound` | Føderert: identitetsleverandøren har ikke opprettet brukeren ennå | Opprett brukeren hos leverandøren med personens ansattnummer |
-| `accountNotManaged` | En Owner lot Ansatte slutte å styre brukeren — eller, med flagget av, en Deaktiver nå som ble avvist for en bruker Ansatte ikke styrer, prøvd igjen daglig | En Owner tar brukeren inn igjen (neste forsøk deaktiverer dem) eller deaktiverer dem i identity; HR fjerner en selvbetjent kobling |
+| `accountNotManaged` | En Owner lot Ansatte slutte å styre brukeren — eller, med flagget av, en Deaktiver nå som ble avvist for en bruker Ansatte ikke styrer, prøvd igjen daglig | En Owner tar brukeren inn igjen (neste forsøk deaktiverer dem) eller deaktiverer dem i identity; HR fjerner en selvbetjent kobling. Til da har personen ingen Min side: HR fjerner koblingen og kobler brukeren for hånd igjen (**Bruker** på personsiden) for å gi den tilbake |
 | `accountBlockedByOwner` | En Owner deaktiverte den ventende brukeren | En Owner aktiverer dem i identity, om de skal begynne |
 | `accountDisabledByOwner` | En Owner deaktiverte brukeren mens personen er ansatt | En Owner avgjør; Ansatte opphever det ikke |
 | `accountUserGone` | Brukeren ble slettet i identity | Fjern koblingen, eller en Owner gjenoppretter kontoen |

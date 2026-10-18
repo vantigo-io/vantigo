@@ -324,7 +324,7 @@ erased person" — and for a leaver whose account the worker could not disable.
 | `accountNoEmployment` | The flag is on but the person has no employment | Add the employment, or turn the flag off |
 | `accountEmailMissing` | The person has no address of the kind the flag names | Add the work (or private) email, or switch the address choice |
 | `accountNotFound` | Federated: the identity provider has not created the user yet | Create the user in the provider with the person's employee number |
-| `accountNotManaged` | An Owner stopped Staff managing the user — or, with the flag off, a Disable now refused for a user Staff does not manage, tried again daily | An Owner adopts the user again (the next try disables them) or disables them in identity; HR unlinks a self-service link |
+| `accountNotManaged` | An Owner stopped Staff managing the user — or, with the flag off, a Disable now refused for a user Staff does not manage, tried again daily | An Owner adopts the user again (the next try disables them) or disables them in identity; HR unlinks a self-service link. Until then the person has no My page: HR unlinks the user and links them again by hand (**User** on the person's page) to give it back |
 | `accountBlockedByOwner` | An Owner disabled the pending user | An Owner enables them in identity, if they should start |
 | `accountDisabledByOwner` | An Owner disabled the user while the person is employed | An Owner decides; Staff does not undo it |
 | `accountUserGone` | The user was deleted in identity | Unlink, or an Owner restores the account |
