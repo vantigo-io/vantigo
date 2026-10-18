@@ -103,7 +103,8 @@ A user Staff's accounts manage is not linked or unlinked here: the request answe
 `link_managed` (409), and so does a person whose link is the accounts worker's
 (`GET /api/v1/staff/people/{id}/account` shows its state). If identity cannot be asked
 whether the user is managed, the request answers `accounts_unavailable` (503) and
-changes nothing; try again.
+changes nothing; try again. An installation where no module provides accounts answers
+every link and unlink naming a user that way.
 
 ## Turn on accounts for a person
 
@@ -116,7 +117,7 @@ acts on it arrives with the next part of the delivery.
    `staff:manage`: `false` until an Owner has named at least one. `accountMode` says
    whether identity holds the passwords (`local`) or an identity provider owns the
    accounts (`federated`); it is absent when this process's OIDC or SCIM settings
-   disagree with the API's.
+   disagree with the API's, and when identity could not be asked.
 2. As a user with `staff:manage`, read the person's flag:
    `GET /api/v1/staff/people/{id}/account`, and note its `revision` — the flag's own,
    not the person's: changing the flag never moves the person's revision.
@@ -125,7 +126,8 @@ acts on it arrives with the next part of the delivery.
    Leave `provisionFrom` null to enable the account on the first day of the person's
    earliest employment that has not ended; set a date to choose another day. Choose
    `private` to give identity the person's private email instead of the work email.
-   The request is a full replace: send all three fields.
+   The request is a full replace: send all three fields — one without
+   `provisionAccount` is refused (400) and changes nothing.
 4. Verify: the answer's `provisionFromEffective` is the day the account is enabled,
    and `address.present` is `true`. A flag turned on without the chosen address is
    accepted, but no account is made until the person has it. The person's history

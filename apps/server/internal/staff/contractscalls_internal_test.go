@@ -191,7 +191,8 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 // provides account provisioning, each still reported; and Account is handed
 // the person's own stored address by their choice — the work or the private
 // email, none when they have none or no person is named — never one a caller
-// typed, since the accessor takes no address at all.
+// typed, since the accessor takes no address at all, only an accountPerson,
+// which readAccountPerson alone builds from the stored row.
 func TestContractCalls_TheAccountsAccessors(t *testing.T) {
 	ctx := context.Background()
 	none := &server{deps: module.Deps{}}
@@ -205,14 +206,32 @@ func TestContractCalls_TheAccountsAccessors(t *testing.T) {
 		t.Errorf("ProvisioningRoles without a provider = %v, want errAccountsUnavailable", err)
 	}
 
+	// The persons are read as every caller reads one, readAccountPerson
+	// over their stored row: the only way an accountPerson is made.
+	pool, _ := testdb.Migrated(t)
+	q := store.New(pool)
+	work, private := "kari@work.example", "kari@home.example"
+	seed := func(number string, work, private, kind *string) *accountPerson {
+		var id int64
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO staff.people (employee_number, given_name, family_name, display_name, work_email, private_email, account_email_kind, created_at, updated_at)
+			VALUES ($1, 'Kari', 'Nordmann', 'Kari Nordmann', $2, $3, $4, now(), now()) RETURNING id`, number, work, private, kind).Scan(&id); err != nil {
+			t.Fatalf("seed a person: %v", err)
+		}
+		p, err := readAccountPerson(ctx, q, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &p
+	}
+	kind, otherWork := "private", "ola@work.example"
 	fake := &silentAccounts{}
 	s := &server{deps: module.Deps{Accounts: fake}}
-	work, private, kind := "kari@work.example", "kari@home.example", "private"
 	for _, p := range []*accountPerson{
 		nil,
-		{WorkEmail: &work, PrivateEmail: &private},
-		{WorkEmail: &work, PrivateEmail: &private, AccountEmailKind: &kind},
-		{WorkEmail: &work, AccountEmailKind: &kind},
+		seed("A-1", &work, &private, nil),
+		seed("A-2", nil, &private, &kind),
+		seed("A-3", &otherWork, nil, &kind),
 	} {
 		if _, err := s.accountsAccount(ctx, uuid.New(), p); err != nil {
 			t.Fatal(err)

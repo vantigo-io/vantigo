@@ -106,7 +106,8 @@ En bruker som Ansattes kontoer forvalter, kobles ikke til eller fra her: foresp�
 svarer `link_managed` (409), og det samme gjør en person hvis kobling er kontoarbeiderens
 (`GET /api/v1/staff/people/{id}/account` viser tilstanden). Kan ikke identity spørres om
 brukeren forvaltes, svarer forespørselen `accounts_unavailable` (503) og endrer ingenting;
-prøv igjen.
+prøv igjen. En installasjon der ingen modul tilbyr kontoer, svarer slik på hver kobling
+og frakobling som navngir en bruker.
 
 ## Slå på konto for en person
 
@@ -119,7 +120,7 @@ det, kommer med neste del av leveransen.
    `staff:manage`: `false` til en Owner har navngitt minst én. `accountMode` sier om
    identity holder passordene (`local`) eller en identitetsleverandør eier kontoene
    (`federated`); den mangler når denne prosessens OIDC- eller SCIM-innstillinger er
-   uenige med API-ets.
+   uenige med API-ets, og når identity ikke kunne spørres.
 2. Som en bruker med `staff:manage` leser du personens flagg:
    `GET /api/v1/staff/people/{id}/account`, og merker deg `revision` — flaggets egen,
    ikke personens: å endre flagget flytter aldri personens revisjon.
@@ -128,7 +129,8 @@ det, kommer med neste del av leveransen.
    La `provisionFrom` være null for å aktivere kontoen på første dag i personens
    tidligste arbeidsforhold som ikke har sluttet; sett en dato for å velge en annen dag.
    Velg `private` for å gi identity personens private e-post i stedet for jobb-e-posten.
-   Forespørselen er en full erstatning: send alle tre feltene.
+   Forespørselen er en full erstatning: send alle tre feltene — en uten
+   `provisionAccount` avvises (400) og endrer ingenting.
 4. Kontroller: svarets `provisionFromEffective` er dagen kontoen aktiveres, og
    `address.present` er `true`. Et flagg som slås på uten den valgte adressen godtas, men
    ingen konto lages før personen har den. Personens historikk viser

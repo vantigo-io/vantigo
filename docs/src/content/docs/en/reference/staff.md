@@ -909,6 +909,15 @@ Under the person's lock, a link in any state but `linked` — the worker's `prep
 relink and an unlink alike. A link naming no user (the worker's `preparing` link) reads
 `linked: false`.
 
+The managed-link check is a check-then-act: identity is asked before the transaction,
+so an Owner could adopt the user for Staff between the question and the write. The
+second guard is the accounts worker's: it acts on a link only when identity's employee
+number for the user is the person's, so a user adopted meanwhile is left alone
+(`accountMismatch`). `link_managed` tells `staff:manage` whether a user is
+Staff-managed — accepted: managing Staff's users is HR's role. With no module
+providing accounts, every link and unlink naming a user answers `accounts_unavailable`
+(503), since whether the user is managed cannot be judged.
+
 ## Accounts
 
 Delivery C's accounts give a person a user in identity on the dates their employments
@@ -947,7 +956,8 @@ manager, an Approver, a colleague and anyone else get the person's 404.
     with no address to compare; the codes never carry an address or a driver's words.
 - **`PUT /people/{id}/account`** (`staff:manage`) replaces the three fields,
   `If-Match` on the flag's own revision (the `revision` `GET` answered, never the
-  person's), under the person's lock: what it leaves out is
+  person's), under the person's lock. The body must name `provisionAccount` — a body
+  without it is a 400 on the field, since the decoder would read it as false; what it leaves out is
   cleared — `provisionFrom` to none, `accountEmailKind` to `work`. An erased person is
   `person_erased` (409), a stale revision `revision_conflict`; an unknown kind or an
   unknown property is a 400. A change moves the flag's revision — not the person's —
@@ -966,6 +976,9 @@ no user yet — `external_id` is nullable since 00051), `pending`, `active`,
 `disabled`, `failed` and `blocked` are the worker's. A `preparing` link does not make
 a person "in use": [deleting](#deleting-a-person) the person deletes it with them, but
 not while the worker holds it (`lease_until` in the future): `accounts_busy` (409).
+The delete locks the link last, after the person and the manager graph, so it waits
+for a worker's claim and judges the row the claim left: a lease set is
+`accounts_busy`, a user named meanwhile `person_in_use`.
 
 **The decision table** (`accounts_decide.go`) is what the accounts worker does next
 for one person: a pure function of facts already read — the person (erased, the flag,

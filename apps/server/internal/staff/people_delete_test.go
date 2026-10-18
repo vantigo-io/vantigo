@@ -1,9 +1,11 @@
 package staff_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -157,4 +159,75 @@ func TestDeletePerson_APreparingLinkGoesWithThePerson(t *testing.T) {
 	linked := createPerson(t, hr, newPerson("Per", "Olsen"))
 	managedLink(t, h, linked.Id, uuid.New(), "pending")
 	refused(t, hr.Do(http.MethodDelete, personPath(linked.Id), nil), http.StatusConflict, "person_in_use")
+}
+
+// The delete racing the accounts worker's claim on a preparing link (review
+// L1), on a pool of two with the claim a raw transaction of its own holding
+// the link FOR UPDATE, as the worker's claim does: the delete takes the
+// person and the manager graph, comes to the link last and waits on it —
+// pg_blocking_pids names the claim — then judges the row the claim left. A
+// lease set: accounts_busy, the person kept. No lease: deleted. A user named
+// meanwhile (a write past the person's lock the delete still meets):
+// person_in_use, the person kept. Never 40P01. Not parallel: a race test
+// never is.
+func TestDeletePerson_RacesTheWorkersClaim(t *testing.T) {
+	h := newHarness(t, modtest.WithPoolMaxConns(2))
+	hr, _ := signIn(t, h, "staff:manage")
+	probe := ownConn(t, h)
+	before := deadlocksIn(t, probe)
+
+	for _, c := range []struct {
+		name   string
+		claim  string
+		status int
+		code   string
+	}{
+		{"a lease set", `UPDATE staff.identity_links SET lease_id = gen_random_uuid(), lease_until = $2 WHERE person_id = $1`, http.StatusConflict, "accounts_busy"},
+		{"no lease", ``, http.StatusNoContent, ""},
+		{"a user named", `UPDATE staff.identity_links SET external_id = gen_random_uuid()::text WHERE person_id = $1 AND $2::timestamptz IS NOT NULL`, http.StatusConflict, "person_in_use"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+			preparingLink(t, h, p.Id)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			claimConn := ownConn(t, h)
+			claim, err := claimConn.Begin(ctx)
+			if err != nil {
+				t.Fatalf("begin the claim: %v", err)
+			}
+			defer func() { _ = claim.Rollback(context.Background()) }()
+			if _, err := claim.Exec(ctx, `SELECT id FROM staff.identity_links WHERE person_id = $1 FOR UPDATE`, p.Id); err != nil {
+				t.Fatalf("the claim's lock: %v", err)
+			}
+			if c.claim != "" {
+				if _, err := claim.Exec(ctx, c.claim, p.Id, h.Now().Add(5*time.Minute)); err != nil {
+					t.Fatalf("the claim: %v", err)
+				}
+			}
+			answered := make(chan *modtest.Response, 1)
+			go func() { answered <- hr.Do(http.MethodDelete, personPath(p.Id), nil, modtest.Context(ctx)) }()
+			_, blockers := waiterOn(t, probe)
+			if want := []uint32{claimConn.PgConn().PID()}; !slices.Equal(blockers, want) {
+				t.Fatalf("the delete waits on %v, want the claim %v", blockers, want)
+			}
+			if err := claim.Commit(ctx); err != nil {
+				t.Fatalf("commit the claim: %v", err)
+			}
+			r := <-answered
+			if c.status == http.StatusNoContent {
+				if r.Status != http.StatusNoContent {
+					t.Fatalf("the delete: %d %s, want 204", r.Status, r.Body)
+				}
+				return
+			}
+			refused(t, r, c.status, c.code)
+			if n := h.Count(t, `SELECT count(*) FROM staff.people WHERE id = $1`, p.Id); n != 1 {
+				t.Errorf("a refused delete removed the person")
+			}
+		})
+	}
+	if after := deadlocksIn(t, probe); after != before {
+		t.Errorf("deadlocks = %d, want %d: the race ended in 40P01", after, before)
+	}
 }

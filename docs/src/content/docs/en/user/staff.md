@@ -101,8 +101,8 @@ you may not see answers exactly as one who does not exist.
 - **Account** — whether Staff gives the person a user to sign in with, from which day,
   and at their work or their private email. The account is prepared, disabled, a
   number of days before that day and enabled on it; without a day of HR's own it is
-  the first day of the person's earliest employment that has not ended. The person and
-  HR see it; only HR (`staff:manage`) changes it. A user Staff manages this way is not
+  the first day of the person's earliest employment that has not ended. The person, HR
+  and `staff:personal-data` see it; only HR (`staff:manage`) changes it. A user Staff manages this way is not
   linked or unlinked under **Self-service**.
 - **Children and care days** — **Children under 12**, **Sole carer** and **Children
   with extra care days**, what the person's care days are counted from. The person, HR

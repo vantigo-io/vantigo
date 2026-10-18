@@ -268,8 +268,8 @@ func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSeal
 // included.
 func personalDataAccount(f personalDataSnapshot) gen.StaffPersonalDataAccount {
 	out := gen.StaffPersonalDataAccount{
-		ProvisionAccount: f.account.ProvisionAccount,
-		ProvisionFrom:    dateOf(f.account.ProvisionFrom),
+		ProvisionAccount: f.account.provisionAccount,
+		ProvisionFrom:    dateOf(f.account.provisionFrom),
 		AccountEmailKind: gen.StaffAccountEmailKind(accountEmailKindOf(f.account)),
 	}
 	if f.link != nil {

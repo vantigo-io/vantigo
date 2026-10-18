@@ -548,5 +548,20 @@ If the database runs a least-privilege application role, grant it the `staff` sc
 above. An installation that lists `MODULES` explicitly gets Staff only once `staff` is
 added; it needs no other module. See [Staff](/en/admin/staff/).
 
+**The release with Staff's accounts.** Its Staff migration (`00051`) makes a person's
+employee number unique by upper case under the `C` collation, so case is judged alike
+whatever locale the database was created with. Under a Turkish or Azeri locale the old
+index could have admitted two numbers that differ only by case (`i-1` beside `I-1`),
+and the migration then fails on the new index. Before upgrading such an installation,
+look for them:
+
+```sql
+SELECT upper(employee_number COLLATE "C"), count(*) FROM staff.people GROUP BY 1 HAVING count(*) > 1;
+```
+
+No row means the upgrade is safe; for each row, give one of the people another number
+in Staff first. Rolling the migration back is an operator's last resort: it deletes
+the accounts worker's links that do not yet name a user.
+
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).
