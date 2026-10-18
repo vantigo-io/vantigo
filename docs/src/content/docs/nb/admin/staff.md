@@ -130,7 +130,7 @@ det, kommer med neste del av leveransen.
    tidligste arbeidsforhold som ikke har sluttet; sett en dato for å velge en annen dag.
    Velg `private` for å gi identity personens private e-post i stedet for jobb-e-posten.
    Forespørselen er en full erstatning: send alle tre feltene — en uten
-   `provisionAccount` avvises (400) og endrer ingenting.
+   `provisionAccount`, eller med den `null`, avvises (400) og endrer ingenting.
 4. Kontroller: svarets `provisionFromEffective` er dagen kontoen aktiveres, og
    `address.present` er `true`. Et flagg som slås på uten den valgte adressen godtas, men
    ingen konto lages før personen har den. Personens historikk viser

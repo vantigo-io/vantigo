@@ -368,9 +368,10 @@ func (s *server) PutStaffPeopleByIdAccount(ctx context.Context, req gen.PutStaff
 	if f := s.unknownProperties(ctx, accountRequestSchema); f.failed() {
 		return gen.PutStaffPeopleByIdAccount400ApplicationProblemPlusJSONResponse(invalid(invalidAccountFlagTitle, f)), nil
 	}
-	// The decoder reads a body without provisionAccount as false, and a
-	// replace that leaves the flag out is not "turn the account off".
-	if !bodyHas(ctx, "provisionAccount") {
+	// The decoder reads a body without provisionAccount, or with it null, as
+	// false, and a replace that does not say the flag is not "turn the
+	// account off".
+	if !bodyHasValue(ctx, "provisionAccount") {
 		return gen.PutStaffPeopleByIdAccount400ApplicationProblemPlusJSONResponse(invalid(invalidAccountFlagTitle, fieldErrors{
 			errs: fieldError("provisionAccount", "provisionAccount is required: true to give the person an account, false not to"),
 		})), nil
