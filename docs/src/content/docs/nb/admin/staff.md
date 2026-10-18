@@ -138,7 +138,7 @@ første arbeidsdag (leveranse C). Kontoflagget settes her; kontoarbeideren
    arbeidsforhold som ikke har sluttet — feltet sier hvilken dag det er — eller velg en
    annen dag. Mellom to arbeidsforhold hører en dag fra før det første sluttet til det,
    og kontoen følger den senere startdatoen; en dag etter det følges. Velg **Privat
-   e-post** under **Adresse** for å gi identity personens private e-post i stedet for
+   e-post** under **Adresse** for å gi identitet personens private e-post i stedet for
    jobb-e-posten. Trykk **Lagre kontoflagget**. Gjennom API-et er det
    `PUT /api/v1/staff/people/{id}/account` med `If-Match` satt til flaggets egen
    `revision` fra `GET` — aldri personens: å endre flagget flytter aldri personens
@@ -182,7 +182,7 @@ arbeidet person for person; ingen venter på en annen.
    med flagget på, men aktiverer aldri én (`employee_role_missing`).
 2. Kontroller dagen etter at arbeideren har kjørt: personens Konto-fane viser under
    **Brukerkonto** **Tilstand** med ord, hvorfor lenken holdes tilbake når den gjør det,
-   *De siste … forsøkene mislyktes* etter en feil, **Invitasjon** og **Neste forsøk**
+   *Mislykkede forsøk på rad: …* etter en feil, **Invitasjon** og **Neste forsøk**
    (`GET /api/v1/staff/people/{id}/account` svarer det samme som en `link` med `state`,
    `reason`, `attempts` og `nextAttemptAt`). Personens historikk (som HR) viser `account_prepared`,
    `account_activated`, `account_deactivated` og `account_updated`; en leder, en

@@ -123,9 +123,9 @@ their first day (delivery C). The account flag is set here; the accounts worker
 ([below](#the-accounts-worker)) acts on it.
 
 1. Before the first account, an Owner names the roles Staff may give in identity (the
-   employee roles, under **Roles Staff may give** on the Roles and access page). The
+   employee roles, under **Roles Staff may give** on the Roles & access page). The
    **Accounts** card in Staff settings warns *No Owner has named the roles Staff may
-   give* until one has, with **Open Roles and access**, and says the authority mode:
+   give* until one has, with **Open Roles & access**, and says the authority mode:
    *Local accounts* (identity holds the passwords) or *Federated* (an identity provider
    owns the accounts) — or *Accounts are unavailable* when this process's OIDC or SCIM
    settings disagree with the API's, or identity could not be asked. Through the API,
@@ -181,8 +181,8 @@ person; none waits for another.
    `true`). Without them the worker still creates the pending, disabled users of the
    people whose flag is on, but never enables one (`employee_role_missing`).
 2. Verify, the day after the worker has run: the person's Account tab, under **User
-   account**, shows the **State** in words, why the link is held when it is, *The last
-   … attempts failed* after a failure, the **Invitation** and the **Next attempt**
+   account**, shows the **State** in words, why the link is held when it is, *Failed attempts in a row:
+   …* after a failure, the **Invitation** and the **Next attempt**
    (`GET /api/v1/staff/people/{id}/account` answers the same as a `link` with its
    `state`, `reason`, `attempts` and `nextAttemptAt`). The person's history (as HR) shows `account_prepared`,
    `account_activated`, `account_deactivated` and `account_updated`; a manager, an
