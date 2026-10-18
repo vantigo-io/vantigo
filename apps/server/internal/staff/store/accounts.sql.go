@@ -56,7 +56,8 @@ SELECT l.person_id, p.display_name, p.provision_account, (p.erased_at IS NOT NUL
 FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
 WHERE l.provider = 'identity'
-  AND (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL)
+  AND (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL
+       OR l.blocked_reason IN ('account_not_managed', 'account_privileged'))
   AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL OR l.disable_requested_at IS NOT NULL)
 ORDER BY l.person_id
 `
@@ -77,8 +78,9 @@ type AccountLinkAttentionRow struct {
 // own rows alone: identity is never asked at read time.
 // AccountLinkAttention is every link the worker left a reason or an error
 // on, or that carries a disable requested, of a person not erased — or of an
-// erased one whose link carries a disable requested (Task 4c review M2) —
-// with the person's name, flag and erasure.
+// erased one whose link carries a disable requested (Task 4c review M2), or
+// the refusal a Deactivate was answered with (re-check MEDIUM-1) — with the
+// person's name, flag and erasure.
 func (q *Queries) AccountLinkAttention(ctx context.Context) ([]AccountLinkAttentionRow, error) {
 	rows, err := q.db.Query(ctx, accountLinkAttention)
 	if err != nil {

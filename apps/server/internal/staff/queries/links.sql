@@ -16,7 +16,12 @@ WHERE person_id = @person_id AND provider = 'identity';
 -- user_linked_elsewhere. A replaced link starts over as a self-service link:
 -- whatever delivery C's worker recorded about the old user is not this one's,
 -- and a claim the worker holds on it is ended — its result, which names the
--- old user, is no longer written (WriteAccountResult).
+-- old user, is no longer written (WriteAccountResult). Clearing a disable
+-- Disable now asked for (disable_requested_at) is safe here: a link in one of
+-- the worker's states, or naming a Staff-managed user, is refused
+-- link_managed before this runs (links.go), so the only marked link this
+-- replaces is a self-service link to a user Staff does not manage, whom
+-- Deactivate refuses (account_not_managed) and only an Owner disables.
 INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
 VALUES (@person_id, 'identity', @external_id::text, 'linked', false, @now::timestamptz, @now::timestamptz)
 ON CONFLICT (person_id, provider) DO UPDATE SET
@@ -36,6 +41,10 @@ ON CONFLICT (person_id, provider) DO UPDATE SET
     updated_at = EXCLUDED.updated_at;
 
 -- name: DeletePersonLink :exec
+-- DeletePersonLink removes the person's link, a disable asked for with it:
+-- safe for the same reason as SetPersonLink's — the unlink refuses a
+-- worker's or a Staff-managed link (link_managed), and the person's delete
+-- one naming any user (person_in_use).
 DELETE FROM staff.identity_links WHERE person_id = @person_id AND provider = 'identity';
 
 -- name: PeopleLinks :many

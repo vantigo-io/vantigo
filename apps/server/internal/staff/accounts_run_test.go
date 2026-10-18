@@ -582,8 +582,15 @@ func TestAccountsDisable_ALinkClaimedAfterTheCommitIsFinished(t *testing.T) {
 	u := uuid.New()
 	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber})
 	workerLink(t, w.h, p.Id, u, "active")
-	staff.OnDisableCommitted(t, p.Id, func() { leaseLink(t, w.h, p.Id) })
+	var hookErr error
+	staff.OnDisableCommitted(t, w.h.Deps(), p.Id, func() {
+		_, hookErr = w.h.Pool().Exec(context.Background(), `UPDATE staff.identity_links SET lease_id = $2, lease_until = $3 WHERE person_id = $1`,
+			p.Id, uuid.New(), w.h.Now().Add(5*time.Minute))
+	})
 	refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusConflict, "accounts_busy")
+	if hookErr != nil {
+		t.Fatalf("lease the link after the commit: %v", hookErr)
+	}
 	if acc := getAccount(t, w.hr, p.Id); acc.ProvisionAccount {
 		t.Error("the flag is on")
 	}
@@ -754,5 +761,122 @@ func TestAccountsRun_AManagerIsRefused(t *testing.T) {
 	}
 	if n := len(w.fake.writeCalls()); n != 0 {
 		t.Errorf("writes = %v, want none", w.fake.writeCalls())
+	}
+}
+
+// A refusal identity answers to Disable now is an answer (re-check
+// MEDIUM-1): an Owner's account is account_privileged, the marker cleared at
+// once, no accountFailing even ten minutes on, the accountPrivileged item
+// instead — the flag off — and no cycle calls identity for it again.
+func TestAccountsDisable_ARefusalIsAnAnswer(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	for _, tc := range []struct {
+		name, code string
+		item       gen.StaffStatsAttentionItemType
+		seed       func(p gen.StaffPerson)
+	}{
+		{"privileged", "account_privileged", gen.AccountPrivileged, func(p gen.StaffPerson) {
+			u := uuid.New()
+			w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, Privileged: true, EmployeeNumber: p.EmployeeNumber})
+			workerLink(t, w.h, p.Id, u, "active")
+		}},
+		{"a self-service link", "account_not_managed", gen.AccountNotManaged, func(p gen.StaffPerson) {
+			u := uuid.New()
+			w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, EmployeeNumber: p.EmployeeNumber})
+			link(t, w.h, p.Id, u)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := w.employee(t, "Svar", "2026-01-01", nil)
+			tc.seed(p)
+			refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusConflict, tc.code)
+			if m := disableMarker(t, w.h, p.Id); m != nil {
+				t.Errorf("the marker is kept after the refusal: %v", m)
+			}
+			w.h.Advance(11 * time.Minute)
+			id := strconv.FormatInt(p.Id, 10)
+			if item, ok := hasItem(t, w.hr, "accountFailing/"+id); ok {
+				t.Errorf("a refusal raised %+v", item)
+			}
+			if _, ok := hasItem(t, w.hr, string(tc.item)+"/"+id); !ok {
+				t.Errorf("HR's items lack %s/%s", tc.item, id)
+			}
+			deactivations := countWrites(w.fake, "Deactivate")
+			w.h.Advance(25 * time.Hour)
+			w.cycle(t)
+			if n := countWrites(w.fake, "Deactivate"); n != deactivations {
+				t.Errorf("a cycle called Deactivate %d more times after the refusal", n-deactivations)
+			}
+		})
+	}
+}
+
+// The marker's step reads the user first (re-check MEDIUM-1): a disable that
+// failed, after which an Owner disabled the user in identity, is cleared by
+// the next cycle with no call, and accountFailing goes.
+func TestAccountsDisable_AUserDisabledMeanwhileClearsTheMarker(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Eiervekk", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber})
+	workerLink(t, w.h, p.Id, u, "active")
+	w.fake.failWith("Deactivate", errFakeDown)
+	refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusServiceUnavailable, "accounts_unavailable")
+	ref := w.fake.user(u)
+	ref.State, ref.DisabledBy = contracts.AccountStateDisabled, contracts.DisabledByOwner
+	w.fake.setUser(ref)
+	deactivations := countWrites(w.fake, "Deactivate")
+	w.h.Advance(time.Hour + time.Minute)
+	w.cycle(t)
+	if n := countWrites(w.fake, "Deactivate"); n != deactivations {
+		t.Errorf("the cycle called Deactivate %d more times for a user already disabled", n-deactivations)
+	}
+	if m := disableMarker(t, w.h, p.Id); m != nil {
+		t.Errorf("the marker is still set: %v", m)
+	}
+	if item, ok := hasItem(t, w.hr, "accountFailing/"+strconv.FormatInt(p.Id, 10)); ok {
+		t.Errorf("still raised: %+v", item)
+	}
+}
+
+// An erased person whose flag is on (re-check LOW-1) does not let the
+// marker lapse: the user is deactivated.
+func TestAccountsDisable_AnErasedPersonsMarkerDoesNotLapse(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Påslått", "2020-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber})
+	workerLink(t, w.h, p.Id, u, "active")
+	w.h.Exec(t, `UPDATE staff.identity_links SET disable_requested_at = $2 WHERE person_id = $1`, p.Id, w.h.Now())
+	w.h.Exec(t, `UPDATE staff.people SET erased_at = $2 WHERE id = $1`, p.Id, w.h.Now())
+	w.cycle(t)
+	if ref := w.fake.user(u); ref.State != contracts.AccountStateDisabled {
+		t.Errorf("the erased person's user = %+v, want disabled", ref)
+	}
+	if m := disableMarker(t, w.h, p.Id); m != nil {
+		t.Errorf("the marker is still set: %v", m)
+	}
+}
+
+// A worker's link carrying the marker is not HR's to relink or unlink
+// (re-check LOW-2): both are link_managed and the marker is kept, so the
+// clearing in SetPersonLink only ever meets a self-service link.
+func TestAccountsDisable_AMarkedLinkIsNotRelinked(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Merket", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber})
+	workerLink(t, w.h, p.Id, u, "active")
+	w.h.Exec(t, `UPDATE staff.identity_links SET disable_requested_at = $2 WHERE person_id = $1`, p.Id, w.h.Now())
+	_, other := signIn(t, w.h)
+	w.fake.setUser(contracts.AccountRef{UserID: other, State: contracts.AccountStateActive})
+	refused(t, w.hr.Do(http.MethodPut, userPath(p.Id), map[string]any{"userId": other}), http.StatusConflict, "link_managed")
+	refused(t, w.hr.Do(http.MethodPut, userPath(p.Id), map[string]any{"userId": nil}), http.StatusConflict, "link_managed")
+	if disableMarker(t, w.h, p.Id) == nil {
+		t.Error("a refused relink cleared the marker")
 	}
 }

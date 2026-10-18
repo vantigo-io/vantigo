@@ -1239,13 +1239,20 @@ result (its facts unreadable, or naming no user) releases its lease at once
   worker writes one (`account_deactivated`, the link `disabled`). With the flag off no
   cycle claims the link again — once the disable is done — so the user stays disabled
   until HR turns the flag on. **The disable asked for is the worker's to finish**:
-  `disable_requested_at` is cleared only by a `Deactivate` identity carried out, or by
-  `ErrUserGone`; a refusal or a failure keeps it. `ClaimAccountLink` also claims a link
-  carrying it whatever the flag and the erasure, and the worker, outside the decision
-  table (whose "flag off: nothing" it overrides, a documented branch), deactivates its
-  user — a failure retried at every poll, as a leaver's, a refusal daily. HR's turning
-  the flag on again lets the request lapse; `SetPersonLink` clears it with the worker's
-  other columns. So a Disable now cut short — the client gone mid-call, identity down,
+  `disable_requested_at` is cleared by any answer of identity's — a `Deactivate`
+  carried out, `ErrUserGone`, or a refusal (`account_not_managed`, `account_privileged`,
+  the last Owner), which stays the link's `blocked_reason` and raises its item, flag
+  off or not (re-check MEDIUM-1); only a failure, and `invalid_actor`, keep it.
+  `ClaimAccountLink` also claims a link carrying it whatever the flag and the erasure,
+  and the worker, outside the decision table (whose "flag off: nothing" it overrides, a
+  documented branch), reads the user first: gone, or disabled in identity's own record
+  already (an Owner's disable meanwhile), clears the request with no call; otherwise it
+  deactivates them — a failure retried at every poll, as a leaver's. HR's turning the
+  flag on again lets the request lapse — not for an erased person, whose disable always
+  runs; `SetPersonLink` and `DeletePersonLink` clear it with the link, which is safe:
+  both refuse a worker's or a Staff-managed link (`link_managed`) before they run, so
+  the only marked link they replace is a self-service link to a user Staff does not
+  manage. So a Disable now cut short — the client gone mid-call, identity down,
   the link claimed between the commit and the claim — is finished by the worker.
   A person with no link, or a link naming no user yet, has the flag turned off alone
   (200). An erased person may be disabled. `ErrAccountNotManaged` is 409
@@ -3006,6 +3013,9 @@ disable requested, raised for an erased record too (review M2) under the neutral
 "An erased person" — with `id` `<type>/<person id>`, `entityId` the person, `title`
 the person's display name and nothing more (no address, no reason beyond the type) and
 `occurredAt` the link's `updated_at` (today for the two person-query items).
+For a person whose flag is off, or an erased one (titled "An erased person"), the
+links also raise `accountNotManaged` and `accountPrivileged` — the refusal a *Disable
+now* was answered with, the user still enabled and an Owner's to disable.
 
 | `type` | Source | Trigger |
 | --- | --- | --- |
