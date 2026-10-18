@@ -49,10 +49,16 @@ DELETE FROM staff.identity_links WHERE person_id = @person_id AND provider = 'id
 
 -- name: PeopleLinks :many
 -- PeopleLinks is the self-service links of @person_ids' people under the
--- identity provider, in any state: who among a person's managers decides
--- (deciders.go), once the directory says whose user is active.
+-- identity provider, in any state the worker left them but one it blocked
+-- as someone else's account — the predicate PersonForUser applies
+-- (authorize.sql; keep the two identical): a worker link blocked mismatch or
+-- account_not_managed names no user of the person's, so no active one. Who
+-- among a person's managers decides (deciders.go), once the directory says
+-- whose user is active, and the person's own user a holders' mail leaves
+-- out (notifications.go).
 SELECT person_id, external_id FROM staff.identity_links
-WHERE person_id = ANY(@person_ids::bigint[]) AND provider = 'identity';
+WHERE person_id = ANY(@person_ids::bigint[]) AND provider = 'identity'
+  AND (state = 'linked' OR coalesce(blocked_reason, '') NOT IN ('mismatch', 'account_not_managed'));
 
 -- name: MailRecipients :many
 -- MailRecipients is what an absence mail needs of @person_ids' people: the
@@ -64,7 +70,10 @@ FROM staff.people WHERE id = ANY(@person_ids::bigint[]);
 -- LinkedPeopleOfUsers is the people @user_ids' users are linked to under the
 -- identity provider, by user: the name and the language a mail to a holder
 -- by right greets them in (notifications.go) — the person's own, before the
--- user's.
+-- user's. A worker link blocked as someone else's account is no link of the
+-- user's — the predicate PersonForUser applies (authorize.sql; keep the
+-- three identical) — so its user is greeted as identity names them.
 SELECT l.external_id::text AS user_id, p.display_name, p.preferred_language
 FROM staff.identity_links l JOIN staff.people p ON p.id = l.person_id
-WHERE l.provider = 'identity' AND l.external_id = ANY(@user_ids::text[]);
+WHERE l.provider = 'identity' AND l.external_id = ANY(@user_ids::text[])
+  AND (l.state = 'linked' OR coalesce(l.blocked_reason, '') NOT IN ('mismatch', 'account_not_managed'));

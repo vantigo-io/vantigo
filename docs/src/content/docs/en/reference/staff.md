@@ -433,7 +433,10 @@ from the response — never null.
   number (`mismatch`) or whom Staff no longer manages (`account_not_managed`) gives
   that user nothing of the person, neither Self nor Manager; `GET /me` answers
   `no_person` and `GET /people/{id}` the unknown id's 404, as for a user linked to
-  nobody. HR's self-service link (`linked`) never carries either reason. **Colleague** is `staff:view`, and only for a person **active today**: an
+  nobody. Nor is it the person's user anywhere else: a manager linked only so is no
+  manager-decider (their reports' requests mail the holders by right, and a head of
+  the structure whose only manager is linked so approves their own), and a holder by
+  right linked so is greeted as identity names them, not as the person. HR's self-service link (`linked`) never carries either reason. **Colleague** is `staff:view`, and only for a person **active today**: an
   unannounced hire, a leaver and someone with no employment stay out of the colleague
   directory, and since ids are sequential they answer the unknown id's 404.
   **Manager** is a caller whose self-service link names a manager of the person
