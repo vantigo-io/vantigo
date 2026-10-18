@@ -178,7 +178,9 @@ updating the person's account, but not the disable at the end: once every employ
 has ended (none later), a user Staff manages through its own link is disabled the day
 after the last end whatever the flag says. A user HR linked by hand (the self-service
 link) is HR's and is left as it is; an Owner or a SystemAdmin is never disabled by Staff
-— another Owner demotes and disables them.
+— another Owner demotes and disables them. To keep a leaver's access, an Owner stops
+Staff managing the user in identity; the person then loses their My page until HR links
+the user to them again by hand.
 
 Each person is acted on once a day, at the first poll after midnight in the business
 time zone. Several workers, or a worker and a run by hand, share the work person by
@@ -251,7 +253,10 @@ identity records and the history names.
   A person whose flag is off has nothing run, and the tab offers no Run now.
 - **Limits**: from one client address, Run accounts now at most 30 times an hour, and a
   person's Run now and Disable now together at most 120 times an hour; past either the
-  request is refused (429) — wait, or let the worker's own cycle do it.
+  request is refused (429) — wait, or let the worker's own cycle do it. The count is per
+  client address, shared by everyone at that address: behind a reverse proxy set
+  `TRUSTED_PROXY_HOPS` or `TRUSTED_PROXY_CIDRS` ([Authentication](/en/admin/authentication/)),
+  or every request counts as the proxy's.
 
 What can go wrong, each said in words on the tab or the card: `accounts_busy` (409) —
 the worker is working the person right now; try again in a few minutes. `person_erased` (409) — an erased person's account is not

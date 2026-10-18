@@ -1128,7 +1128,9 @@ worker process, a run beside the ticker — through the link rows alone.
    lease or a lapsed one, of a person whose flag is on and who is not erased, or carrying
    a disable *Disable now* asked for ([below](#run-now-and-disable-now)), or — the flag
    off, not erased — a leaver's: the worker's link to a Staff-managed user, every
-   employment ended before today in the settings zone and none later — each
+   employment ended before today in the settings zone and none later (claimed daily
+   for as long as that holds, so a leaver an Owner re-enabled is disabled again by the
+   next run, reading 32) — each
    claimed alone by a conditional `UPDATE … FOR UPDATE OF l SKIP LOCKED` that sets
    `lease_id` and `lease_until` (five minutes on) and commits at once. A link another
    cycle holds is skipped; a link another transaction has locked at that instant (HR's
@@ -1588,7 +1590,8 @@ The seeds, every installation's, in their order:
   `absence_type_in_use` too (privacy review L3), since B's by-right self-approval is
   only ever of a type colleagues see, and an HR-only row its own person approved is
   the sole `staff:personal-data` holder's alone — narrowed under a running one, it would
-  read as that. A company type that
+  read as that. Once those rows have ended the narrowing is allowed: the
+  `selfApproved` item, which lists only rows not ended, has gone with them. A company type that
   is HR-only neither allows a percentage nor draws on the holiday account (a 400 on
   `allowsPercent` or `drawsHoliday`; whole-branch review): a reader of it as leave would
   learn its kind from overlap's shares or the account's arithmetic. The type's row is

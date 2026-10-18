@@ -178,7 +178,9 @@ aktivere og oppdatere personens konto, men ikke deaktiveringen ved slutten: når
 arbeidsforhold er avsluttet (ingen senere), deaktiveres en bruker Ansatte styrer gjennom
 sin egen lenke dagen etter siste sluttdag, uansett hva flagget sier. En bruker HR koblet
 for hånd (selvbetjeningslenken) er HRs og blir latt være; en Owner eller en SystemAdmin
-deaktiveres aldri av Ansatte — en annen Owner fratar dem rollen og deaktiverer dem.
+deaktiveres aldri av Ansatte — en annen Owner fratar dem rollen og deaktiverer dem. For å
+la en som slutter, beholde tilgangen, lar en Owner Ansatte slutte å styre brukeren i
+identity; personen mister da Min side til HR kobler brukeren til dem igjen for hånd.
 
 Hver person behandles én gang om dagen, ved første kjøring etter midnatt i
 forretningstidssonen. Flere arbeidere, eller en arbeider og en kjøring for hånd, deler
@@ -256,7 +258,10 @@ identity registrerer og historikken navngir.
   tilbyr ikke Kjør nå.
 - **Grenser**: fra én klientadresse høyst 30 kjøringer av alle kontoer i timen, og
   høyst 120 av en persons Kjør nå og Deaktiver nå til sammen i timen; over grensen
-  avvises forespørselen (429) — vent, eller la arbeiderens egen runde gjøre det.
+  avvises forespørselen (429) — vent, eller la arbeiderens egen runde gjøre det. Antallet
+  telles per klientadresse og deles av alle på den adressen: bak en omvendt proxy setter
+  du `TRUSTED_PROXY_HOPS` eller `TRUSTED_PROXY_CIDRS` ([Autentisering](/nb/admin/authentication/)),
+  ellers teller hver forespørsel som proxyens.
 
 Hva kan gå galt, hvert sagt med ord på fanen eller kortet: `accounts_busy` (409) —
 arbeideren arbeider med personen akkurat nå; prøv igjen om noen minutter. `person_erased` (409) — en slettet persons konto kjøres
