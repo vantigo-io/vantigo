@@ -43,6 +43,16 @@ export const eventKinds = [
   "erased",
   // Installation-level: a threshold acknowledged (design S20), naming its key.
   "threshold_acknowledged",
+  // The account (delivery C, `account_flag.go`): HR's change of the flag, by
+  // its fields, and the accounts worker's steps, by their codes (accountLines).
+  "account_flag_updated",
+  "account_prepared",
+  "account_activated",
+  "account_deactivated",
+  "account_updated",
+  "account_blocked",
+  "account_failed",
+  "account_mismatched",
 ] as const;
 
 /**
@@ -142,6 +152,10 @@ export const eventFields = [
   "legalHoldReason",
   "erasedAt",
   "reassessedAt",
+  // The account flag's three (delivery C).
+  "provisionAccount",
+  "provisionFrom",
+  "accountEmailKind",
 ] as const;
 
 /** What one field of a payload says: its values before and after, or only that it changed. */
@@ -206,8 +220,38 @@ export const formatEventValue = (field: string, value: unknown, f: EventFormatti
   return String(value);
 };
 
+/** A code in words when the catalog has them under `prefix`, else the code itself. */
+const coded = (prefix: string, code: string, f: EventFormatting) =>
+  f.has(`${prefix}${code}`) ? f.t(`${prefix}${code}`) : code;
+
+/**
+ * An accounts worker's event (delivery C) names no field: its step, the
+ * link's state after it, the reason or failure code, the invitation and
+ * whether the flag was turned off meanwhile — each said in words.
+ */
+const accountLines = (payload: Record<string, unknown>, f: EventFormatting): string[] => {
+  const lines: string[] = [];
+  if (typeof payload.step === "string")
+    lines.push(f.t("accountEventStep", { step: coded("accountStep_", payload.step, f) }));
+  if (typeof payload.state === "string" && payload.state)
+    lines.push(f.t("accountEventState", { state: coded("accountLinkState_", payload.state, f) }));
+  if (typeof payload.code === "string" && payload.code) lines.push(coded("accountReason_", payload.code, f));
+  const invitation = payload.invitation as { state?: unknown; issued?: unknown } | undefined;
+  if (invitation && typeof invitation.state === "string")
+    lines.push(
+      f.t("accountEventInvitation", {
+        invitation: `${coded("accountInvitation_", invitation.state, f)} · ${f.t("invitationsIssued", {
+          count: typeof invitation.issued === "number" ? invitation.issued : 0,
+        })}`,
+      }),
+    );
+  if (payload.flagOffMeanwhile === true) lines.push(f.t("accountEventFlagOffMeanwhile"));
+  return lines;
+};
+
 /** The lines an event's payload says, one per field, in the order the payload names them. */
 export const eventLines = (payload: Record<string, unknown>, f: EventFormatting): string[] => {
+  if (typeof payload.step === "string") return accountLines(payload, f);
   const fields = payload.fields;
   if (!fields || typeof fields !== "object") return [];
   return Object.entries(fields as Record<string, FieldChange>).map(([field, change]) => {

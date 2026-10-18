@@ -282,6 +282,15 @@ changed*); a change of the pay is left out for a manager, so a pay correction sh
 the kind of change alone, marked *(details not visible to you)*. The person, a manager of theirs and HR see the History tab;
 a colleague does not.
 
+The account's changes are there too, for the person, HR and `staff:personal-data`
+alone: *Account flag changed* with the fields before and after (*Staff provides an
+account: No → Yes*, **Account from**, **Address**), and the accounts worker's steps —
+*Account prepared*, *Account enabled*, *Account disabled*, *Account brought in line*,
+*Account held up*, *Account step failed* and *Account belongs to another employee
+number* — each with the **Step** it took, the **State** it left the account in, why it
+was held up or failed, the **Invitation**, and whether the account flag was turned off
+meanwhile, all in words.
+
 ### Documents
 
 **Documents** is the person's archive: the contract, attests, certificates, letters and
@@ -349,8 +358,9 @@ off the case. A document in any other category belongs to no case.
 
 ### Account
 
-The **Account** tab is HR's (`staff:manage`) and the person's own, who reads it and
-changes nothing. A manager, `staff:approve` and a colleague do not have it. It has two
+The **Account** tab is HR's (`staff:manage`). The person themselves and a holder of
+`staff:personal-data` read it and change nothing. A manager, `staff:approve` and a
+colleague do not have it. It has two
 groups.
 
 **Account flag** says whether Staff gives the person a user to sign in with, from which

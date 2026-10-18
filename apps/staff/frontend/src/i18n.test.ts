@@ -126,6 +126,21 @@ describe("the staff catalog", () => {
         ).toBeDefined();
   });
 
+  it("words every step and every failure code an account event carries, in both languages", () => {
+    const steps = [...accountsDecideGo.matchAll(/^\s*accountStep\w+\s+accountStepKind\s*=\s*"(\w+)"/gm)].map(
+      (m) => m[1],
+    );
+    expect(steps.sort()).toEqual(["activate", "deactivate", "none", "prepare", "report", "update"]);
+    const errors = [...accountsWorkerGo.matchAll(/^\s*error\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]);
+    expect(errors).toEqual(["accounts_unavailable"]);
+    for (const [language, catalog] of Object.entries(staffCatalog)) {
+      for (const step of steps)
+        expect((catalog as Record<string, string>)[`accountStep_${step}`], `${language} ${step}`).toBeDefined();
+      for (const code of errors)
+        expect((catalog as Record<string, string>)[`accountReason_${code}`], `${language} ${code}`).toBeDefined();
+    }
+  });
+
   it("words every state of an account's link and its invitation, in both languages", () => {
     const states = [
       ...`${accountsDecideGo}\n${accountFlagGo}`.matchAll(/^\s*(?:const\s+)?linkState\w+\s*=\s*"(\w+)"/gm),
@@ -160,7 +175,9 @@ describe("the staff catalog", () => {
   });
 
   it("knows every kind of event the server writes, and no other", () => {
-    const written = [...eventsGo.matchAll(/^\s*event\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]).sort();
+    const written = [...`${eventsGo}\n${accountFlagGo}\n${accountsWorkerGo}`.matchAll(/^\s*event\w+\s*=\s*"(\w+)"/gm)]
+      .map((m) => m[1])
+      .sort();
     expect(written.length).toBeGreaterThan(0);
     expect([...eventKinds].sort()).toEqual(written);
   });

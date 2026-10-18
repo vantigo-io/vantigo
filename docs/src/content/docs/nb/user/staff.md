@@ -285,6 +285,14 @@ lønnskorrigering vises bare som typen endring, merket *(detaljene er ikke synli
 deg)*. Personen selv, en leder av dem og HR ser
 fanen Historikk; en kollega gjør det ikke.
 
+Kontoens endringer står der også, bare for personen, HR og `staff:personal-data`:
+*Kontoflagget endret* med feltene før og etter (*Ansatte gir en konto: Nei → Ja*,
+**Konto fra**, **Adresse**), og kontoarbeiderens steg — *Konto forberedt*, *Konto
+aktivert*, *Konto deaktivert*, *Konto brakt i samsvar*, *Konto stoppet*, *Kontosteg
+mislyktes* og *Kontoen hører til et annet ansattnummer* — hvert med **Steg** det tok,
+**Tilstand** det lot kontoen stå i, hvorfor det stoppet eller mislyktes,
+**Invitasjon**, og om kontoflagget ble slått av i mellomtiden, alt med ord.
+
 ### Dokumenter
 
 **Dokumenter** er personens arkiv: arbeidsavtalen, attester, sertifikater, brev og
@@ -351,8 +359,9 @@ feltet for å ta det ut av saken. Et dokument i en annen kategori hører ikke ti
 
 ### Konto
 
-Fanen **Konto** er HRs (`staff:manage`) og personens egen, som leser den og ikke endrer
-noe. En leder, `staff:approve` og en kollega har den ikke. Den har to grupper.
+Fanen **Konto** er HRs (`staff:manage`). Personen selv og den som har
+`staff:personal-data`, leser den og endrer ingenting. En leder, `staff:approve` og en
+kollega har den ikke. Den har to grupper.
 
 **Kontoflagg** sier om Ansatte gir personen en bruker å logge inn med, fra hvilken dag
 og på hvilken adresse. HR endrer det:
