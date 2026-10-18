@@ -7,6 +7,7 @@ package store
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -22,6 +23,52 @@ type EnergyConsumptionInterval struct {
 	IsCurrent       bool
 	SupersedesID    *int64
 	SupersedesStart *time.Time
+}
+
+type EnergyImport struct {
+	ID                int32
+	State             string
+	FileName          string
+	SizeBytes         int64
+	Encoding          string
+	Separator         string
+	Header            []string
+	RowCount          int32
+	Mapping           []byte
+	Processed         int32
+	Created           int32
+	Updated           int32
+	Failed            int32
+	Skipped           int32
+	Switched          int32
+	Pending           int32
+	Attached          int32
+	ConfirmedSwitches int32
+	AttachStart       *time.Time
+	StopRequested     bool
+	Error             *string
+	CreatedByUserID   *uuid.UUID
+	CreatedByName     *string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	RequestedAt       *time.Time
+	StartedAt         *time.Time
+	FinishedAt        *time.Time
+}
+
+type EnergyImportRow struct {
+	ImportID        int32
+	RowNo           int32
+	Cells           []string
+	Outcome         *string
+	MeteringPointID *int32
+	Gsrn            *string
+	CustomerID      *int32
+	Link            *string
+	SwitchFrom      *int32
+	SupplyStart     *time.Time
+	AttachTried     bool
+	Errors          []byte
 }
 
 type EnergyMeter struct {

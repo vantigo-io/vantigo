@@ -1265,6 +1265,36 @@ func TestLoad_CustomersImportWorker(t *testing.T) {
 	}
 }
 
+// TestLoad_EnergyImportWorker pins the energy import worker's three settings
+// (energy import design D6), the customers import's under energy's name: on
+// unless turned off, a five-second poll, and thirty days of retention.
+func TestLoad_EnergyImportWorker(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.EnergyImportEnabled {
+		t.Error("ENERGY_IMPORT_ENABLED unset did not default to on")
+	}
+	if cfg.EnergyImportPoll != 5*time.Second {
+		t.Errorf("EnergyImportPoll = %v, want 5s", cfg.EnergyImportPoll)
+	}
+	if cfg.EnergyImportRetention != 720*time.Hour {
+		t.Errorf("EnergyImportRetention = %v, want 720h", cfg.EnergyImportRetention)
+	}
+	tuned := mustLoad(t, with(validEnv(), "ENERGY_IMPORT_ENABLED", "0", "ENERGY_IMPORT_POLL", "1m", "ENERGY_IMPORT_RETENTION", "24h"))
+	if tuned.EnergyImportEnabled || tuned.EnergyImportPoll != time.Minute || tuned.EnergyImportRetention != 24*time.Hour {
+		t.Errorf("tuned = %v/%v/%v, want off, 1m and 24h", tuned.EnergyImportEnabled, tuned.EnergyImportPoll, tuned.EnergyImportRetention)
+	}
+	if msg := loadError(t, with(validEnv(), "ENERGY_IMPORT_ENABLED", "yes")); !strings.Contains(msg, `ENERGY_IMPORT_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for _, field := range []string{"ENERGY_IMPORT_POLL", "ENERGY_IMPORT_RETENTION"} {
+		for _, v := range []string{"0s", "soon"} {
+			if msg := loadError(t, with(validEnv(), field, v)); !strings.Contains(msg, field+": must be a positive duration such as 30s") {
+				t.Errorf("%s=%s: error = %q", field, v, msg)
+			}
+		}
+	}
+}
+
 // The two Invoices e-invoicing settings (EHF and KID design D1): the switch
 // defaults on, like PEPPOL_LOOKUP_ENABLED, and is strict; the Storecove base
 // URL defaults to the production API, takes http or https as BRREG_BASE_URL

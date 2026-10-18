@@ -24,6 +24,7 @@ serves under `/docs/`.
 | Module | What it holds |
 | --- | --- |
 | [Customers](/en/reference/customers/) | Customers, legal identity, contacts and roles, the timeline, addresses, the billing profile, registry lookups, GDPR. |
+| [Energy](/en/reference/energy/) | Metering points, meters, supply periods, consumption and the metering-point import. |
 | [Communications](/en/reference/communications/) | Outbound business email across shared mailboxes, the outbox and retention. |
 | [Products](/en/reference/products/) | The catalog of goods and services the company sells, with prices. |
 | [Projects](/en/reference/projects/) | Projects per customer, codes, roles, financial shaping and work types. |

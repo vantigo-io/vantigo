@@ -393,6 +393,9 @@ oppstarten feiler.
 | `CUSTOMERS_IMPORT_ENABLED` | Kjør kundemodulens importjobb, som kontrollerer og importerer opplastede filer; `0` lar importer vente | `1` |
 | `CUSTOMERS_IMPORT_POLL` | Hvor ofte kundemodulens importjobb ser etter en import i kø | `5s` |
 | `CUSTOMERS_IMPORT_RETENTION` | Hvor lenge en ferdig eller forlatt kundeimport og radene dens beholdes | `720h` |
+| `ENERGY_IMPORT_ENABLED` | Kjør energimodulens importjobb, som kontrollerer, importerer og knytter til kunder opplastede målepunktfiler; `0` lar importer vente | `1` |
+| `ENERGY_IMPORT_POLL` | Hvor ofte energimodulens importjobb ser etter en import i kø | `5s` |
+| `ENERGY_IMPORT_RETENTION` | Hvor lenge en ferdig eller forlatt målepunktimport og radene dens beholdes | `720h` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | Profilering av SPA-en | ikke satt |
 
 Peppol-oppslaget behandler NXDOMAIN og NOERROR-uten-NAPTR-poster som det samme

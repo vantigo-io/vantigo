@@ -272,7 +272,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 
 Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert modul
 (utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber,
-kundemodulens importjobb `customers-import`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
+kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
 `INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid, og
 fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på)
 inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
@@ -307,6 +307,17 @@ importsiden sier at den venter på bakgrunnsjobben. Ferdige og forlatte importer
 radene de lastet opp, fjernes etter `CUSTOMERS_IMPORT_RETENTION` (`720h`, 30 dager);
 kundene de opprettet, blir stående. Se
 [Export, and import from a file](/en/reference/customers/#export-and-import-from-a-file).
+
+Energimodulens importjobb `energy-import` kontrollerer, kjører og knytter til kunder
+målepunktfilene folk laster opp, på samme måte: den ser etter arbeid hvert
+`ENERGY_IMPORT_POLL` (5 sekunder som standard), API-et vekker den med en gang en
+kontroll, en import eller en tilknytning blir bedt om, og den tar en egen rådgivende
+lås. `ENERGY_IMPORT_ENABLED=0` slår den av; importer venter da. Ferdige og forlatte
+importer, med radene sine, fjernes etter `ENERGY_IMPORT_RETENTION` (`720h`, 30 dager);
+målepunktene og leveranseperiodene de skrev, blir stående. I worker-modus leser den
+kunder gjennom kundemodulen, så kjør den med `customers` blant `MODULES` når importene
+navngir kunder. Se
+[Importing metering points](/en/reference/energy/#importing-metering-points).
 
 Ved avslutning tømmer prosessen pågående arbeid i opptil `SHUTDOWN_TIMEOUT` (30
 sekunder som standard), nok til at den lengste enkeltoperasjonen i en bakgrunnsjobb

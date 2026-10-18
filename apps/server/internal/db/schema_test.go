@@ -962,8 +962,12 @@ func TestEnergyBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// filtered to relations that are not themselves a partition
 	// (relispartition = false catches consumption_intervals's own children
 	// but keeps the partitioned parent itself, relkind 'p').
+	// The import's two tables (00049_energy_imports.sql, energy import design
+	// D3) are applied with every migration up.
 	wantTables := []string{
 		"consumption_intervals",
+		"import_rows",
+		"imports",
 		"metering_points",
 		"meters",
 		"supply_periods",

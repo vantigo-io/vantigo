@@ -52,6 +52,9 @@ SELECT EXISTS (SELECT 1 FROM energy.metering_points WHERE id <> @id AND gsrn = @
 -- the same filter ListMeteringPoints applies (:21-27): an ILIKE match on
 -- the GSRN, the city, the street address, or the *current* meter's number
 -- only (removed_at IS NULL) — a removed meter's number is never searched.
+-- without_customer_at is the Without customer filter (energy import design
+-- D9): when set, only the points with no Active supply period covering that
+-- instant (start at or before it, no end or an end after it).
 SELECT count(*)
 FROM energy.metering_points mp
 LEFT JOIN energy.meters active ON active.metering_point_id = mp.id AND active.removed_at IS NULL
@@ -60,6 +63,12 @@ WHERE (sqlc.narg(search_pattern)::text IS NULL OR (
     mp.city ILIKE sqlc.narg(search_pattern)::text OR
     mp.street_address ILIKE sqlc.narg(search_pattern)::text OR
     active.meter_number ILIKE sqlc.narg(search_pattern)::text
+))
+AND (sqlc.narg(without_customer_at)::timestamptz IS NULL OR NOT EXISTS (
+    SELECT 1 FROM energy.supply_periods p
+    WHERE p.metering_point_id = mp.id AND p.status = 'Active'
+      AND p.start <= sqlc.narg(without_customer_at)::timestamptz
+      AND (p."end" IS NULL OR p."end" > sqlc.narg(without_customer_at)::timestamptz)
 ));
 
 -- name: ListMeteringPoints :many
@@ -78,5 +87,21 @@ WHERE (sqlc.narg(search_pattern)::text IS NULL OR (
     mp.street_address ILIKE sqlc.narg(search_pattern)::text OR
     active.meter_number ILIKE sqlc.narg(search_pattern)::text
 ))
+AND (sqlc.narg(without_customer_at)::timestamptz IS NULL OR NOT EXISTS (
+    SELECT 1 FROM energy.supply_periods p
+    WHERE p.metering_point_id = mp.id AND p.status = 'Active'
+      AND p.start <= sqlc.narg(without_customer_at)::timestamptz
+      AND (p."end" IS NULL OR p."end" > sqlc.narg(without_customer_at)::timestamptz)
+))
 ORDER BY mp.id
 LIMIT @page_size::int OFFSET @row_offset::int;
+
+-- name: MeteringPointByGsrnForUpdate :one
+-- MeteringPointByGsrnForUpdate is the import's match (energy import design
+-- D3): the point holding a GSRN, locked for the row's transaction so nothing
+-- a colleague writes lands between the read and the row's write.
+SELECT id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
+       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+FROM energy.metering_points
+WHERE gsrn = @gsrn
+FOR UPDATE;

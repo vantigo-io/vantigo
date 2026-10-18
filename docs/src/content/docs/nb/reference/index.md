@@ -24,6 +24,7 @@ Vantigo-installasjon serverer under `/docs/`.
 | Modul | Hva den inneholder |
 | --- | --- |
 | [Kunder](/en/reference/customers/) | Kunder, juridisk identitet, kontakter og roller, tidslinjen, adresser, faktureringsprofilen, registeroppslag, GDPR. |
+| [Energi](/en/reference/energy/) | Målepunkter, målere, leveranseperioder, forbruk og importen av målepunkter. |
 | [Kommunikasjon](/en/reference/communications/) | Utgående e-post over delte postkasser, utboksen og oppbevaring. |
 | [Produkter](/en/reference/products/) | Katalogen over varer og tjenester bedriften selger, med priser. |
 | [Prosjekter](/en/reference/projects/) | Prosjekter per kunde, koder, roller, økonomisk oppsett og arbeidstyper. |

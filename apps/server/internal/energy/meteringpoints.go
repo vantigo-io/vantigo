@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -184,7 +185,8 @@ func meteringPointResponse(ctx context.Context, q *store.Queries, row store.Ener
 // GetMeteringPointsEndpoint.cs:15-32: page<1 or pageSize outside 1..100 is
 // a plain (not field-keyed) 400 Problem; search matches the GSRN, the city,
 // the street address or the current meter's number, ILIKE, escaped as
-// EscapeLikePattern does (:35).
+// EscapeLikePattern does (:35). withoutCustomer=true narrows it to the points
+// without a customer now (energy import design D9).
 func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyMeteringPointsRequestObject) (gen.GetEnergyMeteringPointsResponseObject, error) {
 	p := req.Params
 	if (p.Page != nil && *p.Page < 1) || (p.PageSize != nil && (*p.PageSize < 1 || *p.PageSize > maxPageSize)) {
@@ -205,13 +207,21 @@ func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyM
 		searchPattern = &pattern
 	}
 
+	// withoutCustomer (energy import design D9): the points with no Active
+	// supply period covering this instant.
+	var withoutCustomerAt *time.Time
+	if p.WithoutCustomer != nil && *p.WithoutCustomer {
+		now := s.deps.Clock()
+		withoutCustomerAt = &now
+	}
+
 	q := store.New(s.deps.Pool)
-	total, err := q.CountMeteringPoints(ctx, searchPattern)
+	total, err := q.CountMeteringPoints(ctx, store.CountMeteringPointsParams{SearchPattern: searchPattern, WithoutCustomerAt: withoutCustomerAt})
 	if err != nil {
 		return nil, fmt.Errorf("energy: count metering points: %w", err)
 	}
 	rows, err := q.ListMeteringPoints(ctx, store.ListMeteringPointsParams{
-		SearchPattern: searchPattern, RowOffset: (page - 1) * pageSize, PageSize: pageSize,
+		SearchPattern: searchPattern, WithoutCustomerAt: withoutCustomerAt, RowOffset: (page - 1) * pageSize, PageSize: pageSize,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: list metering points: %w", err)
@@ -280,9 +290,8 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 	}
 	var created store.EnergyMeteringPoint
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
 		var ierr error
-		created, ierr = txq.InsertMeteringPoint(ctx, store.InsertMeteringPointParams{
+		created, ierr = insertMeteringPoint(ctx, store.New(tx), store.InsertMeteringPointParams{
 			Gsrn:                         *body.Gsrn,
 			StreetAddress:                strings.TrimSpace(*body.Address.StreetAddress),
 			PostalCode:                   strings.TrimSpace(*body.Address.PostalCode),
@@ -295,13 +304,7 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 			Longitude:                    body.Longitude,
 			ConnectionStatus:             connStatus,
 			Now:                          now,
-		})
-		if ierr != nil {
-			return ierr
-		}
-		_, ierr = txq.InsertMeter(ctx, store.InsertMeterParams{
-			MeteringPointID: created.ID, MeterNumber: strings.TrimSpace(*body.MeterNumber), InstalledAt: now,
-		})
+		}, strings.TrimSpace(*body.MeterNumber))
 		return ierr
 	})
 	if err != nil {
@@ -313,6 +316,23 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 		return nil, err
 	}
 	return gen.PostEnergyMeteringPoints201JSONResponse(resp), nil
+}
+
+// insertMeteringPoint is the create's write, inside the caller's
+// transaction: the metering point and its first meter, installed at the
+// point's own creation instant, together. POST /metering-points and the
+// import (import.go) both write a new point through it.
+func insertMeteringPoint(ctx context.Context, txq *store.Queries, params store.InsertMeteringPointParams, meterNumber string) (store.EnergyMeteringPoint, error) {
+	created, err := txq.InsertMeteringPoint(ctx, params)
+	if err != nil {
+		return store.EnergyMeteringPoint{}, err
+	}
+	if _, err := txq.InsertMeter(ctx, store.InsertMeterParams{
+		MeteringPointID: created.ID, MeterNumber: meterNumber, InstalledAt: params.Now,
+	}); err != nil {
+		return store.EnergyMeteringPoint{}, err
+	}
+	return created, nil
 }
 
 // GetEnergyMeteringPoint Get a metering point

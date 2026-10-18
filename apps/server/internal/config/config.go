@@ -262,6 +262,23 @@ type Config struct {
 	// personal data in flight, not a record to keep.
 	CustomersImportRetention time.Duration
 
+	// EnergyImportEnabled is the on/off switch for the energy module's import
+	// worker (ENERGY_IMPORT_ENABLED, energy import design D6), the one that
+	// checks, runs and attaches the metering-point files people upload.
+	// Default ON, as the customers import's: with it off an import queues and
+	// waits, and the page says so. A 0 means the worker is never handed to
+	// the runner.
+	EnergyImportEnabled bool
+	// EnergyImportPoll is how often that worker looks for a queued import
+	// (ENERGY_IMPORT_POLL, default 5 seconds, the customers import's figure:
+	// a person is watching). The handlers also nudge the worker in-process,
+	// so the poll is the split deployment's bound.
+	EnergyImportPoll time.Duration
+	// EnergyImportRetention is how long a finished or abandoned import and
+	// its rows are kept before the worker's sweep removes them
+	// (ENERGY_IMPORT_RETENTION, default 720 hours — 30 days).
+	EnergyImportRetention time.Duration
+
 	// InvoicesEhfEnabled is the on/off switch for sending invoices as EHF over
 	// Peppol (INVOICES_EHF_ENABLED, EHF and KID design D1). Default ON, like
 	// PEPPOL_LOOKUP_ENABLED: an installation still needs access-point
@@ -494,6 +511,7 @@ func Load(env map[string]string) (*Config, error) {
 	customersRegistryWorkers(&p, env, c)
 	customersAnonymisation(&p, env, c)
 	customersImport(&p, env, c)
+	energyImport(&p, env, c)
 	invoicesEhf(&p, env, c)
 	invoicesVipps(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
@@ -760,6 +778,15 @@ func customersImport(p *problems, env map[string]string, c *Config) {
 	c.CustomersImportEnabled = boolean(p, env, "CUSTOMERS_IMPORT_ENABLED", true)
 	c.CustomersImportPoll = duration(p, env, "CUSTOMERS_IMPORT_POLL", 5*time.Second)
 	c.CustomersImportRetention = duration(p, env, "CUSTOMERS_IMPORT_RETENTION", 720*time.Hour)
+}
+
+// energyImport loads the energy import worker's settings (energy import
+// design D6), the customers import's three under energy's name: its switch,
+// on by default, its poll and the retention of a finished import.
+func energyImport(p *problems, env map[string]string, c *Config) {
+	c.EnergyImportEnabled = boolean(p, env, "ENERGY_IMPORT_ENABLED", true)
+	c.EnergyImportPoll = duration(p, env, "ENERGY_IMPORT_POLL", 5*time.Second)
+	c.EnergyImportRetention = duration(p, env, "ENERGY_IMPORT_RETENTION", 720*time.Hour)
 }
 
 // staffWorkersMinPoll is the shortest STAFF_WORKERS_POLL accepted.
