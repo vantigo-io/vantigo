@@ -31,7 +31,10 @@ Communications' outbox is the working example.
    `internal/payments` — the payments port, shared by Invoices and a later Point of
    sale, with its Vipps MobilePay adapter `internal/payments/vipps`; interfaces,
    values and the adapter only, no SQL, so each consumer keeps its own tables
-   (rule 4) — …) and its own subpackages, never another module's.
+   (rule 4) — `internal/fileimport` — the reader of an uploaded import file
+   (encoding, separator, quoting, the formula guard, header keys), shared by the
+   Customers and Energy imports; no SQL, each module keeps its own imports, worker
+   and caps — …) and its own subpackages, never another module's.
    `internal/payments/vipps/vippstest`, the adapter's fake, is imported by tests
    only.
 

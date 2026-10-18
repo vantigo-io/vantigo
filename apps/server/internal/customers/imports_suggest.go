@@ -1,12 +1,8 @@
 package customers
 
 import (
-	"strings"
-	"unicode"
-
-	"golang.org/x/text/unicode/norm"
-
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
+	"github.com/vantigo-io/vantigo/server/internal/fileimport"
 )
 
 // This file is the suggested mapping (customers import wizard design D3): the
@@ -18,12 +14,13 @@ import (
 // suggestion is only a suggestion: the mapping the person saves is the mapping.
 
 // importFieldAliases are the header words that mean a field, matched after
-// headerKey: lowercased, in NFC, everything but letters and digits dropped, so
-// "Org.nr", "org nr" and "ORGNR" are one word. A word that would fit two fields
-// is given to the one a Norwegian file more often means by it ("land" and
-// "country" are the postal address's, "adresse" the postal line; the invoice
-// address's words all say faktura or invoice). The JSON names themselves are
-// not listed: they are the second tier, read from the field table.
+// fileimport.HeaderKey: lowercased, in NFC, everything but letters and digits
+// dropped, so "Org.nr", "org nr" and "ORGNR" are one word. A word that would
+// fit two fields is given to the one a Norwegian file more often means by it
+// ("land" and "country" are the postal address's, "adresse" the postal line;
+// the invoice address's words all say faktura or invoice). The JSON names
+// themselves are not listed: they are the second tier, read from the field
+// table.
 var importFieldAliases = map[string][]string{
 	"customerNumber":    {"kundenummer", "kundenr", "customerno", "customernr", "custno", "kundeid", "customerid"},
 	"name":              {"navn", "kundenavn", "firmanavn", "firma", "selskap", "company", "companyname", "customername", "customer", "kunde"},
@@ -63,31 +60,19 @@ var importFieldAliases = map[string][]string{
 	"tags":              {"tag", "merkelapper", "merkelapp", "etiketter", "etikett", "stikkord", "labels", "label", "nokkelord", "nøkkelord"},
 }
 
-// headerKey is a header as the alias table matches it: NFC, lowercased, and
-// nothing but letters and digits, so punctuation and spacing never decide.
-func headerKey(header string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(norm.NFC.String(header)) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
 // aliasIndex is importFieldAliases inverted, plus every field's own JSON
-// name, each under its headerKey. The JSON name wins over an alias that is the
-// same word ("group" is both), which the construction order guarantees.
+// name, each under its fileimport.HeaderKey. The JSON name wins over an alias
+// that is the same word ("group" is both), which the construction order guarantees.
 var aliasIndex = func() map[string]string {
 	index := map[string]string{}
 	for field, aliases := range importFieldAliases {
 		for _, alias := range aliases {
-			index[headerKey(alias)] = field
+			index[fileimport.HeaderKey(alias)] = field
 		}
 	}
 	for _, c := range customerCSVColumns {
 		if c.Group != csvGroupExportOnly {
-			index[headerKey(c.Name)] = c.Name
+			index[fileimport.HeaderKey(c.Name)] = c.Name
 		}
 	}
 	return index
@@ -108,7 +93,7 @@ func suggestMapping(header []string, previous *gen.CustomerImportMapping) gen.Cu
 	taken := map[string]bool{}
 	columns := []gen.CustomerImportMappingColumn{}
 	for i, h := range header {
-		field, ok := aliasIndex[headerKey(h)]
+		field, ok := aliasIndex[fileimport.HeaderKey(h)]
 		if !ok || taken[field] {
 			continue
 		}

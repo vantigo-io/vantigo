@@ -16,6 +16,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/fileimport"
 )
 
 // This file is a row of an import becoming a customer (customers import
@@ -97,7 +98,7 @@ func (l importLayout) columnOf(field string) *int32 {
 // A row shorter than its column is blank there — a spreadsheet drops its
 // trailing empty cells — and a row longer than the header is the row's own
 // problem (plan).
-func (l importLayout) raw(rec csvRecord) map[string]string {
+func (l importLayout) raw(rec fileimport.Record) map[string]string {
 	values := make(map[string]string, len(l.column)+len(l.fixed))
 	for field, i := range l.column {
 		if i < len(rec.Cells) {
@@ -117,7 +118,7 @@ func (l importLayout) raw(rec csvRecord) map[string]string {
 // them, and a fixed value equal by definition — the duplicate pass's test of
 // a repeated customer (import_worker.go).
 func (l importLayout) sameMappedCells(a, b []string) bool {
-	ra, rb := l.raw(csvRecord{Cells: a}), l.raw(csvRecord{Cells: b})
+	ra, rb := l.raw(fileimport.Record{Cells: a}), l.raw(fileimport.Record{Cells: b})
 	for field := range l.column {
 		if strings.TrimSpace(ra[field]) != strings.TrimSpace(rb[field]) {
 			return false
@@ -242,7 +243,7 @@ type importPlan struct {
 // may be an update whose unmapped fields come from the customer, in which
 // case only the mapped fields' own errors are kept (the rest are judged
 // again, laid over the customer, in importRow).
-func (l importLayout) plan(rec csvRecord, vocab importVocabulary, strict bool) (importPlan, []importError) {
+func (l importLayout) plan(rec fileimport.Record, vocab importVocabulary, strict bool) (importPlan, []importError) {
 	p := importPlan{Row: rec.Row, Raw: l.raw(rec)}
 	if len(rec.Cells) > l.width {
 		return p, []importError{{Row: rec.Row, Message: fmt.Sprintf("This row has %d cells, but the header has %d", len(rec.Cells), l.width)}}
@@ -594,7 +595,7 @@ func (l importLayout) address(p importPlan, g csvGroup, addrType string, cur *ad
 	}
 	line1, line2, postalCode = value("line1", line1), value("line2", line2), value("postalCode", postalCode)
 	city, region, country = value("city", city), value("region", region), value("country", country)
-	if allBlank([]string{line1, line2, postalCode, city, region, country}) {
+	if fileimport.AllBlank([]string{line1, line2, postalCode, city, region, country}) {
 		return true, nil
 	}
 	optional := func(v string) *string { return &v }

@@ -9,7 +9,7 @@ import (
 
 // This file is the customers file (customers import/export design D1): one
 // canonical CSV that GET /customers/export writes and GET /customers/import/template
-// starts, and that the import (imports_read.go) reads back and maps by itself. Its form is the expenses
+// starts, and that the import (internal/fileimport) reads back and maps by itself. Its form is the expenses
 // payroll export's, verbatim — semicolons, a byte order mark, CRLF, RFC 4180
 // quoting, the decimal comma and the formula guard — because that is the form
 // a Norwegian Excel opens without an import dialog, and one form in the product
@@ -116,7 +116,7 @@ func writeCSVRow(b *bytes.Buffer, cells []string) {
 // otherwise end the cell or the row — internal/expenses' rule, word for word.
 // Unlike the payroll file, this one carries values nobody vetted in almost
 // every column (a phone number typed "+47 …" is exactly the case), which is why
-// the importer takes the apostrophe off again (csvUnguard).
+// the importer takes the apostrophe off again (fileimport.Unguard).
 func csvCell(value string) string {
 	if strings.IndexAny(value, "=+-@\t\r") == 0 {
 		value = "'" + value
@@ -125,17 +125,6 @@ func csvCell(value string) string {
 		return value
 	}
 	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
-}
-
-// csvUnguard is csvCell's guard taken off: an apostrophe in front of one of the
-// six characters the guard protects is the guard's, and goes; any other
-// apostrophe is the person's own and stays. A file the export wrote therefore
-// imports as the values it was written from.
-func csvUnguard(value string) string {
-	if len(value) >= 2 && value[0] == '\'' && strings.IndexAny(value[1:2], "=+-@\t\r") == 0 {
-		return value[1:]
-	}
-	return value
 }
 
 // csvDecimalPattern is the one shape a number cell may have once its spaces are
@@ -182,21 +171,4 @@ func parseCSVDecimal(raw string) (float64, bool) {
 	}
 	v, err := strconv.ParseFloat(compact, 64)
 	return v, err == nil
-}
-
-// csvRecord is one data row: its number as an import result reports it — the
-// first row under the header is 1 — and its cells with the guard taken off.
-type csvRecord struct {
-	Row   int
-	Cells []string
-}
-
-// allBlank reports whether every cell is empty or whitespace.
-func allBlank(cells []string) bool {
-	for _, cell := range cells {
-		if strings.TrimSpace(cell) != "" {
-			return false
-		}
-	}
-	return true
 }

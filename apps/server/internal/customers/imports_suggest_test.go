@@ -97,15 +97,4 @@ func TestSuggestMapping_APreviousMappingForTheSameHeaderWins(t *testing.T) {
 	}
 }
 
-func TestHeaderKey_DropsEverythingButLettersAndDigits(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct{ in, want string }{
-		{"Org.nr", "orgnr"}, {"ORG NR", "orgnr"}, {" E-post ", "epost"}, {"Kjøperreferanse", "kjøperreferanse"}, {"Adresse 1", "adresse1"},
-	} {
-		if got := headerKey(tc.in); got != tc.want {
-			t.Errorf("headerKey(%q) = %q, want %q", tc.in, got, tc.want)
-		}
-	}
-}
-
 func ptrMatchBy(m gen.CustomerImportMappingMatchBy) *gen.CustomerImportMappingMatchBy { return &m }
