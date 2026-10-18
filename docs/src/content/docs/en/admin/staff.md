@@ -162,8 +162,8 @@ time zone. Several workers, or a worker and a run by hand, share the work person
 person; none waits for another.
 
 1. Precondition: an Owner has named the employee roles (`provisioningRolesSet` is
-   `true`); without them an account is prepared but never enabled
-   (`employee_role_missing`).
+   `true`). Without them the worker still creates the pending, disabled users of the
+   people whose flag is on, but never enables one (`employee_role_missing`).
 2. Verify, the day after the worker has run: `GET /api/v1/staff/people/{id}/account`
    answers a `link` with its `state`, its `reason` when it is held, `attempts` and
    `nextAttemptAt`. The person's history (as HR) shows `account_prepared`,
@@ -196,9 +196,10 @@ the user; only an Owner undoes it), `account_privileged` (the user is an Owner o
 SystemAdmin, handled by hand), `account_not_managed` (an Owner stopped Staff managing
 the user), `mismatch` (the user holds another employee number: someone else's account),
 `user_gone` (the user was deleted in identity), `invitation_revoked` and
-`invitation_unanswered` (*Run now* sends a fresh invitation). A link whose `attempts`
-reach three could not reach identity: it is tried daily from then on, and the log
-names the failure.
+`invitation_unanswered` (an Owner's revoke, or three invitations unanswered). A link
+whose `attempts` reach three could not reach identity: it is tried daily from then on,
+and the log names the failure — but a leaver's deactivation is tried at every poll for
+as long as it fails, so the leaver loses access as soon as identity answers.
 
 ## The personal-data permission
 

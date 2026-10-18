@@ -1083,7 +1083,9 @@ worker process, a run beside the ticker — through the link rows alone.
    lease or a lapsed one, of a person whose flag is on and who is not erased — each
    claimed alone by a conditional `UPDATE … FOR UPDATE OF l SKIP LOCKED` that sets
    `lease_id` and `lease_until` (five minutes on) and commits at once. A link another
-   cycle holds is skipped. A `blocked` or `failed` link is claimed on its schedule like
+   cycle holds is skipped; a link another transaction has locked at that instant (HR's
+   delete or relink of the person) is skipped too, which may end the cycle early — the
+   next poll claims it. A `blocked` or `failed` link is claimed on its schedule like
    any other: the table never reads `blocked` as an input, so a link recovers on the
    next due run once what blocked it is gone — a user demoted and adopted again, the
    employee roles named.
@@ -1092,7 +1094,15 @@ worker process, a run beside the ticker — through the link rows alone.
    in one read-only snapshot, closed; the link's user as identity reports them
    (`Account`, with the person's own chosen address); the table; then each step
    **called under a two-minute timeout with no transaction open and no connection
-   held**. After each successful call the user is read again and the table asked again
+   held**. **The lease is renewed before each call and each read of the chain**
+   (`lease_until` five minutes on, conditionally on the claim still holding a live
+   lease, with no connection kept), so a chain longer than one lease keeps its link; a
+   renewal that finds the lease lapsed or taken stops the chain. **A user `Prepare`
+   answers is recorded on the link at once**, in a short write under the person's lock
+   on the claim's lease, before anything more is done with them: a user another
+   person's link already names (`ux_identity_links_provider_external`) is `mismatch`,
+   `blocked`, and the chain stops — nothing is activated or updated for someone else's
+   user. After each successful call the user is read again and the table asked again
    on the fresh answer, until it answers nothing or a report, or after **three calls**,
    or when a call left the user as they were (pre-flight I2: prepared and enabled on
    day one with `createBeforeDays` 0). After a successful `Prepare` or `Update` the
@@ -1108,18 +1118,27 @@ worker process, a run beside the ticker — through the link rows alone.
    recorded on the events (`flagOffMeanwhile`) and the next cycle claims the link no
    more (plan M9). **No worker write moves the person's `revision` or `updated_at`**,
    and the worker writes only `account_*` events — never `user_linked` or
-   `user_unlinked`. A link claimed since by another cycle is not written. A link gone —
-   the person deleted after the lease lapsed — has the user a `Prepare` of this claim
-   made deactivated, outside any transaction, and logged (pre-flight I4).
+   `user_unlinked`. The write names the user the claim knew
+   (`external_id IS NOT DISTINCT FROM` it): a link claimed since by another cycle, or
+   relinked by HR meanwhile — `PUT /people/{id}/user` ends a claim on the link it
+   replaces — is not written, and the log says which. A link gone — the person deleted
+   after the lease lapsed — has the user this claim's `Prepare` **created**
+   (`AccountRef.Created`) deactivated, outside any transaction, and logged
+   (pre-flight I4); a user `Prepare` only found, one an Owner adopted, is left as it is.
+   `account_deactivated` is recorded when the link's state moved or the user changed:
+   a leaver the SCIM directory keeps inactive is deactivated on every run, recorded
+   once.
 
 **The schedule.** A claim that ended — done, or answered with a refusal or a report —
 is acted on again at **the next civil midnight** in the settings zone: once per civil
 day, a 23- or 25-hour day of a daylight-saving change included. A call that could not
 be made (identity unreachable, a timeout, an answer that is not one of the contract's)
 is `last_error = accounts_unavailable`, `attempts` counted, retried at the next poll
-while `attempts < 3`, then daily; any answer resets `attempts` and clears `last_error`.
-A claim that spent its three calls with more to do, or a step held by the mode
-mismatch, is claimed again at the next poll.
+while `attempts < 3`, then daily — **except a deactivation, retried at every poll for
+as long as it fails**, so a leaver loses access as soon as identity answers; any answer
+resets `attempts` and clears `last_error`. A claim that spent its three calls with more
+to do, a step held by the mode mismatch, or a call whose follow-up read failed is
+claimed again at the next poll.
 
 **What a call's refusal records**, as the link's `blocked_reason` (codes only, never an
 address or a driver's words):

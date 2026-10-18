@@ -557,8 +557,10 @@ added; it needs no other module. See [Staff](/en/admin/staff/).
 identity's `00050` (Staff-managed users, the employee roles, the recorded authority
 mode) and Staff's `00051` (a link that names no user yet, the account flag's own
 revision, the link's synced employee number). It also starts the accounts worker,
-`staff-accounts`, on by default — it does nothing until HR turns a person's account flag
-on and an Owner names the employee roles; `STAFF_ACCOUNTS_ENABLED=0` keeps it off. The
+`staff-accounts`, on by default. It does nothing until HR turns a person's account flag
+on; from then it creates that person's pending, disabled user ahead of the start even
+before an Owner has named the employee roles, and enables nobody until they are named.
+`STAFF_ACCOUNTS_ENABLED=0` keeps it off. The
 Staff migration (`00051`) makes a person's
 employee number unique by upper case under the `C` collation, so case is judged alike
 whatever locale the database was created with. Under a Turkish or Azeri locale the old

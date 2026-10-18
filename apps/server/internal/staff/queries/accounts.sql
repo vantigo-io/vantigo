@@ -69,7 +69,11 @@ ON CONFLICT (person_id, provider) DO NOTHING;
 -- is not erased: the link row alone is locked (OF l), and one another cycle
 -- is claiming is skipped. Blocked and failed links are claimed on their
 -- schedule like any other: the decision table never reads blocked as an
--- input, so a link recovers when what blocked it is gone.
+-- input, so a link recovers when what blocked it is gone. LIMIT 1 with SKIP
+-- LOCKED may find no row while due links remain — each one locked at that
+-- instant by another transaction (another cycle's claim, HR's delete or
+-- relink of the person) — and the cycle then ends early: those links are
+-- claimed by the next poll, never lost.
 UPDATE staff.identity_links SET lease_id = @lease_id::uuid, lease_until = @lease_until::timestamptz
 WHERE id = (
     SELECT l.id FROM staff.identity_links l
@@ -86,8 +90,10 @@ RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error
 
 -- name: WriteAccountResult :execrows
 -- WriteAccountResult records what a claim did, on its lease alone, and
--- clears the lease: no row is a link gone (the person deleted) or claimed
--- since by another cycle, whose lease it now is. Neither the person's
+-- clears the lease: no row is a link gone (the person deleted), claimed
+-- since by another cycle, whose lease it now is, or naming another user than
+-- the claim knew (@claimed_external_id: HR relinked it) — a result about one
+-- user is never written onto a link that names another. Neither the person's
 -- revision nor updated_at moves: the link is the links group's.
 UPDATE staff.identity_links SET
     external_id = sqlc.narg(external_id)::text,
@@ -103,4 +109,32 @@ UPDATE staff.identity_links SET
     lease_id = NULL,
     lease_until = NULL,
     updated_at = @now::timestamptz
-WHERE id = @id AND lease_id = @lease_id::uuid;
+WHERE id = @id AND lease_id = @lease_id::uuid
+  AND external_id IS NOT DISTINCT FROM sqlc.narg(claimed_external_id)::text;
+
+-- name: RenewAccountLease :execrows
+-- RenewAccountLease moves a live claim's lease five minutes on, before each
+-- identity call and read of a chain, so a chain longer than one lease keeps
+-- its link. No row is a lease lapsed, or taken by another cycle, or a link
+-- gone: the chain stops.
+UPDATE staff.identity_links SET lease_until = @lease_until::timestamptz
+WHERE id = @id AND lease_id = @lease_id::uuid AND lease_until > @now::timestamptz;
+
+-- name: RecordPreparedUser :execrows
+-- RecordPreparedUser writes the user a Prepare answered onto the claim's
+-- link, which named none, before anything more is done with that user: a
+-- user another link names already trips ux_identity_links_provider_external,
+-- which the worker records as a mismatch and stops at. No row is the lease
+-- lost, or a link that names a user by now.
+UPDATE staff.identity_links SET
+    external_id = @external_id::text,
+    managed = true,
+    synced_employee_number = @synced_employee_number::varchar,
+    last_synced_at = @now::timestamptz,
+    updated_at = @now::timestamptz
+WHERE id = @id AND lease_id = @lease_id::uuid AND external_id IS NULL;
+
+-- name: AccountLinkClaim :one
+-- AccountLinkClaim is a link's lease and user, for the log line of a result
+-- the link refused. No row is a link gone.
+SELECT lease_id, external_id FROM staff.identity_links WHERE id = @id;

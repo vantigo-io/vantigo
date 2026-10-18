@@ -41,6 +41,7 @@ type fakeAccounts struct {
 	writeErr   map[string]error
 	writes     []string
 	onWrite    func(method string, user uuid.UUID)
+	onRead     func(user uuid.UUID)
 }
 
 // askedAccount is one Account call: the user and the address to compare.
@@ -90,7 +91,20 @@ func (f *fakeAccounts) Mode(context.Context) (string, error) {
 	return f.mode, f.modeErr
 }
 
+// whenReading runs fn at the start of every Account call, outside the lock.
+func (f *fakeAccounts) whenReading(fn func(user uuid.UUID)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onRead = fn
+}
+
 func (f *fakeAccounts) Account(_ context.Context, id uuid.UUID, wantEmail string) (*contracts.AccountRef, error) {
+	f.mu.Lock()
+	hook := f.onRead
+	f.mu.Unlock()
+	if hook != nil {
+		hook(id)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.asked = append(f.asked, askedAccount{user: id, wantEmail: wantEmail})
@@ -185,6 +199,7 @@ func (f *fakeAccounts) Prepare(_ context.Context, actor contracts.Actor, spec co
 		EmployeeNumber: spec.EmployeeNumber, Invitation: contracts.Invitation{State: contracts.InvitationNone},
 	}
 	f.users[ref.UserID] = ref
+	ref.Created = true
 	return ref, nil
 }
 
@@ -237,7 +252,9 @@ func (f *fakeAccounts) Deactivate(_ context.Context, actor contracts.Actor, id u
 	case ref.Privileged:
 		return contracts.AccountRef{}, contracts.ErrAccountPrivileged
 	}
-	if ref.DisabledBy == "" || ref.DisabledBy == contracts.DisabledByDirectory {
+	// identity's record is disabled by Staff; a user the directory keeps
+	// inactive still reads disabled by the directory, as identity reports.
+	if ref.DisabledBy == "" {
 		ref.DisabledBy = contracts.DisabledByStaff
 	}
 	if ref.State == contracts.AccountStateActive {
