@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { problemResponse, sent } from "../test/api";
+import { sent } from "../test/api";
 import { categories, perDiemRates, rates, settings } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { stubExpensesApi } from "../test/server";
@@ -101,47 +101,18 @@ describe("SettingsPage", () => {
     expect(hints).toHaveLength(3);
   });
 
-  it("saves the business time zone, warning out loud that it moves the days of recorded trips", async () => {
-    const fetchMock = stubExpensesApi({ entries: [], settings: settings({ timeZone: "Europe/Oslo" }) });
+  it("shows the workspace's business time zone without offering to change it here", async () => {
+    const fetchMock = stubExpensesApi({ entries: [], settings: settings({ timeZone: "Europe/Stockholm" }) });
     renderRoute("/expenses/settings");
 
-    const zone = await screen.findByRole("combobox", { name: "Business time zone" });
-    expect(zone).toHaveValue("Europe/Oslo");
-    expect(screen.getByText("Changing it moves the days of trips already recorded")).toBeInTheDocument();
+    const zone = await screen.findByRole("textbox", { name: "Business time zone" });
+    expect(zone).toHaveValue("Europe/Stockholm");
+    expect(zone).toHaveAttribute("readonly");
+    expect(screen.getByText(/an Owner changes it under Workspace administration/)).toBeInTheDocument();
 
-    await userEvent.click(zone);
-    await userEvent.clear(zone);
-    await userEvent.type(zone, "Europe/Stockholm");
-    await userEvent.click(await screen.findByRole("option", { name: "Europe/Stockholm" }));
     await userEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
-
-    // The lock is reversible and is asked about; the zone moves the days of
-    // every trip already recorded and nothing puts them back, so it is asked
-    // about too.
-    const confirm = await screen.findByRole("dialog", { name: "Change the business time zone?" });
-    expect(confirm).toHaveTextContent(/Every trip already recorded is re-read in Europe\/Stockholm/);
-    await userEvent.click(within(confirm).getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(put(fetchMock, "/expenses/settings").body).toMatchObject({ timeZone: "Europe/Stockholm" }),
-    );
-  });
-
-  it("puts a refused time zone on the field the choice was made in", async () => {
-    stubExpensesApi({
-      entries: [],
-      settings: settings(),
-      write: (method, path) =>
-        method === "PUT" && path === "/api/v1/expenses/settings"
-          ? problemResponse(400, "Invalid settings", { timeZone: ["Mars/Olympus is not a time zone"] })
-          : undefined,
-    });
-    renderRoute("/expenses/settings");
-
-    await screen.findByRole("combobox", { name: "Business time zone" });
-    await userEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
-
-    expect(await screen.findByText("Mars/Olympus is not a time zone")).toBeInTheDocument();
+    await waitFor(() => expect(put(fetchMock, "/expenses/settings").url).toBeDefined());
+    expect(put(fetchMock, "/expenses/settings").body).not.toHaveProperty("timeZone");
   });
 
   it("adds a rate to the kind whose own button was pressed", async () => {

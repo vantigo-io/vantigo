@@ -168,7 +168,7 @@ func (s *server) awaitingApproval(ctx context.Context, q *store.Queries, c *call
 	// one thing to decide, not one per line it holds.
 	claims, err := q.StatsAwaitingApprovalClaims(ctx, store.StatsAwaitingApprovalClaimsParams{
 		PeriodFrom: periodFrom, SeeAll: scope.seeAll,
-		ManagedProjectIds: scope.managed, LockedBefore: scope.lock, TimeZone: c.Settings.TimeZone,
+		ManagedProjectIds: scope.managed, LockedBefore: scope.lock, TimeZone: c.zone().String(),
 	})
 	if err != nil {
 		return 0, 0, fmt.Errorf("expenses: count the travel claims awaiting approval: %w", err)
@@ -309,7 +309,7 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 	if scope.approvesAny() {
 		if groups, err = q.StatsApprovalWaitingGroups(ctx, store.StatsApprovalWaitingGroupsParams{
 			SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
-			TimeZone: c.Settings.TimeZone,
+			TimeZone: c.zone().String(),
 		}); err != nil {
 			return nil, fmt.Errorf("expenses: list the approvals waiting: %w", err)
 		}

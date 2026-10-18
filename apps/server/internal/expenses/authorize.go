@@ -44,7 +44,8 @@ type caller struct {
 
 	Settings store.ExpensesSetting
 
-	// loc is Settings.TimeZone parsed once (see zone).
+	// loc is the workspace's business time zone, read once per request
+	// through the business calendar (see zone).
 	loc *time.Location
 
 	roles map[int32]string
@@ -65,6 +66,10 @@ func (s *server) callerFor(ctx context.Context, q *store.Queries) (*caller, erro
 	if err != nil {
 		return nil, err
 	}
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return &caller{
 		UserID:             callerID(ctx),
 		ViewAll:            s.has(ctx, "expenses:view-all"),
@@ -75,54 +80,34 @@ func (s *server) callerFor(ctx context.Context, q *store.Queries) (*caller, erro
 		ProjectsFinancials: s.has(ctx, "projects:view-financials"),
 		ProjectsOn:         s.projectsAvailable(),
 		Settings:           row,
+		loc:                loc,
 		roles:              map[int32]string{},
 	}, nil
 }
 
-// zone is the installation's business time zone — the one every date derived
-// from a travel claim's two instants is taken in (businessDay). It is parsed
-// from the settings row the caller was built with, so one request parses it
-// once and every rule in that request agrees.
+// zone is the workspace's business time zone — the one every date derived
+// from a travel claim's two instants is taken in (businessDay). It was read
+// once when the caller was built, so every rule in that request agrees; a
+// caller built without one (accessFor, which has no server) answers UTC.
 func (c *caller) zone() *time.Location {
 	if c.loc == nil {
-		c.loc = zoneOf(c.Settings)
+		return time.UTC
 	}
 	return c.loc
 }
 
-// zoneOf parses a settings row's business time zone.
-//
-// A name Go cannot load falls back to UTC rather than failing the request: the
-// settings door refuses a name Go cannot load, one Postgres does not know, and
-// one the two read differently, so a row that holds such a name has been
-// written past this module, and answering "a day, in UTC" is better than
-// answering nothing at all.
-//
-// What that fallback costs is worth naming, because it is the one state in
-// which this module's central promise does not hold: SQL keeps using the stored
-// name, so every date Go derives would be a UTC day and every date a query
-// derives would be a day in whatever the database makes of the name. It cannot
-// arise from the default or from any value PUT /settings accepts; it would take
-// a row written by hand, or a Go release that dropped a zone the database kept.
-// The way back is to set the zone again through PUT /settings, which refuses
-// anything the two halves do not agree on.
-func zoneOf(row store.ExpensesSetting) *time.Location {
-	loc, err := time.LoadLocation(row.TimeZone)
+// businessZone is the workspace's business time zone, read through the
+// business calendar (time zones design D2) — never inside one of this
+// module's transactions, since the read takes a pool connection of its own.
+// A stored name Go cannot load is answered as UTC by the calendar itself, so
+// this never fails a request for the zone's sake; the setting's door (PUT
+// /identity/owner/workspace) refuses such a name in the first place.
+func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
+	zone, err := s.deps.Calendar.Zone(ctx)
 	if err != nil {
-		return time.UTC
+		return nil, fmt.Errorf("expenses: read the business time zone: %w", err)
 	}
-	return loc
-}
-
-// businessZone is the installation's own time zone for a path that needs
-// "today" — the payroll run's not-in-the-future rule, the export's file name —
-// without having built a whole caller for it.
-func (s *server) businessZone(ctx context.Context, q *store.Queries) (*time.Location, error) {
-	row, err := settings(ctx, q)
-	if err != nil {
-		return nil, err
-	}
-	return zoneOf(row), nil
+	return zone, nil
 }
 
 // lockedBefore is the period lock (design §4), nil when none is set.

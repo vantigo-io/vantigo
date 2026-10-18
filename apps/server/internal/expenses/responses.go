@@ -25,7 +25,7 @@ import (
 // bill amount on an expense — and no form needs the number, because the server
 // applies the default itself when a billable outlay names no markup. Meta
 // carries it under exactly the same rule, so the two reads never disagree.
-func settingsResponse(row store.ExpensesSetting, canManage bool) (gen.ExpensesSettingsResponse, error) {
+func settingsResponse(row store.ExpensesSetting, canManage bool, zone *time.Location) (gen.ExpensesSettingsResponse, error) {
 	threshold, err := floatPtrFromNumeric(row.ReceiptRequiredOver)
 	if err != nil {
 		return gen.ExpensesSettingsResponse{}, err
@@ -34,9 +34,11 @@ func settingsResponse(row store.ExpensesSetting, canManage bool) (gen.ExpensesSe
 		DefaultCurrency:     row.DefaultCurrency,
 		ReceiptRequiredOver: threshold,
 		// Read by everyone: a client that labels a trip's days has to label
-		// them in the installation's zone, or it will disagree with the server
-		// about which day a save lands on.
-		TimeZone: row.TimeZone,
+		// them in the workspace's zone, or it will disagree with the server
+		// about which day a save lands on. The zone is the workspace's (time
+		// zones design D2), answered here and set under Workspace
+		// administration.
+		TimeZone: zone.String(),
 	}
 	if canManage {
 		markup, err := floatFromNumeric(row.DefaultMarkupPercent)

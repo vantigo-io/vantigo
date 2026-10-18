@@ -283,9 +283,9 @@ som et fakturerbart utlegg får over netto med mindre prosjektet sier noe annet;
 **Kvitteringsregel** — **Av**, **Alltid** eller **Over et beløp** med **Kvittering
 kreves over**; **Låst før**, den første åpne dagen i periodelåsen (la den stå tom for
 ingen lås; å endre den spør **Endre låsen?**); og **Tidssone for virksomheten**, som
-avgjør hvilken dag en reises avreise og hjemkomst faller på. Å endre tidssonen flytter
-dagene for reiser som alt er ført, og bekreftes høyt — sett den én gang, når
-installasjonen settes opp.
+avgjør hvilken dag en reises avreise og hjemkomst faller på. Sonen vises, men endres
+ikke, her: den er arbeidsområdets, og en eier endrer den under
+[Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet).
 
 **Satser**: hver satstype listes enten den har rader eller ikke —
 **Kilometergodtgjørelse**, **Passasjertillegg**, **Kundepris per kilometer**, de fire

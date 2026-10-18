@@ -565,7 +565,6 @@ func TestExpensesClaimFlow_ASubmittedClaimsLinesAreClosed(t *testing.T) {
 func TestExpensesClaimFlow_ASubmitCatchesADayStrandedByTheTimeZone(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	admin, _ := signIn(t, h, "expenses:manage")
 	owner, _ := signIn(t, h)
 
 	// A trip that gets home at 00:30 Oslo time on 12 March — 11 March in UTC.
@@ -579,13 +578,13 @@ func TestExpensesClaimFlow_ASubmitCatchesADayStrandedByTheTimeZone(t *testing.T)
 	// Moving the installation to UTC moves the trip's last day a day earlier,
 	// and the day recorded on it is now outside its own trip. Nothing sweeps
 	// for that; the submit is the last place to notice.
-	putSettings(t, admin, settingsBody(map[string]any{"timeZone": "UTC"}))
+	h.SetBusinessTimeZone(t, "UTC")
 	errs := refused(t, owner, http.MethodPost, submitPath, claimFlowBody([]int64{claim.Id}, nil), invalidSubmissionTitle)
 	if !mentions(errs["claimIds"], fmt.Sprintf("Travel claim %d holds a per diem day on 2026-03-12", claim.Id)) {
 		t.Errorf("errors %v do not name the stranded day", errs)
 	}
 	// Back in the installation's own zone the very same trip submits.
-	putSettings(t, admin, settingsBody(map[string]any{"timeZone": "Europe/Oslo"}))
+	h.SetBusinessTimeZone(t, "Europe/Oslo")
 	submitClaims(t, owner, claim.Id)
 }
 

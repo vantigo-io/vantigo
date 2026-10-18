@@ -578,7 +578,7 @@ func (s *server) GetExpensesClaims(ctx context.Context, req gen.GetExpensesClaim
 		// own zone — the same derivation businessDay makes in Go, from the same
 		// stored name, so the list and the period lock agree about which day a
 		// claim departed on.
-		TimeZone: c.Settings.TimeZone,
+		TimeZone: c.zone().String(),
 	}
 	total, err := q.CountClaims(ctx, filter)
 	if err != nil {

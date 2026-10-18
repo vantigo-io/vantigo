@@ -500,13 +500,12 @@ func TestExpensesClaimInvoiced_MarksALineOfAnApprovedTrip(t *testing.T) {
 func TestExpensesMeta_CarriesTheBusinessTimeZone(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	admin, _ := signIn(t, h, "expenses:manage")
 	employee, _ := signIn(t, h)
 
 	if got := getMeta(t, employee).TimeZone; got != "Europe/Oslo" {
 		t.Errorf("meta.timeZone = %q, want the default", got)
 	}
-	putSettings(t, admin, settingsBody(map[string]any{"timeZone": "UTC"}))
+	h.SetBusinessTimeZone(t, "UTC")
 	if got := getMeta(t, employee).TimeZone; got != "UTC" {
 		t.Errorf("meta.timeZone = %q after the change, want UTC", got)
 	}

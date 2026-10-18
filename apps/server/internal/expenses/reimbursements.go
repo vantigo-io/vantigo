@@ -115,7 +115,7 @@ func (s *server) GetExpensesReimbursements(ctx context.Context, req gen.GetExpen
 
 	total, err := q.CountReimbursementGroups(ctx, store.CountReimbursementGroupsParams{
 		Reimbursed: filter.Paid, UserID: filter.UserID,
-		FromDate: filter.FromDate, ToDate: filter.ToDate, TimeZone: c.Settings.TimeZone,
+		FromDate: filter.FromDate, ToDate: filter.ToDate, TimeZone: c.zone().String(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("expenses: count the reimbursement list's groups: %w", err)
@@ -125,7 +125,7 @@ func (s *server) GetExpensesReimbursements(ctx context.Context, req gen.GetExpen
 	// never hands Go more rows than the page needs.
 	userIDs, err := q.ListReimbursementGroups(ctx, store.ListReimbursementGroupsParams{
 		Reimbursed: filter.Paid, UserID: filter.UserID,
-		FromDate: filter.FromDate, ToDate: filter.ToDate, TimeZone: c.Settings.TimeZone,
+		FromDate: filter.FromDate, ToDate: filter.ToDate, TimeZone: c.zone().String(),
 		PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 	})
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *server) GetExpensesReimbursements(ctx context.Context, req gen.GetExpen
 	}
 	claims, err := q.ListReimbursementGroupClaims(ctx, store.ListReimbursementGroupClaimsParams{
 		Reimbursed: filter.Paid, UserIds: userIDs,
-		FromDate: filter.FromDate, ToDate: filter.ToDate, TimeZone: c.Settings.TimeZone,
+		FromDate: filter.FromDate, ToDate: filter.ToDate, TimeZone: c.zone().String(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("expenses: list the travel claims owed back: %w", err)
@@ -274,7 +274,7 @@ func (s *server) PostExpensesReimbursed(ctx context.Context, req gen.PostExpense
 	}
 	// "Today" is today in the installation's own zone: a clerk in Oslo making
 	// a run at 00:30 on the 1st is making it on the 1st, not on the 31st.
-	zone, err := s.businessZone(ctx, store.New(s.deps.Pool))
+	zone, err := s.businessZone(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -456,17 +456,16 @@ func (s *server) GetExpensesReimbursementsExportCsv(ctx context.Context, req gen
 	}
 
 	q := store.New(s.deps.Pool)
-	// One reading of the settings for both the zone the filters judge a trip's
-	// departure in and the zone the file is named in, so the two cannot differ.
-	current, err := settings(ctx, q)
+	// One reading of the zone for both the day the filters judge a trip's
+	// departure on and the day the file is named by, so the two cannot differ.
+	zone, err := s.businessZone(ctx)
 	if err != nil {
 		return nil, err
 	}
-	zone := zoneOf(current)
 	rows, err := q.ListReimbursementRows(ctx, store.ListReimbursementRowsParams{
 		ByIds: byIDs, Reimbursed: paid, AllIds: !byIDs, EntryIds: ids, ClaimIds: claimIDs,
 		UserID: p.UserId, FromDate: optionalDate(p.From), ToDate: optionalDate(p.To),
-		TimeZone: current.TimeZone,
+		TimeZone: zone.String(),
 		// One row more than the cap, so "the whole file" and "more than a file
 		// may hold" are told apart without a second count.
 		RowLimit: int32(exportMaxRows) + 1,

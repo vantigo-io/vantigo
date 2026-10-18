@@ -11,6 +11,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/expenses/gen"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 )
 
 // This file is everything an expense request is judged on before anything is
@@ -622,8 +623,7 @@ func utcDay(d time.Time) time.Time {
 // — from the same stored name, so Go and the database can never disagree about
 // which day a claim is on.
 func businessDay(t time.Time, loc *time.Location) time.Time {
-	t = t.In(loc)
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+	return holidays.DayIn(t, loc)
 }
 
 // lockedBeforeMessage is the entryDate message when a date falls before the

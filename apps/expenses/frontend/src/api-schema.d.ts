@@ -1551,7 +1551,7 @@ export interface components {
              * @description An employee-paid outlay above this gross amount cannot be submitted without a receipt. Zero means every one of them needs a receipt. Absent when the rule is off.
              */
             receiptRequiredOver?: number;
-            /** @description The installation's business time zone, an IANA name ('Europe/Oslo' by default): the zone every date derived from a travel claim's departure and return instants is taken in. A form labelling a trip's days has to label them in it rather than in the browser's, or it will disagree with the server about which day a save lands on. The same value GET /settings answers, here because meta is the one read an expense form makes. */
+            /** @description The workspace's business time zone, an IANA name ('Europe/Oslo' by default, set under Workspace administration): the zone every date derived from a travel claim's departure and return instants is taken in. A form labelling a trip's days has to label them in it rather than in the browser's, or it will disagree with the server about which day a save lands on. The same value GET /settings answers, here because meta is the one read an expense form makes. */
             timeZone: string;
         };
         /** @description One day the server proposes for a trip. It is a suggestion and nothing more: nothing is written, and the client records whichever of them the traveller agrees with as ordinary per diem lines. A trip may run 366 days while a claim holds at most 200 expenses, so a client offering "record them all" has to reckon with the cap itself — the 201st create is refused on claimId and says nothing about the suggestion. */
@@ -1790,8 +1790,6 @@ export interface components {
              * @description Zero or greater, at most two decimals. Zero means every employee-paid outlay needs a receipt; leaving it out turns the rule off.
              */
             receiptRequiredOver?: number;
-            /** @description The installation's own business time zone, as an IANA name ('Europe/Oslo'). It is what every date derived from a travel claim's two instants is taken in — the day the period lock judges, the day GET /claims' from/to filter matches, the days a per diem line may fall on and the days the suggestion proposes — because a claim stores instants and the company's own calendar is what a period lock and a payroll month mean. A name neither Go nor Postgres knows is refused on this field. Leaving it out keeps the zone the installation already has. */
-            timeZone?: string;
         };
         /** @description The installation's expense settings (design §3.5). Every expenses:access holder may read them — the lock and the receipt rule decide what they may record — and expenses:manage changes them. */
         ExpensesSettingsResponse: {
@@ -1811,7 +1809,7 @@ export interface components {
              * @description An employee-paid outlay above this gross amount cannot be submitted without a receipt. Zero means every one of them needs a receipt. Absent when the rule is off.
              */
             receiptRequiredOver?: number;
-            /** @description The installation's own business time zone, an IANA name. Every date derived from a travel claim's two instants is the calendar day of that instant here: the day the period lock judges, the day GET /claims' from/to filter matches, the days a per diem line may fall on and the days the suggestion proposes. A client showing a trip's days labels them in this zone and not in the browser's, or it will disagree with the server about which day a save lands on. Read by every expenses:access holder. */
+            /** @description The workspace's business time zone, an IANA name — answered here, never set here (an Owner sets it under Workspace administration, PUT /api/v1/identity/owner/workspace). Every date derived from a travel claim's two instants is the calendar day of that instant here: the day the period lock judges, the day GET /claims' from/to filter matches, the days a per diem line may fall on and the days the suggestion proposes. A client showing a trip's days labels them in this zone and not in the browser's, or it will disagree with the server about which day a save lands on. Read by every expenses:access holder. */
             timeZone: string;
         };
         /**

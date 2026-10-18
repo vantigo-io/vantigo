@@ -8,7 +8,6 @@ import {
   Input,
   NumberInput,
   SegmentedControl,
-  Select,
   Stack,
   Table,
   Text,
@@ -19,15 +18,7 @@ import { DateInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import {
-  IconAlertCircle,
-  IconAlertTriangle,
-  IconArrowDown,
-  IconArrowUp,
-  IconPencil,
-  IconPlus,
-  IconTrash,
-} from "@tabler/icons-react";
+import { IconAlertCircle, IconArrowDown, IconArrowUp, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -86,7 +77,6 @@ interface GeneralFormValues {
   receiptRule: ReceiptRule;
   receiptRequiredOver: number | string;
   lockedBefore: string | null;
-  timeZone: string;
 }
 
 /**
@@ -100,19 +90,7 @@ const formValuesOf = (settings: ExpenseSettings): GeneralFormValues => ({
     settings.receiptRequiredOver === undefined ? "off" : settings.receiptRequiredOver === 0 ? "always" : "over",
   receiptRequiredOver: settings.receiptRequiredOver ?? "",
   lockedBefore: settings.lockedBefore ?? null,
-  timeZone: settings.timeZone,
 });
-
-/**
- * Every IANA name this browser knows, so the zone is picked rather than
- * typed. A runtime that has never heard of `supportedValuesOf` — and a
- * jsdom that answers nothing — still has to offer the zone the installation
- * already runs on, or a save would silently clear it.
- */
-const timeZoneOptions = (current: string): string[] => {
-  const known = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
-  return known.includes(current) ? [...known] : [current, ...known];
-};
 
 const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
   const { t } = useI18n("expenses");
@@ -133,7 +111,6 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
         const amount = numeric(value);
         return amount === undefined || amount <= 0 ? t("receiptThresholdRequired") : null;
       },
-      timeZone: (value) => (value.trim() ? null : t("timeZoneRequired")),
     },
   });
 
@@ -165,7 +142,6 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
       updateExpenseSettings({
         defaultCurrency: values.defaultCurrency.trim().toUpperCase(),
         defaultMarkupPercent: numeric(values.defaultMarkupPercent) ?? 0,
-        timeZone: values.timeZone,
         ...(values.receiptRule === "always"
           ? { receiptRequiredOver: 0 }
           : values.receiptRule === "over"
@@ -185,9 +161,6 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
           defaultMarkupPercent: fields.defaultMarkupPercent,
           receiptRequiredOver: fields.receiptRequiredOver,
           lockedBefore: fields.lockedBefore,
-          // A name neither Go nor Postgres knows is refused on this very
-          // field, so it lands on the select the choice was made in.
-          timeZone: fields.timeZone,
         });
         return;
       }
@@ -196,34 +169,20 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
   });
 
   /** The lock closes a period for everybody but a manager, so it is confirmed out loud. */
-  /**
-   * Two changes are asked about out loud, and the zone is the heavier of the
-   * two: the lock closes a period and can be reopened, while the zone **moves
-   * the days of every trip already recorded** and cannot put them back. The
-   * standing warning beside the field is not the same thing as being asked.
-   */
   const submit = (values: GeneralFormValues) => {
     const lockChanged = values.lockedBefore !== (settings.lockedBefore ?? null);
-    const zoneChanged = values.timeZone !== settings.timeZone;
-    if (!lockChanged && !zoneChanged) {
+    if (!lockChanged) {
       save.mutate(values);
       return;
     }
     modals.openConfirmModal({
-      title: zoneChanged ? t("timeZoneChangeTitle") : t("lockChangeTitle"),
+      title: t("lockChangeTitle"),
       children: (
-        <Stack gap="xs">
-          {zoneChanged && (
-            <Text size="sm">{t("timeZoneChangeConfirm", { from: settings.timeZone, to: values.timeZone })}</Text>
-          )}
-          {lockChanged && (
-            <Text size="sm">
-              {values.lockedBefore
-                ? t("lockSetConfirm", { date: format.date(values.lockedBefore) })
-                : t("lockClearConfirm")}
-            </Text>
-          )}
-        </Stack>
+        <Text size="sm">
+          {values.lockedBefore
+            ? t("lockSetConfirm", { date: format.date(values.lockedBefore) })
+            : t("lockClearConfirm")}
+        </Text>
       ),
       labels: { confirm: t("save"), cancel: t("cancel") },
       onConfirm: () => save.mutate(values),
@@ -280,22 +239,14 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
             {...form.getInputProps("lockedBefore")}
           />
 
-          <Stack gap={4}>
-            <Select
-              label={t("businessTimeZone")}
-              description={t("businessTimeZoneDescription")}
-              withAsterisk
-              searchable
-              allowDeselect={false}
-              data={timeZoneOptions(settings.timeZone)}
-              {...form.getInputProps("timeZone")}
-            />
-            {/* Not a colour and not an icon alone: the sentence says what
-                changing it does, because a trip's days move with it. */}
-            <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={t("timeZoneMovesDays")}>
-              {t("timeZoneMovesDaysDescription")}
-            </Alert>
-          </Stack>
+          {/* The workspace's, not this module's: an Owner sets it under
+              Workspace administration, and every module reads it. */}
+          <TextInput
+            label={t("businessTimeZone")}
+            description={t("businessTimeZoneDescription")}
+            value={settings.timeZone}
+            readOnly
+          />
 
           <Group justify="flex-end">
             <Button type="submit" loading={save.isPending}>

@@ -22,7 +22,11 @@ func (s *server) GetExpensesMeta(ctx context.Context, _ gen.GetExpensesMetaReque
 		return nil, err
 	}
 	canManage := s.has(ctx, "expenses:manage")
-	current, err := settingsResponse(row, canManage)
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	current, err := settingsResponse(row, canManage, zone)
 	if err != nil {
 		return nil, err
 	}
