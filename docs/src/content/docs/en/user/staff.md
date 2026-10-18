@@ -1116,8 +1116,8 @@ rest on its own every hour; what each erase removes is in the
 is due, and cannot be undone. People under a legal hold are passed over. The card then
 says what was erased — the personnel administration, health documents, pay and
 contract, sick-leave cases, sick-child days, withdrawals of egenmelding and pregnancy
-and health appointments, each with a count — and how many files were deleted from the
-store. The
+and health appointments, each with a count; the health ones only if you also hold the
+personal-data permission — and how many files were deleted from the store. The
 deletions stop after 30 seconds: what is not finished, the worker finishes on its next
 look. While the worker is running already, the page says so: try again in a moment.
 

@@ -1110,8 +1110,8 @@ sletter resten av seg selv hver time; hva hver sletting fjerner, står i
 det som er forfalt, og kan ikke angres. Personer med slettesperre hoppes over. Kortet
 sier så hva som ble slettet — personaladministrasjon, helsedokumenter, lønn og
 avtale, sykefraværssaker, dager med sykt barn, tilbaketrekkinger av egenmelding og
-svangerskap og helsetimer, hver med et antall — og hvor mange filer som ble slettet fra
-lageret.
+svangerskap og helsetimer, hver med et antall; helsetypene bare om du også har
+rettigheten for personopplysninger — og hvor mange filer som ble slettet fra lageret.
 Slettingene stopper etter 30 sekunder: det som ikke er ferdig, gjør
 oppbevaringsarbeideren ferdig neste gang den ser etter. Kjører arbeideren allerede, sier
 siden fra: prøv igjen om et øyeblikk.

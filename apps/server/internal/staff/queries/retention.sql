@@ -546,5 +546,10 @@ SELECT created_at FROM staff.object_deletions ORDER BY created_at, id LIMIT 1;
 
 -- name: LastErasedAt :one
 -- LastErasedAt is the instant of the latest erased event; no row when the
--- run has never erased anything.
-SELECT at FROM staff.events WHERE kind = 'erased' ORDER BY at DESC, id DESC LIMIT 1;
+-- run has never erased anything. Without @with_health the health kinds'
+-- events, of class E, are left out (review M1): a reader without
+-- staff:personal-data must not see the last erase move when only health
+-- content went.
+SELECT at FROM staff.events
+WHERE kind = 'erased' AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)))
+ORDER BY at DESC, id DESC LIMIT 1;

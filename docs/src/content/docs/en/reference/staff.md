@@ -2931,7 +2931,9 @@ configuration, and an unconfigured one fails only the ledger's attempts.
 `POST /retention/run` (`staff:manage`) runs both steps now, by the same code with the
 same connection disciplines, the caller as the `erased` events' actor. It answers 200
 `{"erased": {"kinds": [{"kind", "count"}]}, "deletions": {"attempted", "succeeded"}}` —
-the kinds summed over the people erased, a kind no erase ran for absent. Its ledger
+the kinds summed over the people erased, a kind no erase ran for absent — the health
+kinds (`health`, `cases`, `childSick`, `withdrawal`, `pregnancyHealth`) only to a
+caller holding `staff:personal-data` (review M1), as in the history. Its ledger
 pass is bounded at **thirty seconds** in all, so a store that has stopped answering
 does not hold the request: an attempt still under way then ends as a refusal, the pass
 stops, `deletions` counts what it attempted, and the worker finishes the rest. While
@@ -2946,9 +2948,9 @@ block, derived from the ledger and the history — no column holds it (plan read
 `pendingDeletions` (rows in the ledger), `failingDeletions` (rows the store has refused
 at least once), `oldestPendingSince` (when the oldest row was queued; absent when the
 ledger is empty) and `lastErasedAt` (the latest `erased` event; absent when nothing was
-ever erased). `lastErasedAt` moves with every erase, the health ones included: it is
-the installation's, names no person, and is read by `staff:manage` alone (accepted by
-the coordinator).
+ever erased) — to a caller without `staff:personal-data`, the latest erase of
+something other than health content (the event of no class), so the last erase does
+not move for them when only health content went (review M1).
 
 **The two erase settings** (`erasePregnancyHealthTypes`, `eraseSickCaseDates`; the
 owner's answer 7) are read by each cycle when it starts. Turned on, one applies from

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -199,6 +200,11 @@ func (s *server) PostStaffRetentionRun(ctx context.Context, _ gen.PostStaffReten
 	attempted, succeeded, err := s.runLedger(ledger)
 	if err != nil {
 		return nil, err
+	}
+	// The health kinds are staff:personal-data's to read (review M1), as in
+	// the erased events: an HR caller without it is answered the rest.
+	if !s.has(ctx, permPersonalData) {
+		kinds = slices.DeleteFunc(kinds, func(k erasedKind) bool { return slices.Contains(healthEraseKinds, k.Kind) })
 	}
 	return gen.PostStaffRetentionRun200JSONResponse{
 		Erased:    gen.StaffRetentionErased{Kinds: erasedKindsResponse(kinds)},
