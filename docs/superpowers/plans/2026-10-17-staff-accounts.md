@@ -268,6 +268,9 @@ docs: see "Documentation pages this plan changes"
 23. **Two more settings columns** (`erase_pregnancy_health_types`, `erase_sick_case_dates`) are added in 00051, against 00042's "never to these two" comment, as B added `auto_carry_over_since`; and **a seed's `paid` becomes HR's to change**, `ammefri` excepted below the law's floor.
 24. **(Task 1a review) `PUT /owner/provisioning-roles` takes no `If-Match`**, as identity's other `PUT`s; both writes are audited.
 
+25. **(Task 4b review) A due deactivation retries at every poll, never daily**: spec S27's "three times at each poll, then daily" stays for every other step, but a leaver must lose access as soon as identity answers, so a failed `Deactivate` is retried at each poll for as long as it is due.
+26. **(Task 4b review) A Prepare's user is persisted on the link before the chain goes on**, so the link's unique index refuses a user another person's link names before anything is done to it, and the person-deleted path deactivates only a user that claim created (`AccountRef.Created`).
+
 ## Open questions for the coordinator
 
 Each is open; the plan builds its **interim default** meanwhile.
