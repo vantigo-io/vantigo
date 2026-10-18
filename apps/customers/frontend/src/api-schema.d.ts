@@ -1237,7 +1237,7 @@ export interface components {
             id: string;
             name: string;
         };
-        /** @description An import of customers from a file (customers import wizard design D1, D5, D7). state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run) or done (final; finishedAt set — and, when it was stopped, processed short of rows and the rest never attempted). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written, a nameless column an empty string; sample the first twenty rows, each with the errors its cells get under the saved mapping (none when there is no mapping yet). mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated and failed are the worker's progress while it runs and the recounted totals once it has finished. error is a whole-run failure the worker met and will retry next cycle, with the run where it stood. createdByName is the uploader's display name through the user directory, absent when the account is gone. requestedAt is when the check or the run was asked for, startedAt when the worker took it up. */
+        /** @description An import of customers from a file (customers import wizard design D1, D5, D7). state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run) or done (final; finishedAt set — and, when it was stopped, processed short of rows and the rest never attempted). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written, a nameless column an empty string; sample the first twenty rows, each with the errors its cells get under the saved mapping (none when there is no mapping yet). mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated, failed and skipped are the worker's progress while it runs and the recounted totals once it has finished; skipped counts the rows that repeat an earlier row's legal identity with every mapped cell equal to that row's — the same customer listed again, neither written nor failed. error is a whole-run failure the worker met and will retry next cycle, with the run where it stood. createdByName is the uploader's display name through the user directory, absent when the account is gone. requestedAt is when the check or the run was asked for, startedAt when the worker took it up. */
         CustomerImport: {
             /** Format: int32 */
             created: number;
@@ -1265,6 +1265,8 @@ export interface components {
             separator: string;
             /** Format: int64 */
             sizeBytes: number;
+            /** Format: int32 */
+            skipped: number;
             /** Format: date-time */
             startedAt?: string;
             /** @enum {string} */
@@ -1290,7 +1292,7 @@ export interface components {
             field: string;
             value?: string;
         };
-        /** @description One row of an import with what the worker did with it (customers import wizard design D7). cells are the row's cells as the file had them; outcome is absent for a row not yet run; customerId and customerNumber name the customer a created or updated row made or changed; errors are a failed row's problems, each on a column of the file (the 0-based index) or on the row as a whole. */
+        /** @description One row of an import with what the worker did with it (customers import wizard design D7). cells are the row's cells as the file had them; outcome is absent for a row not yet run; customerId and customerNumber name the customer a created or updated row made or changed; errors are a failed row's problems, each on a column of the file (the 0-based index) or on the row as a whole; a skipped row — one repeating an earlier row's legal identity with every mapped cell equal — carries one row-level entry naming that row ("Same customer as row N."). */
         CustomerImportRow: {
             cells: string[];
             /** Format: int32 */
@@ -1299,7 +1301,7 @@ export interface components {
             customerNumber?: number;
             errors: components["schemas"]["CustomerImportRowError"][];
             /** @enum {string} */
-            outcome?: "created" | "updated" | "failed";
+            outcome?: "created" | "updated" | "failed" | "skipped";
             /** Format: int32 */
             row: number;
         };
@@ -5775,7 +5777,7 @@ export interface operations {
     getCustomersImportsByImportIdRows: {
         parameters: {
             query?: {
-                /** @description created, updated or failed; absent for every row. */
+                /** @description created, updated, failed or skipped; absent for every row. */
                 outcome?: string;
                 page?: number;
                 pageSize?: number;

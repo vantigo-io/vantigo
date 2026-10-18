@@ -328,7 +328,10 @@ kundelisten for å åpne **Importer kunder**.
    velg under **Importeres som** hvilket kundefelt den blir, eller la den stå som
    **Importeres ikke**. Vantigo foreslår felt for vanlige navn som *Kundenr*,
    *Org.nr*, *E-post* og *Postnummer*, og husker valgene du gjorde for en fil med de
-   samme kolonnene. Mangler filen et felt alle kundene trenger, bruker du **Legg til
+   samme kolonnene. Har filen en kolonne med organisasjonsnummer, foreslår Vantigo
+   **Opprett og oppdater** og å finne kunden etter **Organisasjonsnummer**, selv om
+   filen også har et kundenummer — kundenumrene fra et annet system er ikke
+   Vantigos. Mangler filen et felt alle kundene trenger, bruker du **Legg til
    en verdi for alle rader** for å sette én verdi for alle — et land, en status, en
    valuta, eller en gruppe eller merkelapp som markerer partiet.
    **Forhåndsvisning** viser de første radene slik de vil bli lest, med eventuelle
@@ -336,13 +339,20 @@ kundelisten for å åpne **Importer kunder**.
 3. **Kontroller filen.** Hver rad prøves akkurat som importen ville gjort, uten å
    lagre noe. En fremdriftslinje viser hvor langt den har kommet, og **Stopp**
    avbryter. Resultatet er **Rader**, **Ville blitt opprettet**, **Ville blitt
-   oppdatert** og **Har feil**, med hver feil etter **Rad** og **Kolonne**. **Endre
-   valg av kolonner** tar deg tilbake til steg 2.
+   oppdatert**, **Ville blitt hoppet over** og **Har feil**, med hver feil etter
+   **Rad** og **Kolonne**. En rad som gjentar organisasjonsnummeret fra en tidligere
+   rad med de samme verdiene i alle valgte kolonner, er den samme kunden oppført på
+   nytt — en leverandørs fil lister kunden én gang for hvert målepunkt — og hoppes
+   over med *Same customer as row N.*, uten å telle som feil. En gjentakelse med en
+   annen verdi i en valgt kolonne er en feil. **Endre valg av kolonner** tar deg
+   tilbake til steg 2.
 4. **Importer** lagrer radene, etter en bekreftelse som sier hvor mange kunder som
    opprettes og oppdateres. Du kan forlate siden og komme tilbake: importen kjører i
    bakgrunnen, og siden viser fremdriften. **Stopp** beholder radene som allerede er
    lagret, og prøver ikke resten. Når den er ferdig, viser siden **Opprettet**,
-   **Oppdatert** og **Feilet**, og lister de nye kundene som lenker.
+   **Oppdatert**, **Hoppet over** og **Feilet**, og lister de nye kundene som lenker
+   og radene som ble hoppet over med raden hver av dem gjentar. Radene som ble hoppet
+   over, er ikke med i filen med radene som feilet.
 
 Feiler noen rader, gir **Last ned radene som feilet** deg akkurat de radene, med dine
 egne kolonner og en feilkolonne først. Rett dem og last opp den filen: valget av

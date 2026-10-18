@@ -202,14 +202,18 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 	if err != nil {
 		return fmt.Errorf("customers: count import %d's rows: %w", imp.ID, err)
 	}
-	processed, created, updated, failed := int32(counts.Processed), int32(counts.Created), int32(counts.Updated), int32(counts.Failed)
+	processed, created, updated, failed, skipped := int32(counts.Processed), int32(counts.Created), int32(counts.Updated), int32(counts.Failed), int32(counts.Skipped)
 	// The counts on the import are now this run's — a run just started shows
 	// zeros, not the check's figures it carried until the worker took it up.
 	if err := q.UpdateImportProgress(ctx, store.UpdateImportProgressParams{
-		ID: imp.ID, Processed: processed, Created: created, Updated: updated, Failed: failed, UpdatedAt: w.now(),
+		ID: imp.ID, Processed: processed, Created: created, Updated: updated, Failed: failed, Skipped: skipped, UpdatedAt: w.now(),
 	}); err != nil {
 		return fmt.Errorf("customers: write import %d's progress: %w", imp.ID, err)
 	}
+
+	// firstCells is the cells of the earlier rows the repeats are compared
+	// with, read once each.
+	firstCells := map[int32][]string{}
 
 	for {
 		rows, err := q.ImportRowsChunk(ctx, store.ImportRowsChunkParams{ImportID: imp.ID, Limit: importChunkRows})
@@ -225,15 +229,29 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 			}
 			rec := csvRecord{Row: int(row.RowNo), Cells: row.Cells}
 			p, planErrs := l.plan(rec, vocab, l.creates())
-			if first, dup := duplicates[row.RowNo]; dup && len(planErrs) == 0 {
-				planErrs = []importError{{Row: rec.Row, Field: "legalId", Message: fmt.Sprintf(
-					"Row %d of this file already has this legal identity; a file lists a customer once", first)}}
+			var result importRowResult
+			if first, dup := duplicates[row.RowNo]; dup {
+				cells, ok := firstCells[first]
+				if !ok {
+					if cells, err = q.ImportRowCells(ctx, store.ImportRowCellsParams{ImportID: imp.ID, RowNo: first}); err != nil {
+						return fmt.Errorf("customers: read import %d row %d: %w", imp.ID, first, err)
+					}
+					firstCells[first] = cells
+				}
+				if l.sameMappedCells(row.Cells, cells) {
+					// The same customer listed again: the earlier row is it.
+					result = importRowResult{Outcome: "skipped", Errs: []importError{{Row: rec.Row, Message: fmt.Sprintf("Same customer as row %d.", first)}}}
+				} else if len(planErrs) == 0 {
+					planErrs = []importError{{Row: rec.Row, Field: "legalId", Message: fmt.Sprintf(
+						"Row %d of this file already has this legal identity; a file lists a customer once", first)}}
+				}
 			}
-			result, err := w.srv.runImportRow(ctx, conn, imp.ID, l, p, planErrs, o, dryRun)
-			if err != nil {
-				return err
+			if result.Outcome == "" {
+				if result, err = w.srv.runImportRow(ctx, conn, imp.ID, l, p, planErrs, o, dryRun); err != nil {
+					return err
+				}
 			}
-			if dryRun || result.Outcome == "failed" {
+			if dryRun || result.Outcome == "failed" || result.Outcome == "skipped" {
 				var errsJSON []byte
 				if len(result.Errs) > 0 {
 					if errsJSON, err = importRowErrorsJSON(l, result.Errs); err != nil {
@@ -253,12 +271,14 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 				created++
 			case "updated":
 				updated++
+			case "skipped":
+				skipped++
 			default:
 				failed++
 			}
 		}
 		if err := q.UpdateImportProgress(ctx, store.UpdateImportProgressParams{
-			ID: imp.ID, Processed: processed, Created: created, Updated: updated, Failed: failed, UpdatedAt: w.now(),
+			ID: imp.ID, Processed: processed, Created: created, Updated: updated, Failed: failed, Skipped: skipped, UpdatedAt: w.now(),
 		}); err != nil {
 			return fmt.Errorf("customers: write import %d's progress: %w", imp.ID, err)
 		}
@@ -298,19 +318,22 @@ func (w *ImportWorker) finish(ctx context.Context, q *store.Queries, imp store.C
 	}
 	if err := q.FinishImport(ctx, store.FinishImportParams{
 		ID: imp.ID, State: string(state), Processed: int32(counts.Processed), Created: int32(counts.Created),
-		Updated: int32(counts.Updated), Failed: int32(counts.Failed), FinishedAt: ptrTime(now), UpdatedAt: now,
+		Updated: int32(counts.Updated), Failed: int32(counts.Failed), Skipped: int32(counts.Skipped), FinishedAt: ptrTime(now), UpdatedAt: now,
 	}); err != nil {
 		return fmt.Errorf("customers: finish import %d: %w", imp.ID, err)
 	}
 	w.logger().Info("import finished", "worker", importWorkerName, "importId", imp.ID, "state", state, "stopped", stopped,
-		"rows", imp.RowCount, "processed", counts.Processed, "created", counts.Created, "updated", counts.Updated, "failed", counts.Failed)
+		"rows", imp.RowCount, "processed", counts.Processed, "created", counts.Created, "updated", counts.Updated, "failed", counts.Failed, "skipped", counts.Skipped)
 	return nil
 }
 
 // importDuplicateRows is the in-file duplicate pass (design D3, D5): of the
 // rows that carry one legal identity — country and id as the duplicate
 // guard compares them, the import's default country applied — every row
-// but the first, keyed to the first's number. Run over every row of the file
+// but the first, keyed to the first's number. The walk then compares each
+// with that first row: one whose mapped cells are all equal is the same
+// customer listed again — a supplier's export repeats a customer on every
+// metering point's row — and is skipped; one that differs is the row's error. Run over every row of the file
 // whatever its outcome, so a run that resumes still sees the first. The
 // database check cannot see it in a dry run, whose rows each roll back
 // before the next one runs; this pass needs no database write, so the two

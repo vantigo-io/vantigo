@@ -112,6 +112,20 @@ func (l importLayout) raw(rec csvRecord) map[string]string {
 	return values
 }
 
+// sameMappedCells reports whether two rows read alike through the layout:
+// every mapped column's cell equal once trimmed, as the row planning trims
+// them, and a fixed value equal by definition — the duplicate pass's test of
+// a repeated customer (import_worker.go).
+func (l importLayout) sameMappedCells(a, b []string) bool {
+	ra, rb := l.raw(csvRecord{Cells: a}), l.raw(csvRecord{Cells: b})
+	for field := range l.column {
+		if strings.TrimSpace(ra[field]) != strings.TrimSpace(rb[field]) {
+			return false
+		}
+	}
+	return true
+}
+
 // importError is one problem of one row: Field is the import field it is
 // about ("" for the row as a whole), which the layout turns into a file
 // column for the answer.

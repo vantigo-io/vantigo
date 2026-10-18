@@ -48,6 +48,7 @@ const wireImport = (overrides: Record<string, unknown> = {}) => ({
   created: 0,
   updated: 0,
   failed: 0,
+  skipped: 0,
   stopRequested: false,
   createdAt: "2026-10-13T10:00:00Z",
   createdByName: "Kari Nordmann",
@@ -90,6 +91,7 @@ describe("ImportStartPage", () => {
                 created: 10,
                 updated: 2,
                 failed: 1,
+                skipped: 3,
                 finishedAt: "2026-10-12T10:00:00Z",
               }),
             ]),
@@ -100,7 +102,7 @@ describe("ImportStartPage", () => {
     expect(screen.getByText("Importing")).toBeInTheDocument();
     expect(screen.getByText("120 of 300 rows")).toBeInTheDocument();
     expect(screen.getByText("Done")).toBeInTheDocument();
-    expect(screen.getByText("Created: 10 · Updated: 2 · Failed: 1")).toBeInTheDocument();
+    expect(screen.getByText("Created: 10 · Updated: 2 · Skipped: 3 · Failed: 1")).toBeInTheDocument();
     expect(screen.getAllByText("Kari Nordmann")).toHaveLength(2);
     // A running import cannot be deleted; a finished one can.
     expect(screen.getByRole("button", { name: "Delete the import of kunder.csv" })).toBeDisabled();

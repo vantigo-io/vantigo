@@ -28,6 +28,7 @@ const wireDraft = {
   created: 0,
   updated: 0,
   failed: 0,
+  skipped: 0,
   stopRequested: false,
   createdAt: "2026-10-13T10:00:00Z",
 };

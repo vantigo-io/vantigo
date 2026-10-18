@@ -62,6 +62,7 @@ const wireImport = (overrides: Record<string, unknown> = {}) => ({
   created: 0,
   updated: 0,
   failed: 0,
+  skipped: 0,
   stopRequested: false,
   createdAt: "2026-10-13T10:00:00Z",
   createdByName: "Kari Nordmann",
@@ -212,7 +213,7 @@ describe("ImportPage", () => {
     );
     renderPage();
     expect(await screen.findByText("1 of 3 rows")).toBeInTheDocument();
-    expect(screen.getByText("Created: 1 · Updated: 0 · Failed: 0")).toBeInTheDocument();
+    expect(screen.getByText("Created: 1 · Updated: 0 · Skipped: 0 · Failed: 0")).toBeInTheDocument();
     cleanup();
 
     stubImport(wireImport({ state: "importing", requestedAt: "2020-01-01T00:00:00Z" }));
@@ -226,9 +227,28 @@ describe("ImportPage", () => {
       { row: 2, cells: ["Beta AS", "nope", "y"], outcome: "failed", errors: [{ column: 1, message: "Not an email" }] },
     ]);
     const fetchMock = stubImport(
-      wireImport({ state: "checked", processed: 3, created: 2, failed: 1, finishedAt: "2026-10-13T10:02:00Z" }),
+      wireImport({
+        state: "checked",
+        processed: 3,
+        created: 2,
+        failed: 1,
+        skipped: 2,
+        finishedAt: "2026-10-13T10:02:00Z",
+      }),
       (url, init) => {
         if (url.startsWith("/api/v1/customers/imports/7/rows?outcome=failed")) return json(failed);
+        if (url.startsWith("/api/v1/customers/imports/7/rows?outcome=skipped")) {
+          return json(
+            rowsPage([
+              {
+                row: 3,
+                cells: ["Gamma AS", "post@gamma.no", "z"],
+                outcome: "skipped",
+                errors: [{ message: "Same customer as row 1." }],
+              },
+            ]),
+          );
+        }
         if (url === "/api/v1/customers/imports/7/run" && init?.method === "POST") {
           return json(wireImport({ state: "importing", requestedAt: "2026-10-13T10:03:00Z" }));
         }
@@ -239,6 +259,9 @@ describe("ImportPage", () => {
     expect(await screen.findByText("The file has been checked")).toBeInTheDocument();
     expect(screen.getByText("Would be created").nextSibling).toHaveTextContent("2");
     expect(screen.getByText("Have errors").nextSibling).toHaveTextContent("1");
+    expect(screen.getByText("Would be skipped").nextSibling).toHaveTextContent("2");
+    expect(await screen.findByText("Same customer as row 1.")).toBeInTheDocument();
+    expect(screen.getByText("Rows skipped: the same customer as an earlier row")).toBeInTheDocument();
     expect(await screen.findByText("Not an email")).toBeInTheDocument();
     expect(screen.getByText("E-post")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download failed rows" })).toBeInTheDocument();
@@ -257,12 +280,32 @@ describe("ImportPage", () => {
 
   it("shows what a finished import did, the customers it created as links, and what a stop left", async () => {
     stubImport(
-      wireImport({ state: "done", processed: 3, created: 2, failed: 1, finishedAt: "2026-10-13T10:05:00Z" }),
+      wireImport({
+        state: "done",
+        processed: 4,
+        rows: 4,
+        created: 2,
+        failed: 1,
+        skipped: 1,
+        finishedAt: "2026-10-13T10:05:00Z",
+      }),
       (url) => {
         if (url.startsWith("/api/v1/customers/imports/7/rows?outcome=failed")) {
           return json(
             rowsPage([
               { row: 2, cells: ["Beta AS", "nope", "y"], outcome: "failed", errors: [{ message: "Row problem" }] },
+            ]),
+          );
+        }
+        if (url.startsWith("/api/v1/customers/imports/7/rows?outcome=skipped")) {
+          return json(
+            rowsPage([
+              {
+                row: 4,
+                cells: ["Gamma AS", "post@gamma.no", "w"],
+                outcome: "skipped",
+                errors: [{ message: "Same customer as row 1." }],
+              },
             ]),
           );
         }
@@ -286,6 +329,8 @@ describe("ImportPage", () => {
     renderPage();
     expect(await screen.findByText("The import is done")).toBeInTheDocument();
     expect(screen.getByText("Created").nextSibling).toHaveTextContent("2");
+    expect(screen.getByText("Skipped").nextSibling).toHaveTextContent("1");
+    expect(await screen.findByText("Same customer as row 1.")).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "#1042" })).toHaveAttribute("href", "/customers/42");
     expect(screen.getByText("Acme AS")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Start another import" })).toHaveAttribute("href", "/customers/import");

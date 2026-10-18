@@ -267,7 +267,7 @@ func (s *server) importView(ctx context.Context, q *store.Queries, imp store.Cus
 		Id: imp.ID, State: gen.CustomerImportState(imp.State), FileName: imp.FileName, SizeBytes: imp.SizeBytes,
 		Encoding: imp.Encoding, Separator: imp.Separator, Rows: imp.RowCount, Header: imp.Header, Sample: sample,
 		Mapping: mapping, Suggested: suggestMapping(imp.Header, previousMapping),
-		Processed: imp.Processed, Created: imp.Created, Updated: imp.Updated, Failed: imp.Failed,
+		Processed: imp.Processed, Created: imp.Created, Updated: imp.Updated, Failed: imp.Failed, Skipped: imp.Skipped,
 		StopRequested: imp.StopRequested, Error: imp.Error, CreatedAt: imp.CreatedAt, CreatedByName: imp.CreatedByName,
 		RequestedAt: imp.RequestedAt, StartedAt: imp.StartedAt, FinishedAt: imp.FinishedAt,
 	}
@@ -575,11 +575,11 @@ func (s *server) GetCustomersImportsByImportIdRows(ctx context.Context, req gen.
 	var outcome *string
 	if req.Params.Outcome != nil {
 		switch *req.Params.Outcome {
-		case string(gen.Created), string(gen.Updated), string(gen.Failed):
+		case string(gen.Created), string(gen.Updated), string(gen.Failed), string(gen.Skipped):
 			outcome = req.Params.Outcome
 		default:
 			return gen.GetCustomersImportsByImportIdRows400ApplicationProblemPlusJSONResponse(apicommon.Problem("Invalid query parameters",
-				fmt.Sprintf("'outcome' must be one of 'created', 'updated' or 'failed', but was '%s'.", *req.Params.Outcome))), nil
+				fmt.Sprintf("'outcome' must be one of 'created', 'updated', 'failed' or 'skipped', but was '%s'.", *req.Params.Outcome))), nil
 		}
 	}
 	q := store.New(s.deps.Pool)

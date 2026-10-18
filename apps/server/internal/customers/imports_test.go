@@ -73,9 +73,9 @@ func TestPostCustomersImports_ReadsTheFileOnce_AndAnswersADraftWithItsSuggestion
 	for _, c := range imp.Suggested.Columns {
 		suggested[c.Field] = *c.Column
 	}
-	if imp.Suggested.Mode != "createOrUpdate" || imp.Suggested.MatchBy != "customerNumber" ||
+	if imp.Suggested.Mode != "createOrUpdate" || imp.Suggested.MatchBy != "legalId" ||
 		suggested["customerNumber"] != 0 || suggested["name"] != 1 || suggested["legalId"] != 2 || suggested["email"] != 3 || len(suggested) != 4 {
-		t.Errorf("suggested = %+v, want createOrUpdate by customerNumber with four columns", imp.Suggested)
+		t.Errorf("suggested = %+v, want createOrUpdate by legalId with four columns", imp.Suggested)
 	}
 	if imp.CreatedByName != uploader {
 		t.Errorf("createdByName = %q, want %q", imp.CreatedByName, uploader)
@@ -487,8 +487,8 @@ func TestImportRows_CreateAndUpdateByCustomerNumber_AsTheUploader(t *testing.T) 
 		t.Errorf("the update recorded %d customer.updated events, want 1", n)
 	}
 	// The rows' paging and the outcome filter's refusal.
-	if r := c.Do(http.MethodGet, importPath(done.ID, "/rows?outcome=skipped"), nil); r.Status != http.StatusBadRequest {
-		t.Errorf("rows?outcome=skipped: status %d, want 400", r.Status)
+	if r := c.Do(http.MethodGet, importPath(done.ID, "/rows?outcome=ignored"), nil); r.Status != http.StatusBadRequest || !strings.Contains(string(r.Body), "'skipped'") {
+		t.Errorf("rows?outcome=ignored: status %d body %s, want 400 naming the four outcomes", r.Status, r.Body)
 	}
 	if r := c.Do(http.MethodGet, importPath(done.ID, "/rows?pageSize=501"), nil); r.Status != http.StatusBadRequest {
 		t.Errorf("rows?pageSize=501: status %d, want 400", r.Status)
@@ -711,6 +711,82 @@ func TestImportRows_TheDuplicateGuard_InTheFileAndOnFile(t *testing.T) {
 	done := importNow(t, c, h, file, allowed)
 	if done.Created != 2 || done.Failed != 2 {
 		t.Errorf("allowed = %+v, want First and Taker created, Second and Bad Digit refused", done)
+	}
+}
+
+// TestImportRows_ARepeatedCustomerIsSkipped is a supplier's export: one row
+// per metering point, the customer repeated on each. A repeat whose mapped
+// cells are all equal to the first row's — trimmed, an unmapped column free to
+// differ — is skipped in the check and in the run alike, counted apart and
+// kept out of the failed-rows file; a repeat that differs in a mapped cell is
+// still the row's error.
+func TestImportRows_ARepeatedCustomerIsSkipped(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := uploadClient(t, h)
+	file := csvFileOf([]string{"name", "legalId", "MALEPUNKT"},
+		[]string{"Kraft AS", validOrgNumbers[2], "707057500000000001"},
+		[]string{"Kraft AS", validOrgNumbers[2], "707057500000000002"},
+		[]string{" Kraft AS ", validOrgNumbers[2], "707057500000000003"},
+		[]string{"Kraft Holding AS", validOrgNumbers[2], "707057500000000004"},
+		[]string{"Annen AS", validOrgNumbers[3], "707057500000000005"})
+	mapping := mappingOf("createOrUpdate", "legalId", "name", "legalId")
+
+	checked := checkNow(t, c, h, file, mapping)
+	if checked.Created != 2 || checked.Skipped != 2 || checked.Failed != 1 || checked.Processed != 5 {
+		t.Fatalf("checked = %+v, want 2 created, 2 skipped, 1 failed", checked)
+	}
+	skipped := importRowsOf(t, c, checked.ID, "skipped")
+	if skipped.Pagination.TotalCount != 2 || skipped.Data[0].Row != 2 || skipped.Data[1].Row != 3 {
+		t.Fatalf("skipped rows = %+v, want rows 2 and 3", skipped)
+	}
+	for _, row := range skipped.Data {
+		if row.Outcome != "skipped" || len(row.Errors) != 1 || row.Errors[0].Column != nil || row.Errors[0].Message != "Same customer as row 1." {
+			t.Errorf("skipped row %d = %+v, want the row-level 'Same customer as row 1.'", row.Row, row)
+		}
+	}
+	result := importResultOf(t, c, checked)
+	if len(result.Errors) != 1 || result.Errors[0].Row != 4 || !strings.Contains(result.Errors[0].Message, "Row 1 of this file already has this legal identity") {
+		t.Errorf("failed = %+v, want row 4, which names the customer otherwise, refused as a duplicate", result.Errors)
+	}
+
+	importOf(t, postRun(t, c, checked.ID), http.StatusOK)
+	runImportWorker(t, h)
+	done := getImport(t, c, checked.ID)
+	if done.State != "done" || done.Created != 2 || done.Skipped != 2 || done.Failed != 1 || done.Processed != 5 {
+		t.Fatalf("done = %+v, want 2 created, 2 skipped, 1 failed", done)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE name = 'Kraft AS'`); n != 1 {
+		t.Errorf("%d customers named Kraft AS, want the one", n)
+	}
+	if got := importRowsOf(t, c, done.ID, "skipped").Pagination.TotalCount; got != 2 {
+		t.Errorf("%d skipped rows after the run, want 2", got)
+	}
+	r := c.Do(http.MethodGet, importPath(done.ID, "/failed-rows"), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("failed rows: %d %s", r.Status, r.Body)
+	}
+	if lines := strings.Split(strings.TrimSuffix(string(r.Body), "\r\n"), "\r\n"); len(lines) != 2 || !strings.Contains(lines[1], "Kraft Holding AS") {
+		t.Errorf("failed rows file = %q, want the header and the differing repeat alone", r.Body)
+	}
+}
+
+// TestImportRows_ARepeatedCustomerIsSkipped_WithDuplicatesAllowed: allowing a
+// shared identity changes nothing about the file's own repeats — an identical
+// one is skipped, a differing one refused, as without it.
+func TestImportRows_ARepeatedCustomerIsSkipped_WithDuplicatesAllowed(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := uploadClient(t, h)
+	file := csvFileOf([]string{"name", "legalId"},
+		[]string{"Kraft AS", validOrgNumbers[4]},
+		[]string{"Kraft AS", validOrgNumbers[4]},
+		[]string{"Kraft Holding AS", validOrgNumbers[4]})
+	mapping := mappingOf("create", "", "name", "legalId")
+	mapping.AllowDuplicateIdentity = true
+	done := importNow(t, c, h, file, mapping)
+	if done.Created != 1 || done.Skipped != 1 || done.Failed != 1 {
+		t.Errorf("done = %+v, want 1 created, 1 skipped, 1 failed", done)
 	}
 }
 
