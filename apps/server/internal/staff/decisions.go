@@ -215,7 +215,7 @@ func (s *server) decision(ctx context.Context, id int64, body *gen.StaffAbsenceD
 		return gen.StaffAbsence{}, nil, err
 	}
 	if !w.row.SelfApproved {
-		s.notifyAbsence(ctx, caller.Today, noticeOf(status, w.row, w.typ))
+		s.notifyAbsence(ctx, caller, noticeOf(status, w.row, w.typ))
 	}
 	return s.respondWrite(w, personID), nil, nil
 }
@@ -341,7 +341,7 @@ func (s *server) PostStaffAbsencesByIdCancel(ctx context.Context, req gen.PostSt
 		return nil, err
 	}
 	if decided && !self {
-		s.notifyAbsence(ctx, caller.Today, noticeOf(noticeCancelled, w.row, w.typ))
+		s.notifyAbsence(ctx, caller, noticeOf(noticeCancelled, w.row, w.typ))
 	}
 	return gen.PostStaffAbsencesByIdCancel200JSONResponse(s.respondWrite(w, personID)), nil
 }
@@ -453,7 +453,7 @@ func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostS
 		return nil, err
 	}
 	if !d.own {
-		s.notifyAbsence(ctx, caller.Today, noticeOf(noticeCorrected, w.row, w.typ))
+		s.notifyAbsence(ctx, caller, noticeOf(noticeCorrected, w.row, w.typ))
 	}
 	return gen.PostStaffAbsencesByIdCorrect200JSONResponse(s.respondWrite(w, personID)), nil
 }

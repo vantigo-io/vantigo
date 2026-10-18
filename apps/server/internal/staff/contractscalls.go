@@ -84,6 +84,16 @@ func (s *server) usersSearch(ctx context.Context, query string, limit int) ([]co
 	return s.deps.Users.SearchUsers(ctx, query, limit)
 }
 
+// usersPermissionHolders is the active users holding key, with the address
+// to mail each at: read only by the holders' rules (holders.go), and the
+// address only by the absence mails — never put on the wire or in a log.
+func (s *server) usersPermissionHolders(ctx context.Context, key string) ([]contracts.Holder, error) {
+	if err := noteContractCall(ctx, "Users.PermissionHolders"); err != nil {
+		return nil, err
+	}
+	return s.deps.Users.PermissionHolders(ctx, key)
+}
+
 // errAccountsUnavailable is every accounts accessor's answer when no module
 // provides account provisioning (Deps.Accounts nil): the request is answered
 // accounts_unavailable, or the field it fills is left out.

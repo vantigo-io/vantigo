@@ -204,13 +204,17 @@ RETURNING *;
 -- @person_ids' people's — everyone's with @everyone; one of an HR-only type
 -- is decided by staff:personal-data alone (@personal_data, review H4). Never
 -- the caller's own (@self_id), but a plain one when they approve their own
--- (@self_approves). The partial index on requested rows serves it.
+-- (@self_approves, B's by-right self-approver) and an HR-only one when they
+-- are the sole active holder of staff:personal-data (@sole_personal_data,
+-- delivery C). The partial index on requested rows serves it.
 SELECT sqlc.embed(a), t.kind, t.visibility, t.unit
 FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
 WHERE a.status = 'requested'
   AND ((t.visibility = 'absent' AND (@everyone::boolean OR a.person_id = ANY(@person_ids::bigint[])))
        OR (t.visibility <> 'absent' AND @personal_data::boolean))
-  AND (a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint OR (t.visibility = 'absent' AND @self_approves::boolean))
+  AND (a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint
+       OR (t.visibility = 'absent' AND @self_approves::boolean)
+       OR (t.visibility <> 'absent' AND @sole_personal_data::boolean))
 ORDER BY a.created_at, a.id
 LIMIT @page_size OFFSET @page_offset;
 
@@ -220,7 +224,9 @@ SELECT count(*) FROM staff.absences a JOIN staff.absence_types t ON t.id = a.typ
 WHERE a.status = 'requested'
   AND ((t.visibility = 'absent' AND (@everyone::boolean OR a.person_id = ANY(@person_ids::bigint[])))
        OR (t.visibility <> 'absent' AND @personal_data::boolean))
-  AND (a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint OR (t.visibility = 'absent' AND @self_approves::boolean));
+  AND (a.person_id IS DISTINCT FROM sqlc.narg('self_id')::bigint
+       OR (t.visibility = 'absent' AND @self_approves::boolean)
+       OR (t.visibility <> 'absent' AND @sole_personal_data::boolean));
 
 -- name: ColleagueAbsenceDays :many
 -- ColleagueAbsenceDays is the approved and registered day rows of
@@ -260,6 +266,19 @@ WHERE e.start_date <= @to_day::date AND (e.end_date IS NULL OR e.end_date >= @fr
 SELECT a.id, a.person_id, a.decided_at, p.display_name
 FROM staff.absences a
 JOIN staff.absence_types t ON t.id = a.type_id AND t.visibility = 'absent'
+JOIN staff.people p ON p.id = a.person_id
+WHERE a.self_approved AND a.status = 'approved' AND a.last_day >= @today::date
+ORDER BY a.decided_at, a.id;
+
+-- name: HROnlySelfApprovedAbsences :many
+-- HROnlySelfApprovedAbsences is every approved row of an HR-only type its
+-- person approved as the sole active holder of staff:personal-data that has
+-- not ended by @today: the attention item hrOnlySelfApproved, read by
+-- staff:personal-data alone (delivery C). SelfApprovedAbsences keeps
+-- leaving these out for selfApproved, which staff:manage reads.
+SELECT a.id, a.person_id, a.decided_at, p.display_name
+FROM staff.absences a
+JOIN staff.absence_types t ON t.id = a.type_id AND t.visibility <> 'absent'
 JOIN staff.people p ON p.id = a.person_id
 WHERE a.self_approved AND a.status = 'approved' AND a.last_day >= @today::date
 ORDER BY a.decided_at, a.id;

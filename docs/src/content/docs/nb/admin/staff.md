@@ -35,6 +35,7 @@ sources:
   - apps/server/internal/staff/accounts_worker.go
   - apps/server/internal/staff/accounts_run.go
   - apps/server/internal/staff/accounts_attention.go
+  - apps/server/internal/staff/holders.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -1028,15 +1029,28 @@ avgjør sin egen søknad: en leders går til lederens egen leder, og HRs til en 
 `staff:approve` eller `staff:manage`. En leder avgjør først når personen deres er koblet
 til en aktiv bruker ([Koble personer til brukerne sine](#koble-personer-til-brukerne-sine)).
 
-**HR-permisjon avgjøres av `staff:personal-data`** (foreløpig, inntil eieren har
-bestemt seg): en søknad om en HR-type — svangerskapspermisjon, en religiøs høytid, en
-egen type merket som HR-type — går ikke til noen leder, ingen med `staff:approve` og ingen
-HR uten `staff:personal-data`, og ingen av dem får e-post om den. Alle med
-`staff:personal-data` unntatt personen selv avgjør den i godkjenningsinnboksen sin, og bare
-HR med `staff:personal-data` registrerer, endrer, trekker tilbake eller retter en slik rad —
-HR uten den får samme svar som for en type som ikke finnes. Gi den
-rettigheten til den som skal avgjøre slik permisjon; finnes ingen andre med den, venter
-søknaden. For alle andre vises permisjonen først når den er godkjent, som *permisjon*.
+**HR-permisjon avgjøres av `staff:personal-data`**: en søknad om en HR-type —
+svangerskapspermisjon, en religiøs høytid, en egen type merket som HR-type — går ikke til
+noen leder, ingen med `staff:approve` og ingen HR uten `staff:personal-data`, og ingen av
+dem får e-post om den. Alle med `staff:personal-data` unntatt personen selv avgjør den i
+godkjenningsinnboksen sin, og bare HR med `staff:personal-data` registrerer, endrer,
+trekker tilbake eller retter en slik rad — HR uten den får samme svar som for en type som
+ikke finnes. Gi den rettigheten til den som skal avgjøre slik permisjon. For alle andre
+vises permisjonen først når den er godkjent, som *permisjon*.
+
+**Den eneste med `staff:personal-data` avgjør sin egen søknad om HR-permisjon**
+(eierens regel). Når nøyaktig én aktiv bruker har `staff:personal-data` — og det er den
+som søker — godkjenner de sin egen søknad i godkjenningsinnboksen sin. Hvem som har
+rettigheten, er det identity som sier: en rolle brukeren har selv, en rolle koblet til
+en tilgangsgruppe de er med i, eller **Owner**-rollen, som har alle rettigheter — så med
+en Owner og én til med rettigheten er ingen av dem den eneste, og søknaden går til den
+andre. En delegering gir ingen rettighet. En deaktivert bruker, en bruker som ennå ikke
+har tatt imot invitasjonen sin, og med SCIM en bruker katalogen har deaktivert, teller
+ikke. Får Ansatte ikke lest fra identity hvem som har rettigheten, er ingen den eneste,
+og søknaden venter. Hver slik godkjenning er oppfølgingspunktet `hrOnlySelfApproved` for
+alle med `staff:personal-data` (personens navn, aldri typen) til fraværet er over: gir du
+en til rettigheten, ser de det — det andre blikket regelen mangler. For å unngå regelen
+gir du `staff:personal-data` til to personer.
 
 **Det ene unntaket, foreløpig** (inntil eieren har bestemt seg): den som har
 `staff:approve` eller `staff:manage`, står øverst i strukturen — leder en avdeling uten
@@ -1052,23 +1066,38 @@ får e-post om en retting. Et avgjort fravær som har begynt, trekkes bare tilba
 
 ## E-postene om fravær
 
-Ansatte sender e-post om fravær bare til adresser den selv har — en persons
-jobb-e-post, ellers den private — på personens språk:
+Hvem som får e-post om fravær, og når:
 
 - en **søknad** eller en **registrering** går til personens ledere som avgjør den
-  (lederen i dag, koblet til en aktiv bruker);
+  (lederen i dag, koblet til en aktiv bruker), til jobb-e-posten Ansatte har for dem,
+  ellers den private, på den personens språk;
+- en **søknad** fra en person **uten en slik leder** går i stedet til alle med
+  `staff:approve` eller `staff:manage` — **Owner-brukere også**, som har alle
+  rettigheter — én gang hver, aldri til personen selv, til adressen brukeren har i
+  identity, på språket til personen de er koblet til, ellers sitt eget, ellers norsk. En
+  registrering for en slik person sendes ikke til noen. Gi personen en leder koblet til
+  en aktiv bruker for å holde disse e-postene hos lederen;
+- en **søknad om en HR-type** går ikke til noen leder og ingen med `staff:approve` eller
+  `staff:manage`, men til alle andre med `staff:personal-data` (Owner-brukere også), som
+  en nøytral e-post — «En fraværssøknad venter på avgjørelsen din» — som ikke nevner
+  person, type eller dager;
 - en **godkjenning**, et **avslag**, en **tilbaketrekking** av et godkjent fravær gjort av den som avgjør det, og HRs **retting** går
-  til personen.
+  til personen. En egengodkjenning sender ingen e-post.
 
-De med `staff:approve` og `staff:manage` får **ikke** e-post — Ansatte kjenner ikke
-adressene deres — og ser det som venter på dem i godkjenningsinnboksen i stedet.
-E-posten nevner typen bare når den verken er sykdom eller en HR-type: en HR-type er
-«permisjon», sykefravær og sykt barn «fravær»; den har aldri gradering, timer, en
-merknad eller begrunnelsen for et avslag. Som e-posten om endret kontonummer nedenfor
-trenger den `MAIL_DRIVER=smtp`; med en annen driver logger serveren
+Alle som avgjør, ser også det som venter på dem i godkjenningsinnboksen. E-posten nevner
+typen bare når den verken er sykdom eller en HR-type: en HR-type er «permisjon»,
+sykefravær og sykt barn «fravær»; den har aldri gradering, timer, en merknad eller
+begrunnelsen for et avslag. Som e-posten om endret kontonummer nedenfor trenger den
+`MAIL_DRIVER=smtp`; med en annen driver logger serveren
 `staff: absence mail skipped: the mail driver is not smtp`, og en leder uten e-post
-hoppes over med `staff: absence mail skipped: the recipient has no email`. En sending
-som feiler, logges som en advarsel med personens id; fraværet blir stående.
+hoppes over med `staff: absence mail skipped: the recipient has no email`. En bruker med
+rettigheten der identity bare har en plassholderadresse fra en identitetsleverandør eller
+en katalog, hoppes over med `staff: absence mail skipped: the holder has no address a mail
+reaches` og brukerens id; får Ansatte ikke lest fra identity hvem som har rettighetene,
+logger den `staff: absence mail skipped: the holders could not be read` og sender ingen av
+dem. E-postene for én hendelse sendes etter hverandre innen 30 sekunder til sammen; det
+som gjenstår når tiden er ute, logges med antallet. En sending som feiler, logges som en
+advarsel med personens eller brukerens id, aldri en adresse; fraværet blir stående.
 
 ## E-posten om endret kontonummer
 

@@ -119,10 +119,11 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		_, e8 := s.accountsMode(ctx)
 		_, e9 := s.accountsAccount(ctx, user, nil)
 		_, e10 := s.accountsProvisioningRoles(ctx)
-		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10}
+		_, e11 := s.usersPermissionHolders(ctx, permPersonalData)
+		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11}
 	}
 	want := []string{"Users.User", "Users.Users", "Users.SearchUsers", "SMTPSend", "ObjectStore.Put", "ObjectStore.Get", "ObjectStore.Delete",
-		"Accounts.Mode", "Accounts.Account", "Accounts.ProvisioningRoles"}
+		"Accounts.Mode", "Accounts.Account", "Accounts.ProvisioningRoles", "Users.PermissionHolders"}
 
 	for _, err := range call(ctx) {
 		if err != nil {

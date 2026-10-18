@@ -20,8 +20,9 @@ import (
 //     user: the manager-deciders, the only deciders Staff can address by
 //     mail, since it holds their persons' addresses (reading 4);
 //   - (b) every holder of staff:approve, and (c) every holder of
-//     staff:manage — by right, whom Staff cannot list (contracts/users.go),
-//     so they get the inbox and an attention item, never a mail.
+//     staff:manage — by right: the inbox and an attention item, and a mail
+//     only when the person has no manager-decider (holders.go, the owner's
+//     answer 3).
 //
 // Nobody decides their own request: a manager's own goes to their manager by
 // the same rule, and anyone else's waits in another holder's inbox
@@ -32,8 +33,12 @@ import (
 //
 // A request of an HR-only type (review H4, interim option b, reading 33) is
 // decided by staff:personal-data alone — §5 gives HR-only types to that
-// permission — and never by its own holder: there is no self-approval for
-// it; with no other holder it waits.
+// permission — and never by its own holder, but by the sole active holder of
+// staff:personal-data (the owner's decision on B's open question 9, delivery
+// C): when identity names exactly one holder and it is the caller, they
+// approve their own, recorded absence_self_approved and raised to
+// staff:personal-data as hrOnlySelfApproved. A directory that cannot answer
+// makes nobody sole (holders.go), so the request waits.
 //
 // The rule reads the manager graph in a read snapshot and the directory
 // after it — never inside a transaction (the lock rule) — so a decision
@@ -52,6 +57,9 @@ type decider struct {
 func (s *server) judgeDecider(ctx context.Context, caller *callerContext, personID int64, hrOnly bool) (decider, error) {
 	own := caller.Person != nil && *caller.Person == personID
 	if hrOnly {
+		if own && s.solePersonalData(ctx, caller) {
+			return decider{decides: true, own: true, selfApproves: true}, nil
+		}
 		return decider{decides: caller.PersonalData && !own, own: own}, nil
 	}
 	byRight := caller.Approve || caller.Manage

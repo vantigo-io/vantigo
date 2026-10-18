@@ -145,6 +145,7 @@ type setup struct {
 	poolMaxConns int32
 	accounts     contracts.AccountProvisioning
 	noAccounts   bool
+	wrapUsers    func(contracts.UserDirectory) contracts.UserDirectory
 }
 
 // Option adjusts a harness before it is built.
@@ -399,6 +400,16 @@ func WithoutAccounts() Option {
 	return func(s *setup) { s.noAccounts = true }
 }
 
+// WithUsers wraps identity's contracts.UserDirectory in wrap before Compose
+// hands it to every module: a test whose subject is what a module does when
+// the directory fails or answers something identity's tables cannot be made
+// to (a lookup that errors), every other method still identity's own.
+// Identity always provides Users and Compose would overwrite a preset
+// Deps.Users, so the option wraps identity's Module.Users in the composition.
+func WithUsers(wrap func(contracts.UserDirectory) contracts.UserDirectory) Option {
+	return func(s *setup) { s.wrapUsers = wrap }
+}
+
 // WithPoolMaxConns builds the installation's pool at n connections on the
 // harness's migrated database (testdb.Migrated's URL, db.WithMaxConns) in
 // place of the shared default size, for a test that must starve when
@@ -564,6 +575,10 @@ func New(t *testing.T, opts ...Option) *Harness {
 		identityModule.Accounts = nil
 	case s.accounts != nil:
 		identityModule.Accounts = func(module.Deps) contracts.AccountProvisioning { return s.accounts }
+	}
+	if s.wrapUsers != nil && identityModule.Users != nil {
+		users := identityModule.Users
+		identityModule.Users = func(d module.Deps) contracts.UserDirectory { return s.wrapUsers(users(d)) }
 	}
 	mods := append([]module.Module{identityModule}, s.modules...)
 	h.mods = mods

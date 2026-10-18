@@ -107,7 +107,7 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 			}
 			defer func() { _ = tx.Rollback(ctx) }()
 			db := &countingDB{DBTX: tx}
-			items, err := s.readAttention(ctx, store.New(db), &tc.caller, map[string]time.Time{}, false)
+			items, err := s.readAttention(ctx, store.New(db), &tc.caller, map[string]time.Time{}, false, false)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -637,7 +637,23 @@ which reach nobody else's inbox. Each shows the person, the type, the days, the 
 days and the person's note. Press **Approve**, or **Reject**, write the **Reason** and
 press **Reject request**. If somebody else decided it first or the person withdrew it,
 the page says so and reads the inbox again; if the person already has an absence on one
-of the days, the request cannot be approved as it stands.
+of the days, the request cannot be approved as it stands. If you are the only person
+holding `staff:personal-data`, your own request of such a type is in your inbox too and
+you approve it yourself; everyone who holds that permission is then shown it on the
+dashboard until the absence ends.
+
+#### The mails a decider receives
+
+- **A manager** is mailed at their work email (else their private one) when someone they
+  decide for asks for absence or registers it — the person, the type (*leave* for a
+  type that reveals health or family matters, *an absence* for sickness) and the days.
+- **The Approver and HR** are mailed only about a person with no manager who can
+  decide — none in their terms or department, or none linked to an active user — and
+  only about requests, at the address their user has; so is an **Owner**. The mail
+  names the person, the type and the days and links to **Absence**.
+- **A holder of `staff:personal-data`** is mailed about every request of a type that
+  reveals health or family matters, by someone else: "An absence request awaits your
+  decision", with no name, type or days — open **Approvals** to see it.
 
 ## Absence and your holiday
 

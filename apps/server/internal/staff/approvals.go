@@ -14,7 +14,8 @@ import (
 // the caller decides, oldest first — every person's for staff:approve and
 // staff:manage, a manager's reports' today by the one manager rule, and an
 // HR-only type's for staff:personal-data alone (review H4) — never
-// the caller's own but the self-approver's (deciders.go). Each row is shaped
+// the caller's own but the self-approver's: B's by-right self-approver's
+// plain request, the sole personal-data holder's HR-only one (deciders.go). Each row is shaped
 // as GET /absences shapes it for the caller, so an HR-only request is
 // "leave" to all but staff:personal-data, with no revision to anyone who
 // does not write it.
@@ -39,6 +40,7 @@ func (s *server) GetStaffApprovals(ctx context.Context, req gen.GetStaffApproval
 		}
 		selfApproves = d.selfApproves
 	}
+	solePersonalData := s.solePersonalData(ctx, caller)
 	out := gen.PaginatedResponseOfStaffApproval{Data: []gen.StaffApproval{}, Pagination: apicommon.Pagination(page, pageSize, 0)}
 	if !everyone && !caller.PersonalData && caller.Person == nil {
 		return gen.GetStaffApprovals200JSONResponse(out), nil
@@ -56,13 +58,13 @@ func (s *server) GetStaffApprovals(ctx context.Context, req gen.GetStaffApproval
 			return nil
 		}
 		total, err := q.CountRequestedAbsences(ctx, store.CountRequestedAbsencesParams{
-			Everyone: everyone, PersonIds: reports, PersonalData: caller.PersonalData, SelfID: caller.Person, SelfApproves: selfApproves,
+			Everyone: everyone, PersonIds: reports, PersonalData: caller.PersonalData, SelfID: caller.Person, SelfApproves: selfApproves, SolePersonalData: solePersonalData,
 		})
 		if err != nil {
 			return fmt.Errorf("staff: count the requests: %w", err)
 		}
 		rows, err := q.RequestedAbsences(ctx, store.RequestedAbsencesParams{
-			Everyone: everyone, PersonIds: reports, PersonalData: caller.PersonalData, SelfID: caller.Person, SelfApproves: selfApproves,
+			Everyone: everyone, PersonIds: reports, PersonalData: caller.PersonalData, SelfID: caller.Person, SelfApproves: selfApproves, SolePersonalData: solePersonalData,
 			PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 		})
 		if err != nil {

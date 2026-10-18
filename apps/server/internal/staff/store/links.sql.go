@@ -19,6 +19,42 @@ func (q *Queries) DeletePersonLink(ctx context.Context, personID int64) error {
 	return err
 }
 
+const linkedPeopleOfUsers = `-- name: LinkedPeopleOfUsers :many
+SELECT l.external_id::text AS user_id, p.display_name, p.preferred_language
+FROM staff.identity_links l JOIN staff.people p ON p.id = l.person_id
+WHERE l.provider = 'identity' AND l.external_id = ANY($1::text[])
+`
+
+type LinkedPeopleOfUsersRow struct {
+	UserID            string
+	DisplayName       string
+	PreferredLanguage string
+}
+
+// LinkedPeopleOfUsers is the people @user_ids' users are linked to under the
+// identity provider, by user: the name and the language a mail to a holder
+// by right greets them in (notifications.go) — the person's own, before the
+// user's.
+func (q *Queries) LinkedPeopleOfUsers(ctx context.Context, userIds []string) ([]LinkedPeopleOfUsersRow, error) {
+	rows, err := q.db.Query(ctx, linkedPeopleOfUsers, userIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LinkedPeopleOfUsersRow
+	for rows.Next() {
+		var i LinkedPeopleOfUsersRow
+		if err := rows.Scan(&i.UserID, &i.DisplayName, &i.PreferredLanguage); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const mailRecipients = `-- name: MailRecipients :many
 SELECT id, display_name, work_email, private_email, preferred_language
 FROM staff.people WHERE id = ANY($1::bigint[])

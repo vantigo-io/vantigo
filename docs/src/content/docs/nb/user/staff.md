@@ -637,7 +637,23 @@ familieforhold, som ikke når noen andres innboks. Hver viser personen, typen, d
 arbeidsdagene og personens merknad. Trykk **Godkjenn**, eller **Avslå**, skriv
 **Begrunnelse** og trykk **Avslå søknaden**. Har noen andre avgjort den først, eller
 personen trukket den tilbake, sier siden fra og leser innboksen på nytt; har personen
-allerede fravær på en av dagene, kan søknaden ikke godkjennes slik den er.
+allerede fravær på en av dagene, kan søknaden ikke godkjennes slik den er. Er du den
+eneste som har `staff:personal-data`, står også din egen søknad av en slik type i
+innboksen din, og du godkjenner den selv; alle som har den rettigheten, ser den da på
+dashbordet til fraværet er over.
+
+#### E-postene den som avgjør, får
+
+- **En leder** får e-post til jobb-e-posten (ellers den private) når noen de avgjør for,
+  søker om fravær eller registrerer det — personen, typen (*permisjon* for en type som
+  røper helse eller familieforhold, *fravær* for sykdom) og dagene.
+- **Godkjenneren og HR** får e-post bare om en person uten noen leder som kan avgjøre —
+  ingen i arbeidsvilkårene eller avdelingen, eller ingen koblet til en aktiv bruker — og
+  bare om søknader, til adressen brukeren deres har; det samme gjør en **Owner**.
+  E-posten nevner personen, typen og dagene og lenker til **Fravær**.
+- **Den som har `staff:personal-data`**, får e-post om hver søknad av en type som røper
+  helse eller familieforhold, fra noen andre: «En fraværssøknad venter på avgjørelsen
+  din», uten navn, type eller dager — åpne **Godkjenninger** for å se den.
 
 ## Fravær og ferien din
 
