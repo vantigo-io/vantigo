@@ -305,7 +305,7 @@ components:
             type: object
         StaffAbsenceTypeChangeRequest:
             additionalProperties: false
-            description: A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort, hidden and paid alone — every other value as it is, else seed_immutable — ammefri stays paid (aml. § 12-8 (2)), as does svangerskapskontroll (aml. § 12-1), and the reserved types stay hidden and unpaid.
+            description: A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it, and narrowed from absent to hr_only only while no absence of it approved by its own person has not ended (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort, hidden and paid alone — every other value as it is, else seed_immutable — ammefri stays paid (aml. § 12-8 (2)), as does svangerskapskontroll (aml. § 12-1), and the reserved types stay hidden and unpaid.
             properties:
                 allowsPercent:
                     description: Only on a type counted in days.
@@ -3882,7 +3882,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/StaffProblem'
-                    description: Conflict — revision_conflict, seed_immutable, or absence_type_in_use (widening a type's visibility from hr_only to absent once an absence names it).
+                    description: Conflict — revision_conflict, seed_immutable, or absence_type_in_use (widening a type's visibility from hr_only to absent once an absence names it, or narrowing it from absent to hr_only while an absence of it approved by its own person has not ended).
             summary: Change an absence type
             tags:
                 - Staff

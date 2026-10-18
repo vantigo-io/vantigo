@@ -432,7 +432,9 @@ Through the API, as a user with `staff:manage`:
    hidden and `paid`; anything else — and `ammefri` with `paid: false` — is refused
    `seed_immutable`. A type of your own may be made
    HR-only at any time, but once someone has taken it as HR-only it cannot be opened to
-   colleagues and managers (`absence_type_in_use`): add another type instead. Making a
+   colleagues and managers (`absence_type_in_use`): add another type instead. Nor is a
+   type made HR-only while an absence of it that its own person approved has not ended
+   (`absence_type_in_use` too): wait until it has. Making a
    type in use HR-only reaches back: from then on its rows already entered show
    managers only *leave*, and their requests, refusals and history are hidden from them
    too. An HR-only type of your own neither allows a percentage nor draws on the
