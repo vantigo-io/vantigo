@@ -115,6 +115,92 @@ func TestEnergyImportWorker_ResumesAtTheFirstRowWithoutAnOutcome(t *testing.T) {
 	}
 }
 
+// TestEnergyImportWorker_AnImportStoppedAsItIsTakenUpIsNotRun: a stop that
+// sends an unstarted check back to draft between the worker's read of the
+// queue and its taking the import up leaves nothing to take up. The worker
+// used to start it anyway and finish a check nobody wanted any more.
+func TestEnergyImportWorker_AnImportStoppedAsItIsTakenUpIsNotRun(t *testing.T) {
+	t.Parallel()
+	h, c, _ := importHarness(t)
+	imp := uploadEnergyImport(t, c, manyPoints(3))
+	energyImportOf(t, putEnergyMapping(c, imp.ID, manyPointsMapping), http.StatusOK)
+	energyImportOf(t, postEnergyCheck(c, imp.ID), http.StatusOK)
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// The stop endpoint's own statement (RevertUnstartedImport), not yet
+	// committed when the worker reads the queue.
+	if _, err := tx.Exec(ctx, `UPDATE energy.imports SET state = 'draft', requested_at = NULL WHERE id = $1 AND started_at IS NULL`, imp.ID); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	cycle := make(chan error, 1)
+	go func() {
+		_, err := energy.NewImportWorker(h.Deps()).RunCycle(context.Background())
+		cycle <- err
+	}()
+	waitForALockWait(t, h)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if err := <-cycle; err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	if after := getEnergyImport(t, c, imp.ID); after.State != "draft" || after.StartedAt != nil || after.Processed != 0 {
+		t.Errorf("after = %+v, want draft and never started", after)
+	}
+}
+
+// TestEnergyImportWorker_ARowsPointLockLeavesASupplyPeriodInsertFree: an
+// import row locks its point and then waits on the point's supply-period
+// lock; an endpoint holds that lock and inserts a period, whose foreign key
+// takes FOR KEY SHARE on the point. The row's lock is FOR NO KEY UPDATE, which
+// lets that through; FOR UPDATE did not, and the two deadlocked.
+func TestEnergyImportWorker_ARowsPointLockLeavesASupplyPeriodInsertFree(t *testing.T) {
+	t.Parallel()
+	h, c, _ := importHarness(t)
+	id := createPointByHand(t, c, gsrn1, "M-0012")
+	imp := uploadEnergyImport(t, c, fileOf(pointHeader, pointRow(gsrn1, orgA, "01.07.2026")))
+	energyImportOf(t, putEnergyMapping(c, imp.ID, fullMapping("update")), http.StatusOK)
+	energyImportOf(t, postEnergyCheck(c, imp.ID), http.StatusOK)
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, int32(energy.SupplyPeriodLockClassForTest), id); err != nil {
+		t.Fatalf("take the supply-period lock: %v", err)
+	}
+	cycle := make(chan error, 1)
+	go func() {
+		_, err := energy.NewImportWorker(h.Deps()).RunCycle(context.Background())
+		cycle <- err
+	}()
+	// The row has its point and waits on the supply-period lock.
+	waitForALockWait(t, h)
+	// Well inside deadlock_timeout, so a wait here is the timeout's error and
+	// not the deadlock detector choosing the row.
+	if _, err := tx.Exec(ctx, `SET LOCAL lock_timeout = '200ms'`); err != nil {
+		t.Fatalf("set lock_timeout: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, status)
+		VALUES ($1, 1002, '2026-01-01T00:00:00Z', 'Active')`, id); err != nil {
+		t.Fatalf("the period's insert waited on the row's point lock: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if err := <-cycle; err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	if checked := getEnergyImport(t, c, imp.ID); checked.State != "checked" || checked.Updated != 1 || checked.Switched != 1 {
+		t.Errorf("checked = %+v, want the row updating the point and switching it from 1002", checked)
+	}
+}
+
 // Not parallel: it sets the package's run hook.
 func TestEnergyImportWorker_AWholeRunFailureIsWrittenAndRetried(t *testing.T) {
 	h, c, _ := importHarness(t)

@@ -137,10 +137,13 @@ WHERE state IN ('checking', 'importing', 'attaching')
 ORDER BY requested_at, id
 LIMIT 1;
 
--- name: StartImport :exec
+-- The worker taking up the import it read from the queue, only while the
+-- import is still in the state it was read in: a stop or a delete in between
+-- leaves nothing to take up, and the worker goes on to the next.
+-- name: StartImport :execrows
 UPDATE energy.imports
 SET started_at = COALESCE(started_at, sqlc.arg(started_at)::timestamptz), error = NULL, updated_at = sqlc.arg(started_at)::timestamptz
-WHERE id = $1;
+WHERE id = sqlc.arg(id) AND state = sqlc.arg(state);
 
 -- name: ImportStopRequested :one
 SELECT stop_requested
@@ -223,6 +226,14 @@ WHERE import_id = $1 AND row_no = $2;
 -- name: WriteImportRowAttach :exec
 UPDATE energy.import_rows
 SET link = $3, switch_from = $4, supply_start = $5, errors = $6, attach_tried = true
+WHERE import_id = $1 AND row_no = $2;
+
+-- A pending row the attach refused: still pending, its errors written, and
+-- its switch_from as PreparePendingRowsForAttach left it, so the pending
+-- switches still count it.
+-- name: WriteImportRowAttachRefusal :exec
+UPDATE energy.import_rows
+SET errors = $3, attach_tried = true
 WHERE import_id = $1 AND row_no = $2;
 
 -- The preview's rows: the first few, in file order.

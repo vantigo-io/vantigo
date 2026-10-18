@@ -269,6 +269,7 @@ var validatorFields = map[string]string{
 	"address.city":                 fieldCity,
 	"address.countryCode":          fieldCountryCode,
 	"priceArea":                    fieldPriceArea,
+	"gridArea":                     fieldGridArea,
 	"expectedAnnualConsumptionKwh": fieldExpectedAnnual,
 	"connectionStatus":             fieldConnectionStatus,
 	"meterNumber":                  fieldMeterNumber,
@@ -336,6 +337,12 @@ func (l importLayout) resolvePoint(p importPlan, cur *store.EnergyMeteringPoint,
 		curExpected, curLatitude, curLongitude = floatPtrFromNumeric(cur.ExpectedAnnualConsumptionKwh), cur.Latitude, cur.Longitude
 	}
 	r.expectedAnnual = decimal(fieldExpectedAnnual, "Expected annual consumption", curExpected)
+	if r.expectedAnnual != nil {
+		// As the column will hold it, so a row repeating what is on file
+		// compares equal and the limit is judged on the stored value.
+		rounded := roundKwh(*r.expectedAnnual)
+		r.expectedAnnual = &rounded
+	}
 	r.latitude = decimal(fieldLatitude, "Latitude", curLatitude)
 	r.longitude = decimal(fieldLongitude, "Longitude", curLongitude)
 
@@ -355,7 +362,7 @@ func (l importLayout) resolvePoint(p importPlan, cur *store.EnergyMeteringPoint,
 		gsrn = strings.Repeat("0", 18) // the GSRN's own error is plan's
 	}
 	address := gen.AddressRequest{StreetAddress: &r.streetAddress, PostalCode: &r.postalCode, City: &r.city, CountryCode: &r.countryCode}
-	fieldErrs := validateMeteringPointFields(&gsrn, &address, &r.priceArea, r.expectedAnnual, r.latitude, r.longitude, status)
+	fieldErrs := validateMeteringPointFields(&gsrn, &address, &r.priceArea, r.gridArea, r.expectedAnnual, r.latitude, r.longitude, status)
 	if cur == nil {
 		// A blank meter number is a create's error only: planned without
 		// knowing whether it creates (strict false), the row may be an update,
@@ -828,6 +835,10 @@ func floatPtrEqual(a, b *float64) bool {
 	return *a == *b
 }
 
+// importValueRefusal is a row's error when the database refuses one of its
+// values as too long or out of range (SQLSTATE class 22).
+const importValueRefusal = "A value is out of range or too long for its field."
+
 // errImportDryRun rolls a dry-run row's transaction back once the row ran.
 var errImportDryRun = errors.New("energy: import dry run rolled back")
 
@@ -874,6 +885,12 @@ func (s *server) runImportRow(ctx context.Context, on db.TxBeginner, importID in
 			return nil
 		})
 	})
+	// A data exception is a value of the row's the column cannot hold that
+	// the checks above let through: the row's refusal, never the run's, so
+	// one cell cannot stall the import and every import queued behind it.
+	if db.IsDataException(err) {
+		err = refuseRow(p.Row, "", importValueRefusal)
+	}
 	var refused *importRowRefusal
 	switch {
 	case errors.Is(err, errImportDryRun):

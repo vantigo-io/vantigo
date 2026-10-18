@@ -48,11 +48,12 @@ Click **New metering point** on the list. Fill in:
 - **Street address**, **Postal code**, **City**, **Country code**: all required; the
   country code is two letters and defaults to `NO`.
 - **Price area**: NO1 to NO5.
-- **Grid area**: optional.
+- **Grid area**: optional, at most 64 characters.
 - **Connection status**: **New**, **Connected** or **Disconnected**; new points start
   as **New**.
 - **Expected annual consumption (kWh)**, **Latitude**, **Longitude**: optional.
-  Latitude must lie between -90 and 90, longitude between -180 and 180.
+  Expected annual consumption must be less than 100 000 000 000 kWh; latitude must lie
+  between -90 and 90, longitude between -180 and 180.
 
 **Create metering point** saves it and confirms with *Metering point created*. The
 dialog marks the fields that are missing or malformed; a GSRN that already exists is

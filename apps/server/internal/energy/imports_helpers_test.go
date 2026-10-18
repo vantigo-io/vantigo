@@ -467,3 +467,19 @@ func rowNamed(t *testing.T, rows []energyImportRowJSON, n int) energyImportRowJS
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// waitForALockWait waits until some other session of the harness's database
+// is waiting on a lock — the request or the worker a test started in a
+// goroutine has reached the statement the test's open transaction holds up.
+func waitForALockWait(t *testing.T, h *modtest.Harness) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if h.Count(t, `SELECT count(*) FROM pg_stat_activity
+			WHERE datname = current_database() AND pid <> pg_backend_pid() AND wait_event_type = 'Lock'`) > 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("no session came to wait on a lock")
+}

@@ -2,6 +2,8 @@ package energy
 
 import (
 	"fmt"
+	"math"
+	"math/big"
 	"strconv"
 	"strings"
 	"unicode"
@@ -139,6 +141,31 @@ func floatPtrFromNumeric(n pgtype.Numeric) *float64 {
 		return nil
 	}
 	return &f.Float64
+}
+
+// roundKwh is v as a numeric(14,3) column stores it: rounded to three
+// decimals, half away from zero, as Postgres rounds numeric — done on v's
+// shortest decimal text, the very text numericFromFloatPtr sends, so the
+// result is what the column would hold, not what float arithmetic would make
+// of it. A value read back from the column is already rounded and comes back
+// unchanged; a NaN or an infinity comes back as it is.
+func roundKwh(v float64) float64 {
+	whole, frac, _ := strings.Cut(strconv.FormatFloat(math.Abs(v), 'f', -1, 64), ".")
+	if len(frac) <= 3 {
+		return v
+	}
+	n, ok := new(big.Int).SetString(whole+frac[:3], 10)
+	if !ok {
+		return v
+	}
+	if frac[3] >= '5' {
+		n.Add(n, big.NewInt(1))
+	}
+	r, err := strconv.ParseFloat(n.String()+"e-3", 64)
+	if err != nil {
+		return v
+	}
+	return math.Copysign(r, v)
 }
 
 // numericFromFloat is numericFromFloatPtr's non-nullable counterpart, for a

@@ -16,3 +16,8 @@ func SetImportRunHook(f func(ctx context.Context, importID int32) error) func() 
 // a test can take the same lock from a second connection and prove a cycle
 // skips (energy import design D6).
 const ImportLeaseKeyForTest = importLeaseKey
+
+// SupplyPeriodLockClassForTest is the supply periods' advisory-lock class,
+// exported so a test can hold a point's supply-period lock as an endpoint
+// does and prove what an import row's own locks leave free.
+const SupplyPeriodLockClassForTest = supplyPeriodLockClass

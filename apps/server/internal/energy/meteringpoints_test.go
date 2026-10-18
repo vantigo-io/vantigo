@@ -3,6 +3,7 @@ package energy_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -121,6 +122,9 @@ func TestCreateMeteringPoint_ValidationMessages(t *testing.T) {
 		{"missing address", withField(newMeteringPointBody(gsrn(t), "M"), "address", nil), "address", "Address is required."},
 		{"bad priceArea", withField(newMeteringPointBody(gsrn(t), "M"), "priceArea", "no1"), "priceArea", "Price area must contain two uppercase letters followed by one or two digits."},
 		{"negative consumption", withField(newMeteringPointBody(gsrn(t), "M"), "expectedAnnualConsumptionKwh", -1.0), "expectedAnnualConsumptionKwh", "Expected annual consumption cannot be negative."},
+		{"grid area too long", withField(newMeteringPointBody(gsrn(t), "M"), "gridArea", strings.Repeat("g", 65)), "gridArea", "Grid area cannot be longer than 64 characters."},
+		{"consumption too large", withField(newMeteringPointBody(gsrn(t), "M"), "expectedAnnualConsumptionKwh", 1e11), "expectedAnnualConsumptionKwh", "Expected annual consumption must be less than 100000000000."},
+		{"consumption rounding onto the limit", withField(newMeteringPointBody(gsrn(t), "M"), "expectedAnnualConsumptionKwh", 99999999999.9996), "expectedAnnualConsumptionKwh", "Expected annual consumption must be less than 100000000000."},
 		{"bad latitude", withField(newMeteringPointBody(gsrn(t), "M"), "latitude", 200.0), "location", "Latitude must be between -90 and 90."},
 		{"bad longitude", withField(newMeteringPointBody(gsrn(t), "M"), "longitude", 200.0), "location", "Longitude must be between -180 and 180."},
 		{"bad connectionStatus", withField(newMeteringPointBody(gsrn(t), "M"), "connectionStatus", "Bogus"), "connectionStatus", "Connection status must be New, Connected or Disconnected."},
@@ -248,6 +252,40 @@ func TestUpdateMeteringPoint_DuplicateGsrn_ReturnsConflict(t *testing.T) {
 	same := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), updateBody(point.Gsrn))
 	if same.Status != http.StatusOK {
 		t.Errorf("self-update status %d body %s, want 200 (excluding self)", same.Status, same.Body)
+	}
+}
+
+// TestUpdateMeteringPoint_RefusesWhatItsColumnsCannotHold: a grid area longer
+// than its varchar(64) and a consumption beyond its numeric(14,3) are the
+// request's 400, never the database's 500 — on the update as on the create.
+func TestUpdateMeteringPoint_RefusesWhatItsColumnsCannotHold(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, allEnergyPermissions...)
+	point := createMeteringPoint(t, c)
+
+	body := updateBody(point.Gsrn)
+	body["gridArea"] = "  " + strings.Repeat("g", 65) + "  "
+	body["expectedAnnualConsumptionKwh"] = 2e11
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), body)
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if got := problem.Errors["gridArea"]; len(got) != 1 || got[0] != "Grid area cannot be longer than 64 characters." {
+		t.Errorf("Errors[gridArea] = %v", got)
+	}
+	if got := problem.Errors["expectedAnnualConsumptionKwh"]; len(got) != 1 || got[0] != "Expected annual consumption must be less than 100000000000." {
+		t.Errorf("Errors[expectedAnnualConsumptionKwh] = %v", got)
+	}
+
+	// The limits themselves fit: 64 characters once trimmed, and the largest
+	// value the column holds.
+	body["gridArea"] = "  " + strings.Repeat("g", 64) + "  "
+	body["expectedAnnualConsumptionKwh"] = 99999999999.999
+	if ok := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), body); ok.Status != http.StatusOK {
+		t.Errorf("at the limits: status %d body %s, want 200", ok.Status, ok.Body)
 	}
 }
 

@@ -99,9 +99,15 @@ LIMIT @page_size::int OFFSET @row_offset::int;
 -- name: MeteringPointByGsrnForUpdate :one
 -- MeteringPointByGsrnForUpdate is the import's match (energy import design
 -- D3): the point holding a GSRN, locked for the row's transaction so nothing
--- a colleague writes lands between the read and the row's write.
+-- a colleague writes lands between the read and the row's write. FOR NO KEY
+-- UPDATE, not FOR UPDATE: the import never changes the point's key, and the
+-- weaker lock leaves the FOR KEY SHARE a supply period's, a meter's or a
+-- reading's foreign key takes on the point free — so an endpoint that holds
+-- the point's supply-period advisory lock and inserts a period does not wait
+-- on a row that waits on that advisory lock. An update, a GSRN change or a
+-- delete of the point still waits, as before.
 SELECT id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
        expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
 FROM energy.metering_points
 WHERE gsrn = @gsrn
-FOR UPDATE;
+FOR NO KEY UPDATE;

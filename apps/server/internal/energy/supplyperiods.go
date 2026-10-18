@@ -109,8 +109,14 @@ func hasUTCOffset(t time.Time) bool {
 // validateSupplyPeriodStart is SupplyPeriod.Validate(start, nil) as Create
 // and Switch call it (SupplyPeriod.cs:23-27): start is always
 // request-supplied and end is always nil at creation time, so only start's
-// offset needs checking.
-func validateSupplyPeriodStart(start time.Time) string {
+// offset needs checking. Before that, start must be there at all: the router
+// does not enforce a body's required fields, so a body without one decodes
+// to the zero time, which is UTC and would pass — label names the field in
+// the message ("Start", "Switch at").
+func validateSupplyPeriodStart(start time.Time, label string) string {
+	if start.IsZero() {
+		return label + " is required."
+	}
 	if !hasUTCOffset(start) {
 		return "Start and end must be UTC timestamps."
 	}
@@ -189,7 +195,7 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, 
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {"Customer ID must be greater than zero."}})), nil
 	}
-	if msg := validateSupplyPeriodStart(body.Start); msg != "" {
+	if msg := validateSupplyPeriodStart(body.Start, "Start"); msg != "" {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"start": {msg}})), nil
 	}
@@ -271,7 +277,7 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {"Customer ID must be greater than zero."}})), nil
 	}
-	if msg := validateSupplyPeriodStart(body.SwitchAt); msg != "" {
+	if msg := validateSupplyPeriodStart(body.SwitchAt, "Switch at"); msg != "" {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"switchAt": {msg}})), nil
 	}

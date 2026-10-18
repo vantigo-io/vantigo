@@ -26,6 +26,12 @@ const (
 	addressStreetMaxLength = 200 // Address.StreetAddressMaxLength
 	addressPostalMaxLength = 16  // Address.PostalCodeMaxLength
 	addressCityMaxLength   = 100 // Address.CityMaxLength
+	gridAreaMaxLength      = 64  // metering_points.grid_area varchar(64)
+
+	// expectedAnnualLimit is the first value metering_points'
+	// expected_annual_consumption_kwh numeric(14,3) cannot hold: eleven
+	// digits before the point.
+	expectedAnnualLimit = 1e11
 
 	defaultPage     = int32(1)
 	defaultPageSize = int32(25)
@@ -37,7 +43,7 @@ const (
 // :70-91): every check runs regardless of the others, each collected under
 // its own field key. Create additionally validates meterNumber, which this
 // helper does not touch — the caller adds that key itself.
-func validateMeteringPointFields(gsrn *string, address *gen.AddressRequest, priceArea *string,
+func validateMeteringPointFields(gsrn *string, address *gen.AddressRequest, priceArea, gridArea *string,
 	expectedAnnualConsumptionKwh *float64, latitude, longitude *float64, connectionStatus *string,
 ) map[string][]string {
 	errs := map[string][]string{}
@@ -48,8 +54,19 @@ func validateMeteringPointFields(gsrn *string, address *gen.AddressRequest, pric
 	if priceArea == nil || !priceAreaValid(*priceArea) {
 		errs["priceArea"] = []string{"Price area must contain two uppercase letters followed by one or two digits."}
 	}
-	if expectedAnnualConsumptionKwh != nil && *expectedAnnualConsumptionKwh < 0 {
+	// The grid area is stored trimmed (trimmedOrNil), so the trimmed value is
+	// what must fit its column.
+	if gridArea != nil && utf16Length(strings.TrimSpace(*gridArea)) > gridAreaMaxLength {
+		errs["gridArea"] = []string{fmt.Sprintf("Grid area cannot be longer than %d characters.", gridAreaMaxLength)}
+	}
+	switch {
+	case expectedAnnualConsumptionKwh == nil:
+	case *expectedAnnualConsumptionKwh < 0:
 		errs["expectedAnnualConsumptionKwh"] = []string{"Expected annual consumption cannot be negative."}
+	case roundKwh(*expectedAnnualConsumptionKwh) >= expectedAnnualLimit:
+		// Compared as stored: the column rounds to three decimals, so a
+		// value just under the limit can round onto it.
+		errs["expectedAnnualConsumptionKwh"] = []string{"Expected annual consumption must be less than 100000000000."}
 	}
 	if msg := validateLocation(latitude, longitude); msg != "" {
 		errs["location"] = []string{msg}
@@ -263,7 +280,7 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 	if req.Body != nil {
 		body = *req.Body
 	}
-	errs := validateMeteringPointFields(body.Gsrn, body.Address, body.PriceArea,
+	errs := validateMeteringPointFields(body.Gsrn, body.Address, body.PriceArea, body.GridArea,
 		body.ExpectedAnnualConsumptionKwh, body.Latitude, body.Longitude, body.ConnectionStatus)
 	if msg := validateMeterNumber(body.MeterNumber); msg != "" {
 		errs["meterNumber"] = []string{msg}
@@ -365,7 +382,7 @@ func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEne
 	if req.Body != nil {
 		body = *req.Body
 	}
-	errs := validateMeteringPointFields(body.Gsrn, body.Address, body.PriceArea,
+	errs := validateMeteringPointFields(body.Gsrn, body.Address, body.PriceArea, body.GridArea,
 		body.ExpectedAnnualConsumptionKwh, body.Latitude, body.Longitude, body.ConnectionStatus)
 	if len(errs) > 0 {
 		return gen.PutEnergyMeteringPointsById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid metering point", errs)), nil
