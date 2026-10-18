@@ -422,6 +422,10 @@ func (f *fakeCustomers) ContactsByEmail(context.Context, string) ([]contracts.Co
 	return []contracts.ContactMatch{}, nil
 }
 
+func (*fakeCustomers) CustomersByLegalID(context.Context, string, []string) (map[string][]contracts.CustomerEntry, error) {
+	return map[string][]contracts.CustomerEntry{}, nil
+}
+
 func (f *fakeCustomers) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
 	f.mu.Lock()
 	p, ok := f.profiles[id]

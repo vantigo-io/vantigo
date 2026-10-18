@@ -276,6 +276,122 @@ func TestDirectory_Customers_OrderedByAscendingID(t *testing.T) {
 	}
 }
 
+// --- CustomersByLegalID -------------------------------------------------
+
+// TestDirectory_CustomersByLegalID_FoundAndNotFound proves a held number
+// resolves to its customer under the id as given, and a number nobody holds is
+// absent from the map, not an error.
+func TestDirectory_CustomersByLegalID_FoundAndNotFound(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	id := insertCustomer(t, h, "Nordvest Kraft AS", "active")
+	setLegalIdentity(t, h, id, "no", "923609016", "NORDVEST KRAFT AS")
+
+	got, err := newDirectory(t, h).CustomersByLegalID(context.Background(), "no", []string{"923609016", "999999999"})
+	if err != nil {
+		t.Fatalf("CustomersByLegalID: %v", err)
+	}
+	if len(got) != 1 || len(got["923609016"]) != 1 || got["923609016"][0] != (contracts.CustomerEntry{ID: id, Name: "Nordvest Kraft AS"}) {
+		t.Errorf("CustomersByLegalID = %+v, want only 923609016 → %d", got, id)
+	}
+	if _, ok := got["999999999"]; ok {
+		t.Errorf("an unheld number is in the map: %+v", got)
+	}
+}
+
+// TestDirectory_CustomersByLegalID_TwoHoldersInIDOrder proves an ambiguous
+// number returns every holder, ordered by ascending id, for the caller to
+// refuse.
+func TestDirectory_CustomersByLegalID_TwoHoldersInIDOrder(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	first := insertCustomer(t, h, "Første AS", "active")
+	second := insertCustomer(t, h, "Andre AS", "active")
+	setLegalIdentity(t, h, second, "no", "923609016", "ANDRE AS")
+	setLegalIdentity(t, h, first, "no", "923609016", "FØRSTE AS")
+
+	got, err := newDirectory(t, h).CustomersByLegalID(context.Background(), "no", []string{"923609016"})
+	if err != nil {
+		t.Fatalf("CustomersByLegalID: %v", err)
+	}
+	holders := got["923609016"]
+	if len(holders) != 2 || holders[0].ID != first || holders[1].ID != second {
+		t.Errorf("holders = %+v, want [%d %d]", holders, first, second)
+	}
+}
+
+// TestDirectory_CustomersByLegalID_NormalisesButKeysAsGiven proves the
+// comparison is the duplicate guard's — whitespace in the id dropped, the
+// country in any case — and that each key is the id exactly as given, two ids
+// that normalise alike each getting the customer.
+func TestDirectory_CustomersByLegalID_NormalisesButKeysAsGiven(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	id := insertCustomer(t, h, "Nordvest Kraft AS", "active")
+	setLegalIdentity(t, h, id, "no", "923609016", "NORDVEST KRAFT AS")
+
+	got, err := newDirectory(t, h).CustomersByLegalID(context.Background(), " NO ", []string{"923 609 016", "923609016", " 923 609 016", "923609016"})
+	if err != nil {
+		t.Fatalf("CustomersByLegalID: %v", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("keys = %d, want 3 (one per distinct id as given): %+v", len(got), got)
+	}
+	for _, key := range []string{"923 609 016", "923609016", " 923 609 016"} {
+		if len(got[key]) != 1 || got[key][0].ID != id {
+			t.Errorf("got[%q] = %+v, want exactly customer %d", key, got[key], id)
+		}
+	}
+	other, err := newDirectory(t, h).CustomersByLegalID(context.Background(), "se", []string{"923609016"})
+	if err != nil || len(other) != 0 {
+		t.Errorf("another country = %+v, %v; want an empty map", other, err)
+	}
+}
+
+// TestDirectory_CustomersByLegalID_ArchivedAndMergedAwayReturned proves the
+// directory does not filter holders the caller cannot write to: they come back
+// with Archived and MergedInto set, and the caller decides.
+func TestDirectory_CustomersByLegalID_ArchivedAndMergedAwayReturned(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	archived := insertCustomer(t, h, "Arkivert AS", "archived")
+	setLegalIdentity(t, h, archived, "no", "923609016", "ARKIVERT AS")
+	survivor := insertCustomer(t, h, "Overlever AS", "active")
+	absorbed := insertCustomer(t, h, "Slått sammen AS", "active")
+	setLegalIdentity(t, h, absorbed, "no", "974760673", "SLÅTT SAMMEN AS")
+	h.Exec(t, `UPDATE customers.customers SET status = 'archived', merged_into_customer_id = $1 WHERE id = $2`, survivor, absorbed)
+
+	got, err := newDirectory(t, h).CustomersByLegalID(context.Background(), "no", []string{"923609016", "974760673"})
+	if err != nil {
+		t.Fatalf("CustomersByLegalID: %v", err)
+	}
+	if a := got["923609016"]; len(a) != 1 || a[0].ID != archived || !a[0].Archived || a[0].MergedInto != nil {
+		t.Errorf("archived holder = %+v, want %d with Archived and no MergedInto", a, archived)
+	}
+	if m := got["974760673"]; len(m) != 1 || m[0].ID != absorbed || !m[0].Archived || m[0].MergedInto == nil || *m[0].MergedInto != survivor {
+		t.Errorf("merged-away holder = %+v, want %d archived with MergedInto %d", m, absorbed, survivor)
+	}
+}
+
+// TestDirectory_CustomersByLegalID_EmptyOrNilInputQueriesNothing proves the
+// no-input case answers an empty, non-nil map without touching the database
+// (the directory has no pool here, so a query would fail) — and so does an
+// input of ids that are blank once their whitespace is gone.
+func TestDirectory_CustomersByLegalID_EmptyOrNilInputQueriesNothing(t *testing.T) {
+	t.Parallel()
+	dir := customers.Module().Directory(module.Deps{})
+
+	for name, ids := range map[string][]string{"nil": nil, "empty": {}, "blank": {"", "  "}} {
+		got, err := dir.CustomersByLegalID(context.Background(), "no", ids)
+		if err != nil {
+			t.Errorf("CustomersByLegalID(%s) error = %v, want nil", name, err)
+		}
+		if got == nil || len(got) != 0 {
+			t.Errorf("CustomersByLegalID(%s) = %#v, want a non-nil empty map", name, got)
+		}
+	}
+}
+
 // --- BillingProfile -----------------------------------------------------
 
 // setCustomerType sets a customer's type column directly, bypassing the

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -66,6 +67,50 @@ func (d *directory) Customers(ctx context.Context, ids []int32) ([]contracts.Cus
 			Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID})
 	}
 	return entries, nil
+}
+
+// CustomersByLegalID finds the customers holding each organisation number in
+// ids, in one round trip (energy import design D4), keyed by the id as given.
+// The inputs are normalised the way validateLegalIdentity stored the column —
+// the country trimmed and lower-cased, the id without whitespace — so the
+// query compares as stored and keeps ix_customers_legal_identity
+// (DirectoryCustomersByLegalID, queries/customers.sql). Two ids that normalise
+// alike ("923 609 016", "923609016") each get the same customers; one that
+// normalises to nothing, or that nobody holds, is absent. Archived and
+// merged-away holders are returned as they are, for the caller to judge.
+func (d *directory) CustomersByLegalID(ctx context.Context, country string, ids []string) (map[string][]contracts.CustomerEntry, error) {
+	result := map[string][]contracts.CustomerEntry{}
+	given := map[string][]string{} // normalised id → the ids as given
+	normalised := make([]string, 0, len(ids))
+	for _, id := range ids {
+		n := stripWhitespace(id)
+		if n == "" {
+			continue
+		}
+		if _, seen := given[n]; !seen {
+			normalised = append(normalised, n)
+		}
+		if !slices.Contains(given[n], id) {
+			given[n] = append(given[n], id)
+		}
+	}
+	if len(normalised) == 0 {
+		return result, nil
+	}
+	rows, err := d.q.DirectoryCustomersByLegalID(ctx, store.DirectoryCustomersByLegalIDParams{
+		Country: strings.ToLower(strings.TrimSpace(country)), LegalIds: normalised,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("customers: directory customers by legal id: %w", err)
+	}
+	for _, row := range rows {
+		entry := contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
+			Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID}
+		for _, id := range given[deref(row.LegalID)] {
+			result[id] = append(result[id], entry)
+		}
+	}
+	return result, nil
 }
 
 // groupEntry is a directory row's group, nil when the customer belongs to none.

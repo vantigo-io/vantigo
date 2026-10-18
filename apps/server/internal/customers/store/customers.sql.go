@@ -798,6 +798,68 @@ func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]Direct
 	return items, nil
 }
 
+const directoryCustomersByLegalID = `-- name: DirectoryCustomersByLegalID :many
+SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.legal_country = $1::text AND c.legal_id = ANY($2::text[])
+ORDER BY c.id
+`
+
+type DirectoryCustomersByLegalIDParams struct {
+	Country  string
+	LegalIds []string
+}
+
+type DirectoryCustomersByLegalIDRow struct {
+	ID                   int32
+	LegalID              *string
+	Name                 string
+	Archived             bool
+	GroupID              *uuid.UUID
+	GroupName            *string
+	MergedIntoCustomerID *int32
+}
+
+// DirectoryCustomersByLegalID is contracts.CustomerDirectory.CustomersByLegalID's
+// rows (energy import design D4): every customer holding @country with one of
+// @legal_ids, the batch twin of CustomersByLegalIdentity above for an import
+// that resolves every organisation number of its file before the first row.
+// Both sides are compared as stored — the caller normalises the inputs the way
+// validateLegalIdentity stored them (a lower-cased country, an id without
+// whitespace) — so the plain equality and ANY keep ix_customers_legal_identity
+// usable. Unlike the duplicate guard, archived and merged-away customers are
+// returned, with the columns that say so: the caller decides what a merged-away
+// holder means. The other columns are DirectoryCustomer's own, joined the same
+// way, ordered by id.
+func (q *Queries) DirectoryCustomersByLegalID(ctx context.Context, arg DirectoryCustomersByLegalIDParams) ([]DirectoryCustomersByLegalIDRow, error) {
+	rows, err := q.db.Query(ctx, directoryCustomersByLegalID, arg.Country, arg.LegalIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryCustomersByLegalIDRow
+	for rows.Next() {
+		var i DirectoryCustomersByLegalIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LegalID,
+			&i.Name,
+			&i.Archived,
+			&i.GroupID,
+			&i.GroupName,
+			&i.MergedIntoCustomerID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCustomer = `-- name: GetCustomer :one
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
        created_at, updated_at, type, revision, email, phone, website, owner_user_id

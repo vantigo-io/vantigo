@@ -548,6 +548,11 @@ func (f *fakeCustomers) ContactsByEmail(ctx context.Context, _ string) ([]contra
 	return []contracts.ContactMatch{}, nil
 }
 
+func (f *fakeCustomers) CustomersByLegalID(ctx context.Context, _ string, _ []string) (map[string][]contracts.CustomerEntry, error) {
+	f.locked.note(ctx, "CustomersByLegalID")
+	return map[string][]contracts.CustomerEntry{}, nil
+}
+
 func (f *fakeCustomers) BillingProfile(ctx context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

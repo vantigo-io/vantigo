@@ -2847,6 +2847,7 @@ wired into every module's `Deps` by Compose before any module mounts:
 type CustomerDirectory interface {
     Customer(ctx, id int32) (*CustomerEntry, error)             // {ID, Name, Archived, Group, MergedInto}
     Customers(ctx, ids []int32) ([]CustomerEntry, error)         // batch; a missing id is simply absent
+    CustomersByLegalID(ctx, country string, ids []string) (map[string][]CustomerEntry, error) // by organisation number
     Contact(ctx, id int32) (*ContactEntry, error)                // {ID, FirstName, LastName, Email}
     ContactsByEmail(ctx, email string) ([]ContactMatch, error)   // {ContactID, CandidateCustomerIDs}
     BillingProfile(ctx, id int32) (*CustomerBillingProfile, error) // resolved, see below
@@ -2859,9 +2860,10 @@ Rules that hold across every method here:
   `BillingProfile` alike. A caller tells "does not exist" from "the lookup failed"
   only by checking `err`. `Customers` is the batch exception: a missing id is
   simply absent from the result slice, never an entry in it and never an error
-  either — the same rule, restated for a slice instead of a pointer.
-- **Archived customers still resolve**, from `Customer`, `Customers` and
-  `BillingProfile` alike. A supply period, a project or a past invoice can hold a
+  either — the same rule, restated for a slice instead of a pointer. So is
+  `CustomersByLegalID`: a number nobody holds is absent from the map.
+- **Archived customers still resolve**, from `Customer`, `Customers`,
+  `CustomersByLegalID` and `BillingProfile` alike. A supply period, a project or a past invoice can hold a
   long-lived pointer to a customer that has since been archived, and must still be
   able to show its name or invoice it again — `Archived` tells the caller to
   decorate the reference, not that the lookup failed. A merged-away customer
@@ -2880,6 +2882,26 @@ exists once. Projects' project list is the first consumer: it gathers the page's
 distinct customer ids once and calls `Customers` a single time, so a page of 25
 projects for one customer costs one directory call, and a page spanning five
 customers still costs exactly one — not 25 or five.
+
+### `CustomersByLegalID` — the lookup by organisation number
+
+`CustomersByLegalID(ctx, country, ids)` finds the customers holding each
+organisation number in `ids`, in one round trip (`DirectoryCustomersByLegalID`), for a
+caller resolving every number of a file before its first row — Energy's
+metering-point import is the one it was made for. The result is keyed by the id
+**exactly as given**; the comparison is the duplicate-identity guard's own: the
+country case-insensitive and the id with its whitespace removed, so `"923 609 016"`
+finds the customer stored as `923609016`, under the key `"923 609 016"`. The inputs
+are normalised the way the legal identity is stored, so the query is a plain equality
+on `ix_customers_legal_identity`.
+
+- A number nobody holds is absent from the map; a nil or empty `ids` is an empty,
+  non-nil map with no query made.
+- A number held by more than one customer returns every holder, ordered by
+  ascending id; as with `ContactsByEmail`, the caller decides what that means.
+- Archived and merged-away customers are returned — unlike the duplicate guard,
+  which ignores a merged-away holder — with `Archived` and `MergedInto` set, so the
+  caller decides what a holder it cannot write to means.
 
 ### `BillingProfile` — what an invoice needs, already resolved
 
