@@ -232,7 +232,9 @@ func TestStaffAbsence_AppliesAndIsIdempotent(t *testing.T) {
 	// holiday account, allows a percentage, needs a decision, visibility, the
 	// a-melding leave description, hidden, seeded. The reserved absent is
 	// hidden and last; the erase writes it in place of a sick or child-sick
-	// type (plan reading 12).
+	// type (plan reading 12). The tip is read, so 00051's amendments show:
+	// ammefri paid (aml. § 12-8 (2)) and the reserved absent_hours after
+	// absent (delivery C, Task 5b).
 	seeds := staffCollect(t, ctx, pool, "type seeds", `
 		SELECT key || ':' || kind || ':' || unit || ':' || paid::text || ':' || draws_holiday::text || ':'
 		    || allows_percent::text || ':' || needs_decision::text || ':' || visibility || ':'
@@ -247,7 +249,7 @@ func TestStaffAbsence_AppliesAndIsIdempotent(t *testing.T) {
 		"omsorgspermisjon:leave:days:false:false:true:true:absent:andreLovfestedePermisjoner:false:true",
 		"foreldrepermisjon:leave:days:false:false:true:true:absent:permisjonMedForeldrepenger:false:true",
 		"fodselspermisjon:leave:days:false:false:false:true:hr_only:permisjonMedForeldrepenger:false:true",
-		"ammefri:leave:hours:false:false:false:true:absent:andreLovfestedePermisjoner:false:true",
+		"ammefri:leave:hours:true:false:false:true:absent:andreLovfestedePermisjoner:false:true",
 		"sykt_barn:child_sick:days:true:false:false:false:absent:-:false:true",
 		"pleie_naerstaende:leave:days:false:false:true:true:absent:andreLovfestedePermisjoner:false:true",
 		"utdanning_lovfestet:leave:days:false:false:true:true:absent:utdanningspermisjonLovfestet:false:true",
@@ -262,6 +264,7 @@ func TestStaffAbsence_AppliesAndIsIdempotent(t *testing.T) {
 		"annen_lovfestet:leave:days:false:false:true:true:absent:andreLovfestedePermisjoner:false:true",
 		"annen_ikke_lovfestet:leave:days:false:false:true:true:absent:andreIkkeLovfestedePermisjoner:false:true",
 		"absent:other:days:false:false:false:false:absent:-:true:true",
+		"absent_hours:other:hours:false:false:false:false:absent:-:true:true",
 	}
 	if !equalStrings(seeds, wantSeeds) {
 		t.Errorf("type seeds =\n%s\nwant\n%s", strings.Join(seeds, "\n"), strings.Join(wantSeeds, "\n"))

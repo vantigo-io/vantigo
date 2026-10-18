@@ -24,7 +24,8 @@ import (
 // only its names, its order and whether it is hidden (seed_immutable
 // otherwise): its flags and its a-melding mapping are the vocabulary's, not
 // the installation's. The reserved absent, which the health erase writes in
-// place of a sick or child-sick type (plan reading 12), is never shown.
+// place of a sick or child-sick type (plan reading 12), and absent_hours, its
+// hour counterpart (delivery C, Task 5b), are never shown.
 //
 // The a-melding descriptions a type maps to are the contract's enum,
 // StaffAmeldingLeave: the kodeverk PermisjonsOgPermitteringsBeskrivelse's six
@@ -47,8 +48,18 @@ const (
 // absenceTypeKeyIndex is the unique index on a type's key.
 const absenceTypeKeyIndex = "ux_absence_types_key"
 
-// reservedAbsenceType is the key of the type the health erase writes.
-const reservedAbsenceType = "absent"
+// reservedAbsenceType is the key of the type the health erase writes, and
+// reservedAbsenceHoursType its hour counterpart (Task 5b): an hour row erased
+// keeps its hours and counts no day, as it did.
+const (
+	reservedAbsenceType      = "absent"
+	reservedAbsenceHoursType = "absent_hours"
+)
+
+// isReservedType reports whether a type is one of the reserved seeds.
+func isReservedType(a store.StaffAbsenceType) bool {
+	return a.Seeded && (a.Key == reservedAbsenceType || a.Key == reservedAbsenceHoursType)
+}
 
 // absenceTypeKeyPattern is a company type's key: 1 to 40 of a–z, 0–9 and the
 // underscore, the alphabet of the seeds' own keys.
@@ -113,7 +124,7 @@ func absenceTypeResponse(a store.StaffAbsenceType) gen.StaffAbsenceType {
 		AmeldingLeave: enumOf[gen.StaffAmeldingLeave](a.AmeldingLeave),
 		Seeded:        a.Seeded,
 		Hidden:        a.Hidden,
-		Reserved:      a.Seeded && a.Key == reservedAbsenceType,
+		Reserved:      isReservedType(a),
 		Sort:          a.Sort,
 		Revision:      a.Revision,
 	}
@@ -343,9 +354,9 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 }
 
 // seedChangeAllowed is whether a change of a seed keeps everything but its
-// names, its place and hidden as they are — and the reserved absent hidden.
+// names, its place and hidden as they are — and the reserved types hidden.
 func seedChangeAllowed(row store.StaffAbsenceType, next absenceTypeFlags) bool {
-	if row.Key == reservedAbsenceType && !next.Hidden {
+	if isReservedType(row) && !next.Hidden {
 		return false
 	}
 	return next.Paid == row.Paid && next.DrawsHoliday == row.DrawsHoliday && next.AllowsPercent == row.AllowsPercent &&

@@ -13,7 +13,7 @@ import (
 )
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since FROM staff.settings WHERE id = 1
+SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates FROM staff.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row (design §3.6). The
@@ -42,12 +42,14 @@ func (q *Queries) GetSettings(ctx context.Context) (StaffSetting, error) {
 		&i.Revision,
 		&i.UpdatedAt,
 		&i.AutoCarryOverSince,
+		&i.ErasePregnancyHealthTypes,
+		&i.EraseSickCaseDates,
 	)
 	return i, err
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since FROM staff.settings WHERE id = 1 FOR UPDATE
+SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates FROM staff.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings reads the settings row and holds it for the rest of the
@@ -78,6 +80,8 @@ func (q *Queries) LockSettings(ctx context.Context) (StaffSetting, error) {
 		&i.Revision,
 		&i.UpdatedAt,
 		&i.AutoCarryOverSince,
+		&i.ErasePregnancyHealthTypes,
+		&i.EraseSickCaseDates,
 	)
 	return i, err
 }
@@ -159,7 +163,7 @@ UPDATE staff.settings SET
     revision = revision + 1,
     updated_at = $18::timestamptz
 WHERE id = 1
-RETURNING id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since
+RETURNING id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates
 `
 
 type UpdateSettingsParams struct {
@@ -233,6 +237,8 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.Revision,
 		&i.UpdatedAt,
 		&i.AutoCarryOverSince,
+		&i.ErasePregnancyHealthTypes,
+		&i.EraseSickCaseDates,
 	)
 	return i, err
 }
