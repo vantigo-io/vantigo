@@ -944,9 +944,13 @@ manager, an Approver, a colleague and anyone else get the person's 404.
   - `accountEmailKind` is `work` or `private`; a null column reads `work`.
     `address` says which of the person's addresses the account would be given and
     whether the person has it — never the address itself.
-  - **The effective date** `provisionFromEffective` is `provisionFrom` when HR set
-    one, else the first day of the person's earliest employment that has not ended by
-    today (an employment ending today still counts), else absent.
+  - **The effective date** `provisionFromEffective` is the date the accounts worker
+    acts on — the decision table's own `F` (`accountFrom`, below), one rule for both:
+    `provisionFrom` when HR set one, else the first day of the person's earliest
+    employment that has not ended by today (an employment ending today still counts);
+    between employments — one ended, none current, a later one to come — the later
+    start, unless the stored date falls after the ended employment's end (an early date
+    for the later one, honoured); else absent.
   - `mode` is the authority mode identity recorded (`local` or `federated`), asked
     before the person is read. It is absent when no module provides accounts, when
     this process's configuration derives another mode than the recorded one

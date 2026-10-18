@@ -12,29 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const earliestOpenEmploymentStart = `-- name: EarliestOpenEmploymentStart :one
-SELECT start_date FROM staff.employments
-WHERE person_id = $1 AND (end_date IS NULL OR end_date >= $2::date)
-ORDER BY start_date, id
-LIMIT 1
-`
-
-type EarliestOpenEmploymentStartParams struct {
-	PersonID int64
-	Today    pgtype.Date
-}
-
-// EarliestOpenEmploymentStart is the first day of the person's earliest
-// employment that has not ended by @today — the end day itself is still
-// worked — the account's effective date when HR set none (spec reading 14).
-// No row is a person with no such employment.
-func (q *Queries) EarliestOpenEmploymentStart(ctx context.Context, arg EarliestOpenEmploymentStartParams) (pgtype.Date, error) {
-	row := q.db.QueryRow(ctx, earliestOpenEmploymentStart, arg.PersonID, arg.Today)
-	var start_date pgtype.Date
-	err := row.Scan(&start_date)
-	return start_date, err
-}
-
 const getPersonAccount = `-- name: GetPersonAccount :one
 
 SELECT id, provision_account, provision_from, account_email_kind, work_email, private_email, account_revision

@@ -124,7 +124,9 @@ acts on it arrives with the next part of the delivery.
 3. Turn it on: `PUT /api/v1/staff/people/{id}/account` with `If-Match` set to that
    revision and `{"provisionAccount": true, "provisionFrom": null, "accountEmailKind": "work"}`.
    Leave `provisionFrom` null to enable the account on the first day of the person's
-   earliest employment that has not ended; set a date to choose another day. Choose
+   earliest employment that has not ended; set a date to choose another day. Between
+   two employments a date from before the first one ended is that one's, and the
+   account follows the later start; a date after it is honoured. Choose
    `private` to give identity the person's private email instead of the work email.
    The request is a full replace: send all three fields — one without
    `provisionAccount`, or with it `null`, is refused (400) and changes nothing.

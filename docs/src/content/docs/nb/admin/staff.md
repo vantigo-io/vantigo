@@ -128,6 +128,8 @@ det, kommer med neste del av leveransen.
    revisjonen og `{"provisionAccount": true, "provisionFrom": null, "accountEmailKind": "work"}`.
    La `provisionFrom` være null for å aktivere kontoen på første dag i personens
    tidligste arbeidsforhold som ikke har sluttet; sett en dato for å velge en annen dag.
+   Mellom to arbeidsforhold hører en dato fra før det første sluttet til det, og kontoen
+   følger den senere startdatoen; en dato etter det følges.
    Velg `private` for å gi identity personens private e-post i stedet for jobb-e-posten.
    Forespørselen er en full erstatning: send alle tre feltene — en uten
    `provisionAccount`, eller med den `null`, avvises (400) og endrer ingenting.

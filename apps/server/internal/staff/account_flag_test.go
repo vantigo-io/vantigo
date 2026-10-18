@@ -214,6 +214,25 @@ func TestAccount_TheEffectiveDate(t *testing.T) {
 	if got := effective(); got != "2025-12-01" {
 		t.Errorf("HR's early date: effective %q, want 2025-12-01", got)
 	}
+
+	// Between employments the date is the one the accounts worker acts on
+	// (accountFrom, Task 4b): a stored date from before the last ended
+	// employment is that one's, and the later start stands for it; a stored
+	// date after it is the later one's own, honoured early.
+	ola := createPerson(t, hr, newPerson("Ola", "Mellom"))
+	seedEmploymentDated(t, h, ola.Id, 0, "2020-01-01", &ended)
+	seedEmploymentDated(t, h, ola.Id, 0, "2027-03-01", nil)
+	set := func(from string) string {
+		acc := getAccount(t, hr, ola.Id)
+		do(t, hr, http.MethodPut, accountPath(ola.Id), map[string]any{"provisionAccount": true, "provisionFrom": from}, http.StatusOK, &acc, ifMatch(acc.Revision))
+		return dayOf(&acc, true)
+	}
+	if got := set("2019-06-01"); got != "2027-03-01" {
+		t.Errorf("a stored date from before the ended employment: effective %q, want the later start 2027-03-01", got)
+	}
+	if got := set("2027-01-15"); got != "2027-01-15" {
+		t.Errorf("a stored date after the ended employment: effective %q, want it honoured, 2027-01-15", got)
+	}
 }
 
 // The link as identity reports it, from a provider the test shapes: the
