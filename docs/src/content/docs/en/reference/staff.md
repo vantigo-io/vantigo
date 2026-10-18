@@ -998,24 +998,29 @@ after the earlier employment's end — the first that holds wins:
 2. No employment at all: `no_employment`.
 3. A link naming a user: a user identity no longer knows is `user_gone` (the link
    `failed`; never re-created) on the worker's link and nothing on HR's self-service
-   link; a user Staff does not manage is left alone — on HR's self-service link the
-   link stays `linked`, on the worker's link it is `account_not_managed` (an Owner
-   unmanaged or promoted the user) and keeps its state; a user whose employee number
+   link; a user Staff does not manage is left alone on HR's self-service link, which
+   stays `linked` — but a user an Owner has since adopted is managed, so the worker acts
+   on them through that link as through its own (plan reading 8, [the self-service link](#the-self-service-link));
+   an Owner or a SystemAdmin (`AccountRef.Privileged`) is `account_privileged` (the
+   link `blocked`); on the worker's link a user Staff no longer manages (an Owner
+   unmanaged them) is `account_not_managed` and the link keeps its state; a user whose employee number
    is neither the person's nor the one the worker last wrote to identity for the link
    is `mismatch` (the link `blocked`) and nothing else, not even at the end. A user
    holding the number last written, after HR renumbered the person, is still theirs
    and is updated.
-4. Every employment ended (the day after the last end): deactivate the user whenever
-   the person has left, whatever the directory says — every run while identity's
-   record may still be enabled, and for a user the SCIM directory deactivated every
-   run, since identity disables its own record anyway and the call changes nothing
-   twice; the address need not be present. Between employments, before the later one
-   is due: the same.
+4. Every employment ended (the day after the last end): the user is deactivated
+   whenever the person has left, whatever the directory says — a user the SCIM
+   directory deactivated on every run, since `Deactivate` disables identity's own
+   record whatever the directory says and, called again, changes nothing; the address
+   need not be present. Otherwise nothing, and no report. Between employments, before
+   the later one is due: the same, and before the later one's window nothing else
+   either.
 5. Federated mode and a pending user without a credential: `mode_changed`.
 6. `T < F − createBeforeDays` with no user yet: nothing. The address missing:
    `account_email_missing`. No user yet: prepare (in federated mode, find by the
    employee number).
-7. The user's state, the same before `T ≥ F` except that nothing is activated early:
+7. The user's state — the same before `T ≥ F` (outside the gap between employments,
+   where item 4 has answered) except that nothing is activated early:
    a user the directory deactivated, nothing; disabled by an Owner (or by no
    one recorded), `blocked_by_owner` while pending and `disabled_by_owner` otherwise
    (the link `blocked`); disabled by Staff, activate — in federated mode a re-enable

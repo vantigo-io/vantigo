@@ -246,7 +246,10 @@ Communications' outbox is the working example.
     address never crosses into the caller**: `Account(ctx, userID, wantEmail)` takes
     the address the caller would set and answers only `AccountRef.EmailDiffers`, judged
     by identity's own address normalisation and false for a placeholder no mail
-    reaches. A directory-deactivated non-Owner reads `disabled` by `directory`
+    reaches. `AccountRef.Privileged` marks an Owner or a SystemAdmin, managed or not
+    (a managed user promoted to Owner is unmanaged by the promotion), whom every write
+    refuses with `ErrAccountPrivileged`, so a caller reports them without calling.
+    A directory-deactivated non-Owner reads `disabled` by `directory`
     (`contracts.DisabledByDirectory`) while SCIM is configured; the writes still act
     on identity's record of such a user, and `Deactivate` — which alone reads no
     authority mode, so it never answers `ErrModeMismatch` — disables a leaver

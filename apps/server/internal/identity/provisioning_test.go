@@ -912,6 +912,35 @@ func TestProvisioning_AccountReportsTheUser(t *testing.T) {
 	}
 }
 
+// Account reports an Owner or a SystemAdmin as Privileged, so the caller
+// stops before a write identity would refuse (ErrAccountPrivileged): a
+// managed SystemAdmin reads managed and privileged, a managed user promoted
+// to Owner reads unmanaged (the promotion unmanages) and privileged, and an
+// ordinary managed user reads neither.
+func TestProvisioning_AccountReportsAPrivilegedUser(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	p := h.accounts(t)
+	admin := h.insertUser(t, "admin@example.test", identity.RoleUserID, identity.RoleSystemAdminID)
+	makePending(t, h, admin, "V-1")
+	const email = "promoted@example.test"
+	promoted := h.createUser(t, owner, email, identity.RoleUser)
+	mustManage(t, owner, promoted, "V-2")
+	if got := accountOf(t, p, promoted, ""); got.Privileged || !got.Managed {
+		t.Errorf("a managed user before the promotion = %+v, want managed, not privileged", got)
+	}
+	if r := owner.do(http.MethodPut, userPath(promoted, ""), map[string]string{"displayName": email, "email": email, "role": identity.RoleOwner}); r.status != http.StatusOK {
+		t.Fatalf("promote: status %d body %s", r.status, r.body)
+	}
+	if got := accountOf(t, p, admin, ""); !got.Privileged || !got.Managed {
+		t.Errorf("a managed SystemAdmin = %+v, want managed and privileged", got)
+	}
+	if got := accountOf(t, p, promoted, ""); !got.Privileged || got.Managed {
+		t.Errorf("a promoted Owner = %+v, want unmanaged and privileged", got)
+	}
+}
+
 // A leaver loses access whatever the directory says (S23): Deactivate
 // disables a managed user identity holds enabled even while the directory
 // already reports them inactive — SCIM never writes is_disabled, and the
