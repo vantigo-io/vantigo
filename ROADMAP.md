@@ -5,6 +5,29 @@ Other modules add their own sections as their roadmaps solidify.
 
 ## Platform
 
+### Time zones (delivery A done)
+
+Decided in
+[`docs/superpowers/specs/2026-10-19-time-zones-design.md`](docs/superpowers/specs/2026-10-19-time-zones-design.md),
+researched for the calendar module in
+[`docs/superpowers/research/2026-10-19-calendar-module.md`](docs/superpowers/research/2026-10-19-calendar-module.md).
+Two zones with two owners, and no stored row touched: the **business time zone**, one
+per installation on identity's system settings, read by every module through
+`contracts.BusinessCalendar` (`Deps.Calendar`, always set, in worker mode too) and set
+by an Owner under Workspace administration, audited
+`workspace.business_time_zone_changed`; and a **personal time zone** per user that
+follows the business zone until the person chooses one, which the session answers.
+
+**Delivery A (done)** — the contract and `holidays.DayIn`, identity's implementation
+and owner endpoint, the session's `timeZone`/`timeZoneSource`/`businessTimeZone`,
+migrations `00052`–`00054` (the two columns; Staff's and Expenses' own zone columns
+dropped, with a warning in the migration log when either was not `Europe/Oslo`),
+Staff and Expenses on the contract with `timeZone` answered read-only, the Workspace
+card. *Still to land:* **B** Invoices off its hard-coded Oslo, **C** Projects' SQL
+literal and dashboard day, **D** Time's "today" and the meaning of its start and end
+times, **E** Customers' follow-up day and timeline rendering, **F** the personal zone's
+setting and the shell's formatters. The calendar module depends on A and F.
+
 ### Cross-module domain events (deferred until Orders)
 
 Synchronous cross-module queries use in-process contracts from

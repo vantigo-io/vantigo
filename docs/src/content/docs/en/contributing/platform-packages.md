@@ -218,14 +218,19 @@ is a set of pure functions over the standard library's `time` package: it holds 
 data, has no table and no migration, and reads no clock — its own purity test fails
 on any other import or on a call such as `time.Now`.
 
-**A day is a civil date at UTC midnight.** The caller derives it in its own zone —
-the installation's calendar day, made `time.Date(y, m, d, 0, 0, 0, 0, time.UTC)` — so
-day arithmetic never meets a daylight-saving shift. A time that is not a UTC midnight
-is read as its civil date in its own location — 10:00Z or midnight in Oslo on 17 May
-is 17 May.
+**A day is a civil date at UTC midnight.** `DayIn(t, loc)` is the one derivation of
+such a day from an instant — the calendar day `t` falls on in `loc`, made
+`time.Date(y, m, d, 0, 0, 0, 0, time.UTC)` — so day arithmetic never meets a
+daylight-saving shift and two callers agree about what a day is. The business
+calendar (`contracts.BusinessCalendar`, identity's) answers `Today` and `Day` through
+it in the workspace's business time zone, and Staff and Expenses, which each wrote
+the same function for themselves, now mean this one. A time that is not a UTC
+midnight is read by the holiday functions as its civil date in its own location —
+10:00Z or midnight in Oslo on 17 May is 17 May.
 
 | Function | Answers |
 |---|---|
+| `DayIn(t, loc) time.Time` | the calendar day `t` falls on in `loc`, at midnight UTC: 22:30Z on 30 June is 1 July in Oslo. |
 | `PublicHoliday(d) bool` | whether `d` is a Norwegian public holiday: New Year's Day, Maundy Thursday, Good Friday, Easter Sunday and Monday, 1 May, 17 May, Ascension Day, Whit Sunday and Monday, Christmas Day and Boxing Day — whatever weekday it falls on. Christmas Eve and New Year's Eve are not; an ordinary Sunday, a helligdag in law too, is not listed but left to `BusinessDay`'s weekend test. |
 | `EasterSunday(year) time.Time` | the Gregorian Easter Sunday of the year (the anonymous Gregorian algorithm), from which the movable feasts are counted. |
 | `BusinessDay(d) bool` | whether `d` is neither a Saturday, a Sunday nor a public holiday. |

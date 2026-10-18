@@ -36,13 +36,32 @@ func (s *server) GetIdentitySession(ctx context.Context, _ gen.GetIdentitySessio
 	if err != nil {
 		return nil, fmt.Errorf("identity: session: %w", err)
 	}
+	business, err := (&businessCalendar{q: s.q}).zoneName(ctx)
+	if err != nil {
+		return nil, err
+	}
+	zone, source := effectiveTimeZone(u.TimeZone, business)
 	return gen.GetIdentitySession200JSONResponse{
 		User:                  authUser(u.ID, u.DisplayName, u.Email, p.Roles),
 		TwoFactorEnabled:      u.TotpEnabled,
 		MfaEnrollmentRequired: s.mfaEnrollmentRequired(p.Roles, u.TotpEnabled),
 		MfaAuthenticated:      p.MFAVerified,
 		IsSystemAdmin:         slices.Contains(p.Roles, RoleSystemAdmin),
+		TimeZone:              &zone,
+		TimeZoneSource:        &source,
+		BusinessTimeZone:      &business,
 	}, nil
+}
+
+// effectiveTimeZone is the zone instants are shown to a user in (time zones
+// design D5): their own when they chose one, else the business time zone —
+// a NULL on the user means "follow the workspace", resolved here at read
+// time rather than copied when the user was created.
+func effectiveTimeZone(personal *string, business string) (string, gen.AuthSessionResponseTimeZoneSource) {
+	if personal != nil && *personal != "" {
+		return *personal, gen.Personal
+	}
+	return business, gen.Business
 }
 
 // PostIdentityAccountSessionsRevoke ends every session of the caller's

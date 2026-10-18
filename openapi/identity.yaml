@@ -222,8 +222,20 @@ components:
             x-vantigo-source: Vantigo.Identity
         AuthSessionResponse:
             properties:
+                businessTimeZone:
+                    description: The workspace's business time zone (time zones design D4), the calendar every bookkeeping day is judged in. Always answered; optional in the schema only because the recorded exchanges predate it.
+                    type: string
                 isSystemAdmin:
                     type: boolean
+                timeZone:
+                    description: The zone instants are shown to this user in — their own when they chose one, else the business time zone (time zones design D5).
+                    type: string
+                timeZoneSource:
+                    description: Whether timeZone is the user's own choice (personal) or the workspace's (business).
+                    enum:
+                        - personal
+                        - business
+                    type: string
                 mfaAuthenticated:
                     type: boolean
                 mfaEnrollmentRequired:
@@ -1816,6 +1828,24 @@ components:
                     type: boolean
             required:
                 - code
+            type: object
+        WorkspaceSettings:
+            description: The workspace's own settings (time zones design D2 and D3). businessTimeZone is the one calendar every bookkeeping day in the installation is judged in — an invoice's issue day, a period lock, a trip's departure day, Staff's "today" — which every module reads through the platform's BusinessCalendar contract; Europe/Oslo until an Owner sets another.
+            properties:
+                businessTimeZone:
+                    description: An IANA name, such as Europe/Oslo.
+                    type: string
+            required:
+                - businessTimeZone
+            type: object
+        WorkspaceSettingsRequest:
+            properties:
+                businessTimeZone:
+                    description: An IANA name such as Europe/Oslo, which this server and its database must read the same way; a name the two read differently (CET, an abbreviation to the database and a zone with summer time to the server) is refused. Changing it moves "today" and every day derived from an instant from the next request on; dates already written stay what they were.
+                    maxLength: 64
+                    type: string
+            required:
+                - businessTimeZone
             type: object
 info:
     title: Vantigo Identity API
@@ -5392,6 +5422,71 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/workspace:
+        get:
+            operationId: getIdentityOwnerWorkspace
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WorkspaceSettings'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the workspace's settings
+            tags:
+                - Workspace
+            x-vantigo-access: policy:Owner
+        put:
+            description: Replaces the workspace's settings. The business time zone is checked twice — the server must know the name, and the database must read it the same way — and a change is recorded as workspace.business_time_zone_changed in the authorization audit trail. The value already held answers 200 with nothing written.
+            operationId: putIdentityOwnerWorkspace
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/WorkspaceSettingsRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WorkspaceSettings'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Change the workspace's settings
+            tags:
+                - Workspace
+            x-vantigo-access: policy:Owner
     /api/v1/identity/passkeys/login/begin:
         post:
             operationId: postIdentityPasskeysLoginBegin

@@ -327,6 +327,28 @@ unavailable** — "This Vantigo installation has already been set up." An instal
 can instead be configured to email the first Owner an invitation; see
 [First Owner and local accounts](/en/admin/authentication/#first-owner-and-local-accounts).
 
+## Workspace settings
+
+The **Workspace** card on the overview holds what is true of the whole installation
+and is read by every module. Today that is one setting, the **Business time zone**:
+the calendar every bookkeeping day is judged in — the day an invoice is issued and
+falls due, a period lock, the day a trip departed, "today" in Staff. It is
+`Europe/Oslo` until an Owner changes it. The Staff and Expenses settings pages show
+it too, but only here can it be changed.
+
+1. On the overview, under **Workspace**, pick the zone from the list. Use a city
+   zone such as `Europe/Oslo`; a name the server and its database read differently,
+   such as `CET`, is refused with a sentence saying so.
+2. Choose **Save workspace settings** and confirm **Change the business time zone?**
+   The dialog says what changes: from the next request on, "today" and every day
+   derived from a point in time are read in the new zone. Dates already written —
+   an invoice's issue date, a trip's per-diem days — stay what they are.
+
+Every change is recorded in the authorization audit trail as
+`workspace.business_time_zone_changed`, with the zone before and after. Where a
+person sees a point in time, they see it in this zone too, until a personal time
+zone of their own exists.
+
 ## System administration
 
 The account created at setup is also the installation's **system administrator**,

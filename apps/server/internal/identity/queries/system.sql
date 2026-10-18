@@ -95,3 +95,40 @@ SELECT authority_mode FROM identity.system_settings WHERE id = 1 FOR UPDATE;
 UPDATE identity.system_settings
 SET authority_mode = @authority_mode::text, authority_mode_at = @now::timestamptz
 WHERE id = 1;
+
+-- name: GetBusinessTimeZone :one
+-- GetBusinessTimeZone is the workspace's business time zone (time zones
+-- design D2), read by contracts.BusinessCalendar on every call. The
+-- singleton row may not exist yet — maintenance was never set and no API
+-- process has recorded an authority mode — so the LEFT JOIN answers NULL
+-- then, and the caller reads NULL as the column's default, Europe/Oslo.
+SELECT s.business_time_zone
+FROM (VALUES (1)) AS one (x)
+LEFT JOIN identity.system_settings s ON s.id = 1;
+
+-- name: LockBusinessTimeZone :one
+-- LockBusinessTimeZone reads the zone holding the singleton row, which the
+-- caller has just ensured exists (EnsureSystemSettings), so two PUTs at once
+-- queue and each audits the change it actually made.
+SELECT business_time_zone FROM identity.system_settings WHERE id = 1 FOR UPDATE;
+
+-- name: SetBusinessTimeZone :exec
+UPDATE identity.system_settings
+SET business_time_zone = @business_time_zone::text, updated_at = @now::timestamptz, updated_by_user_id = @updated_by_user_id
+WHERE id = 1;
+
+-- name: ResolveTimeZone :one
+-- ResolveTimeZone asks Postgres what a zone name means, at a winter instant
+-- and a summer one, for the caller to compare with Go's reading of the same
+-- name: the two carry their own tzdata, and Postgres resolves
+-- pg_timezone_abbrevs before pg_timezone_names, so 'CET' is a fixed +01:00 to
+-- it and a zone with summer time to Go. It was Expenses' and Staff's own
+-- question while each held a zone of its own; the workspace's zone is
+-- checked once, here. A name Postgres does not know raises 22023.
+WITH probe AS (
+    SELECT @name::text AS zone, @winter::timestamptz AS winter, @summer::timestamptz AS summer
+)
+SELECT
+    EXTRACT(EPOCH FROM ((winter AT TIME ZONE zone) - (winter AT TIME ZONE 'UTC')))::bigint AS winter_offset,
+    EXTRACT(EPOCH FROM ((summer AT TIME ZONE zone) - (summer AT TIME ZONE 'UTC')))::bigint AS summer_offset
+FROM probe;

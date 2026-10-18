@@ -580,6 +580,14 @@ func New(t *testing.T, opts ...Option) *Harness {
 		users := identityModule.Users
 		identityModule.Users = func(d module.Deps) contracts.UserDirectory { return s.wrapUsers(users(d)) }
 	}
+	// The business calendar is preset on the harness's own Deps, so a test
+	// that builds a worker from Deps() directly — the way the retention and
+	// accounts tests build one on a pool of their own — has the calendar
+	// identity would give it; Compose and Workers resolve their own copies
+	// from the module regardless.
+	if identityModule.Calendar != nil {
+		h.deps.Calendar = identityModule.Calendar(h.deps)
+	}
 	mods := append([]module.Module{identityModule}, s.modules...)
 	h.mods = mods
 	api, err := module.Compose(h.deps, mods...)
@@ -664,6 +672,20 @@ func (h *Harness) Exec(t testing.TB, sql string, args ...any) {
 	if _, err := h.pool.Exec(ctx, sql, args...); err != nil {
 		t.Fatalf("modtest: %s: %v", sql, err)
 	}
+}
+
+// SetBusinessTimeZone sets the workspace's business time zone (time zones
+// design D2) as an Owner's PUT /identity/owner/workspace would, for a test
+// whose subject is what a module does under another zone: the singleton
+// system settings row is created when there is none, as identity's own
+// EnsureSystemSettings does, else replaced. Every module reads the zone
+// through contracts.BusinessCalendar on the next request.
+func (h *Harness) SetBusinessTimeZone(t testing.TB, zone string) {
+	t.Helper()
+	h.Exec(t, `INSERT INTO identity.system_settings (id, maintenance_enabled, business_time_zone, updated_at)
+VALUES (1, false, $1, $2)
+ON CONFLICT (id) DO UPDATE SET business_time_zone = EXCLUDED.business_time_zone, updated_at = EXCLUDED.updated_at`,
+		zone, h.Now())
 }
 
 // Count runs a query that answers one integer.

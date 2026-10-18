@@ -211,6 +211,7 @@ type IdentitySystemSetting struct {
 	UpdatedByUserID    *uuid.UUID
 	AuthorityMode      *string
 	AuthorityModeAt    *time.Time
+	BusinessTimeZone   string
 }
 
 type IdentityUser struct {
@@ -236,6 +237,7 @@ type IdentityUser struct {
 	PendingSince      *time.Time
 	InvitationsSince  *time.Time
 	DisabledBy        *string
+	TimeZone          *string
 }
 
 type IdentityUserRole struct {

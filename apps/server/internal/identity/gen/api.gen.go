@@ -21,6 +21,24 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for AuthSessionResponseTimeZoneSource.
+const (
+	Business AuthSessionResponseTimeZoneSource = "business"
+	Personal AuthSessionResponseTimeZoneSource = "personal"
+)
+
+// Valid indicates whether the value is a known member of the AuthSessionResponseTimeZoneSource enum.
+func (e AuthSessionResponseTimeZoneSource) Valid() bool {
+	switch e {
+	case Business:
+		return true
+	case Personal:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvitationResponseRevokedReason.
 const (
 	InvitationResponseRevokedReasonDeactivated    InvitationResponseRevokedReason = "deactivated"
@@ -166,12 +184,23 @@ type AssignRolesResponse struct {
 
 // AuthSessionResponse defines model for AuthSessionResponse.
 type AuthSessionResponse struct {
-	IsSystemAdmin         bool             `json:"isSystemAdmin"`
-	MfaAuthenticated      bool             `json:"mfaAuthenticated"`
-	MfaEnrollmentRequired bool             `json:"mfaEnrollmentRequired"`
-	TwoFactorEnabled      bool             `json:"twoFactorEnabled"`
-	User                  AuthUserResponse `json:"user"`
+	// BusinessTimeZone The workspace's business time zone (time zones design D4), the calendar every bookkeeping day is judged in. Always answered; optional in the schema only because the recorded exchanges predate it.
+	BusinessTimeZone      *string `json:"businessTimeZone,omitempty"`
+	IsSystemAdmin         bool    `json:"isSystemAdmin"`
+	MfaAuthenticated      bool    `json:"mfaAuthenticated"`
+	MfaEnrollmentRequired bool    `json:"mfaEnrollmentRequired"`
+
+	// TimeZone The zone instants are shown to this user in — their own when they chose one, else the business time zone (time zones design D5).
+	TimeZone *string `json:"timeZone,omitempty"`
+
+	// TimeZoneSource Whether timeZone is the user's own choice (personal) or the workspace's (business).
+	TimeZoneSource   *AuthSessionResponseTimeZoneSource `json:"timeZoneSource,omitempty"`
+	TwoFactorEnabled bool                               `json:"twoFactorEnabled"`
+	User             AuthUserResponse                   `json:"user"`
 }
+
+// AuthSessionResponseTimeZoneSource Whether timeZone is the user's own choice (personal) or the workspace's (business).
+type AuthSessionResponseTimeZoneSource string
 
 // AuthSuccessResponse defines model for AuthSuccessResponse.
 type AuthSuccessResponse struct {
@@ -864,6 +893,18 @@ type TwoFactorRequest struct {
 	RememberMe *bool   `json:"rememberMe,omitempty"`
 }
 
+// WorkspaceSettings The workspace's own settings (time zones design D2 and D3). businessTimeZone is the one calendar every bookkeeping day in the installation is judged in — an invoice's issue day, a period lock, a trip's departure day, Staff's "today" — which every module reads through the platform's BusinessCalendar contract; Europe/Oslo until an Owner sets another.
+type WorkspaceSettings struct {
+	// BusinessTimeZone An IANA name, such as Europe/Oslo.
+	BusinessTimeZone string `json:"businessTimeZone"`
+}
+
+// WorkspaceSettingsRequest defines model for WorkspaceSettingsRequest.
+type WorkspaceSettingsRequest struct {
+	// BusinessTimeZone An IANA name such as Europe/Oslo, which this server and its database must read the same way; a name the two read differently (CET, an abbreviation to the database and a zone with summer time to the server) is refused. Changing it moves "today" and every day derived from an instant from the next request on; dates already written stay what they were.
+	BusinessTimeZone string `json:"businessTimeZone"`
+}
+
 // PostIdentityAccessDelegationsJSONBody defines parameters for PostIdentityAccessDelegations.
 type PostIdentityAccessDelegationsJSONBody = DelegationRequest
 
@@ -1051,6 +1092,9 @@ type PostIdentityOwnerUsersByIdManageJSONBody = OwnerUserManageRequest
 
 // PostIdentityOwnerUsersByIdPasswordJSONBody defines parameters for PostIdentityOwnerUsersByIdPassword.
 type PostIdentityOwnerUsersByIdPasswordJSONBody = OwnerUserPasswordRequest
+
+// PutIdentityOwnerWorkspaceJSONBody defines parameters for PutIdentityOwnerWorkspace.
+type PutIdentityOwnerWorkspaceJSONBody = WorkspaceSettingsRequest
 
 // PostIdentityPasskeysLoginBeginJSONBody defines parameters for PostIdentityPasskeysLoginBegin.
 type PostIdentityPasskeysLoginBeginJSONBody = PasskeyLoginBeginRequest
@@ -1253,6 +1297,9 @@ type PostIdentityOwnerUsersByIdManageJSONRequestBody = PostIdentityOwnerUsersByI
 
 // PostIdentityOwnerUsersByIdPasswordJSONRequestBody defines body for PostIdentityOwnerUsersByIdPassword for application/json ContentType.
 type PostIdentityOwnerUsersByIdPasswordJSONRequestBody = PostIdentityOwnerUsersByIdPasswordJSONBody
+
+// PutIdentityOwnerWorkspaceJSONRequestBody defines body for PutIdentityOwnerWorkspace for application/json ContentType.
+type PutIdentityOwnerWorkspaceJSONRequestBody = PutIdentityOwnerWorkspaceJSONBody
 
 // PostIdentityPasskeysLoginBeginJSONRequestBody defines body for PostIdentityPasskeysLoginBegin for application/json ContentType.
 type PostIdentityPasskeysLoginBeginJSONRequestBody = PostIdentityPasskeysLoginBeginJSONBody
@@ -1842,6 +1889,12 @@ type ServerInterface interface {
 
 	// (POST /api/v1/identity/owner/users/{id}/unmanage)
 	PostIdentityOwnerUsersByIdUnmanage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// GetIdentityOwnerWorkspace Get the workspace's settings
+	// (GET /api/v1/identity/owner/workspace)
+	GetIdentityOwnerWorkspace(w http.ResponseWriter, r *http.Request)
+	// PutIdentityOwnerWorkspace Change the workspace's settings
+	// (PUT /api/v1/identity/owner/workspace)
+	PutIdentityOwnerWorkspace(w http.ResponseWriter, r *http.Request)
 
 	// (POST /api/v1/identity/passkeys/login/begin)
 	PostIdentityPasskeysLoginBegin(w http.ResponseWriter, r *http.Request)
@@ -3549,6 +3602,34 @@ func (siw *ServerInterfaceWrapper) PostIdentityOwnerUsersByIdUnmanage(w http.Res
 	handler.ServeHTTP(w, r)
 }
 
+// GetIdentityOwnerWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityOwnerWorkspace(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityOwnerWorkspace(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityOwnerWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityOwnerWorkspace(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityOwnerWorkspace(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostIdentityPasskeysLoginBegin operation middleware
 func (siw *ServerInterfaceWrapper) PostIdentityPasskeysLoginBegin(w http.ResponseWriter, r *http.Request) {
 
@@ -4427,6 +4508,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/password", wrapper.PostIdentityOwnerUsersByIdPassword)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/password-reset", wrapper.PostIdentityOwnerUsersByIdPasswordReset)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/unmanage", wrapper.PostIdentityOwnerUsersByIdUnmanage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/workspace", wrapper.GetIdentityOwnerWorkspace)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/owner/workspace", wrapper.PutIdentityOwnerWorkspace)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/passkeys/login/begin", wrapper.PostIdentityPasskeysLoginBegin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/passkeys/login/complete", wrapper.PostIdentityPasskeysLoginComplete)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/password-recovery/request", wrapper.PostIdentityPasswordRecoveryRequest)
@@ -10830,6 +10913,119 @@ func (response PostIdentityOwnerUsersByIdUnmanage429JSONResponse) VisitPostIdent
 	return err
 }
 
+type GetIdentityOwnerWorkspaceRequestObject struct {
+}
+
+type GetIdentityOwnerWorkspaceResponseObject interface {
+	VisitGetIdentityOwnerWorkspaceResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityOwnerWorkspace200JSONResponse WorkspaceSettings
+
+func (response GetIdentityOwnerWorkspace200JSONResponse) VisitGetIdentityOwnerWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerWorkspace401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerWorkspace401JSONResponse) VisitGetIdentityOwnerWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerWorkspace403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerWorkspace403JSONResponse) VisitGetIdentityOwnerWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerWorkspaceRequestObject struct {
+	Body *PutIdentityOwnerWorkspaceJSONRequestBody
+}
+
+type PutIdentityOwnerWorkspaceResponseObject interface {
+	VisitPutIdentityOwnerWorkspaceResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityOwnerWorkspace200JSONResponse WorkspaceSettings
+
+func (response PutIdentityOwnerWorkspace200JSONResponse) VisitPutIdentityOwnerWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerWorkspace400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerWorkspace400JSONResponse) VisitPutIdentityOwnerWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerWorkspace401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerWorkspace401JSONResponse) VisitPutIdentityOwnerWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerWorkspace403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerWorkspace403JSONResponse) VisitPutIdentityOwnerWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostIdentityPasskeysLoginBeginRequestObject struct {
 	Body *PostIdentityPasskeysLoginBeginJSONRequestBody
 }
@@ -12857,6 +13053,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/v1/identity/owner/users/{id}/unmanage)
 	PostIdentityOwnerUsersByIdUnmanage(ctx context.Context, request PostIdentityOwnerUsersByIdUnmanageRequestObject) (PostIdentityOwnerUsersByIdUnmanageResponseObject, error)
+	// GetIdentityOwnerWorkspace Get the workspace's settings
+	// (GET /api/v1/identity/owner/workspace)
+	GetIdentityOwnerWorkspace(ctx context.Context, request GetIdentityOwnerWorkspaceRequestObject) (GetIdentityOwnerWorkspaceResponseObject, error)
+	// PutIdentityOwnerWorkspace Change the workspace's settings
+	// (PUT /api/v1/identity/owner/workspace)
+	PutIdentityOwnerWorkspace(ctx context.Context, request PutIdentityOwnerWorkspaceRequestObject) (PutIdentityOwnerWorkspaceResponseObject, error)
 
 	// (POST /api/v1/identity/passkeys/login/begin)
 	PostIdentityPasskeysLoginBegin(ctx context.Context, request PostIdentityPasskeysLoginBeginRequestObject) (PostIdentityPasskeysLoginBeginResponseObject, error)
@@ -15461,6 +15663,64 @@ func (sh *strictHandler) PostIdentityOwnerUsersByIdUnmanage(w http.ResponseWrite
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityOwnerUsersByIdUnmanageResponseObject); ok {
 		if err := validResponse.VisitPostIdentityOwnerUsersByIdUnmanageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityOwnerWorkspace operation middleware
+func (sh *strictHandler) GetIdentityOwnerWorkspace(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityOwnerWorkspaceRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityOwnerWorkspace(ctx, request.(GetIdentityOwnerWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityOwnerWorkspace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityOwnerWorkspaceResponseObject); ok {
+		if err := validResponse.VisitGetIdentityOwnerWorkspaceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityOwnerWorkspace operation middleware
+func (sh *strictHandler) PutIdentityOwnerWorkspace(w http.ResponseWriter, r *http.Request) {
+	var request PutIdentityOwnerWorkspaceRequestObject
+
+	var body PutIdentityOwnerWorkspaceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityOwnerWorkspace(ctx, request.(PutIdentityOwnerWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityOwnerWorkspace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityOwnerWorkspaceResponseObject); ok {
+		if err := validResponse.VisitPutIdentityOwnerWorkspaceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

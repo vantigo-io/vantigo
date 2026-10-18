@@ -56,6 +56,24 @@ func (q *Queries) GetAuthorityMode(ctx context.Context) (*string, error) {
 	return authority_mode, err
 }
 
+const getBusinessTimeZone = `-- name: GetBusinessTimeZone :one
+SELECT s.business_time_zone
+FROM (VALUES (1)) AS one (x)
+LEFT JOIN identity.system_settings s ON s.id = 1
+`
+
+// GetBusinessTimeZone is the workspace's business time zone (time zones
+// design D2), read by contracts.BusinessCalendar on every call. The
+// singleton row may not exist yet — maintenance was never set and no API
+// process has recorded an authority mode — so the LEFT JOIN answers NULL
+// then, and the caller reads NULL as the column's default, Europe/Oslo.
+func (q *Queries) GetBusinessTimeZone(ctx context.Context) (*string, error) {
+	row := q.db.QueryRow(ctx, getBusinessTimeZone)
+	var business_time_zone *string
+	err := row.Scan(&business_time_zone)
+	return business_time_zone, err
+}
+
 const getLastOperationalEvents = `-- name: GetLastOperationalEvents :one
 SELECT oidc.occurred_at AS last_oidc_sign_in_at, scim.occurred_at AS last_scim_request_at
 FROM (VALUES (1)) AS one (x)
@@ -164,6 +182,20 @@ func (q *Queries) LockAuthorityMode(ctx context.Context) (*string, error) {
 	return authority_mode, err
 }
 
+const lockBusinessTimeZone = `-- name: LockBusinessTimeZone :one
+SELECT business_time_zone FROM identity.system_settings WHERE id = 1 FOR UPDATE
+`
+
+// LockBusinessTimeZone reads the zone holding the singleton row, which the
+// caller has just ensured exists (EnsureSystemSettings), so two PUTs at once
+// queue and each audits the change it actually made.
+func (q *Queries) LockBusinessTimeZone(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, lockBusinessTimeZone)
+	var business_time_zone string
+	err := row.Scan(&business_time_zone)
+	return business_time_zone, err
+}
+
 const recordOperationalEvent = `-- name: RecordOperationalEvent :exec
 INSERT INTO identity.operational_events (kind, occurred_at)
 VALUES ($1, $2::timestamptz)
@@ -185,6 +217,40 @@ func (q *Queries) RecordOperationalEvent(ctx context.Context, arg RecordOperatio
 	return err
 }
 
+const resolveTimeZone = `-- name: ResolveTimeZone :one
+WITH probe AS (
+    SELECT $1::text AS zone, $2::timestamptz AS winter, $3::timestamptz AS summer
+)
+SELECT
+    EXTRACT(EPOCH FROM ((winter AT TIME ZONE zone) - (winter AT TIME ZONE 'UTC')))::bigint AS winter_offset,
+    EXTRACT(EPOCH FROM ((summer AT TIME ZONE zone) - (summer AT TIME ZONE 'UTC')))::bigint AS summer_offset
+FROM probe
+`
+
+type ResolveTimeZoneParams struct {
+	Name   string
+	Winter time.Time
+	Summer time.Time
+}
+
+type ResolveTimeZoneRow struct {
+	WinterOffset int64
+	SummerOffset int64
+}
+
+// ResolveTimeZone asks Postgres what a zone name means, at a winter instant
+// and a summer one, for the caller to compare with Go's reading of the same
+// pg_timezone_abbrevs before pg_timezone_names, so 'CET' is a fixed +01:00 to
+// it and a zone with summer time to Go. It was Expenses' and Staff's own
+// question while each held a zone of its own; the workspace's zone is
+// checked once, here. A name Postgres does not know raises 22023.
+func (q *Queries) ResolveTimeZone(ctx context.Context, arg ResolveTimeZoneParams) (ResolveTimeZoneRow, error) {
+	row := q.db.QueryRow(ctx, resolveTimeZone, arg.Name, arg.Winter, arg.Summer)
+	var i ResolveTimeZoneRow
+	err := row.Scan(&i.WinterOffset, &i.SummerOffset)
+	return i, err
+}
+
 const setAuthorityMode = `-- name: SetAuthorityMode :exec
 UPDATE identity.system_settings
 SET authority_mode = $1::text, authority_mode_at = $2::timestamptz
@@ -198,6 +264,23 @@ type SetAuthorityModeParams struct {
 
 func (q *Queries) SetAuthorityMode(ctx context.Context, arg SetAuthorityModeParams) error {
 	_, err := q.db.Exec(ctx, setAuthorityMode, arg.AuthorityMode, arg.Now)
+	return err
+}
+
+const setBusinessTimeZone = `-- name: SetBusinessTimeZone :exec
+UPDATE identity.system_settings
+SET business_time_zone = $1::text, updated_at = $2::timestamptz, updated_by_user_id = $3
+WHERE id = 1
+`
+
+type SetBusinessTimeZoneParams struct {
+	BusinessTimeZone string
+	Now              time.Time
+	UpdatedByUserID  *uuid.UUID
+}
+
+func (q *Queries) SetBusinessTimeZone(ctx context.Context, arg SetBusinessTimeZoneParams) error {
+	_, err := q.db.Exec(ctx, setBusinessTimeZone, arg.BusinessTimeZone, arg.Now, arg.UpdatedByUserID)
 	return err
 }
 

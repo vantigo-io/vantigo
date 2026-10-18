@@ -56,6 +56,14 @@ type Deps struct {
 	// Module.Users; unlike Directory, it is always set once composed —
 	// identity, the one module always mounted, is the one that provides it.
 	Users contracts.UserDirectory
+	// Calendar is the business calendar, the one sanctioned way a module
+	// reads the workspace's business time zone and derives a day from an
+	// instant (see contracts.BusinessCalendar). Compose sets it, on every
+	// module's Deps copy, from whichever enabled module declares
+	// Module.Calendar — identity, always mounted — so, like Users, it is
+	// always set once composed; Workers sets it too, since Staff's workers
+	// judge "today" by it.
+	Calendar contracts.BusinessCalendar
 	// Accounts is account provisioning, the one sanctioned way a module
 	// writes identity's users (see contracts.AccountProvisioning): staff →
 	// identity, never called inside a caller's transaction. Compose sets it,
@@ -215,6 +223,11 @@ type Module struct {
 	// it before any Mount runs and puts the result on every module's Deps,
 	// including the provider's own, the same way it resolves Directory.
 	Users func(Deps) contracts.UserDirectory
+	// Calendar builds this module's contracts.BusinessCalendar
+	// implementation, if it provides one. Compose resolves it right after
+	// Users and puts the result on every module's Deps; Workers does the
+	// same in worker mode.
+	Calendar func(Deps) contracts.BusinessCalendar
 	// Accounts builds this module's contracts.AccountProvisioning
 	// implementation, if it provides one. At most one enabled module may set
 	// it; Compose and Workers call it before anything they build runs —
