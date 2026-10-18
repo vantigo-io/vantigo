@@ -85,6 +85,7 @@ describe("the staff catalog", () => {
       "absence_not_requested",
       "absence_not_cancellable",
       "absence_status_change",
+      "absence_visibility_change",
       "percent_not_allowed",
       "hours_on_day_type",
       "carry_over_recorded",

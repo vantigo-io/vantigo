@@ -1095,7 +1095,9 @@ Hvem som får e-post om fravær, og når:
 - en **søknad om en HR-type** går ikke til noen leder og ingen med `staff:approve` eller
   `staff:manage`, men til alle andre med `staff:personal-data` (Owner-brukere også), som
   en nøytral e-post — «En fraværssøknad venter på avgjørelsen din» — som ikke nevner
-  person, type eller dager;
+  person, type eller dager. Den e-posten sendes bare for en søknad om en HR-type, så at
+  den kommer, sier i seg selv at en finnes: gi `staff:personal-data` bare til brukere
+  med en egen adresse i identity, aldri en felles postkasse eller en liste;
 - en **godkjenning**, et **avslag**, en **tilbaketrekking** av et godkjent fravær gjort av den som avgjør det, og HRs **retting** går
   til personen. En egengodkjenning sender ingen e-post.
 

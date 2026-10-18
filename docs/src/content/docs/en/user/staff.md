@@ -584,7 +584,10 @@ of the days on **First day**; an egenmelding beyond what the policy allows, befo
 have been employed long enough, or while your right is withdrawn on **Type**, telling
 you to register a sykmelding instead. To change a waiting request, press **Change**,
 adjust it and **Save**; if somebody changed it meanwhile, it is reloaded and the page
-says so.
+says so. A change keeps the kind of absence: a request stays a request, and a type that
+reveals health or family matters is not swapped for one that does not, or the other way
+round — those are decided by different people. Press **Cancel request** and request the
+other instead.
 
 ### My team
 
@@ -645,8 +648,9 @@ dashboard until the absence ends.
 #### The mails a decider receives
 
 - **A manager** is mailed at their work email (else their private one) when someone they
-  decide for asks for absence or registers it — the person, the type (*leave* for a
-  type that reveals health or family matters, *an absence* for sickness) and the days.
+  decide for asks for absence — the person, the type (*an absence* for sickness) and the
+  days — or registers it — the person, *an absence* and the days. A manager is never
+  mailed about a type that reveals health or family matters.
 - **The Approver and HR** are mailed only about a person with no manager who can
   decide — none in their terms or department, or none linked to an active user — and
   only about requests, at the address their user has; so is an **Owner**. The mail

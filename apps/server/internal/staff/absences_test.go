@@ -484,9 +484,12 @@ func TestAbsences_EventsShaped(t *testing.T) {
 	ferieType, hrOnlyType := typeID(t, h, "ferie"), typeID(t, h, "svangerskapspermisjon")
 
 	hrOnly := requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
-	// An HR-only row is changed by HR with staff:personal-data (review H2).
+	// An HR-only row is corrected by HR with staff:personal-data (review
+	// H2) — a change never crosses the line, a correction of a decided row
+	// may (privacy review MEDIUM-1).
 	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
-	do(t, hrPD, http.MethodPut, absencePath(hrOnly.Id), absence(t, h, "ferie", "2026-11-02", "2026-11-06"), http.StatusOK, nil, ifMatchAs(t, hrPD, hrOnly.Id))
+	approved(t, w.pd, hrOnly.Id)
+	do(t, hrPD, http.MethodPost, correctPath(hrOnly.Id), absence(t, h, "ferie", "2026-11-02", "2026-11-06"), http.StatusOK, nil, ifMatchAs(t, hrPD, hrOnly.Id))
 	for _, c := range []struct {
 		name     string
 		c        *modtest.Client
@@ -495,7 +498,7 @@ func TestAbsences_EventsShaped(t *testing.T) {
 		{"personal-data", w.pd, float64(hrOnlyType), float64(ferieType)},
 		{"the person", w.kariC, float64(hrOnlyType), float64(ferieType)},
 	} {
-		f := eventOf(t, c.c, w.kari.Id, "absence_updated", hrOnly.Id)
+		f := eventOf(t, c.c, w.kari.Id, "absence_corrected", hrOnly.Id)
 		typ, _ := f["type"].(map[string]any)
 		if typ["from"] != c.from || typ["to"] != c.to {
 			t.Errorf("%s reads the correction's type as %v, want from %v to %v", c.name, f["type"], c.from, c.to)

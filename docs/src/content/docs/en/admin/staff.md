@@ -1086,7 +1086,9 @@ Who is mailed about absence, and when:
 - a **request of an HR-only type** goes to no manager and no holder of `staff:approve`
   or `staff:manage`, but to every other holder of `staff:personal-data` (Owners
   included), as a neutral mail — "An absence request awaits your decision" — that names
-  no person, type or day;
+  no person, type or day. That mail is only ever sent for an HR-only request, so its
+  arrival alone says one exists: give `staff:personal-data` only to users whose address
+  in identity is their own, never a shared mailbox or a list;
 - an **approval**, a **rejection**, a **cancel** of an approved absence by its decider and HR's **correction** go to
   the person. A self-approval mails nobody.
 

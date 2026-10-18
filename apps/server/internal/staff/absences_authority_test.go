@@ -189,7 +189,11 @@ func TestAbsences_HROnlyTargetTypesAreThePersonsAndPersonalDatas(t *testing.T) {
 
 	requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
 	register(t, hrPD, w.kari.Id, absence(t, h, "religios_hoytid", "2026-12-01", "2026-12-01"))
-	do(t, hrPD, http.MethodPut, absencePath(visit.Id), absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2),
+	// HR with staff:personal-data corrects it into one; a change never
+	// crosses that line (privacy review MEDIUM-1).
+	refused(t, hrPD.Do(http.MethodPut, absencePath(visit.Id), absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2),
+		ifMatchAs(t, hrPD, visit.Id)), http.StatusConflict, "absence_visibility_change")
+	do(t, hrPD, http.MethodPost, correctPath(visit.Id), absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2),
 		http.StatusOK, nil, ifMatchAs(t, hrPD, visit.Id))
 }
 

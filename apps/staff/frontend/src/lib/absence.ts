@@ -64,6 +64,7 @@ const refusalFields: Record<string, readonly string[]> = {
   absence_note_on_sick: ["note"],
   absence_overlap: ["firstDay"],
   absence_status_change: ["typeId"],
+  absence_visibility_change: ["typeId"],
   self_certification_exhausted: ["typeId"],
   self_certification_too_early: ["typeId"],
   self_certification_withdrawn: ["typeId"],
