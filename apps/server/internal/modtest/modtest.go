@@ -69,6 +69,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 	"github.com/vantigo-io/vantigo/server/internal/web"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 // Start is where every harness clock begins. A module reads time only through
@@ -103,6 +104,10 @@ type Harness struct {
 	url      string // the installation's origin, APP_URL
 	base     *url.URL
 	log      *syncBuffer
+	// mods is what Compose was given: identity (with WithAccounts' or
+	// WithoutAccounts' change) and the modules under test, from which
+	// Workers resolves the background workers as worker mode does.
+	mods []module.Module
 
 	mu    sync.Mutex
 	clock time.Time
@@ -561,6 +566,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		identityModule.Accounts = func(module.Deps) contracts.AccountProvisioning { return s.accounts }
 	}
 	mods := append([]module.Module{identityModule}, s.modules...)
+	h.mods = mods
 	api, err := module.Compose(h.deps, mods...)
 	if err != nil {
 		t.Fatalf("modtest: compose: %v", err)
@@ -613,6 +619,13 @@ func (h *Harness) Advance(d time.Duration) {
 	defer h.mu.Unlock()
 	h.clock = h.clock.Add(d)
 }
+
+// Workers is the background workers of the composed modules, built from d
+// as worker mode builds them (module.Workers): the single-provider slots —
+// Users, and Accounts as WithAccounts or WithoutAccounts left identity's —
+// resolved onto d, which Deps alone does not carry (Compose resolves them
+// per module). A test passes Deps, or Deps with a pool of its own.
+func (h *Harness) Workers(d module.Deps) []worker.Worker { return module.Workers(d, h.mods...) }
 
 // Deps are the dependencies the installation was composed with, for a test
 // that builds a module-level collaborator the way Compose does — a module's

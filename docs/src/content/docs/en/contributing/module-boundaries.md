@@ -368,7 +368,11 @@ Communications' outbox is the working example.
   `Deps.Accounts`, so `WithAccounts(p)` replaces identity's `Module.Accounts` in the
   composition — `p` is what every module's `Deps.Accounts` resolves to — and
   `WithoutAccounts()` drops it, for the "accounts are unavailable" path; a test of
-  identity's real provider uses neither.
+  identity's real provider uses neither. `Harness.Workers(d)` builds the composed
+  modules' background workers from `d` as worker mode does (`module.Workers`, which
+  resolves `Users` and `Accounts` onto them — `Deps()` alone carries neither), so a
+  worker test runs the worker production starts, on the harness's `Deps()` or on a pool
+  of its own.
 
 ## Turning a module off
 
