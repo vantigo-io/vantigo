@@ -256,7 +256,9 @@ Ovenfra og ned:
   godkjent *Permisjon*, uten noe å endre. HR har **Registrer fravær** — en sykmelding
   personen kommer med, for eksempel — og på en rad:
   - **Endre** på en søknad eller en registrering (en sykmelding som sluttet tidligere),
-  - **Rett** på et godkjent fravær der dagene eller typen var feil,
+  - **Rett** på et godkjent fravær der dagene eller typen var feil — en type som røper
+    helse eller familieforhold rettes aldri til en som ikke gjør det, eller omvendt:
+    trekk fraværet tilbake og legg inn det andre,
   - **Trekk tilbake fraværet** på et godkjent fravær (også for den som avgjorde det)
     eller en søknad, etter å ha spurt,
   - **Utsett ferie** på en registrert 100 % sykmelding: arbeidstakerens krav om å utsette innvilget
@@ -585,7 +587,7 @@ dagene ved **Første dag**; en egenmelding utover det reglene tillater, før du 
 ansatt lenge nok, eller mens retten din er trukket tilbake ved **Type**, med beskjed om å
 registrere en sykmelding i stedet. For å endre en søknad som venter, trykker du **Endre**,
 retter og trykker **Lagre**; har noen endret den imens, lastes den inn på nytt, og siden
-sier fra. En endring beholder slaget fravær: en søknad forblir en søknad, og en type som
+sier fra. En endring beholder hva slags fravær det er: en søknad forblir en søknad, og en type som
 røper helse eller familieforhold byttes ikke mot en som ikke gjør det, eller omvendt — de
 avgjøres av forskjellige personer. Trykk **Trekk tilbake** og søk om det andre i stedet.
 

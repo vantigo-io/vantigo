@@ -471,32 +471,32 @@ func TestAbsences_ShapingMatrix(t *testing.T) {
 }
 
 // An absence's events, shaped (plan pre-flight B2, I6): every type value by
-// its own type — a correction away from an HR-only type shows the person and
-// staff:personal-data the type before and after, and is not listed at all to
-// the manager and to HR without staff:personal-data, who read the row as
-// leave (leak 2); nor is a deleted HR-only row's event. A sick row's event
+// its own type — a correction from one HR-only type to another shows the
+// person and staff:personal-data the type before and after, and is not
+// listed at all to the manager and to HR without staff:personal-data, who
+// read the row as leave (leak 2); nor is a deleted HR-only row's event. A sick row's event
 // touches class E and is still listed to the manager and to HR without
 // staff:personal-data, its degree shown.
 func TestAbsences_EventsShaped(t *testing.T) {
 	t.Parallel()
 	w := newAbsenceWorld(t)
 	h := w.h
-	ferieType, hrOnlyType := typeID(t, h, "ferie"), typeID(t, h, "svangerskapspermisjon")
+	hrOnlyType, otherHROnly := typeID(t, h, "svangerskapspermisjon"), typeID(t, h, "fodselspermisjon")
 
 	hrOnly := requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
 	// An HR-only row is corrected by HR with staff:personal-data (review
-	// H2) — a change never crosses the line, a correction of a decided row
-	// may (privacy review MEDIUM-1).
+	// H2), within the HR-only types — never across the line (privacy
+	// review of delivery C).
 	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
 	approved(t, w.pd, hrOnly.Id)
-	do(t, hrPD, http.MethodPost, correctPath(hrOnly.Id), absence(t, h, "ferie", "2026-11-02", "2026-11-06"), http.StatusOK, nil, ifMatchAs(t, hrPD, hrOnly.Id))
+	do(t, hrPD, http.MethodPost, correctPath(hrOnly.Id), absence(t, h, "fodselspermisjon", "2026-11-02", "2026-11-06"), http.StatusOK, nil, ifMatchAs(t, hrPD, hrOnly.Id))
 	for _, c := range []struct {
 		name     string
 		c        *modtest.Client
 		from, to any
 	}{
-		{"personal-data", w.pd, float64(hrOnlyType), float64(ferieType)},
-		{"the person", w.kariC, float64(hrOnlyType), float64(ferieType)},
+		{"personal-data", w.pd, float64(hrOnlyType), float64(otherHROnly)},
+		{"the person", w.kariC, float64(hrOnlyType), float64(otherHROnly)},
 	} {
 		f := eventOf(t, c.c, w.kari.Id, "absence_corrected", hrOnly.Id)
 		typ, _ := f["type"].(map[string]any)

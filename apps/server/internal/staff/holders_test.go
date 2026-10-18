@@ -289,6 +289,7 @@ type soleWorld struct {
 	kariC, secondC               *modtest.Client
 	kari, boss                   gen.StaffPerson
 	kariUser, secondUser         uuid.UUID
+	hrUser, approverUser         uuid.UUID
 }
 
 func newSoleWorld(t *testing.T, secondActive bool, opts ...modtest.Option) soleWorld {
@@ -300,7 +301,7 @@ func buildSoleWorld(t *testing.T, secondActive, managed bool, opts ...modtest.Op
 	t.Helper()
 	h := newHarness(t, opts...)
 	w := soleWorld{h: h}
-	w.hr, _ = signIn(t, h, "staff:manage")
+	w.hr, w.hrUser = signIn(t, h, "staff:manage")
 	company(t, w.hr)
 	w.boss, _ = employed(t, w.hr, "Bjørn", "2019-01-01", terms())
 	kariTerms := terms()
@@ -315,7 +316,7 @@ func buildSoleWorld(t *testing.T, secondActive, managed bool, opts ...modtest.Op
 	var bossUser uuid.UUID
 	w.bossC, bossUser = signIn(t, h)
 	link(t, h, w.boss.Id, bossUser)
-	w.approver, _ = signIn(t, h, "staff:approve")
+	w.approver, w.approverUser = signIn(t, h, "staff:approve")
 	w.viewerC, _ = signIn(t, h, "staff:view")
 	w.secondC, w.secondUser = signIn(t, h, "staff:personal-data")
 	h.Exec(t, `UPDATE identity.users SET is_disabled = $2 WHERE id = $1`, w.secondUser, !secondActive)
@@ -499,8 +500,18 @@ func TestSoleHolder_NoLeak(t *testing.T) {
 		out := map[string]string{}
 		requestOwn(t, w.kariC, absence(t, w.h, "ferie", "2026-10-05", "2026-10-09"))
 		ferieMails := othersMails(w)
-		if len(ferieMails) == 0 {
-			t.Fatalf("the ferie request mailed nobody (managed %v)", managed)
+		var to []string
+		for _, m := range w.h.mail.messages() {
+			to = append(to, m.To...)
+		}
+		slices.Sort(to)
+		want := []string{"bjorn@example.test"}
+		if !managed {
+			want = []string{emailOf(t, w.h, w.hrUser), emailOf(t, w.h, w.approverUser)}
+			slices.Sort(want)
+		}
+		if !slices.Equal(to, want) {
+			t.Fatalf("the ferie request mailed %v, want %v (managed %v)", to, want, managed)
 		}
 		a := requestOwn(t, w.kariC, absence(t, w.h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
 		reads(w, "pending", out)
@@ -578,4 +589,58 @@ func TestHolderMails_ATypeChangeAcrossHROnly(t *testing.T) {
 	// Within one side the change stands.
 	do(t, w.kariC, http.MethodPut, absencePath(perm.Id), absence(t, h, "fodselspermisjon", "2026-11-02", "2026-11-06"),
 		http.StatusOK, nil, ifMatchAs(t, w.kariC, perm.Id))
+}
+
+// A correction never crosses the line between an HR-only type and any other
+// either (the re-check of the privacy review, M-1): the sole holder's
+// self-approved HR-only row corrected to ferie would keep self_approved, so
+// HR without staff:personal-data would be shown selfApproved for a person
+// with a manager — telling them it was an HR-only self-approval — and the
+// row's later events would carry it; the same row id would read as another
+// kind of leave. Both directions are absence_visibility_change (409),
+// nothing written: HR cancels the decided row and enters the other anew.
+func TestSoleHolder_ACorrectionNeverCrossesHROnly(t *testing.T) {
+	t.Parallel()
+	t.Run("an HR-only self-approval corrected to ferie", func(t *testing.T) {
+		t.Parallel()
+		w := newSoleWorld(t, false)
+		h := w.h
+		a := requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
+		approved(t, w.kariC, a.Id)
+		hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+		attentionBefore := scrubRandom(string(w.hr.Do(http.MethodGet, "/api/v1/staff/stats/attention", nil).Body))
+		eventsBefore := scrubRandom(string(w.bossC.Do(http.MethodGet, pagedPath(eventsPath(w.kari.Id), 1, 100), nil).Body))
+		typeBefore := modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, a.Id)
+		refused(t, hrPD.Do(http.MethodPost, correctPath(a.Id), absence(t, h, "ferie", "2026-11-02", "2026-11-06"), ifMatchAs(t, hrPD, a.Id)),
+			http.StatusConflict, "absence_visibility_change")
+		if got := modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, a.Id); got != typeBefore {
+			t.Errorf("the type became %d, was %d", got, typeBefore)
+		}
+		if !modtest.One[bool](t, h.Harness, `SELECT self_approved FROM staff.absences WHERE id = $1`, a.Id) {
+			t.Error("self_approved changed")
+		}
+		if got := scrubRandom(string(w.hr.Do(http.MethodGet, "/api/v1/staff/stats/attention", nil).Body)); got != attentionBefore {
+			t.Errorf("HR without personal-data's items changed:\n got %s\nwant %s", got, attentionBefore)
+		}
+		if got := scrubRandom(string(w.bossC.Do(http.MethodGet, pagedPath(eventsPath(w.kari.Id), 1, 100), nil).Body)); got != eventsBefore {
+			t.Errorf("the manager's events changed:\n got %s\nwant %s", got, eventsBefore)
+		}
+	})
+	t.Run("a head's plain self-approval corrected into an HR-only type", func(t *testing.T) {
+		t.Parallel()
+		w := newDecisionWorld(t)
+		h := w.h
+		a := requestOwn(t, w.olavC, absence(t, h, "ferie", "2026-10-05", "2026-10-09"))
+		approved(t, w.olavC, a.Id)
+		if !modtest.One[bool](t, h.Harness, `SELECT self_approved FROM staff.absences WHERE id = $1`, a.Id) {
+			t.Fatal("Olav's approval is not a self-approval")
+		}
+		hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
+		typeBefore := modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, a.Id)
+		refused(t, hrPD.Do(http.MethodPost, correctPath(a.Id), absence(t, h, "religios_hoytid", "2026-10-05", "2026-10-09"), ifMatchAs(t, hrPD, a.Id)),
+			http.StatusConflict, "absence_visibility_change")
+		if got := modtest.One[int64](t, h.Harness, `SELECT type_id FROM staff.absences WHERE id = $1`, a.Id); got != typeBefore {
+			t.Errorf("the type became %d, was %d", got, typeBefore)
+		}
+	})
 }

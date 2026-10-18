@@ -991,7 +991,7 @@ export const staffCatalog = {
     "refusal.absence_status_change":
       "A request cannot become a registration, or the other way round: remove it and enter the other.",
     "refusal.absence_visibility_change":
-      "A type that reveals health or family matters cannot be swapped for one that does not, or the other way round: cancel it and request the other.",
+      "A type that reveals health or family matters cannot be swapped for one that does not, or the other way round: remove it and enter the other.",
     "refusal.percent_not_allowed": "This type takes no percentage.",
     "refusal.hours_on_day_type": "Hours belong to an hour type, which is one day.",
     "refusal.carry_over_recorded": "A carry-over from that year is already recorded.",
@@ -2246,7 +2246,7 @@ export const staffCatalog = {
     "refusal.absence_status_change":
       "En søknad kan ikke bli en registrering, eller omvendt: fjern den og legg inn den andre.",
     "refusal.absence_visibility_change":
-      "En type som røper helse eller familieforhold kan ikke byttes mot en som ikke gjør det, eller omvendt: trekk den tilbake og søk om den andre.",
+      "En type som røper helse eller familieforhold kan ikke byttes mot en som ikke gjør det, eller omvendt: fjern den og legg inn den andre.",
     "refusal.percent_not_allowed": "Denne typen tar ingen prosent.",
     "refusal.hours_on_day_type": "Timer hører til en timetype, som gjelder én dag.",
     "refusal.carry_over_recorded": "En overføring fra det året er allerede registrert.",

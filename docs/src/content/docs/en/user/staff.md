@@ -254,7 +254,9 @@ see the tab. From top to bottom:
   *Leave*, with nothing to change. HR has **Register absence** — a sykmelding the
   person brings, say — and on a row:
   - **Change** on a request or a registration (a sykmelding that ended early),
-  - **Correct** on an approved absence whose days or type were wrong,
+  - **Correct** on an approved absence whose days or type were wrong — a type that
+    reveals health or family matters is never corrected into one that does not, or
+    the other way round: cancel the absence and enter the other,
   - **Cancel absence** on an approved absence (also for the one who decides it) or a
     request, after asking,
   - **Postpone holiday** on a registered 100 % sykmelding: the employee's demand to postpone

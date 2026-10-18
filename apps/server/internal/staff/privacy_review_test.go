@@ -106,7 +106,11 @@ func TestNotifications_ARegistrationNamesNoType(t *testing.T) {
 }
 
 // A leave-reader is listed none of a row's events once the row is of an
-// HR-only type, even those recorded while it was a plain one.
+// HR-only type, even those recorded while it was a plain one. No write
+// moves a row across that line any more — a change and a correction are
+// both absence_visibility_change (the privacy review of delivery C) — so
+// the row is moved by hand here: the listing rule still holds should a row
+// ever be.
 func TestEvents_ARowNowHROnlyHidesItsHistory(t *testing.T) {
 	t.Parallel()
 	w := newDecisionWorld(t)
@@ -114,8 +118,11 @@ func TestEvents_ARowNowHROnlyHidesItsHistory(t *testing.T) {
 	hrPD, _ := signIn(t, h, "staff:manage", "staff:personal-data")
 	ferie := requestOwn(t, w.kariC, absence(t, h, "ferie", "2026-11-02", "2026-11-06"))
 	approved(t, w.bossC, ferie.Id)
-	do(t, hrPD, http.MethodPost, correctPath(ferie.Id), absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"),
+	refused(t, hrPD.Do(http.MethodPost, correctPath(ferie.Id), absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"),
+		ifMatchAs(t, hrPD, ferie.Id)), http.StatusConflict, "absence_visibility_change")
+	do(t, hrPD, http.MethodPost, correctPath(ferie.Id), absence(t, h, "ferie", "2026-11-02", "2026-11-05"),
 		http.StatusOK, nil, ifMatchAs(t, hrPD, ferie.Id))
+	h.Exec(t, `UPDATE staff.absences SET type_id = $2 WHERE id = $1`, ferie.Id, typeID(t, h, "svangerskapspermisjon"))
 	for name, cl := range map[string]*modtest.Client{"her manager": w.bossC, "HR without personal-data": w.hr} {
 		if e := eventsAbout(t, cl, w.kari.Id, ferie.Id); len(e) != 0 {
 			t.Errorf("%s is listed the now HR-only row's events: %v", name, e)

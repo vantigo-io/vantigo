@@ -84,7 +84,7 @@ export interface paths {
         get: operations["getStaffAbsencesById"];
         /**
          * Change an absence
-         * @description Replaces an absence's type, days, percent, hours, degree and note, judged as a new one is (the row itself left out of the overlap): the person's while it is requested; a registered row — a sick one included — staff:manage's alone, since ending a sykmelding early or fixing its days is HR's (the person asks). A change never moves a row between a type that needs a decision and one that is a notification (absence_status_change), nor between an HR-only type and any other (absence_visibility_change, 409): such a row is decided and shown by other people, so it is removed and the other entered. HR's correction of a decided row (POST /absences/{id}/correct) may cross that line, since only HR with staff:personal-data reads both types. Anything else answers absence_not_requested; anyone but the person and staff:manage — for an HR-only row staff:manage with staff:personal-data — the 404 of a row they cannot write, whatever its status. Recorded as absence_updated with each field's before and after.
+         * @description Replaces an absence's type, days, percent, hours, degree and note, judged as a new one is (the row itself left out of the overlap): the person's while it is requested; a registered row — a sick one included — staff:manage's alone, since ending a sykmelding early or fixing its days is HR's (the person asks). A change never moves a row between a type that needs a decision and one that is a notification (absence_status_change), nor between an HR-only type and any other (absence_visibility_change, 409): the row is removed and the other entered. Anything else answers absence_not_requested; anyone but the person and staff:manage — for an HR-only row staff:manage with staff:personal-data — the 404 of a row they cannot write, whatever its status. Recorded as absence_updated with each field's before and after.
          */
         put: operations["putStaffAbsencesById"];
         post?: never;
@@ -149,7 +149,7 @@ export interface paths {
         put?: never;
         /**
          * Correct a decided or registered absence
-         * @description HR corrects an approved or registered absence (design S12: a decided absence in the past is corrected by HR only, as an event) — its type, days, percent, hours, degree and note, judged as a new one is, the row itself left out of the overlap. A request, a rejected or a cancelled row is absence_not_cancellable (pre-flight M7); a correction never moves a row between a type that needs a decision and one that is a notification (absence_status_change); never HR's own row (own_request), but for the self-approver; an HR-only row needs staff:personal-data too, else the 404 of a row the caller cannot write. The person is told by mail. Recorded as absence_corrected with each field's before and after, both types shaped by their own visibility.
+         * @description HR corrects an approved or registered absence (design S12: a decided absence in the past is corrected by HR only, as an event) — its type, days, percent, hours, degree and note, judged as a new one is, the row itself left out of the overlap. A request, a rejected or a cancelled row is absence_not_cancellable (pre-flight M7); a correction never moves a row between a type that needs a decision and one that is a notification (absence_status_change), nor between an HR-only type and any other (absence_visibility_change, 409) — HR cancels the decided row and enters the other; never HR's own row (own_request), but for the self-approver; an HR-only row needs staff:personal-data too, else the 404 of a row the caller cannot write. The person is told by mail. Recorded as absence_corrected with each field's before and after, both types shaped by their own visibility.
          */
         post: operations["postStaffAbsencesByIdCorrect"];
         delete?: never;
@@ -4953,7 +4953,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict, absence_not_cancellable, absence_status_change, absence_overlap, an egenmelding's self_certification_exhausted, self_certification_too_early or self_certification_withdrawn, or person_erased. */
+            /** @description Conflict — revision_conflict, absence_not_cancellable, absence_status_change, absence_visibility_change (a correction between an HR-only type and any other: cancel the absence and enter the other), absence_overlap, an egenmelding's self_certification_exhausted, self_certification_too_early or self_certification_withdrawn, or person_erased. */
             409: {
                 headers: {
                     [name: string]: unknown;
