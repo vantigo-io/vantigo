@@ -233,8 +233,9 @@ func TestStaffAbsence_AppliesAndIsIdempotent(t *testing.T) {
 	// a-melding leave description, hidden, seeded. The reserved absent is
 	// hidden and last; the erase writes it in place of a sick or child-sick
 	// type (plan reading 12). The tip is read, so 00051's amendments show:
-	// ammefri paid (aml. § 12-8 (2)) and the reserved absent_hours after
-	// absent (delivery C, Task 5b).
+	// ammefri paid (aml. § 12-8 (2)) and the reserved absent_hours,
+	// absent_hr_only and absent_hr_only_hours after absent (delivery C,
+	// Task 5b).
 	seeds := staffCollect(t, ctx, pool, "type seeds", `
 		SELECT key || ':' || kind || ':' || unit || ':' || paid::text || ':' || draws_holiday::text || ':'
 		    || allows_percent::text || ':' || needs_decision::text || ':' || visibility || ':'
@@ -265,6 +266,8 @@ func TestStaffAbsence_AppliesAndIsIdempotent(t *testing.T) {
 		"annen_ikke_lovfestet:leave:days:false:false:true:true:absent:andreIkkeLovfestedePermisjoner:false:true",
 		"absent:other:days:false:false:false:false:absent:-:true:true",
 		"absent_hours:other:hours:false:false:false:false:absent:-:true:true",
+		"absent_hr_only:other:days:false:false:false:false:hr_only:-:true:true",
+		"absent_hr_only_hours:other:hours:false:false:false:false:hr_only:-:true:true",
 	}
 	if !equalStrings(seeds, wantSeeds) {
 		t.Errorf("type seeds =\n%s\nwant\n%s", strings.Join(seeds, "\n"), strings.Join(wantSeeds, "\n"))

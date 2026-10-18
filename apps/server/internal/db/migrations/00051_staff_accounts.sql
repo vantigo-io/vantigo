@@ -59,13 +59,20 @@ CREATE UNIQUE INDEX ux_people_employee_number_upper ON staff.people (upper(emplo
 -- case's erase remove its dates and milestones too; both off by default, as
 -- built. The reserved absent_hours (Task 5b, beside 00047's absent) is what
 -- the pregnancy and health erase writes in place of an hour type —
--- svangerskapskontroll, helse — so a two-hour visit stays two hours and
--- never becomes a day of absence: absent counts in days.
+-- helse — so a two-hour visit stays two hours and never becomes a day of
+-- absence: absent counts in days. The reserved absent_hr_only and
+-- absent_hr_only_hours (the coordinator's decision) are what it writes in
+-- place of the HR-only ones — svangerskapskontroll, svangerskapspermisjon,
+-- fødselspermisjon — so an erased HR-only row still reads "leave" to every
+-- reader who read it so, its events still unlisted to them, and only the
+-- person and staff:personal-data see it became a reserved type.
 UPDATE staff.absence_types SET paid = true, revision = revision + 1, updated_at = now() WHERE key = 'ammefri' AND seeded;
 INSERT INTO staff.absence_types
     (key, name_en, name_nb, kind, unit, paid, draws_holiday, allows_percent, needs_decision, visibility, amelding_leave, seeded, hidden, sort, created_at, updated_at)
 VALUES
-    ('absent_hours', 'Absent (hours)', 'Fravær (timer)', 'other', 'hours', false, false, false, false, 'absent', NULL, true, true, 24, now(), now());
+    ('absent_hours', 'Absent (hours)', 'Fravær (timer)', 'other', 'hours', false, false, false, false, 'absent', NULL, true, true, 24, now(), now()),
+    ('absent_hr_only', 'Absent (HR only)', 'Fravær (bare HR)', 'other', 'days', false, false, false, false, 'hr_only', NULL, true, true, 25, now(), now()),
+    ('absent_hr_only_hours', 'Absent (HR only, hours)', 'Fravær (bare HR, timer)', 'other', 'hours', false, false, false, false, 'hr_only', NULL, true, true, 26, now(), now());
 ALTER TABLE staff.settings ADD COLUMN erase_pregnancy_health_types boolean NOT NULL DEFAULT false;
 ALTER TABLE staff.settings ADD COLUMN erase_sick_case_dates boolean NOT NULL DEFAULT false;
 
@@ -75,12 +82,13 @@ ALTER TABLE staff.settings ADD COLUMN erase_sick_case_dates boolean NOT NULL DEF
 -- keeps their flag for the worker to prepare again — and the flag's own
 -- revision, the synced employee number and the disable marker go. The two
 -- erase settings go, ammefri is unpaid again, and the rows the erase gave
--- absent_hours take absent, 00047's one reserved type, before it is deleted.
+-- absent_hours, absent_hr_only or absent_hr_only_hours take absent, 00047's
+-- one reserved type, before they are deleted.
 ALTER TABLE staff.settings DROP COLUMN erase_sick_case_dates;
 ALTER TABLE staff.settings DROP COLUMN erase_pregnancy_health_types;
 UPDATE staff.absences SET type_id = (SELECT id FROM staff.absence_types WHERE key = 'absent')
-WHERE type_id = (SELECT id FROM staff.absence_types WHERE key = 'absent_hours');
-DELETE FROM staff.absence_types WHERE key = 'absent_hours' AND seeded;
+WHERE type_id IN (SELECT id FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours'));
+DELETE FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours') AND seeded;
 UPDATE staff.absence_types SET paid = false, revision = revision + 1, updated_at = now() WHERE key = 'ammefri' AND seeded;
 ALTER TABLE staff.identity_links DROP COLUMN disable_requested_at;
 ALTER TABLE staff.identity_links DROP COLUMN synced_employee_number;
