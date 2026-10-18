@@ -1069,6 +1069,9 @@ HR corrects an approved or registered absence — its days, type, percentage or 
 with **Correct** (an approved one) or **Change** (a registered one) on the person's
 **Absence** tab; the correction is recorded with what it was before, and the
 person is mailed about a correction. A decided absence that has begun is cancelled by HR only.
+Neither a change nor a correction turns an HR-only type into any other, or the other way
+round (`absence_visibility_change`): the two are decided and seen by different people. To
+fix an absence entered as the wrong kind, **Cancel absence** and enter the other anew.
 
 ## The absence mails
 

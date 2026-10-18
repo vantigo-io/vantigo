@@ -1660,7 +1660,7 @@ privacy review): the two are decided, mailed and shown by different people, so a
 request of ferie turned into svangerskapspermisjon would leave its manager's inbox for
 the `staff:personal-data` holders' — telling the manager what it became — and the other
 way round arrive in a manager's inbox after those holders were mailed; the row is
-removed and the other entered. The
+removed and the other entered. A [correction](#decisions) never crosses it either. The
 person changes their own row while it is `requested`; a `registered` row — a sick one
 included — is `staff:manage`'s to change: ending a sykmelding early or fixing its days
 is HR's job, the person asks. `DELETE /absences/{id}` removes a row nobody decided: a
@@ -1908,14 +1908,12 @@ racing the person's cancel, finds the row no longer a request.
   (pre-flight M7), and a correction keeps the status, so never across the line between
   a request and a registration (`absence_status_change`); never HR's own row but the
   self-approver's. Recorded as `absence_corrected`, both types shaped by their own
-  visibility. A correction **may** cross the line between an HR-only type and any
-  other (decided with delivery C's privacy review): only HR holding
-  `staff:personal-data` can make it — HR without it gets an HR-only target's
-  unknown-type 400 and an HR-only row's 404 — it corrects a decided row, which no
-  inbox holds and no decider is mailed about (only the person), and every reader reads
-  the row afterwards by its current type, and an event of it is listed to a
-  leave-reader only when neither the types it names nor the row's current type are
-  HR-only — so the correction itself and everything before it stay unlisted to them.
+  visibility. Nor does a correction cross the line between an HR-only type and any
+  other (`absence_visibility_change`, 409; the re-check of delivery C's privacy
+  review): the row would keep its decision — a sole holder's self-approval among it,
+  which would then be listed to `staff:manage` as `selfApproved` and named on the row's
+  later events — under the other audience, and the same row id would read as another
+  kind of leave. HR cancels the decided row and enters the other anew.
 
 ### The absence mails
 
@@ -3138,7 +3136,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `absence_not_cancellable` | 409 | Cancelling an absence that is neither a request nor an approved row its decider may still cancel (begun: HR alone); correcting one that is neither approved nor registered. |
 | `own_request` | 403 | Deciding, cancelling or correcting one's own absence, but for the self-approver. |
 | `absence_status_change` | 409 | Changing an absence's type between one that needs a decision and one that is a notification. |
-| `absence_visibility_change` | 409 | Changing an absence's type between an HR-only one and any other (`PUT /absences/{id}`); remove it and enter the other. |
+| `absence_visibility_change` | 409 | Changing or correcting an absence's type between an HR-only one and any other (`PUT /absences/{id}`, `POST /absences/{id}/correct`); remove or cancel it and enter the other. |
 | `carry_over_recorded` | 409 | A second carry-over for one person from one year. |
 | `self_certification_exhausted` | 409 | An egenmelding past the policy's days of one occurrence, its twelve months' occurrences or days, or its case's sixteenth sick day. |
 | `self_certification_too_early` | 409 | An egenmelding before the policy's months of employment. |

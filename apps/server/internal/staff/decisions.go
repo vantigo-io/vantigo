@@ -353,7 +353,8 @@ func (s *server) PostStaffAbsencesByIdCancel(ctx context.Context, req gen.PostSt
 // type, days, percent, hours, degree and note, judged as a new row is — a
 // request, a rejected or a cancelled row is absence_not_cancellable
 // (pre-flight M7) — keeping its status, so never across the line between a
-// request and a registration; never HR's own row but the self-approver's.
+// request and a registration, nor between an HR-only type and any other
+// (absence_visibility_change); never HR's own row but the self-approver's.
 func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostStaffAbsencesByIdCorrectRequestObject) (gen.PostStaffAbsencesByIdCorrectResponseObject, error) {
 	var body gen.StaffAbsenceChangeRequest
 	if req.Body != nil {
@@ -414,6 +415,14 @@ func (s *server) PostStaffAbsencesByIdCorrect(ctx context.Context, req gen.PostS
 		if (statusFor(t) == absenceRegistered) != (before.Status == absenceRegistered) {
 			return refuseConflict(conflict(codeAbsenceStatusChange, "Another kind of absence",
 				"A correction keeps a decided absence decided and a registration a registration: a type that needs a decision and one that is a notification are not swapped."))
+		}
+		// Nor an HR-only type and any other (the privacy review of delivery
+		// C): the row would keep its decision — a self-approval among it —
+		// under another audience, and its id would read as another kind of
+		// leave. HR cancels the decided row and enters the other.
+		if hrOnlyType(t.Visibility) != hrOnlyType(beforeType.Visibility) {
+			return refuseConflict(conflict(codeAbsenceVisibilityChange, "Another kind of absence",
+				"A correction keeps an HR-only type HR-only and any other type not: cancel this absence and enter the other."))
 		}
 		row, err := txq.UpdateAbsence(ctx, store.UpdateAbsenceParams{
 			ID: before.ID, TypeID: t.ID, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last), Hours: p.Hours,

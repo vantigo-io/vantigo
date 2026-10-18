@@ -188,13 +188,20 @@ func TestAbsences_HROnlyTargetTypesAreThePersonsAndPersonalDatas(t *testing.T) {
 		absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2), ifMatchAs(t, w.hr, visit.Id)), "svangerskapskontroll")
 
 	requestOwn(t, w.kariC, absence(t, h, "svangerskapspermisjon", "2026-11-02", "2026-11-06"))
-	register(t, hrPD, w.kari.Id, absence(t, h, "religios_hoytid", "2026-12-01", "2026-12-01"))
-	// HR with staff:personal-data corrects it into one; a change never
-	// crosses that line (privacy review MEDIUM-1).
+	held := register(t, hrPD, w.kari.Id, absence(t, h, "religios_hoytid", "2026-12-01", "2026-12-01"))
+	// HR with staff:personal-data moves an HR-only row to another HR-only
+	// type, which HR without it may not even write; a plain row never
+	// becomes an HR-only one, by a change or a correction (privacy review of
+	// delivery C).
+	do(t, hrPD, http.MethodPut, absencePath(held.Id), absence(t, h, "svangerskapspermisjon", "2026-12-01", "2026-12-01"),
+		http.StatusOK, nil, ifMatchAs(t, hrPD, held.Id))
+	if r := w.hr.Do(http.MethodPut, absencePath(held.Id), absence(t, h, "religios_hoytid", "2026-12-01", "2026-12-01"), ifMatch(1)); r.Status != http.StatusNotFound {
+		t.Errorf("HR without personal-data changing an HR-only row: %d, want 404", r.Status)
+	}
 	refused(t, hrPD.Do(http.MethodPut, absencePath(visit.Id), absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2),
 		ifMatchAs(t, hrPD, visit.Id)), http.StatusConflict, "absence_visibility_change")
-	do(t, hrPD, http.MethodPost, correctPath(visit.Id), absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2),
-		http.StatusOK, nil, ifMatchAs(t, hrPD, visit.Id))
+	refused(t, hrPD.Do(http.MethodPost, correctPath(visit.Id), absence(t, h, "svangerskapskontroll", "2026-09-01", "2026-09-01", "hours", 2),
+		ifMatchAs(t, hrPD, visit.Id)), http.StatusConflict, "absence_visibility_change")
 }
 
 // Overlap tells a writer who reads HR-only types as leave nothing they may

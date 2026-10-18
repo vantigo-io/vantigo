@@ -968,7 +968,7 @@ func (s *server) PutStaffAbsencesById(ctx context.Context, req gen.PutStaffAbsen
 		// a leave-reader what it was (privacy review MEDIUM-1).
 		if hrOnlyType(t.Visibility) != hrOnlyType(beforeType.Visibility) {
 			return refuseConflict(conflict(codeAbsenceVisibilityChange, "Another kind of absence",
-				"A change keeps an HR-only type HR-only and any other type not: they are decided and shown by different people. Remove this absence and enter the other."))
+				"A change keeps an HR-only type HR-only and any other type not: remove this absence and enter the other."))
 		}
 		row, err := txq.UpdateAbsence(ctx, store.UpdateAbsenceParams{
 			ID: before.ID, TypeID: t.ID, FirstDay: dayParam(p.First), LastDay: dayParam(p.Last), Hours: p.Hours,
