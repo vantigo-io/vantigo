@@ -6,9 +6,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 )
@@ -180,5 +182,54 @@ func TestAccountAttention_EachItemAndItsAudience(t *testing.T) {
 		if a := accountItems(items); len(a) > 0 {
 			t.Errorf("%s reads account items: %+v", name, a)
 		}
+	}
+}
+
+// A flag-off leaver whose deactivation keeps failing raises accountFailing
+// for HR, as a flag-on failure does (the coordinator, on the D2 gap): the
+// worker deactivates such a leaver whatever the flag, so a failure there is a
+// leaver keeping access. Three failed polls raise it, and it clears once the
+// deactivation succeeds. A flag-off link with no leaver — an employment still
+// open — raises nothing for its failures (L1's rule kept).
+func TestAccountAttention_AFlagOffLeaversFailingDeactivationIsRaised(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	end := shiftDay(t, today(t, w.h), -1)
+	leaver := createPerson(t, w.hr, with(newPerson("Gått", "Ut"), "workEmail", "gatt.ut@example.test"))
+	seedEmploymentDated(t, w.h, leaver.Id, 0, shiftDay(t, today(t, w.h), -100), &end)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true,
+		EmployeeNumber: leaver.EmployeeNumber, HasCredential: true, Invitation: contracts.Invitation{State: contracts.InvitationNone}})
+	workerLink(t, w.h, leaver.Id, u, "active")
+	stayer := createPerson(t, w.hr, with(newPerson("Blir", "Her"), "workEmail", "blir.her@example.test"))
+	seedEmploymentDated(t, w.h, stayer.Id, 0, shiftDay(t, today(t, w.h), -100), nil)
+	seedWorkerLink(t, w.h, stayer.Id, "active", "", "accounts_unavailable", 3)
+
+	w.fake.failWith("Deactivate", errFakeDown)
+	id := "accountFailing/" + strconv.FormatInt(leaver.Id, 10)
+	for poll := 1; poll <= 3; poll++ {
+		if poll > 1 {
+			w.h.Advance(time.Hour)
+		}
+		w.cycle(t)
+		if _, ok := hasItem(t, w.hr, id); ok != (poll == 3) {
+			t.Fatalf("after %d failed polls HR reads %s: %v, want it from the third", poll, id, ok)
+		}
+	}
+	if n := countWrites(w.fake, "Deactivate"); n != 3 {
+		t.Errorf("Deactivate was tried %d times, want once a poll", n)
+	}
+	if item, ok := hasItem(t, w.hr, "accountFailing/"+strconv.FormatInt(stayer.Id, 10)); ok {
+		t.Errorf("a flag-off link with no leaver raises %+v, want nothing", item)
+	}
+
+	w.fake.failWith("Deactivate", nil)
+	w.h.Advance(time.Hour)
+	w.cycle(t)
+	if !w.fake.staffDisabledUser(u) {
+		t.Fatal("the leaver was not deactivated once identity answered")
+	}
+	if item, ok := hasItem(t, w.hr, id); ok {
+		t.Errorf("after the deactivation HR still reads %+v", item)
 	}
 }

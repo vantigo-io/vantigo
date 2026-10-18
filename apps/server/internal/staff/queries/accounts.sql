@@ -205,9 +205,16 @@ WHERE l.provider = 'identity'
 -- AccountLinkAttention is every link the worker left a reason or an error
 -- on, or that carries a disable requested, of a person not erased — or of an
 -- erased one whose link carries a disable requested (Task 4c review M2) —
--- with the person's name, flag and erasure.
+-- with the person's name, flag and erasure, and whether the link is a
+-- leaver's the worker deactivates whatever the flag (the owner's decision
+-- D2; ClaimAccountLink's branch): the worker's link to a Staff-managed user,
+-- every employment ended before @today and none later.
 SELECT l.person_id, p.display_name, p.provision_account, (p.erased_at IS NOT NULL)::boolean AS erased,
-    l.blocked_reason, l.last_error, l.attempts, l.disable_requested_at, l.updated_at
+    l.blocked_reason, l.last_error, l.attempts, l.disable_requested_at, l.updated_at,
+    (l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+        AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
+            AND (e.end_date IS NULL OR e.end_date >= @today::date)))::boolean AS leaver
 FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
 WHERE l.provider = 'identity'

@@ -92,7 +92,7 @@ type accountAttention struct {
 func readAccountAttention(ctx context.Context, q *store.Queries, today, now time.Time) (accountAttention, error) {
 	a := accountAttention{today: today, now: now}
 	var err error
-	if a.links, err = q.AccountLinkAttention(ctx); err != nil {
+	if a.links, err = q.AccountLinkAttention(ctx, dayParam(today)); err != nil {
 		return a, fmt.Errorf("staff: read the account links for attention: %w", err)
 	}
 	if a.people, err = q.AccountPersonAttention(ctx, dayParam(today)); err != nil {
@@ -106,8 +106,14 @@ func readAccountAttention(ctx context.Context, q *store.Queries, today, now time
 // row, or a fault of Staff's own (invalid_actor). Otherwise only from a
 // disable Disable now asked for that identity has not confirmed — failed
 // once, or waiting longer than disableOverdueAfter (review M1, L1); the
-// worker retries it at every poll meanwhile.
+// worker retries it at every poll meanwhile. A flag-off leaver's link (not
+// erased; Leaver) is the exception: the worker deactivates it whatever the
+// flag (D2), so three failed attempts raise accountFailing as with the flag
+// on — a leaver keeping access is HR's to know.
 func accountLinkFailing(l store.AccountLinkAttentionRow, now time.Time) bool {
+	if !l.Erased && !l.ProvisionAccount && l.Leaver && l.LastError != nil && l.Attempts >= accountsMaxAttempts {
+		return true
+	}
 	if l.Erased || !l.ProvisionAccount {
 		// A refusal raises its own item instead (accountDisableRefusals).
 		return l.DisableRequestedAt != nil && !accountDisableRefusals[deref(l.BlockedReason)] &&
