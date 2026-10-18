@@ -56,6 +56,15 @@ RETURNING *;
 -- for, so no absence names it between the answer and the change.
 SELECT EXISTS (SELECT 1 FROM staff.absences WHERE type_id = @id::bigint) AS in_use;
 
+-- name: AbsenceTypeSelfApprovedRunning :one
+-- AbsenceTypeSelfApprovedRunning is whether an absence of the type that its
+-- own person approved (self_approved) has not ended by @today. Asked under
+-- the type's FOR UPDATE, as AbsenceTypeInUse is.
+SELECT EXISTS (
+    SELECT 1 FROM staff.absences
+    WHERE type_id = @id::bigint AND self_approved AND last_day >= @today::date
+) AS running;
+
 -- name: GetAbsenceType :one
 SELECT * FROM staff.absence_types WHERE id = @id;
 

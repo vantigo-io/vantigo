@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 )
@@ -325,8 +326,9 @@ func TestAbsenceTypes_Change(t *testing.T) {
 // colleagues and the manager what was HR's — only while no absence names it:
 // widening it under rows would reveal, after the fact, a type their people
 // took on the promise it stayed HR's (absence_type_in_use). Narrowing —
-// absent to hr_only — is always allowed, and so is widening a type nobody
-// has taken.
+// absent to hr_only — is allowed here (no self-approved row; see
+// TestAbsenceTypes_NarrowingWaitsForASelfApprovedRow), and so is widening a
+// type nobody has taken.
 func TestAbsenceTypes_VisibilityIsNotWidenedUnderRows(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -402,6 +404,46 @@ func TestAbsenceTypes_HROnlyTakesNoShareAndNoHoliday(t *testing.T) {
 		}
 	}
 	do(t, hr, http.MethodPost, absenceTypesPath, companyType("hr_plain", map[string]any{"visibility": "hr_only", "allowsPercent": false}), http.StatusCreated, nil)
+}
+
+// Narrowing a type from absent to hr_only waits while a self-approved
+// absence of it has not ended (privacy review L3): B's by-right
+// self-approval is only ever of a type visible to colleagues, and an HR-only
+// row approved by its own person is the sole personal-data holder's alone —
+// narrowed under a running one, the row would read as that. Refused
+// absence_type_in_use, saying why; once the row has ended — or for a row
+// another decided — the narrowing stands.
+func TestAbsenceTypes_NarrowingWaitsForASelfApprovedRow(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, longSessions()...)
+	hr, hrID := signIn(t, h, "staff:manage")
+	var open gen.StaffAbsenceType
+	do(t, hr, http.MethodPost, absenceTypesPath, companyType("open_matter", map[string]any{"visibility": "absent", "allowsPercent": false}), http.StatusCreated, &open)
+	person := seedPerson(t, h, "Kari", "Nordmann")
+	day := today(t, h)
+	row := func(first, last string, self bool) {
+		t.Helper()
+		h.Exec(t, `INSERT INTO staff.absences (person_id, type_id, first_day, last_day, status, requested_by_user_id, self_approved, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, 'approved', $5, $6, now(), now())`, person, open.Id, first, last, hrID, self)
+	}
+	row(shiftDay(t, day, -30), shiftDay(t, day, -20), true) // ended
+	row(shiftDay(t, day, -2), shiftDay(t, day, 3), false)   // decided by another
+	row(day, day, true)                                     // self-approved, ends today
+	closed := changeOf(open)
+	closed["visibility"] = "hr_only"
+	p := refused(t, hr.Do(http.MethodPut, absenceTypePath(open.Id), closed, ifMatch(open.Revision)), http.StatusConflict, "absence_type_in_use")
+	if !strings.Contains(p.Detail, "approved by its own person") {
+		t.Errorf("detail %q, want the self-approved row named as the reason", p.Detail)
+	}
+	if got := absenceTypeByKey(t, absenceTypesAs(t, h, "staff:manage"), "open_matter"); got.Visibility != gen.StaffAbsenceVisibilityAbsent || got.Revision != open.Revision {
+		t.Errorf("after the refusal = %+v, want absent and unchanged", got)
+	}
+	setClock(t, h, h.Now().Add(24*time.Hour))
+	var narrowed gen.StaffAbsenceType
+	do(t, hr, http.MethodPut, absenceTypePath(open.Id), closed, http.StatusOK, &narrowed, ifMatch(open.Revision))
+	if narrowed.Visibility != gen.StaffAbsenceVisibilityHrOnly {
+		t.Errorf("narrowed once the row ended = %+v, want hr_only", narrowed)
+	}
 }
 
 // A seed's pay is HR's to say (the owner's answer 7, Task 5b): a company

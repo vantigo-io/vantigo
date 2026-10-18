@@ -27,6 +27,28 @@ func (q *Queries) AbsenceTypeInUse(ctx context.Context, id int64) (bool, error) 
 	return in_use, err
 }
 
+const absenceTypeSelfApprovedRunning = `-- name: AbsenceTypeSelfApprovedRunning :one
+SELECT EXISTS (
+    SELECT 1 FROM staff.absences
+    WHERE type_id = $1::bigint AND self_approved AND last_day >= $2::date
+) AS running
+`
+
+type AbsenceTypeSelfApprovedRunningParams struct {
+	ID    int64
+	Today pgtype.Date
+}
+
+// AbsenceTypeSelfApprovedRunning is whether an absence of the type that its
+// own person approved (self_approved) has not ended by @today. Asked under
+// the type's FOR UPDATE, as AbsenceTypeInUse is.
+func (q *Queries) AbsenceTypeSelfApprovedRunning(ctx context.Context, arg AbsenceTypeSelfApprovedRunningParams) (bool, error) {
+	row := q.db.QueryRow(ctx, absenceTypeSelfApprovedRunning, arg.ID, arg.Today)
+	var running bool
+	err := row.Scan(&running)
+	return running, err
+}
+
 const absentTypeID = `-- name: AbsentTypeID :one
 SELECT id FROM staff.absence_types WHERE key = 'absent'
 `

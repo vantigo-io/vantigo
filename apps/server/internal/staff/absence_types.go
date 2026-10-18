@@ -358,6 +358,27 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 					fmt.Sprintf("Absences of %s were taken as HR-only. Its visibility cannot be widened now; add another type instead.", row.NameEn)))
 			}
 		}
+		if row.Visibility == visibilityAbsent && flags.Visibility == visibilityHROnly {
+			// Narrowing waits for a running self-approved row (privacy review
+			// L3): B's by-right self-approval is only of a type colleagues
+			// see, and an HR-only row its own person approved is the sole
+			// personal-data holder's alone — narrowed under it, the row would
+			// read as that.
+			set, err := settings(ctx, txq)
+			if err != nil {
+				return err
+			}
+			running, err := txq.AbsenceTypeSelfApprovedRunning(ctx, store.AbsenceTypeSelfApprovedRunningParams{
+				ID: row.ID, Today: dayParam(civilToday(s.deps.Clock(), zoneOf(set))),
+			})
+			if err != nil {
+				return fmt.Errorf("staff: read whether absence type %d has a running self-approved absence: %w", row.ID, err)
+			}
+			if running {
+				return refuseConflict(conflict(codeAbsenceTypeInUse, "Absence type in use",
+					fmt.Sprintf("An absence of %s approved by its own person has not ended. Its visibility cannot be narrowed to HR-only until it has: an HR-only absence approved by its own person is the sole personal-data holder's alone.", row.NameEn)))
+			}
+		}
 		saved, err = txq.UpdateAbsenceType(ctx, store.UpdateAbsenceTypeParams{
 			ID: row.ID, NameEn: flags.NameEn, NameNb: flags.NameNb, Paid: flags.Paid, DrawsHoliday: flags.DrawsHoliday,
 			AllowsPercent: flags.AllowsPercent, NeedsDecision: flags.NeedsDecision, Visibility: flags.Visibility,

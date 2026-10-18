@@ -1181,7 +1181,7 @@ type StaffAbsenceType struct {
 	Visibility StaffAbsenceVisibility `json:"visibility"`
 }
 
-// StaffAbsenceTypeChangeRequest A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort, hidden and paid alone — every other value as it is, else seed_immutable — ammefri stays paid (aml. § 12-8 (2)), as does svangerskapskontroll (aml. § 12-1), and the reserved types stay hidden and unpaid.
+// StaffAbsenceTypeChangeRequest A type replaced as a whole but for its key, kind and unit, which never change; its visibility widened from hr_only to absent only while no absence names it, and narrowed from absent to hr_only only while no absence of it approved by its own person has not ended (absence_type_in_use), and a property this schema does not name — key, kind or unit among them — is refused as a 400 naming it. A seed may change its names, sort, hidden and paid alone — every other value as it is, else seed_immutable — ammefri stays paid (aml. § 12-8 (2)), as does svangerskapskontroll (aml. § 12-1), and the reserved types stay hidden and unpaid.
 type StaffAbsenceTypeChangeRequest struct {
 	// AllowsPercent Only on a type counted in days.
 	AllowsPercent bool `json:"allowsPercent"`

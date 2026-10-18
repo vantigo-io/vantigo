@@ -1561,7 +1561,13 @@ The seeds, every installation's, in their order:
   and what HR changed. A company type's visibility is **widened** — `hr_only` to
   `absent` — only while no absence names it: once one does, widening is
   `absence_type_in_use` (409), since it would show colleagues and managers, after the
-  fact, a type people took as HR-only. Narrowing is always allowed. A company type that
+  fact, a type people took as HR-only. **Narrowing** — `absent` to `hr_only` — is
+  allowed but while an absence of the type that its own person approved
+  (`self_approved`) has not ended by today in the settings zone: that is
+  `absence_type_in_use` too (privacy review L3), since B's by-right self-approval is
+  only ever of a type colleagues see, and an HR-only row its own person approved is
+  the sole `staff:personal-data` holder's alone — narrowed under a running one, it would
+  read as that. A company type that
   is HR-only neither allows a percentage nor draws on the holiday account (a 400 on
   `allowsPercent` or `drawsHoliday`; whole-branch review): a reader of it as leave would
   learn its kind from overlap's shares or the account's arithmetic. The type's row is
@@ -3256,7 +3262,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `category_in_use` | 409 | Archiving a category documents are filed under. |
 | `seed_immutable` | 409 | Changing a seeded document category; changing a seeded absence type beyond its names, order and `hidden`, or showing the reserved `absent`. |
 | `holiday_scheme_in_use` | 409 | Archiving the default holiday scheme, or one an employment names. |
-| `absence_type_in_use` | 409 | Widening a company absence type's visibility from `hr_only` to `absent` once an absence names it. |
+| `absence_type_in_use` | 409 | Widening a company absence type's visibility from `hr_only` to `absent` once an absence names it, or narrowing it from `absent` to `hr_only` while a self-approved absence of it has not ended. |
 | `percent_not_allowed` | 400 | A percentage on an absence of a type that allows none — a sick kind among them. |
 | `hours_on_day_type` | 400 | Hours on an absence of a type counted in days; an hour type without hours or over more than one day. |
 | `absence_note_on_sick` | 400 | A note on an egenmelding, a sykmelding or a sick child's absence. |

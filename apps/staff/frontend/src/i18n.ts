@@ -1423,7 +1423,7 @@ export const staffCatalog = {
     "refusal.seed_immutable":
       "A seeded type changes only its names, its order, whether it is hidden and whether it is paid — ammefri always stays paid: it is paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own; svangerskapskontroll stays paid too, by aml. § 12-1.",
     "refusal.absence_type_in_use":
-      "An HR-only type is not opened to colleagues while an absence names it: their rows were taken on the promise they stayed HR's.",
+      "An HR-only type is not opened to colleagues while an absence names it: their rows were taken on the promise they stayed HR's. Nor is a type made HR-only while an absence of it that its own person approved has not ended.",
     "refusal.holiday_scheme_in_use": "The default scheme, or one an employment follows, is not archived.",
     "refusal.structure_default": "There is always one default: make another scheme the default first.",
     holidayScheme: "Holiday scheme",
@@ -2853,7 +2853,7 @@ export const staffCatalog = {
     "refusal.seed_immutable":
       "En forhåndsdefinert type endrer bare navn, rekkefølge, om den er skjult og om den er lønnet — ammefri forblir alltid lønnet: den er lønnet innenfor grensene i aml. § 12-8 (2) — inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer; ammefri utover det er ulønnet etter loven med mindre annet er avtalt — registrer den med en egen type; svangerskapskontroll forblir også lønnet, etter aml. § 12-1.",
     "refusal.absence_type_in_use":
-      "En type som bare er for HR, åpnes ikke for kolleger mens fravær har den: de ble registrert med løfte om å forbli HRs.",
+      "En type som bare er for HR, åpnes ikke for kolleger mens fravær har den: de ble registrert med løfte om å forbli HRs. En type gjøres heller ikke til bare for HR mens et fravær av den som personen selv godkjente, ikke er over.",
     "refusal.holiday_scheme_in_use": "Standardordningen, eller en ordning et arbeidsforhold følger, arkiveres ikke.",
     "refusal.structure_default": "Det finnes alltid én standard: gjør en annen ordning til standard først.",
     holidayScheme: "Ferieordning",

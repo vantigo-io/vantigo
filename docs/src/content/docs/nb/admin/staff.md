@@ -439,7 +439,9 @@ Gjennom API-et, som en bruker med `staff:manage`:
    skjult og `paid`; alt annet — og `ammefri` med `paid: false` — avvises med
    `seed_immutable`. En egen type kan når som helst gjøres
    til bare for HR, men når noen har tatt den som bare for HR, kan den ikke åpnes for
-   kolleger og ledere (`absence_type_in_use`): legg heller til en ny type. Å gjøre en
+   kolleger og ledere (`absence_type_in_use`): legg heller til en ny type. En type gjøres
+   heller ikke til bare for HR mens et fravær av den som personen selv godkjente, ikke er
+   over (også `absence_type_in_use`): vent til det er over. Å gjøre en
    type som er i bruk til bare for HR virker bakover: fra da av viser radene som alt er
    lagt inn, bare *permisjon* for ledere, og søknadene, avslagene og historikken deres
    skjules også for dem. En egen HR-type tillater verken prosent eller trekk fra
