@@ -42,6 +42,13 @@ type fakeAccounts struct {
 	writes     []string
 	onWrite    func(method string, user uuid.UUID)
 	onRead     func(user uuid.UUID)
+	// readErr is an Account failure for one user alone.
+	readErr map[uuid.UUID]error
+	// recentInvitation makes a FreshInvitation an ordinary Activate, as
+	// identity does within ten minutes of the last invitation it made.
+	recentInvitation bool
+	// actors is the actor of every write, in order.
+	actors []contracts.Actor
 }
 
 // askedAccount is one Account call: the user and the address to compare.
@@ -111,6 +118,9 @@ func (f *fakeAccounts) Account(_ context.Context, id uuid.UUID, wantEmail string
 	if f.accountErr != nil {
 		return nil, f.accountErr
 	}
+	if err := f.readErr[id]; err != nil {
+		return nil, err
+	}
 	ref, ok := f.users[id]
 	if !ok {
 		return nil, nil
@@ -151,6 +161,27 @@ func (f *fakeAccounts) writeCalls() []string {
 	return slices.Clone(f.writes)
 }
 
+// writeActors is the actor of every write so far, in order.
+func (f *fakeAccounts) writeActors() []contracts.Actor {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.actors)
+}
+
+// failReading makes Account answer err for user alone, nil to stop.
+func (f *fakeAccounts) failReading(user uuid.UUID, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.readErr == nil {
+		f.readErr = map[uuid.UUID]error{}
+	}
+	if err == nil {
+		delete(f.readErr, user)
+		return
+	}
+	f.readErr[user] = err
+}
+
 // user is the ref the fake holds for id.
 func (f *fakeAccounts) user(id uuid.UUID) contracts.AccountRef {
 	f.mu.Lock()
@@ -160,7 +191,7 @@ func (f *fakeAccounts) user(id uuid.UUID) contracts.AccountRef {
 
 // begin records one write and answers its shaped error, running the hook
 // first, outside the lock.
-func (f *fakeAccounts) begin(method, note string, user uuid.UUID) error {
+func (f *fakeAccounts) begin(method, note string, user uuid.UUID, actor contracts.Actor) error {
 	f.mu.Lock()
 	hook := f.onWrite
 	f.mu.Unlock()
@@ -174,6 +205,7 @@ func (f *fakeAccounts) begin(method, note string, user uuid.UUID) error {
 		call += ":" + note
 	}
 	f.writes = append(f.writes, call)
+	f.actors = append(f.actors, actor)
 	return f.writeErr[method]
 }
 
@@ -181,7 +213,7 @@ func (f *fakeAccounts) Prepare(_ context.Context, actor contracts.Actor, spec co
 	if !actor.Valid() {
 		return contracts.AccountRef{}, contracts.ErrInvalidActor
 	}
-	if err := f.begin("Prepare", spec.EmployeeNumber, uuid.Nil); err != nil {
+	if err := f.begin("Prepare", spec.EmployeeNumber, uuid.Nil, actor); err != nil {
 		return contracts.AccountRef{}, err
 	}
 	f.mu.Lock()
@@ -203,11 +235,15 @@ func (f *fakeAccounts) Prepare(_ context.Context, actor contracts.Actor, spec co
 	return ref, nil
 }
 
-func (f *fakeAccounts) Activate(_ context.Context, actor contracts.Actor, id uuid.UUID, _ contracts.ActivateOpts) (contracts.AccountRef, error) {
+func (f *fakeAccounts) Activate(_ context.Context, actor contracts.Actor, id uuid.UUID, opts contracts.ActivateOpts) (contracts.AccountRef, error) {
 	if !actor.Valid() {
 		return contracts.AccountRef{}, contracts.ErrInvalidActor
 	}
-	if err := f.begin("Activate", "", id); err != nil {
+	note := ""
+	if opts.FreshInvitation {
+		note = "fresh"
+	}
+	if err := f.begin("Activate", note, id, actor); err != nil {
 		return contracts.AccountRef{}, err
 	}
 	f.mu.Lock()
@@ -227,8 +263,16 @@ func (f *fakeAccounts) Activate(_ context.Context, actor contracts.Actor, id uui
 	if ref.State == contracts.AccountStateDisabled {
 		ref.State = contracts.AccountStateActive
 	}
-	if ref.State == contracts.AccountStatePending && !ref.HasCredential && ref.Invitation.State != contracts.InvitationActive {
-		ref.Invitation = contracts.Invitation{State: contracts.InvitationActive, Issued: ref.Invitation.Issued + 1}
+	// An Owner's revoke and three unanswered are re-issued only by a fresh
+	// invitation, which within ten minutes of the last is an ordinary call.
+	fresh := opts.FreshInvitation && !f.recentInvitation
+	held := ref.Invitation.State == contracts.InvitationRevokedByOwner || ref.Invitation.State == contracts.InvitationExhausted
+	if ref.State == contracts.AccountStatePending && !ref.HasCredential && ref.Invitation.State != contracts.InvitationActive && (fresh || !held) {
+		issued := ref.Invitation.Issued + 1
+		if fresh {
+			issued = 1
+		}
+		ref.Invitation = contracts.Invitation{State: contracts.InvitationActive, Issued: issued}
 	}
 	f.users[id] = ref
 	return ref, nil
@@ -238,7 +282,7 @@ func (f *fakeAccounts) Deactivate(_ context.Context, actor contracts.Actor, id u
 	if !actor.Valid() {
 		return contracts.AccountRef{}, contracts.ErrInvalidActor
 	}
-	if err := f.begin("Deactivate", "", id); err != nil {
+	if err := f.begin("Deactivate", "", id, actor); err != nil {
 		return contracts.AccountRef{}, err
 	}
 	f.mu.Lock()
@@ -271,7 +315,7 @@ func (f *fakeAccounts) Update(_ context.Context, actor contracts.Actor, id uuid.
 	if !actor.Valid() {
 		return contracts.AccountRef{}, contracts.ErrInvalidActor
 	}
-	if err := f.begin("Update", spec.EmployeeNumber, id); err != nil {
+	if err := f.begin("Update", spec.EmployeeNumber, id, actor); err != nil {
 		return contracts.AccountRef{}, err
 	}
 	f.mu.Lock()

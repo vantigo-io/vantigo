@@ -49,6 +49,63 @@ func (q *Queries) AccountCandidates(ctx context.Context) ([]int64, error) {
 	return items, nil
 }
 
+const accountLinkAttention = `-- name: AccountLinkAttention :many
+
+SELECT l.person_id, p.display_name, p.provision_account, l.state, (l.external_id IS NOT NULL)::boolean AS has_user,
+    l.blocked_reason, l.last_error, l.attempts, l.updated_at
+FROM staff.identity_links l
+JOIN staff.people p ON p.id = l.person_id
+WHERE l.provider = 'identity' AND p.erased_at IS NULL
+  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL)
+ORDER BY l.person_id
+`
+
+type AccountLinkAttentionRow struct {
+	PersonID         int64
+	DisplayName      string
+	ProvisionAccount bool
+	State            string
+	HasUser          bool
+	BlockedReason    *string
+	LastError        *string
+	Attempts         int32
+	UpdatedAt        time.Time
+}
+
+// The account attention items (Task 4c, accounts_attention.go), from Staff's
+// own rows alone: identity is never asked at read time.
+// AccountLinkAttention is every link of a person not erased that the worker
+// left a reason or an error on, with the person's name and flag.
+func (q *Queries) AccountLinkAttention(ctx context.Context) ([]AccountLinkAttentionRow, error) {
+	rows, err := q.db.Query(ctx, accountLinkAttention)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AccountLinkAttentionRow
+	for rows.Next() {
+		var i AccountLinkAttentionRow
+		if err := rows.Scan(
+			&i.PersonID,
+			&i.DisplayName,
+			&i.ProvisionAccount,
+			&i.State,
+			&i.HasUser,
+			&i.BlockedReason,
+			&i.LastError,
+			&i.Attempts,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const accountLinkClaim = `-- name: AccountLinkClaim :one
 SELECT lease_id, external_id FROM staff.identity_links WHERE id = $1
 `
@@ -65,6 +122,49 @@ func (q *Queries) AccountLinkClaim(ctx context.Context, id int64) (AccountLinkCl
 	var i AccountLinkClaimRow
 	err := row.Scan(&i.LeaseID, &i.ExternalID)
 	return i, err
+}
+
+const accountPersonAttention = `-- name: AccountPersonAttention :many
+SELECT id, display_name, has_employment FROM (
+    SELECT p.id, p.display_name,
+        EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id) AS has_employment,
+        EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
+            AND (e.end_date IS NULL OR e.end_date >= $1::date)) AS employed,
+        coalesce(CASE WHEN p.account_email_kind = 'private' THEN p.private_email ELSE p.work_email END, '') <> '' AS address_present
+    FROM staff.people p
+    WHERE p.provision_account AND p.erased_at IS NULL
+) c
+WHERE NOT c.has_employment OR (c.employed AND NOT c.address_present)
+ORDER BY id
+`
+
+type AccountPersonAttentionRow struct {
+	ID            int64
+	DisplayName   string
+	HasEmployment bool
+}
+
+// AccountPersonAttention is every person not erased whose flag is on with
+// no employment at all, or with one not ended by @today and without the
+// address the flag names.
+func (q *Queries) AccountPersonAttention(ctx context.Context, today pgtype.Date) ([]AccountPersonAttentionRow, error) {
+	rows, err := q.db.Query(ctx, accountPersonAttention, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AccountPersonAttentionRow
+	for rows.Next() {
+		var i AccountPersonAttentionRow
+		if err := rows.Scan(&i.ID, &i.DisplayName, &i.HasEmployment); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const claimAccountLink = `-- name: ClaimAccountLink :one
@@ -130,6 +230,87 @@ func (q *Queries) ClaimAccountLink(ctx context.Context, arg ClaimAccountLinkPara
 		&i.SyncedEmployeeNumber,
 	)
 	return i, err
+}
+
+const claimPersonAccountLink = `-- name: ClaimPersonAccountLink :one
+
+UPDATE staff.identity_links SET lease_id = $1::uuid, lease_until = $2::timestamptz
+WHERE id = (
+    SELECT l.id FROM staff.identity_links l
+    WHERE l.person_id = $3 AND l.provider = 'identity'
+      AND (l.lease_until IS NULL OR l.lease_until <= $4::timestamptz)
+    FOR UPDATE OF l
+)
+RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error, attempts,
+    last_synced_at, last_spec_hash, synced_employee_number
+`
+
+type ClaimPersonAccountLinkParams struct {
+	LeaseID    uuid.UUID
+	LeaseUntil time.Time
+	PersonID   int64
+	Now        time.Time
+}
+
+type ClaimPersonAccountLinkRow struct {
+	ID                   int64
+	PersonID             int64
+	ExternalID           *string
+	State                string
+	Managed              bool
+	BlockedReason        *string
+	LastError            *string
+	Attempts             int32
+	LastSyncedAt         *time.Time
+	LastSpecHash         []byte
+	SyncedEmployeeNumber *string
+}
+
+// Run now and Disable now (Task 4c): one person's link, claimed as the cycle
+// claims, by the caller's request.
+// ClaimPersonAccountLink leases one person's link whatever its next attempt
+// and whatever the flag — Disable now turns the flag off before it claims —
+// when no live lease holds it. The link row alone is locked (OF l), waiting
+// out another cycle's claim of it, whose short statement then holds the
+// lease: no row is a link with a live lease, or no link at all.
+func (q *Queries) ClaimPersonAccountLink(ctx context.Context, arg ClaimPersonAccountLinkParams) (ClaimPersonAccountLinkRow, error) {
+	row := q.db.QueryRow(ctx, claimPersonAccountLink,
+		arg.LeaseID,
+		arg.LeaseUntil,
+		arg.PersonID,
+		arg.Now,
+	)
+	var i ClaimPersonAccountLinkRow
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.ExternalID,
+		&i.State,
+		&i.Managed,
+		&i.BlockedReason,
+		&i.LastError,
+		&i.Attempts,
+		&i.LastSyncedAt,
+		&i.LastSpecHash,
+		&i.SyncedEmployeeNumber,
+	)
+	return i, err
+}
+
+const countDueAccountLinks = `-- name: CountDueAccountLinks :one
+SELECT count(*) FROM staff.identity_links l
+JOIN staff.people p ON p.id = l.person_id
+WHERE l.provider = 'identity' AND p.provision_account AND p.erased_at IS NULL
+  AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= $1::timestamptz)
+`
+
+// CountDueAccountLinks is the due links ClaimAccountLink would still take,
+// leased or not: what POST /accounts/run reports as remaining.
+func (q *Queries) CountDueAccountLinks(ctx context.Context, now time.Time) (int64, error) {
+	row := q.db.QueryRow(ctx, countDueAccountLinks, now)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const getPersonAccount = `-- name: GetPersonAccount :one

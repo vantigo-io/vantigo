@@ -33,6 +33,8 @@ sources:
   - apps/server/internal/staff/account_settings.go
   - apps/server/internal/staff/accounts_decide.go
   - apps/server/internal/staff/accounts_worker.go
+  - apps/server/internal/staff/accounts_run.go
+  - apps/server/internal/staff/accounts_attention.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -200,6 +202,85 @@ the user), `mismatch` (the user holds another employee number: someone else's ac
 whose `attempts` reach three could not reach identity: it is tried daily from then on,
 and the log names the failure — but a leaver's deactivation is tried at every poll for
 as long as it fails, so the leaver loses access as soon as identity answers.
+
+### Run accounts now
+
+The worker can be run by hand, for everyone or for one person, with you as the actor
+identity records and the history names.
+
+- **Everyone**: `POST /api/v1/staff/accounts/run` (`staff:manage`) runs one cycle now and
+  answers `{attempted, done, failed, remaining}`: the links it worked, those identity
+  answered (a step carried out, or a reason recorded), those it could not reach identity
+  for (retried by the worker), and the due links it left. It begins no link after
+  sixty seconds and takes at most fifty; `remaining` is for the worker's next cycle, or
+  run it again. It runs beside the worker's own cycles without waiting for them.
+- **One person**: `POST /api/v1/staff/people/{id}/account/run` works the person now,
+  whatever their next attempt, and asks identity for a **fresh invitation**: a pending
+  user whose invitation an Owner revoked, or who left three unanswered
+  (`invitation_revoked`, `invitation_unanswered`), is invited again. The answer is
+  `{invitationSent, account}`. Identity never re-sends an invitation that can still be
+  accepted and sends none within ten minutes of the last; the run is done all the same,
+  with `invitationSent: false` — try again after ten minutes if one is needed. A person
+  whose flag is off has nothing run.
+
+What can go wrong: `accounts_busy` (409) — the worker is working the person right now;
+try again in a few minutes. `person_erased` (409) — an erased person's account is not
+run. `accounts_unavailable` (503) — no module provides accounts, or identity could not
+be reached; the link records the error and the worker retries.
+
+### Disable an account now
+
+`POST /api/v1/staff/people/{id}/account/disable` (`staff:manage`) **turns the person's
+account flag off** and disables their user at once, so the worker leaves it disabled
+until HR turns the flag on again.
+
+1. Send the request. The flag is turned off first (the history shows
+   `account_flag_updated`), then identity disables the user (`account_deactivated`) and
+   ends their sessions. The person's own revision does not move.
+2. Verify: the answer (the person's account) has `provisionAccount: false` and the link
+   `state: disabled`. A person with no link, or whose user is not created yet, only has
+   the flag turned off.
+3. What can go wrong:
+   - `accounts_busy` (409): the worker holds the person's link; nothing was changed. Try
+     again in a few minutes.
+   - `account_not_managed` (409): the person is linked by hand to a user Staff does not
+     manage; `account_privileged` (409): the user is an Owner or a SystemAdmin. The flag
+     is off, but the user stays enabled: an Owner disables them in identity.
+   - `accounts_unavailable` (503): identity could not be reached. **The flag is already
+     off**, but the user is still enabled: the link records the error and the dashboard
+     shows *accountFailing*. No cycle retries it — send the request again.
+
+An erased person's account can be disabled too.
+
+### The account items on the dashboard
+
+`staff:manage` sees one item per person on the dashboard when the worker is held for
+them, read from Staff's own records (identity is not asked when the dashboard loads).
+Each names the person and nothing more; open their Account tab for the details. Only
+people whose flag is on and who are not erased are listed, except *accountFailing* for a
+Disable now that failed.
+
+| Item | What it means | What to do |
+| --- | --- | --- |
+| `accountNoEmployment` | The flag is on but the person has no employment | Add the employment, or turn the flag off |
+| `accountEmailMissing` | The person has no address of the kind the flag names | Add the work (or private) email, or switch the address choice |
+| `accountNotFound` | Federated: the identity provider has not created the user yet | Create the user in the provider with the person's employee number |
+| `accountNotManaged` | An Owner stopped Staff managing the user | An Owner adopts the user again, or HR turns the flag off |
+| `accountBlockedByOwner` | An Owner disabled the pending user | An Owner enables them in identity, if they should start |
+| `accountDisabledByOwner` | An Owner disabled the user while the person is employed | An Owner decides; Staff does not undo it |
+| `accountUserGone` | The user was deleted in identity | Unlink, or an Owner restores the account |
+| `accountPrivileged` | The user is an Owner or a SystemAdmin | Handled by an Owner by hand |
+| `accountMismatch` | The user carries another employee number: someone else's account | Check the person's employee number |
+| `accountModeChanged` | A pending user made in local mode, now under federated mode | An Owner finishes or deletes the user |
+| `accountEmailDiffers` | The user's address in identity differs from the person's | An Owner changes it in identity (Staff changes it only while pending) |
+| `accountEmailTaken` | Another user in identity holds the address | Resolve the duplicate in identity, or change the person's address |
+| `accountNumberTaken` | A user Staff does not manage holds the employee number | An Owner adopts that user for Staff, or resolves the number |
+| `accountFailing` | Identity could not be reached three times in a row, or a Disable now failed | Check identity's health and the log; send Disable now again |
+| `invitationUnanswered` | Three invitations went unanswered | Check the address; Run now sends a fresh one |
+| `invitationRevoked` | An Owner revoked the invitation | Run now sends a fresh one, if the person should have it |
+| `employeeRoleMissing` | No employee role named (one item, with a count) | An Owner names the roles Staff may give |
+| `employeeRoleUnsafe` | A role named for Staff grants administration (one item) | An Owner takes that key out of the role, or the role out of the set |
+| `accountModeMismatch` | A worker's OIDC or SCIM settings differ from the API's (one item) | Align the settings and restart the worker |
 
 ## The personal-data permission
 
