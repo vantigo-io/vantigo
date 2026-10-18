@@ -183,6 +183,16 @@ func TestDecide(t *testing.T) {
 		}), stepDeactivateWant),
 		both("between employments, disabled by Staff", all(gap, withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByStaff, true, contracts.InvitationNone))), stepNoneWant),
 		both("between employments, no link", gap, stepNoneWant),
+		both("between employments, before S's window, disabled by an Owner", all(gap, withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByOwner, true, contracts.InvitationNone))), stepNoneWant),
+		both("between employments, before S's window, the address missing, disabled by Staff", all(gap, func(in *accountDecision) { in.Person.AddressPresent = false },
+			withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByStaff, true, contracts.InvitationNone))), stepNoneWant),
+		both("between employments, before S's window, the email differs", all(gap, withUser(linkStateDisabled, func() *contracts.AccountRef {
+			r := ref(contracts.AccountStateDisabled, contracts.DisabledByStaff, true, contracts.InvitationNone)
+			r.EmailDiffers = true
+			return r
+		}())), stepNoneWant),
+		both("between employments, in S's window, disabled by an Owner", all(gap, func(in *accountDecision) { in.Today = day(t, "2026-11-20") },
+			withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByOwner, true, contracts.InvitationNone))), reportWant(reasonDisabledByOwner, blocked)),
 		both("between employments, in S's window, no link", all(gap, func(in *accountDecision) { in.Today = day(t, "2026-11-20") }), stepPrepareWant),
 		both("between employments, in S's window, disabled by Staff", all(gap, func(in *accountDecision) { in.Today = day(t, "2026-11-20") },
 			withUser(linkStateDisabled, ref(contracts.AccountStateDisabled, contracts.DisabledByStaff, true, contracts.InvitationNone))), stepNoneWant),
@@ -209,8 +219,15 @@ func TestDecide(t *testing.T) {
 		// The user as identity reports them.
 		both("unmanaged: linked, not managed by Staff", withUser(linkStateLinked, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"}),
 			accountStep{Kind: accountStepNone, State: linkStateLinked}),
-		both("worker link, user unmanaged (promoted)", withUser(linkStateActive, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"}),
+		both("worker link, user unmanaged by an Owner", withUser(linkStateActive, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"}),
 			reportWant(reasonNotManaged, "")),
+		both("worker link, user promoted to Owner (privileged, unmanaged)", withUser(linkStateActive, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, Privileged: true}),
+			reportWant(reasonPrivileged, blocked)),
+		both("worker link, a managed SystemAdmin", withUser(linkStateActive, func() *contracts.AccountRef { r := active(); r.Privileged = true; return r }()),
+			reportWant(reasonPrivileged, blocked)),
+		both("self-service link, an Owner employee (privileged, unmanaged)", withUser(linkStateLinked, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, Privileged: true}),
+			accountStep{Kind: accountStepNone, State: linkStateLinked}),
+		both("self-service link, the user since adopted, a leaver", all(ended, withUser(linkStateLinked, active())), stepDeactivateWant),
 		both("worker link, user unmanaged, after the end", all(ended, withUser(linkStateDisabled, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"})),
 			reportWant(reasonNotManaged, "")),
 		both("unmanaged, after the end", all(ended, withUser(linkStateLinked, &contracts.AccountRef{UserID: userID, State: contracts.AccountStateActive, EmployeeNumber: "A-1"})),

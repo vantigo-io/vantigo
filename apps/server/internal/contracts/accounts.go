@@ -134,7 +134,7 @@ type AccountRef struct {
 	UserID uuid.UUID
 	// State is AccountStatePending, AccountStateActive or AccountStateDisabled.
 	State string
-	// DisabledBy is "", DisabledByOwner or DisabledByStaff.
+	// DisabledBy is "", DisabledByOwner, DisabledByStaff or DisabledByDirectory.
 	DisabledBy string
 	// Managed reports whether Staff manages the user; a provider writes only
 	// to a managed user (ErrAccountNotManaged).
@@ -152,6 +152,11 @@ type AccountRef struct {
 	// by Update, so a difference is the caller's to report to an Owner. The
 	// identity address itself never crosses into the caller.
 	EmailDiffers bool
+	// Privileged reports whether the user is an Owner or a SystemAdmin, whom
+	// an Owner handles by hand: a provider refuses every write to them
+	// (ErrAccountPrivileged), managed or not — a managed user promoted to
+	// Owner is unmanaged by the promotion and reads Privileged too.
+	Privileged bool
 	// HasCredential reports whether the user can sign in by themselves: a
 	// password, a passkey or an OIDC link.
 	HasCredential bool

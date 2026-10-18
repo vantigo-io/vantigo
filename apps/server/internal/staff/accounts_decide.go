@@ -23,9 +23,11 @@ import (
 // one claim). A step after which the ref is unchanged ends the chain too (an
 // Activate within identity's ten minutes issues nothing; a Deactivate of a
 // user the directory keeps inactive reads the same before and after), and
-// Fresh is passed only to the first decide of a Run now. After a Prepare or
-// an Update the worker records the employee number it wrote as the link's
-// SyncedEmployeeNumber. A call's error is
+// Fresh is passed only to the first decide of a Run now. After a successful
+// Prepare or Update the re-run's link facts carry the employee number it
+// wrote as SyncedEmployeeNumber, and after an Update SpecChanged false; both
+// are recorded on the link only on success, so a failed call leaves them as
+// they were. A call's error is
 // the worker's to record, not decide's: ErrAccountPrivileged (the user an
 // Owner or a SystemAdmin — AccountRef carries no such mark, so only a call
 // tells), ErrBlockedByOwner, ErrAccountNotFound (federated, not found),
@@ -83,6 +85,7 @@ const (
 	// reasonNotManaged: the worker's link names a user Staff no longer
 	// manages (an Owner unmanaged or promoted them); the link keeps its state.
 	reasonNotManaged = "account_not_managed"
+	reasonPrivileged = "account_privileged"
 )
 
 // accountStep is decide's answer: one step. Fresh is the activate's
@@ -263,9 +266,12 @@ func accountEnabled(ref *contracts.AccountRef) bool {
 //  3. No employment at all: report no_employment.
 //  4. A link naming a user: identity knows no such user — on HR's
 //     self-service link nothing, on the worker's report failed user_gone,
-//     never re-created (reading 18); the user not managed by Staff — on
-//     HR's self-service link nothing, the link recorded linked; on the
-//     worker's report account_not_managed, the link's state kept;
+//     never re-created (reading 18); the user not managed by Staff on HR's
+//     self-service link: nothing, the link recorded linked (a user an Owner
+//     has since adopted is managed, so acted on — plan reading 8); an Owner
+//     or a SystemAdmin (AccountRef.Privileged): report blocked
+//     account_privileged; the user not managed by Staff on the worker's
+//     link: report account_not_managed, the link's state kept;
 //     identity's employee number neither the person's nor the one last
 //     synced to identity (contracts.SameEmployeeNumber): report blocked
 //     mismatch and nothing else, not even at the end (B3).
@@ -273,7 +279,8 @@ func accountEnabled(ref *contracts.AccountRef) bool {
 //     still enabled — the address need not be present — and a user the
 //     directory deactivated every run, since identity disables its own
 //     record whatever the directory says; otherwise nothing.
-//  6. Between employments, before the later one is due: the same.
+//  6. Between employments, before the later one is due: the same, and
+//     before its window nothing else — no report either.
 //  7. Federated mode and a pending user with no credential (created in
 //     local mode): report mode_changed (reading 30), nothing else.
 //  8. Before the window (T < F − createBeforeDays) with no user: nothing.
@@ -315,6 +322,8 @@ func decide(in accountDecision) accountStep {
 			return accountStep{Kind: accountStepReport, Reason: reasonUserGone, State: linkStateFailed}
 		case !ref.Managed && in.Link.State == linkStateLinked:
 			return accountStep{Kind: accountStepNone, State: linkStateLinked}
+		case ref.Privileged:
+			return accountStep{Kind: accountStepReport, Reason: reasonPrivileged, State: linkStateBlocked}
 		case !ref.Managed:
 			return accountStep{Kind: accountStepReport, Reason: reasonNotManaged}
 		case !contracts.SameEmployeeNumber(ref.EmployeeNumber, p.EmployeeNumber) &&
@@ -328,7 +337,9 @@ func decide(in accountDecision) accountStep {
 		if hasUser && accountEnabled(ref) {
 			return accountStep{Kind: accountStepDeactivate}
 		}
-		if phase == phaseEnded {
+		// Nothing more for a leaver, nor between employments before the
+		// later one's window: nothing of it is due yet, so no report either.
+		if phase == phaseEnded || phase == phaseBefore {
 			return none
 		}
 	}

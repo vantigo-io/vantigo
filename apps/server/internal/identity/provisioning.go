@@ -214,6 +214,7 @@ func (p *provisioning) ref(ctx context.Context, q *store.Queries, u provisionedU
 	ref := contracts.AccountRef{
 		UserID:         u.ID,
 		Managed:        u.ManagedBy != nil,
+		Privileged:     u.Privileged,
 		EmployeeNumber: deref(u.EmployeeNumber),
 		HasCredential:  u.HasPassword || u.HasPasskey || u.HasOidcLink,
 		Invitation:     contracts.Invitation{State: contracts.InvitationNone},
