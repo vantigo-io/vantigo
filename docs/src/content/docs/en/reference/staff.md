@@ -997,16 +997,25 @@ after the earlier employment's end — the first that holds wins:
 2. No employment at all: `no_employment`.
 3. A link naming a user: a user identity no longer knows is `user_gone` (the link
    `failed`; never re-created) on the worker's link and nothing on HR's self-service
-   link; a user Staff does not manage is left alone, the link `linked`; a user whose
-   employee number is not the person's is `mismatch` (the link `blocked`) and nothing
-   else, not even at the end.
-4. Every employment ended (the day after the last end): deactivate a user still
-   enabled — the address need not be present; a user the SCIM directory deactivated is
-   deactivated too, once. Between employments, before the later one is due: the same.
+   link; a user Staff does not manage is left alone — on HR's self-service link the
+   link stays `linked`, on the worker's link it is `account_not_managed` (an Owner
+   unmanaged or promoted the user) and keeps its state; a user whose employee number
+   is neither the person's nor the one the worker last wrote to identity for the link
+   is `mismatch` (the link `blocked`) and nothing else, not even at the end. A user
+   holding the number last written, after HR renumbered the person, is still theirs
+   and is updated.
+4. Every employment ended (the day after the last end): deactivate the user whenever
+   the person has left, whatever the directory says — every run while identity's
+   record may still be enabled, and for a user the SCIM directory deactivated every
+   run, since identity disables its own record anyway and the call changes nothing
+   twice; the address need not be present. Between employments, before the later one
+   is due: the same.
 5. Federated mode and a pending user without a credential: `mode_changed`.
-6. `T < F − createBeforeDays`: nothing. The address missing: `account_email_missing`.
-   No user yet: prepare (in federated mode, find by the employee number).
-7. `T ≥ F`: a user the directory deactivated, nothing; disabled by an Owner (or by no
+6. `T < F − createBeforeDays` with no user yet: nothing. The address missing:
+   `account_email_missing`. No user yet: prepare (in federated mode, find by the
+   employee number).
+7. The user's state, the same before `T ≥ F` except that nothing is activated early:
+   a user the directory deactivated, nothing; disabled by an Owner (or by no
    one recorded), `blocked_by_owner` while pending and `disabled_by_owner` otherwise
    (the link `blocked`); disabled by Staff, activate — in federated mode a re-enable
    only, and a pending user is never activated there; a pending user's invitation:
@@ -1015,8 +1024,8 @@ after the earlier employment's end — the first that holds wins:
 8. The details: a pending user whose address in identity differs, update (local mode);
    a user past pending whose address differs, `email_differs` for an Owner to settle in
    identity (local mode — in federated mode the identity provider owns the address),
-   with an update when the person's other details changed; the details changed,
-   update.
+   with an update when the person's other details changed; the details changed, or
+   the person renumbered, update — before the window too.
 
 **The settings** `createBeforeDays` and `deleteExternalAfterDays` are under
 [Settings](#settings). **Meta** answers `staff:manage` the `accountMode` (as above)
