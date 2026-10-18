@@ -331,3 +331,29 @@ func TestLink_AManagedAccountIsNotLinkedByHand(t *testing.T) {
 		t.Errorf("a link identity could not judge wrote %d links", n)
 	}
 }
+
+// A relink starts the link over as HR's self-service link (Task 4b): what
+// the accounts worker recorded about the old user — its state, reason,
+// error, attempts, schedule, spec hash and the employee number it last
+// synced to identity — is not the new user's, so all of it is reset.
+func TestLink_ARelinkResetsTheWorkersColumns(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, withAccounts(newFakeAccounts()))
+	hr, _ := signIn(t, h, "staff:manage")
+	_, before := signIn(t, h)
+	_, after := signIn(t, h)
+	p := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	link(t, h, p.Id, before)
+	h.Exec(t, `UPDATE staff.identity_links SET blocked_reason = 'mismatch', last_error = 'accounts_unavailable', attempts = 2,
+		next_attempt_at = $2, last_synced_at = $2, last_spec_hash = '\x01', synced_employee_number = 'OLD-1'
+		WHERE person_id = $1`, p.Id, h.Now())
+	linkThroughAPI(t, hr, p.Id, after)
+	got := modtest.One[string](t, h.Harness, `
+		SELECT concat_ws('|', external_id, state, managed, coalesce(blocked_reason, '-'), coalesce(last_error, '-'), attempts,
+			coalesce(next_attempt_at::text, '-'), coalesce(last_synced_at::text, '-'), coalesce(encode(last_spec_hash, 'hex'), '-'),
+			coalesce(synced_employee_number, '-'))
+		FROM staff.identity_links WHERE person_id = $1`, p.Id)
+	if want := after.String() + "|linked|f|-|-|0|-|-|-|-"; got != want {
+		t.Errorf("the relinked link = %s, want %s", got, want)
+	}
+}

@@ -83,7 +83,11 @@ Still no CHECK constraint.
 
 Delivery C's Staff migration is `00051_staff_accounts.sql` (00050 is identity's, the
 same delivery's: one migration per schema). It changes two things of 00042's and adds
-one column, `people.account_revision`, the [account flag's](#accounts) own revision.
+two columns: `people.account_revision`, the [account flag's](#accounts) own revision, and
+`identity_links.synced_employee_number`, the employee number the accounts worker last
+wrote to identity for the link's user — written only after a `Prepare` or an `Update`
+identity accepted, and reset with the worker's other columns whenever the link names
+another user, so a person HR renumbered is still known by the number identity holds.
 `identity_links.external_id` becomes nullable, so the accounts worker's
 `preparing` link names no user until identity has created one; every reader of a link
 takes one naming no user as a person linked to nobody — `GET /people/{id}/user` reads
@@ -2386,7 +2390,7 @@ holds every payload field to its column's class, and a third holds this table to
 | `employment_terms` | C | `id`, `employment_id`, `valid_from`, `employment_type`, `temporary_ground`, `expected_end_date`, `appointment_form`, `hired_out_to`, `fte_percent`, `working_hours_scheme`, `full_time_hours_per_week`, `occupation_code`, `title`, `employee_type`, `department_id`, `location_id`, `manager_person_id`, `cost_centre`, `division`, `working_time_text`, `break_minutes`, `special_hours_text`, `overtime_rule_text`, `probation_end_date`, `probation_extension_agreed`, `probation_extended_to`, `probation_extension_reason`, `notice_employee`, `notice_employer`, `notice_unit`, `tariff_reference`, `holiday_terms_text`, `competence_development_text`, `social_security_text`, `revision`, `created_at`, `updated_at` |
 | `employment_terms` | A | `remuneration_type`, `pay_components`, `pay_method`, `payday_text`, `seniority_date`, `pay_grade` |
 | `employment_terms` | D | `note` |
-| `identity_links` | C | every column: `id`, `person_id`, `provider`, `external_id`, `state`, `managed`, `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`, `lease_id`, `lease_until`, `last_synced_at`, `last_spec_hash`, `created_at`, `updated_at` |
+| `identity_links` | C | every column: `id`, `person_id`, `provider`, `external_id`, `state`, `managed`, `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`, `lease_id`, `lease_until`, `last_synced_at`, `last_spec_hash`, `synced_employee_number`, `created_at`, `updated_at` |
 | `documents` | the category's | every column: `id`, `person_id`, `category_id`, `employment_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `valid_to`, `signed_at`, `uploaded_by_user_id`, `case_id`, `revision`, `created_at`, `updated_at` — a document is erased whole, by its [category's](#categories-and-classes) class |
 | `absences` | C | `id`, `person_id`, `type_id`, `first_day`, `last_day`, `hours`, `percent`, `status`, `case_id`, `requested_by_user_id`, `decided_by_user_id`, `decided_at`, `self_approved`, `revision`, `created_at`, `updated_at` — the type is C on the column; the health erase writes the reserved `absent` in place of a sick or child-sick one |
 | `absences` | D | `note`, `decision_note` |
