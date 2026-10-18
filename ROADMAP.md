@@ -1082,7 +1082,7 @@ identity**. Payroll itself (the a-melding, skattekort, feriepenger) stays out: S
 keeps the fields payroll needs and exports them. The owner's sequence (research §10.11):
 **this phase → the Entra module → Staff phase 2 → Staffing.**
 
-### Phase 1 — The register, absence and the account flag (A1, A2 and B done; C next)
+### Phase 1 — The register, absence and the account flag (A1, A2, B and C done)
 
 Four deliveries, four pull requests, one migration each.
 
@@ -1170,16 +1170,50 @@ Decisions taken while building it that change the design:
   validates with before the payroll export is relied on
   ([the payroll export](docs/src/content/docs/en/reference/staff.md#the-payroll-export)).
 
-**C — Accounts, next.** Identity's provisioning contract and managed users; the employee
-role; the authority mode; the flag on the person and its dates, the account created
-disabled ahead of the start, enabled on the day and disabled after the end, never
-deleted; the managed link; the accounts worker; the adoption of existing users; the
-Account tab. With identity's contract work, `contracts.UserDirectory` gains "active
-users holding permission K", and with it two absence rules B could not judge: the
-**sole active holder of `staff:personal-data`** approves their own HR-only request
-(`absence_self_approved`, an attention item for `staff:personal-data` alone; decided by
-the owner 2026-10-14, B's open question 9), and mail can reach holders of
-`staff:approve` and `staff:manage` (B's open question 1).
+**C — Accounts, built** on `feat/staff-accounts`
+([the spec](docs/superpowers/specs/2026-10-11-staff-foundation-design.md), delivery C;
+[the plan](docs/superpowers/plans/2026-10-17-staff-accounts.md);
+[the reference](docs/src/content/docs/en/reference/staff.md#accounts)): identity's
+**Staff-managed users** — pending until their invitation is accepted, disabled by an Owner
+or by Staff, never deleted while managed — and the Owner's **adoption** of an existing user
+for Staff under an employee number; the **employee roles** an Owner names, which never
+grant administration; the account provisioning contract (`contracts.AccountProvisioning`,
+the `Accounts` slot, resolved for the API and the workers alike) with an invitation that
+completes a pending user and audit rows for a system actor; the **authority mode**, local
+or federated, recorded by the API process; on the person, the **account flag** and its
+dates, the managed link and the `staff-accounts` **worker** — the account prepared
+`createBeforeDays` ahead of the start, enabled with an invitation on the first day,
+disabled the day after the last employment ends — with *Run now*, *Disable now* and the
+account attention items; the Account tab, the Accounts settings and identity's users,
+invitations and roles pages. `contracts.UserDirectory` gains the active holders of a
+permission, and with it the **sole active holder of `staff:personal-data`** approves their
+own HR-only request (B's open question 9) and approval mails reach the holders of
+`staff:approve` and `staff:manage` when no manager can decide (B's open question 1). Two
+migrations, `00050_identity_accounts.sql` and `00051_staff_accounts.sql` (one per schema).
+
+Decisions taken while building it that change the design:
+
+- **The account's address follows the person's record only until the first invitation is
+  delivered** (decided by the owner, 2026-10-18); afterwards an Owner changes it in
+  identity, so HR cannot redirect an invitation.
+- **Leaving disables a Staff-managed account whatever the flag**, and *Disable now* turns
+  the flag off (decided by the owner); a leaver loses access whatever the identity
+  provider or the worker's configuration says.
+- **A permission's holders** come from direct roles, group-mapped roles and the Owner
+  wildcard; delegations grant no key (decided by the owner). Holder mails are a fallback,
+  sent only when no manager can decide.
+- **The worker acts only on an account carrying the person's employee number**, records
+  a prepared user on the link before acting on it, and never touches HR's own
+  self-service links.
+- **A change or correction never moves an absence across the HR-only line**: it is
+  cancelled or removed and entered anew.
+- **B's open questions 11–13 became settings** (decided by the owner): ammefri and
+  svangerskapskontroll held paid by law, a seed's pay editable otherwise, and two erase
+  switches — pregnancy and health-appointment rows (pregnancy leave kept at least a year
+  after its year), and sick-leave cases' dates — off by default.
+- **What identity keeps after Staff's erase** (the managed user, invitations, audit rows)
+  is documented with the Owner's procedure to remove it; automating it is left for the
+  Entra module.
 
 *Unblocks:* a hire who exists before their first day and can sign in on it, a leaver
 who cannot sign in the day after, and an employee who requests holiday from a phone.
