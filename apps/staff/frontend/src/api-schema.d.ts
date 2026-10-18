@@ -1782,7 +1782,7 @@ export interface paths {
         get: operations["getStaffSettings"];
         /**
          * Change the Staff settings
-         * @description Replaces the settings; pensionProvider and injuryInsurer left out are cleared, retentionGraceDays and healthRetentionDays — and the policy, the carry-over, the account and the erase settings — left out keep their values; a null erasePregnancyHealthTypes or eraseSickCaseDates is refused on the field. The time zone must be an IANA name both this server and its database read the same way. The prefix and the next number must together make an employee number of at most 16 characters. retentionGraceDays is 0 to 3650 days, healthRetentionDays 30 to 3650.
+         * @description Replaces the settings; pensionProvider and injuryInsurer left out are cleared, retentionGraceDays and healthRetentionDays — and the policy, the carry-over, the account and the erase settings — left out keep their values; a null erasePregnancyHealthTypes or eraseSickCaseDates is refused on the field. The time zone must be an IANA name both this server and its database read the same way. The prefix and the next number must together make an employee number of at most 16 characters. retentionGraceDays is 0 to 3650 days, healthRetentionDays 30 to 3650. Turning erasePregnancyHealthTypes or eraseSickCaseDates on or off records the installation event settings_updated, naming the field from and to, the caller its actor; a replace that changes neither records nothing.
          */
         put: operations["putStaffSettings"];
         post?: never;
@@ -2182,7 +2182,7 @@ export interface components {
              * @description When the worker next looks at the link. Absent when it has no attempt planned.
              */
             nextAttemptAt?: string;
-            /** @description Why the worker is blocked on the link, a code (blocked_reason). Absent when it is not. */
+            /** @description Why the worker is blocked on the link, a code (blocked_reason), absent when it is not: no_employment, account_email_missing, blocked_by_owner, disabled_by_owner, user_gone, mismatch, mode_changed, email_differs, invitation_revoked, invitation_unanswered, account_not_managed, account_privileged (from the decision table); not_found, employee_role_missing, employee_role_unsafe, account_email_taken, employee_number_taken, mode_mismatch, invalid_actor (from identity's answer, or the mode). */
             reason?: string;
             /** @description preparing (the worker is creating or finding the user — no user yet), linked (HR's self-service link), pending, active, disabled, failed or blocked. */
             state: string;

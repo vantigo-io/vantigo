@@ -212,6 +212,15 @@ En endring kontoklargjøringen i Ansatte gjør i identitetsmodulen, logges som e
 ingen forespørsel gjorde endringen. Alle andre raders `details` er `{"action":"…"}` som
 før.
 
+**Etter at Ansatte har slettet en person.** Ansattes sletting når bare Ansattes rader:
+identity beholder brukeren Ansatte styrte for dem — navnet, adressen (kanskje personens
+private) og ansattnummeret — brukerens invitasjoner og revisjonsradene som navngir dem,
+der øyeblikksbildene har navn og ansattnumre. Dette er godtatt i denne utgivelsen
+(Ansattes design S15); en automatisk fjerning kommer i en senere utgivelse. En eier
+fjerner brukeren for hånd: [slutt å la Ansatte styre
+dem](#slutte-å-la-ansatte-styre-en-bruker), og slett dem så. Revisjonsradene blir
+stående, som for enhver slettet bruker.
+
 ### Autoritetsmodusen
 
 Ansattes klargjøring arbeider i én av to moduser. **Lokal**: identitetsmodulen har

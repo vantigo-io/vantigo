@@ -1279,7 +1279,7 @@ type StaffAccountLink struct {
 	// NextAttemptAt When the worker next looks at the link. Absent when it has no attempt planned.
 	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
 
-	// Reason Why the worker is blocked on the link, a code (blocked_reason). Absent when it is not.
+	// Reason Why the worker is blocked on the link, a code (blocked_reason), absent when it is not: no_employment, account_email_missing, blocked_by_owner, disabled_by_owner, user_gone, mismatch, mode_changed, email_differs, invitation_revoked, invitation_unanswered, account_not_managed, account_privileged (from the decision table); not_found, employee_role_missing, employee_role_unsafe, account_email_taken, employee_number_taken, mode_mismatch, invalid_actor (from identity's answer, or the mode).
 	Reason *string `json:"reason,omitempty"`
 
 	// State preparing (the worker is creating or finding the user — no user yet), linked (HR's self-service link), pending, active, disabled, failed or blocked.

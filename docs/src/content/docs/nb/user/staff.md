@@ -624,7 +624,10 @@ leder for noen, **Mitt team**:
   opplysninger om dokumentene dine og historikken din — uten verdiene HR holder
   forseglet (hele fødselsnummeret og bankkontoen) og uten HRs notater. Filen lister
   dokumentene uten innholdet: last ned hvert av dem fra listen. Å laste ned dataene
-  dine registrerer ingenting.
+  dine registrerer ingenting. Når Ansatte ga deg kontoen, deaktiverer den kontoen dagen
+  etter siste arbeidsforhold, så Min side og **Last ned mine data** forsvinner med den:
+  be HR om dataene dine, så laster de dem ned for deg med eksporten av
+  personopplysninger.
 - **Fravær** — feriekontoen din, egenmeldingsstatusen, omsorgsdagene og fraværene
   dine, med **Be om fravær** (se [Be om fravær](#be-om-fravær-fra-mobilen) nedenfor).
 - **Konto** — om Ansatte gir deg en bruker å logge inn med, fra hvilken dag og på
