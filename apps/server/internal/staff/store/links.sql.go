@@ -132,6 +132,8 @@ ON CONFLICT (person_id, provider) DO UPDATE SET
     last_synced_at = NULL,
     last_spec_hash = NULL,
     synced_employee_number = NULL,
+    lease_id = NULL,
+    lease_until = NULL,
     updated_at = EXCLUDED.updated_at
 `
 
@@ -145,7 +147,9 @@ type SetPersonLinkParams struct {
 // the identity provider. A user linked to another person trips
 // ux_identity_links_provider_external, which the caller answers as
 // user_linked_elsewhere. A replaced link starts over as a self-service link:
-// whatever delivery C's worker recorded about the old user is not this one's.
+// whatever delivery C's worker recorded about the old user is not this one's,
+// and a claim the worker holds on it is ended — its result, which names the
+// old user, is no longer written (WriteAccountResult).
 func (q *Queries) SetPersonLink(ctx context.Context, arg SetPersonLinkParams) error {
 	_, err := q.db.Exec(ctx, setPersonLink, arg.PersonID, arg.ExternalID, arg.Now)
 	return err

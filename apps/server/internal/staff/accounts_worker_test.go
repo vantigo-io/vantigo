@@ -846,3 +846,251 @@ func TestAccountsWorker_AManagerSeesNothingOfACycle(t *testing.T) {
 		t.Errorf("HR reads account_deactivated as %v, want {step, state}", e.Payload)
 	}
 }
+
+// A Prepare that finds a user another person's link still names (review
+// HIGH 1: X renumbered, identity not yet told, P given X's old number) is
+// recorded before anything else is done with it: the clash with X's link is
+// a mismatch, and the chain stops — no Activate, no Update of X's user, on
+// either day.
+func TestAccountsWorker_APreparedUserAnotherLinkNamesIsNotTouched(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	x := w.employee(t, "Xavier", "2020-01-01", dayPtr("2026-06-30"))
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateDisabled, DisabledBy: contracts.DisabledByStaff,
+		Managed: true, EmployeeNumber: x.EmployeeNumber, HasCredential: true})
+	workerLink(t, w.h, x.Id, u, "disabled")
+	w.h.Exec(t, `UPDATE staff.identity_links SET synced_employee_number = $2, next_attempt_at = $3 WHERE person_id = $1`,
+		x.Id, x.EmployeeNumber, w.h.Now().Add(72*time.Hour))
+	old := x.EmployeeNumber
+	w.h.Exec(t, `UPDATE staff.people SET employee_number = 'X-NEW' WHERE id = $1`, x.Id)
+	p := w.employee(t, "Petra", "2026-01-01", nil)
+	w.h.Exec(t, `UPDATE staff.people SET employee_number = $2 WHERE id = $1`, p.Id, old)
+	before := w.fake.user(u)
+	for _, day := range []time.Time{w.h.Now(), osloAt("2026-09-13", 1)} {
+		setClock(t, w.h, day)
+		w.cycle(t)
+		if countWrites(w.fake, "Activate")+countWrites(w.fake, "Update") > 0 {
+			t.Fatalf("the chain acted on X's user: %v", w.fake.writeCalls())
+		}
+		if got := w.fake.user(u); got != before {
+			t.Errorf("X's user changed: %+v, want %+v", got, before)
+		}
+		l := mustLink(t, w.h, p.Id)
+		if l.Reason != "mismatch" || l.State != "blocked" || l.User != "" || l.Synced != "" {
+			t.Errorf("P's link = %+v, want blocked mismatch naming no user, nothing synced", l)
+		}
+	}
+	if l := mustLink(t, w.h, x.Id); l.User != u.String() {
+		t.Errorf("X's link = %+v, want it naming its user still", l)
+	}
+}
+
+// HR relinking a self-service link while a cycle holds it (review MEDIUM 2)
+// wins: the relink clears the lease, and the result write, which names the
+// user it claimed, finds another and writes nothing.
+func TestAccountsWorker_ARelinkDuringAClaimIsKept(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Rita", "2026-01-01", nil)
+	_, first := signIn(t, w.h)
+	_, second := signIn(t, w.h)
+	w.fake.setUser(contracts.AccountRef{UserID: first, State: contracts.AccountStateActive})
+	w.fake.setUser(contracts.AccountRef{UserID: second, State: contracts.AccountStateActive})
+	link(t, w.h, p.Id, first)
+	var once atomic.Bool
+	w.fake.whenReading(func(id uuid.UUID) {
+		if id == first && once.CompareAndSwap(false, true) {
+			linkThroughAPI(t, w.hr, p.Id, second)
+		}
+	})
+	w.cycle(t)
+	if l := mustLink(t, w.h, p.Id); l.User != second.String() || l.State != "linked" {
+		t.Errorf("the link = %+v, want HR's relink to %s, linked", l, second)
+	}
+	if !strings.Contains(w.h.Logs(), "names another user") {
+		t.Error("the dropped write was not logged as a relink")
+	}
+}
+
+// The same with the user changed under the claim by any writer that kept
+// the lease: the result names the user it claimed and is not written.
+func TestAccountsWorker_AResultForAnotherUserIsNotWritten(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Rut", "2026-01-01", nil)
+	first, second := uuid.New(), uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: first, State: contracts.AccountStateActive})
+	w.fake.setUser(contracts.AccountRef{UserID: second, State: contracts.AccountStateActive})
+	link(t, w.h, p.Id, first)
+	w.fake.whenReading(func(id uuid.UUID) {
+		if id == first {
+			w.h.Exec(t, `UPDATE staff.identity_links SET external_id = $2 WHERE person_id = $1`, p.Id, second.String())
+		}
+	})
+	w.cycle(t)
+	if l, _ := linkOf(t, w.h, p.Id); l.User != second.String() {
+		t.Errorf("link = %+v, want the change to %s kept", l, second)
+	}
+}
+
+// The lease is renewed before each call of a chain (review MEDIUM 3): a
+// chain whose calls take longer together than one lease keeps its claim, so
+// a second cycle meanwhile claims nothing and the user is activated once.
+func TestAccountsWorker_TheLeaseIsRenewedThroughTheChain(t *testing.T) {
+	w := newAccountsWorld(t)
+	w.h.Exec(t, `UPDATE staff.settings SET create_before_days = 0`)
+	w.employee(t, "Lang", today(t, w.h), nil)
+	var second atomic.Bool
+	worker := accountsWorker(t, w.h, w.h.Deps())
+	w.fake.whenWriting(func(method string, _ uuid.UUID) {
+		switch {
+		case method == "Prepare" && !second.Load():
+			w.h.Advance(4 * time.Minute)
+		case method == "Activate" && second.CompareAndSwap(false, true):
+			w.h.Advance(2 * time.Minute)
+			if err := worker.RunCycle(context.Background()); err != nil {
+				t.Errorf("the second cycle: %v", err)
+			}
+		}
+	})
+	w.cycle(t)
+	if n := countWrites(w.fake, "Activate"); n != 1 {
+		t.Errorf("Activate called %d times (%v), want once: the second cycle took over a live claim", n, w.fake.writeCalls())
+	}
+}
+
+// The person deleted while a Prepare found an existing user — one an Owner
+// adopted, active — leaves that user alone (review MEDIUM 3): only a user
+// the claim itself created is deactivated.
+func TestAccountsWorker_AFoundUserIsNotDeactivatedWhenThePersonIsGone(t *testing.T) {
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Funn", "2026-01-01", nil)
+	adopted := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: adopted, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber, HasCredential: true})
+	w.fake.whenWriting(func(method string, _ uuid.UUID) {
+		if method != "Prepare" {
+			return
+		}
+		for _, sql := range []string{
+			`DELETE FROM staff.identity_links WHERE person_id = $1`,
+			`DELETE FROM staff.events WHERE person_id = $1`,
+			`DELETE FROM staff.employment_terms WHERE employment_id IN (SELECT id FROM staff.employments WHERE person_id = $1)`,
+			`DELETE FROM staff.employments WHERE person_id = $1`,
+			`DELETE FROM staff.people WHERE id = $1`,
+		} {
+			w.h.Exec(t, sql, p.Id)
+		}
+	})
+	w.cycle(t)
+	if got := w.fake.writeCalls(); !slices.Equal(got, []string{"Prepare:" + p.EmployeeNumber}) {
+		t.Errorf("writes = %v, want the Prepare alone", got)
+	}
+	if ref := w.fake.user(adopted); ref.DisabledBy != "" || ref.State != contracts.AccountStateActive {
+		t.Errorf("the adopted user = %+v, want them left active", ref)
+	}
+}
+
+// A leaver the SCIM directory keeps inactive is deactivated every run —
+// identity's own record whatever the directory says — but the history says
+// so once (review LOW 1): the state moved, or the user changed.
+func TestAccountsWorker_ADirectoryInactiveLeaverIsRecordedOnce(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Scim", "2020-01-01", dayPtr("2026-06-30"))
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateDisabled, DisabledBy: contracts.DisabledByDirectory,
+		Managed: true, EmployeeNumber: p.EmployeeNumber, HasCredential: true})
+	workerLink(t, w.h, p.Id, u, "active")
+	for _, day := range []time.Time{w.h.Now(), osloAt("2026-09-13", 1)} {
+		setClock(t, w.h, day)
+		w.cycle(t)
+	}
+	if n := countWrites(w.fake, "Deactivate"); n != 2 {
+		t.Errorf("Deactivate called %d times, want every run", n)
+	}
+	n := 0
+	for _, e := range eventsAs(t, w.hr, p.Id) {
+		if e.Kind == "account_deactivated" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d account_deactivated events over two days, want one", n)
+	}
+}
+
+// A successful call whose re-read fails is claimed again at the next poll,
+// not the next day (review LOW 2): the step stood, its follow-up is owed.
+func TestAccountsWorker_AFailedReReadIsRetriedAtTheNextPoll(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Lese", "2026-01-01", nil)
+	w.fake.whenWriting(func(method string, _ uuid.UUID) {
+		if method == "Prepare" {
+			w.fake.set(func(f *fakeAccounts) { f.accountErr = errFakeDown })
+		}
+	})
+	w.cycle(t)
+	l := mustLink(t, w.h, p.Id)
+	if l.User == "" || l.NextAttempt == nil || !l.NextAttempt.Equal(w.h.Now().Add(time.Hour)) {
+		t.Errorf("the link = %+v, want the prepared user and the next poll", l)
+	}
+}
+
+// A due deactivation that cannot reach identity is retried at every poll
+// for as long as it fails (review LOW 5): a leaver loses access as soon as
+// identity answers, never a day later.
+func TestAccountsWorker_ADeactivationIsRetriedAtEveryPoll(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Slutt", "2020-01-01", dayPtr("2026-06-30"))
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: p.EmployeeNumber, HasCredential: true})
+	workerLink(t, w.h, p.Id, u, "active")
+	w.fake.failWith("Deactivate", errFakeDown)
+	for poll := 1; poll <= 5; poll++ {
+		w.cycle(t)
+		if n := countWrites(w.fake, "Deactivate"); n != poll {
+			t.Fatalf("poll %d: Deactivate called %d times", poll, n)
+		}
+		w.h.Advance(time.Hour)
+	}
+	if l := mustLink(t, w.h, p.Id); l.Attempts != 5 || l.LastError != "accounts_unavailable" {
+		t.Errorf("the link = %+v, want five attempts counted", l)
+	}
+}
+
+// The real provider on a pool of one (review LOW 8): identity's calls take
+// the one connection too, so the cycle must hold none while it calls.
+func TestAccountsWorker_ACycleOnAPoolOfOneAgainstIdentity(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	role := uuid.New()
+	h.Exec(t, `INSERT INTO identity.roles (id, name, normalized_name, display_name, version, created_at, updated_at)
+	           VALUES ($1, 'Employee', 'EMPLOYEE', 'Employee', $2, $3, $3)`, role, uuid.New(), h.Now())
+	h.Exec(t, `INSERT INTO identity.role_permissions (role_id, permission_key) VALUES ($1, 'staff:access')`, role)
+	h.Exec(t, `INSERT INTO identity.provisioning_roles (role_id, created_at) VALUES ($1, $2)`, role, h.Now())
+	h.Exec(t, `UPDATE staff.settings SET create_before_days = 0`)
+	p := accountEmployee(t, h, hr, "Ein", today(t, h), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	one, err := db.Open(ctx, h.Pool().Config().ConnString(), db.WithMaxConns(1))
+	if err != nil {
+		t.Fatalf("open a pool of one: %v", err)
+	}
+	defer one.Close()
+	deps := h.Deps()
+	deps.Pool = one
+	if err := accountsWorker(t, h, deps).RunCycle(ctx); err != nil {
+		t.Fatalf("a cycle on a pool of one: %v", err)
+	}
+	l := mustLink(t, h, p.Id)
+	if l.State != "pending" || l.User == "" {
+		t.Errorf("the link = %+v, want pending with the user", l)
+	}
+	if disabled := modtest.One[bool](t, h.Harness, `SELECT is_disabled FROM identity.users WHERE id = $1`, l.User); disabled {
+		t.Error("the user was not enabled on the pool of one")
+	}
+}

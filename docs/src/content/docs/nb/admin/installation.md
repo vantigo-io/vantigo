@@ -574,8 +574,10 @@ først når `staff` legges til; den trenger ingen annen modul. Se
 `00050` (brukere styrt av Ansatte, ansattrollene, den registrerte autoritetsmodusen) og
 Ansattes `00051` (en kobling som ennå ikke navngir en bruker, kontoflaggets egen
 revisjon, koblingens synkroniserte ansattnummer). Den starter også kontoarbeideren,
-`staff-accounts`, på som standard — den gjør ingenting før HR slår på en persons
-kontoflagg og en Owner navngir ansattrollene; `STAFF_ACCOUNTS_ENABLED=0` holder den av.
+`staff-accounts`, på som standard. Den gjør ingenting før HR slår på en persons
+kontoflagg; fra da oppretter den personens ventende, deaktiverte bruker før startdatoen
+også før en Owner har navngitt ansattrollene, og aktiverer ingen før de er navngitt.
+`STAFF_ACCOUNTS_ENABLED=0` holder den av.
 Ansatte-migreringen (`00051`) gjør en persons
 ansattnummer unikt etter store bokstaver under sorteringen `C`, så store og små
 bokstaver vurderes likt uansett hvilken locale databasen ble opprettet med. Under en

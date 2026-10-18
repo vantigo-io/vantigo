@@ -49,6 +49,24 @@ func (q *Queries) AccountCandidates(ctx context.Context) ([]int64, error) {
 	return items, nil
 }
 
+const accountLinkClaim = `-- name: AccountLinkClaim :one
+SELECT lease_id, external_id FROM staff.identity_links WHERE id = $1
+`
+
+type AccountLinkClaimRow struct {
+	LeaseID    *uuid.UUID
+	ExternalID *string
+}
+
+// AccountLinkClaim is a link's lease and user, for the log line of a result
+// the link refused. No row is a link gone.
+func (q *Queries) AccountLinkClaim(ctx context.Context, id int64) (AccountLinkClaimRow, error) {
+	row := q.db.QueryRow(ctx, accountLinkClaim, id)
+	var i AccountLinkClaimRow
+	err := row.Scan(&i.LeaseID, &i.ExternalID)
+	return i, err
+}
+
 const claimAccountLink = `-- name: ClaimAccountLink :one
 UPDATE staff.identity_links SET lease_id = $1::uuid, lease_until = $2::timestamptz
 WHERE id = (
@@ -90,7 +108,11 @@ type ClaimAccountLinkRow struct {
 // is not erased: the link row alone is locked (OF l), and one another cycle
 // is claiming is skipped. Blocked and failed links are claimed on their
 // schedule like any other: the decision table never reads blocked as an
-// input, so a link recovers when what blocked it is gone.
+// input, so a link recovers when what blocked it is gone. LIMIT 1 with SKIP
+// LOCKED may find no row while due links remain — each one locked at that
+// instant by another transaction (another cycle's claim, HR's delete or
+// relink of the person) — and the cycle then ends early: those links are
+// claimed by the next poll, never lost.
 func (q *Queries) ClaimAccountLink(ctx context.Context, arg ClaimAccountLinkParams) (ClaimAccountLinkRow, error) {
 	row := q.db.QueryRow(ctx, claimAccountLink, arg.LeaseID, arg.LeaseUntil, arg.Now)
 	var i ClaimAccountLinkRow
@@ -241,6 +263,72 @@ func (q *Queries) PersonAccountLink(ctx context.Context, personID int64) (Person
 	return i, err
 }
 
+const recordPreparedUser = `-- name: RecordPreparedUser :execrows
+UPDATE staff.identity_links SET
+    external_id = $1::text,
+    managed = true,
+    synced_employee_number = $2::varchar,
+    last_synced_at = $3::timestamptz,
+    updated_at = $3::timestamptz
+WHERE id = $4 AND lease_id = $5::uuid AND external_id IS NULL
+`
+
+type RecordPreparedUserParams struct {
+	ExternalID           string
+	SyncedEmployeeNumber string
+	Now                  time.Time
+	ID                   int64
+	LeaseID              uuid.UUID
+}
+
+// RecordPreparedUser writes the user a Prepare answered onto the claim's
+// link, which named none, before anything more is done with that user: a
+// user another link names already trips ux_identity_links_provider_external,
+// which the worker records as a mismatch and stops at. No row is the lease
+// lost, or a link that names a user by now.
+func (q *Queries) RecordPreparedUser(ctx context.Context, arg RecordPreparedUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordPreparedUser,
+		arg.ExternalID,
+		arg.SyncedEmployeeNumber,
+		arg.Now,
+		arg.ID,
+		arg.LeaseID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const renewAccountLease = `-- name: RenewAccountLease :execrows
+UPDATE staff.identity_links SET lease_until = $1::timestamptz
+WHERE id = $2 AND lease_id = $3::uuid AND lease_until > $4::timestamptz
+`
+
+type RenewAccountLeaseParams struct {
+	LeaseUntil time.Time
+	ID         int64
+	LeaseID    uuid.UUID
+	Now        time.Time
+}
+
+// RenewAccountLease moves a live claim's lease five minutes on, before each
+// identity call and read of a chain, so a chain longer than one lease keeps
+// its link. No row is a lease lapsed, or taken by another cycle, or a link
+// gone: the chain stops.
+func (q *Queries) RenewAccountLease(ctx context.Context, arg RenewAccountLeaseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, renewAccountLease,
+		arg.LeaseUntil,
+		arg.ID,
+		arg.LeaseID,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updatePersonAccount = `-- name: UpdatePersonAccount :one
 UPDATE staff.people SET
     provision_account = $1,
@@ -289,6 +377,7 @@ UPDATE staff.identity_links SET
     lease_until = NULL,
     updated_at = $11::timestamptz
 WHERE id = $12 AND lease_id = $13::uuid
+  AND external_id IS NOT DISTINCT FROM $14::text
 `
 
 type WriteAccountResultParams struct {
@@ -305,11 +394,14 @@ type WriteAccountResultParams struct {
 	Now                  time.Time
 	ID                   int64
 	LeaseID              uuid.UUID
+	ClaimedExternalID    *string
 }
 
 // WriteAccountResult records what a claim did, on its lease alone, and
-// clears the lease: no row is a link gone (the person deleted) or claimed
-// since by another cycle, whose lease it now is. Neither the person's
+// clears the lease: no row is a link gone (the person deleted), claimed
+// since by another cycle, whose lease it now is, or naming another user than
+// the claim knew (@claimed_external_id: HR relinked it) — a result about one
+// user is never written onto a link that names another. Neither the person's
 // revision nor updated_at moves: the link is the links group's.
 func (q *Queries) WriteAccountResult(ctx context.Context, arg WriteAccountResultParams) (int64, error) {
 	result, err := q.db.Exec(ctx, writeAccountResult,
@@ -326,6 +418,7 @@ func (q *Queries) WriteAccountResult(ctx context.Context, arg WriteAccountResult
 		arg.Now,
 		arg.ID,
 		arg.LeaseID,
+		arg.ClaimedExternalID,
 	)
 	if err != nil {
 		return 0, err

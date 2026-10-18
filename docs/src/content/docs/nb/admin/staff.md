@@ -164,8 +164,9 @@ Hver person behandles én gang om dagen, ved første kjøring etter midnatt i
 forretningstidssonen. Flere arbeidere, eller en arbeider og en kjøring for hånd, deler
 arbeidet person for person; ingen venter på en annen.
 
-1. Forutsetning: en Owner har navngitt ansattrollene (`provisioningRolesSet` er `true`);
-   uten dem klargjøres en konto, men aktiveres aldri (`employee_role_missing`).
+1. Forutsetning: en Owner har navngitt ansattrollene (`provisioningRolesSet` er `true`).
+   Uten dem oppretter arbeideren likevel de ventende, deaktiverte brukerne til personene
+   med flagget på, men aktiverer aldri én (`employee_role_missing`).
 2. Kontroller dagen etter at arbeideren har kjørt: `GET /api/v1/staff/people/{id}/account`
    svarer en `link` med `state`, `reason` når den holdes tilbake, `attempts` og
    `nextAttemptAt`. Personens historikk (som HR) viser `account_prepared`,
@@ -200,8 +201,11 @@ brukeren; bare en Owner opphever det), `account_privileged` (brukeren er Owner e
 SystemAdmin og håndteres for hånd), `account_not_managed` (en Owner lot Ansatte slutte å
 styre brukeren), `mismatch` (brukeren har et annet ansattnummer: en annens konto),
 `user_gone` (brukeren ble slettet i identity), `invitation_revoked` og
-`invitation_unanswered` (*Kjør nå* sender en ny invitasjon). En lenke der `attempts` når
-tre, kom ikke fram til identity: den prøves daglig fra da av, og loggen navngir feilen.
+`invitation_unanswered` (en Owner trakk invitasjonen tilbake, eller tre invitasjoner ble
+ikke besvart). En lenke der `attempts` når tre, kom ikke fram til identity: den prøves
+daglig fra da av, og loggen navngir feilen — men deaktiveringen av en som har sluttet,
+prøves ved hver kjøring så lenge den feiler, så tilgangen forsvinner så snart identity
+svarer.
 
 ## Rettigheten for personopplysninger
 

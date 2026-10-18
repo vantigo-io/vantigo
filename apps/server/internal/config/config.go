@@ -332,7 +332,9 @@ type Config struct {
 	// accounts worker, staff-accounts (STAFF_ACCOUNTS_ENABLED, staff
 	// foundation design §8.5; accounts plan reading 17). Default ON, as the
 	// retention worker's is: nothing happens until HR turns a person's
-	// account flag on and an Owner names the employee roles. A 0 means the
+	// account flag on — from then the person's pending, disabled user is
+	// created ahead of the start even before an Owner names the employee
+	// roles, and nobody is enabled until they are named. A 0 means the
 	// worker is never handed to the runner: no account is prepared, enabled
 	// or disabled on a schedule — leavers included — until it is on again.
 	StaffAccountsEnabled bool

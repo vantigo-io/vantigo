@@ -69,9 +69,12 @@ const (
 	// accountsBatch bounds one cycle at fifty claims; a backlog drains over
 	// cycles.
 	accountsBatch = 50
-	// accountsLeaseFor is how long a claim holds its link: longer than the
-	// two-minute calls a chain is made of, so a claim alive is never taken
-	// over, and short enough that a crashed one is taken over soon.
+	// accountsLeaseFor is how long a claim holds its link from its last
+	// renewal: the lease is renewed before each identity call and read of a
+	// chain (RenewAccountLease), each bounded by accountsCallTimeout, so a
+	// claim alive keeps its link however long its chain, and a crashed one
+	// is taken over within five minutes. A renewal that finds the lease
+	// lapsed or taken stops the chain.
 	accountsLeaseFor = 5 * time.Minute
 	// accountsCallTimeout bounds each identity call.
 	accountsCallTimeout = 2 * time.Minute
@@ -319,7 +322,9 @@ func (s *server) prepareAccountLinks(ctx context.Context, mode string) error {
 			continue
 		}
 		if err != nil {
-			return err
+			s.logger().ErrorContext(ctx, "staff: read a person due an account", "worker", accountsWorkerName,
+				"person_id", id, "error", err.Error())
+			continue
 		}
 		step := decide(accountDecision{Person: f.decide, Mode: mode, CreateBeforeDays: f.createBeforeDays, Today: f.today})
 		if step.Kind != accountStepPrepare {
@@ -339,7 +344,8 @@ func (s *server) prepareAccountLinks(ctx context.Context, mode string) error {
 			continue
 		}
 		if err != nil {
-			return err
+			s.logger().ErrorContext(ctx, "staff: write a preparing link", "worker", accountsWorkerName,
+				"person_id", id, "error", err.Error())
 		}
 	}
 	return nil
@@ -386,14 +392,21 @@ type accountResult struct {
 	syncedAt   *time.Time
 	specHash   []byte
 	synced     *string
+	// current is the user the link names as far as this claim knows: the
+	// claimed row's, then the one RecordPreparedUser wrote. The result is
+	// written only onto a link still naming it.
+	current *string
 	// failed is a call that could not be made, retried; soon is a link to
 	// claim again at the next poll rather than the next civil day (held by
-	// a mode mismatch, or the chain's three calls spent with more to do).
+	// a mode mismatch, the chain's three calls spent with more to do, a
+	// re-read that failed after a call, or a deactivation that failed — a
+	// leaver loses access as soon as identity answers).
 	failed, soon bool
-	// prepared is the user a Prepare of this claim answered for a link that
-	// named none: deactivated when the result finds the link gone.
-	prepared *uuid.UUID
-	events   []accountEvent
+	// created is the user this claim's Prepare created
+	// (AccountRef.Created): deactivated when the result finds the link gone.
+	// A user Prepare only found is never deactivated for it.
+	created *uuid.UUID
+	events  []accountEvent
 }
 
 func newAccountResult(claim store.ClaimAccountLinkRow) *accountResult {
@@ -401,7 +414,21 @@ func newAccountResult(claim store.ClaimAccountLinkRow) *accountResult {
 		claim: claim, externalID: claim.ExternalID, state: claim.State, managed: claim.Managed,
 		reason: claim.BlockedReason, lastError: claim.LastError, attempts: claim.Attempts,
 		syncedAt: claim.LastSyncedAt, specHash: claim.LastSpecHash, synced: claim.SyncedEmployeeNumber,
+		current: claim.ExternalID,
 	}
+}
+
+// mismatched records a user the link may not name — another link names
+// them — as a mismatch: the link as claimed, its worker columns too, blocked.
+func (r *accountResult) mismatched() {
+	c := r.claim
+	r.externalID, r.current, r.managed = c.ExternalID, c.ExternalID, c.Managed
+	r.synced, r.syncedAt, r.specHash = c.SyncedEmployeeNumber, c.LastSyncedAt, c.LastSpecHash
+	r.created = nil
+	r.state = linkStateBlocked
+	r.answered(reasonMismatch)
+	r.events = nil
+	r.event(eventAccountMismatched, string(accountStepPrepare), reasonMismatch)
 }
 
 // stateOfRef is the link state ref's user reads as, current the link's: a
@@ -476,12 +503,14 @@ func (r *accountResult) held(step accountStep) {
 	}
 }
 
-// succeeded records a call identity carried out, at now.
-func (r *accountResult) succeeded(step accountStep, got contracts.AccountRef, f accountFacts, now time.Time) {
+// succeeded records a call identity carried out, at now; before is the
+// user as the call was decided on (nil for a Prepare).
+func (r *accountResult) succeeded(step accountStep, before *contracts.AccountRef, got contracts.AccountRef, f accountFacts, now time.Time) {
 	id := got.UserID.String()
-	if r.externalID == nil {
-		r.prepared = &got.UserID
+	if step.Kind == accountStepPrepare && got.Created {
+		r.created = &got.UserID
 	}
+	prior := r.state
 	r.externalID = &id
 	r.managed = got.Managed
 	r.syncedAt = &now
@@ -504,6 +533,13 @@ func (r *accountResult) succeeded(step accountStep, got contracts.AccountRef, f 
 			payload.Invitation = &accountEventInvitation{State: got.Invitation.State, Issued: got.Invitation.Issued}
 		}
 	case accountStepDeactivate:
+		// A user the directory keeps inactive is deactivated every run,
+		// changing nothing after the first: recorded only when the link's
+		// state moved or the user changed.
+		unchanged := before != nil && *before == got
+		if prior == linkStateDisabled && unchanged {
+			return
+		}
 		kind = eventAccountDeactivated
 	case accountStepUpdate:
 		kind = eventAccountUpdated
@@ -524,6 +560,9 @@ func (r *accountResult) failedCall(step accountStep, err error) {
 		code := errorAccountsUnavailable
 		first := r.lastError == nil
 		r.lastError = &code
+		if step.Kind == accountStepDeactivate {
+			r.soon = true
+		}
 		if first {
 			r.event(eventAccountFailed, string(step.Kind), code)
 		}
@@ -653,6 +692,10 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 			r.soon = true
 			break
 		}
+		if !s.renewAccountLease(ctx, claim.ID, lease) {
+			log.InfoContext(ctx, "staff: an account claim's lease lapsed; the chain stops", "step", string(step.Kind))
+			break
+		}
 		got, err := s.callAccountStep(ctx, run, step, user, f)
 		if err != nil {
 			if errors.Is(err, contracts.ErrInvalidActor) {
@@ -663,15 +706,26 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 			r.failedCall(step, err)
 			break
 		}
-		r.succeeded(step, got, f, now)
+		r.succeeded(step, ref, got, f, now)
 		if user == nil {
+			// The user Prepare answered is recorded on the link before
+			// anything more is done with them (review HIGH 1): a user another
+			// link names is a mismatch, and nothing is called for them.
+			if !s.recordPreparedUser(ctx, r, lease, got, f, now) {
+				break
+			}
 			id := got.UserID
 			user = &id
 		}
+		if !s.renewAccountLease(ctx, claim.ID, lease) {
+			log.InfoContext(ctx, "staff: an account claim's lease lapsed; the chain stops", "step", string(step.Kind))
+			break
+		}
 		fresh, err := s.readAccountRef(ctx, *user, f)
 		if err != nil {
-			// The call stood; the next claim reads the user again.
+			// The call stood; the next poll reads the user again.
 			log.WarnContext(ctx, "staff: read a linked account after a call", "error", err.Error())
+			r.soon = true
 			break
 		}
 		unchanged := ref != nil && fresh != nil && *ref == *fresh
@@ -726,17 +780,21 @@ func (s *server) writeAccountResult(ctx context.Context, run accountsRun, r *acc
 				ID: r.claim.ID, LeaseID: lease, ExternalID: r.externalID, State: r.state, Managed: r.managed,
 				BlockedReason: r.reason, LastError: r.lastError, Attempts: r.attempts, NextAttemptAt: next,
 				LastSyncedAt: r.syncedAt, LastSpecHash: r.specHash, SyncedEmployeeNumber: r.synced, Now: now,
+				ClaimedExternalID: r.current,
 			})
 			if err != nil {
 				return err
 			}
 			if n == 0 {
-				link, err := readAccountLink(ctx, txq, r.claim.PersonID)
-				if err != nil {
+				held, err := txq.AccountLinkClaim(ctx, r.claim.ID)
+				switch {
+				case errors.Is(err, pgx.ErrNoRows):
+					gone = true
+				case err != nil:
 					return err
-				}
-				gone = link == nil
-				if !gone {
+				case deref(held.ExternalID) != deref(r.current):
+					log.InfoContext(ctx, "staff: an account link names another user than its claim knew (HR relinked it); the result is not written")
+				default:
 					log.InfoContext(ctx, "staff: an account link was claimed by another cycle meanwhile; its result is not written")
 				}
 				return nil
@@ -753,10 +811,7 @@ func (s *server) writeAccountResult(ctx context.Context, run accountsRun, r *acc
 	err := write()
 	if db.IsUniqueViolation(err, "ux_identity_links_provider_external") {
 		// The user is another person's link's already: not this person's.
-		r.externalID, r.state, r.prepared = r.claim.ExternalID, linkStateBlocked, nil
-		r.answered(reasonMismatch)
-		r.events = nil
-		r.event(eventAccountMismatched, string(accountStepPrepare), reasonMismatch)
+		r.mismatched()
 		err = write()
 	}
 	if errors.Is(err, errPersonNotFound) {
@@ -766,15 +821,15 @@ func (s *server) writeAccountResult(ctx context.Context, run accountsRun, r *acc
 		log.ErrorContext(ctx, "staff: write an account result", "error", err.Error())
 		return false
 	}
-	if gone && r.prepared != nil {
+	if gone && r.created != nil {
 		if _, err := withCallTimeout(ctx, func(ctx context.Context) (contracts.AccountRef, error) {
-			return s.accountsDeactivate(ctx, run.actor, *r.prepared)
+			return s.accountsDeactivate(ctx, run.actor, *r.created)
 		}); err != nil {
 			log.ErrorContext(ctx, "staff: the person's link was gone after Prepare, and the user it prepared could not be deactivated",
-				slog.String("user_id", r.prepared.String()), slog.String("error", err.Error()))
+				slog.String("user_id", r.created.String()), slog.String("error", err.Error()))
 		} else {
 			log.WarnContext(ctx, "staff: the person's link was gone after Prepare; the user it prepared was deactivated",
-				slog.String("user_id", r.prepared.String()))
+				slog.String("user_id", r.created.String()))
 		}
 	}
 	return !r.failed
@@ -786,4 +841,50 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// renewAccountLease moves the claim's lease on before an identity call or
+// read, answering false when it lapsed or was taken, or the link is gone.
+func (s *server) renewAccountLease(ctx context.Context, id int64, lease uuid.UUID) bool {
+	now := s.deps.Clock()
+	n, err := store.New(s.deps.Pool).RenewAccountLease(ctx, store.RenewAccountLeaseParams{
+		ID: id, LeaseID: lease, LeaseUntil: now.Add(accountsLeaseFor), Now: now,
+	})
+	if err != nil {
+		s.logger().ErrorContext(ctx, "staff: renew an account claim's lease", "worker", accountsWorkerName, "error", err.Error())
+		return false
+	}
+	return n == 1
+}
+
+// recordPreparedUser writes the user a Prepare answered onto the claim's
+// link — under the person's lock, then the link on the claim's lease — and
+// answers whether the chain may go on with them: not when another link names
+// the user (a mismatch, recorded), the lease is lost or the person gone.
+func (s *server) recordPreparedUser(ctx context.Context, r *accountResult, lease uuid.UUID, got contracts.AccountRef, f accountFacts, now time.Time) bool {
+	id := got.UserID.String()
+	recorded := false
+	err := s.withPersonLock(ctx, r.claim.PersonID, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		n, err := txq.RecordPreparedUser(ctx, store.RecordPreparedUserParams{
+			ID: r.claim.ID, LeaseID: lease, ExternalID: id, SyncedEmployeeNumber: f.row.EmployeeNumber, Now: now,
+		})
+		recorded = n == 1
+		return err
+	})
+	switch {
+	case db.IsUniqueViolation(err, "ux_identity_links_provider_external"):
+		r.mismatched()
+		return false
+	case errors.Is(err, errPersonNotFound):
+		return false
+	case err != nil:
+		s.logger().ErrorContext(ctx, "staff: record a prepared user on the link", "worker", accountsWorkerName,
+			"person_id", r.claim.PersonID, "error", err.Error())
+		r.soon = true
+		return false
+	case !recorded:
+		return false
+	}
+	r.current = &id
+	return true
 }
