@@ -402,16 +402,16 @@ identity recorded. Then, once Staff has created or found a user:
   a system administrator, no user with the employee number yet in the identity
   provider, the address or the employee number held by a user Staff does not manage,
   no roles named for Staff — or one that grants administration — and a worker whose
-  mode differs from the installation's. *The last 3 attempts failed* says identity
+  mode differs from the installation's. *Failed attempts in a row: 3* says identity
   could not be reached; the worker tries again.
 - **Invitation** — whether one is open and can be accepted, the latest lapsed
   unanswered, an Owner revoked it, or three went unanswered, with how many were sent.
 - **Next attempt** and **Last brought in line**.
 
-For a user Staff does not manage — one HR linked by hand, or one an Owner stopped
-managing — the tab tells HR that an Owner adopts the user for Staff on identity's
+For a user Staff does not manage — one HR linked by hand, once the flag is on, or one
+an Owner stopped managing — the tab tells HR that an Owner adopts the user for Staff on identity's
 **Users** page (**Adopt for Staff**), with the person's employee number, and **Open
-Users** goes there.
+Users** goes there. An erased record shows no such step.
 
 **Run now** (HR, while the flag is on) does the account's next step at once, with a
 fresh invitation for a pending user whose last one cannot be accepted. The tab then
@@ -421,13 +421,16 @@ done all the same.
 
 **Disable now** (HR) asks first — *This also turns the account flag off, so the account
 stays disabled until HR turns the flag on again* — then disables the user and says *The
-account is disabled and the account flag is off*. When the user cannot be disabled
+account is disabled and the account flag is off* — or, when Staff had made or found no
+user yet, *The account flag is off; there was no account to disable*. It is not offered
+for a user HR linked by hand under Self-service, which is not Staff's to disable: an
+Owner disables that account in identity. When the user cannot be disabled
 from Staff, the tab says why, the flag already off: Staff does not manage the user, the
 user is an Owner or a system administrator (an Owner disables them on the Users page),
 or the account carries another employee number. When identity cannot be reached, the
 flag is off and the accounts worker disables the user as soon as it can. While the
 worker is acting on the account, Run now and Disable now say so and change nothing:
-try again in a few minutes.
+try again in a few minutes. After any refusal the tab reads the account again.
 
 On an [erased record](#an-erased-record) the tab is read-only but for **Disable now**:
 the person's access must end too.
@@ -1140,8 +1143,8 @@ item never comes back, whatever the headcount does later. The row then says
 their [Account](#account) tab. It says the authority mode in words (*Local accounts*,
 *Federated* or *Accounts are unavailable*), and whether an Owner has named the roles
 Staff may give. Until one has, the card warns *No Owner has named the roles Staff may
-give, so no local account can be enabled*, and **Open Roles and access** goes to
-identity's **Roles and access** page, where an Owner names them under **Roles Staff
+give, so no local account can be enabled*, and **Open Roles & access** goes to
+identity's **Roles & access** page, where an Owner names them under **Roles Staff
 may give**.
 
 - **Prepare the account (days before)** — how many days before the account's day
@@ -1155,6 +1158,6 @@ field before anything is saved; the other settings are saved as they were.
 
 **Run accounts now** runs one cycle of the accounts worker at once, for every account
 that is due, as the worker would. A run may take minutes when identity or the mail
-server is slow. The card then says how many accounts it worked, how many were done,
+server is slow. The card then says, one figure each, how many accounts it worked, how many were done,
 how many failed and are retried by the worker, and how many are left for the worker's
 next cycle.

@@ -384,7 +384,7 @@ og på hvilken adresse. HR endrer det:
 **Brukerkonto** sier først autoritetsmodusen med ord: *Lokale kontoer* — Ansatte
 oppretter brukeren og inviterer personen til å velge et passord — eller *Føderert* —
 identitetsleverandøren eier kontoene, og Ansatte finner brukeren på ansattnummeret,
-aktiverer det den deaktiverte og deaktiverer, uten noen gang å opprette eller invitere
+aktiverer brukere den selv har deaktivert, og deaktiverer dem, uten noen gang å opprette eller invitere
 — eller *Kontoer er ikke tilgjengelige*, når ingen modul gir dem eller denne serveren er
 uenig med modusen identitet registrerte. Deretter, når Ansatte har opprettet eller
 funnet en bruker:
@@ -393,7 +393,7 @@ funnet en bruker:
   *Deaktivert av Ansatte* eller *Deaktivert av en eier*, *Mislyktes*, *Stoppet*, eller
   *Koblet, ikke styrt av Ansatte* for en bruker HR koblet for hånd.
 - **Bruker**, og **Styrt av Ansatte** — ja eller nei.
-- Hvorfor kontoen står, i en setning, når den gjør det: ikke noe arbeidsforhold å gi en
+- Hvorfor kontoen står fast, i en setning, når den gjør det: ikke noe arbeidsforhold å gi en
   konto fra, adressen flagget angir mangler, en eier deaktiverte brukeren (eller den
   ventende brukeren, som Ansatte da aldri aktiverer), brukeren er borte, kontoen hører
   til et annet ansattnummer (den er noen andres og blir latt være), en ventende bruker
@@ -403,16 +403,16 @@ funnet en bruker:
   av Ansatte, en eier eller en systemadministrator, ingen bruker med ansattnummeret ennå
   hos identitetsleverandøren, adressen eller ansattnummeret holdt av en bruker Ansatte
   ikke styrer, ingen roller angitt for Ansatte — eller en som gir administrasjon — og en
-  arbeider med en annen modus enn installasjonens. *De siste 3 forsøkene mislyktes* sier
-  at identitet ikke kunne nås; arbeideren prøver igjen.
+  arbeider med en annen modus enn installasjonens. *Mislykkede forsøk på rad: 3* sier at
+  identitet ikke kunne nås; arbeideren prøver igjen.
 - **Invitasjon** — om en er åpen og kan godtas, den siste gikk ut ubesvart, en eier
   trakk den tilbake, eller tre ble ikke besvart, med hvor mange som er sendt.
-- **Neste forsøk** og **Sist brakt i samsvar**.
+- **Neste forsøk** og **Sist synkronisert**.
 
-For en bruker Ansatte ikke styrer — en HR koblet for hånd, eller en en eier sluttet å
-styre — forteller fanen HR at en eier lar Ansatte styre brukeren på identitets side
+For en bruker Ansatte ikke styrer — en HR koblet for hånd, når flagget er på, eller en en
+eier sluttet å styre — forteller fanen HR at en eier lar Ansatte styre brukeren på identitets side
 **Brukere** (**La Ansatte styre**), med personens ansattnummer, og **Åpne Brukere** går
-dit.
+dit. En slettet person viser ikke dette steget.
 
 **Kjør nå** (HR, mens flagget er på) gjør kontoens neste steg med en gang, med en ny
 invitasjon til en ventende bruker hvis siste invitasjon ikke kan godtas. Fanen sier
@@ -422,13 +422,16 @@ siden; kjøringen er gjort likevel.
 
 **Deaktiver nå** (HR) spør først — *Dette slår også av kontoflagget, så kontoen forblir
 deaktivert til HR slår flagget på igjen* — deaktiverer så brukeren og sier *Kontoen er
-deaktivert og kontoflagget er av*. Når brukeren ikke kan deaktiveres fra Ansatte, sier
+deaktivert og kontoflagget er av* — eller, når Ansatte ennå ikke hadde opprettet eller
+funnet en bruker, *Kontoflagget er av; det fantes ingen konto å deaktivere*. Den tilbys
+ikke for en bruker HR koblet for hånd under Selvbetjening, som ikke er Ansattes å
+deaktivere: en eier deaktiverer den kontoen i identitet. Når brukeren ikke kan deaktiveres fra Ansatte, sier
 fanen hvorfor, med flagget allerede av: Ansatte styrer ikke brukeren, brukeren er en
 eier eller en systemadministrator (en eier deaktiverer dem på siden Brukere), eller
 kontoen har et annet ansattnummer. Når identitet ikke kan nås, er flagget av, og
 kontoarbeideren deaktiverer brukeren så snart den kan. Mens arbeideren jobber med
 kontoen, sier Kjør nå og Deaktiver nå fra og endrer ingenting: prøv igjen om noen
-minutter.
+minutter. Etter hver avvisning leser fanen kontoen på nytt.
 
 På en [slettet person](#en-slettet-person) er fanen skrivebeskyttet, bortsett fra
 **Deaktiver nå**: personens tilgang må også ta slutt.
@@ -1149,6 +1152,6 @@ lagres; de andre innstillingene lagres som de var.
 
 **Kjør kontoer nå** kjører én runde av kontoarbeideren med en gang, for hver konto som
 er forfalt, slik arbeideren ville gjort. En runde kan ta minutter når identitet eller
-e-postserveren er treg. Kortet sier så hvor mange kontoer den behandlet, hvor mange som
+e-postserveren er treg. Kortet sier så, med ett tall for hvert, hvor mange kontoer den behandlet, hvor mange som
 ble ferdige, hvor mange som mislyktes og prøves igjen av arbeideren, og hvor mange som
 er igjen til arbeiderens neste runde.

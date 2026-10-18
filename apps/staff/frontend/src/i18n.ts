@@ -481,7 +481,7 @@ export const staffCatalog = {
     invitationsIssued: "{{count}} sent",
     nextAttempt: "Next attempt",
     lastSynced: "Last brought in line",
-    accountFailing: "The last {{count}} attempts failed: identity could not be reached. The worker tries again.",
+    accountFailing: "Failed attempts in a row: {{count}}. Identity could not be reached; the worker tries again.",
     accountReasonUnknown: "Blocked ({{code}})",
     accountReason_no_employment: "The person has no employment, so there is no day to give them an account from.",
     accountReason_account_email_missing:
@@ -517,7 +517,7 @@ export const staffCatalog = {
     accountAdoptExplained:
       "Staff does not manage this user. For Staff to manage them, an Owner adopts the user for Staff on the Users page (Adopt for Staff), with this person's employee number, {{number}}.",
     openUsers: "Open Users",
-    openRoles: "Open Roles and access",
+    openRoles: "Open Roles & access",
     runNow: "Run now",
     runNowExplained:
       "Run now does the account's next step at once, with a fresh invitation for a pending user whose last one cannot be accepted.",
@@ -529,6 +529,7 @@ export const staffCatalog = {
     disableNowExplained:
       "This also turns the account flag off, so the account stays disabled until HR turns the flag on again.",
     disableNowDone: "The account is disabled and the account flag is off.",
+    disableNowNoAccount: "The account flag is off; there was no account to disable.",
     disableUnavailable:
       "The account flag is off, but identity could not be reached; the accounts worker disables the user as soon as it can.",
 
@@ -536,10 +537,9 @@ export const staffCatalog = {
     accountSettings: "Accounts",
     accountSettingsDescription:
       "How Staff gives people accounts: the mode identity records, the roles an Owner names for Staff to give, and when an account is prepared.",
-    accountModeLabel: "Authority mode",
     accountRolesSet: "An Owner has named the roles Staff may give.",
     accountRolesMissing:
-      "No Owner has named the roles Staff may give, so no local account can be enabled. An Owner names them under Roles Staff may give, on the Roles and access page.",
+      "No Owner has named the roles Staff may give, so no local account can be enabled. An Owner names them under Roles Staff may give, on the Roles & access page.",
     createBeforeDays: "Prepare the account (days before)",
     createBeforeDaysDescription: "How many days before the account's day Staff creates it, disabled: 0 to 90.",
     createBeforeDaysInvalid: "0 to 90 days",
@@ -553,7 +553,7 @@ export const staffCatalog = {
     runAccountsExplained:
       "Runs one cycle of the accounts worker now, for every account that is due, as the worker would. A run may take minutes when identity or the mail server is slow.",
     runAccountsResult:
-      "{{attempted}} accounts worked: {{done}} done, {{failed}} failed and retried by the worker; {{remaining}} left for the worker's next cycle.",
+      "Accounts worked: {{attempted}}. Done: {{done}}. Failed, retried by the worker: {{failed}}. Left for the worker's next cycle: {{remaining}}.",
     couldNotRunAccounts: "Could not run the accounts",
 
     // The organisation
@@ -1852,7 +1852,7 @@ export const staffCatalog = {
     accountStep_activate: "Aktiver brukeren",
     accountStep_deactivate: "Deaktiver brukeren",
     accountStep_update: "Bring brukeren i samsvar med oppføringen",
-    accountStep_report: "Meld hvorfor kontoen står",
+    accountStep_report: "Meld hvorfor kontoen står fast",
     accountReason_accounts_unavailable: "Identitet kunne ikke nås; arbeideren prøver igjen.",
     accountEventStep: "Steg: {{step}}",
     accountEventState: "Tilstand: {{state}}",
@@ -1885,7 +1885,7 @@ export const staffCatalog = {
     userAccount: "Brukerkonto",
     accountMode_local: "Lokale kontoer — Ansatte oppretter brukeren og inviterer personen til å velge et passord.",
     accountMode_federated:
-      "Føderert — identitetsleverandøren eier kontoene: Ansatte finner brukeren på ansattnummeret, aktiverer det den deaktiverte og deaktiverer; den oppretter aldri en bruker og inviterer aldri.",
+      "Føderert — identitetsleverandøren eier kontoene: Ansatte finner brukeren på ansattnummeret, aktiverer brukere den selv har deaktivert, og deaktiverer dem; den oppretter aldri en bruker og inviterer aldri.",
     accountMode_unavailable:
       "Kontoer er ikke tilgjengelige — ingen modul gir dem, eller denne serverens oppsett er uenig med modusen identitet registrerte. Ingenting kjøres før det er rettet.",
     accountNoUser: "Ingen bruker ennå: Ansatte har ikke opprettet eller funnet en for denne personen.",
@@ -1907,8 +1907,8 @@ export const staffCatalog = {
     accountInvitation_exhausted: "Tre invitasjoner ble ikke besvart; bare Kjør nå sender en ny",
     invitationsIssued: "{{count}} sendt",
     nextAttempt: "Neste forsøk",
-    lastSynced: "Sist brakt i samsvar",
-    accountFailing: "De siste {{count}} forsøkene mislyktes: identitet kunne ikke nås. Arbeideren prøver igjen.",
+    lastSynced: "Sist synkronisert",
+    accountFailing: "Mislykkede forsøk på rad: {{count}}. Identitet kunne ikke nås; arbeideren prøver igjen.",
     accountReasonUnknown: "Stoppet ({{code}})",
     accountReason_no_employment: "Personen har ikke noe arbeidsforhold, så det er ingen dag å gi en konto fra.",
     accountReason_account_email_missing: "Personen har ikke adressen flagget angir; kontoen venter til den legges inn.",
@@ -1954,6 +1954,7 @@ export const staffCatalog = {
     disableNowTitle: "Deaktivere kontoen til {{name}} nå?",
     disableNowExplained: "Dette slår også av kontoflagget, så kontoen forblir deaktivert til HR slår flagget på igjen.",
     disableNowDone: "Kontoen er deaktivert og kontoflagget er av.",
+    disableNowNoAccount: "Kontoflagget er av; det fantes ingen konto å deaktivere.",
     disableUnavailable:
       "Kontoflagget er av, men identitet kunne ikke nås; kontoarbeideren deaktiverer brukeren så snart den kan.",
 
@@ -1961,7 +1962,6 @@ export const staffCatalog = {
     accountSettings: "Kontoer",
     accountSettingsDescription:
       "Hvordan Ansatte gir folk kontoer: modusen identitet registrerer, rollene en eier angir at Ansatte kan gi, og når en konto forberedes.",
-    accountModeLabel: "Autoritetsmodus",
     accountRolesSet: "En eier har angitt rollene Ansatte kan gi.",
     accountRolesMissing:
       "Ingen eier har angitt rollene Ansatte kan gi, så ingen lokal konto kan aktiveres. En eier angir dem under Roller Ansatte kan gi, på siden Roller og tilgang.",
@@ -1978,7 +1978,7 @@ export const staffCatalog = {
     runAccountsExplained:
       "Kjører én runde av kontoarbeideren nå, for hver konto som er forfalt, slik arbeideren ville gjort. En runde kan ta minutter når identitet eller e-postserveren er treg.",
     runAccountsResult:
-      "{{attempted}} kontoer behandlet: {{done}} ferdige, {{failed}} mislyktes og prøves igjen av arbeideren; {{remaining}} igjen til arbeiderens neste runde.",
+      "Kontoer behandlet: {{attempted}}. Ferdige: {{done}}. Mislyktes, prøves igjen av arbeideren: {{failed}}. Igjen til arbeiderens neste runde: {{remaining}}.",
     couldNotRunAccounts: "Kunne ikke kjøre kontoene",
 
     // Organisasjonen

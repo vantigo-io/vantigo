@@ -214,10 +214,26 @@ describe("Person page — the account's link", () => {
     });
     renderRoute("/staff/people/101?tab=account");
     const card = await region("User account");
-    expect(within(card).getByText(/The last 3 attempts failed/)).toBeInTheDocument();
+    expect(within(card).getByText(/Failed attempts in a row: 3\./)).toBeInTheDocument();
     expect(within(card).getByText(/The latest invitation lapsed unanswered · 2 sent/)).toBeInTheDocument();
     expect(within(card).getByText(/Oct 12, 2026/)).toBeInTheDocument();
     expect(within(card).getByText(/Oct 11, 2026/)).toBeInTheDocument();
+  });
+
+  it("shows no adoption step for a hand link while the flag is off", async () => {
+    const hand = { state: "linked", managed: false, attempts: 0, user: ADA_USER };
+    stubStaffApi({ accounts: { 101: account({ provisionAccount: false, link: hand }) } });
+    renderRoute("/staff/people/101?tab=account");
+    expect(within(await region("User account")).queryByText(/adopts the user for Staff/)).not.toBeInTheDocument();
+  });
+
+  it("shows no adoption step on an erased record", async () => {
+    stubStaffApi({
+      ...withErased(erasedPerson()),
+      accounts: { 106: account({ link: managed({ managed: false, reason: "account_not_managed" }) }) },
+    });
+    renderRoute("/staff/people/106?tab=account");
+    expect(within(await region("User account")).queryByText(/adopts the user for Staff/)).not.toBeInTheDocument();
   });
 
   it("shows HR the Owner's adoption step for an existing user Staff does not manage", async () => {
@@ -280,6 +296,67 @@ describe("Person page — Run now and Disable now", () => {
     expect(screen.queryByText("The server's English")).not.toBeInTheDocument();
   });
 
+  it("offers no Disable now on HR's self-service link, which is not Staff's to disable", async () => {
+    stubStaffApi({
+      accounts: {
+        101: account({
+          provisionAccount: false,
+          link: { state: "linked", managed: false, attempts: 0, user: ADA_USER },
+        }),
+      },
+    });
+    renderRoute("/staff/people/101?tab=account");
+    const card = await region("User account");
+    expect(within(card).queryByRole("button", { name: "Disable now" })).not.toBeInTheDocument();
+  });
+
+  it("offers no Disable now on HR's self-service link even with the flag on", async () => {
+    stubStaffApi({
+      accounts: { 101: account({ link: { state: "linked", managed: false, attempts: 0, user: ADA_USER } }) },
+    });
+    renderRoute("/staff/people/101?tab=account");
+    const card = await region("User account");
+    expect(within(card).getByRole("button", { name: "Run now" })).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Disable now" })).not.toBeInTheDocument();
+  });
+
+  it("says there was no account to disable when the person had no user", async () => {
+    stubStaffApi({ accounts: { 101: account() } });
+    renderRoute("/staff/people/101?tab=account");
+    const card = await region("User account");
+    await userEvent.click(within(card).getByRole("button", { name: "Disable now" }));
+    await userEvent.click(
+      within(await screen.findByRole("dialog", { name: /Disable Ada Lovelace's account now/ })).getByRole("button", {
+        name: "Disable now",
+      }),
+    );
+    expect(
+      await within(card).findByText("The account flag is off; there was no account to disable.", {}, slow),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["Run now", /\/account\/run$/],
+    ["Disable now", /\/account\/disable$/],
+  ])("reloads the account after %s is refused accounts_busy", async (button, pattern) => {
+    const fetchMock = stubStaffApi({
+      accounts: { 101: account({ link: managed() }) },
+      write: (method, path) =>
+        method === "POST" && pattern.test(path)
+          ? staffProblem(409, { code: "accounts_busy", title: "Accounts busy" })
+          : undefined,
+    });
+    renderRoute("/staff/people/101?tab=account");
+    const card = await region("User account");
+    await userEvent.click(within(card).getByRole("button", { name: button }));
+    if (button === "Disable now")
+      await userEvent.click(
+        within(await screen.findByRole("dialog", { name: /Disable Ada/ })).getByRole("button", { name: button }),
+      );
+    expect(await within(card).findByText(/acting on this account right now/, {}, slow)).toBeInTheDocument();
+    await waitFor(() => expect(sent(fetchMock, "GET", /\/people\/101\/account$/).length).toBeGreaterThan(1), slow);
+  });
+
   it("offers no Run now while the flag is off", async () => {
     stubStaffApi({ accounts: { 101: account({ provisionAccount: false, link: managed({ state: "disabled" }) }) } });
     renderRoute("/staff/people/101?tab=account");
@@ -307,7 +384,7 @@ describe("Person page — Run now and Disable now", () => {
   });
 
   it.each([
-    ["account_not_managed", managed({ managed: false, state: "linked" }), /Staff does not manage them/],
+    ["account_not_managed", managed({ managed: false }), /Staff does not manage them/],
     ["account_privileged", managed({ reason: "account_privileged" }), /an Owner or a system administrator/],
     ["account_mismatch", managed({ reason: "mismatch" }), /another employee number/],
   ])("says Disable now's refusal %s in words, the flag already off", async (_, link, words) => {
@@ -346,6 +423,22 @@ describe("Person page — Run now and Disable now", () => {
     expect(
       await within(card).findByText(/The account flag is off, but identity could not be reached/, {}, slow),
     ).toBeInTheDocument();
+  });
+});
+
+describe("The fake server's account writes", () => {
+  it.each([
+    ["PUT", "/api/v1/staff/people/101/account"],
+    ["POST", "/api/v1/staff/people/101/account/run"],
+    ["POST", "/api/v1/staff/people/101/account/disable"],
+  ])("answers %s %s for the person themselves with the access layer's 403", async (method, url) => {
+    stubStaffApi({ role: "access", me: 101, accounts: { 101: account() } });
+    const answer = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json", "If-Match": "4" },
+      body: JSON.stringify({ provisionAccount: false, provisionFrom: null, accountEmailKind: "work" }),
+    });
+    expect(answer.status).toBe(403);
   });
 });
 
@@ -447,6 +540,27 @@ describe("Profile — the self-service link and Staff's accounts", () => {
       within(await screen.findByRole("dialog", { name: /Unlink/ })).getByRole("button", { name: "Unlink" }),
     );
     expect(await screen.findByText(/Identity could not be reached/, {}, slow)).toBeInTheDocument();
+  });
+
+  it("offers the picker for a link still being prepared, which names no user", async () => {
+    stubStaffApi({ accounts: { 102: account({ link: { state: "preparing", managed: true, attempts: 0 } }) } });
+    renderRoute("/staff/people/102");
+    const group = await region("Self-service");
+    expect(within(group).getByText("Not linked to a user")).toBeInTheDocument();
+    expect(within(group).getByRole("combobox", { name: "User" })).toBeInTheDocument();
+  });
+
+  it("names a link by whether Staff manages it, not by its state", async () => {
+    stubStaffApi({
+      accounts: {
+        102: account({
+          link: managed({ managed: false, user: { ...ADA_USER, id: "u-102", displayName: "Grace at Fjord" } }),
+        }),
+      },
+    });
+    renderRoute("/staff/people/102");
+    const group = await region("Self-service");
+    expect(within(group).getByText(/Grace at Fjord — linked, not managed by Staff/)).toBeInTheDocument();
   });
 
   it("names a managed link as Staff's, with no unlink", async () => {

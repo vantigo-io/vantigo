@@ -66,13 +66,11 @@ export const PersonLinkGroup = ({ person }: { person: StaffPerson }) => {
     });
 
   if (!link) return null;
-  const managed = link.state !== undefined && link.state !== "linked";
+  const managed = link.managed === true;
   return (
     <FieldGroup title={t("selfService")} description={t("linkExplained")}>
       {managed ? (
-        <Text size="sm">
-          {link.user ? t("linkedManaged", { name: link.user.displayName }) : t("accountLinkState_preparing")}
-        </Text>
+        <Text size="sm">{t("linkedManaged", { name: link.user?.displayName ?? "" })}</Text>
       ) : link.linked && link.user ? (
         <Group justify="space-between" wrap="wrap" gap="xs">
           <Group gap="xs">
