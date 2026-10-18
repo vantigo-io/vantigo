@@ -31,6 +31,7 @@ sources:
   - apps/server/internal/staff/care_days.go
   - apps/server/internal/staff/account_flag.go
   - apps/server/internal/staff/account_settings.go
+  - apps/server/internal/staff/accounts_decide.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene

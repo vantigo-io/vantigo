@@ -31,6 +31,7 @@ sources:
   - apps/server/internal/staff/care_days.go
   - apps/server/internal/staff/account_flag.go
   - apps/server/internal/staff/account_settings.go
+  - apps/server/internal/staff/accounts_decide.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
