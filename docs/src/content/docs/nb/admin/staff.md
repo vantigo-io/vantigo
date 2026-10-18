@@ -451,6 +451,9 @@ om avtalen opphører. Flagget er til opplysning — ingen tall leser det, heller
 lønnseksporten, som rapporterer dager og timer etter art — så det forteller HR og lønn
 hva virksomheten har bestemt, ikke mer. **Ammefri** forblir
 lønnet: den er lønnet innenfor grensene i aml. § 12-8 (2) — inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer; ammefri utover det er ulønnet etter loven med mindre annet er avtalt — registrer den med en egen type.
+**Svangerskapskontroll** forblir også lønnet: aml. § 12-1 gir en gravid arbeidstaker
+fri med lønn til svangerskapskontroller som ikke rimelig kan finne sted utenom
+arbeidstiden.
 
 **Velg a-meldingskoden etter permisjonens rettsgrunnlag.** A-meldingen tar imot seks
 permisjonsbeskrivelser og permittering. Velferdspermisjon er avtalt, ikke lovfestet, så

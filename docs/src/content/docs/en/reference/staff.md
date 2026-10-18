@@ -1536,7 +1536,7 @@ The seeds, every installation's, in their order:
   totals count days and hours by kind, never by pay. A seed's pay is **HR's to change**
   (the owner's answer 7): a company that pays beyond the law marks the seed paid, and
   can take it back. `ammefri` is the exception: it is seeded **paid** —
-  paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own — and is never set unpaid (`seed_immutable`, 409, the detail saying so).
+  paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own — and is never set unpaid (`seed_immutable`, 409, the detail saying so). `svangerskapskontroll`, seeded paid, is held the same way (the owner's decision of 2026-10-18): aml. § 12-1 gives a pregnant employee paid time off for antenatal check-ups that cannot reasonably take place outside working hours, and the detail says so.
   The keys of the four reserved types are refused for a company type (400 on `key`).
   An erase switch turned on or off is recorded as the installation event
   `settings_updated`, naming the field `from` and `to`, the caller its actor.

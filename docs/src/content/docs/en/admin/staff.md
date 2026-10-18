@@ -444,6 +444,9 @@ on for that seed, and off again if the agreement ends. The flag is informational
 figure reads it, the payroll export included, which reports days and hours by kind —
 so it tells HR and payroll what the company has decided, nothing more. **Ammefri** stays
 paid: it is paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own.
+**Svangerskapskontroll** (antenatal check-up) stays paid too: aml. § 12-1 gives a
+pregnant employee paid time off for antenatal check-ups that cannot reasonably take
+place outside working hours.
 
 **Choose the a-melding mapping by the leave's legal basis.** The a-melding accepts six
 leave descriptions and permittering. Welfare leave is agreed, not statutory, so the

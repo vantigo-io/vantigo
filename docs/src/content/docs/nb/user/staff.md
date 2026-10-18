@@ -967,7 +967,7 @@ eller **Ulønnet**) og om den er **Forhåndsdefinert** eller **Skjult**.
   nedtonet. Slå **Lønnet** på for en forhåndsdefinert type når virksomheten betaler for
   fraværet utover det loven krever — flagget er til deres oversikt, og lønnseksporten
   leser det ikke.
-- **Ammefri** er **Lønnet**, og forblir det: den er lønnet innenfor grensene i aml. § 12-8 (2) — inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer; ammefri utover det er ulønnet etter loven med mindre annet er avtalt — registrer den med en egen type. Skjemaet sier det,
+- **Ammefri** er **Lønnet**, og forblir det: den er lønnet innenfor grensene i aml. § 12-8 (2) — inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer; ammefri utover det er ulønnet etter loven med mindre annet er avtalt — registrer den med en egen type. **Svangerskapskontroll** er også **Lønnet** og forblir det: aml. § 12-1 gir fri med lønn til svangerskapskontroller. Skjemaet sier det,
   og nekter å lagre den ulønnet.
 - **Skjul** slutter å tilby en type for nytt fravær; **Tilby** tar den tilbake. Fravær
   som har typen, beholder den.
