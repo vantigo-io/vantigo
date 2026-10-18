@@ -315,7 +315,8 @@ type staffPreparedAudit struct {
 // a confirmed email, with the built-in User role (plan reading 5); the open
 // invitations to the address are revoked replaced, as an Owner's create does,
 // and named in the audit, user.staff-prepared — but an open Owner-role
-// invitation to it refuses the address (replaceInvitationsTo). A concurrent writer of
+// invitation to it refuses the address (replaceInvitationsTo); the ref it
+// answers for a user it created is Created, for one it found not. A concurrent writer of
 // the number or the address, seen only by the unique index, is answered as
 // the same refusal.
 func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec contracts.AccountSpec) (contracts.AccountRef, error) {
@@ -386,6 +387,7 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 			return err
 		}
 		ref, err = p.reread(ctx, q, id, now)
+		ref.Created = true
 		return err
 	})
 	if err != nil {
