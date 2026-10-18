@@ -1,16 +1,4 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Group,
-  NumberInput,
-  Select,
-  SimpleGrid,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { Alert, Button, Card, Group, NumberInput, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle } from "@tabler/icons-react";
@@ -96,7 +84,6 @@ export const SettingsPage = () => {
 };
 
 interface GeneralFormValues {
-  timeZone: string;
   employeeNumberPrefix: string;
   nextEmployeeNumber: number | string;
   pensionProvider: string;
@@ -104,24 +91,13 @@ interface GeneralFormValues {
 }
 
 const formValuesOf = (settings: StaffSettings): GeneralFormValues => ({
-  timeZone: settings.timeZone,
   employeeNumberPrefix: settings.employeeNumberPrefix,
   nextEmployeeNumber: settings.nextEmployeeNumber,
   pensionProvider: settings.pensionProvider ?? "",
   injuryInsurer: settings.injuryInsurer ?? "",
 });
 
-/**
- * Every IANA name this browser knows, so the zone is picked rather than
- * typed — and the zone the installation already runs on even when the
- * browser has never heard of it, or a save would silently clear it.
- */
-const timeZoneOptions = (current: string): string[] => {
-  const known = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
-  return known.includes(current) ? [...known] : [current, ...known];
-};
-
-const shownFields = ["timeZone", "employeeNumberPrefix", "nextEmployeeNumber", "pensionProvider", "injuryInsurer"];
+const shownFields = ["employeeNumberPrefix", "nextEmployeeNumber", "pensionProvider", "injuryInsurer"];
 
 const GeneralForm = ({ settings }: { settings: StaffSettings }) => {
   const { t } = useI18n("staff");
@@ -140,7 +116,6 @@ const GeneralForm = ({ settings }: { settings: StaffSettings }) => {
   const form = useForm<GeneralFormValues>({
     initialValues: formValuesOf(settings),
     validate: {
-      timeZone: (value) => (value.trim() ? null : t("timeZoneRequired")),
       employeeNumberPrefix: (value, values) =>
         value.trim().length > EMPLOYEE_NUMBER_PREFIX_MAX_LENGTH || !NUMBER_CHARACTERS.test(value.trim())
           ? t("prefixInvalid", { max: EMPLOYEE_NUMBER_PREFIX_MAX_LENGTH })
@@ -174,7 +149,6 @@ const GeneralForm = ({ settings }: { settings: StaffSettings }) => {
       const optional = (value: string) => (value.trim() ? value.trim() : undefined);
       return updateStaffSettings(
         {
-          timeZone: values.timeZone,
           ...(optional(values.employeeNumberPrefix)
             ? { employeeNumberPrefix: values.employeeNumberPrefix.trim() }
             : {}),
@@ -219,14 +193,13 @@ const GeneralForm = ({ settings }: { settings: StaffSettings }) => {
       <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
         <Stack>
           <Title order={5}>{t("generalSettings")}</Title>
-          <Select
+          {/* The workspace's, not this module's: an Owner sets it under
+              Workspace administration, and every module reads it. */}
+          <TextInput
             label={t("businessTimeZone")}
             description={t("businessTimeZoneDescription")}
-            withAsterisk
-            searchable
-            allowDeselect={false}
-            data={timeZoneOptions(settings.timeZone)}
-            {...form.getInputProps("timeZone")}
+            value={settings.timeZone}
+            readOnly
           />
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <TextInput

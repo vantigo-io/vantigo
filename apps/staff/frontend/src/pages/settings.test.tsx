@@ -52,7 +52,6 @@ describe("SettingsPage — the settings", () => {
     const sent = write(fetchMock, "PUT", "/staff/settings");
     expect(sent.ifMatch).toBe("3");
     expect(sent.body).toEqual({
-      timeZone: "Europe/Oslo",
       employeeNumberPrefix: "E-",
       nextEmployeeNumber: 8,
       pensionProvider: "Storebrand",
@@ -89,7 +88,7 @@ describe("SettingsPage — the settings", () => {
         method === "PUT" && path === "/api/v1/staff/settings"
           ? staffProblem(400, {
               title: "Invalid Staff settings",
-              errors: { timeZone: ["Mars/Olympus is not a time zone this server knows"] },
+              errors: { pensionProvider: ["A pension provider cannot be longer than 200 characters"] },
             })
           : undefined,
     });
@@ -97,7 +96,7 @@ describe("SettingsPage — the settings", () => {
 
     await screen.findByRole("textbox", { name: "Employee number prefix" });
     await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
-    expect(await screen.findByText("Mars/Olympus is not a time zone this server knows")).toBeInTheDocument();
+    expect(await screen.findByText("A pension provider cannot be longer than 200 characters")).toBeInTheDocument();
   });
 });
 

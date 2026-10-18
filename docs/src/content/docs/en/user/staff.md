@@ -895,7 +895,8 @@ Someone without `staff:manage` who opens the page by its address sees none of th
 ### General
 
 - **Business time zone** — every date in Staff, "today" included, is a calendar day in
-  this zone.
+  this zone. It is shown, not changed, here: it is the workspace's, and an Owner
+  changes it under [Workspace administration](/en/user/workspace-administration/#workspace-settings).
 - **Employee number prefix** and **Next employee number** — a generated number is the
   prefix and the next number written together without padding: `E-` and 8 make `E-8`.
   The line below the fields shows the next number and its length. An employee number

@@ -13,7 +13,7 @@ import (
 )
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates FROM staff.settings WHERE id = 1
+SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates FROM staff.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row (design §3.6). The
@@ -23,7 +23,6 @@ func (q *Queries) GetSettings(ctx context.Context) (StaffSetting, error) {
 	var i StaffSetting
 	err := row.Scan(
 		&i.ID,
-		&i.TimeZone,
 		&i.EmployeeNumberPrefix,
 		&i.NextEmployeeNumber,
 		&i.SelfCertPolicy,
@@ -49,7 +48,7 @@ func (q *Queries) GetSettings(ctx context.Context) (StaffSetting, error) {
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates FROM staff.settings WHERE id = 1 FOR UPDATE
+SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates FROM staff.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings reads the settings row and holds it for the rest of the
@@ -61,7 +60,6 @@ func (q *Queries) LockSettings(ctx context.Context) (StaffSetting, error) {
 	var i StaffSetting
 	err := row.Scan(
 		&i.ID,
-		&i.TimeZone,
 		&i.EmployeeNumberPrefix,
 		&i.NextEmployeeNumber,
 		&i.SelfCertPolicy,
@@ -83,40 +81,6 @@ func (q *Queries) LockSettings(ctx context.Context) (StaffSetting, error) {
 		&i.ErasePregnancyHealthTypes,
 		&i.EraseSickCaseDates,
 	)
-	return i, err
-}
-
-const resolveTimeZone = `-- name: ResolveTimeZone :one
-WITH probe AS (
-    SELECT $1::text AS zone, $2::timestamptz AS winter, $3::timestamptz AS summer
-)
-SELECT
-    EXTRACT(EPOCH FROM ((winter AT TIME ZONE zone) - (winter AT TIME ZONE 'UTC')))::bigint AS winter_offset,
-    EXTRACT(EPOCH FROM ((summer AT TIME ZONE zone) - (summer AT TIME ZONE 'UTC')))::bigint AS summer_offset
-FROM probe
-`
-
-type ResolveTimeZoneParams struct {
-	Name   string
-	Winter time.Time
-	Summer time.Time
-}
-
-type ResolveTimeZoneRow struct {
-	WinterOffset int64
-	SummerOffset int64
-}
-
-// ResolveTimeZone asks Postgres what a zone name means, at a winter instant
-// and a summer one, for the caller to compare with Go's reading of the same
-// pg_timezone_abbrevs before pg_timezone_names, so 'CET' is a fixed +01:00 to
-// it and a zone with summer time to Go. It is Expenses' own question
-// (internal/expenses/queries/settings.sql), asked again here because no module
-// reads another's. A name Postgres does not know raises 22023.
-func (q *Queries) ResolveTimeZone(ctx context.Context, arg ResolveTimeZoneParams) (ResolveTimeZoneRow, error) {
-	row := q.db.QueryRow(ctx, resolveTimeZone, arg.Name, arg.Winter, arg.Summer)
-	var i ResolveTimeZoneRow
-	err := row.Scan(&i.WinterOffset, &i.SummerOffset)
 	return i, err
 }
 
@@ -143,33 +107,31 @@ func (q *Queries) SetThresholdsAcknowledged(ctx context.Context, arg SetThreshol
 
 const updateSettings = `-- name: UpdateSettings :one
 UPDATE staff.settings SET
-    time_zone = $1,
-    employee_number_prefix = $2,
-    next_employee_number = $3,
-    pension_provider = $4,
-    injury_insurer = $5,
-    retention_grace_days = coalesce($6::smallint, retention_grace_days),
-    health_retention_days = coalesce($7::smallint, health_retention_days),
-    self_cert_policy = $8,
-    self_cert_days_per_occurrence = $9,
-    self_cert_occurrences_per_year = $10,
-    self_cert_days_per_year = $11,
-    self_cert_after_months = $12,
-    auto_carry_over = $13,
-    auto_carry_over_since = $14,
-    create_before_days = coalesce($15::smallint, create_before_days),
-    delete_external_after_days = CASE WHEN $16::boolean
-        THEN $17::smallint ELSE delete_external_after_days END,
-    erase_pregnancy_health_types = coalesce($18::boolean, erase_pregnancy_health_types),
-    erase_sick_case_dates = coalesce($19::boolean, erase_sick_case_dates),
+    employee_number_prefix = $1,
+    next_employee_number = $2,
+    pension_provider = $3,
+    injury_insurer = $4,
+    retention_grace_days = coalesce($5::smallint, retention_grace_days),
+    health_retention_days = coalesce($6::smallint, health_retention_days),
+    self_cert_policy = $7,
+    self_cert_days_per_occurrence = $8,
+    self_cert_occurrences_per_year = $9,
+    self_cert_days_per_year = $10,
+    self_cert_after_months = $11,
+    auto_carry_over = $12,
+    auto_carry_over_since = $13,
+    create_before_days = coalesce($14::smallint, create_before_days),
+    delete_external_after_days = CASE WHEN $15::boolean
+        THEN $16::smallint ELSE delete_external_after_days END,
+    erase_pregnancy_health_types = coalesce($17::boolean, erase_pregnancy_health_types),
+    erase_sick_case_dates = coalesce($18::boolean, erase_sick_case_dates),
     revision = revision + 1,
-    updated_at = $20::timestamptz
+    updated_at = $19::timestamptz
 WHERE id = 1
-RETURNING id, time_zone, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates
+RETURNING id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates
 `
 
 type UpdateSettingsParams struct {
-	TimeZone                   string
 	EmployeeNumberPrefix       string
 	NextEmployeeNumber         int64
 	PensionProvider            *string
@@ -201,7 +163,6 @@ type UpdateSettingsParams struct {
 // values when NULL.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (StaffSetting, error) {
 	row := q.db.QueryRow(ctx, updateSettings,
-		arg.TimeZone,
 		arg.EmployeeNumberPrefix,
 		arg.NextEmployeeNumber,
 		arg.PensionProvider,
@@ -225,7 +186,6 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 	var i StaffSetting
 	err := row.Scan(
 		&i.ID,
-		&i.TimeZone,
 		&i.EmployeeNumberPrefix,
 		&i.NextEmployeeNumber,
 		&i.SelfCertPolicy,

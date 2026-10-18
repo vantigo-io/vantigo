@@ -1270,10 +1270,11 @@ The settings are `staff:manage`'s, read and replaced through `GET` and
 ([Change the settings](/en/user/staff/#change-the-settings)). A replace carries the revision it read in `If-Match`, so two people
 changing the settings at once cannot overwrite each other unseen.
 
-- **Business time zone** (`timeZone`, default `Europe/Oslo`). Every date in Staff —
-  a start, an end, "today" — is a calendar day in this zone. Use a city zone such as
-  `Europe/Oslo`: a name the server and the database read differently, such as `CET`,
-  is refused.
+- **Business time zone** (`timeZone`, answered but never taken by `PUT`). Every date
+  in Staff — a start, an end, "today" — is a calendar day in this zone. It is the
+  workspace's, set by an Owner under
+  [Workspace administration](/en/user/workspace-administration/#workspace-settings),
+  and shown here so the page says which calendar its dates are in.
 - **Employee number prefix and next number** (`employeeNumberPrefix`, empty, and
   `nextEmployeeNumber`, 1). A person created without an employee number gets the
   prefix and the next number, unpadded: `EMP-` and 7 make `EMP-7`. The prefix is up

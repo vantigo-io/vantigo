@@ -234,14 +234,10 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 	return tally, nil
 }
 
-// settingsZone is the settings' business time zone, read on the pool: the
-// claim judges a leaver's last end on the civil day there.
+// settingsZone is the business time zone, read through the calendar on the
+// pool: the claim judges a leaver's last end on the civil day there.
 func (s *server) settingsZone(ctx context.Context) (*time.Location, error) {
-	set, err := settings(ctx, store.New(s.deps.Pool))
-	if err != nil {
-		return nil, fmt.Errorf("staff: read the settings for the accounts cycle: %w", err)
-	}
-	return zoneOf(set), nil
+	return s.businessZone(ctx)
 }
 
 // withCallTimeout runs one identity call under accountsCallTimeout.
@@ -267,12 +263,16 @@ type accountFacts struct {
 // closed before it answers; errPersonNotFound for no such person.
 func (s *server) readAccountFacts(ctx context.Context, personID int64, now time.Time) (accountFacts, error) {
 	var f accountFacts
-	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return f, err
+	}
+	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		set, err := settings(ctx, q)
 		if err != nil {
 			return err
 		}
-		f.zone = zoneOf(set)
+		f.zone = zone
 		f.today = civilToday(now, f.zone)
 		f.createBeforeDays = int(set.CreateBeforeDays)
 		if f.person, err = readAccountPerson(ctx, q, personID); err != nil {

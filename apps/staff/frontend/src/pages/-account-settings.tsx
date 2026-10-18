@@ -69,7 +69,6 @@ export const AccountSettingsPanel = ({ settings, meta }: { settings: StaffSettin
     mutationFn: (values: AccountValues) =>
       updateStaffSettings(
         {
-          timeZone: settings.timeZone,
           ...(settings.employeeNumberPrefix ? { employeeNumberPrefix: settings.employeeNumberPrefix } : {}),
           nextEmployeeNumber: settings.nextEmployeeNumber,
           ...(settings.pensionProvider ? { pensionProvider: settings.pensionProvider } : {}),

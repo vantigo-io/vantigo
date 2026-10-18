@@ -25,7 +25,6 @@ describe("Settings — accounts", () => {
     const [put] = sent(fetchMock, "PUT", /\/staff\/settings$/);
     expect(put.ifMatch).toBe("3");
     expect(put.body).toEqual({
-      timeZone: "Europe/Oslo",
       employeeNumberPrefix: "E-",
       nextEmployeeNumber: 8,
       pensionProvider: "Storebrand",

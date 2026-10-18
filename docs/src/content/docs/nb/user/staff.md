@@ -891,7 +891,8 @@ selskapets struktur, dokumentkategoriene, tre kort for fravær — **Fraværstyp
 ### Generelt
 
 - **Virksomhetens tidssone** — hver dato i Ansatte, også «i dag», er en kalenderdag i
-  denne sonen.
+  denne sonen. Den vises, men endres ikke, her: den er arbeidsområdets, og en eier
+  endrer den under [Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet).
 - **Prefiks for ansattnummer** og **Neste ansattnummer** — et nummer som lages
   automatisk, er prefikset og neste nummer skrevet sammen uten utfylling: `E-` og 8 blir
   `E-8`. Linjen under feltene viser neste nummer og lengden. Et ansattnummer har høyst

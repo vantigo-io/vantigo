@@ -2351,6 +2351,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           ...(autoCarryOverSince ? { autoCarryOverSince } : {}),
           employeeNumberPrefix: "",
           ...sent,
+          // The workspace's, answered but never taken by a replace.
+          timeZone: state.settings.timeZone,
           ...(typeof keptDelete === "number" ? { deleteExternalAfterDays: keptDelete } : {}),
           retention,
           thresholdsAcknowledged,

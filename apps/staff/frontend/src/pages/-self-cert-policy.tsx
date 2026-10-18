@@ -50,7 +50,6 @@ const whole = (value: number | string, min: number, max: number) =>
  * lesson), and the retention periods it keeps are not this form's.
  */
 const generalOf = (settings: StaffSettings): StaffSettingsInput => ({
-  timeZone: settings.timeZone,
   ...(settings.employeeNumberPrefix ? { employeeNumberPrefix: settings.employeeNumberPrefix } : {}),
   nextEmployeeNumber: settings.nextEmployeeNumber,
   ...(settings.pensionProvider ? { pensionProvider: settings.pensionProvider } : {}),

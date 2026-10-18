@@ -59,7 +59,7 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 		return nil, fmt.Errorf("staff: list the holiday schemes: %w", err)
 	}
 	meta := gen.StaffMeta{
-		TimeZone: caller.Settings.TimeZone,
+		TimeZone: caller.Zone.String(),
 		Today:    openapi_types.Date{Time: caller.Today},
 		Capabilities: gen.StaffCapabilities{
 			CanViewDirectory:     caller.View,

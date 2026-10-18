@@ -1,6 +1,8 @@
 package staff
 
 import (
+	"time"
+
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -14,13 +16,13 @@ import (
 
 // settingsResponse is the settings the deliveries so far expose, the
 // retention block and the acknowledged thresholds.
-func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState) (gen.StaffSettings, error) {
+func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState, zone *time.Location) (gen.StaffSettings, error) {
 	acknowledged, err := parseAcknowledged(row.ThresholdsAcknowledged)
 	if err != nil {
 		return gen.StaffSettings{}, err
 	}
 	return gen.StaffSettings{
-		TimeZone:               row.TimeZone,
+		TimeZone:               zone.String(),
 		EmployeeNumberPrefix:   row.EmployeeNumberPrefix,
 		NextEmployeeNumber:     row.NextEmployeeNumber,
 		PensionProvider:        row.PensionProvider,

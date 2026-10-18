@@ -1282,9 +1282,11 @@ Innstillingene er `staff:manage` sine, og leses og erstattes gjennom `GET` og
 ([Endre innstillingene](/nb/user/staff/#endre-innstillingene)). En erstatning bærer revisjonen den leste i `If-Match`, så to personer som
 endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
 
-- **Forretningstidssone** (`timeZone`, standard `Europe/Oslo`). Hver dato i Ansatte —
-  en start, en slutt, «i dag» — er en kalenderdag i denne sonen. Bruk en bysone som
-  `Europe/Oslo`: et navn serveren og databasen leser forskjellig, som `CET`, avvises.
+- **Forretningstidssone** (`timeZone`, svares, men tas aldri imot av `PUT`). Hver dato
+  i Ansatte — en start, en slutt, «i dag» — er en kalenderdag i denne sonen. Den er
+  arbeidsområdets, satt av en eier under
+  [Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet),
+  og vises her så siden sier hvilken kalender datoene dens er i.
 - **Prefiks og neste ansattnummer** (`employeeNumberPrefix`, tomt, og
   `nextEmployeeNumber`, 1). En person som opprettes uten ansattnummer får prefikset og
   det neste nummeret, uten utfylling: `EMP-` og 7 blir `EMP-7`. Prefikset er opptil

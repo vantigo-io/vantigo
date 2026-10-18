@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
 
@@ -48,7 +49,8 @@ type callerContext struct {
 
 	Settings store.StaffSetting
 
-	// Zone is Settings.TimeZone parsed once, and Today the calendar day of the
+	// Zone is the workspace's business time zone (contracts.BusinessCalendar,
+	// read once per request), and Today the calendar day of the
 	// request's clock reading in it, as a date at midnight UTC — the value a
 	// date parameter carries to SQL. Every rule of one request judges "today"
 	// by this one reading, never by SQL's current_date, which is the
@@ -76,7 +78,10 @@ func (s *server) callerFor(ctx context.Context, q *store.Queries) (*callerContex
 	if err != nil {
 		return nil, err
 	}
-	zone := zoneOf(row)
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return &callerContext{
 		UserID:       userID,
 		View:         s.has(ctx, permView),
@@ -158,26 +163,24 @@ func managesPerson(ctx context.Context, q *store.Queries, c *callerContext, pers
 	return slices.Contains(g.managersOf(personID, c.Today), *c.Person), nil
 }
 
-// civilToday is the calendar day of now in zone, as a date at midnight UTC.
-// It is Expenses' derivation (internal/expenses/authorize.go, caller.zone and
-// businessDay): Go answers the zone's day, and SQL is handed the day itself.
+// civilToday is the calendar day of now in zone, as a date at midnight UTC:
+// the platform's one derivation of a day from an instant (holidays.DayIn),
+// which Go answers and SQL is handed as the day itself.
 func civilToday(now time.Time, zone *time.Location) time.Time {
-	y, m, d := now.In(zone).Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	return holidays.DayIn(now, zone)
 }
 
-// zoneOf parses a settings row's business time zone. A name Go cannot load
-// falls back to UTC rather than failing the request: PUT /settings refuses a
-// name Go cannot load and one the database reads differently, so a row that
-// holds one was written past this module — by hand, or by a Go release that
-// dropped a zone — and answering a day in UTC is better than answering
-// nothing. Setting the zone again through PUT /settings is the way back.
-func zoneOf(row store.StaffSetting) *time.Location {
-	loc, err := time.LoadLocation(row.TimeZone)
+// businessZone is the workspace's business time zone, read through the
+// business calendar (time zones design D2) — never inside one of this
+// module's transactions, since the read takes a pool connection of its own.
+// A stored name Go cannot load is answered as UTC by the calendar itself,
+// so this never fails a request for the zone's sake.
+func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
+	zone, err := s.deps.Calendar.Zone(ctx)
 	if err != nil {
-		return time.UTC
+		return nil, fmt.Errorf("staff: read the business time zone: %w", err)
 	}
-	return loc
+	return zone, nil
 }
 
 // personForUser is the audience resolver's link lookup (design S24, plan
