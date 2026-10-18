@@ -257,9 +257,9 @@ until HR turns the flag on again.
      the disable by itself.
    - `account_not_managed` (409): the person is linked by hand to a user Staff does not
      manage; `account_privileged` (409): the user is an Owner or a SystemAdmin. The flag
-     is off, but the user stays enabled: an Owner disables them in identity. The worker
-     tries again daily, and the dashboard shows *accountFailing* while the user is
-     enabled.
+     is off, but the user stays enabled: an Owner disables them in identity. Staff does
+     not try again; the dashboard shows *accountNotManaged* or *accountPrivileged* for
+     the person until HR turns the flag on again or unlinks them.
    - `accounts_unavailable` (503): identity could not be reached. **The flag is already
      off**, but the user is still enabled: the link records the error, the worker
      retries the disable at every poll, and the dashboard shows *accountFailing* until
@@ -281,18 +281,18 @@ erased person".
 | `accountNoEmployment` | The flag is on but the person has no employment | Add the employment, or turn the flag off |
 | `accountEmailMissing` | The person has no address of the kind the flag names | Add the work (or private) email, or switch the address choice |
 | `accountNotFound` | Federated: the identity provider has not created the user yet | Create the user in the provider with the person's employee number |
-| `accountNotManaged` | An Owner stopped Staff managing the user | An Owner adopts the user again, or HR turns the flag off |
+| `accountNotManaged` | An Owner stopped Staff managing the user — or, with the flag off, a Disable now refused for a user Staff does not manage | An Owner adopts the user again or disables them in identity; HR turns the flag off, or unlinks a self-service link |
 | `accountBlockedByOwner` | An Owner disabled the pending user | An Owner enables them in identity, if they should start |
 | `accountDisabledByOwner` | An Owner disabled the user while the person is employed | An Owner decides; Staff does not undo it |
 | `accountUserGone` | The user was deleted in identity | Unlink, or an Owner restores the account |
-| `accountPrivileged` | The user is an Owner or a SystemAdmin | Handled by an Owner by hand |
+| `accountPrivileged` | The user is an Owner or a SystemAdmin — also after a Disable now refused for them | An Owner disables them in identity, by hand |
 | `accountMismatch` | The user carries another employee number: someone else's account | Check the person's employee number |
 | `accountModeChanged` | A pending user made in local mode, now under federated mode | An Owner finishes or deletes the user |
 | `accountEmailDiffers` | The user's address in identity differs from the person's | An Owner changes it in identity (Staff changes it only while pending) |
 | `accountEmailTaken` | Another user in identity holds the address | Resolve the duplicate in identity, or change the person's address |
 | `accountNumberTaken` | A user Staff does not manage holds the employee number | An Owner adopts that user for Staff, or resolves the number |
 | `accountFailing` (flag on) | Identity could not be reached three times in a row | Check identity's health and the log, then Run now |
-| `accountFailing` (flag off, or an erased person) | A Disable now has not reached identity — failed, or waiting more than ten minutes | The worker retries at every poll; send Disable now again if it persists |
+| `accountFailing` (flag off, or an erased person) | A Disable now has not reached identity — failed, or waiting more than ten minutes | The worker retries at every poll and stops once identity answers (a user found disabled already counts); send Disable now again if it persists |
 | `invitationUnanswered` | Three invitations went unanswered | Check the address; Run now sends a fresh one |
 | `invitationRevoked` | An Owner revoked the invitation | Run now sends a fresh one, if the person should have it |
 | `employeeRoleMissing` | No employee role named (one item, with a count) | An Owner names the roles Staff may give |

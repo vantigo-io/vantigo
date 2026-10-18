@@ -14,6 +14,10 @@ const deletePersonLink = `-- name: DeletePersonLink :exec
 DELETE FROM staff.identity_links WHERE person_id = $1 AND provider = 'identity'
 `
 
+// DeletePersonLink removes the person's link, a disable asked for with it:
+// safe for the same reason as SetPersonLink's — the unlink refuses a
+// worker's or a Staff-managed link (link_managed), and the person's delete
+// one naming any user (person_in_use).
 func (q *Queries) DeletePersonLink(ctx context.Context, personID int64) error {
 	_, err := q.db.Exec(ctx, deletePersonLink, personID)
 	return err
@@ -186,7 +190,12 @@ type SetPersonLinkParams struct {
 // user_linked_elsewhere. A replaced link starts over as a self-service link:
 // whatever delivery C's worker recorded about the old user is not this one's,
 // and a claim the worker holds on it is ended — its result, which names the
-// old user, is no longer written (WriteAccountResult).
+// old user, is no longer written (WriteAccountResult). Clearing a disable
+// Disable now asked for (disable_requested_at) is safe here: a link in one of
+// the worker's states, or naming a Staff-managed user, is refused
+// link_managed before this runs (links.go), so the only marked link this
+// replaces is a self-service link to a user Staff does not manage, whom
+// Deactivate refuses (account_not_managed) and only an Owner disables.
 func (q *Queries) SetPersonLink(ctx context.Context, arg SetPersonLinkParams) error {
 	_, err := q.db.Exec(ctx, setPersonLink, arg.PersonID, arg.ExternalID, arg.Now)
 	return err

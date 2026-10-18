@@ -83,11 +83,14 @@ func SetRetentionRunLedgerBudget(t *testing.T, d time.Duration) {
 // that holds it from outside to see the run refused as busy.
 const RetentionLeaseKey = retentionLeaseKey
 
-// OnDisableCommitted runs fn when Disable now for personID has committed the
-// flag off, before it claims the link — the moment a test makes the worker
-// take the link — for the rest of t.
-func OnDisableCommitted(t *testing.T, personID int64, fn func()) {
+// OnDisableCommitted runs fn when Disable now for personID of the
+// installation d has committed the flag off, before it claims the link — the
+// moment a test makes the worker take the link — for the rest of t. fn runs
+// on the handler's goroutine, so it reports a failure to its test rather
+// than failing it there.
+func OnDisableCommitted(t *testing.T, d module.Deps, personID int64, fn func()) {
 	t.Helper()
-	disableCommittedHooks.Store(personID, fn)
-	t.Cleanup(func() { disableCommittedHooks.Delete(personID) })
+	key := disableHookKey{pool: d.Pool, person: personID}
+	disableCommittedHooks.Store(key, fn)
+	t.Cleanup(func() { disableCommittedHooks.Delete(key) })
 }

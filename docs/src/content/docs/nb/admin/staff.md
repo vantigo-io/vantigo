@@ -264,8 +264,9 @@ HR slår flagget på igjen.
      ferdig selv.
    - `account_not_managed` (409): personen er koblet for hånd til en bruker Ansatte ikke
      styrer; `account_privileged` (409): brukeren er Owner eller SystemAdmin. Flagget er
-     av, men brukeren forblir aktiv: en Owner deaktiverer dem i identity. Arbeideren
-     prøver igjen daglig, og dashbordet viser *accountFailing* så lenge brukeren er aktiv.
+     av, men brukeren forblir aktiv: en Owner deaktiverer dem i identity. Ansatte prøver
+     ikke igjen; dashbordet viser *accountNotManaged* eller *accountPrivileged* for
+     personen til HR slår flagget på igjen eller fjerner koblingen.
    - `accounts_unavailable` (503): identity svarte ikke. **Flagget er allerede av**, men
      brukeren er fortsatt aktiv: koblingen registrerer feilen, arbeideren prøver
      deaktiveringen igjen ved hver kjøring, og dashbordet viser *accountFailing* til
@@ -287,18 +288,18 @@ erased person».
 | `accountNoEmployment` | Flagget er på, men personen har ikke noe arbeidsforhold | Legg til arbeidsforholdet, eller slå flagget av |
 | `accountEmailMissing` | Personen har ingen adresse av typen flagget navngir | Legg til jobb- (eller privat) e-post, eller bytt adressevalget |
 | `accountNotFound` | Føderert: identitetsleverandøren har ikke opprettet brukeren ennå | Opprett brukeren hos leverandøren med personens ansattnummer |
-| `accountNotManaged` | En Owner lot Ansatte slutte å styre brukeren | En Owner tar brukeren inn igjen, eller HR slår flagget av |
+| `accountNotManaged` | En Owner lot Ansatte slutte å styre brukeren — eller, med flagget av, en Deaktiver nå som ble avvist for en bruker Ansatte ikke styrer | En Owner tar brukeren inn igjen eller deaktiverer dem i identity; HR slår flagget av, eller fjerner en selvbetjent kobling |
 | `accountBlockedByOwner` | En Owner deaktiverte den ventende brukeren | En Owner aktiverer dem i identity, om de skal begynne |
 | `accountDisabledByOwner` | En Owner deaktiverte brukeren mens personen er ansatt | En Owner avgjør; Ansatte opphever det ikke |
 | `accountUserGone` | Brukeren ble slettet i identity | Fjern koblingen, eller en Owner gjenoppretter kontoen |
-| `accountPrivileged` | Brukeren er Owner eller SystemAdmin | Håndteres av en Owner for hånd |
+| `accountPrivileged` | Brukeren er Owner eller SystemAdmin — også etter en Deaktiver nå som ble avvist for dem | En Owner deaktiverer dem i identity, for hånd |
 | `accountMismatch` | Brukeren har et annet ansattnummer: en annens konto | Sjekk personens ansattnummer |
 | `accountModeChanged` | En ventende bruker laget i lokal modus, nå i føderert modus | En Owner fullfører eller sletter brukeren |
 | `accountEmailDiffers` | Brukerens adresse i identity er ulik personens | En Owner endrer den i identity (Ansatte endrer den bare mens brukeren venter) |
 | `accountEmailTaken` | En annen bruker i identity har adressen | Rydd opp i duplikatet i identity, eller endre personens adresse |
 | `accountNumberTaken` | En bruker Ansatte ikke styrer har ansattnummeret | En Owner tar den brukeren inn for Ansatte, eller rydder i nummeret |
 | `accountFailing` (flagget på) | Identity svarte ikke tre ganger på rad | Sjekk identity og loggen, og kjør så Kjør nå |
-| `accountFailing` (flagget av, eller en slettet person) | En Deaktiver nå har ikke nådd identity — feilet, eller ventet mer enn ti minutter | Arbeideren prøver igjen ved hver kjøring; send Deaktiver nå på nytt om det vedvarer |
+| `accountFailing` (flagget av, eller en slettet person) | En Deaktiver nå har ikke nådd identity — feilet, eller ventet mer enn ti minutter | Arbeideren prøver igjen ved hver kjøring og stopper når identity svarer (en bruker som alt er deaktivert, teller); send Deaktiver nå på nytt om det vedvarer |
 | `invitationUnanswered` | Tre invitasjoner ble ikke besvart | Sjekk adressen; Kjør nå sender en ny |
 | `invitationRevoked` | En Owner trakk invitasjonen tilbake | Kjør nå sender en ny, om personen skal ha den |
 | `employeeRoleMissing` | Ingen ansattrolle er navngitt (ett punkt, med antall) | En Owner navngir rollene Ansatte kan gi |

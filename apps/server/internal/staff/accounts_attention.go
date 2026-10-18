@@ -60,6 +60,11 @@ var accountReasonItems = map[string]gen.StaffStatsAttentionItemType{
 	reasonModeMismatch:         gen.AccountModeMismatch,
 }
 
+// accountDisableRefusals are the reasons a Deactivate is refused with, which
+// raise their item for a flag that is off or an erased record too: a
+// Disable now identity answered with a refusal, the user still enabled.
+var accountDisableRefusals = map[string]bool{reasonNotManaged: true, reasonPrivileged: true}
+
 // accountPersonReasons are the reasons judged on the person's rows, never
 // read off a link.
 var accountPersonReasons = map[string]bool{reasonNoEmployment: true, reasonEmailMissing: true}
@@ -129,12 +134,22 @@ func (a accountAttention) items() []gen.StaffStatsAttentionItem {
 		}
 		reason := deref(l.BlockedReason)
 		kind, ok := accountReasonItems[reason]
-		if l.Erased || !l.ProvisionAccount || !ok || accountPersonReasons[reason] || kind == gen.AccountFailing {
+		if !ok || accountPersonReasons[reason] || kind == gen.AccountFailing {
+			continue
+		}
+		// A flag that is off, or an erased record, raises only the refusal a
+		// Disable now was answered with (re-check MEDIUM-1): the user is still
+		// enabled, and an Owner's to disable.
+		if (l.Erased || !l.ProvisionAccount) && !accountDisableRefusals[reason] {
 			continue
 		}
 		title, isInstallation := accountInstallationItems[kind]
 		if !isInstallation {
-			out = append(out, personItem(kind, l.PersonID, l.PersonID, l.DisplayName, l.UpdatedAt))
+			name := l.DisplayName
+			if l.Erased {
+				name = erasedPersonTitle
+			}
+			out = append(out, personItem(kind, l.PersonID, l.PersonID, name, l.UpdatedAt))
 			continue
 		}
 		item := installation[kind]

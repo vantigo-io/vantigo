@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -246,7 +247,7 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 	}
 	// Committed: the rest goes on if the client goes away (review M1).
 	ctx = context.WithoutCancel(ctx)
-	if hook, ok := disableCommittedHooks.Load(req.Id); ok {
+	if hook, ok := disableCommittedHooks.Load(disableHookKey{pool: s.deps.Pool, person: req.Id}); ok {
 		hook.(func())()
 	}
 	if user != nil {
@@ -337,7 +338,15 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 	}
 }
 
-// disableCommittedHooks is what a test runs, by person, when Disable now has
-// committed the flag off and not yet claimed the link (export_test.go); empty
-// in production.
+// disableCommittedHooks is what a test runs when Disable now has committed
+// the flag off and not yet claimed the link (export_test.go), keyed by the
+// installation's pool and the person — every test's database numbers its
+// people alike, so a person id alone is another test's person too; empty in
+// production.
 var disableCommittedHooks sync.Map
+
+// disableHookKey is a disableCommittedHooks key: one installation's person.
+type disableHookKey struct {
+	pool   *pgxpool.Pool
+	person int64
+}
