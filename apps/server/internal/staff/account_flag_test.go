@@ -446,3 +446,45 @@ func TestAccount_TheEventsAreNotTheApproversOrAColleagues(t *testing.T) {
 		}
 	}
 }
+
+// A worker link the accounts worker blocked as someone else's account — its
+// user carries another employee number (mismatch), or Staff no longer
+// manages the user (account_not_managed) — gives that user nothing of the
+// person (privacy review M1): GET /me answers no_person and GET /people/{id}
+// the unknown id's 404, as for a user linked to nobody. HR's self-service
+// link (linked) keeps the Self audience, and so does a worker link blocked
+// for any other reason.
+func TestAccounts_AMismatchedLinkGrantsNoSelf(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	for _, c := range []struct {
+		name, state, reason string
+		self                bool
+	}{
+		{"a mismatch", "blocked", "mismatch", false},
+		{"a user Staff no longer manages", "active", "account_not_managed", false},
+		{"HR's self-service link", "linked", "", true},
+		{"a worker link blocked by an Owner", "blocked", "disabled_by_owner", true},
+	} {
+		p := createPerson(t, hr, newPerson("Mis", "Match"))
+		client, user := signIn(t, h)
+		h.Exec(t, `
+			INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, blocked_reason, created_at, updated_at)
+			VALUES ($1, 'identity', $2, $3, $4, nullif($5, ''), $6, $6)`,
+			p.Id, user.String(), c.state, c.state != "linked", c.reason, h.Now())
+		unknown := client.Do(http.MethodGet, personPath(p.Id+100000), nil)
+		me := client.Do(http.MethodGet, mePath, nil)
+		person := client.Do(http.MethodGet, personPath(p.Id), nil)
+		if c.self {
+			if me.Status != http.StatusOK || person.Status != http.StatusOK {
+				t.Errorf("%s: GET /me %d, GET /people/{id} %d; want the person's own 200s", c.name, me.Status, person.Status)
+			}
+			continue
+		}
+		refused(t, me, http.StatusNotFound, "no_person")
+		if person.Status != http.StatusNotFound || string(person.Body) != string(unknown.Body) {
+			t.Errorf("%s: GET /people/{id} %d %s, want the unknown id's 404 %s", c.name, person.Status, person.Body, unknown.Body)
+		}
+	}
+}

@@ -182,9 +182,12 @@ func zoneOf(row store.StaffSetting) *time.Location {
 
 // personForUser is the audience resolver's link lookup (design S24, plan
 // reading 1): the person whose self-service link names userID under the
-// identity provider, whatever state the link is in — delivery C's states
-// (pending, disabled, failed …) never take the Self audience away from the
-// person — and nil when nobody is linked.
+// identity provider — delivery C's states (pending, disabled, failed …) never
+// take the Self audience away from the person, but a worker link blocked as
+// someone else's account (mismatch, account_not_managed) gives its user
+// nothing (privacy review M1) — and nil when nobody is linked. HR's PUT
+// /people/{id}/user still refuses a user such a link names, by the link's
+// unique index (linkWriteError).
 func personForUser(ctx context.Context, q *store.Queries, userID uuid.UUID) (*int64, error) {
 	id, err := q.PersonForUser(ctx, userID.String())
 	if errors.Is(err, pgx.ErrNoRows) {
