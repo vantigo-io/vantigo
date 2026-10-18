@@ -53,6 +53,202 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/energy/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List metering-point imports
+         * @description The metering-point imports, newest change first (energy import design D7), each as GET /energy/imports/{importId} answers it.
+         */
+        get: operations["getEnergyImports"];
+        put?: never;
+        /**
+         * Upload a file of metering points
+         * @description Uploads a file of metering points and reads it once (energy import design D2, D6), exactly as the customers import reads its file: one multipart part named file, at most 50 MiB, 100 000 data rows and 200 columns; UTF-8 with or without a byte order mark, or Windows-1252; the separator detected among the semicolon, the comma and the tab; RFC 4180 quoting; CRLF or LF; the first non-blank row the header; blank rows skipped.
+         *
+         *     The rows are stored, the import is created in state draft, and the answer carries the header, the first twenty rows and a suggested mapping — the mapping last saved on an import with the same header, else the fields' own JSON names, else the alias table of the words suppliers' exports use (målepunktid, målernr, anleggsadresse, postnr anlegg, prisområde, netteier, org. nr., startdato kunde, …), where an installation alias (… anlegg) wins over the plain one whatever the column order. Rate-limited at 600 uploads an hour per client address.
+         */
+        post: operations["postEnergyImports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/imports/{importId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a metering-point import
+         * @description One import (energy import design D7) — its state, the file's facts, the header, the first twenty rows with their errors under the saved mapping, the mapping and the suggestion, the counts and the progress.
+         */
+        get: operations["getEnergyImportsByImportId"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a metering-point import
+         * @description Removes an import and its rows — a draft, a checked or a done one; the metering points and supply periods a done import wrote are untouched. A running one (checking, importing or attaching) is refused; stop it first.
+         */
+        delete: operations["deleteEnergyImportsByImportId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/imports/{importId}/attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach a metering-point import's pending points
+         * @description Attaches the pending rows' metering points to their customers (energy import design D6): a done import with at least one pending row goes to attaching and the worker takes it up. For each pending row the point's active supply period is read again, now: none, and a period for the row's customer starts at start; the row's customer's, and the row becomes same and nothing is written; another customer's, and that period ends at start and the row's customer's starts there — the switch, which needs start after that period's start. Each row becomes attached, or stays pending with its error, so attaching can be asked for again, with another date, until nothing is pending. Every write goes through the supply-period endpoints' own functions, under their lock.
+         *
+         *     confirmSwitches must equal the number of pending points whose active period is another customer's now, when that is not zero; the worker never switches more than that.
+         */
+        post: operations["postEnergyImportsByImportIdAttach"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/imports/{importId}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a metering-point import
+         * @description Asks for the check (energy import design D6) — the dry run — of a draft import with a mapping. The import goes to checking and the worker takes it up; every row runs exactly as the real run would, each in its own transaction rolled back at its end, and its outcome, link and errors are written to the row. Nothing is kept — no metering point, no meter, no supply period. Two rows with one GSRN are refused on the second in both runs.
+         */
+        post: operations["postEnergyImportsByImportIdCheck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/imports/{importId}/failed-rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a metering-point import's failed rows
+         * @description The rows that failed, as a file to fix and upload again — the file's own header, so the same mapping is suggested, with an error column first holding every problem of the row ('<header>: message', or the message alone for the row as a whole), each row's cells exactly as they were. Semicolon-separated, UTF-8 with a byte order mark, CRLF, guarded against formulas. Named energy-import-<id>-failed-rows.csv.
+         */
+        get: operations["getEnergyImportsByImportIdFailedRows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/imports/{importId}/mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save a metering-point import's mapping
+         * @description Saves how the rows become metering points (energy import design D3, D5) and answers the import with its preview. Allowed on a draft or a checked import; on a checked one the import goes back to draft and every row's result is cleared.
+         *
+         *     A mapped field is written on every row; an unmapped field is left as it is on an update and blank — or its default — on a create. A mapped cell that is blank clears an optional field (gridArea, expectedAnnualConsumptionKwh, latitude, longitude); a blank countryCode is NO; a blank connectionStatus is New on a create and keeps the point's on an update; a blank meterNumber on an update leaves the meter alone. gsrn must be mapped to a column; supplyStart needs customerLegalId.
+         *
+         *     The permission rule: the operation wants energy:import, and the mapping is checked against what its sender could do by hand — every mode needs energy:metering-points-manage, a mode that creates also energy:meters-manage (a point is created with its first meter), and customerLegalId mapped needs energy:supply-periods-manage — refused as a 400 naming the key. customerLegalId is refused too when the customers module is off.
+         */
+        put: operations["putEnergyImportsByImportIdMapping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/imports/{importId}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a metering-point import's rows
+         * @description An import's rows in file order (energy import design D7), every one or those of one outcome and/or one link, each with its cells, its outcome, its link, the point, the customer and the previous customer — the errors table and the switch table after a check, the result after a run, a page at a time.
+         */
+        get: operations["getEnergyImportsByImportIdRows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/imports/{importId}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a metering-point import
+         * @description Asks for the import (energy import design D4, D6) of a checked import whose check found something to create or update. The rows' results are cleared, the import goes to importing and the worker takes it up; a row's outcome is written in the row's own transaction beside its point and its supply period, so a row is committed with its outcome or not at all, and a run interrupted resumes at the first row without one. When the check counted switches, confirmSwitches must equal that number; the run never switches more points than that, and a row that would switch beyond it is refused.
+         */
+        post: operations["postEnergyImportsByImportIdRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/imports/{importId}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a metering-point import
+         * @description Stops a check, a run or an attach. One the worker has not taken up goes straight back — checking to draft, importing to checked, attaching to done. One under way is flagged, and the worker stops before its next chunk; a check stopped goes back to draft with its results cleared, a run stopped finishes as done with every row committed so far kept, an attach stopped goes back to done with the rows it did not reach still pending.
+         */
+        post: operations["postEnergyImportsByImportIdStop"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/energy/metering-points": {
         parameters: {
             query?: never;
@@ -332,6 +528,130 @@ export interface components {
             /** Format: date-time */
             end: string;
         };
+        /** @description An import of metering points from a file (energy import design D3, D6, D7), the customers import's record with energy's counts. state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run), done (finishedAt set; when it was stopped, processed short of rows) or attaching (the worker attaches the pending rows' points to their customers from attachStart, then the import is done again). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written; sample the first twenty rows, each with the errors its cells get under the saved mapping. mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated, failed and skipped are the worker's progress while it runs and the recounted totals once it has finished; skipped counts the totals lines (a row with no GSRN and at most one other non-blank cell). switched counts the rows whose point switched customer (or, after a check, would), pending the rows matched to a customer and not yet attached, pendingSwitches the pending rows whose point was another customer's when the run wrote them, attached the pending rows attached since. error is a whole-run failure the worker met and will retry next cycle. createdByName is the uploader's display name. requestedAt is when the check, the run or the attach was asked for, startedAt when the worker took it up. */
+        EnergyImport: {
+            /** Format: date-time */
+            attachStart?: string;
+            /** Format: int32 */
+            attached: number;
+            /** Format: int32 */
+            created: number;
+            /** Format: date-time */
+            createdAt: string;
+            createdByName?: string;
+            encoding: string;
+            error?: string;
+            /** Format: int32 */
+            failed: number;
+            fileName: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            header: string[];
+            /** Format: int32 */
+            id: number;
+            mapping?: components["schemas"]["EnergyImportMapping"];
+            /** Format: int32 */
+            pending: number;
+            /** Format: int32 */
+            pendingSwitches: number;
+            /** Format: int32 */
+            processed: number;
+            /** Format: date-time */
+            requestedAt?: string;
+            /** Format: int32 */
+            rows: number;
+            sample: components["schemas"]["EnergyImportSampleRow"][];
+            separator: string;
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: int32 */
+            skipped: number;
+            /** Format: date-time */
+            startedAt?: string;
+            /** @enum {string} */
+            state: "draft" | "checking" | "checked" | "importing" | "done" | "attaching";
+            stopRequested: boolean;
+            suggested: components["schemas"]["EnergyImportMapping"];
+            /** Format: int32 */
+            switched: number;
+            /** Format: int32 */
+            updated: number;
+        };
+        /** @description Attaches an import's pending rows to their customers (energy import design D6). start is the date every period starts from, a UTC timestamp as the Assign customer dialog sends. confirmSwitches is how many of the pending points will switch customer — those whose active supply period is another customer's now — and must equal that number exactly when it is not zero. */
+        EnergyImportAttachRequest: {
+            /** Format: int32 */
+            confirmSwitches?: number;
+            /** Format: date-time */
+            start: string;
+        };
+        /** @description ProblemDetails plus the import's conflict code (energy import design D7) — the one place the energy module answers a code: import_running (the worker is checking, importing or attaching it), import_not_checked (a run on a draft), import_nothing_to_import (a run on a check that found nothing to create or update), import_finished (a mapping, a check or a run on a done import, or a stop with nothing running), import_switch_not_confirmed (a run or an attach whose confirmSwitches is not the number of points that will switch customer) and import_nothing_pending (an attach on an import with no pending row, or one that is not done). */
+        EnergyImportConflictProblem: {
+            code?: string | null;
+            detail?: string | null;
+            instance?: string | null;
+            /** Format: int32 */
+            status?: number | null;
+            /**
+             * Format: int32
+             * @description For import_switch_not_confirmed, the number of points that will switch customer.
+             */
+            switches?: number | null;
+            title?: string | null;
+            type?: string | null;
+        };
+        /** @description How an import's rows become metering points (energy import design D3). mode: create makes every row a new point and refuses a GSRN on file; update finds the point by GSRN and refuses a row that finds none; createOrUpdate updates a row that finds one and creates from a row that finds none. Rows are always matched by gsrn. columns maps the fields: a field at most once, a column at most once, each entry a column of the file or a fixed value for every row. */
+        EnergyImportMapping: {
+            columns: components["schemas"]["EnergyImportMappingColumn"][];
+            /** @enum {string} */
+            mode: "create" | "update" | "createOrUpdate";
+        };
+        /** @description One field of a mapping (energy import design D3): field is one of gsrn, meterNumber, streetAddress, postalCode, city, countryCode, priceArea, gridArea, expectedAnnualConsumptionKwh, latitude, longitude, connectionStatus, customerLegalId and supplyStart — and exactly one of column (the 0-based column of the file it is read from) and value (the same text for every row, read as a cell would be; gsrn takes none). */
+        EnergyImportMappingColumn: {
+            /** Format: int32 */
+            column?: number;
+            field: string;
+            value?: string;
+        };
+        /** @description One row of an import with what the worker did with it (energy import design D4, D7). cells are the row's cells as the file had them; outcome is absent for a row not yet run; meteringPointId and gsrn name the point the row created or updated (no id for a point a check would create); link is what the row did about its customer — none (no organisation number), same (the point is already that customer's), assigned, switched, pending (matched, not yet attached) or attached (attached afterwards); customerId and customerName the customer the organisation number resolved to, switchFromCustomerId and switchFromCustomerName the customer the point was supplied to before a switch (or, on a pending row, is supplied to); supplyStart the date the period was or will be written from. errors are a failed row's problems, a pending row's attach error, or a skipped row's reason. */
+        EnergyImportRow: {
+            cells: string[];
+            /** Format: int32 */
+            customerId?: number;
+            customerName?: string;
+            errors: components["schemas"]["EnergyImportRowError"][];
+            gsrn?: string;
+            /** @enum {string} */
+            link?: "none" | "same" | "assigned" | "switched" | "pending" | "attached";
+            /** Format: int32 */
+            meteringPointId?: number;
+            /** @enum {string} */
+            outcome?: "created" | "updated" | "failed" | "skipped";
+            /** Format: int32 */
+            row: number;
+            /** Format: date-time */
+            supplyStart?: string;
+            /** Format: int32 */
+            switchFromCustomerId?: number;
+            switchFromCustomerName?: string;
+        };
+        /** @description One problem with one row of an import. column is the 0-based index of the file column the offending cell is in, absent for a problem with the row as a whole or with a fixed value. message is the module's own validation wording. */
+        EnergyImportRowError: {
+            /** Format: int32 */
+            column?: number;
+            message: string;
+        };
+        /** @description The run of a checked import (energy import design D4). confirmSwitches is how many points the run will switch customer, and must equal the check's switched exactly when that is not zero; absent is zero. */
+        EnergyImportRunRequest: {
+            /** Format: int32 */
+            confirmSwitches?: number;
+        };
+        /** @description One of the first rows of an import as the preview shows it, with the errors its cells get under the saved mapping — planned through the endpoints' own validators, no database asked. */
+        EnergyImportSampleRow: {
+            cells: string[];
+            errors: components["schemas"]["EnergyImportRowError"][];
+            /** Format: int32 */
+            row: number;
+        };
         EnergyPaginationMetadata: {
             /** Format: int32 */
             page: number;
@@ -441,6 +761,14 @@ export interface components {
             /** Format: double */
             longitude?: number | null;
             priceArea: string | null;
+        };
+        PaginatedResponseOfEnergyImport: {
+            data: components["schemas"]["EnergyImport"][];
+            pagination: components["schemas"]["EnergyPaginationMetadata"];
+        };
+        PaginatedResponseOfEnergyImportRow: {
+            data: components["schemas"]["EnergyImportRow"][];
+            pagination: components["schemas"]["EnergyPaginationMetadata"];
         };
         PaginatedResponseOfMeteringPointResponse: {
             data: components["schemas"]["MeteringPointResponse"][];
@@ -658,10 +986,656 @@ export interface operations {
             };
         };
     };
+    getEnergyImports: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfEnergyImport"];
+                };
+            };
+            /** @description Bad Request — page below 1, or pageSize outside 1 to 100. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postEnergyImports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created — the import, in state draft, with its suggested mapping. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnergyImport"];
+                };
+            };
+            /** @description Bad Request — on 'file' for the file itself (no part named file or two of them, an empty file, one past 50 MiB, no header row, more than 200 columns, more than 100 000 rows, or a line the CSV reader cannot parse). A body that is not multipart at all is a bare 400. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — at most 600 uploads an hour from one client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getEnergyImportsByImportId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnergyImport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteEnergyImportsByImportId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — import_running: the worker is checking, importing or attaching it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EnergyImportConflictProblem"];
+                };
+            };
+        };
+    };
+    postEnergyImportsByImportIdAttach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnergyImportAttachRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the import, now attaching. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnergyImport"];
+                };
+            };
+            /** @description Bad Request — on 'start' for a start that is not a UTC timestamp. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — import_running when it is checking, importing or attaching, import_nothing_pending when it is not done or has no pending row, import_switch_not_confirmed when confirmSwitches is not the number of points that will switch customer (switches says how many). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EnergyImportConflictProblem"];
+                };
+            };
+        };
+    };
+    postEnergyImportsByImportIdCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the import, now checking. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnergyImport"];
+                };
+            };
+            /** @description Bad Request — on 'mapping' when the import has none yet. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — import_running when it is already running, import_finished when it is done. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EnergyImportConflictProblem"];
+                };
+            };
+        };
+    };
+    getEnergyImportsByImportIdFailedRows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putEnergyImportsByImportIdMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnergyImportMapping"];
+            };
+        };
+        responses: {
+            /** @description OK — the import, in state draft, with the preview under this mapping. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnergyImport"];
+                };
+            };
+            /** @description Bad Request — on 'mode' for a value outside the enum or a mode the caller lacks the permission for; on 'columns' for a field twice, a column twice, a column outside the header, an unknown field, an entry with both or neither of column and value, a fixed value on gsrn, gsrn not mapped, supplyStart without customerLegalId, no field besides gsrn, customerLegalId with the customers module off, or a field the caller lacks the permission for. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — import_running when the worker is running it, import_finished when it is done. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EnergyImportConflictProblem"];
+                };
+            };
+        };
+    };
+    getEnergyImportsByImportIdRows: {
+        parameters: {
+            query?: {
+                /** @description created, updated, failed or skipped; absent for every row. */
+                outcome?: string;
+                /** @description none, same, assigned, switched, pending or attached; absent for every row. */
+                link?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                importId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfEnergyImportRow"];
+                };
+            };
+            /** @description Bad Request — outcome or link outside their values; page below 1; pageSize outside 1 to 500. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postEnergyImportsByImportIdRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EnergyImportRunRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the import, now importing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnergyImport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — import_running when it is already running, import_not_checked when it is a draft, import_nothing_to_import when the check found nothing to create or update, import_finished when it is done, import_switch_not_confirmed when confirmSwitches is not the check's switched (switches says how many). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EnergyImportConflictProblem"];
+                };
+            };
+        };
+    };
+    postEnergyImportsByImportIdStop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the import, stopped or flagged to stop. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnergyImport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — import_finished when nothing is running. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EnergyImportConflictProblem"];
+                };
+            };
+        };
+    };
     getEnergyMeteringPoints: {
         parameters: {
             query?: {
                 search?: string;
+                /** @description true for the metering points without a customer now (energy import design D9) — those with no Active supply period whose start is at or before the moment of the request and whose end is absent or after it. A point whose only Active period starts later is listed. false, or absent, is every point. */
+                withoutCustomer?: boolean;
                 page?: number;
                 pageSize?: number;
             };
