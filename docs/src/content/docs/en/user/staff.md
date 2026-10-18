@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page with its documents, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, absence and the holiday account, and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention and the thresholds.
+description: The people register — People, a person's page with its documents and their account, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, absence and the holiday account, and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention, the thresholds and the accounts.
 sidebar:
   order: 45
 sources:
@@ -76,8 +76,9 @@ Press a name to open [the person's page](#a-persons-page).
 
 ## A person's page
 
-A person's page has five tabs — **Profile**, **Employments**, **Absence**, **History** and **Documents** — and the
-tab you are on is in the page's address. It shows what you may see of the person and
+A person's page has six tabs — **Profile**, **Employments**, **Absence**, **History**, **Documents** and
+**Account** — and the tab you are on is in the page's address (`?tab=account` opens the
+Account tab, which is where the dashboard's account items lead). It shows what you may see of the person and
 nothing else: a group of fields that is not yours to read is not on the page at all,
 not even as an empty heading. The person themselves, a manager of theirs, a colleague
 holding `staff:view` and HR each see a different page; the full table is under
@@ -97,13 +98,10 @@ you may not see answers exactly as one who does not exist.
   never shows more than that, except through **Reveal** below.
 - **Next of kin** and **Roles** (Safety representative, AMU member, HSE responsible,
   each with the days they hold it).
-- **Self-service** — the user the person signs in as, if HR has linked one.
-- **Account** — whether Staff gives the person a user to sign in with, from which day,
-  and at their work or their private email. The account is prepared, disabled, a
-  number of days before that day and enabled on it; without a day of HR's own it is
-  the first day of the person's earliest employment that has not ended. The person, HR
-  and `staff:personal-data` see it; only HR (`staff:manage`) changes it. A user Staff manages this way is not
-  linked or unlinked under **Self-service**.
+- **Self-service** — the user the person signs in as, if HR has linked one, or — when
+  Staff's accounts manage the person's user — *… — managed by Staff; see the Account
+  tab*, with nothing to link or unlink. The person's account itself is on the
+  [Account](#account) tab.
 - **Children and care days** — **Children under 12**, **Sole carer** and **Children
   with extra care days**, what the person's care days are counted from. The person, HR
   and `staff:personal-data`, and only when one of them is recorded.
@@ -169,6 +167,12 @@ the user My page and nothing more, grants no permission, and Staff never changes
 user's account. A disabled user, or one already linked to another person, is refused
 on the field. **Unlink** asks first, then removes the link; the user's account stays as
 it is.
+
+A user Staff's accounts manage is never linked or unlinked here: the page says *This
+user's account is managed by Staff's accounts, so it is not linked or unlinked by hand.
+Use the Account tab.* When Staff cannot ask identity whether a user is managed, the
+page says *Identity could not be reached, or no module provides accounts* and nothing
+is changed; try again.
 
 ### Employments
 
@@ -343,6 +347,81 @@ category, is `staff:personal-data`'s: HR without it is not offered **Change** an
 open or closed — so it is erased with the case's health data; empty the field to take it
 off the case. A document in any other category belongs to no case.
 
+### Account
+
+The **Account** tab is HR's (`staff:manage`) and the person's own, who reads it and
+changes nothing. A manager, `staff:approve` and a colleague do not have it. It has two
+groups.
+
+**Account flag** says whether Staff gives the person a user to sign in with, from which
+day and at which address. HR changes it:
+
+1. Turn on **Staff provides an account**. Staff then creates the person's user,
+   disabled, the number of days before its day that **Prepare the account (days
+   before)** in [Accounts](#accounts) says, enables it on that day and disables it the
+   day after the last employment ends. It is never deleted.
+2. **Account from** is the day the account is enabled. Left empty, it is the first day
+   of the person's earliest employment that has not ended, and the field says which
+   day that is — or that there is none yet, so there is no day to enable the account
+   on. A day you type wins over the employments; clear it to follow them again.
+3. Choose the **Address**: **Work email** or **Private email**. When the person does
+   not have the one chosen, the tab warns *… has no work email on file: the account
+   waits until one is added*.
+4. Press **Save the account flag**. The three fields are saved together. If somebody
+   else changed the flag since you opened the tab, the tab reloads and says
+   *Somebody else saved this; it has been reloaded*.
+
+**User account** first says the authority mode in words: *Local accounts* — Staff
+creates the user and invites the person to choose a password — or *Federated* — the
+identity provider owns the accounts, and Staff finds the user by the employee number,
+enables what it disabled and disables, never creating or inviting — or *Accounts are
+unavailable*, when no module provides them or this server disagrees with the mode
+identity recorded. Then, once Staff has created or found a user:
+
+- **State** — *Being prepared*, *Pending — waiting for the person to choose a
+  password*, *Active*, *Disabled by Staff* or *Disabled by an Owner*, *Failed*,
+  *Blocked*, or *Linked, not managed by Staff* for a user HR linked by hand.
+- **User**, and **Managed by Staff** — yes or no.
+- Why the account is held up, in a sentence, when it is: no employment to give an
+  account from, the address the flag names missing, an Owner disabled the user (or the
+  pending user, whom Staff then never enables), the user gone, the account belonging to
+  another employee number (someone else's, left alone), a pending user made for local
+  accounts under a federated mode, the address in identity differing from the person's
+  after they chose a password (an Owner changes it in identity), an invitation revoked
+  by an Owner or three left unanswered, the user no longer managed by Staff, an Owner or
+  a system administrator, no user with the employee number yet in the identity
+  provider, the address or the employee number held by a user Staff does not manage,
+  no roles named for Staff — or one that grants administration — and a worker whose
+  mode differs from the installation's. *The last 3 attempts failed* says identity
+  could not be reached; the worker tries again.
+- **Invitation** — whether one is open and can be accepted, the latest lapsed
+  unanswered, an Owner revoked it, or three went unanswered, with how many were sent.
+- **Next attempt** and **Last brought in line**.
+
+For a user Staff does not manage — one HR linked by hand, or one an Owner stopped
+managing — the tab tells HR that an Owner adopts the user for Staff on identity's
+**Users** page (**Adopt for Staff**), with the person's employee number, and **Open
+Users** goes there.
+
+**Run now** (HR, while the flag is on) does the account's next step at once, with a
+fresh invitation for a pending user whose last one cannot be accepted. The tab then
+says *Done: a new invitation was sent*, or *Done: no invitation was sent* — none was
+due, one can still be accepted, or the last went less than ten minutes ago; the run is
+done all the same.
+
+**Disable now** (HR) asks first — *This also turns the account flag off, so the account
+stays disabled until HR turns the flag on again* — then disables the user and says *The
+account is disabled and the account flag is off*. When the user cannot be disabled
+from Staff, the tab says why, the flag already off: Staff does not manage the user, the
+user is an Owner or a system administrator (an Owner disables them on the Users page),
+or the account carries another employee number. When identity cannot be reached, the
+flag is off and the accounts worker disables the user as soon as it can. While the
+worker is acting on the account, Run now and Disable now say so and change nothing:
+try again in a few minutes.
+
+On an [erased record](#an-erased-record) the tab is read-only but for **Disable now**:
+the person's access must end too.
+
 ### A legal hold
 
 With `staff:personal-data`, a person's page has **Put under legal hold** at the top. A
@@ -379,6 +458,7 @@ be done:
 
 - the [legal hold](#a-legal-hold) and [the reassessment](#the-reassessment);
 - **Unlink** under Self-service, so the user can be linked to someone else;
+- **Disable now** on the [Account](#account) tab;
 - reading: the History, the Documents and their downloads, and
   [the personal-data file](#download-a-persons-data);
 - [Rehire](#rehire).
@@ -509,7 +589,8 @@ refuses the terms without them.
 
 **My page** (`staff:access`) is your own record in Staff, found through the user HR
 linked it to, and shows what you see of yourself — whatever else you may hold. It has
-a person's four tabs, then **Absence** and, when you manage anyone, **My team**:
+a person's four tabs, then **Absence**, **Account** and, when you manage anyone,
+**My team**:
 
 - **Profile** — your work details, your private details, your national identity number
   as **On file** and your bank account's last four digits, your next of kin, your roles
@@ -531,6 +612,9 @@ a person's four tabs, then **Absence** and, when you manage anyone, **My team**:
 - **Absence** — your holiday account, your egenmelding standing, your care days and
   your absences, with **Request absence** (see
   [Request absence](#request-absence-from-your-phone) below).
+- **Account** — whether Staff gives you a user to sign in with, from which day and at
+  which address, and how your account stands: pending your password, active,
+  disabled, with your invitation. It is read-only: ask HR to change it.
 - **My team** — only when you manage someone today: the requests you decide, your
   reports' absence this month and their open sick-leave cases (see
   [My team](#my-team) below).
@@ -784,8 +868,9 @@ Staff settings.
 
 **Staff settings** (`staff:manage`) has the general settings first, then the company's
 structure, the document categories, three cards for absence — **Absence types**,
-**Holiday schemes** and **Egenmelding and carry-over** — and four cards for the data:
-**Import and export people**, **Payroll export**, **Retention** and **Thresholds**.
+**Holiday schemes** and **Egenmelding and carry-over** — four cards for the data —
+**Import and export people**, **Payroll export**, **Retention** and **Thresholds** — and
+**Accounts**.
 Someone without `staff:manage` who opens the page by its address sees none of them.
 
 ### General
@@ -1038,3 +1123,28 @@ When the duty is dealt with — or does not apply — press **Acknowledge** on i
 confirm. An acknowledgement is **permanent**: it cannot be undone, and the threshold's
 item never comes back, whatever the headcount does later. The row then says
 **Acknowledged** with the date. A threshold can be acknowledged before it is crossed.
+
+### Accounts
+
+**Accounts** is how Staff gives people a user to sign in with — turned on per person on
+their [Account](#account) tab. It says the authority mode in words (*Local accounts*,
+*Federated* or *Accounts are unavailable*), and whether an Owner has named the roles
+Staff may give. Until one has, the card warns *No Owner has named the roles Staff may
+give, so no local account can be enabled*, and **Open Roles and access** goes to
+identity's **Roles and access** page, where an Owner names them under **Roles Staff
+may give**.
+
+- **Prepare the account (days before)** — how many days before the account's day
+  Staff creates the user, disabled: 0 to 90, 14 unless changed.
+- **Delete an external account (days after the end)** — used by the Entra module,
+  which is not installed yet: nothing reads it. 1 to 3650 days after the last
+  employment ended, or empty for never.
+
+Press **Save the account settings**. A number outside its bounds is refused on its
+field before anything is saved; the other settings are saved as they were.
+
+**Run accounts now** runs one cycle of the accounts worker at once, for every account
+that is due, as the worker would. A run may take minutes when identity or the mail
+server is slow. The card then says how many accounts it worked, how many were done,
+how many failed and are retried by the worker, and how many are left for the worker's
+next cycle.

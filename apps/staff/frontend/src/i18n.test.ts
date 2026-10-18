@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import staffYaml from "../../../../openapi/staff.yaml?raw";
+import accountFlagGo from "../../../server/internal/staff/account_flag.go?raw";
+import accountsDecideGo from "../../../server/internal/staff/accounts_decide.go?raw";
+import accountsWorkerGo from "../../../server/internal/staff/accounts_worker.go?raw";
 import eventsGo from "../../../server/internal/staff/events.go?raw";
 import retentionGo from "../../../server/internal/staff/retention.go?raw";
 import { staffCatalog } from "./i18n";
@@ -101,6 +104,53 @@ describe("the staff catalog", () => {
       "structure_default",
       "revision_conflict",
       "person_erased",
+    ];
+    for (const code of codes) {
+      expect(staffYaml, `the contract names ${code}`).toContain(code);
+      for (const [language, catalog] of Object.entries(staffCatalog))
+        expect((catalog as Record<string, string>)[`refusal.${code}`], `${language} refusal.${code}`).toBeDefined();
+    }
+  });
+
+  it("words every reason the accounts worker records on a link, in both languages", () => {
+    const reasons = [
+      ...`${accountsDecideGo}\n${accountsWorkerGo}`.matchAll(/^\s*(?:const\s+)?reason\w+\s*=\s*"(\w+)"/gm),
+    ].map((m) => m[1]);
+    // The decision table's twelve and the calls' seven (accounts_decide.go, accounts_worker.go).
+    expect(reasons.length).toBeGreaterThanOrEqual(19);
+    for (const reason of reasons)
+      for (const [language, catalog] of Object.entries(staffCatalog))
+        expect(
+          (catalog as Record<string, string>)[`accountReason_${reason}`],
+          `${language} accountReason_${reason}`,
+        ).toBeDefined();
+  });
+
+  it("words every state of an account's link and its invitation, in both languages", () => {
+    const states = [
+      ...`${accountsDecideGo}\n${accountFlagGo}`.matchAll(/^\s*(?:const\s+)?linkState\w+\s*=\s*"(\w+)"/gm),
+    ].map((m) => m[1]);
+    expect(states.sort()).toEqual(["active", "blocked", "disabled", "failed", "linked", "pending", "preparing"]);
+    const invitations = ["none", "active", "expired", "revoked_by_owner", "exhausted"];
+    for (const state of invitations) expect(staffYaml, `the contract names ${state}`).toContain(state);
+    for (const [language, catalog] of Object.entries(staffCatalog)) {
+      for (const state of states)
+        expect((catalog as Record<string, string>)[`accountLinkState_${state}`], `${language} ${state}`).toBeDefined();
+      for (const state of invitations)
+        expect((catalog as Record<string, string>)[`accountInvitation_${state}`], `${language} ${state}`).toBeDefined();
+      for (const mode of ["local", "federated", "unavailable"])
+        expect((catalog as Record<string, string>)[`accountMode_${mode}`], `${language} ${mode}`).toBeDefined();
+    }
+  });
+
+  it("words every refusal of the accounts the contract names, in both languages", () => {
+    const codes = [
+      "accounts_busy",
+      "accounts_unavailable",
+      "link_managed",
+      "account_not_managed",
+      "account_privileged",
+      "account_mismatch",
     ];
     for (const code of codes) {
       expect(staffYaml, `the contract names ${code}`).toContain(code);

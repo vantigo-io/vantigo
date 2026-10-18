@@ -395,6 +395,145 @@ export const staffCatalog = {
     unlinkExplained: "The user no longer sees this record on My page. The user's account is not changed.",
     linkSaved: "The link is saved",
     couldNotLink: "Could not change the link",
+    linkedManaged: "{{name}} — managed by Staff; see the Account tab",
+    "refusal.link_managed":
+      "This user's account is managed by Staff's accounts, so it is not linked or unlinked by hand. Use the Account tab.",
+    "refusal.accounts_unavailable":
+      "Identity could not be reached, or no module provides accounts. Nothing was changed; try again — the worker retries a failed call.",
+    "refusal.accounts_busy":
+      "Staff's accounts worker is acting on this account right now. Nothing was changed; try again in a few minutes.",
+    "refusal.account_not_managed":
+      "The account flag is off, but the user was not disabled: Staff does not manage them. An Owner disables them on the Users page, or adopts them for Staff.",
+    "refusal.account_privileged":
+      "The account flag is off, but the user was not disabled: they are an Owner or a system administrator. An Owner disables them on the Users page; Staff tries again daily.",
+    "refusal.account_mismatch":
+      "The account flag is off, but the user was not disabled: the account carries another employee number — someone else's account. It is disabled once the number is right.",
+
+    // The Account tab (delivery C)
+    tab_account: "Account",
+    failedToLoadAccount: "Could not load the account",
+    accountFlag: "Account flag",
+    accountFlagExplained:
+      "Whether Staff gives the person a user to sign in with, from which day, and at which of their addresses.",
+    provisionAccount: "Staff provides an account",
+    provisionAccountDescription:
+      "Staff creates the person's user, disabled, ahead of the day below — as many days before as Staff settings, Accounts, say — enables it on that day and disables it the day after the last employment ends. It is never deleted.",
+    accountFrom: "Account from",
+    accountFromDerivedExplained: "Left empty, the first day of the earliest employment that has not ended: {{date}}.",
+    accountFromDerivedLater: "Left empty, the first day of the earliest employment that has not ended.",
+    accountFromNoneExplained:
+      "Left empty, the first day of the earliest employment that has not ended — there is none yet, so there is no day to enable the account on.",
+    accountFromSetExplained:
+      "The account is enabled on this day, whatever the employments say. Clear it to follow the employments.",
+    accountFromDerived: "{{date}} (from the employments)",
+    accountFromNone: "No day yet: the person has no employment that has not ended",
+    accountAddress: "Address",
+    accountEmailKind_work: "Work email",
+    accountEmailKind_private: "Private email",
+    accountNoWorkEmail: "{{name}} has no work email on file: the account waits until one is added.",
+    accountNoPrivateEmail: "{{name}} has no private email on file: the account waits until one is added.",
+    saveAccountFlag: "Save the account flag",
+    accountFlagSaved: "The account flag is saved",
+    userAccount: "User account",
+    accountMode_local: "Local accounts — Staff creates the user and invites the person to choose a password.",
+    accountMode_federated:
+      "Federated — the identity provider owns the accounts: Staff finds the user by the employee number, enables what it disabled and disables; it never creates a user or invites.",
+    accountMode_unavailable:
+      "Accounts are unavailable — no module provides them, or this server's configuration disagrees with the mode identity recorded. Nothing is run until that is fixed.",
+    accountNoUser: "No user yet: Staff has not created or found one for this person.",
+    accountState: "State",
+    accountLinkState_preparing: "Being prepared — Staff is creating or finding the user",
+    accountLinkState_linked: "Linked, not managed by Staff",
+    accountLinkState_pending: "Pending — waiting for the person to choose a password",
+    accountLinkState_active: "Active",
+    accountLinkState_disabled: "Disabled by Staff",
+    accountLinkState_disabledByOwner: "Disabled by an Owner",
+    accountLinkState_failed: "Failed",
+    accountLinkState_blocked: "Blocked",
+    managedByStaff: "Managed by Staff",
+    accountInvitation: "Invitation",
+    accountInvitation_none: "None open, or none needed",
+    accountInvitation_active: "An invitation is open and can be accepted",
+    accountInvitation_expired: "The latest invitation lapsed unanswered",
+    accountInvitation_revoked_by_owner: "An Owner revoked the invitation; only Run now issues another",
+    accountInvitation_exhausted: "Three invitations went unanswered; only Run now issues another",
+    invitationsIssued: "{{count}} sent",
+    nextAttempt: "Next attempt",
+    lastSynced: "Last brought in line",
+    accountFailing: "The last {{count}} attempts failed: identity could not be reached. The worker tries again.",
+    accountReasonUnknown: "Blocked ({{code}})",
+    accountReason_no_employment: "The person has no employment, so there is no day to give them an account from.",
+    accountReason_account_email_missing:
+      "The person does not have the address the flag names; the account waits until it is added.",
+    accountReason_blocked_by_owner:
+      "An Owner disabled the pending user, so Staff does not enable them. An Owner enables them on the Users page.",
+    accountReason_disabled_by_owner:
+      "An Owner disabled the user while the person is employed; Staff leaves it disabled.",
+    accountReason_user_gone: "The user this account was linked to no longer exists; Staff never creates a second.",
+    accountReason_mismatch:
+      "The account belongs to another employee number — someone else's account; nothing is done to it.",
+    accountReason_mode_changed:
+      "The pending user was created for local accounts, but the installation is now federated and never invites.",
+    accountReason_email_differs:
+      "The user's address in identity differs from the person's chosen address since they chose a password; an Owner changes it in identity.",
+    accountReason_invitation_revoked: "An Owner revoked the invitation; Run now sends a fresh one.",
+    accountReason_invitation_unanswered: "Three invitations went unanswered; Run now sends a fresh one.",
+    accountReason_account_not_managed:
+      "The user is no longer managed by Staff — an Owner stopped managing them, or promoted them.",
+    accountReason_account_privileged: "The user is an Owner or a system administrator, whom an Owner handles by hand.",
+    accountReason_not_found:
+      "No user with the person's employee number exists yet — the identity provider has not created it.",
+    accountReason_account_email_taken:
+      "Another user, not one Staff manages under this employee number, holds the address.",
+    accountReason_employee_number_taken: "A user Staff does not manage holds the employee number.",
+    accountReason_invalid_actor:
+      "A fault in Staff stopped the call; it is logged, and the account waits until it is fixed.",
+    accountReason_employee_role_missing: "No Owner has named the roles Staff may give, so no account is enabled.",
+    accountReason_employee_role_unsafe:
+      "A role named for Staff grants administration, so no account is given roles until an Owner takes it out.",
+    accountReason_mode_mismatch:
+      "A worker's authority mode differs from the one this installation recorded, so only deactivations run.",
+    accountAdoptExplained:
+      "Staff does not manage this user. For Staff to manage them, an Owner adopts the user for Staff on the Users page (Adopt for Staff), with this person's employee number, {{number}}.",
+    openUsers: "Open Users",
+    openRoles: "Open Roles and access",
+    runNow: "Run now",
+    runNowExplained:
+      "Run now does the account's next step at once, with a fresh invitation for a pending user whose last one cannot be accepted.",
+    runNowSent: "Done: a new invitation was sent.",
+    runNowNotSent:
+      "Done: no invitation was sent — none was due, one can still be accepted, or the last was sent less than ten minutes ago.",
+    disableNow: "Disable now",
+    disableNowTitle: "Disable {{name}}'s account now?",
+    disableNowExplained:
+      "This also turns the account flag off, so the account stays disabled until HR turns the flag on again.",
+    disableNowDone: "The account is disabled and the account flag is off.",
+    disableUnavailable:
+      "The account flag is off, but identity could not be reached; the accounts worker disables the user as soon as it can.",
+
+    // The account settings (delivery C)
+    accountSettings: "Accounts",
+    accountSettingsDescription:
+      "How Staff gives people accounts: the mode identity records, the roles an Owner names for Staff to give, and when an account is prepared.",
+    accountModeLabel: "Authority mode",
+    accountRolesSet: "An Owner has named the roles Staff may give.",
+    accountRolesMissing:
+      "No Owner has named the roles Staff may give, so no local account can be enabled. An Owner names them under Roles Staff may give, on the Roles and access page.",
+    createBeforeDays: "Prepare the account (days before)",
+    createBeforeDaysDescription: "How many days before the account's day Staff creates it, disabled: 0 to 90.",
+    createBeforeDaysInvalid: "0 to 90 days",
+    deleteExternalAfterDays: "Delete an external account (days after the end)",
+    deleteExternalAfterDaysDescription:
+      "Used by the Entra module, which is not installed yet: nothing reads it. 1 to 3650 days after the last employment ended; empty for never.",
+    deleteExternalAfterDaysInvalid: "1 to 3650 days, or empty for never",
+    saveAccountSettings: "Save the account settings",
+    accountSettingsSaved: "The account settings are saved",
+    runAccountsNow: "Run accounts now",
+    runAccountsExplained:
+      "Runs one cycle of the accounts worker now, for every account that is due, as the worker would. A run may take minutes when identity or the mail server is slow.",
+    runAccountsResult:
+      "{{attempted}} accounts worked: {{done}} done, {{failed}} failed and retried by the worker; {{remaining}} left for the worker's next cycle.",
+    couldNotRunAccounts: "Could not run the accounts",
 
     // The organisation
     managers: "Managers",
@@ -1661,6 +1800,144 @@ export const staffCatalog = {
     unlinkExplained: "Brukeren ser ikke lenger denne oppføringen på Min side. Brukerens konto endres ikke.",
     linkSaved: "Koblingen er lagret",
     couldNotLink: "Kunne ikke endre koblingen",
+    linkedManaged: "{{name}} — styrt av Ansatte; se fanen Konto",
+    "refusal.link_managed":
+      "Denne brukerens konto styres av Ansattes kontoer, så den kobles ikke til eller fra for hånd. Bruk fanen Konto.",
+    "refusal.accounts_unavailable":
+      "Identitet kunne ikke nås, eller ingen modul gir kontoer. Ingenting ble endret; prøv igjen — arbeideren prøver et mislykket kall på nytt.",
+    "refusal.accounts_busy":
+      "Ansattes kontoarbeider jobber med denne kontoen akkurat nå. Ingenting ble endret; prøv igjen om noen minutter.",
+    "refusal.account_not_managed":
+      "Kontoflagget er av, men brukeren ble ikke deaktivert: Ansatte styrer den ikke. En eier deaktiverer den på siden Brukere, eller lar Ansatte styre den.",
+    "refusal.account_privileged":
+      "Kontoflagget er av, men brukeren ble ikke deaktivert: den er en eier eller en systemadministrator. En eier deaktiverer den på siden Brukere; Ansatte prøver igjen daglig.",
+    "refusal.account_mismatch":
+      "Kontoflagget er av, men brukeren ble ikke deaktivert: kontoen har et annet ansattnummer — den er noen andres. Den deaktiveres når nummeret stemmer.",
+
+    // Fanen Konto (leveranse C)
+    tab_account: "Konto",
+    failedToLoadAccount: "Kunne ikke laste kontoen",
+    accountFlag: "Kontoflagg",
+    accountFlagExplained:
+      "Om Ansatte gir personen en bruker å logge inn med, fra hvilken dag, og på hvilken av adressene deres.",
+    provisionAccount: "Ansatte gir en konto",
+    provisionAccountDescription:
+      "Ansatte oppretter personens bruker, deaktivert, før dagen under — så mange dager før som Ansatteinnstillinger, Kontoer, sier — aktiverer den den dagen og deaktiverer den dagen etter at siste arbeidsforhold slutter. Den slettes aldri.",
+    accountFrom: "Konto fra",
+    accountFromDerivedExplained:
+      "Står den tom, gjelder første dag i det tidligste arbeidsforholdet som ikke er avsluttet: {{date}}.",
+    accountFromDerivedLater: "Står den tom, gjelder første dag i det tidligste arbeidsforholdet som ikke er avsluttet.",
+    accountFromNoneExplained:
+      "Står den tom, gjelder første dag i det tidligste arbeidsforholdet som ikke er avsluttet — det finnes ikke ennå, så det er ingen dag å aktivere kontoen på.",
+    accountFromSetExplained:
+      "Kontoen aktiveres denne dagen, uansett hva arbeidsforholdene sier. Tøm feltet for å følge arbeidsforholdene.",
+    accountFromDerived: "{{date}} (fra arbeidsforholdene)",
+    accountFromNone: "Ingen dag ennå: personen har ikke noe arbeidsforhold som ikke er avsluttet",
+    accountAddress: "Adresse",
+    accountEmailKind_work: "E-post på jobb",
+    accountEmailKind_private: "Privat e-post",
+    accountNoWorkEmail: "{{name}} har ingen e-post på jobb registrert: kontoen venter til en legges inn.",
+    accountNoPrivateEmail: "{{name}} har ingen privat e-post registrert: kontoen venter til en legges inn.",
+    saveAccountFlag: "Lagre kontoflagget",
+    accountFlagSaved: "Kontoflagget er lagret",
+    userAccount: "Brukerkonto",
+    accountMode_local: "Lokale kontoer — Ansatte oppretter brukeren og inviterer personen til å velge et passord.",
+    accountMode_federated:
+      "Føderert — identitetsleverandøren eier kontoene: Ansatte finner brukeren på ansattnummeret, aktiverer det den deaktiverte og deaktiverer; den oppretter aldri en bruker og inviterer aldri.",
+    accountMode_unavailable:
+      "Kontoer er ikke tilgjengelige — ingen modul gir dem, eller denne serverens oppsett er uenig med modusen identitet registrerte. Ingenting kjøres før det er rettet.",
+    accountNoUser: "Ingen bruker ennå: Ansatte har ikke opprettet eller funnet en for denne personen.",
+    accountState: "Tilstand",
+    accountLinkState_preparing: "Forberedes — Ansatte oppretter eller finner brukeren",
+    accountLinkState_linked: "Koblet, ikke styrt av Ansatte",
+    accountLinkState_pending: "Venter — på at personen velger et passord",
+    accountLinkState_active: "Aktiv",
+    accountLinkState_disabled: "Deaktivert av Ansatte",
+    accountLinkState_disabledByOwner: "Deaktivert av en eier",
+    accountLinkState_failed: "Mislyktes",
+    accountLinkState_blocked: "Stoppet",
+    managedByStaff: "Styrt av Ansatte",
+    accountInvitation: "Invitasjon",
+    accountInvitation_none: "Ingen åpen, eller ingen trengs",
+    accountInvitation_active: "En invitasjon er åpen og kan godtas",
+    accountInvitation_expired: "Den siste invitasjonen gikk ut ubesvart",
+    accountInvitation_revoked_by_owner: "En eier trakk tilbake invitasjonen; bare Kjør nå sender en ny",
+    accountInvitation_exhausted: "Tre invitasjoner ble ikke besvart; bare Kjør nå sender en ny",
+    invitationsIssued: "{{count}} sendt",
+    nextAttempt: "Neste forsøk",
+    lastSynced: "Sist brakt i samsvar",
+    accountFailing: "De siste {{count}} forsøkene mislyktes: identitet kunne ikke nås. Arbeideren prøver igjen.",
+    accountReasonUnknown: "Stoppet ({{code}})",
+    accountReason_no_employment: "Personen har ikke noe arbeidsforhold, så det er ingen dag å gi en konto fra.",
+    accountReason_account_email_missing: "Personen har ikke adressen flagget angir; kontoen venter til den legges inn.",
+    accountReason_blocked_by_owner:
+      "En eier deaktiverte den ventende brukeren, så Ansatte aktiverer den ikke. En eier aktiverer den på siden Brukere.",
+    accountReason_disabled_by_owner:
+      "En eier deaktiverte brukeren mens personen er ansatt; Ansatte lar den være deaktivert.",
+    accountReason_user_gone: "Brukeren kontoen var koblet til, finnes ikke lenger; Ansatte oppretter aldri en til.",
+    accountReason_mismatch: "Kontoen hører til et annet ansattnummer — den er noen andres; ingenting gjøres med den.",
+    accountReason_mode_changed:
+      "Den ventende brukeren ble opprettet for lokale kontoer, men installasjonen er nå føderert og inviterer aldri.",
+    accountReason_email_differs:
+      "Brukerens adresse i identitet er en annen enn personens valgte adresse etter at passordet ble valgt; en eier endrer den i identitet.",
+    accountReason_invitation_revoked: "En eier trakk tilbake invitasjonen; Kjør nå sender en ny.",
+    accountReason_invitation_unanswered: "Tre invitasjoner ble ikke besvart; Kjør nå sender en ny.",
+    accountReason_account_not_managed:
+      "Brukeren styres ikke lenger av Ansatte — en eier sluttet å styre den, eller gjorde den til eier.",
+    accountReason_account_privileged:
+      "Brukeren er en eier eller en systemadministrator, som en eier håndterer for hånd.",
+    accountReason_not_found:
+      "Ingen bruker med personens ansattnummer finnes ennå — identitetsleverandøren har ikke opprettet den.",
+    accountReason_account_email_taken:
+      "En annen bruker, ikke en Ansatte styrer under dette ansattnummeret, har adressen.",
+    accountReason_employee_number_taken: "En bruker Ansatte ikke styrer, har ansattnummeret.",
+    accountReason_invalid_actor:
+      "En feil i Ansatte stoppet kallet; den er logget, og kontoen venter til den er rettet.",
+    accountReason_employee_role_missing: "Ingen eier har angitt rollene Ansatte kan gi, så ingen konto aktiveres.",
+    accountReason_employee_role_unsafe:
+      "En rolle angitt for Ansatte gir administrasjon, så ingen konto får roller før en eier tar den ut.",
+    accountReason_mode_mismatch:
+      "En arbeiders autoritetsmodus er en annen enn den denne installasjonen registrerte, så bare deaktiveringer kjøres.",
+    accountAdoptExplained:
+      "Ansatte styrer ikke denne brukeren. For at Ansatte skal styre den, lar en eier Ansatte styre brukeren på siden Brukere (La Ansatte styre), med denne personens ansattnummer, {{number}}.",
+    openUsers: "Åpne Brukere",
+    openRoles: "Åpne Roller og tilgang",
+    runNow: "Kjør nå",
+    runNowExplained:
+      "Kjør nå gjør kontoens neste steg med en gang, med en ny invitasjon til en ventende bruker hvis siste invitasjon ikke kan godtas.",
+    runNowSent: "Ferdig: en ny invitasjon ble sendt.",
+    runNowNotSent:
+      "Ferdig: ingen invitasjon ble sendt — ingen var forfalt, en kan fortsatt godtas, eller den siste ble sendt for under ti minutter siden.",
+    disableNow: "Deaktiver nå",
+    disableNowTitle: "Deaktivere kontoen til {{name}} nå?",
+    disableNowExplained: "Dette slår også av kontoflagget, så kontoen forblir deaktivert til HR slår flagget på igjen.",
+    disableNowDone: "Kontoen er deaktivert og kontoflagget er av.",
+    disableUnavailable:
+      "Kontoflagget er av, men identitet kunne ikke nås; kontoarbeideren deaktiverer brukeren så snart den kan.",
+
+    // Kontoinnstillingene (leveranse C)
+    accountSettings: "Kontoer",
+    accountSettingsDescription:
+      "Hvordan Ansatte gir folk kontoer: modusen identitet registrerer, rollene en eier angir at Ansatte kan gi, og når en konto forberedes.",
+    accountModeLabel: "Autoritetsmodus",
+    accountRolesSet: "En eier har angitt rollene Ansatte kan gi.",
+    accountRolesMissing:
+      "Ingen eier har angitt rollene Ansatte kan gi, så ingen lokal konto kan aktiveres. En eier angir dem under Roller Ansatte kan gi, på siden Roller og tilgang.",
+    createBeforeDays: "Forbered kontoen (dager før)",
+    createBeforeDaysDescription: "Hvor mange dager før kontoens dag Ansatte oppretter den, deaktivert: 0 til 90.",
+    createBeforeDaysInvalid: "0 til 90 dager",
+    deleteExternalAfterDays: "Slett en ekstern konto (dager etter slutt)",
+    deleteExternalAfterDaysDescription:
+      "Brukes av Entra-modulen, som ikke er installert ennå: ingenting leser den. 1 til 3650 dager etter at siste arbeidsforhold sluttet; tom for aldri.",
+    deleteExternalAfterDaysInvalid: "1 til 3650 dager, eller tom for aldri",
+    saveAccountSettings: "Lagre kontoinnstillingene",
+    accountSettingsSaved: "Kontoinnstillingene er lagret",
+    runAccountsNow: "Kjør kontoer nå",
+    runAccountsExplained:
+      "Kjører én runde av kontoarbeideren nå, for hver konto som er forfalt, slik arbeideren ville gjort. En runde kan ta minutter når identitet eller e-postserveren er treg.",
+    runAccountsResult:
+      "{{attempted}} kontoer behandlet: {{done}} ferdige, {{failed}} mislyktes og prøves igjen av arbeideren; {{remaining}} igjen til arbeiderens neste runde.",
+    couldNotRunAccounts: "Kunne ikke kjøre kontoene",
 
     // Organisasjonen
     managers: "Ledere",

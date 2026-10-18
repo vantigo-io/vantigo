@@ -35,6 +35,7 @@ import {
 } from "../lib/employee-number";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 import { AbsenceTypesTable } from "./-absence-types";
+import { AccountSettingsPanel } from "./-account-settings";
 import { DocumentCategoriesTable } from "./-document-categories";
 import { HolidaySchemesTable } from "./-holiday-schemes";
 import { RegisterDataCard } from "./-import-modal";
@@ -50,7 +51,8 @@ import { ThresholdsPanel } from "./-thresholds-panel";
  * company's structure, the document categories, and A2's data operations:
  * the register's import and export, the payroll month, retention and the
  * thresholds — and delivery B's absence types, holiday schemes, the
- * egenmelding policy and automatic carry-over. The page is `staff:manage`'s; the navigation offers it to
+ * egenmelding policy and automatic carry-over — and delivery C's account
+ * settings with Run accounts now. The page is `staff:manage`'s; the navigation offers it to
  * that permission alone, and the data cards are drawn only for a reader
  * `/meta` says holds it (`canEdit`), so a colleague who types the address
  * sees none of them.
@@ -86,6 +88,7 @@ export const SettingsPage = () => {
           {capabilities.canRevealIdentifiers && <PayrollExportCard today={meta.data.today} />}
           {settings.data && <RetentionPanel settings={settings.data} />}
           {settings.data && <ThresholdsPanel acknowledged={settings.data.thresholdsAcknowledged} />}
+          {settings.data && <AccountSettingsPanel settings={settings.data} meta={meta.data} />}
         </>
       )}
     </Stack>

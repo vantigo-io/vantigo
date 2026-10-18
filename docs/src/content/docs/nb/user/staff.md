@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden med dokumentene, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, fravær og feriekontoen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring og tersklene.
+description: Personregisteret — Personer, personsiden med dokumentene og kontoen, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, fravær og feriekontoen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring, tersklene og kontoene.
 sidebar:
   order: 45
 sources:
@@ -77,8 +77,9 @@ Trykk på et navn for å åpne [personsiden](#personsiden).
 
 ## Personsiden
 
-En persons side har fem faner — **Profil**, **Arbeidsforhold**, **Fravær**, **Historikk** og **Dokumenter** — og
-fanen du står på, ligger i sidens adresse. Siden viser det du kan se av personen og
+En persons side har seks faner — **Profil**, **Arbeidsforhold**, **Fravær**, **Historikk**, **Dokumenter** og
+**Konto** — og fanen du står på, ligger i sidens adresse (`?tab=account` åpner fanen
+Konto, som er dit dashbordets kontopunkter fører). Siden viser det du kan se av personen og
 ikke noe annet: en gruppe felt som ikke er din å lese, står ikke på siden i det hele
 tatt, heller ikke som en tom overskrift. Personen selv, en leder av dem, en kollega med
 `staff:view` og HR ser hver sin side; hele tabellen står under
@@ -98,13 +99,10 @@ referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
   aldri mer enn det, bortsett fra gjennom **Vis** nedenfor.
 - **Pårørende** og **Roller** (verneombud, medlem av AMU, HMS-ansvarlig, hver med
   dagene de har rollen).
-- **Selvbetjening** — brukeren personen logger inn med, hvis HR har koblet en.
-- **Konto** — om Ansatte gir personen en bruker å logge inn med, fra hvilken dag, og på
-  jobb-e-posten eller den private e-posten. Kontoen klargjøres, deaktivert, et antall
-  dager før den dagen og aktiveres på den; uten en dag HR har satt selv er det første
-  dag i personens tidligste arbeidsforhold som ikke har sluttet. Personen, HR og
-  `staff:personal-data` ser den; bare HR (`staff:manage`) endrer den. En bruker Ansatte forvalter slik, kobles ikke til
-  eller fra under **Selvbetjening**.
+- **Selvbetjening** — brukeren personen logger inn med, hvis HR har koblet en, eller —
+  når Ansattes kontoer styrer personens bruker — *… — styrt av Ansatte; se fanen
+  Konto*, uten noe å koble til eller fra. Selve kontoen står på fanen
+  [Konto](#konto).
 - **Barn og omsorgsdager** — **Barn under 12**, **Aleneomsorg** og **Barn med ekstra
   omsorgsdager**, det personens omsorgsdager telles ut fra. Personen, HR og
   `staff:personal-data`, og bare når ett av dem er registrert.
@@ -170,6 +168,12 @@ brukeren Min side og ikke noe mer, gir ingen rettigheter, og Ansatte endrer aldr
 brukerens konto. En deaktivert bruker, eller en som allerede er koblet til en annen
 person, avvises på feltet. **Koble fra** spør først og fjerner så koblingen; brukerens
 konto blir som den er.
+
+En bruker Ansattes kontoer styrer, kobles aldri til eller fra her: siden sier *Denne
+brukerens konto styres av Ansattes kontoer, så den kobles ikke til eller fra for hånd.
+Bruk fanen Konto.* Når Ansatte ikke kan spørre identitet om en bruker er styrt, sier
+siden *Identitet kunne ikke nås, eller ingen modul gir kontoer*, og ingenting endres;
+prøv igjen.
 
 ### Arbeidsforhold
 
@@ -345,6 +349,81 @@ endrer et helsedokument, velger hen også **Sykefraværssak** — en av personen
 åpen eller lukket — så dokumentet slettes sammen med sakens helseopplysninger; tøm
 feltet for å ta det ut av saken. Et dokument i en annen kategori hører ikke til noen sak.
 
+### Konto
+
+Fanen **Konto** er HRs (`staff:manage`) og personens egen, som leser den og ikke endrer
+noe. En leder, `staff:approve` og en kollega har den ikke. Den har to grupper.
+
+**Kontoflagg** sier om Ansatte gir personen en bruker å logge inn med, fra hvilken dag
+og på hvilken adresse. HR endrer det:
+
+1. Slå på **Ansatte gir en konto**. Ansatte oppretter da personens bruker, deaktivert,
+   det antallet dager før kontoens dag som **Forbered kontoen (dager før)** under
+   [Kontoer](#kontoer) sier, aktiverer den den dagen og deaktiverer den dagen etter at
+   siste arbeidsforhold slutter. Den slettes aldri.
+2. **Konto fra** er dagen kontoen aktiveres. Står den tom, er det første dag i
+   personens tidligste arbeidsforhold som ikke er avsluttet, og feltet sier hvilken dag
+   det er — eller at det ikke finnes ennå, så det er ingen dag å aktivere kontoen på.
+   En dag du skriver inn, går foran arbeidsforholdene; tøm feltet for å følge dem igjen.
+3. Velg **Adresse**: **E-post på jobb** eller **Privat e-post**. Har personen ikke den
+   som er valgt, advarer fanen *… har ingen e-post på jobb registrert: kontoen venter
+   til en legges inn*.
+4. Trykk **Lagre kontoflagget**. De tre feltene lagres sammen. Har noen andre endret
+   flagget siden du åpnet fanen, lastes fanen inn på nytt og sier *Noen andre lagret
+   dette først; det er lastet inn på nytt*.
+
+**Brukerkonto** sier først autoritetsmodusen med ord: *Lokale kontoer* — Ansatte
+oppretter brukeren og inviterer personen til å velge et passord — eller *Føderert* —
+identitetsleverandøren eier kontoene, og Ansatte finner brukeren på ansattnummeret,
+aktiverer det den deaktiverte og deaktiverer, uten noen gang å opprette eller invitere
+— eller *Kontoer er ikke tilgjengelige*, når ingen modul gir dem eller denne serveren er
+uenig med modusen identitet registrerte. Deretter, når Ansatte har opprettet eller
+funnet en bruker:
+
+- **Tilstand** — *Forberedes*, *Venter — på at personen velger et passord*, *Aktiv*,
+  *Deaktivert av Ansatte* eller *Deaktivert av en eier*, *Mislyktes*, *Stoppet*, eller
+  *Koblet, ikke styrt av Ansatte* for en bruker HR koblet for hånd.
+- **Bruker**, og **Styrt av Ansatte** — ja eller nei.
+- Hvorfor kontoen står, i en setning, når den gjør det: ikke noe arbeidsforhold å gi en
+  konto fra, adressen flagget angir mangler, en eier deaktiverte brukeren (eller den
+  ventende brukeren, som Ansatte da aldri aktiverer), brukeren er borte, kontoen hører
+  til et annet ansattnummer (den er noen andres og blir latt være), en ventende bruker
+  opprettet for lokale kontoer under føderert modus, adressen i identitet er en annen
+  enn personens etter at passordet ble valgt (en eier endrer den i identitet), en
+  invitasjon trukket tilbake av en eier eller tre ubesvarte, brukeren styres ikke lenger
+  av Ansatte, en eier eller en systemadministrator, ingen bruker med ansattnummeret ennå
+  hos identitetsleverandøren, adressen eller ansattnummeret holdt av en bruker Ansatte
+  ikke styrer, ingen roller angitt for Ansatte — eller en som gir administrasjon — og en
+  arbeider med en annen modus enn installasjonens. *De siste 3 forsøkene mislyktes* sier
+  at identitet ikke kunne nås; arbeideren prøver igjen.
+- **Invitasjon** — om en er åpen og kan godtas, den siste gikk ut ubesvart, en eier
+  trakk den tilbake, eller tre ble ikke besvart, med hvor mange som er sendt.
+- **Neste forsøk** og **Sist brakt i samsvar**.
+
+For en bruker Ansatte ikke styrer — en HR koblet for hånd, eller en en eier sluttet å
+styre — forteller fanen HR at en eier lar Ansatte styre brukeren på identitets side
+**Brukere** (**La Ansatte styre**), med personens ansattnummer, og **Åpne Brukere** går
+dit.
+
+**Kjør nå** (HR, mens flagget er på) gjør kontoens neste steg med en gang, med en ny
+invitasjon til en ventende bruker hvis siste invitasjon ikke kan godtas. Fanen sier
+da *Ferdig: en ny invitasjon ble sendt*, eller *Ferdig: ingen invitasjon ble sendt* —
+ingen var forfalt, en kan fortsatt godtas, eller den siste gikk for under ti minutter
+siden; kjøringen er gjort likevel.
+
+**Deaktiver nå** (HR) spør først — *Dette slår også av kontoflagget, så kontoen forblir
+deaktivert til HR slår flagget på igjen* — deaktiverer så brukeren og sier *Kontoen er
+deaktivert og kontoflagget er av*. Når brukeren ikke kan deaktiveres fra Ansatte, sier
+fanen hvorfor, med flagget allerede av: Ansatte styrer ikke brukeren, brukeren er en
+eier eller en systemadministrator (en eier deaktiverer dem på siden Brukere), eller
+kontoen har et annet ansattnummer. Når identitet ikke kan nås, er flagget av, og
+kontoarbeideren deaktiverer brukeren så snart den kan. Mens arbeideren jobber med
+kontoen, sier Kjør nå og Deaktiver nå fra og endrer ingenting: prøv igjen om noen
+minutter.
+
+På en [slettet person](#en-slettet-person) er fanen skrivebeskyttet, bortsett fra
+**Deaktiver nå**: personens tilgang må også ta slutt.
+
 ### En slettesperre
 
 Med `staff:personal-data` har personsiden **Sett slettesperre** øverst. En slettesperre
@@ -381,6 +460,7 @@ fortsatt gjøres:
 
 - [slettesperren](#en-slettesperre) og [den nye vurderingen](#den-nye-vurderingen);
 - **Koble fra** under Selvbetjening, så brukeren kan kobles til en annen;
+- **Deaktiver nå** på fanen [Konto](#konto);
 - lesing: Historikk, Dokumenter og nedlastingene, og
   [personopplysningsfilen](#last-ned-en-persons-opplysninger);
 - [Ansett på nytt](#ansett-på-nytt).
@@ -510,8 +590,8 @@ avviser vilkår uten dem.
 
 **Min side** (`staff:access`) er din egen oppføring i Ansatte, funnet gjennom brukeren
 HR koblet den til, og viser det du ser av deg selv — uansett hvilke andre rettigheter du
-har. Den har de fire fanene en persons side har, og så **Fravær** og, når du er leder for
-noen, **Mitt team**:
+har. Den har de fire fanene en persons side har, og så **Fravær**, **Konto** og, når du er
+leder for noen, **Mitt team**:
 
 - **Profil** — jobbopplysningene, de private opplysningene, fødselsnummeret som
   **Registrert** og de fire siste sifrene i bankkontoen, de pårørende, rollene og hvor
@@ -532,6 +612,9 @@ noen, **Mitt team**:
   dine registrerer ingenting.
 - **Fravær** — feriekontoen din, egenmeldingsstatusen, omsorgsdagene og fraværene
   dine, med **Be om fravær** (se [Be om fravær](#be-om-fravær-fra-mobilen) nedenfor).
+- **Konto** — om Ansatte gir deg en bruker å logge inn med, fra hvilken dag og på
+  hvilken adresse, og hvordan kontoen din står: venter på passordet ditt, aktiv,
+  deaktivert, med invitasjonen din. Den er skrivebeskyttet: spør HR om å endre den.
 - **Mitt team** — bare når du er leder for noen i dag: søknadene du avgjør, fraværet
   denne måneden til dem du er leder for, og de åpne sykefraværssakene deres (se
   [Mitt team](#mitt-team) nedenfor).
@@ -783,9 +866,9 @@ Ansatteinnstillinger.
 
 **Ansatteinnstillinger** (`staff:manage`) har de generelle innstillingene først, så
 selskapets struktur, dokumentkategoriene, tre kort for fravær — **Fraværstyper**,
-**Ferieordninger** og **Egenmelding og overføring** — og fire kort for dataene:
-**Importer og eksporter personer**, **Lønnseksport**, **Oppbevaring** og **Terskler**. Den
-som ikke har `staff:manage` og åpner siden med adressen, ser ingen av dem.
+**Ferieordninger** og **Egenmelding og overføring** — fire kort for dataene —
+**Importer og eksporter personer**, **Lønnseksport**, **Oppbevaring** og **Terskler** — og
+**Kontoer**. Den som ikke har `staff:manage` og åpner siden med adressen, ser ingen av dem.
 
 ### Generelt
 
@@ -1035,3 +1118,28 @@ Når plikten er ivaretatt — eller ikke gjelder — trykker du **Bekreft** på 
 bekrefter. En bekreftelse er **permanent**: den kan ikke angres, og terskelens punkt
 kommer aldri tilbake, uansett hva antallet ansatte gjør senere. Raden sier da
 **Bekreftet** med datoen. En terskel kan bekreftes før den er nådd.
+
+### Kontoer
+
+**Kontoer** er hvordan Ansatte gir folk en bruker å logge inn med — slått på for hver
+person på fanen [Konto](#konto). Kortet sier autoritetsmodusen med ord (*Lokale
+kontoer*, *Føderert* eller *Kontoer er ikke tilgjengelige*), og om en eier har angitt
+rollene Ansatte kan gi. Før en eier har gjort det, advarer kortet *Ingen eier har angitt
+rollene Ansatte kan gi, så ingen lokal konto kan aktiveres*, og **Åpne Roller og
+tilgang** går til identitets side **Roller og tilgang**, der en eier angir dem under
+**Roller Ansatte kan gi**.
+
+- **Forbered kontoen (dager før)** — hvor mange dager før kontoens dag Ansatte
+  oppretter brukeren, deaktivert: 0 til 90, 14 om ikke endret.
+- **Slett en ekstern konto (dager etter slutt)** — brukes av Entra-modulen, som ikke er
+  installert ennå: ingenting leser den. 1 til 3650 dager etter at siste arbeidsforhold
+  sluttet, eller tom for aldri.
+
+Trykk **Lagre kontoinnstillingene**. Et tall utenfor grensene avvises på feltet før noe
+lagres; de andre innstillingene lagres som de var.
+
+**Kjør kontoer nå** kjører én runde av kontoarbeideren med en gang, for hver konto som
+er forfalt, slik arbeideren ville gjort. En runde kan ta minutter når identitet eller
+e-postserveren er treg. Kortet sier så hvor mange kontoer den behandlet, hvor mange som
+ble ferdige, hvor mange som mislyktes og prøves igjen av arbeideren, og hvor mange som
+er igjen til arbeiderens neste runde.

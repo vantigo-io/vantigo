@@ -6,10 +6,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { personLinkQueryOptions, type StaffAssignableUser, type StaffPerson, updatePersonLink } from "../api/people";
-import { STAFF_QUERY_KEY } from "../api/request";
+import { ApiValidationError, STAFF_QUERY_KEY } from "../api/request";
 import { FieldGroup } from "../components/field-group";
 import { UserPicker } from "../components/user-picker";
 import "../i18n";
+import { refusalText } from "../lib/absence";
 import { fieldRefusals } from "../lib/errors";
 
 /**
@@ -21,6 +22,12 @@ import { fieldRefusals } from "../lib/errors";
  *
  * An erased record takes the unlink — so the user can be linked to someone
  * else — and no link (design S15): the picker is not offered on it.
+ *
+ * The accounts worker's link (delivery C) is the same row: a person whose
+ * link the worker holds is named as managed by Staff, with neither a picker
+ * nor an unlink — the server refuses both (`link_managed`), and the Account
+ * tab is where it is handled. A refusal is said in words: `link_managed` for
+ * a user Staff manages, `accounts_unavailable` when identity could not say.
  */
 export const PersonLinkGroup = ({ person }: { person: StaffPerson }) => {
   const { t } = useI18n("staff");
@@ -39,6 +46,10 @@ export const PersonLinkGroup = ({ person }: { person: StaffPerson }) => {
       await queryClient.invalidateQueries({ queryKey: [STAFF_QUERY_KEY, "people", "detail", person.id] });
     },
     onError: (failure) => {
+      if (!(failure instanceof ApiValidationError)) {
+        notifications.show({ color: "red", title: t("couldNotLink"), message: refusalText(failure, t) });
+        return;
+      }
       const { fields, rest } = fieldRefusals(failure, ["userId"]);
       setError(fields.userId);
       if (rest.length > 0) notifications.show({ color: "red", title: t("couldNotLink"), message: rest.join(" ") });
@@ -55,9 +66,14 @@ export const PersonLinkGroup = ({ person }: { person: StaffPerson }) => {
     });
 
   if (!link) return null;
+  const managed = link.state !== undefined && link.state !== "linked";
   return (
     <FieldGroup title={t("selfService")} description={t("linkExplained")}>
-      {link.linked && link.user ? (
+      {managed ? (
+        <Text size="sm">
+          {link.user ? t("linkedManaged", { name: link.user.displayName }) : t("accountLinkState_preparing")}
+        </Text>
+      ) : link.linked && link.user ? (
         <Group justify="space-between" wrap="wrap" gap="xs">
           <Group gap="xs">
             <Text size="sm">{t("linkedNotManaged", { name: link.user.displayName })}</Text>

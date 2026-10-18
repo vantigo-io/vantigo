@@ -93,24 +93,27 @@ som. Koblingen gjør den brukeren til personen selv for Ansatte og ingenting ann
 gir ingen rettighet, og den setter aldri brukeren under Ansattes forvaltning. Enhver
 aktiv bruker kan kobles, også Owner.
 
-1. Som en bruker med `staff:manage` finner du brukeren:
-   `GET /api/v1/staff/assignable-users?q=` med en del av navnet lister opptil tjue
-   aktive brukere.
-2. Koble dem: `PUT /api/v1/staff/people/{id}/user` med
-   `{"userId": "<brukerens id>"}`. For å fjerne koblingen sender du
-   `{"userId": null}`.
-3. Kontroller: personen logger inn, og `GET /api/v1/staff/me` svarer med
-   opplysningene deres i stedet for `no_person`. Personens historikk viser
-   `user_linked`.
+1. Som en bruker med `staff:manage` åpner du personens side. Under **Selvbetjening** på
+   fanen Profil skriver du en del av brukerens navn i **Bruker** — opptil tjue aktive
+   brukere foreslås — velger dem og trykker **Koble**
+   ([brukerveiledningen](/nb/user/staff/#koble-personen-til-brukeren-sin-hr)). **Koble
+   fra** fjerner koblingen. Gjennom API-et: `GET /api/v1/staff/assignable-users?q=`, så
+   `PUT /api/v1/staff/people/{id}/user` med `{"userId": "<brukerens id>"}`, eller
+   `{"userId": null}` for å fjerne koblingen.
+2. Kontroller: gruppen viser *… — koblet, ikke styrt av Ansatte*; personen logger inn,
+   og Min side viser opplysningene deres (`GET /api/v1/staff/me` svarer med dem i
+   stedet for `no_person`). Personens historikk viser `user_linked`.
 
 En bruker kan bare kobles til én person, og en person til én bruker; å koble en person
 til en annen bruker erstatter koblingen. En deaktivert bruker kan ikke kobles.
 
-En bruker som Ansattes kontoer forvalter, kobles ikke til eller fra her: forespørselen
-svarer `link_managed` (409), og det samme gjør en person hvis kobling er kontoarbeiderens
-(`GET /api/v1/staff/people/{id}/account` viser tilstanden). Kan ikke identity spørres om
-brukeren forvaltes, svarer forespørselen `accounts_unavailable` (503) og endrer ingenting;
-prøv igjen. En installasjon der ingen modul tilbyr kontoer, svarer slik på hver kobling
+En bruker som Ansattes kontoer forvalter, kobles ikke til eller fra her: Selvbetjening
+viser en slik kobling som *… — styrt av Ansatte; se fanen Konto* og tilbyr verken
+**Koble** eller **Koble fra**, og forespørselen svarer `link_managed` (409), som siden
+sier med ord — slik den gjør for en person hvis kobling er kontoarbeiderens (personens
+Konto-fane viser tilstanden). Kan ikke identity spørres om brukeren forvaltes, svarer
+forespørselen `accounts_unavailable` (503), siden sier at identitet ikke kunne nås, og
+ingenting endres; prøv igjen. En installasjon der ingen modul tilbyr kontoer, svarer slik på hver kobling
 og frakobling som navngir en bruker.
 
 ## Slå på konto for en person
@@ -120,32 +123,39 @@ første arbeidsdag (leveranse C). Kontoflagget settes her; kontoarbeideren
 ([nedenfor](#kontoarbeideren)) handler på det.
 
 1. Før den første kontoen navngir en Owner rollene Ansatte kan gi i identity
-   (ansattrollene). `GET /api/v1/staff/meta` svarer `provisioningRolesSet` til
-   `staff:manage`: `false` til en Owner har navngitt minst én. `accountMode` sier om
-   identity holder passordene (`local`) eller en identitetsleverandør eier kontoene
-   (`federated`); den mangler når denne prosessens OIDC- eller SCIM-innstillinger er
-   uenige med API-ets, og når identity ikke kunne spørres.
-2. Som en bruker med `staff:manage` leser du personens flagg:
-   `GET /api/v1/staff/people/{id}/account`, og merker deg `revision` — flaggets egen,
-   ikke personens: å endre flagget flytter aldri personens revisjon.
-3. Slå det på: `PUT /api/v1/staff/people/{id}/account` med `If-Match` satt til den
-   revisjonen og `{"provisionAccount": true, "provisionFrom": null, "accountEmailKind": "work"}`.
-   La `provisionFrom` være null for å aktivere kontoen på første dag i personens
-   tidligste arbeidsforhold som ikke har sluttet; sett en dato for å velge en annen dag.
-   Mellom to arbeidsforhold hører en dato fra før det første sluttet til det, og kontoen
-   følger den senere startdatoen; en dato etter det følges.
-   Velg `private` for å gi identity personens private e-post i stedet for jobb-e-posten.
-   Forespørselen er en full erstatning: send alle tre feltene — en uten
-   `provisionAccount`, eller med den `null`, avvises (400) og endrer ingenting.
-4. Kontroller: svarets `provisionFromEffective` er dagen kontoen aktiveres, og
-   `address.present` er `true`. Et flagg som slås på uten den valgte adressen godtas, men
-   ingen konto lages før personen har den. Personens historikk viser
+   (ansattrollene, under **Roller Ansatte kan gi** på siden Roller og tilgang). Kortet
+   **Kontoer** i Ansatteinnstillinger advarer *Ingen eier har angitt rollene Ansatte kan
+   gi* til en har gjort det, med **Åpne Roller og tilgang**, og sier autoritetsmodusen:
+   *Lokale kontoer* (identity holder passordene) eller *Føderert* (en
+   identitetsleverandør eier kontoene) — eller *Kontoer er ikke tilgjengelige* når denne
+   prosessens OIDC- eller SCIM-innstillinger er uenige med API-ets, eller identity ikke
+   kunne spørres. Gjennom API-et svarer `GET /api/v1/staff/meta` `provisioningRolesSet`
+   og `accountMode` til `staff:manage`.
+2. Som en bruker med `staff:manage` åpner du personens fane **Konto**
+   (`/staff/people/<id>?tab=account`). Under **Kontoflagg** slår du på **Ansatte gir en
+   konto**.
+3. La **Konto fra** stå tom for å aktivere kontoen på første dag i personens tidligste
+   arbeidsforhold som ikke har sluttet — feltet sier hvilken dag det er — eller velg en
+   annen dag. Mellom to arbeidsforhold hører en dag fra før det første sluttet til det,
+   og kontoen følger den senere startdatoen; en dag etter det følges. Velg **Privat
+   e-post** under **Adresse** for å gi identity personens private e-post i stedet for
+   jobb-e-posten. Trykk **Lagre kontoflagget**. Gjennom API-et er det
+   `PUT /api/v1/staff/people/{id}/account` med `If-Match` satt til flaggets egen
+   `revision` fra `GET` — aldri personens: å endre flagget flytter aldri personens
+   revisjon — og alle tre feltene, `{"provisionAccount": true, "provisionFrom": null,
+   "accountEmailKind": "work"}`; en uten `provisionAccount`, eller med den `null`,
+   avvises (400) og endrer ingenting.
+4. Kontroller: **Konto fra** navngir dagen kontoen aktiveres (`provisionFromEffective`),
+   og fanen viser ingen advarsel om at personen *har ingen e-post på jobb registrert*
+   (`address.present` er `true`). Et flagg som slås på uten den valgte adressen godtas,
+   men ingen konto lages før personen har den. Personens historikk viser
    `account_flag_updated`.
 
-Hvor mange dager før den dagen kontoen klargjøres, deaktivert, er innstillingen
-`createBeforeDays` ([Innstillingene](#innstillingene)). En slettet persons flagg kan ikke
-endres (`person_erased`). Har noen andre lagret personen først, svarer forespørselen
-`revision_conflict`; les flagget på nytt.
+Hvor mange dager før den dagen kontoen klargjøres, deaktivert, er **Forbered kontoen
+(dager før)** på kortet Kontoer (`createBeforeDays`, [Innstillingene](#innstillingene)).
+En slettet persons flagg kan ikke endres (`person_erased`): fanen tilbyr HR bare
+**Deaktiver nå** på en slettet person. Har noen andre lagret flagget først, svarer
+forespørselen `revision_conflict`: fanen lastes inn på nytt og sier det.
 
 ### Kontoarbeideren
 
@@ -170,9 +180,11 @@ arbeidet person for person; ingen venter på en annen.
 1. Forutsetning: en Owner har navngitt ansattrollene (`provisioningRolesSet` er `true`).
    Uten dem oppretter arbeideren likevel de ventende, deaktiverte brukerne til personene
    med flagget på, men aktiverer aldri én (`employee_role_missing`).
-2. Kontroller dagen etter at arbeideren har kjørt: `GET /api/v1/staff/people/{id}/account`
-   svarer en `link` med `state`, `reason` når den holdes tilbake, `attempts` og
-   `nextAttemptAt`. Personens historikk (som HR) viser `account_prepared`,
+2. Kontroller dagen etter at arbeideren har kjørt: personens Konto-fane viser under
+   **Brukerkonto** **Tilstand** med ord, hvorfor lenken holdes tilbake når den gjør det,
+   *De siste … forsøkene mislyktes* etter en feil, **Invitasjon** og **Neste forsøk**
+   (`GET /api/v1/staff/people/{id}/account` svarer det samme som en `link` med `state`,
+   `reason`, `attempts` og `nextAttemptAt`). Personens historikk (som HR) viser `account_prepared`,
    `account_activated`, `account_deactivated` og `account_updated`; en leder, en
    godkjenner og en kollega ser ingen av dem.
 3. For å stoppe den: `STAFF_ACCOUNTS_ENABLED=0` og start på nytt. **Da gjøres ingenting
@@ -195,7 +207,8 @@ fortsatt dem som slutter, men holder alt annet tilbake: lenkene viser
 `reason: mode_mismatch`, og loggen sier det. Gjør innstillingene like og start på nytt;
 lenkene som ble holdt tilbake, prøves igjen ved neste kjøring.
 
-**En lenke som holdes tilbake** (`reason` satt) prøves igjen hver dag, så den løser seg
+**En lenke som holdes tilbake** (`reason` satt; Konto-fanen sier hver årsak i en
+setning) prøves igjen hver dag, så den løser seg
 selv når årsaken er borte. Årsakene en operatør møter: `employee_role_missing` og
 `employee_role_unsafe` (en Owner navngir, eller retter, ansattrollene),
 `account_email_taken` og `employee_number_taken` (en annen bruker i identity har
@@ -215,24 +228,28 @@ svarer.
 Arbeideren kan kjøres for hånd, for alle eller for én person, med deg som aktøren
 identity registrerer og historikken navngir.
 
-- **Alle**: `POST /api/v1/staff/accounts/run` (`staff:manage`) kjører én runde nå og
-  svarer `{attempted, done, failed, remaining}`: koblingene den arbeidet med, de identity
+- **Alle**: **Kjør kontoer nå** på kortet **Kontoer** i Ansatteinnstillinger
+  (`POST /api/v1/staff/accounts/run`, `staff:manage`) kjører én runde nå; kortet sier så
+  hvor mange kontoer den behandlet, hvor mange som ble ferdige, hvor mange som mislyktes
+  og hvor mange som er igjen (`{attempted, done, failed, remaining}`): koblingene den arbeidet med, de identity
   svarte på (et steg utført, eller en årsak registrert), de den ikke nådde identity for
   (prøves igjen av arbeideren), og de forfalte koblingene den lot ligge. Den begynner
   ingen kobling etter seksti sekunder og tar høyst femti; `remaining` er for arbeiderens
   neste runde, eller kjør den igjen. Den kjører side om side med arbeiderens egne runder
   uten å vente på dem.
-- **Én person**: `POST /api/v1/staff/people/{id}/account/run` arbeider med personen nå,
-  uansett neste forsøk, og ber identity om en **ny invitasjon**: en ventende bruker der
-  en Owner trakk invitasjonen tilbake, eller som lot tre være ubesvart
-  (`invitation_revoked`, `invitation_unanswered`), inviteres på nytt. Svaret er
-  `{invitationSent, account}`. Identity sender aldri på nytt en invitasjon som fortsatt
-  kan godtas, og sender ingen innen ti minutter etter den forrige; kjøringen er like fullt
-  gjort, med `invitationSent: false` — prøv igjen etter ti minutter om det trengs. En
-  person med flagget av får ingenting kjørt.
+- **Én person**: **Kjør nå** på personens Konto-fane
+  (`POST /api/v1/staff/people/{id}/account/run`) arbeider med personen nå, uansett neste
+  forsøk, og ber identity om en **ny invitasjon**: en ventende bruker der en Owner trakk
+  invitasjonen tilbake, eller som lot tre være ubesvart (`invitation_revoked`,
+  `invitation_unanswered`), inviteres på nytt. Fanen sier *Ferdig: en ny invitasjon ble
+  sendt* eller *Ferdig: ingen invitasjon ble sendt* (`{invitationSent, account}`).
+  Identity sender aldri på nytt en invitasjon som fortsatt kan godtas, og sender ingen
+  innen ti minutter etter den forrige; kjøringen er like fullt gjort — prøv igjen etter
+  ti minutter om det trengs. En person med flagget av får ingenting kjørt, og fanen
+  tilbyr ikke Kjør nå.
 
-Hva kan gå galt: `accounts_busy` (409) — arbeideren arbeider med personen akkurat nå;
-prøv igjen om noen minutter. `person_erased` (409) — en slettet persons konto kjøres
+Hva kan gå galt, hvert sagt med ord på fanen eller kortet: `accounts_busy` (409) —
+arbeideren arbeider med personen akkurat nå; prøv igjen om noen minutter. `person_erased` (409) — en slettet persons konto kjøres
 ikke. `accounts_unavailable` (503) — ingen modul tilbyr kontoer, eller identity svarte
 ikke; koblingen registrerer feilen og arbeideren prøver igjen.
 
@@ -245,19 +262,23 @@ kjøre den to ganger.
 
 ### Deaktiver en konto nå
 
-`POST /api/v1/staff/people/{id}/account/disable` (`staff:manage`) **slår av personens
+**Deaktiver nå** på personens Konto-fane
+(`POST /api/v1/staff/people/{id}/account/disable`, `staff:manage`) **slår av personens
 kontoflagg** og deaktiverer brukeren straks, så arbeideren lar den være deaktivert til
 HR slår flagget på igjen.
 
-1. Send forespørselen. Flagget slås av først (historikken viser `account_flag_updated`)
+1. Trykk **Deaktiver nå** og bekreft — dialogen sier *Dette slår også av
+   kontoflagget*. Flagget slås av først (historikken viser `account_flag_updated`)
    sammen med en merknad på koblingen om at en deaktivering er bedt om, så deaktiverer
    identity brukeren (`account_deactivated`) og avslutter øktene. Personens egen revisjon
    flytter seg ikke. Gir nettleseren opp å vente, fortsetter deaktiveringen likevel; det
    som ikke når fram til identity, gjør arbeideren ferdig ved de neste kjøringene.
-2. Kontroller: svaret (personens konto) har `provisionAccount: false` og koblingen
-   `state: disabled`. En person uten kobling, eller der brukeren ikke er opprettet ennå,
+2. Kontroller: fanen sier *Kontoen er deaktivert og kontoflagget er av*, **Ansatte gir
+   en konto** er av, og **Tilstand** viser *Deaktivert av Ansatte* (svaret har
+   `provisionAccount: false` og koblingen `state: disabled`). En person uten kobling, eller der brukeren ikke er opprettet ennå,
    får bare flagget slått av.
-3. Hva kan gå galt:
+3. Hva kan gå galt — fanen sier hvert med ord, og de som kommer etter at flagget er
+   skrevet, sier at flagget allerede er av:
    - `accounts_busy` (409): arbeideren holder personens kobling. Som regel ble ingenting
      endret — prøv igjen om noen minutter. Tok arbeideren koblingen i øyeblikket etter at
      flagget ble skrevet, **er flagget allerede av**: da gjør arbeideren deaktiveringen
@@ -279,7 +300,8 @@ HR slår flagget på igjen.
      deaktiveringen igjen ved hver kjøring, og dashbordet viser *accountFailing* til
      identity svarer. Send forespørselen på nytt om det vedvarer.
 
-En slettet persons konto kan også deaktiveres.
+En slettet persons konto kan også deaktiveres: på en slettet person tilbyr Konto-fanen
+HR **Deaktiver nå** og ikke noe annet.
 
 ### Kontopunktene på dashbordet
 
@@ -1230,8 +1252,10 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   `selfCertAfterMonths`) og **automatisk overføring** (`autoCarryOver`, av, med den
   skrivebeskyttede `autoCarryOverSince`): [Reglene for egenmelding](#reglene-for-egenmelding).
   Utelatt fra en erstatning beholder hver sin verdi.
-- **Kontoer** (`createBeforeDays`, 14, fra 0 til 90, og `deleteExternalAfterDays`,
-  ingen, fra 1 til 3650 eller `null` for aldri): hvor mange dager før kontoens
+- **Kontoer** — kortet **Kontoer**, med **Forbered kontoen (dager før)** og **Slett en
+  ekstern konto (dager etter slutt)**, tom for aldri (`createBeforeDays`, 14, fra 0 til
+  90, og `deleteExternalAfterDays`, ingen, fra 1 til 3650 eller `null` for aldri): hvor
+  mange dager før kontoens
   virkningsdato den klargjøres, deaktivert ([Slå på konto for en
   person](#slå-på-konto-for-en-person)), og når en ekstern katalogs konto slettes etter
   at det siste arbeidsforholdet sluttet — lagret, men ikke brukt ennå; Entra-modulen
