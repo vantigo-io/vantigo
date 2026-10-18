@@ -1019,7 +1019,9 @@ for godt.
    ser raden som *permisjon* og ingen hendelse om slettingen; personen og
    `staff:personal-data` ser *Fravær (bare HR)*. Historikken beholder datoene og viser
    typen som *endret*; en hendelse om en rad som er slettet eller endret til en annen
-   type, slettes etter året den ble registrert.
+   type, slettes etter året den ble registrert. En lønnsmåned som eksporteres på nytt
+   etter at svangerskapsradene er slettet, rapporterer de dagene som annet fravær, ikke
+   som permisjon.
 3. **Slett sykefraværssakens datoer og milepæler** (`eraseSickCaseDates`): når
    helseinnholdet i en avsluttet sak slettes, går også selve saken — datoene,
    milepælene og historikken, som bare beholder hendelsestypene og datoene. Fraværet

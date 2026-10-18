@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -392,13 +393,24 @@ func TestRetention_TheHealthErase(t *testing.T) {
 	}
 	// The leaver had nothing of class D but their history's names: the D
 	// erase ran — they are erased — and removed nothing, so it counts none.
-	if counts := kindCounts(firstErased(t, h, gone.Id)); counts["health"] != 2 || len(counts) != 2 {
+	// The health kind is recorded in an erased event of its own, of class E
+	// (Task 5b's follow-up), listed to the health group alone.
+	events := erasedEvents(t, h, gone.Id)
+	counts := map[string]float64{}
+	for _, e := range events {
+		maps.Copy(counts, kindCounts(e))
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND kind = 'erased' AND payload_classes = '{E}'
+		AND payload::text LIKE '%"health"%' AND payload::text NOT LIKE '%"D"%'`, gone.Id); len(events) != 2 || n != 1 {
+		t.Errorf("the leaver's erased events = %v, want two: D's, and health's of class E", events)
+	}
+	if counts["health"] != 2 || len(counts) != 2 {
 		t.Errorf("the leaver's erased kinds = %v, want D and health: 2 (the document and its event)", counts)
 	} else if _, ok := counts["D"]; !ok {
 		t.Errorf("the leaver's erased kinds = %v, want D among them", counts)
 	}
 	stored := modtest.One[[]string](t, h.Harness, `
-		SELECT array_agg(payload::text ORDER BY id) FROM staff.events WHERE person_id = $1 AND 'E' = ANY(payload_classes)`, gone.Id)
+		SELECT array_agg(payload::text ORDER BY id) FROM staff.events WHERE person_id = $1 AND 'E' = ANY(payload_classes) AND kind <> 'erased'`, gone.Id)
 	for _, r := range stored {
 		if strings.Contains(r, "avtale.pdf") || !strings.Contains(r, `"changed"`) {
 			t.Errorf("health event payload %s, want its values replaced by \"changed\"", r)
