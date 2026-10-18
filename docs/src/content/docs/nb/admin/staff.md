@@ -334,7 +334,7 @@ erased person».
 | `accountBlockedByOwner` | En Owner deaktiverte den ventende brukeren | En Owner aktiverer dem i identity, om de skal begynne |
 | `accountDisabledByOwner` | En Owner deaktiverte brukeren mens personen er ansatt | En Owner avgjør; Ansatte opphever det ikke |
 | `accountUserGone` | Brukeren ble slettet i identity | Fjern koblingen, eller en Owner gjenoppretter kontoen |
-| `accountPrivileged` | Brukeren er Owner eller SystemAdmin — også etter en Deaktiver nå som ble avvist for dem, prøvd igjen daglig | En Owner deaktiverer dem i identity, eller fjerner rollen (neste forsøk deaktiverer dem) |
+| `accountPrivileged` | Brukeren er Owner eller SystemAdmin — også etter en Deaktiver nå som ble avvist for dem, prøvd igjen daglig; en som slutter og er det, forblir aktiv, siden Ansatte aldri deaktiverer en Owner eller en SystemAdmin | En annen Owner fratar dem rollen og deaktiverer dem i identity (uten rollen deaktiverer neste forsøk dem) |
 | `accountMismatch` | Brukeren har et annet ansattnummer: en annens konto — også etter en Deaktiver nå som ikke gjorde noe med den | Sjekk personens ansattnummer; når det er riktig, kjøres deaktiveringen |
 | `accountModeChanged` | En ventende bruker laget i lokal modus, nå i føderert modus | En Owner fullfører eller sletter brukeren |
 | `accountEmailDiffers` | Brukerens adresse i identity er ulik personens | En Owner endrer den i identity (Ansatte endrer den bare mens brukeren venter og ingen invitasjon er levert til dem) |
@@ -1058,6 +1058,14 @@ for godt.
 **Å slå en innstilling av gjenoppretter ingenting**: det som er slettet, forblir
 slettet; den hindrer bare at neste kjøringer sletter mer. En person med slettesperre
 hoppes over av begge, og `STAFF_RETENTION_ENABLED=0` stopper begge sammen med resten.
+**Hvem som slo en innstilling på eller av, og når, registreres** — installasjonshendelsen
+`settings_updated`, med innstillingen før og etter og navnet ditt.
+
+**Lønnsdokumentasjonen er lønnssystemets.** Ettårsgulvet for svangerskapspermisjon
+beholder radene som neste års feriepenger og en ny eksport leser; det er ikke
+lønnsdokumentasjonen. Etter bokføringsloven er det lønnssystemets regnskap og
+lønnsfilene som er eksportert dit, oppbevart der i sine egne perioder — ikke Vantigos
+rader, som slettingen kan skrive om.
 
 ### Slå av arbeideren, eller endre hvor ofte den ser etter
 
@@ -1113,6 +1121,18 @@ neste gang arbeideren ser etter.
 En slettet person som kommer tilbake, [ansettes på nytt](#ansett-en-slettet-person-på-nytt)
 på de samme opplysningene: det slettingen fjernet, blir stående tomt til du skriver det
 inn igjen, og lønnen i det nye arbeidsforholdet røres ikke av slettingen av det gamle.
+
+**Det som blir igjen i identity.** Slettingen når bare Ansattes egne rader. Styrte
+Ansatte personens konto, har identity fortsatt den brukeren — navnet, adressen (den
+private, når kontoen brukte den) og ansattnummeret — med invitasjonene og identitys
+revisjonsrader som navngir dem. Dette er godtatt i denne utgivelsen; en automatisk
+fjerning er planlagt i en senere. For å fjerne dem nå gjør en Owner dette:
+
+1. Åpner **Brukere** i arbeidsområdet og finner brukeren (*Styres av Ansatte*, med
+   ansattnummeret).
+2. Velger **Stopp styringen** (`POST /api/v1/identity/owner/users/<id>/unmanage`).
+3. Sletter brukeren. Identitys revisjonsrader om brukeren er identitys egen logg og
+   blir stående.
 
 ## Tersklene
 

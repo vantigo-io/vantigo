@@ -197,6 +197,15 @@ A change Staff's provisioning makes in identity is audited like an Owner's, in
 `{"action":"…","actor":"system:staff-accounts"}`, and there is no correlation id, since
 no request made the change. Every other row's `details` are `{"action":"…"}` as before.
 
+**After Staff erases a person.** Staff's erase reaches Staff's rows alone: identity
+keeps the user Staff managed for them — their name, their address (possibly the
+person's private one) and their employee number — the user's invitations, and the
+audit rows naming them, whose snapshots carry names and employee numbers. This is
+accepted for this release (Staff's design S15); an automatic removal is a later
+release's. An Owner removes the user by hand: [stop Staff managing
+them](#stop-staff-managing-a-user), then delete them. The audit rows stay, as for
+every deleted user.
+
 ### The authority mode
 
 Staff's provisioning acts in one of two modes. **Local**: identity holds the

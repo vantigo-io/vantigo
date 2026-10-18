@@ -625,6 +625,9 @@ a person's four tabs, then **Absence**, **Account** and, when you manage anyone,
   your history — without the values HR keeps sealed (your national identity number and
   bank account in full) and without HR's notes. The file lists your documents without
   their contents: download each from the list. Downloading your data records nothing.
+  When Staff gave you your account, it disables it the day after your last
+  employment, so My page and **Download my data** are gone with it: ask HR for your data, and they
+  download it for you with the personal-data export.
 - **Absence** — your holiday account, your egenmelding standing, your care days and
   your absences, with **Request absence** (see
   [Request absence](#request-absence-from-your-phone) below).

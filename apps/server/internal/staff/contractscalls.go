@@ -117,8 +117,9 @@ func (s *server) accountsMode(ctx context.Context) (string, error) {
 // identity knows no such user. The address identity compares its own with
 // (AccountRef.EmailDiffers) is person's own stored one, by their choice
 // (accountAddress), and none when person is nil: the accessor takes the
-// person, never an address, so no caller can hand identity one it supplied
-// and read the answer as an oracle on identity's address.
+// person, never an address a request carries. HR writes the person's
+// address, so staff:manage can still make one guess per run at identity's
+// address — each guess a person_updated event; accepted (privacy review L1).
 func (s *server) accountsAccount(ctx context.Context, id uuid.UUID, person *accountPerson) (*contracts.AccountRef, error) {
 	if err := noteContractCall(ctx, "Accounts.Account"); err != nil {
 		return nil, err

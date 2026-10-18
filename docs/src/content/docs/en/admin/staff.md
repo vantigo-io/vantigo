@@ -328,7 +328,7 @@ erased person".
 | `accountBlockedByOwner` | An Owner disabled the pending user | An Owner enables them in identity, if they should start |
 | `accountDisabledByOwner` | An Owner disabled the user while the person is employed | An Owner decides; Staff does not undo it |
 | `accountUserGone` | The user was deleted in identity | Unlink, or an Owner restores the account |
-| `accountPrivileged` | The user is an Owner or a SystemAdmin — also after a Disable now refused for them, tried again daily | An Owner disables them in identity, or demotes them (the next try disables them) |
+| `accountPrivileged` | The user is an Owner or a SystemAdmin — also after a Disable now refused for them, tried again daily; a leaver who is one stays enabled, since Staff never disables an Owner or a SystemAdmin | Another Owner demotes and disables them in identity (once demoted, the next try disables them) |
 | `accountMismatch` | The user carries another employee number: someone else's account — also after a Disable now that did nothing for it | Check the person's employee number; once it is right the disable runs |
 | `accountModeChanged` | A pending user made in local mode, now under federated mode | An Owner finishes or deletes the user |
 | `accountEmailDiffers` | The user's address in identity differs from the person's | An Owner changes it in identity (Staff changes it only while the user is pending and no invitation has been delivered to them) |
@@ -1045,7 +1045,15 @@ protection officer: each erases for good.
 
 **Turning a setting off restores nothing**: what it erased stays erased; it only stops
 the next runs erasing more. A person under a legal hold is passed over by both, and
-`STAFF_RETENTION_ENABLED=0` stops both with the rest.
+`STAFF_RETENTION_ENABLED=0` stops both with the rest. **Who turned a setting on or off,
+and when, is recorded** — the installation event `settings_updated`, naming the setting
+before and after, with your name.
+
+**The pay documentation is the payroll system's.** The pregnancy leave's one-year floor
+keeps the rows the holiday pay of the next year and a re-export read; it is not the
+pay documentation. Under the Bookkeeping Act (bokføringsloven) that is the payroll
+system's records and the payroll files exported to it, kept there for their own
+periods — not Vantigo's rows, which the erase may rewrite.
 
 ### Turn the worker off, or change how often it looks
 
@@ -1100,6 +1108,18 @@ go at the next look.
 An erased person who comes back is [rehired](#rehire-an-erased-person) on the same
 record: what the erase removed stays empty until you type it again, and the rehired
 employment's pay is untouched by the old one's erase.
+
+**What stays in identity.** The erase reaches Staff's rows alone. If Staff managed the
+person's account, identity still holds that user — their name, their address (the
+private one, when the account used it) and their employee number — with their
+invitations and identity's audit rows naming them. This is accepted for this release;
+an automatic removal is planned for a later one. To remove them now, an Owner:
+
+1. Opens **Users** in the workspace and finds the user (*Managed by Staff · no.* and the
+   employee number).
+2. Chooses **Stop managing** (`POST /api/v1/identity/owner/users/<id>/unmanage`).
+3. Deletes the user. Identity's audit rows about the user are identity's own record and
+   stay.
 
 ## The thresholds
 

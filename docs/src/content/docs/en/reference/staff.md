@@ -163,6 +163,12 @@ acknowledged thresholds.
 | `erasePregnancyHealthTypes` | false | Put the pregnancy and health-appointment rows on the health schedule ([what is due](#what-is-due)); left out, kept; `null` refused on the field (400), never read as false. |
 | `eraseSickCaseDates` | false | Make a closed case's erase remove the case itself ([what an erase does](#what-an-erase-does)); left out, kept; `null` refused on the field (400). |
 
+**Who changed an erase setting.** A `PUT /settings` that turns `erasePregnancyHealthTypes`
+or `eraseSickCaseDates` on or off records the installation event `settings_updated` —
+about no person, `{fields: {<name>: {from, to}}}`, the caller its actor, at the
+request's instant — since each erases for good; a replace that changes neither records
+nothing, and no other field of the settings is recorded.
+
 **The self-certification policy.** A preset writes its own numbers, whatever the
 request carries: `minimum` — the statutory one — 3 days an occurrence and 4
 occurrences in twelve months; `extended` 8 days an occurrence and 24 days in
@@ -996,7 +1002,12 @@ manager, an Approver, a colleague and anyone else get the person's 404.
 **The address identity compares.** Whenever Staff asks identity whether its address
 for a user differs from Staff's (`AccountRef.EmailDiffers`), it hands identity the
 person's own stored address by their `accountEmailKind` — the accessor takes the
-person, never an address — so the answer is no oracle on identity's address.
+person, never an address a request carries. HR writes that address, though, so
+`staff:manage` can still make one guess per run at identity's address for a user —
+change the person's address, run, and read whether `email_differs` appears — each
+guess a change recorded in the person's history (`person_updated`). This is
+accepted (privacy review L1): HR's residual reach over Staff-managed users is the
+owner's accepted default, and identity's address is never returned.
 
 **The link's states.** `linked` is HR's self-service link; `preparing` (a link naming
 no user yet — `external_id` is nullable since 00051), `pending`, `active`,
@@ -3024,6 +3035,15 @@ A erases still reach an erased person: they take the person's lock allowing an e
 one, and the D erase's due question is what passes over a person already erased. An
 export of an erased person writes their erased columns empty, and that row imports
 back unchanged.
+
+**What identity keeps.** Staff's erase reaches Staff's own rows alone. A person whose
+account Staff managed keeps, in identity, the managed user — their name, their address
+(the private one, when the flag named it) and their employee number — the user's
+invitations, and identity's audit rows naming them, with names and employee numbers.
+This is accepted for this delivery (design S15; research §10.13): an Owner removes
+them by hand — stop Staff managing the user (`POST /owner/users/{id}/unmanage`), then
+delete the user. An automatic path, Staff asking identity to remove the user it
+managed once the person is erased, is a later delivery's.
 
 **The rehire warning.** The erase removes the national identity number and its index,
 so a person who comes back cannot be recognised by it. `POST /people/similar-erased`
