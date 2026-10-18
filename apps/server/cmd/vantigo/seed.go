@@ -153,7 +153,7 @@ var demoCustomRoles = []demoRoleSpec{
 			"energy:consumption-manage", "energy:consumption-view",
 			"energy:metering-points-manage", "energy:metering-points-view",
 			"energy:meters-manage", "energy:meters-view",
-			"energy:supply-periods-manage", "energy:supply-periods-view",
+			"energy:supply-periods-manage", "energy:supply-periods-view", "energy:import",
 			"products:products-view", "products:variants-view", "products:pricing-view",
 			"projects:access", "projects:view-all",
 			"invoices:access",

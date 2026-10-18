@@ -110,7 +110,27 @@ var energyEndpointCases = []energyEndpointCase{
 		permissions: []string{"energy:consumption-view"}},
 	{method: http.MethodGet, path: "/api/v1/energy/customers/1001/consumption/aggregate?from=2026-01-01T00:00:00Z&to=2026-01-02T00:00:00Z&resolution=day",
 		permissions: []string{"energy:consumption-view"}},
+	// The metering-point import (energy import design D5, D7): energy:import
+	// and energy:metering-points-view at the door, the attach
+	// energy:supply-periods-manage too.
+	{method: http.MethodGet, path: "/api/v1/energy/imports", permissions: importDoor},
+	{method: http.MethodPost, path: "/api/v1/energy/imports", permissions: importDoor},
+	{method: http.MethodGet, path: "/api/v1/energy/imports/999999", permissions: importDoor},
+	{method: http.MethodDelete, path: "/api/v1/energy/imports/999999", permissions: importDoor},
+	{method: http.MethodPut, path: "/api/v1/energy/imports/999999/mapping", permissions: importDoor,
+		body: func(time.Time) any { return map[string]any{"mode": "create", "columns": []any{}} }},
+	{method: http.MethodPost, path: "/api/v1/energy/imports/999999/check", permissions: importDoor},
+	{method: http.MethodPost, path: "/api/v1/energy/imports/999999/run", permissions: importDoor},
+	{method: http.MethodPost, path: "/api/v1/energy/imports/999999/stop", permissions: importDoor},
+	{method: http.MethodGet, path: "/api/v1/energy/imports/999999/rows", permissions: importDoor},
+	{method: http.MethodGet, path: "/api/v1/energy/imports/999999/failed-rows", permissions: importDoor},
+	{method: http.MethodPost, path: "/api/v1/energy/imports/999999/attach",
+		permissions: []string{"energy:import", "energy:metering-points-view", "energy:supply-periods-manage"},
+		body:        func(now time.Time) any { return map[string]any{"start": now} }},
 }
+
+// importDoor is the import's own rule (energy import design D5).
+var importDoor = []string{"energy:import", "energy:metering-points-view"}
 
 // allEnergyEndpointPermissions is the distinct union of every case's
 // permissions, ported from Endpoints.SelectMany(...).Distinct().

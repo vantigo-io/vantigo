@@ -269,7 +269,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 
 The single-container default hosts every enabled module's background workers (outbox
 delivery, retention, attachment cleanup, the customers registry workers, the
-customers import worker `customers-import`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
+customers import worker `customers-import`, the energy import worker `energy-import`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
 `INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
 always, and the invoices payments worker `invoices-payments` when
 `INVOICES_VIPPS_ENABLED` is on) inside the
@@ -304,6 +304,16 @@ it is waiting for the background worker. Finished and abandoned imports, with th
 they uploaded, are removed after `CUSTOMERS_IMPORT_RETENTION` (`720h`, 30 days); the
 customers they created stay. See
 [Export, and import from a file](/en/reference/customers/#export-and-import-from-a-file).
+
+The energy import worker `energy-import` checks, runs and attaches the metering-point
+files people upload, in the same shape: it polls every `ENERGY_IMPORT_POLL` (5 seconds
+by default), the API wakes it the moment a check, an import or an attach is asked for,
+and it takes an advisory lock of its own. `ENERGY_IMPORT_ENABLED=0` turns it off;
+imports then wait. Finished and abandoned imports, with their rows, are removed after
+`ENERGY_IMPORT_RETENTION` (`720h`, 30 days); the metering points and supply periods
+they wrote stay. In worker mode it reads customers through the customers module, so
+run it with `customers` among the `MODULES` when imports name customers. See
+[Importing metering points](/en/reference/energy/#importing-metering-points).
 
 On shutdown the process drains for up to `SHUTDOWN_TIMEOUT` (30 seconds by default),
 enough for the longest single worker operation to finish and commit. `compose.yaml`

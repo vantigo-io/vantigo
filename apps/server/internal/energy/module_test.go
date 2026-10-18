@@ -7,6 +7,8 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/energy"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // TestModule_ComposesAndDemandsAPermission proves energy mounts through
@@ -26,7 +28,7 @@ func TestModule_ComposesAndDemandsAPermission(t *testing.T) {
 }
 
 // TestModule_DeclaresItsPermissionCatalog pins the module's name and all
-// eight permissions, field for field, against the .NET catalog
+// nine permissions — the eight ported ones and energy:import — field for field, against the .NET catalog
 // (AZ/EnergyPermissionCatalogContributor.cs, energy inventory §6): every key
 // is delegable and none is sensitive, and every key shares one category,
 // "Energy". Ported from TS/Authorization/EnergyPermissionCatalogTests.cs,
@@ -46,6 +48,7 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	want := []contracts.Permission{
 		{Key: "energy:consumption-manage", Display: "Manage energy consumption", Description: "Add and replace manual energy consumption intervals.", Category: "Energy", Sensitive: false, Delegable: true},
 		{Key: "energy:consumption-view", Display: "View energy consumption", Description: "View energy consumption intervals and aggregates.", Category: "Energy", Sensitive: false, Delegable: true},
+		{Key: "energy:import", Display: "Import energy data", Description: "Import metering points and consumption from a file; each thing written needs the permission it needs by hand.", Category: "Energy", Sensitive: true, Delegable: true},
 		{Key: "energy:metering-points-manage", Display: "Manage energy metering points", Description: "Create and update energy metering points.", Category: "Energy", Sensitive: false, Delegable: true},
 		{Key: "energy:metering-points-view", Display: "View energy metering points", Description: "View energy metering point details and listings.", Category: "Energy", Sensitive: false, Delegable: true},
 		{Key: "energy:meters-manage", Display: "Manage energy meters", Description: "Replace meters installed at energy metering points.", Category: "Energy", Sensitive: false, Delegable: true},
@@ -56,8 +59,8 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	if m.Name != "energy" {
 		t.Errorf("Name = %q, want energy", m.Name)
 	}
-	if len(m.Permissions) != 8 {
-		t.Fatalf("Permissions has %d entries, want exactly 8: %+v", len(m.Permissions), m.Permissions)
+	if len(m.Permissions) != 9 {
+		t.Fatalf("Permissions has %d entries, want exactly 9: %+v", len(m.Permissions), m.Permissions)
 	}
 
 	// Ported from EnergyPermissionCatalogTests.cs:14-23: the catalog's keys
@@ -82,8 +85,10 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 		if !p.Delegable {
 			t.Errorf("permission %s: Delegable = false, want true (energy inventory §6: every key is delegable)", p.Key)
 		}
-		if p.Sensitive {
-			t.Errorf("permission %s: Sensitive = true, want false (energy inventory §6: none is sensitive)", p.Key)
+		// energy:import (energy import design D5) is the one sensitive key: one
+		// import writes thousands of points and periods under one name.
+		if p.Sensitive != (p.Key == "energy:import") {
+			t.Errorf("permission %s: Sensitive = %v, want %v (energy inventory §6: none is sensitive but energy:import)", p.Key, p.Sensitive, !p.Sensitive)
 		}
 	}
 	if m.Directory != nil {
@@ -99,3 +104,39 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 // has a real handler; router.Err()'s "never registered" check
 // (TestModule_ComposesAndDemandsAPermission's newHarness call) is what
 // still proves every operation is routed.
+
+// TestModule_ContributesItsWorkers asserts the module's workers exactly: the
+// import worker (energy import design D6) when ENERGY_IMPORT_ENABLED is on,
+// the default, and none when it is off — a worker added without its name
+// here fails rather than silently never running in production.
+func TestModule_ContributesItsWorkers(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		env  map[string]string
+		want []string
+	}{
+		{name: "the default installation runs the import worker", want: []string{"energy-import"}},
+		{name: "the import worker turned off leaves none", env: map[string]string{"ENERGY_IMPORT_ENABLED": "0"}, want: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			opts := make([]modtest.Option, 0, len(tc.env))
+			for k, v := range tc.env {
+				opts = append(opts, modtest.WithEnv(k, v))
+			}
+			h := newHarness(t, opts...)
+			var names []string
+			for _, w := range module.Workers(h.Deps(), energy.Module()) {
+				names = append(names, w.Name())
+				if w.Interval() <= 0 {
+					t.Errorf("worker %s has interval %v, want a positive poll interval", w.Name(), w.Interval())
+				}
+			}
+			if !slices.Equal(names, tc.want) {
+				t.Errorf("workers = %v, want exactly %v", names, tc.want)
+			}
+		})
+	}
+}

@@ -22,14 +22,28 @@ WHERE ($1::text IS NULL OR (
     mp.street_address ILIKE $1::text OR
     active.meter_number ILIKE $1::text
 ))
+AND ($2::timestamptz IS NULL OR NOT EXISTS (
+    SELECT 1 FROM energy.supply_periods p
+    WHERE p.metering_point_id = mp.id AND p.status = 'Active'
+      AND p.start <= $2::timestamptz
+      AND (p."end" IS NULL OR p."end" > $2::timestamptz)
+))
 `
+
+type CountMeteringPointsParams struct {
+	SearchPattern     *string
+	WithoutCustomerAt *time.Time
+}
 
 // CountMeteringPoints is GetMeteringPointsEndpoint's total row count over
 // the same filter ListMeteringPoints applies (:21-27): an ILIKE match on
 // the GSRN, the city, the street address, or the *current* meter's number
 // only (removed_at IS NULL) — a removed meter's number is never searched.
-func (q *Queries) CountMeteringPoints(ctx context.Context, searchPattern *string) (int64, error) {
-	row := q.db.QueryRow(ctx, countMeteringPoints, searchPattern)
+// without_customer_at is the Without customer filter (energy import design
+// D9): when set, only the points with no Active supply period covering that
+// instant (start at or before it, no end or an end after it).
+func (q *Queries) CountMeteringPoints(ctx context.Context, arg CountMeteringPointsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countMeteringPoints, arg.SearchPattern, arg.WithoutCustomerAt)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -175,14 +189,21 @@ WHERE ($1::text IS NULL OR (
     mp.street_address ILIKE $1::text OR
     active.meter_number ILIKE $1::text
 ))
+AND ($2::timestamptz IS NULL OR NOT EXISTS (
+    SELECT 1 FROM energy.supply_periods p
+    WHERE p.metering_point_id = mp.id AND p.status = 'Active'
+      AND p.start <= $2::timestamptz
+      AND (p."end" IS NULL OR p."end" > $2::timestamptz)
+))
 ORDER BY mp.id
-LIMIT $3::int OFFSET $2::int
+LIMIT $4::int OFFSET $3::int
 `
 
 type ListMeteringPointsParams struct {
-	SearchPattern *string
-	RowOffset     int32
-	PageSize      int32
+	SearchPattern     *string
+	WithoutCustomerAt *time.Time
+	RowOffset         int32
+	PageSize          int32
 }
 
 type ListMeteringPointsRow struct {
@@ -208,7 +229,12 @@ type ListMeteringPointsRow struct {
 // metering point has none) the way MeteringPointResponse.FromDomain reads
 // it off the already-loaded Meters collection (Dtos/MeteringPointResponse.cs:20).
 func (q *Queries) ListMeteringPoints(ctx context.Context, arg ListMeteringPointsParams) ([]ListMeteringPointsRow, error) {
-	rows, err := q.db.Query(ctx, listMeteringPoints, arg.SearchPattern, arg.RowOffset, arg.PageSize)
+	rows, err := q.db.Query(ctx, listMeteringPoints,
+		arg.SearchPattern,
+		arg.WithoutCustomerAt,
+		arg.RowOffset,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -241,6 +267,39 @@ func (q *Queries) ListMeteringPoints(ctx context.Context, arg ListMeteringPoints
 		return nil, err
 	}
 	return items, nil
+}
+
+const meteringPointByGsrnForUpdate = `-- name: MeteringPointByGsrnForUpdate :one
+SELECT id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
+       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+FROM energy.metering_points
+WHERE gsrn = $1
+FOR UPDATE
+`
+
+// MeteringPointByGsrnForUpdate is the import's match (energy import design
+// D3): the point holding a GSRN, locked for the row's transaction so nothing
+// a colleague writes lands between the read and the row's write.
+func (q *Queries) MeteringPointByGsrnForUpdate(ctx context.Context, gsrn string) (EnergyMeteringPoint, error) {
+	row := q.db.QueryRow(ctx, meteringPointByGsrnForUpdate, gsrn)
+	var i EnergyMeteringPoint
+	err := row.Scan(
+		&i.ID,
+		&i.Gsrn,
+		&i.StreetAddress,
+		&i.PostalCode,
+		&i.City,
+		&i.CountryCode,
+		&i.PriceArea,
+		&i.GridArea,
+		&i.ExpectedAnnualConsumptionKwh,
+		&i.Latitude,
+		&i.Longitude,
+		&i.ConnectionStatus,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const meteringPointExists = `-- name: MeteringPointExists :one

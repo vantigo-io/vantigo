@@ -224,13 +224,8 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, 
 	var created store.EnergySupplyPeriod
 	err = db.RetrySerializable(ctx, supplyPeriodRaceAttempts, func() error {
 		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			if lerr := lockSupplyPeriods(ctx, tx, req.Id); lerr != nil {
-				return lerr
-			}
 			var ierr error
-			created, ierr = store.New(tx).InsertSupplyPeriod(ctx, store.InsertSupplyPeriodParams{
-				MeteringPointID: req.Id, CustomerID: body.CustomerId, Start: body.Start, Status: statusActive,
-			})
+			created, ierr = insertSupplyPeriod(ctx, tx, req.Id, body.CustomerId, body.Start)
 			return ierr
 		})
 	})
@@ -289,84 +284,115 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 			"Invalid supply period", map[string][]string{"customerId": {fmt.Sprintf("Customer %d does not exist.", body.CustomerId)}})), nil
 	}
 
-	var (
-		validationErrs map[string][]string
-		conflict       bool
-		ended          *store.EnergySupplyPeriod
-		created        store.EnergySupplyPeriod
-	)
+	var out switchOutcome
 	err = db.RetrySerializable(ctx, supplyPeriodRaceAttempts, func() error {
-		// Reset every attempt's ambiguous outputs: a retried attempt must
+		// Every attempt starts from a fresh outcome: a retried attempt must
 		// not carry a validation/conflict verdict a discarded earlier
-		// attempt reached before deadlocking on the insert below.
-		validationErrs, conflict, ended = nil, false, nil
-
+		// attempt reached before deadlocking on the insert.
+		out = switchOutcome{}
 		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			if lerr := lockSupplyPeriods(ctx, tx, req.Id); lerr != nil {
-				return lerr
-			}
-			txq := store.New(tx)
-			active, aerr := txq.GetActiveOpenSupplyPeriod(ctx, req.Id)
-			hasActive := true
-			switch {
-			case errors.Is(aerr, pgx.ErrNoRows):
-				hasActive = false
-			case aerr != nil:
-				return aerr
-			}
-
-			if hasActive {
-				if body.CustomerId == active.CustomerID {
-					validationErrs = map[string][]string{"customerId": {"The customer is already the active customer."}}
-					return nil
-				}
-				if !body.SwitchAt.After(active.Start) {
-					validationErrs = map[string][]string{"switchAt": {"Switch date must be after the active period's start."}}
-					return nil
-				}
-				endedRow, eerr := txq.EndSupplyPeriod(ctx, store.EndSupplyPeriodParams{ID: active.ID, EndAt: body.SwitchAt, Status: statusEnded})
-				if eerr != nil {
-					return eerr
-				}
-				ended = &endedRow
-			} else {
-				overlaps, oerr := txq.SupplyPeriodOverlapExists(ctx, store.SupplyPeriodOverlapExistsParams{MeteringPointID: req.Id, Start: body.SwitchAt})
-				if oerr != nil {
-					return oerr
-				}
-				if overlaps {
-					conflict = true
-					return nil
-				}
-			}
-
-			var ierr error
-			created, ierr = txq.InsertSupplyPeriod(ctx, store.InsertSupplyPeriodParams{
-				MeteringPointID: req.Id, CustomerID: body.CustomerId, Start: body.SwitchAt, Status: statusActive,
-			})
-			return ierr
+			var serr error
+			out, serr = switchSupplyPeriod(ctx, tx, req.Id, body.CustomerId, body.SwitchAt)
+			return serr
 		})
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: switch supply period: %w", err)
 	}
-	if validationErrs != nil {
+	if out.validationErrs != nil {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(
-			apicommon.ValidationProblem("Invalid supply period", validationErrs)), nil
+			apicommon.ValidationProblem("Invalid supply period", out.validationErrs)), nil
 	}
-	if conflict {
+	if out.conflict {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch409ApplicationProblemPlusJSONResponse(
 			apicommon.ProblemStatus(overlapTitle, overlapDetail, http.StatusConflict)), nil
 	}
 
 	var endedResp *gen.SupplyPeriodResponse
-	if ended != nil {
-		r := supplyPeriodResponseOf(*ended)
+	if out.ended != nil {
+		r := supplyPeriodResponseOf(*out.ended)
 		endedResp = &r
 	}
 	return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch201JSONResponse(gen.SwitchSupplyPeriodResponse{
-		EndedPeriod: endedResp, NewPeriod: supplyPeriodResponseOf(created),
+		EndedPeriod: endedResp, NewPeriod: supplyPeriodResponseOf(out.created),
 	}), nil
+}
+
+// insertSupplyPeriod is the create's write, inside the caller's transaction:
+// the metering point's supply-period lock, then the new open-ended Active
+// period. The create endpoint and the import (import.go) both assign a
+// customer through it; the GiST exclusion constraint stays the backstop.
+func insertSupplyPeriod(ctx context.Context, tx pgx.Tx, meteringPointID, customerID int32, start time.Time) (store.EnergySupplyPeriod, error) {
+	if err := lockSupplyPeriods(ctx, tx, meteringPointID); err != nil {
+		return store.EnergySupplyPeriod{}, err
+	}
+	return store.New(tx).InsertSupplyPeriod(ctx, store.InsertSupplyPeriodParams{
+		MeteringPointID: meteringPointID, CustomerID: customerID, Start: start, Status: statusActive,
+	})
+}
+
+// switchOutcome is what switchSupplyPeriod did: a validation refusal keyed as
+// the switch endpoint's 400 keys it, an overlap (its 409), or the period
+// ended and the one created.
+type switchOutcome struct {
+	validationErrs map[string][]string
+	conflict       bool
+	ended          *store.EnergySupplyPeriod
+	created        store.EnergySupplyPeriod
+}
+
+// switchSupplyPeriod is the switch's transaction body, under the metering
+// point's supply-period lock: when an open Active period exists, the same
+// customer is refused, a switch date at or before its start is refused, and
+// otherwise it ends at the switch date; with none, the move-in runs the
+// create's overlap pre-check. Then the customer's period starts at the switch
+// date. The switch endpoint and the import (import.go) both switch a
+// customer through it. A refusal is the outcome, not an error: the caller's
+// transaction commits nothing it has not written.
+func switchSupplyPeriod(ctx context.Context, tx pgx.Tx, meteringPointID, customerID int32, at time.Time) (switchOutcome, error) {
+	var out switchOutcome
+	if err := lockSupplyPeriods(ctx, tx, meteringPointID); err != nil {
+		return out, err
+	}
+	txq := store.New(tx)
+	active, err := txq.GetActiveOpenSupplyPeriod(ctx, meteringPointID)
+	hasActive := true
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		hasActive = false
+	case err != nil:
+		return out, err
+	}
+
+	if hasActive {
+		if customerID == active.CustomerID {
+			out.validationErrs = map[string][]string{"customerId": {"The customer is already the active customer."}}
+			return out, nil
+		}
+		if !at.After(active.Start) {
+			out.validationErrs = map[string][]string{"switchAt": {"Switch date must be after the active period's start."}}
+			return out, nil
+		}
+		endedRow, err := txq.EndSupplyPeriod(ctx, store.EndSupplyPeriodParams{ID: active.ID, EndAt: at, Status: statusEnded})
+		if err != nil {
+			return out, err
+		}
+		out.ended = &endedRow
+	} else {
+		overlaps, err := txq.SupplyPeriodOverlapExists(ctx, store.SupplyPeriodOverlapExistsParams{MeteringPointID: meteringPointID, Start: at})
+		if err != nil {
+			return out, err
+		}
+		if overlaps {
+			out.conflict = true
+			return out, nil
+		}
+	}
+
+	out.created, err = txq.InsertSupplyPeriod(ctx, store.InsertSupplyPeriodParams{
+		MeteringPointID: meteringPointID, CustomerID: customerID, Start: at, Status: statusActive,
+	})
+	return out, err
 }
 
 // PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd End a supply period

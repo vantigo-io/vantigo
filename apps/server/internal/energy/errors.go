@@ -11,8 +11,11 @@ import (
 // identity's {code, message} bodies: .NET's Energy endpoints used
 // TypedResults.Problem and TypedResults.ValidationProblem throughout and have
 // no machine-readable code vocabulary at all, so callers key off the status
-// and the problem's title and detail (energy inventory §1). Nothing here may
-// grow an error code.
+// and the problem's title and detail (energy inventory §1). Nothing ported
+// from .NET may grow an error code. The one exception is the import (energy
+// import design D7), which has no .NET ancestor: its 409s carry the customers
+// import's code vocabulary (EnergyImportConflictProblem, imports.go), since
+// the import pages are one flow across both modules and key off it.
 
 // validationProblemNoErrors builds an HttpValidationProblemDetails body with
 // no "errors" field: the shape a plain ProblemDetails takes when the

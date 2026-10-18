@@ -11,6 +11,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers"
+	"github.com/vantigo-io/vantigo/server/internal/energy"
 	"github.com/vantigo-io/vantigo/server/internal/expenses"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint/storecovetest"
@@ -50,6 +51,7 @@ const (
 	modTime      = "time"
 	modExpenses  = "expenses"
 	modInvoices  = "invoices"
+	modEnergy    = "energy"
 )
 
 // moduleNamed is the real module value for one name. It is the only place this
@@ -68,6 +70,8 @@ func moduleNamed(t *testing.T, name string) module.Module {
 		return expenses.Module()
 	case modInvoices:
 		return invoices.Module()
+	case modEnergy:
+		return energy.Module()
 	}
 	t.Fatalf("integration: no module named %q", name)
 	return module.Module{}
@@ -145,7 +149,7 @@ func withStorecove(t *testing.T) (*storecovetest.Server, []modtest.Option) {
 // because modtest installs a single transport: openapi.Validate routes an
 // exchange by path through the document it is given, and the modules' paths
 // are disjoint (/api/v1/customers, /api/v1/projects, /api/v1/time,
-// /api/v1/expenses, /api/v1/invoices), so a
+// /api/v1/expenses, /api/v1/invoices, /api/v1/energy), so a
 // document holding all of them routes each exchange to its own operation. The
 // documents are already fully resolved when Load returns, so a path item
 // carries its schemas with it and nothing is lost in the merge.
@@ -154,7 +158,7 @@ func withStorecove(t *testing.T) (*storecovetest.Server, []modtest.Option) {
 // TestMain's job over its own contract, and a cross-module test that counted
 // towards it would let an operation look exercised without its module's suite
 // ever having exercised it.
-var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices)
+var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices, modEnergy)
 
 func mergedRecorder(names ...string) *contracttest.Recorder {
 	merged := &openapi3.T{

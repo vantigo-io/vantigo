@@ -381,6 +381,9 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `CUSTOMERS_IMPORT_ENABLED` | Run the customers import worker, which checks and imports uploaded files; `0` leaves imports waiting | `1` |
 | `CUSTOMERS_IMPORT_POLL` | How often the customers import worker looks for a queued import | `5s` |
 | `CUSTOMERS_IMPORT_RETENTION` | How long a finished or abandoned customer import and its rows are kept | `720h` |
+| `ENERGY_IMPORT_ENABLED` | Run the energy import worker, which checks, imports and attaches uploaded metering-point files; `0` leaves imports waiting | `1` |
+| `ENERGY_IMPORT_POLL` | How often the energy import worker looks for a queued import | `5s` |
+| `ENERGY_IMPORT_RETENTION` | How long a finished or abandoned metering-point import and its rows are kept | `720h` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
 
 The Peppol lookup treats NXDOMAIN and NOERROR-with-no-NAPTR-records as the same

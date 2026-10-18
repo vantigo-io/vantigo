@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -18,6 +20,111 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
+
+// Defines values for EnergyImportState.
+const (
+	Attaching EnergyImportState = "attaching"
+	Checked   EnergyImportState = "checked"
+	Checking  EnergyImportState = "checking"
+	Done      EnergyImportState = "done"
+	Draft     EnergyImportState = "draft"
+	Importing EnergyImportState = "importing"
+)
+
+// Valid indicates whether the value is a known member of the EnergyImportState enum.
+func (e EnergyImportState) Valid() bool {
+	switch e {
+	case Attaching:
+		return true
+	case Checked:
+		return true
+	case Checking:
+		return true
+	case Done:
+		return true
+	case Draft:
+		return true
+	case Importing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnergyImportMappingMode.
+const (
+	Create         EnergyImportMappingMode = "create"
+	CreateOrUpdate EnergyImportMappingMode = "createOrUpdate"
+	Update         EnergyImportMappingMode = "update"
+)
+
+// Valid indicates whether the value is a known member of the EnergyImportMappingMode enum.
+func (e EnergyImportMappingMode) Valid() bool {
+	switch e {
+	case Create:
+		return true
+	case CreateOrUpdate:
+		return true
+	case Update:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnergyImportRowLink.
+const (
+	Assigned EnergyImportRowLink = "assigned"
+	Attached EnergyImportRowLink = "attached"
+	None     EnergyImportRowLink = "none"
+	Pending  EnergyImportRowLink = "pending"
+	Same     EnergyImportRowLink = "same"
+	Switched EnergyImportRowLink = "switched"
+)
+
+// Valid indicates whether the value is a known member of the EnergyImportRowLink enum.
+func (e EnergyImportRowLink) Valid() bool {
+	switch e {
+	case Assigned:
+		return true
+	case Attached:
+		return true
+	case None:
+		return true
+	case Pending:
+		return true
+	case Same:
+		return true
+	case Switched:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnergyImportRowOutcome.
+const (
+	Created EnergyImportRowOutcome = "created"
+	Failed  EnergyImportRowOutcome = "failed"
+	Skipped EnergyImportRowOutcome = "skipped"
+	Updated EnergyImportRowOutcome = "updated"
+)
+
+// Valid indicates whether the value is a known member of the EnergyImportRowOutcome enum.
+func (e EnergyImportRowOutcome) Valid() bool {
+	switch e {
+	case Created:
+		return true
+	case Failed:
+		return true
+	case Skipped:
+		return true
+	case Updated:
+		return true
+	default:
+		return false
+	}
+}
 
 // AddressRequest defines model for AddressRequest.
 type AddressRequest struct {
@@ -81,6 +188,120 @@ type CustomerMeteringPointResponse struct {
 // EndSupplyPeriodRequest defines model for EndSupplyPeriodRequest.
 type EndSupplyPeriodRequest struct {
 	End time.Time `json:"end"`
+}
+
+// EnergyImport An import of metering points from a file (energy import design D3, D6, D7), the customers import's record with energy's counts. state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run), done (finishedAt set; when it was stopped, processed short of rows) or attaching (the worker attaches the pending rows' points to their customers from attachStart, then the import is done again). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written; sample the first twenty rows, each with the errors its cells get under the saved mapping. mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated, failed and skipped are the worker's progress while it runs and the recounted totals once it has finished; skipped counts the totals lines (a row with no GSRN and at most one other non-blank cell). switched counts the rows whose point switched customer (or, after a check, would), pending the rows matched to a customer and not yet attached, pendingSwitches the pending rows whose point was another customer's when the run wrote them, attached the pending rows attached since. error is a whole-run failure the worker met and will retry next cycle. createdByName is the uploader's display name. requestedAt is when the check, the run or the attach was asked for, startedAt when the worker took it up.
+type EnergyImport struct {
+	AttachStart   *time.Time `json:"attachStart,omitempty"`
+	Attached      int32      `json:"attached"`
+	Created       int32      `json:"created"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	CreatedByName *string    `json:"createdByName,omitempty"`
+	Encoding      string     `json:"encoding"`
+	Error         *string    `json:"error,omitempty"`
+	Failed        int32      `json:"failed"`
+	FileName      string     `json:"fileName"`
+	FinishedAt    *time.Time `json:"finishedAt,omitempty"`
+	Header        []string   `json:"header"`
+	Id            int32      `json:"id"`
+
+	// Mapping How an import's rows become metering points (energy import design D3). mode: create makes every row a new point and refuses a GSRN on file; update finds the point by GSRN and refuses a row that finds none; createOrUpdate updates a row that finds one and creates from a row that finds none. Rows are always matched by gsrn. columns maps the fields: a field at most once, a column at most once, each entry a column of the file or a fixed value for every row.
+	Mapping         *EnergyImportMapping    `json:"mapping,omitempty"`
+	Pending         int32                   `json:"pending"`
+	PendingSwitches int32                   `json:"pendingSwitches"`
+	Processed       int32                   `json:"processed"`
+	RequestedAt     *time.Time              `json:"requestedAt,omitempty"`
+	Rows            int32                   `json:"rows"`
+	Sample          []EnergyImportSampleRow `json:"sample"`
+	Separator       string                  `json:"separator"`
+	SizeBytes       int64                   `json:"sizeBytes"`
+	Skipped         int32                   `json:"skipped"`
+	StartedAt       *time.Time              `json:"startedAt,omitempty"`
+	State           EnergyImportState       `json:"state"`
+	StopRequested   bool                    `json:"stopRequested"`
+
+	// Suggested How an import's rows become metering points (energy import design D3). mode: create makes every row a new point and refuses a GSRN on file; update finds the point by GSRN and refuses a row that finds none; createOrUpdate updates a row that finds one and creates from a row that finds none. Rows are always matched by gsrn. columns maps the fields: a field at most once, a column at most once, each entry a column of the file or a fixed value for every row.
+	Suggested EnergyImportMapping `json:"suggested"`
+	Switched  int32               `json:"switched"`
+	Updated   int32               `json:"updated"`
+}
+
+// EnergyImportState defines model for EnergyImport.State.
+type EnergyImportState string
+
+// EnergyImportAttachRequest Attaches an import's pending rows to their customers (energy import design D6). start is the date every period starts from, a UTC timestamp as the Assign customer dialog sends. confirmSwitches is how many of the pending points will switch customer — those whose active supply period is another customer's now — and must equal that number exactly when it is not zero.
+type EnergyImportAttachRequest struct {
+	ConfirmSwitches *int32    `json:"confirmSwitches,omitempty"`
+	Start           time.Time `json:"start"`
+}
+
+// EnergyImportConflictProblem ProblemDetails plus the import's conflict code (energy import design D7) — the one place the energy module answers a code: import_running (the worker is checking, importing or attaching it), import_not_checked (a run on a draft), import_nothing_to_import (a run on a check that found nothing to create or update), import_finished (a mapping, a check or a run on a done import, or a stop with nothing running), import_switch_not_confirmed (a run or an attach whose confirmSwitches is not the number of points that will switch customer) and import_nothing_pending (an attach on an import with no pending row, or one that is not done).
+type EnergyImportConflictProblem struct {
+	Code     *string `json:"code,omitempty"`
+	Detail   *string `json:"detail,omitempty"`
+	Instance *string `json:"instance,omitempty"`
+	Status   *int32  `json:"status,omitempty"`
+
+	// Switches For import_switch_not_confirmed, the number of points that will switch customer.
+	Switches *int32  `json:"switches,omitempty"`
+	Title    *string `json:"title,omitempty"`
+	Type     *string `json:"type,omitempty"`
+}
+
+// EnergyImportMapping How an import's rows become metering points (energy import design D3). mode: create makes every row a new point and refuses a GSRN on file; update finds the point by GSRN and refuses a row that finds none; createOrUpdate updates a row that finds one and creates from a row that finds none. Rows are always matched by gsrn. columns maps the fields: a field at most once, a column at most once, each entry a column of the file or a fixed value for every row.
+type EnergyImportMapping struct {
+	Columns []EnergyImportMappingColumn `json:"columns"`
+	Mode    EnergyImportMappingMode     `json:"mode"`
+}
+
+// EnergyImportMappingMode defines model for EnergyImportMapping.Mode.
+type EnergyImportMappingMode string
+
+// EnergyImportMappingColumn One field of a mapping (energy import design D3): field is one of gsrn, meterNumber, streetAddress, postalCode, city, countryCode, priceArea, gridArea, expectedAnnualConsumptionKwh, latitude, longitude, connectionStatus, customerLegalId and supplyStart — and exactly one of column (the 0-based column of the file it is read from) and value (the same text for every row, read as a cell would be; gsrn takes none).
+type EnergyImportMappingColumn struct {
+	Column *int32  `json:"column,omitempty"`
+	Field  string  `json:"field"`
+	Value  *string `json:"value,omitempty"`
+}
+
+// EnergyImportRow One row of an import with what the worker did with it (energy import design D4, D7). cells are the row's cells as the file had them; outcome is absent for a row not yet run; meteringPointId and gsrn name the point the row created or updated (no id for a point a check would create); link is what the row did about its customer — none (no organisation number), same (the point is already that customer's), assigned, switched, pending (matched, not yet attached) or attached (attached afterwards); customerId and customerName the customer the organisation number resolved to, switchFromCustomerId and switchFromCustomerName the customer the point was supplied to before a switch (or, on a pending row, is supplied to); supplyStart the date the period was or will be written from. errors are a failed row's problems, a pending row's attach error, or a skipped row's reason.
+type EnergyImportRow struct {
+	Cells                  []string                `json:"cells"`
+	CustomerId             *int32                  `json:"customerId,omitempty"`
+	CustomerName           *string                 `json:"customerName,omitempty"`
+	Errors                 []EnergyImportRowError  `json:"errors"`
+	Gsrn                   *string                 `json:"gsrn,omitempty"`
+	Link                   *EnergyImportRowLink    `json:"link,omitempty"`
+	MeteringPointId        *int32                  `json:"meteringPointId,omitempty"`
+	Outcome                *EnergyImportRowOutcome `json:"outcome,omitempty"`
+	Row                    int32                   `json:"row"`
+	SupplyStart            *time.Time              `json:"supplyStart,omitempty"`
+	SwitchFromCustomerId   *int32                  `json:"switchFromCustomerId,omitempty"`
+	SwitchFromCustomerName *string                 `json:"switchFromCustomerName,omitempty"`
+}
+
+// EnergyImportRowLink defines model for EnergyImportRow.Link.
+type EnergyImportRowLink string
+
+// EnergyImportRowOutcome defines model for EnergyImportRow.Outcome.
+type EnergyImportRowOutcome string
+
+// EnergyImportRowError One problem with one row of an import. column is the 0-based index of the file column the offending cell is in, absent for a problem with the row as a whole or with a fixed value. message is the module's own validation wording.
+type EnergyImportRowError struct {
+	Column  *int32 `json:"column,omitempty"`
+	Message string `json:"message"`
+}
+
+// EnergyImportRunRequest The run of a checked import (energy import design D4). confirmSwitches is how many points the run will switch customer, and must equal the check's switched exactly when that is not zero; absent is zero.
+type EnergyImportRunRequest struct {
+	ConfirmSwitches *int32 `json:"confirmSwitches,omitempty"`
+}
+
+// EnergyImportSampleRow One of the first rows of an import as the preview shows it, with the errors its cells get under the saved mapping — planned through the endpoints' own validators, no database asked.
+type EnergyImportSampleRow struct {
+	Cells  []string               `json:"cells"`
+	Errors []EnergyImportRowError `json:"errors"`
+	Row    int32                  `json:"row"`
 }
 
 // EnergyPaginationMetadata defines model for EnergyPaginationMetadata.
@@ -176,6 +397,18 @@ type MeteringPointUpdateRequest struct {
 	PriceArea                    *string         `json:"priceArea"`
 }
 
+// PaginatedResponseOfEnergyImport defines model for PaginatedResponseOfEnergyImport.
+type PaginatedResponseOfEnergyImport struct {
+	Data       []EnergyImport           `json:"data"`
+	Pagination EnergyPaginationMetadata `json:"pagination"`
+}
+
+// PaginatedResponseOfEnergyImportRow defines model for PaginatedResponseOfEnergyImportRow.
+type PaginatedResponseOfEnergyImportRow struct {
+	Data       []EnergyImportRow        `json:"data"`
+	Pagination EnergyPaginationMetadata `json:"pagination"`
+}
+
 // PaginatedResponseOfMeteringPointResponse defines model for PaginatedResponseOfMeteringPointResponse.
 type PaginatedResponseOfMeteringPointResponse struct {
 	Data       []MeteringPointResponse  `json:"data"`
@@ -225,11 +458,36 @@ type GetEnergyCustomersByCustomerIdConsumptionAggregateParams struct {
 	Resolution      *string    `form:"resolution,omitempty" json:"resolution,omitempty"`
 }
 
-// GetEnergyMeteringPointsParams defines parameters for GetEnergyMeteringPoints.
-type GetEnergyMeteringPointsParams struct {
-	Search   *string `form:"search,omitempty" json:"search,omitempty"`
+// GetEnergyImportsParams defines parameters for GetEnergyImports.
+type GetEnergyImportsParams struct {
+	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// PostEnergyImportsMultipartBody defines parameters for PostEnergyImports.
+type PostEnergyImportsMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
+// GetEnergyImportsByImportIdRowsParams defines parameters for GetEnergyImportsByImportIdRows.
+type GetEnergyImportsByImportIdRowsParams struct {
+	// Outcome created, updated, failed or skipped; absent for every row.
+	Outcome *string `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// Link none, same, assigned, switched, pending or attached; absent for every row.
+	Link     *string `form:"link,omitempty" json:"link,omitempty"`
 	Page     *int32  `form:"page,omitempty" json:"page,omitempty"`
 	PageSize *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// GetEnergyMeteringPointsParams defines parameters for GetEnergyMeteringPoints.
+type GetEnergyMeteringPointsParams struct {
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+
+	// WithoutCustomer true for the metering points without a customer now (energy import design D9) — those with no Active supply period whose start is at or before the moment of the request and whose end is absent or after it. A point whose only Active period starts later is listed. false, or absent, is every point.
+	WithoutCustomer *bool  `form:"withoutCustomer,omitempty" json:"withoutCustomer,omitempty"`
+	Page            *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize        *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetEnergyMeteringPointsByIdConsumptionParams defines parameters for GetEnergyMeteringPointsByIdConsumption.
@@ -257,6 +515,18 @@ type GetEnergyStatsTimeseriesParams struct {
 	From   *time.Time `form:"from,omitempty" json:"from,omitempty"`
 	To     *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
+
+// PostEnergyImportsMultipartRequestBody defines body for PostEnergyImports for multipart/form-data ContentType.
+type PostEnergyImportsMultipartRequestBody PostEnergyImportsMultipartBody
+
+// PostEnergyImportsByImportIdAttachJSONRequestBody defines body for PostEnergyImportsByImportIdAttach for application/json ContentType.
+type PostEnergyImportsByImportIdAttachJSONRequestBody = EnergyImportAttachRequest
+
+// PutEnergyImportsByImportIdMappingJSONRequestBody defines body for PutEnergyImportsByImportIdMapping for application/json ContentType.
+type PutEnergyImportsByImportIdMappingJSONRequestBody = EnergyImportMapping
+
+// PostEnergyImportsByImportIdRunJSONRequestBody defines body for PostEnergyImportsByImportIdRun for application/json ContentType.
+type PostEnergyImportsByImportIdRunJSONRequestBody = EnergyImportRunRequest
 
 // PostEnergyMeteringPointsJSONRequestBody defines body for PostEnergyMeteringPoints for application/json ContentType.
 type PostEnergyMeteringPointsJSONRequestBody = MeteringPointRequest
@@ -290,6 +560,39 @@ type ServerInterface interface {
 	// GetEnergyCustomersByCustomerIdMeteringPoints List a customer's metering points
 	// (GET /api/v1/energy/customers/{customerId}/metering-points)
 	GetEnergyCustomersByCustomerIdMeteringPoints(w http.ResponseWriter, r *http.Request, customerId int32)
+	// GetEnergyImports List metering-point imports
+	// (GET /api/v1/energy/imports)
+	GetEnergyImports(w http.ResponseWriter, r *http.Request, params GetEnergyImportsParams)
+	// PostEnergyImports Upload a file of metering points
+	// (POST /api/v1/energy/imports)
+	PostEnergyImports(w http.ResponseWriter, r *http.Request)
+	// DeleteEnergyImportsByImportId Delete a metering-point import
+	// (DELETE /api/v1/energy/imports/{importId})
+	DeleteEnergyImportsByImportId(w http.ResponseWriter, r *http.Request, importId int32)
+	// GetEnergyImportsByImportId Get a metering-point import
+	// (GET /api/v1/energy/imports/{importId})
+	GetEnergyImportsByImportId(w http.ResponseWriter, r *http.Request, importId int32)
+	// PostEnergyImportsByImportIdAttach Attach a metering-point import's pending points
+	// (POST /api/v1/energy/imports/{importId}/attach)
+	PostEnergyImportsByImportIdAttach(w http.ResponseWriter, r *http.Request, importId int32)
+	// PostEnergyImportsByImportIdCheck Check a metering-point import
+	// (POST /api/v1/energy/imports/{importId}/check)
+	PostEnergyImportsByImportIdCheck(w http.ResponseWriter, r *http.Request, importId int32)
+	// GetEnergyImportsByImportIdFailedRows Download a metering-point import's failed rows
+	// (GET /api/v1/energy/imports/{importId}/failed-rows)
+	GetEnergyImportsByImportIdFailedRows(w http.ResponseWriter, r *http.Request, importId int32)
+	// PutEnergyImportsByImportIdMapping Save a metering-point import's mapping
+	// (PUT /api/v1/energy/imports/{importId}/mapping)
+	PutEnergyImportsByImportIdMapping(w http.ResponseWriter, r *http.Request, importId int32)
+	// GetEnergyImportsByImportIdRows List a metering-point import's rows
+	// (GET /api/v1/energy/imports/{importId}/rows)
+	GetEnergyImportsByImportIdRows(w http.ResponseWriter, r *http.Request, importId int32, params GetEnergyImportsByImportIdRowsParams)
+	// PostEnergyImportsByImportIdRun Run a metering-point import
+	// (POST /api/v1/energy/imports/{importId}/run)
+	PostEnergyImportsByImportIdRun(w http.ResponseWriter, r *http.Request, importId int32)
+	// PostEnergyImportsByImportIdStop Stop a metering-point import
+	// (POST /api/v1/energy/imports/{importId}/stop)
+	PostEnergyImportsByImportIdStop(w http.ResponseWriter, r *http.Request, importId int32)
 	// GetEnergyMeteringPoints List metering points
 	// (GET /api/v1/energy/metering-points)
 	GetEnergyMeteringPoints(w http.ResponseWriter, r *http.Request, params GetEnergyMeteringPointsParams)
@@ -527,6 +830,355 @@ func (siw *ServerInterfaceWrapper) GetEnergyCustomersByCustomerIdMeteringPoints(
 	handler.ServeHTTP(w, r)
 }
 
+// GetEnergyImports operation middleware
+func (siw *ServerInterfaceWrapper) GetEnergyImports(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEnergyImportsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnergyImports(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEnergyImports operation middleware
+func (siw *ServerInterfaceWrapper) PostEnergyImports(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEnergyImports(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteEnergyImportsByImportId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteEnergyImportsByImportId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteEnergyImportsByImportId(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEnergyImportsByImportId operation middleware
+func (siw *ServerInterfaceWrapper) GetEnergyImportsByImportId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnergyImportsByImportId(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEnergyImportsByImportIdAttach operation middleware
+func (siw *ServerInterfaceWrapper) PostEnergyImportsByImportIdAttach(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEnergyImportsByImportIdAttach(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEnergyImportsByImportIdCheck operation middleware
+func (siw *ServerInterfaceWrapper) PostEnergyImportsByImportIdCheck(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEnergyImportsByImportIdCheck(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEnergyImportsByImportIdFailedRows operation middleware
+func (siw *ServerInterfaceWrapper) GetEnergyImportsByImportIdFailedRows(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnergyImportsByImportIdFailedRows(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutEnergyImportsByImportIdMapping operation middleware
+func (siw *ServerInterfaceWrapper) PutEnergyImportsByImportIdMapping(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutEnergyImportsByImportIdMapping(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEnergyImportsByImportIdRows operation middleware
+func (siw *ServerInterfaceWrapper) GetEnergyImportsByImportIdRows(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEnergyImportsByImportIdRowsParams
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "link" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "link", r.URL.Query(), &params.Link, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "link"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "link", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnergyImportsByImportIdRows(w, r, importId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEnergyImportsByImportIdRun operation middleware
+func (siw *ServerInterfaceWrapper) PostEnergyImportsByImportIdRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEnergyImportsByImportIdRun(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEnergyImportsByImportIdStop operation middleware
+func (siw *ServerInterfaceWrapper) PostEnergyImportsByImportIdStop(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "importId" -------------
+	var importId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "importId", r.PathValue("importId"), &importId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "importId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEnergyImportsByImportIdStop(w, r, importId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEnergyMeteringPoints operation middleware
 func (siw *ServerInterfaceWrapper) GetEnergyMeteringPoints(w http.ResponseWriter, r *http.Request) {
 
@@ -545,6 +1197,19 @@ func (siw *ServerInterfaceWrapper) GetEnergyMeteringPoints(w http.ResponseWriter
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "withoutCustomer" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "withoutCustomer", r.URL.Query(), &params.WithoutCustomer, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "withoutCustomer"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "withoutCustomer", Err: err})
 		}
 		return
 	}
@@ -1243,6 +1908,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/customers/{customerId}/consumption", wrapper.GetEnergyCustomersByCustomerIdConsumption)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/customers/{customerId}/consumption/aggregate", wrapper.GetEnergyCustomersByCustomerIdConsumptionAggregate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/customers/{customerId}/metering-points", wrapper.GetEnergyCustomersByCustomerIdMeteringPoints)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/imports", wrapper.GetEnergyImports)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/imports", wrapper.PostEnergyImports)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/energy/imports/{importId}", wrapper.DeleteEnergyImportsByImportId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/imports/{importId}", wrapper.GetEnergyImportsByImportId)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/imports/{importId}/attach", wrapper.PostEnergyImportsByImportIdAttach)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/imports/{importId}/check", wrapper.PostEnergyImportsByImportIdCheck)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/imports/{importId}/failed-rows", wrapper.GetEnergyImportsByImportIdFailedRows)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/energy/imports/{importId}/mapping", wrapper.PutEnergyImportsByImportIdMapping)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/imports/{importId}/rows", wrapper.GetEnergyImportsByImportIdRows)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/imports/{importId}/run", wrapper.PostEnergyImportsByImportIdRun)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/imports/{importId}/stop", wrapper.PostEnergyImportsByImportIdStop)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points", wrapper.GetEnergyMeteringPoints)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points", wrapper.PostEnergyMeteringPoints)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}", wrapper.GetEnergyMeteringPoint)
@@ -1440,6 +2116,824 @@ func (response GetEnergyCustomersByCustomerIdMeteringPoints403JSONResponse) Visi
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsRequestObject struct {
+	Params GetEnergyImportsParams
+}
+
+type GetEnergyImportsResponseObject interface {
+	VisitGetEnergyImportsResponse(w http.ResponseWriter) error
+}
+
+type GetEnergyImports200JSONResponse PaginatedResponseOfEnergyImport
+
+func (response GetEnergyImports200JSONResponse) VisitGetEnergyImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImports400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetEnergyImports400ApplicationProblemPlusJSONResponse) VisitGetEnergyImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImports401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyImports401JSONResponse) VisitGetEnergyImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImports403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyImports403JSONResponse) VisitGetEnergyImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsRequestObject struct {
+	Body *multipart.Reader
+}
+
+type PostEnergyImportsResponseObject interface {
+	VisitPostEnergyImportsResponse(w http.ResponseWriter) error
+}
+
+type PostEnergyImports201JSONResponse EnergyImport
+
+func (response PostEnergyImports201JSONResponse) VisitPostEnergyImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImports400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostEnergyImports400ApplicationProblemPlusJSONResponse) VisitPostEnergyImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImports401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImports401JSONResponse) VisitPostEnergyImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImports403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImports403JSONResponse) VisitPostEnergyImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImports429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostEnergyImports429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostEnergyImports429ResponseHeaders
+}
+
+func (response PostEnergyImports429JSONResponse) VisitPostEnergyImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEnergyImportsByImportIdRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type DeleteEnergyImportsByImportIdResponseObject interface {
+	VisitDeleteEnergyImportsByImportIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteEnergyImportsByImportId204Response struct {
+}
+
+func (response DeleteEnergyImportsByImportId204Response) VisitDeleteEnergyImportsByImportIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteEnergyImportsByImportId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteEnergyImportsByImportId401JSONResponse) VisitDeleteEnergyImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEnergyImportsByImportId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteEnergyImportsByImportId403JSONResponse) VisitDeleteEnergyImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEnergyImportsByImportId404Response struct {
+}
+
+func (response DeleteEnergyImportsByImportId404Response) VisitDeleteEnergyImportsByImportIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteEnergyImportsByImportId409ApplicationProblemPlusJSONResponse EnergyImportConflictProblem
+
+func (response DeleteEnergyImportsByImportId409ApplicationProblemPlusJSONResponse) VisitDeleteEnergyImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportIdRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type GetEnergyImportsByImportIdResponseObject interface {
+	VisitGetEnergyImportsByImportIdResponse(w http.ResponseWriter) error
+}
+
+type GetEnergyImportsByImportId200JSONResponse EnergyImport
+
+func (response GetEnergyImportsByImportId200JSONResponse) VisitGetEnergyImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyImportsByImportId401JSONResponse) VisitGetEnergyImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyImportsByImportId403JSONResponse) VisitGetEnergyImportsByImportIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportId404Response struct {
+}
+
+func (response GetEnergyImportsByImportId404Response) VisitGetEnergyImportsByImportIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEnergyImportsByImportIdAttachRequestObject struct {
+	ImportId int32 `json:"importId"`
+	Body     *PostEnergyImportsByImportIdAttachJSONRequestBody
+}
+
+type PostEnergyImportsByImportIdAttachResponseObject interface {
+	VisitPostEnergyImportsByImportIdAttachResponse(w http.ResponseWriter) error
+}
+
+type PostEnergyImportsByImportIdAttach200JSONResponse EnergyImport
+
+func (response PostEnergyImportsByImportIdAttach200JSONResponse) VisitPostEnergyImportsByImportIdAttachResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdAttach400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostEnergyImportsByImportIdAttach400ApplicationProblemPlusJSONResponse) VisitPostEnergyImportsByImportIdAttachResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdAttach401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImportsByImportIdAttach401JSONResponse) VisitPostEnergyImportsByImportIdAttachResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdAttach403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImportsByImportIdAttach403JSONResponse) VisitPostEnergyImportsByImportIdAttachResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdAttach404Response struct {
+}
+
+func (response PostEnergyImportsByImportIdAttach404Response) VisitPostEnergyImportsByImportIdAttachResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEnergyImportsByImportIdAttach409ApplicationProblemPlusJSONResponse EnergyImportConflictProblem
+
+func (response PostEnergyImportsByImportIdAttach409ApplicationProblemPlusJSONResponse) VisitPostEnergyImportsByImportIdAttachResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdCheckRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type PostEnergyImportsByImportIdCheckResponseObject interface {
+	VisitPostEnergyImportsByImportIdCheckResponse(w http.ResponseWriter) error
+}
+
+type PostEnergyImportsByImportIdCheck200JSONResponse EnergyImport
+
+func (response PostEnergyImportsByImportIdCheck200JSONResponse) VisitPostEnergyImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdCheck400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostEnergyImportsByImportIdCheck400ApplicationProblemPlusJSONResponse) VisitPostEnergyImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdCheck401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImportsByImportIdCheck401JSONResponse) VisitPostEnergyImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdCheck403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImportsByImportIdCheck403JSONResponse) VisitPostEnergyImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdCheck404Response struct {
+}
+
+func (response PostEnergyImportsByImportIdCheck404Response) VisitPostEnergyImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEnergyImportsByImportIdCheck409ApplicationProblemPlusJSONResponse EnergyImportConflictProblem
+
+func (response PostEnergyImportsByImportIdCheck409ApplicationProblemPlusJSONResponse) VisitPostEnergyImportsByImportIdCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportIdFailedRowsRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type GetEnergyImportsByImportIdFailedRowsResponseObject interface {
+	VisitGetEnergyImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error
+}
+
+type GetEnergyImportsByImportIdFailedRows200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetEnergyImportsByImportIdFailedRows200TextcsvResponse) VisitGetEnergyImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetEnergyImportsByImportIdFailedRows401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyImportsByImportIdFailedRows401JSONResponse) VisitGetEnergyImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportIdFailedRows403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyImportsByImportIdFailedRows403JSONResponse) VisitGetEnergyImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportIdFailedRows404Response struct {
+}
+
+func (response GetEnergyImportsByImportIdFailedRows404Response) VisitGetEnergyImportsByImportIdFailedRowsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutEnergyImportsByImportIdMappingRequestObject struct {
+	ImportId int32 `json:"importId"`
+	Body     *PutEnergyImportsByImportIdMappingJSONRequestBody
+}
+
+type PutEnergyImportsByImportIdMappingResponseObject interface {
+	VisitPutEnergyImportsByImportIdMappingResponse(w http.ResponseWriter) error
+}
+
+type PutEnergyImportsByImportIdMapping200JSONResponse EnergyImport
+
+func (response PutEnergyImportsByImportIdMapping200JSONResponse) VisitPutEnergyImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyImportsByImportIdMapping400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutEnergyImportsByImportIdMapping400ApplicationProblemPlusJSONResponse) VisitPutEnergyImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyImportsByImportIdMapping401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutEnergyImportsByImportIdMapping401JSONResponse) VisitPutEnergyImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyImportsByImportIdMapping403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutEnergyImportsByImportIdMapping403JSONResponse) VisitPutEnergyImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyImportsByImportIdMapping404Response struct {
+}
+
+func (response PutEnergyImportsByImportIdMapping404Response) VisitPutEnergyImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutEnergyImportsByImportIdMapping409ApplicationProblemPlusJSONResponse EnergyImportConflictProblem
+
+func (response PutEnergyImportsByImportIdMapping409ApplicationProblemPlusJSONResponse) VisitPutEnergyImportsByImportIdMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportIdRowsRequestObject struct {
+	ImportId int32 `json:"importId"`
+	Params   GetEnergyImportsByImportIdRowsParams
+}
+
+type GetEnergyImportsByImportIdRowsResponseObject interface {
+	VisitGetEnergyImportsByImportIdRowsResponse(w http.ResponseWriter) error
+}
+
+type GetEnergyImportsByImportIdRows200JSONResponse PaginatedResponseOfEnergyImportRow
+
+func (response GetEnergyImportsByImportIdRows200JSONResponse) VisitGetEnergyImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportIdRows400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetEnergyImportsByImportIdRows400ApplicationProblemPlusJSONResponse) VisitGetEnergyImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportIdRows401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyImportsByImportIdRows401JSONResponse) VisitGetEnergyImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportIdRows403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyImportsByImportIdRows403JSONResponse) VisitGetEnergyImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyImportsByImportIdRows404Response struct {
+}
+
+func (response GetEnergyImportsByImportIdRows404Response) VisitGetEnergyImportsByImportIdRowsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEnergyImportsByImportIdRunRequestObject struct {
+	ImportId int32 `json:"importId"`
+	Body     *PostEnergyImportsByImportIdRunJSONRequestBody
+}
+
+type PostEnergyImportsByImportIdRunResponseObject interface {
+	VisitPostEnergyImportsByImportIdRunResponse(w http.ResponseWriter) error
+}
+
+type PostEnergyImportsByImportIdRun200JSONResponse EnergyImport
+
+func (response PostEnergyImportsByImportIdRun200JSONResponse) VisitPostEnergyImportsByImportIdRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdRun401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImportsByImportIdRun401JSONResponse) VisitPostEnergyImportsByImportIdRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdRun403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImportsByImportIdRun403JSONResponse) VisitPostEnergyImportsByImportIdRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdRun404Response struct {
+}
+
+func (response PostEnergyImportsByImportIdRun404Response) VisitPostEnergyImportsByImportIdRunResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEnergyImportsByImportIdRun409ApplicationProblemPlusJSONResponse EnergyImportConflictProblem
+
+func (response PostEnergyImportsByImportIdRun409ApplicationProblemPlusJSONResponse) VisitPostEnergyImportsByImportIdRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdStopRequestObject struct {
+	ImportId int32 `json:"importId"`
+}
+
+type PostEnergyImportsByImportIdStopResponseObject interface {
+	VisitPostEnergyImportsByImportIdStopResponse(w http.ResponseWriter) error
+}
+
+type PostEnergyImportsByImportIdStop200JSONResponse EnergyImport
+
+func (response PostEnergyImportsByImportIdStop200JSONResponse) VisitPostEnergyImportsByImportIdStopResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdStop401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImportsByImportIdStop401JSONResponse) VisitPostEnergyImportsByImportIdStopResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdStop403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyImportsByImportIdStop403JSONResponse) VisitPostEnergyImportsByImportIdStopResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyImportsByImportIdStop404Response struct {
+}
+
+func (response PostEnergyImportsByImportIdStop404Response) VisitPostEnergyImportsByImportIdStopResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEnergyImportsByImportIdStop409ApplicationProblemPlusJSONResponse EnergyImportConflictProblem
+
+func (response PostEnergyImportsByImportIdStop409ApplicationProblemPlusJSONResponse) VisitPostEnergyImportsByImportIdStopResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2650,6 +4144,39 @@ type StrictServerInterface interface {
 	// GetEnergyCustomersByCustomerIdMeteringPoints List a customer's metering points
 	// (GET /api/v1/energy/customers/{customerId}/metering-points)
 	GetEnergyCustomersByCustomerIdMeteringPoints(ctx context.Context, request GetEnergyCustomersByCustomerIdMeteringPointsRequestObject) (GetEnergyCustomersByCustomerIdMeteringPointsResponseObject, error)
+	// GetEnergyImports List metering-point imports
+	// (GET /api/v1/energy/imports)
+	GetEnergyImports(ctx context.Context, request GetEnergyImportsRequestObject) (GetEnergyImportsResponseObject, error)
+	// PostEnergyImports Upload a file of metering points
+	// (POST /api/v1/energy/imports)
+	PostEnergyImports(ctx context.Context, request PostEnergyImportsRequestObject) (PostEnergyImportsResponseObject, error)
+	// DeleteEnergyImportsByImportId Delete a metering-point import
+	// (DELETE /api/v1/energy/imports/{importId})
+	DeleteEnergyImportsByImportId(ctx context.Context, request DeleteEnergyImportsByImportIdRequestObject) (DeleteEnergyImportsByImportIdResponseObject, error)
+	// GetEnergyImportsByImportId Get a metering-point import
+	// (GET /api/v1/energy/imports/{importId})
+	GetEnergyImportsByImportId(ctx context.Context, request GetEnergyImportsByImportIdRequestObject) (GetEnergyImportsByImportIdResponseObject, error)
+	// PostEnergyImportsByImportIdAttach Attach a metering-point import's pending points
+	// (POST /api/v1/energy/imports/{importId}/attach)
+	PostEnergyImportsByImportIdAttach(ctx context.Context, request PostEnergyImportsByImportIdAttachRequestObject) (PostEnergyImportsByImportIdAttachResponseObject, error)
+	// PostEnergyImportsByImportIdCheck Check a metering-point import
+	// (POST /api/v1/energy/imports/{importId}/check)
+	PostEnergyImportsByImportIdCheck(ctx context.Context, request PostEnergyImportsByImportIdCheckRequestObject) (PostEnergyImportsByImportIdCheckResponseObject, error)
+	// GetEnergyImportsByImportIdFailedRows Download a metering-point import's failed rows
+	// (GET /api/v1/energy/imports/{importId}/failed-rows)
+	GetEnergyImportsByImportIdFailedRows(ctx context.Context, request GetEnergyImportsByImportIdFailedRowsRequestObject) (GetEnergyImportsByImportIdFailedRowsResponseObject, error)
+	// PutEnergyImportsByImportIdMapping Save a metering-point import's mapping
+	// (PUT /api/v1/energy/imports/{importId}/mapping)
+	PutEnergyImportsByImportIdMapping(ctx context.Context, request PutEnergyImportsByImportIdMappingRequestObject) (PutEnergyImportsByImportIdMappingResponseObject, error)
+	// GetEnergyImportsByImportIdRows List a metering-point import's rows
+	// (GET /api/v1/energy/imports/{importId}/rows)
+	GetEnergyImportsByImportIdRows(ctx context.Context, request GetEnergyImportsByImportIdRowsRequestObject) (GetEnergyImportsByImportIdRowsResponseObject, error)
+	// PostEnergyImportsByImportIdRun Run a metering-point import
+	// (POST /api/v1/energy/imports/{importId}/run)
+	PostEnergyImportsByImportIdRun(ctx context.Context, request PostEnergyImportsByImportIdRunRequestObject) (PostEnergyImportsByImportIdRunResponseObject, error)
+	// PostEnergyImportsByImportIdStop Stop a metering-point import
+	// (POST /api/v1/energy/imports/{importId}/stop)
+	PostEnergyImportsByImportIdStop(ctx context.Context, request PostEnergyImportsByImportIdStopRequestObject) (PostEnergyImportsByImportIdStopResponseObject, error)
 	// GetEnergyMeteringPoints List metering points
 	// (GET /api/v1/energy/metering-points)
 	GetEnergyMeteringPoints(ctx context.Context, request GetEnergyMeteringPointsRequestObject) (GetEnergyMeteringPointsResponseObject, error)
@@ -2815,6 +4342,322 @@ func (sh *strictHandler) GetEnergyCustomersByCustomerIdMeteringPoints(w http.Res
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetEnergyCustomersByCustomerIdMeteringPointsResponseObject); ok {
 		if err := validResponse.VisitGetEnergyCustomersByCustomerIdMeteringPointsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEnergyImports operation middleware
+func (sh *strictHandler) GetEnergyImports(w http.ResponseWriter, r *http.Request, params GetEnergyImportsParams) {
+	var request GetEnergyImportsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEnergyImports(ctx, request.(GetEnergyImportsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEnergyImports")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEnergyImportsResponseObject); ok {
+		if err := validResponse.VisitGetEnergyImportsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEnergyImports operation middleware
+func (sh *strictHandler) PostEnergyImports(w http.ResponseWriter, r *http.Request) {
+	var request PostEnergyImportsRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEnergyImports(ctx, request.(PostEnergyImportsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEnergyImports")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEnergyImportsResponseObject); ok {
+		if err := validResponse.VisitPostEnergyImportsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteEnergyImportsByImportId operation middleware
+func (sh *strictHandler) DeleteEnergyImportsByImportId(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request DeleteEnergyImportsByImportIdRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteEnergyImportsByImportId(ctx, request.(DeleteEnergyImportsByImportIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteEnergyImportsByImportId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteEnergyImportsByImportIdResponseObject); ok {
+		if err := validResponse.VisitDeleteEnergyImportsByImportIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEnergyImportsByImportId operation middleware
+func (sh *strictHandler) GetEnergyImportsByImportId(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request GetEnergyImportsByImportIdRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEnergyImportsByImportId(ctx, request.(GetEnergyImportsByImportIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEnergyImportsByImportId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEnergyImportsByImportIdResponseObject); ok {
+		if err := validResponse.VisitGetEnergyImportsByImportIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEnergyImportsByImportIdAttach operation middleware
+func (sh *strictHandler) PostEnergyImportsByImportIdAttach(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request PostEnergyImportsByImportIdAttachRequestObject
+
+	request.ImportId = importId
+
+	var body PostEnergyImportsByImportIdAttachJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEnergyImportsByImportIdAttach(ctx, request.(PostEnergyImportsByImportIdAttachRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEnergyImportsByImportIdAttach")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEnergyImportsByImportIdAttachResponseObject); ok {
+		if err := validResponse.VisitPostEnergyImportsByImportIdAttachResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEnergyImportsByImportIdCheck operation middleware
+func (sh *strictHandler) PostEnergyImportsByImportIdCheck(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request PostEnergyImportsByImportIdCheckRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEnergyImportsByImportIdCheck(ctx, request.(PostEnergyImportsByImportIdCheckRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEnergyImportsByImportIdCheck")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEnergyImportsByImportIdCheckResponseObject); ok {
+		if err := validResponse.VisitPostEnergyImportsByImportIdCheckResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEnergyImportsByImportIdFailedRows operation middleware
+func (sh *strictHandler) GetEnergyImportsByImportIdFailedRows(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request GetEnergyImportsByImportIdFailedRowsRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEnergyImportsByImportIdFailedRows(ctx, request.(GetEnergyImportsByImportIdFailedRowsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEnergyImportsByImportIdFailedRows")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEnergyImportsByImportIdFailedRowsResponseObject); ok {
+		if err := validResponse.VisitGetEnergyImportsByImportIdFailedRowsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutEnergyImportsByImportIdMapping operation middleware
+func (sh *strictHandler) PutEnergyImportsByImportIdMapping(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request PutEnergyImportsByImportIdMappingRequestObject
+
+	request.ImportId = importId
+
+	var body PutEnergyImportsByImportIdMappingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutEnergyImportsByImportIdMapping(ctx, request.(PutEnergyImportsByImportIdMappingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutEnergyImportsByImportIdMapping")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutEnergyImportsByImportIdMappingResponseObject); ok {
+		if err := validResponse.VisitPutEnergyImportsByImportIdMappingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEnergyImportsByImportIdRows operation middleware
+func (sh *strictHandler) GetEnergyImportsByImportIdRows(w http.ResponseWriter, r *http.Request, importId int32, params GetEnergyImportsByImportIdRowsParams) {
+	var request GetEnergyImportsByImportIdRowsRequestObject
+
+	request.ImportId = importId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEnergyImportsByImportIdRows(ctx, request.(GetEnergyImportsByImportIdRowsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEnergyImportsByImportIdRows")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEnergyImportsByImportIdRowsResponseObject); ok {
+		if err := validResponse.VisitGetEnergyImportsByImportIdRowsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEnergyImportsByImportIdRun operation middleware
+func (sh *strictHandler) PostEnergyImportsByImportIdRun(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request PostEnergyImportsByImportIdRunRequestObject
+
+	request.ImportId = importId
+
+	var body PostEnergyImportsByImportIdRunJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEnergyImportsByImportIdRun(ctx, request.(PostEnergyImportsByImportIdRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEnergyImportsByImportIdRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEnergyImportsByImportIdRunResponseObject); ok {
+		if err := validResponse.VisitPostEnergyImportsByImportIdRunResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEnergyImportsByImportIdStop operation middleware
+func (sh *strictHandler) PostEnergyImportsByImportIdStop(w http.ResponseWriter, r *http.Request, importId int32) {
+	var request PostEnergyImportsByImportIdStopRequestObject
+
+	request.ImportId = importId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEnergyImportsByImportIdStop(ctx, request.(PostEnergyImportsByImportIdStopRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEnergyImportsByImportIdStop")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEnergyImportsByImportIdStopResponseObject); ok {
+		if err := validResponse.VisitPostEnergyImportsByImportIdStopResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

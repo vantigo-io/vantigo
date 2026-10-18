@@ -152,6 +152,276 @@ components:
             required:
                 - end
             type: object
+        EnergyImport:
+            description: An import of metering points from a file (energy import design D3, D6, D7), the customers import's record with energy's counts. state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run), done (finishedAt set; when it was stopped, processed short of rows) or attaching (the worker attaches the pending rows' points to their customers from attachStart, then the import is done again). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written; sample the first twenty rows, each with the errors its cells get under the saved mapping. mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated, failed and skipped are the worker's progress while it runs and the recounted totals once it has finished; skipped counts the totals lines (a row with no GSRN and at most one other non-blank cell). switched counts the rows whose point switched customer (or, after a check, would), pending the rows matched to a customer and not yet attached, pendingSwitches the pending rows whose point was another customer's when the run wrote them, attached the pending rows attached since. error is a whole-run failure the worker met and will retry next cycle. createdByName is the uploader's display name. requestedAt is when the check, the run or the attach was asked for, startedAt when the worker took it up.
+            properties:
+                attachStart:
+                    format: date-time
+                    type: string
+                attached:
+                    format: int32
+                    type: integer
+                created:
+                    format: int32
+                    type: integer
+                createdAt:
+                    format: date-time
+                    type: string
+                createdByName:
+                    type: string
+                encoding:
+                    type: string
+                error:
+                    type: string
+                failed:
+                    format: int32
+                    type: integer
+                fileName:
+                    type: string
+                finishedAt:
+                    format: date-time
+                    type: string
+                header:
+                    items:
+                        type: string
+                    type: array
+                id:
+                    format: int32
+                    type: integer
+                mapping:
+                    $ref: '#/components/schemas/EnergyImportMapping'
+                pending:
+                    format: int32
+                    type: integer
+                pendingSwitches:
+                    format: int32
+                    type: integer
+                processed:
+                    format: int32
+                    type: integer
+                requestedAt:
+                    format: date-time
+                    type: string
+                rows:
+                    format: int32
+                    type: integer
+                sample:
+                    items:
+                        $ref: '#/components/schemas/EnergyImportSampleRow'
+                    type: array
+                separator:
+                    type: string
+                sizeBytes:
+                    format: int64
+                    type: integer
+                skipped:
+                    format: int32
+                    type: integer
+                startedAt:
+                    format: date-time
+                    type: string
+                state:
+                    enum:
+                        - draft
+                        - checking
+                        - checked
+                        - importing
+                        - done
+                        - attaching
+                    type: string
+                stopRequested:
+                    type: boolean
+                suggested:
+                    $ref: '#/components/schemas/EnergyImportMapping'
+                switched:
+                    format: int32
+                    type: integer
+                updated:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - state
+                - fileName
+                - sizeBytes
+                - encoding
+                - separator
+                - rows
+                - header
+                - sample
+                - suggested
+                - processed
+                - created
+                - updated
+                - failed
+                - skipped
+                - switched
+                - pending
+                - pendingSwitches
+                - attached
+                - stopRequested
+                - createdAt
+            type: object
+        EnergyImportAttachRequest:
+            description: Attaches an import's pending rows to their customers (energy import design D6). start is the date every period starts from, a UTC timestamp as the Assign customer dialog sends. confirmSwitches is how many of the pending points will switch customer — those whose active supply period is another customer's now — and must equal that number exactly when it is not zero.
+            properties:
+                confirmSwitches:
+                    format: int32
+                    type: integer
+                start:
+                    format: date-time
+                    type: string
+            required:
+                - start
+            type: object
+        EnergyImportConflictProblem:
+            description: "ProblemDetails plus the import's conflict code (energy import design D7) — the one place the energy module answers a code: import_running (the worker is checking, importing or attaching it), import_not_checked (a run on a draft), import_nothing_to_import (a run on a check that found nothing to create or update), import_finished (a mapping, a check or a run on a done import, or a stop with nothing running), import_switch_not_confirmed (a run or an attach whose confirmSwitches is not the number of points that will switch customer) and import_nothing_pending (an attach on an import with no pending row, or one that is not done)."
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                switches:
+                    description: For import_switch_not_confirmed, the number of points that will switch customer.
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        EnergyImportMapping:
+            description: "How an import's rows become metering points (energy import design D3). mode: create makes every row a new point and refuses a GSRN on file; update finds the point by GSRN and refuses a row that finds none; createOrUpdate updates a row that finds one and creates from a row that finds none. Rows are always matched by gsrn. columns maps the fields: a field at most once, a column at most once, each entry a column of the file or a fixed value for every row."
+            properties:
+                columns:
+                    items:
+                        $ref: '#/components/schemas/EnergyImportMappingColumn'
+                    type: array
+                mode:
+                    enum:
+                        - create
+                        - update
+                        - createOrUpdate
+                    type: string
+            required:
+                - mode
+                - columns
+            type: object
+        EnergyImportMappingColumn:
+            description: "One field of a mapping (energy import design D3): field is one of gsrn, meterNumber, streetAddress, postalCode, city, countryCode, priceArea, gridArea, expectedAnnualConsumptionKwh, latitude, longitude, connectionStatus, customerLegalId and supplyStart — and exactly one of column (the 0-based column of the file it is read from) and value (the same text for every row, read as a cell would be; gsrn takes none)."
+            properties:
+                column:
+                    format: int32
+                    type: integer
+                field:
+                    type: string
+                value:
+                    type: string
+            required:
+                - field
+            type: object
+        EnergyImportRow:
+            description: One row of an import with what the worker did with it (energy import design D4, D7). cells are the row's cells as the file had them; outcome is absent for a row not yet run; meteringPointId and gsrn name the point the row created or updated (no id for a point a check would create); link is what the row did about its customer — none (no organisation number), same (the point is already that customer's), assigned, switched, pending (matched, not yet attached) or attached (attached afterwards); customerId and customerName the customer the organisation number resolved to, switchFromCustomerId and switchFromCustomerName the customer the point was supplied to before a switch (or, on a pending row, is supplied to); supplyStart the date the period was or will be written from. errors are a failed row's problems, a pending row's attach error, or a skipped row's reason.
+            properties:
+                cells:
+                    items:
+                        type: string
+                    type: array
+                customerId:
+                    format: int32
+                    type: integer
+                customerName:
+                    type: string
+                errors:
+                    items:
+                        $ref: '#/components/schemas/EnergyImportRowError'
+                    type: array
+                gsrn:
+                    type: string
+                link:
+                    enum:
+                        - none
+                        - same
+                        - assigned
+                        - switched
+                        - pending
+                        - attached
+                    type: string
+                meteringPointId:
+                    format: int32
+                    type: integer
+                outcome:
+                    enum:
+                        - created
+                        - updated
+                        - failed
+                        - skipped
+                    type: string
+                row:
+                    format: int32
+                    type: integer
+                supplyStart:
+                    format: date-time
+                    type: string
+                switchFromCustomerId:
+                    format: int32
+                    type: integer
+                switchFromCustomerName:
+                    type: string
+            required:
+                - row
+                - cells
+                - errors
+            type: object
+        EnergyImportRowError:
+            description: One problem with one row of an import. column is the 0-based index of the file column the offending cell is in, absent for a problem with the row as a whole or with a fixed value. message is the module's own validation wording.
+            properties:
+                column:
+                    format: int32
+                    type: integer
+                message:
+                    type: string
+            required:
+                - message
+            type: object
+        EnergyImportRunRequest:
+            description: The run of a checked import (energy import design D4). confirmSwitches is how many points the run will switch customer, and must equal the check's switched exactly when that is not zero; absent is zero.
+            properties:
+                confirmSwitches:
+                    format: int32
+                    type: integer
+            type: object
+        EnergyImportSampleRow:
+            description: One of the first rows of an import as the preview shows it, with the errors its cells get under the saved mapping — planned through the endpoints' own validators, no database asked.
+            properties:
+                cells:
+                    items:
+                        type: string
+                    type: array
+                errors:
+                    items:
+                        $ref: '#/components/schemas/EnergyImportRowError'
+                    type: array
+                row:
+                    format: int32
+                    type: integer
+            required:
+                - row
+                - cells
+                - errors
+            type: object
         EnergyPaginationMetadata:
             properties:
                 page:
@@ -406,6 +676,30 @@ components:
                 - address
                 - priceArea
             type: object
+        PaginatedResponseOfEnergyImport:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/EnergyImport'
+                    type: array
+                pagination:
+                    $ref: '#/components/schemas/EnergyPaginationMetadata'
+            required:
+                - data
+                - pagination
+            type: object
+        PaginatedResponseOfEnergyImportRow:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/EnergyImportRow'
+                    type: array
+                pagination:
+                    $ref: '#/components/schemas/EnergyPaginationMetadata'
+            required:
+                - data
+                - pagination
+            type: object
         PaginatedResponseOfMeteringPointResponse:
             properties:
                 data:
@@ -639,6 +933,532 @@ paths:
             tags:
                 - Customer energy
             x-vantigo-access: permission:energy:metering-points-view+energy:meters-view+energy:supply-periods-view
+    /api/v1/energy/imports:
+        get:
+            description: The metering-point imports, newest change first (energy import design D7), each as GET /energy/imports/{importId} answers it.
+            operationId: getEnergyImports
+            parameters:
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfEnergyImport'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — page below 1, or pageSize outside 1 to 100.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List metering-point imports
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
+        post:
+            description: |-
+                Uploads a file of metering points and reads it once (energy import design D2, D6), exactly as the customers import reads its file: one multipart part named file, at most 50 MiB, 100 000 data rows and 200 columns; UTF-8 with or without a byte order mark, or Windows-1252; the separator detected among the semicolon, the comma and the tab; RFC 4180 quoting; CRLF or LF; the first non-blank row the header; blank rows skipped.
+
+                The rows are stored, the import is created in state draft, and the answer carries the header, the first twenty rows and a suggested mapping — the mapping last saved on an import with the same header, else the fields' own JSON names, else the alias table of the words suppliers' exports use (målepunktid, målernr, anleggsadresse, postnr anlegg, prisområde, netteier, org. nr., startdato kunde, …), where an installation alias (… anlegg) wins over the plain one whatever the column order. Rate-limited at 600 uploads an hour per client address.
+            operationId: postEnergyImports
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImport'
+                    description: Created — the import, in state draft, with its suggested mapping.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on 'file' for the file itself (no part named file or two of them, an empty file, one past 50 MiB, no header row, more than 200 columns, more than 100 000 rows, or a line the CSV reader cannot parse). A body that is not multipart at all is a bare 400.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — at most 600 uploads an hour from one client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Upload a file of metering points
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
+    /api/v1/energy/imports/{importId}:
+        delete:
+            description: Removes an import and its rows — a draft, a checked or a done one; the metering points and supply periods a done import wrote are untouched. A running one (checking, importing or attaching) is refused; stop it first.
+            operationId: deleteEnergyImportsByImportId
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImportConflictProblem'
+                    description: "Conflict — import_running: the worker is checking, importing or attaching it."
+            summary: Delete a metering-point import
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
+        get:
+            description: One import (energy import design D7) — its state, the file's facts, the header, the first twenty rows with their errors under the saved mapping, the mapping and the suggestion, the counts and the progress.
+            operationId: getEnergyImportsByImportId
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImport'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Get a metering-point import
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
+    /api/v1/energy/imports/{importId}/attach:
+        post:
+            description: |-
+                Attaches the pending rows' metering points to their customers (energy import design D6): a done import with at least one pending row goes to attaching and the worker takes it up. For each pending row the point's active supply period is read again, now: none, and a period for the row's customer starts at start; the row's customer's, and the row becomes same and nothing is written; another customer's, and that period ends at start and the row's customer's starts there — the switch, which needs start after that period's start. Each row becomes attached, or stays pending with its error, so attaching can be asked for again, with another date, until nothing is pending. Every write goes through the supply-period endpoints' own functions, under their lock.
+
+                confirmSwitches must equal the number of pending points whose active period is another customer's now, when that is not zero; the worker never switches more than that.
+            operationId: postEnergyImportsByImportIdAttach
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EnergyImportAttachRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImport'
+                    description: OK — the import, now attaching.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on 'start' for a start that is not a UTC timestamp.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImportConflictProblem'
+                    description: "Conflict — import_running when it is checking, importing or attaching, import_nothing_pending when it is not done or has no pending row, import_switch_not_confirmed when confirmSwitches is not the number of points that will switch customer (switches says how many)."
+            summary: Attach a metering-point import's pending points
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view+energy:supply-periods-manage
+    /api/v1/energy/imports/{importId}/check:
+        post:
+            description: Asks for the check (energy import design D6) — the dry run — of a draft import with a mapping. The import goes to checking and the worker takes it up; every row runs exactly as the real run would, each in its own transaction rolled back at its end, and its outcome, link and errors are written to the row. Nothing is kept — no metering point, no meter, no supply period. Two rows with one GSRN are refused on the second in both runs.
+            operationId: postEnergyImportsByImportIdCheck
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImport'
+                    description: OK — the import, now checking.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on 'mapping' when the import has none yet.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImportConflictProblem'
+                    description: "Conflict — import_running when it is already running, import_finished when it is done."
+            summary: Check a metering-point import
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
+    /api/v1/energy/imports/{importId}/failed-rows:
+        get:
+            description: "The rows that failed, as a file to fix and upload again — the file's own header, so the same mapping is suggested, with an error column first holding every problem of the row ('<header>: message', or the message alone for the row as a whole), each row's cells exactly as they were. Semicolon-separated, UTF-8 with a byte order mark, CRLF, guarded against formulas. Named energy-import-<id>-failed-rows.csv."
+            operationId: getEnergyImportsByImportIdFailedRows
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — served as an attachment.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Download a metering-point import's failed rows
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
+    /api/v1/energy/imports/{importId}/mapping:
+        put:
+            description: |-
+                Saves how the rows become metering points (energy import design D3, D5) and answers the import with its preview. Allowed on a draft or a checked import; on a checked one the import goes back to draft and every row's result is cleared.
+
+                A mapped field is written on every row; an unmapped field is left as it is on an update and blank — or its default — on a create. A mapped cell that is blank clears an optional field (gridArea, expectedAnnualConsumptionKwh, latitude, longitude); a blank countryCode is NO; a blank connectionStatus is New on a create and keeps the point's on an update; a blank meterNumber on an update leaves the meter alone. gsrn must be mapped to a column; supplyStart needs customerLegalId.
+
+                The permission rule: the operation wants energy:import, and the mapping is checked against what its sender could do by hand — every mode needs energy:metering-points-manage, a mode that creates also energy:meters-manage (a point is created with its first meter), and customerLegalId mapped needs energy:supply-periods-manage — refused as a 400 naming the key. customerLegalId is refused too when the customers module is off.
+            operationId: putEnergyImportsByImportIdMapping
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EnergyImportMapping'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImport'
+                    description: OK — the import, in state draft, with the preview under this mapping.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on 'mode' for a value outside the enum or a mode the caller lacks the permission for; on 'columns' for a field twice, a column twice, a column outside the header, an unknown field, an entry with both or neither of column and value, a fixed value on gsrn, gsrn not mapped, supplyStart without customerLegalId, no field besides gsrn, customerLegalId with the customers module off, or a field the caller lacks the permission for.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImportConflictProblem'
+                    description: "Conflict — import_running when the worker is running it, import_finished when it is done."
+            summary: Save a metering-point import's mapping
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
+    /api/v1/energy/imports/{importId}/rows:
+        get:
+            description: An import's rows in file order (energy import design D7), every one or those of one outcome and/or one link, each with its cells, its outcome, its link, the point, the customer and the previous customer — the errors table and the switch table after a check, the result after a run, a page at a time.
+            operationId: getEnergyImportsByImportIdRows
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - description: created, updated, failed or skipped; absent for every row.
+                  in: query
+                  name: outcome
+                  schema:
+                    type: string
+                - description: none, same, assigned, switched, pending or attached; absent for every row.
+                  in: query
+                  name: link
+                  schema:
+                    type: string
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfEnergyImportRow'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — outcome or link outside their values; page below 1; pageSize outside 1 to 500.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: List a metering-point import's rows
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
+    /api/v1/energy/imports/{importId}/run:
+        post:
+            description: Asks for the import (energy import design D4, D6) of a checked import whose check found something to create or update. The rows' results are cleared, the import goes to importing and the worker takes it up; a row's outcome is written in the row's own transaction beside its point and its supply period, so a row is committed with its outcome or not at all, and a run interrupted resumes at the first row without one. When the check counted switches, confirmSwitches must equal that number; the run never switches more points than that, and a row that would switch beyond it is refused.
+            operationId: postEnergyImportsByImportIdRun
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EnergyImportRunRequest'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImport'
+                    description: OK — the import, now importing.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImportConflictProblem'
+                    description: "Conflict — import_running when it is already running, import_not_checked when it is a draft, import_nothing_to_import when the check found nothing to create or update, import_finished when it is done, import_switch_not_confirmed when confirmSwitches is not the check's switched (switches says how many)."
+            summary: Run a metering-point import
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
+    /api/v1/energy/imports/{importId}/stop:
+        post:
+            description: Stops a check, a run or an attach. One the worker has not taken up goes straight back — checking to draft, importing to checked, attaching to done. One under way is flagged, and the worker stops before its next chunk; a check stopped goes back to draft with its results cleared, a run stopped finishes as done with every row committed so far kept, an attach stopped goes back to done with the rows it did not reach still pending.
+            operationId: postEnergyImportsByImportIdStop
+            parameters:
+                - in: path
+                  name: importId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImport'
+                    description: OK — the import, stopped or flagged to stop.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyImportConflictProblem'
+                    description: "Conflict — import_finished when nothing is running."
+            summary: Stop a metering-point import
+            tags:
+                - Energy imports
+            x-vantigo-access: permission:energy:import+energy:metering-points-view
     /api/v1/energy/metering-points:
         get:
             operationId: getEnergyMeteringPoints
@@ -647,6 +1467,11 @@ paths:
                   name: search
                   schema:
                     type: string
+                - description: true for the metering points without a customer now (energy import design D9) — those with no Active supply period whose start is at or before the moment of the request and whose end is absent or after it. A point whose only Active period starts later is listed. false, or absent, is every point.
+                  in: query
+                  name: withoutCustomer
+                  schema:
+                    type: boolean
                 - in: query
                   name: page
                   schema:
