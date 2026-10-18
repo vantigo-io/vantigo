@@ -3,9 +3,9 @@
 -- which makes the user the person themselves to this module and nothing else.
 
 -- name: PersonLink :one
--- PersonLink is a person's link under the identity provider. No row is a
--- person linked to nobody.
-SELECT external_id, state, managed
+-- PersonLink is a person's link under the identity provider, with the
+-- reason the worker left on it. No row is a person linked to nobody.
+SELECT external_id, state, managed, blocked_reason
 FROM staff.identity_links
 WHERE person_id = @person_id AND provider = 'identity';
 
@@ -18,10 +18,11 @@ WHERE person_id = @person_id AND provider = 'identity';
 -- and a claim the worker holds on it is ended — its result, which names the
 -- old user, is no longer written (WriteAccountResult). Clearing a disable
 -- Disable now asked for (disable_requested_at) is safe here: a link in one of
--- the worker's states, or naming a Staff-managed user, is refused
--- link_managed before this runs (links.go), so the only marked link this
--- replaces is a self-service link to a user Staff does not manage, whom
--- Deactivate refuses (account_not_managed) and only an Owner disables.
+-- the worker's states — but one the worker left account_not_managed, which HR
+-- repairs (links.go) — or naming a Staff-managed user, is refused
+-- link_managed before this runs, so the only marked link this replaces names
+-- a user Staff does not manage, whom Deactivate refuses
+-- (account_not_managed) and only an Owner disables.
 INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
 VALUES (@person_id, 'identity', @external_id::text, 'linked', false, @now::timestamptz, @now::timestamptz)
 ON CONFLICT (person_id, provider) DO UPDATE SET

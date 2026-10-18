@@ -59,6 +59,17 @@ func linkWriteError(err error) error {
 	return err
 }
 
+// repairableLink is whether HR may unlink or relink current although it is in
+// one of the worker's states (the final re-check's M-b): the worker left it
+// account_not_managed — an Owner stopped Staff managing the user — so it gives
+// the user no Self (PersonForUser), and HR's relink makes it an ordinary
+// self-service link again (SetPersonLink resets the worker's columns). A user
+// identity reports Staff-managed is still refused, before the lock
+// (refuseManagedLink); a mismatch link stays refused.
+func repairableLink(current *store.PersonLinkRow) bool {
+	return deref(current.BlockedReason) == reasonNotManaged
+}
+
 // personLink is a person's link under the identity provider on q, nil when
 // they have none. A link may name no user — the accounts worker's preparing
 // link, before identity has created one (00051) — which every reader takes
@@ -220,7 +231,7 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		if err != nil {
 			return err
 		}
-		if current != nil && current.State != linkStateLinked {
+		if current != nil && current.State != linkStateLinked && !repairableLink(current) {
 			return linkManaged()
 		}
 		if target == nil {
@@ -233,7 +244,7 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 			return s.recordChanges(ctx, txq, req.Id, eventUserUnlinked, who, changes{"user": fieldChange{From: from(current)}})
 		}
 		id := target.ID.String()
-		if current != nil && current.ExternalID != nil && *current.ExternalID == id {
+		if current != nil && current.State == linkStateLinked && current.ExternalID != nil && *current.ExternalID == id {
 			row = current
 			return nil
 		}
