@@ -106,8 +106,10 @@ seed `ammefri` paid, seeds the reserved `absent_hours`, `absent_hr_only` and
 adds `settings.erase_pregnancy_health_types` and `settings.erase_sick_case_dates`
 (booleans, false) — two more settings columns against 00042's comment, as B added
 one. The Down deletes the links naming no user and restores both, drops the two
-settings, gives the rows of the three reserved types it seeded the type `absent`,
-deletes them and makes `ammefri` unpaid again.
+settings, deletes the three reserved types it seeded and makes `ammefri` unpaid
+again — but refuses, naming them, while any absence names one of those types: it
+cannot give such a row another type without widening who reads it. The Up refuses,
+naming the key, when a company type already holds one of the keys it reserves.
 
 ## Permissions
 

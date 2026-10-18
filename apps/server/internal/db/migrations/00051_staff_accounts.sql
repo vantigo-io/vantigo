@@ -67,6 +67,22 @@ CREATE UNIQUE INDEX ux_people_employee_number_upper ON staff.people (upper(emplo
 -- reader who read it so, its events still unlisted to them, and only the
 -- person and staff:personal-data see it became a reserved type.
 UPDATE staff.absence_types SET paid = true, revision = revision + 1, updated_at = now() WHERE key = 'ammefri' AND seeded;
+-- A company type may already hold a key reserved from here on (review M3):
+-- refused by name, so the operator renames it, rather than failing the
+-- seed's insert on the unique key with a bare constraint error.
+-- +goose StatementBegin
+DO $$
+DECLARE
+    clash text;
+BEGIN
+    SELECT string_agg(key, ', ' ORDER BY key) INTO clash
+    FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours');
+    IF clash IS NOT NULL THEN
+        RAISE EXCEPTION 'staff 00051: the absence type key(s) % are reserved from this version on; rename the company type(s) holding them (UPDATE staff.absence_types SET key = ...) and migrate again', clash;
+    END IF;
+END
+$$;
+-- +goose StatementEnd
 INSERT INTO staff.absence_types
     (key, name_en, name_nb, kind, unit, paid, draws_holiday, allows_percent, needs_decision, visibility, amelding_leave, seeded, hidden, sort, created_at, updated_at)
 VALUES
@@ -81,13 +97,27 @@ ALTER TABLE staff.settings ADD COLUMN erase_sick_case_dates boolean NOT NULL DEF
 -- is a preparing one, which 00042 cannot hold, so it is deleted — the person
 -- keeps their flag for the worker to prepare again — and the flag's own
 -- revision, the synced employee number and the disable marker go. The two
--- erase settings go, ammefri is unpaid again, and the rows the erase gave
--- absent_hours, absent_hr_only or absent_hr_only_hours take absent, 00047's
--- one reserved type, before they are deleted.
+-- erase settings go, ammefri is unpaid again, and the reserved types this
+-- file seeded are deleted — but the Down refuses while any row names one
+-- (review L1): giving an erased HR-only row absent would show a manager an
+-- absence it read as leave, and the Down must never widen who reads a row.
+-- The operator deletes or retypes those rows by hand first, knowingly.
+-- +goose StatementBegin
+DO $$
+DECLARE
+    named text;
+BEGIN
+    SELECT string_agg(DISTINCT t.key, ', ' ORDER BY t.key) INTO named
+    FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id
+    WHERE t.seeded AND t.key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours');
+    IF named IS NOT NULL THEN
+        RAISE EXCEPTION 'staff 00051 Down: absences name the reserved type(s) % that this version added; it cannot give them another type without widening who reads them — delete or retype them by hand first', named;
+    END IF;
+END
+$$;
+-- +goose StatementEnd
 ALTER TABLE staff.settings DROP COLUMN erase_sick_case_dates;
 ALTER TABLE staff.settings DROP COLUMN erase_pregnancy_health_types;
-UPDATE staff.absences SET type_id = (SELECT id FROM staff.absence_types WHERE key = 'absent')
-WHERE type_id IN (SELECT id FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours'));
 DELETE FROM staff.absence_types WHERE key IN ('absent_hours', 'absent_hr_only', 'absent_hr_only_hours') AND seeded;
 UPDATE staff.absence_types SET paid = false, revision = revision + 1, updated_at = now() WHERE key = 'ammefri' AND seeded;
 ALTER TABLE staff.identity_links DROP COLUMN disable_requested_at;
