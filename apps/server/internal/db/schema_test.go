@@ -1990,24 +1990,17 @@ func TestExpensesClaims_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 
-	// The installation's business time zone, and the default an installation
-	// that never sets it runs on. Every date derived from a claim's two
-	// instants is taken in it, so a migration that lost the default would put
-	// an existing installation's trips a day out.
-	var zone, zoneDefault string
-	if err := pool.QueryRow(ctx, `SELECT time_zone FROM expenses.settings`).Scan(&zone); err != nil {
-		t.Fatalf("read the settings time zone: %v", err)
-	}
-	if zone != "Europe/Oslo" {
-		t.Errorf("settings.time_zone = %q, want Europe/Oslo", zone)
-	}
-	if err := pool.QueryRow(ctx, `SELECT column_default FROM information_schema.columns
+	// The business time zone 00013 gave this module is the workspace's since
+	// 00054 (TestWorkspaceTimeZone_AppliesAndIsIdempotent pins the move): no
+	// column of that name remains here.
+	var zoneColumns int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns
 		WHERE table_schema = 'expenses' AND table_name = 'settings' AND column_name = 'time_zone'`).
-		Scan(&zoneDefault); err != nil {
-		t.Fatalf("read the time zone's default: %v", err)
+		Scan(&zoneColumns); err != nil {
+		t.Fatalf("count the settings' time zone column: %v", err)
 	}
-	if !strings.Contains(zoneDefault, "Europe/Oslo") {
-		t.Errorf("settings.time_zone default = %q, want Europe/Oslo", zoneDefault)
+	if zoneColumns != 0 {
+		t.Errorf("expenses.settings still has a time_zone column; the zone is the workspace's since 00054")
 	}
 
 	// The claim indexes, predicates included, mirroring 00012's for the
@@ -3366,9 +3359,10 @@ func migrateTo(t *testing.T, databaseURL string, version int64) {
 // shape the module builds on is pinned: a widened column or a dropped one
 // fails here rather than in whichever query first misses it.
 var expensesColumns = map[string][]expensesColumn{
-	// The single settings row. time_zone is 00013's: the installation's own
-	// business zone, which every date derived from a claim's two instants is
-	// taken in.
+	// The single settings row. The business time zone 00013 added was the
+	// installation's own until 00054 moved it to the workspace (identity's
+	// system settings), which every date derived from a claim's two instants
+	// is taken in now.
 	"settings": {
 		{"id", "smallint", "NO"},
 		{"locked_before", "date", "YES"},
@@ -3376,7 +3370,6 @@ var expensesColumns = map[string][]expensesColumn{
 		{"default_markup_percent", "numeric", "NO"},
 		{"receipt_required_over", "numeric", "YES"},
 		{"updated_at", "timestamp with time zone", "NO"},
-		{"time_zone", "character varying", "NO"},
 	},
 	"entries": {
 		{"id", "bigint", "NO"},
