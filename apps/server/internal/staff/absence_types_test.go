@@ -44,8 +44,9 @@ func typeKeys(list []gen.StaffAbsenceType) []string {
 
 // The seeds as every caller reads them: the twenty-two of the statutory
 // vocabulary in order, hr_only ones included (plan reading 19) — and to
-// staff:manage alone, the hidden ones too, the reserved absent last. The
-// a-melding descriptions read back as the seeds name them.
+// staff:manage alone, the hidden ones too, the reserved absent and
+// absent_hours last (Task 5b). The a-melding descriptions read back as the
+// seeds name them, and ammefri is paid (aml. § 12-8 (2), Task 5b).
 func TestAbsenceTypes_List(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -61,12 +62,17 @@ func TestAbsenceTypes_List(t *testing.T) {
 		}
 	}
 	hr := absenceTypesAs(t, h, "staff:manage")
-	if got := typeKeys(hr); !slices.Equal(got, append(slices.Clone(seeds), "absent")) {
-		t.Errorf("as staff:manage: types = %v, want the seeds and the reserved absent", got)
+	if got := typeKeys(hr); !slices.Equal(got, append(slices.Clone(seeds), "absent", "absent_hours")) {
+		t.Errorf("as staff:manage: types = %v, want the seeds and the reserved absent and absent_hours", got)
 	}
-	absent := absenceTypeByKey(t, hr, "absent")
-	if !absent.Hidden || !absent.Reserved || !absent.Seeded {
-		t.Errorf("absent = %+v, want hidden, reserved and seeded", absent)
+	for key, unit := range map[string]gen.StaffAbsenceUnit{"absent": gen.StaffAbsenceUnitDays, "absent_hours": gen.StaffAbsenceUnitHours} {
+		reserved := absenceTypeByKey(t, hr, key)
+		if !reserved.Hidden || !reserved.Reserved || !reserved.Seeded || reserved.Unit != unit || reserved.Paid {
+			t.Errorf("%s = %+v, want hidden, reserved, seeded, unpaid, in %s", key, reserved, unit)
+		}
+	}
+	if ammefri := absenceTypeByKey(t, hr, "ammefri"); !ammefri.Paid || ammefri.Unit != gen.StaffAbsenceUnitHours {
+		t.Errorf("ammefri = %+v, want paid, in hours", ammefri)
 	}
 
 	ferie := absenceTypeByKey(t, hr, "ferie")
@@ -164,8 +170,8 @@ func TestAbsenceTypes_Add(t *testing.T) {
 	var added gen.StaffAbsenceType
 	do(t, hr, http.MethodPost, absenceTypesPath, companyType("study_day", nil), http.StatusCreated, &added)
 	if added.Key != "study_day" || added.Kind != gen.StaffAbsenceKindLeave || added.Seeded || added.Hidden || added.Reserved ||
-		added.Sort != 24 || added.Revision != 1 || !added.AllowsPercent || added.AmeldingLeave != nil {
-		t.Errorf("added = %+v, want study_day, leave, not seeded, after the seeds (sort 24), revision 1", added)
+		added.Sort != 25 || added.Revision != 1 || !added.AllowsPercent || added.AmeldingLeave != nil {
+		t.Errorf("added = %+v, want study_day, leave, not seeded, after the seeds — absent_hours is 24 (Task 5b) — (sort 25), revision 1", added)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id IS NULL AND kind = 'absence_type_created'
 		AND actor_user_id = $1 AND (payload->>'absenceTypeId')::bigint = $2`, hrID, added.Id); n != 1 {
@@ -273,6 +279,10 @@ func TestAbsenceTypes_Change(t *testing.T) {
 	show := changeOf(absent)
 	show["hidden"] = false
 	refused(t, hr.Do(http.MethodPut, absenceTypePath(absent.Id), show, ifMatch(absent.Revision)), http.StatusConflict, "seed_immutable")
+	hours := absenceTypeByKey(t, types, "absent_hours")
+	showHours := changeOf(hours)
+	showHours["hidden"] = false
+	refused(t, hr.Do(http.MethodPut, absenceTypePath(hours.Id), showHours, ifMatch(hours.Revision)), http.StatusConflict, "seed_immutable")
 	rename := changeOf(absent)
 	rename["names"] = map[string]any{"en": "Away", "nb": "Borte"}
 	do(t, hr, http.MethodPut, absenceTypePath(absent.Id), rename, http.StatusOK, nil, ifMatch(absent.Revision))

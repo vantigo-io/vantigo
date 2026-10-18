@@ -364,6 +364,8 @@ type StaffSetting struct {
 	Revision                   int32
 	UpdatedAt                  time.Time
 	AutoCarryOverSince         pgtype.Date
+	ErasePregnancyHealthTypes  bool
+	EraseSickCaseDates         bool
 }
 
 type StaffSickCase struct {

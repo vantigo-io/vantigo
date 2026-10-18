@@ -85,6 +85,27 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 	if !equalStrings(requested, []string{"timestamp with time zone:YES"}) {
 		t.Errorf("identity_links.disable_requested_at = %v, want timestamp with time zone:YES", requested)
 	}
+	// The absence settings the owner asked for (Task 5b): ammefri is paid
+	// (aml. § 12-8 (2)), the reserved absent_hours is seeded hidden beside
+	// absent, and the two erase settings are booleans, off by default.
+	pay := staffCollect(t, ctx, pool, "ammefri's pay", `SELECT paid::text FROM staff.absence_types WHERE key = 'ammefri' AND seeded`)
+	if !equalStrings(pay, []string{"true"}) {
+		t.Errorf("ammefri paid = %v, want true", pay)
+	}
+	reserved := staffCollect(t, ctx, pool, "the reserved hour type", `
+		SELECT key || ':' || kind || ':' || unit || ':' || paid::text || ':' || needs_decision::text || ':' || visibility || ':'
+		    || coalesce(amelding_leave, '-') || ':' || hidden::text || ':' || seeded::text || ':' || sort
+		FROM staff.absence_types WHERE key = 'absent_hours'`)
+	if want := []string{"absent_hours:other:hours:false:false:absent:-:true:true:24"}; !equalStrings(reserved, want) {
+		t.Errorf("absent_hours = %v, want %v", reserved, want)
+	}
+	erase := staffCollect(t, ctx, pool, "the erase settings", `
+		SELECT column_name || ':' || data_type || ':' || is_nullable || ':' || coalesce(column_default, '') FROM information_schema.columns
+		WHERE table_schema = 'staff' AND table_name = 'settings' AND column_name LIKE 'erase_%' ORDER BY column_name`)
+	if want := []string{"erase_pregnancy_health_types:boolean:NO:false", "erase_sick_case_dates:boolean:NO:false"}; !equalStrings(erase, want) {
+		t.Errorf("the erase settings = %v, want %v", erase, want)
+	}
+
 	index := staffCollect(t, ctx, pool, "the employee number index", `
 		SELECT indexdef FROM pg_indexes WHERE schemaname = 'staff' AND indexname = 'ux_people_employee_number_upper'`)
 	if !equalStrings(index, []string{employeeNumberIndexAfter}) {
@@ -132,7 +153,29 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("a link naming a user: %v", err)
 	}
 
+	// A row the erase gave absent_hours, which the rollback gives absent.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO staff.absences (person_id, type_id, first_day, last_day, hours, status, requested_by_user_id, created_at, updated_at)
+		SELECT $1, id, '2024-03-04', '2024-03-04', 2, 'registered', gen_random_uuid(), now(), now()
+		FROM staff.absence_types WHERE key = 'absent_hours'`, kari); err != nil {
+		t.Fatalf("an absent_hours row: %v", err)
+	}
+
 	migrateTo(t, url, staffAccountsVersion-1)
+	if got := staffCollect(t, ctx, pool, "ammefri's pay after the rollback", `SELECT paid::text FROM staff.absence_types WHERE key = 'ammefri'`); !equalStrings(got, []string{"false"}) {
+		t.Errorf("after the rollback ammefri paid = %v, want false", got)
+	}
+	if got := staffCollect(t, ctx, pool, "absent_hours after the rollback", `SELECT key FROM staff.absence_types WHERE key = 'absent_hours'`); len(got) != 0 {
+		t.Errorf("the rollback left absent_hours")
+	}
+	if got := staffCollect(t, ctx, pool, "the row's type after the rollback", `
+		SELECT t.key FROM staff.absences a JOIN staff.absence_types t ON t.id = a.type_id WHERE a.person_id = $1`, kari); !equalStrings(got, []string{"absent"}) {
+		t.Errorf("after the rollback the absent_hours row's type = %v, want absent", got)
+	}
+	if got := staffCollect(t, ctx, pool, "the erase settings after the rollback", `
+		SELECT column_name FROM information_schema.columns WHERE table_schema = 'staff' AND table_name = 'settings' AND column_name LIKE 'erase_%'`); len(got) != 0 {
+		t.Errorf("the rollback left the erase settings %v", got)
+	}
 	left := staffCollect(t, ctx, pool, "links after the rollback", `
 		SELECT state || ':' || coalesce(external_id, '-') FROM staff.identity_links ORDER BY id`)
 	if want := []string{"linked:" + user}; !equalStrings(left, want) {
@@ -164,7 +207,7 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 		WHERE table_schema = 'staff' AND table_name = 'identity_links' AND column_name = 'disable_requested_at'`); len(left) != 0 {
 		t.Errorf("the rollback left identity_links.disable_requested_at")
 	}
-	for _, sql := range []string{`DELETE FROM staff.identity_links`, `DELETE FROM staff.people`} {
+	for _, sql := range []string{`DELETE FROM staff.absences`, `DELETE FROM staff.identity_links`, `DELETE FROM staff.people`} {
 		if _, err := pool.Exec(ctx, sql); err != nil {
 			t.Fatalf("clean up (%s): %v", sql, err)
 		}

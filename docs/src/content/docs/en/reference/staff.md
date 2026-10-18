@@ -99,8 +99,14 @@ person through it. And `ux_people_employee_number_upper` is rebuilt on
 that collation's (under a Turkish one `upper('i')` is `İ`), so the index — and the
 queries that look a number up or skip past taken ones, which ask the same expression —
 judges case the way identity's key does (`contracts.NormalizeEmployeeNumber`) on
-Staff's alphabet of a–z, digits and hyphens, whatever the installation's locale. The
-Down deletes the links naming no user and restores both.
+Staff's alphabet of a–z, digits and hyphens, whatever the installation's locale. For
+the absence settings the owner asked for (B's open questions 11–13), it also marks the
+seed `ammefri` paid, seeds the reserved hour type `absent_hours` beside `absent`, and
+adds `settings.erase_pregnancy_health_types` and `settings.erase_sick_case_dates`
+(booleans, false) — two more settings columns against 00042's comment, as B added
+one. The Down deletes the links naming no user and restores both, drops the two
+settings, gives the rows the erase gave `absent_hours` the type `absent`, deletes
+`absent_hours` and makes `ammefri` unpaid again.
 
 ## Permissions
 
@@ -1467,7 +1473,7 @@ The seeds, every installation's, in their order:
 | `omsorgspermisjon` | leave | days | no | — | yes | yes | absent | `andreLovfestedePermisjoner` |
 | `foreldrepermisjon` | leave | days | no | — | yes | yes | absent | `permisjonMedForeldrepenger` |
 | `fodselspermisjon` | leave | days | no | — | — | yes | hr_only | `permisjonMedForeldrepenger` |
-| `ammefri` | leave | hours | no | — | — | yes | absent | `andreLovfestedePermisjoner` |
+| `ammefri` | leave | hours | yes | — | — | yes | absent | `andreLovfestedePermisjoner` |
 | `sykt_barn` | child_sick | days | yes | — | — | no | absent | — |
 | `pleie_naerstaende` | leave | days | no | — | yes | yes | absent | `andreLovfestedePermisjoner` |
 | `utdanning_lovfestet` | leave | days | no | — | yes | yes | absent | `utdanningspermisjonLovfestet` |
@@ -1482,6 +1488,7 @@ The seeds, every installation's, in their order:
 | `annen_lovfestet` | leave | days | no | — | yes | yes | absent | `andreLovfestedePermisjoner` |
 | `annen_ikke_lovfestet` | leave | days | no | — | yes | yes | absent | `andreIkkeLovfestedePermisjoner` |
 | `absent` | other | days | no | — | — | no | absent | — (reserved, always hidden) |
+| `absent_hours` | other | hours | no | — | — | no | absent | — (reserved, always hidden) |
 
 - **No percentage on the sick kinds.** A sykmelding's share of each day is its degree
   (`degree_percent`), not a percentage; ferie is whole days.
@@ -1490,7 +1497,11 @@ The seeds, every installation's, in their order:
   fødselspermisjon, which reveal special-category data: the manager sees "leave", the
   type is `staff:personal-data`'s and the person's own.
 - **The reserved `absent`** is what the health erase writes in place of a sick or
-  child-sick type; it is hidden and is never shown again (`seed_immutable`).
+  child-sick type; **`absent_hours`** is its counterpart counted in hours, for an hour
+  row an erase reaches, so it keeps its hours and counts no day. Both are hidden and
+  never shown again (`seed_immutable`); `reserved` is true on both. `ammefri` is seeded
+  **paid**: aml. § 12-8 (2) gives pay for up to one hour a day in the child's first
+  year on a working day of seven hours or more.
 - **Reading.** `GET /absence-types` answers every type that is not hidden to every
   caller — `hr_only` ones included: the type is public, who takes it is not — and the
   hidden ones too to `staff:manage`. `GET /meta` answers the same visible list as
@@ -1503,7 +1514,7 @@ The seeds, every installation's, in their order:
 - **A change** (`PUT /absence-types/{id}`, `staff:manage`, `If-Match`) replaces the
   names, the flags, the visibility, the mapping, `hidden` and `sort`; a body naming
   `key`, `kind` or `unit` is a 400 naming it. A **seed** changes its names, its order
-  and whether it is hidden, nothing else: anything more, and showing `absent`, is
+  and whether it is hidden, nothing else: anything more, and showing a reserved type, is
   `seed_immutable` (409). A company type's visibility is **widened** — `hr_only` to
   `absent` — only while no absence names it: once one does, widening is
   `absence_type_in_use` (409), since it would show colleagues and managers, after the

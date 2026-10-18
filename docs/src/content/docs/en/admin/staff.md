@@ -362,8 +362,8 @@ On the screen, as a user with `staff:manage`: open **Staff settings** and find
 
 1. The table lists every type: its name, its **Kind**, **Who sees the type** (*Manager
    and HR*, or *HR only*), what it is **Reported in the a-melding as**, its rules and
-   whether it is **Seeded** or **Hidden**. The reserved type the health erase writes
-   is not listed.
+   whether it is **Seeded** or **Hidden**. The two reserved types the erases write
+   (*Absent* and *Absent (hours)*) are not listed.
 2. **New absence type** adds one of your own: a **Key**, the **Name in English** and
    **Name in Norwegian**, the **Kind** and what it is **Counted in** (both fixed from
    then on), who sees it, the a-melding description, and the switches **Needs a
