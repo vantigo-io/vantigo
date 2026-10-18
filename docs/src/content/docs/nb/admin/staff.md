@@ -236,27 +236,40 @@ prøv igjen om noen minutter. `person_erased` (409) — en slettet persons konto
 ikke. `accounts_unavailable` (503) — ingen modul tilbyr kontoer, eller identity svarte
 ikke; koblingen registrerer feilen og arbeideren prøver igjen.
 
+En kjøring fortsetter når nettleseren eller en mellomtjener gir opp å vente. Det
+realistiske verste tilfellet er flere minutter — hvert kall til identity kan vente opptil
+to minutter, og identity sender invitasjonene på e-post — så når identity eller
+e-posttjeneren er treg, kan forespørselen gå ut på tid i nettleseren mens arbeidet
+fortsatt blir gjort: les Konto-fanen, eller dashbordet, igjen etterpå i stedet for å
+kjøre den to ganger.
+
 ### Deaktiver en konto nå
 
 `POST /api/v1/staff/people/{id}/account/disable` (`staff:manage`) **slår av personens
 kontoflagg** og deaktiverer brukeren straks, så arbeideren lar den være deaktivert til
 HR slår flagget på igjen.
 
-1. Send forespørselen. Flagget slås av først (historikken viser `account_flag_updated`),
-   så deaktiverer identity brukeren (`account_deactivated`) og avslutter øktene. Personens
-   egen revisjon flytter seg ikke.
+1. Send forespørselen. Flagget slås av først (historikken viser `account_flag_updated`)
+   sammen med en merknad på koblingen om at en deaktivering er bedt om, så deaktiverer
+   identity brukeren (`account_deactivated`) og avslutter øktene. Personens egen revisjon
+   flytter seg ikke. Gir nettleseren opp å vente, fortsetter deaktiveringen likevel; det
+   som ikke når fram til identity, gjør arbeideren ferdig ved de neste kjøringene.
 2. Kontroller: svaret (personens konto) har `provisionAccount: false` og koblingen
    `state: disabled`. En person uten kobling, eller der brukeren ikke er opprettet ennå,
    får bare flagget slått av.
 3. Hva kan gå galt:
-   - `accounts_busy` (409): arbeideren holder personens kobling; ingenting ble endret.
-     Prøv igjen om noen minutter.
+   - `accounts_busy` (409): arbeideren holder personens kobling. Som regel ble ingenting
+     endret — prøv igjen om noen minutter. Tok arbeideren koblingen i øyeblikket etter at
+     flagget ble skrevet, **er flagget allerede av**: da gjør arbeideren deaktiveringen
+     ferdig selv.
    - `account_not_managed` (409): personen er koblet for hånd til en bruker Ansatte ikke
      styrer; `account_privileged` (409): brukeren er Owner eller SystemAdmin. Flagget er
-     av, men brukeren forblir aktiv: en Owner deaktiverer dem i identity.
+     av, men brukeren forblir aktiv: en Owner deaktiverer dem i identity. Arbeideren
+     prøver igjen daglig, og dashbordet viser *accountFailing* så lenge brukeren er aktiv.
    - `accounts_unavailable` (503): identity svarte ikke. **Flagget er allerede av**, men
-     brukeren er fortsatt aktiv: koblingen registrerer feilen og dashbordet viser
-     *accountFailing*. Ingen runde prøver igjen — send forespørselen på nytt.
+     brukeren er fortsatt aktiv: koblingen registrerer feilen, arbeideren prøver
+     deaktiveringen igjen ved hver kjøring, og dashbordet viser *accountFailing* til
+     identity svarer. Send forespørselen på nytt om det vedvarer.
 
 En slettet persons konto kan også deaktiveres.
 
@@ -265,8 +278,9 @@ En slettet persons konto kan også deaktiveres.
 `staff:manage` ser ett punkt per person på dashbordet når arbeideren står fast for dem,
 lest fra Ansattes egne data (identity spørres ikke når dashbordet lastes). Hvert punkt
 navngir personen og ikke noe mer; åpne Konto-fanen deres for detaljene. Bare personer
-med flagget på som ikke er slettet listes, unntatt *accountFailing* for en Deaktiver nå
-som feilet.
+med flagget på som ikke er slettet listes, unntatt *accountFailing* for en deaktivering
+som er bedt om og ikke har nådd identity — også for en slettet person, med tittelen «An
+erased person».
 
 | Punkt | Hva det betyr | Hva du gjør |
 | --- | --- | --- |
@@ -283,7 +297,8 @@ som feilet.
 | `accountEmailDiffers` | Brukerens adresse i identity er ulik personens | En Owner endrer den i identity (Ansatte endrer den bare mens brukeren venter) |
 | `accountEmailTaken` | En annen bruker i identity har adressen | Rydd opp i duplikatet i identity, eller endre personens adresse |
 | `accountNumberTaken` | En bruker Ansatte ikke styrer har ansattnummeret | En Owner tar den brukeren inn for Ansatte, eller rydder i nummeret |
-| `accountFailing` | Identity svarte ikke tre ganger på rad, eller en Deaktiver nå feilet | Sjekk identity og loggen; send Deaktiver nå igjen |
+| `accountFailing` (flagget på) | Identity svarte ikke tre ganger på rad | Sjekk identity og loggen, og kjør så Kjør nå |
+| `accountFailing` (flagget av, eller en slettet person) | En Deaktiver nå har ikke nådd identity — feilet, eller ventet mer enn ti minutter | Arbeideren prøver igjen ved hver kjøring; send Deaktiver nå på nytt om det vedvarer |
 | `invitationUnanswered` | Tre invitasjoner ble ikke besvart | Sjekk adressen; Kjør nå sender en ny |
 | `invitationRevoked` | En Owner trakk invitasjonen tilbake | Kjør nå sender en ny, om personen skal ha den |
 | `employeeRoleMissing` | Ingen ansattrolle er navngitt (ett punkt, med antall) | En Owner navngir rollene Ansatte kan gi |

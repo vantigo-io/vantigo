@@ -82,3 +82,12 @@ func SetRetentionRunLedgerBudget(t *testing.T, d time.Duration) {
 // RetentionLeaseKey is the retention worker's advisory lease, for the test
 // that holds it from outside to see the run refused as busy.
 const RetentionLeaseKey = retentionLeaseKey
+
+// OnDisableCommitted runs fn when Disable now for personID has committed the
+// flag off, before it claims the link — the moment a test makes the worker
+// take the link — for the rest of t.
+func OnDisableCommitted(t *testing.T, personID int64, fn func()) {
+	t.Helper()
+	disableCommittedHooks.Store(personID, fn)
+	t.Cleanup(func() { disableCommittedHooks.Delete(personID) })
+}

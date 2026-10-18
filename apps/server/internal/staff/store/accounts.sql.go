@@ -51,31 +51,34 @@ func (q *Queries) AccountCandidates(ctx context.Context) ([]int64, error) {
 
 const accountLinkAttention = `-- name: AccountLinkAttention :many
 
-SELECT l.person_id, p.display_name, p.provision_account, l.state, (l.external_id IS NOT NULL)::boolean AS has_user,
-    l.blocked_reason, l.last_error, l.attempts, l.updated_at
+SELECT l.person_id, p.display_name, p.provision_account, (p.erased_at IS NOT NULL)::boolean AS erased,
+    l.blocked_reason, l.last_error, l.attempts, l.disable_requested_at, l.updated_at
 FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
-WHERE l.provider = 'identity' AND p.erased_at IS NULL
-  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL)
+WHERE l.provider = 'identity'
+  AND (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL)
+  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL OR l.disable_requested_at IS NOT NULL)
 ORDER BY l.person_id
 `
 
 type AccountLinkAttentionRow struct {
-	PersonID         int64
-	DisplayName      string
-	ProvisionAccount bool
-	State            string
-	HasUser          bool
-	BlockedReason    *string
-	LastError        *string
-	Attempts         int32
-	UpdatedAt        time.Time
+	PersonID           int64
+	DisplayName        string
+	ProvisionAccount   bool
+	Erased             bool
+	BlockedReason      *string
+	LastError          *string
+	Attempts           int32
+	DisableRequestedAt *time.Time
+	UpdatedAt          time.Time
 }
 
 // The account attention items (Task 4c, accounts_attention.go), from Staff's
 // own rows alone: identity is never asked at read time.
-// AccountLinkAttention is every link of a person not erased that the worker
-// left a reason or an error on, with the person's name and flag.
+// AccountLinkAttention is every link the worker left a reason or an error
+// on, or that carries a disable requested, of a person not erased — or of an
+// erased one whose link carries a disable requested (Task 4c review M2) —
+// with the person's name, flag and erasure.
 func (q *Queries) AccountLinkAttention(ctx context.Context) ([]AccountLinkAttentionRow, error) {
 	rows, err := q.db.Query(ctx, accountLinkAttention)
 	if err != nil {
@@ -89,11 +92,11 @@ func (q *Queries) AccountLinkAttention(ctx context.Context) ([]AccountLinkAttent
 			&i.PersonID,
 			&i.DisplayName,
 			&i.ProvisionAccount,
-			&i.State,
-			&i.HasUser,
+			&i.Erased,
 			&i.BlockedReason,
 			&i.LastError,
 			&i.Attempts,
+			&i.DisableRequestedAt,
 			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -172,7 +175,8 @@ UPDATE staff.identity_links SET lease_id = $1::uuid, lease_until = $2::timestamp
 WHERE id = (
     SELECT l.id FROM staff.identity_links l
     JOIN staff.people p ON p.id = l.person_id
-    WHERE l.provider = 'identity' AND p.provision_account AND p.erased_at IS NULL
+    WHERE l.provider = 'identity'
+      AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL)
       AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= $3::timestamptz)
       AND (l.lease_until IS NULL OR l.lease_until <= $3::timestamptz)
     ORDER BY l.next_attempt_at NULLS FIRST, l.id
@@ -180,7 +184,7 @@ WHERE id = (
     FOR UPDATE OF l SKIP LOCKED
 )
 RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error, attempts,
-    last_synced_at, last_spec_hash, synced_employee_number
+    last_synced_at, last_spec_hash, synced_employee_number, disable_requested_at
 `
 
 type ClaimAccountLinkParams struct {
@@ -201,11 +205,14 @@ type ClaimAccountLinkRow struct {
 	LastSyncedAt         *time.Time
 	LastSpecHash         []byte
 	SyncedEmployeeNumber *string
+	DisableRequestedAt   *time.Time
 }
 
 // ClaimAccountLink leases the next due link — its next attempt reached or
 // never set, no lease or a lapsed one — of a person whose flag is on and who
-// is not erased: the link row alone is locked (OF l), and one another cycle
+// is not erased, or whose link carries a disable Disable now asked for and
+// identity has not confirmed (disable_requested_at, Task 4c review M1),
+// whatever the flag and the erasure: the link row alone is locked (OF l), and one another cycle
 // is claiming is skipped. Blocked and failed links are claimed on their
 // schedule like any other: the decision table never reads blocked as an
 // input, so a link recovers when what blocked it is gone. LIMIT 1 with SKIP
@@ -228,6 +235,7 @@ func (q *Queries) ClaimAccountLink(ctx context.Context, arg ClaimAccountLinkPara
 		&i.LastSyncedAt,
 		&i.LastSpecHash,
 		&i.SyncedEmployeeNumber,
+		&i.DisableRequestedAt,
 	)
 	return i, err
 }
@@ -242,7 +250,7 @@ WHERE id = (
     FOR UPDATE OF l
 )
 RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error, attempts,
-    last_synced_at, last_spec_hash, synced_employee_number
+    last_synced_at, last_spec_hash, synced_employee_number, disable_requested_at
 `
 
 type ClaimPersonAccountLinkParams struct {
@@ -264,6 +272,7 @@ type ClaimPersonAccountLinkRow struct {
 	LastSyncedAt         *time.Time
 	LastSpecHash         []byte
 	SyncedEmployeeNumber *string
+	DisableRequestedAt   *time.Time
 }
 
 // Run now and Disable now (Task 4c): one person's link, claimed as the cycle
@@ -293,6 +302,7 @@ func (q *Queries) ClaimPersonAccountLink(ctx context.Context, arg ClaimPersonAcc
 		&i.LastSyncedAt,
 		&i.LastSpecHash,
 		&i.SyncedEmployeeNumber,
+		&i.DisableRequestedAt,
 	)
 	return i, err
 }
@@ -300,7 +310,8 @@ func (q *Queries) ClaimPersonAccountLink(ctx context.Context, arg ClaimPersonAcc
 const countDueAccountLinks = `-- name: CountDueAccountLinks :one
 SELECT count(*) FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
-WHERE l.provider = 'identity' AND p.provision_account AND p.erased_at IS NULL
+WHERE l.provider = 'identity'
+  AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL)
   AND (l.next_attempt_at IS NULL OR l.next_attempt_at <= $1::timestamptz)
 `
 
@@ -481,6 +492,24 @@ func (q *Queries) RecordPreparedUser(ctx context.Context, arg RecordPreparedUser
 	return result.RowsAffected(), nil
 }
 
+const releaseAccountLease = `-- name: ReleaseAccountLease :exec
+UPDATE staff.identity_links SET lease_id = NULL, lease_until = NULL
+WHERE id = $1 AND lease_id = $2::uuid
+`
+
+type ReleaseAccountLeaseParams struct {
+	ID      int64
+	LeaseID uuid.UUID
+}
+
+// ReleaseAccountLease ends a claim that writes no result — its facts could
+// not be read — so the link is not held for five minutes for nothing (Task
+// 4c review L3).
+func (q *Queries) ReleaseAccountLease(ctx context.Context, arg ReleaseAccountLeaseParams) error {
+	_, err := q.db.Exec(ctx, releaseAccountLease, arg.ID, arg.LeaseID)
+	return err
+}
+
 const renewAccountLease = `-- name: RenewAccountLease :execrows
 UPDATE staff.identity_links SET lease_until = $1::timestamptz
 WHERE id = $2 AND lease_id = $3::uuid AND lease_until > $4::timestamptz
@@ -508,6 +537,25 @@ func (q *Queries) RenewAccountLease(ctx context.Context, arg RenewAccountLeasePa
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const requestAccountDisable = `-- name: RequestAccountDisable :exec
+UPDATE staff.identity_links SET disable_requested_at = coalesce(disable_requested_at, $1::timestamptz)
+WHERE person_id = $2 AND provider = 'identity' AND external_id IS NOT NULL
+`
+
+type RequestAccountDisableParams struct {
+	Now      time.Time
+	PersonID int64
+}
+
+// RequestAccountDisable records on the person's link, when it names a user,
+// that Disable now asked for the user to be disabled — the first request's
+// instant kept — in the transaction that turns the flag off, so a disable
+// that never reaches identity is the worker's to finish (Task 4c review M1).
+func (q *Queries) RequestAccountDisable(ctx context.Context, arg RequestAccountDisableParams) error {
+	_, err := q.db.Exec(ctx, requestAccountDisable, arg.Now, arg.PersonID)
+	return err
 }
 
 const updatePersonAccount = `-- name: UpdatePersonAccount :one
@@ -554,11 +602,12 @@ UPDATE staff.identity_links SET
     last_synced_at = $8::timestamptz,
     last_spec_hash = $9::bytea,
     synced_employee_number = $10::varchar,
+    disable_requested_at = $11::timestamptz,
     lease_id = NULL,
     lease_until = NULL,
-    updated_at = $11::timestamptz
-WHERE id = $12 AND lease_id = $13::uuid
-  AND external_id IS NOT DISTINCT FROM $14::text
+    updated_at = $12::timestamptz
+WHERE id = $13 AND lease_id = $14::uuid
+  AND external_id IS NOT DISTINCT FROM $15::text
 `
 
 type WriteAccountResultParams struct {
@@ -572,6 +621,7 @@ type WriteAccountResultParams struct {
 	LastSyncedAt         *time.Time
 	LastSpecHash         []byte
 	SyncedEmployeeNumber *string
+	DisableRequestedAt   *time.Time
 	Now                  time.Time
 	ID                   int64
 	LeaseID              uuid.UUID
@@ -596,6 +646,7 @@ func (q *Queries) WriteAccountResult(ctx context.Context, arg WriteAccountResult
 		arg.LastSyncedAt,
 		arg.LastSpecHash,
 		arg.SyncedEmployeeNumber,
+		arg.DisableRequestedAt,
 		arg.Now,
 		arg.ID,
 		arg.LeaseID,

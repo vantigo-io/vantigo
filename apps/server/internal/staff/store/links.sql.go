@@ -168,6 +168,7 @@ ON CONFLICT (person_id, provider) DO UPDATE SET
     last_synced_at = NULL,
     last_spec_hash = NULL,
     synced_employee_number = NULL,
+    disable_requested_at = NULL,
     lease_id = NULL,
     lease_until = NULL,
     updated_at = EXCLUDED.updated_at

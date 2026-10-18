@@ -564,7 +564,7 @@ func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerC
 		if in.affected, err = q.HolidayAffectedBySickness(ctx, dayParam(c.Today)); err != nil {
 			return nil, fmt.Errorf("staff: read the ferie affected by sickness: %w", err)
 		}
-		if in.accounts, err = readAccountAttention(ctx, q, c.Today); err != nil {
+		if in.accounts, err = readAccountAttention(ctx, q, c.Today, s.deps.Clock()); err != nil {
 			return nil, err
 		}
 	}
