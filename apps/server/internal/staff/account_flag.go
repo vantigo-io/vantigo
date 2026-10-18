@@ -142,23 +142,44 @@ func readAccountLink(ctx context.Context, q *store.Queries, personID int64) (*st
 	return &row, nil
 }
 
-// effectiveProvisionFrom is the day the account is enabled (spec reading 14):
+// effectiveProvisionFrom is the day the account is enabled — the date the
+// accounts worker acts on, by its own rule (accountFrom, accounts_decide.go):
 // the stored date, else the first day of the earliest employment that has
-// not ended by today, else none.
+// not ended by today; between employments the later start, unless the stored
+// date is the later one's own; none when there is no such date.
 func effectiveProvisionFrom(ctx context.Context, q *store.Queries, p accountPerson, today time.Time) (*openapi_types.Date, error) {
-	if p.provisionFrom.Valid {
-		return dateOf(p.provisionFrom), nil
+	employments, err := accountEmployments(ctx, q, p.id)
+	if err != nil {
+		return nil, err
 	}
-	start, err := q.EarliestOpenEmploymentStart(ctx, store.EarliestOpenEmploymentStartParams{
-		PersonID: p.id, Today: pgtype.Date{Time: today, Valid: true},
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
+	var stored *time.Time
+	if p.provisionFrom.Valid {
+		stored = &p.provisionFrom.Time
+	}
+	from, ok := accountFrom(stored, employments, today)
+	if !ok {
 		return nil, nil
 	}
+	return &openapi_types.Date{Time: from}, nil
+}
+
+// accountEmployments is every employment of the person's, as the decision
+// table reads them: the civil start and end.
+func accountEmployments(ctx context.Context, q *store.Queries, personID int64) ([]decideEmployment, error) {
+	rows, err := q.ListPersonEmployments(ctx, personID)
 	if err != nil {
-		return nil, fmt.Errorf("staff: read person %d's earliest employment: %w", p.id, err)
+		return nil, fmt.Errorf("staff: read person %d's employments: %w", personID, err)
 	}
-	return dateOf(start), nil
+	out := make([]decideEmployment, 0, len(rows))
+	for _, e := range rows {
+		d := decideEmployment{Start: e.StartDate.Time}
+		if e.EndDate.Valid {
+			end := e.EndDate.Time
+			d.End = &end
+		}
+		out = append(out, d)
+	}
+	return out, nil
 }
 
 // readsAccount is whether the caller reads personID's account: the links

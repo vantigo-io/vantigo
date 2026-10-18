@@ -23,16 +23,6 @@ UPDATE staff.people SET
 WHERE id = @id
 RETURNING account_revision;
 
--- name: EarliestOpenEmploymentStart :one
--- EarliestOpenEmploymentStart is the first day of the person's earliest
--- employment that has not ended by @today — the end day itself is still
--- worked — the account's effective date when HR set none (spec reading 14).
--- No row is a person with no such employment.
-SELECT start_date FROM staff.employments
-WHERE person_id = @person_id AND (end_date IS NULL OR end_date >= @today::date)
-ORDER BY start_date, id
-LIMIT 1;
-
 -- name: PersonAccountLink :one
 -- PersonAccountLink is a person's link under the identity provider with the
 -- worker's columns the account reads. No row is a person with no link.
