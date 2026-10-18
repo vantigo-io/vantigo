@@ -231,6 +231,10 @@ func (s *server) PostStaffAbsenceTypes(ctx context.Context, req gen.PostStaffAbs
 	var f fieldErrors
 	if !absenceTypeKeyPattern.MatchString(body.Key) {
 		f.add("key", "A key is 1 to 40 characters of a–z, 0–9 and underscores")
+	} else if slices.Contains(reservedTypes, body.Key) {
+		// The reserved types' keys are the erase's (review M3), never a
+		// company type's.
+		f.add("key", fmt.Sprintf("'%s' is reserved for the types the retention run writes; choose another key", body.Key))
 	}
 	kind := string(body.Kind)
 	if !slices.Contains(companyAbsenceKinds, kind) {
@@ -325,7 +329,7 @@ func (s *server) PutStaffAbsenceTypesById(ctx context.Context, req gen.PutStaffA
 		}
 		if row.Seeded && row.Key == ammefriType && !flags.Paid {
 			return refuseConflict(conflict(codeSeedImmutable, "Seeded absence type",
-				fmt.Sprintf("%s is paid by law: aml. § 12-8 (2) pays up to one hour a day in the child's first year on a working day of seven hours or more. Pay beyond that is the company's, marked by a company type or the absence's note.", row.NameEn)))
+				fmt.Sprintf("%s is paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own.", row.NameEn)))
 		}
 		if row.Seeded && !seedChangeAllowed(row, flags) {
 			return refuseConflict(conflict(codeSeedImmutable, "Seeded absence type",

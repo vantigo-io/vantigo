@@ -1520,11 +1520,11 @@ The seeds, every installation's, in their order:
 - **Pay.** `paid` is informational: no figure reads it — the payroll export and its
   totals count days and hours by kind, never by pay. A seed's pay is **HR's to change**
   (the owner's answer 7): a company that pays beyond the law marks the seed paid, and
-  can take it back. `ammefri` is the exception: it is seeded **paid** — aml. § 12-8 (2)
-  gives pay for up to one hour a day in the child's first year on a working day of
-  seven hours or more — and is never set unpaid (`seed_immutable`, 409, the detail
-  naming the paragraph). Pay beyond that floor — more than an hour, or after the first
-  year — is the company's, marked by a company type of its own or the absence's note.
+  can take it back. `ammefri` is the exception: it is seeded **paid** —
+  paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own — and is never set unpaid (`seed_immutable`, 409, the detail saying so).
+  The keys of the four reserved types are refused for a company type (400 on `key`).
+  An erase switch turned on or off is recorded as the installation event
+  `settings_updated`, naming the field `from` and `to`, the caller its actor.
 - **Reading.** `GET /absence-types` answers every type that is not hidden to every
   caller — `hr_only` ones included: the type is public, who takes it is not — and the
   hidden ones too to `staff:manage`. `GET /meta` answers the same visible list as

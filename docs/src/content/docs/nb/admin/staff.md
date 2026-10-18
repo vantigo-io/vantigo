@@ -442,10 +442,8 @@ loven gir lønn for: en virksomhet der avtalen gir lønn under for eksempel
 foreldrepermisjon eller omsorgspermisjon, slår **Lønnet** på for den typen, og av igjen
 om avtalen opphører. Flagget er til opplysning — ingen tall leser det, heller ikke
 lønnseksporten, som rapporterer dager og timer etter art — så det forteller HR og lønn
-hva virksomheten har bestemt, ikke mer. **Ammefri** er lønnet etter loven og forblir
-lønnet: aml. § 12-8 (2) gir lønn for inntil én time per dag i barnets første leveår ved
-arbeidsdag på sju timer eller mer. Lønn utover det — en lengre pause, eller etter det
-første året — er virksomhetens; merk den med en egen type eller i fraværets notat.
+hva virksomheten har bestemt, ikke mer. **Ammefri** forblir
+lønnet: den er lønnet innenfor grensene i aml. § 12-8 (2) — inntil én time per dag i barnets første leveår ved arbeidsdag på sju timer eller mer; ammefri utover det er ulønnet etter loven med mindre annet er avtalt — registrer den med en egen type.
 
 **Velg a-meldingskoden etter permisjonens rettsgrunnlag.** A-meldingen tar imot seks
 permisjonsbeskrivelser og permittering. Velferdspermisjon er avtalt, ikke lovfestet, så

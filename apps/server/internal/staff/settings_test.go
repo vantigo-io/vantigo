@@ -2,6 +2,7 @@ package staff_test
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -297,5 +298,26 @@ func TestSettings_TheEraseSettings(t *testing.T) {
 	viewer, _ := signIn(t, h, "staff:view")
 	if r := viewer.Do(http.MethodGet, settingsPath, nil); r.Status != http.StatusForbidden {
 		t.Errorf("staff:view reading the settings: %d, want 403", r.Status)
+	}
+}
+
+// Turning an erase setting on or off is recorded (review L4): an
+// installation event settings_updated naming the field, from and to, with
+// the caller as its actor; a replace that changes neither records none.
+func TestSettings_AnEraseSwitchIsRecorded(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, hrID := signIn(t, h, "staff:manage")
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"erasePregnancyHealthTypes": true}), http.StatusOK, nil, ifMatch(1))
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(nil), http.StatusOK, nil, ifMatch(2))
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"erasePregnancyHealthTypes": false, "eraseSickCaseDates": true}), http.StatusOK, nil, ifMatch(3))
+	got := modtest.One[[]string](t, h.Harness, `SELECT coalesce(array_agg(payload->'fields' ORDER BY id)::text[], '{}') FROM staff.events
+		WHERE person_id IS NULL AND kind = 'settings_updated' AND actor_user_id = $1`, hrID)
+	want := []string{
+		`{"erasePregnancyHealthTypes": {"to": true, "from": false}}`,
+		`{"eraseSickCaseDates": {"to": true, "from": false}, "erasePregnancyHealthTypes": {"to": false, "from": true}}`,
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("settings_updated events = %v, want %v", got, want)
 	}
 }

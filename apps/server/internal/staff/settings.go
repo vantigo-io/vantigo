@@ -145,6 +145,32 @@ func parseEraseSettings(ctx context.Context, body gen.StaffSettingsRequest, f *f
 	return eraseSettings{pregnancyHealth: body.ErasePregnancyHealthTypes, sickCaseDates: body.EraseSickCaseDates}
 }
 
+// eventSettingsUpdated is the installation event of an erase switch turned
+// on or off (review L4): about no person, naming the fields that changed.
+const eventSettingsUpdated = "settings_updated"
+
+// recordEraseSwitches records settings_updated when a replace turned either
+// erase setting on or off — each erases for good, so who changed it and when
+// is kept; nothing when neither changed.
+func (s *server) recordEraseSwitches(ctx context.Context, txq *store.Queries, who actor, before, after store.StaffSetting) error {
+	c := changes{}
+	for _, f := range []struct {
+		name     string
+		from, to bool
+	}{
+		{"erasePregnancyHealthTypes", before.ErasePregnancyHealthTypes, after.ErasePregnancyHealthTypes},
+		{"eraseSickCaseDates", before.EraseSickCaseDates, after.EraseSickCaseDates},
+	} {
+		if f.from != f.to {
+			c[f.name] = fieldChange{From: f.from, To: f.to}
+		}
+	}
+	if len(c) == 0 {
+		return nil
+	}
+	return s.recordEvent(ctx, txq, nil, eventSettingsUpdated, who, map[string]any{"fields": c}, nil)
+}
+
 // settings reads the installation's settings row. Every path that needs the
 // zone or the sequence goes through it.
 func settings(ctx context.Context, q *store.Queries) (store.StaffSetting, error) {
@@ -244,11 +270,15 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 		return gen.PutStaffSettings400ApplicationProblemPlusJSONResponse(invalid(invalidSettingsTitle, f)), nil
 	}
 
+	who, err := s.actorFor(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var (
 		saved store.StaffSetting
 		stale *int32
 	)
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := txq.LockSettings(ctx)
 		if err != nil {
 			return fmt.Errorf("staff: lock the settings: %w", err)
@@ -284,7 +314,7 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 		if err != nil {
 			return fmt.Errorf("staff: change the settings: %w", err)
 		}
-		return nil
+		return s.recordEraseSwitches(ctx, txq, who, current, saved)
 	})
 	if err != nil {
 		return nil, err

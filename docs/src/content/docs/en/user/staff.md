@@ -969,11 +969,8 @@ part of a day**, **Paid** or **Unpaid**) and whether it is **Seeded** or **Hidde
   and shown greyed out. Turn **Paid** on for a seed when your company pays for that
   absence beyond what the law requires — the flag is for your records, and the payroll
   export does not read it.
-- **Ammefri** (nursing time) is **Paid**, and stays so: the law (aml. § 12-8 (2)) pays
-  up to one hour a day in the child's first year on a working day of seven hours or
-  more. The form says so, and refuses to save it unpaid. Pay beyond that — more than an
-  hour, or after the first year — is the company's: use a type of your own, or the
-  absence's note.
+- **Ammefri** (nursing time) is **Paid**, and stays so: it is paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own. The form
+  says so, and refuses to save it unpaid.
 - **Hide** stops offering a type for new absence; **Offer** brings it back. Absences
   that name it keep it.
 

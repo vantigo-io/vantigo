@@ -435,11 +435,8 @@ Through the API, as a user with `staff:manage`:
 company whose agreement pays, say, foreldrepermisjon or omsorgspermisjon turns **Paid**
 on for that seed, and off again if the agreement ends. The flag is informational — no
 figure reads it, the payroll export included, which reports days and hours by kind —
-so it tells HR and payroll what the company has decided, nothing more. **Ammefri** is
-paid by law and stays paid: aml. § 12-8 (2) gives pay for up to one hour a day in the
-child's first year on a working day of seven hours or more. Pay beyond that — a longer
-break, or after the first year — is the company's; mark it with a type of your own or
-in the absence's note.
+so it tells HR and payroll what the company has decided, nothing more. **Ammefri** stays
+paid: it is paid within aml. § 12-8 (2)'s limits — up to one hour a day in the child's first year on a working day of seven hours or more; nursing time beyond that is unpaid by law unless agreed — register it with a company type of your own.
 
 **Choose the a-melding mapping by the leave's legal basis.** The a-melding accepts six
 leave descriptions and permittering. Welfare leave is agreed, not statutory, so the
