@@ -146,6 +146,39 @@ const staffPersonAttentionTypes = [
   "holidayAffectedBySickness",
 ];
 
+/**
+ * Staff's account items (delivery C): one per person whose account flag is on,
+ * entityId the person's id, dealt with on the person's Account tab.
+ */
+const staffAccountAttentionTypes = [
+  "accountNoEmployment",
+  "accountEmailMissing",
+  "accountNotFound",
+  "accountNotManaged",
+  "accountBlockedByOwner",
+  "accountDisabledByOwner",
+  "accountUserGone",
+  "accountPrivileged",
+  "accountMismatch",
+  "accountModeChanged",
+  "accountEmailDiffers",
+  "accountEmailTaken",
+  "accountNumberTaken",
+  "accountFailing",
+  "invitationUnanswered",
+  "invitationRevoked",
+];
+
+/** Staff's installation items: entityId the literal 'settings', dealt with in Settings. */
+const staffSettingsAttentionTypes = [
+  "retentionFailing",
+  "otpThreshold",
+  "headcountThreshold",
+  "employeeRoleMissing",
+  "employeeRoleUnsafe",
+  "accountModeMismatch",
+];
+
 /** Staff's attention types about the requests waiting a decision: the approvals inbox's (delivery B). */
 const staffApprovalAttentionTypes = ["absenceAwaitingDecision", "hrOnlyAwaitingDecision"];
 
@@ -235,12 +268,17 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     return "/invoices";
   }
   if (item.module === "staff") {
-    // The types about a person carry their id and open their page; the
-    // requests waiting a decision open the Absence page's approvals; the
-    // deletion ledger and the thresholds are dealt with in Settings.
-    if (staffPersonAttentionTypes.includes(item.type)) return `/staff/people/${encodeURIComponent(item.entityId)}`;
+    // The types about a person carry their id and open their page — an
+    // account item its Account tab, the sole personal-data holder's own
+    // HR-only approval its Absence tab; the requests waiting a decision open
+    // the Absence page's approvals; the deletion ledger, the thresholds and
+    // the accounts' installation items are dealt with in Settings.
+    const person = `/staff/people/${encodeURIComponent(item.entityId)}`;
+    if (staffPersonAttentionTypes.includes(item.type)) return person;
+    if (staffAccountAttentionTypes.includes(item.type)) return `${person}?tab=account`;
+    if (item.type === "hrOnlySelfApproved") return `${person}?tab=absence`;
     if (staffApprovalAttentionTypes.includes(item.type)) return "/staff/absence";
-    if (["retentionFailing", "otpThreshold", "headcountThreshold"].includes(item.type)) return "/staff/settings";
+    if (staffSettingsAttentionTypes.includes(item.type)) return "/staff/settings";
     return "/staff";
   }
   return "/communications/inbox";
@@ -295,6 +333,26 @@ const staffAttentionTitleKeys: Record<string, string> = {
   holidayAffectedBySickness: "dashboard.staffHolidayAffectedBySickness",
   absenceAwaitingDecision: "dashboard.staffAbsenceAwaitingDecision",
   hrOnlyAwaitingDecision: "dashboard.staffHrOnlyAwaitingDecision",
+  hrOnlySelfApproved: "dashboard.staffHrOnlySelfApproved",
+  accountNoEmployment: "dashboard.staffAccountNoEmployment",
+  accountEmailMissing: "dashboard.staffAccountEmailMissing",
+  accountNotFound: "dashboard.staffAccountNotFound",
+  accountNotManaged: "dashboard.staffAccountNotManaged",
+  accountBlockedByOwner: "dashboard.staffAccountBlockedByOwner",
+  accountDisabledByOwner: "dashboard.staffAccountDisabledByOwner",
+  accountUserGone: "dashboard.staffAccountUserGone",
+  accountPrivileged: "dashboard.staffAccountPrivileged",
+  accountMismatch: "dashboard.staffAccountMismatch",
+  accountModeChanged: "dashboard.staffAccountModeChanged",
+  accountEmailDiffers: "dashboard.staffAccountEmailDiffers",
+  accountEmailTaken: "dashboard.staffAccountEmailTaken",
+  accountNumberTaken: "dashboard.staffAccountNumberTaken",
+  accountFailing: "dashboard.staffAccountFailing",
+  invitationUnanswered: "dashboard.staffInvitationUnanswered",
+  invitationRevoked: "dashboard.staffInvitationRevoked",
+  employeeRoleMissing: "dashboard.staffEmployeeRoleMissing",
+  employeeRoleUnsafe: "dashboard.staffEmployeeRoleUnsafe",
+  accountModeMismatch: "dashboard.staffAccountModeMismatch",
 };
 
 const staffHeadcountThresholdKeys: Record<string, string> = {

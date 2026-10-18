@@ -39,9 +39,12 @@ see [SSO and SCIM operations](/en/admin/sso-scim/).
 ## Find a user
 
 **Users** lists every account with its **Avatar**, name and email, **Role** (User or
-Owner), **Access** and **2FA** (On or Off). Access reads **Active**,
-**Administrator-disabled** or **Temporarily locked out** — the last after five wrong
-passwords in a row, which clears by itself after 15 minutes.
+Owner), **Access** and **2FA** (On or Off). Access reads **Active**, **Pending** (an
+account Staff made that waits for its invitation to be accepted), **Disabled by an
+Owner**, **Disabled by Staff** or **Temporarily locked out** — the last after five
+wrong passwords in a row, which clears by itself after 15 minutes. An account Staff
+manages carries **Managed by Staff · no.** and its employee number under the address
+(see [Accounts Staff manages](#accounts-staff-manages)).
 
 The cards above the list count **Active**, **Disabled**, **SSO** (accounts that
 sign in through the identity provider) and **Admins** (Owners); select one to filter
@@ -108,7 +111,59 @@ Deletion is refused in three cases, each explained on screen: the last active Ow
 an account that was provisioned by SCIM or signed in through the identity provider
 ("This user has SCIM or federated identity history and cannot be deleted." —
 disable it instead, or deprovision it from the provider); and an Owner who has
-granted delegations that still exist — revoke those first.
+granted delegations that still exist — revoke those first. An account Staff manages
+has no **Delete user** at all; its menu says why instead (below).
+
+## Accounts Staff manages
+
+When HR turns the account flag on for a person in [Staff](/en/user/staff/), Staff's
+provisioning creates their account ahead of their first day, enables it on the day and
+disables it after their last — never deleting it. Such an account is **Managed by
+Staff**, with the employee number that ties it to the person, and the Users page shows
+it that way. Staff acts only on accounts it manages: an account someone already had
+becomes Staff's only when an Owner adopts it.
+
+**A pending account.** Staff creates the account **Pending**: it exists, with the
+person's name and the roles Staff may give, but it cannot be used until the person
+accepts the invitation Staff sends them and chooses a password (see
+[Getting started](/en/user/getting-started/#when-your-account-was-set-up-from-the-staff-register)).
+Its menu's **Enable access** is greyed out — "Not accepted their invitation yet: the
+account opens only when they accept it." — and setting a password or making it an
+Owner is refused for the same reason. You may still **Disable access**; Staff then does
+not enable it, and HR sees why on the person's Account tab.
+
+**Who disabled it.** Staff disables an account the day after the person's last
+employment ends; the row reads **Disabled by Staff**. When you disable an account
+yourself it reads **Disabled by an Owner**, also over Staff's own disable, and Staff
+never enables an account an Owner disabled. **Enable access** clears either.
+
+**Adopt an account for Staff.** For a person who already had an account before HR
+registered them, open the account's menu and choose **Adopt for Staff**. Type the
+person's **Employee number** as Staff has it — "1 to 16 characters: letters a–z,
+digits and hyphens." — and choose **Adopt**: "Staff now manages the account", and
+Staff's accounts worker takes it over on its next run. The menu does not offer it for
+an Owner, and refuses, in words:
+
+- "Another user already has this employee number." — another account holds it,
+  however it is cased.
+- "An Owner or a system administrator cannot be managed by Staff; an Owner looks after
+  those accounts by hand."
+- "Enter 1 to 16 characters, each a letter a–z, a digit or a hyphen." — a number
+  outside Staff's alphabet, said before anything is sent.
+
+**Stop managing.** **Stop managing** on a managed account asks **Stop Staff managing
+this account?** — "Staff will no longer enable, disable or update _name_. The account
+stays as it is now; a pending account stays pending until the person accepts their
+invitation or you delete it." Afterwards Staff leaves the account alone and HR sees
+"not managed" on the person's Account tab. Making a managed account an Owner stops
+Staff managing it in the same change.
+
+**Delete.** A managed account cannot be deleted: its menu says "Staff manages this
+account, so it cannot be deleted. Stop managing it first." Stop managing it, then
+delete it as any other.
+
+What Staff does on its side, and when, is described in the
+[administration guide for Staff](/en/admin/staff/).
 
 ## Follow up invitations
 
@@ -128,6 +183,16 @@ when you withdraw it. The actions menu on a pending or expired row offers:
 - **Revoke** — after **Revoke invitation?** ("_email_ will no longer be able to use
   this invitation."), the link is dead. Nothing can be done with an accepted or
   revoked invitation.
+
+A revoked invitation says why under its status:
+
+- **Revoked by an Owner** — you or another Owner revoked it.
+- **Replaced by a newer invitation or an account** — the address was invited again, or
+  an account was made for it.
+- **The email could not be sent** — see below.
+- **The user's address changed** — the account the invitation was for got another
+  address.
+- **Staff deactivated the account** — Staff disabled the pending account it was for.
 
 If the email cannot be sent, the invitation is revoked immediately and the error is
 shown, so a link nobody received never stays live. The email templates and links
@@ -160,6 +225,29 @@ badge counts the **managed custom** roles, which you create.
 Pick at least one permission and choose **Save role**. **Edit** on a custom role
 opens the same dialog; the delete button asks **Delete custom role?** — "Assignments
 using this role may change." — because everyone who held it loses what it granted.
+
+### Roles Staff may give
+
+Below the roles, an Owner sees **Roles Staff may give**: the custom roles every account
+[Staff manages](#accounts-staff-manages) is given when Staff enables it, besides the
+built-in User role. Staff creates no account until you name at least one; until then
+the section says "No role named: Staff creates no accounts until you name one." and
+Staff's dashboard lists the people waiting.
+
+Each custom role is listed with a box to tick and the permissions it carries. Tick the
+roles employees should have and choose **Save roles Staff may give**: the whole set is
+saved at once, so a role you untick is taken out of it — "Roles Staff may give saved".
+
+A role that grants administration cannot be one of them, so that HR, who decides who
+gets an account, can never hand anyone administration: one carrying **Manage
+identity**, **Manage staff**, **Decide absence**, **Reveal and erase personal data** or
+any other permission that cannot be delegated is marked **Grants administration**, and
+saving a set with it is refused, naming the role and the permission — "_role_ carries
+_permission_ (_key_), which grants administration; Staff may not give it." — and
+nothing changes. A role in the set keeps that limit when edited: giving it such a
+permission in the role dialog is refused with "This role is one Staff may give, so it
+cannot receive a permission that grants administration. Take it out of Roles Staff
+may give first." Deleting a role takes it out of the set.
 
 Permissions are additive: a person holds the union of their roles' permissions. What
 each permission unlocks in an app is listed in that app's reference page, for example

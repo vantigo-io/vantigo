@@ -14,6 +14,8 @@ export interface Invitation {
   createdAt: string;
   expiresAt: string;
   revokedAt: string | null;
+  /** Why a revoked invitation was revoked; absent while it is not. */
+  revokedReason?: "owner" | "replaced" | "delivery_failed" | "email_changed" | "deactivated";
   acceptedAt: string | null;
 }
 const json = (method: string, body: unknown) => ({

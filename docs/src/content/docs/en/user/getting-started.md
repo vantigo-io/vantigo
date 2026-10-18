@@ -38,11 +38,12 @@ an account cannot be invited.
 
 When your workplace registers you in Staff, your account may already exist before you
 are invited: HR has set it up with your name, and the invitation only lets you choose
-how to sign in. The link opens the same **Join Vantigo** page; choose a **Password**
-and **Create account**, and you are signed in to the account that was made for you,
-with the roles it was given. Your name stays the one HR registered, whatever you type
-under **Display name**; change it later under
-[your profile](#edit-your-profile).
+how to sign in. The link opens the same **Join Vantigo** page, which then says "Your
+employer has set up this account for you, with your name and roles. Choose a password
+to start using it." It asks no display name: your name is the one HR registered, and
+you change it later under [your profile](#edit-your-profile). Choose a **Password** and
+**Activate account**, and you are signed in to the account that was made for you, with
+the roles it was given.
 
 Such an invitation works only while the account is still waiting for you. If the
 account has been disabled, completed or changed in the meantime, the link opens on

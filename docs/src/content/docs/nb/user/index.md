@@ -33,7 +33,17 @@ over ett eller tre år, personer uten leder, nye vurderinger som skal gjøres, d
 lageret ikke vil slette, terskler for antall ansatte og tjenestepensjon som ikke er
 bekreftet, og fraværspunktene: søknader som venter på din avgjørelse,
 sykefraværsoppfølging som forfaller, ferie igjen fra i fjor eller for lite ferie i
-hovedferien, fravær noen godkjente selv, og sykdom i godkjent ferie.
+hovedferien, fravær noen godkjente selv, og sykdom i godkjent ferie — for den som har
+`staff:personal-data` også HR-fravær som den eneste med den tilgangen godkjente for seg
+selv, som åpner fraværsfanen til personen; og, for `staff:manage`, kontoene: hver
+person Ansatte ikke kan opprette, aktivere eller holde oppdatert en konto for, med
+grunnen — ikke noe arbeidsforhold eller ingen adresse å gi den fra, en konto en eier
+har deaktivert, sluttet å la Ansatte styre eller som tilhører en annen, et nummer
+eller en adresse en annen konto har, invitasjoner som ikke er besvart eller er
+tilbakekalt, forsøk som feiler — som åpner kontofanen til personen, og kontoene som
+venter på installasjonen (ingen roller Ansatte kan gi, en rolle blant dem som gir
+administrasjon, en påloggingsmodus jobben er uenig i), som åpner innstillingene i
+Ansatte.
 
 Inne i en app lister sidemenyen appens områder. Mange av dem vises bare til den som har
 den tilhørende rettigheten — og noen få, som **Hurtigfaktura** i Fakturaer, bare til den

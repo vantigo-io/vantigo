@@ -42,6 +42,13 @@ const statusLabel = (value: ReturnType<typeof status>, t: (key: string) => strin
       : value === "revoked"
         ? t("common.revoked")
         : t("common.accepted");
+/** A revoked invitation's reason, in words, or nothing for one that is not revoked. */
+const revokedReason = (item: Invitation, t: (key: string) => string) =>
+  item.revokedAt && item.revokedReason ? (
+    <Text size="xs" c="dimmed" mt={4}>
+      {t(`admin.revokedReason.${item.revokedReason}`)}
+    </Text>
+  ) : null;
 const InvitationsPage = () => {
   const { t, formatters } = useI18n("host");
   const qc = useQueryClient();
@@ -162,6 +169,7 @@ const InvitationsPage = () => {
                         <Badge color={colors[status(i)]} variant="dot">
                           {statusLabel(status(i), t)}
                         </Badge>
+                        {revokedReason(i, t)}
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm">
@@ -248,6 +256,7 @@ const InvitationsPage = () => {
                     <Badge color={colors[status(i)]} variant="dot">
                       {statusLabel(status(i), t)}
                     </Badge>
+                    {revokedReason(i, t)}
                   </Group>
                 </Card>
               ))}

@@ -23,6 +23,8 @@ import { useDisclosure } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import {
+  IconBriefcase,
+  IconBriefcaseOff,
   IconDots,
   IconLock,
   IconMail,
@@ -47,15 +49,37 @@ import {
   enableUser,
   listUsers,
   type ManagedUser,
+  manageUser,
   sendPasswordReset,
   setUserPassword,
   type UserRole,
+  unmanageUser,
   updateUser,
 } from "../../api/users";
 import { translateHostRole } from "../../i18n";
 import "../../i18n";
 
 const roles = ["User", "Owner"] as const;
+
+/** Staff's employee-number alphabet, as identity checks it once the number is trimmed. */
+const employeeNumberPattern = /^[A-Za-z0-9-]{1,16}$/;
+
+/**
+ * The words for identity's refusals about Staff-managed and pending users;
+ * any other refusal keeps the server's own message.
+ */
+const refusalKeys: Record<string, string> = {
+  account_privileged: "admin.refusalAccountPrivileged",
+  employee_number_taken: "admin.refusalEmployeeNumberTaken",
+  account_managed: "admin.deleteManagedReason",
+  account_pending: "admin.refusalAccountPending",
+};
+
+const refusalMessage = (error: unknown, t: (key: string) => string) => {
+  const key = refusalKeys[(error as { code?: string }).code ?? ""];
+  if (key) return t(key);
+  return error instanceof Error ? error.message : t("common.requestFailed");
+};
 
 const showUserFormError = (
   error: unknown,
@@ -72,7 +96,7 @@ const showUserFormError = (
   notifications.show({
     color: "red",
     title,
-    message: error instanceof Error ? error.message : t("common.requestFailed"),
+    message: refusalMessage(error, t),
   });
 };
 
@@ -88,6 +112,7 @@ const UsersPage = () => {
   const [opened, { open, close }] = useDisclosure(false);
   const [editing, setEditing] = useState<ManagedUser | null>(null);
   const [passwordUser, setPasswordUser] = useState<ManagedUser | null>(null);
+  const [adoptUser, setAdoptUser] = useState<ManagedUser | null>(null);
   const form = useForm({
     initialValues: { displayName: "", email: "", role: "User" as UserRole, password: "" },
     validate: {
@@ -102,12 +127,18 @@ const UsersPage = () => {
       password: (v) => (passwordValid(v) ? undefined : t("admin.passwordValidation")),
     },
   });
+  const adoptForm = useForm({
+    initialValues: { employeeNumber: "" },
+    validate: {
+      employeeNumber: (v) => (employeeNumberPattern.test(v.trim()) ? undefined : t("admin.employeeNumberInvalid")),
+    },
+  });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["owner-users"] });
   const self = (u: ManagedUser) => u.id === session?.user.id;
   const mutationError = (title: string) => (error: unknown) =>
     notifications.show({
       title,
-      message: error instanceof Error ? error.message : t("common.requestFailed"),
+      message: refusalMessage(error, t),
       color: "red",
     });
   const change = useMutation({
@@ -148,6 +179,37 @@ const UsersPage = () => {
     },
     onError: mutationError(t("admin.accessChangeFailed")),
   });
+  const adopt = useMutation({
+    mutationFn: ({ id, employeeNumber }: { id: string; employeeNumber: string }) => manageUser(id, employeeNumber),
+    onSuccess: () => {
+      setAdoptUser(null);
+      adoptForm.reset();
+      refresh();
+      notifications.show({ title: t("admin.adopted"), message: t("admin.adoptedMessage"), color: "teal" });
+    },
+    onError: (error) => {
+      if (error instanceof ApiValidationError)
+        adoptForm.setErrors({ employeeNumber: t("admin.employeeNumberInvalid") });
+      else if ((error as { code?: string }).code === "employee_number_taken")
+        adoptForm.setErrors({ employeeNumber: t("admin.refusalEmployeeNumberTaken") });
+      else mutationError(t("admin.adoptFailed"))(error);
+    },
+  });
+  const unmanage = useMutation({
+    mutationFn: (u: ManagedUser) => unmanageUser(u.id),
+    onSuccess: () => {
+      refresh();
+      notifications.show({ title: t("admin.stoppedManaging"), message: t("admin.saveChange"), color: "teal" });
+    },
+    onError: mutationError(t("admin.stopManagingFailed")),
+  });
+  const confirmUnmanage = (u: ManagedUser) =>
+    modals.openConfirmModal({
+      title: t("admin.stopManagingQuestion"),
+      children: <Text size="sm">{t("admin.stopManagingWarning", { user: u.displayName || u.email })}</Text>,
+      labels: { confirm: t("admin.stopManaging"), cancel: t("common.cancel") },
+      onConfirm: () => unmanage.mutate(u),
+    });
   const reset = useMutation({
     mutationFn: sendPasswordReset,
     onSuccess: () =>
@@ -222,11 +284,21 @@ const UsersPage = () => {
       confirmProps: { color: kind === "delete" ? "red" : undefined },
       onConfirm: () => action.mutate({ user: u, kind }),
     });
-  const status = (u: ManagedUser) =>
-    [u.disabled ? t("admin.administratorDisabled") : t("common.active"), u.lockedOut ? t("admin.lockedOut") : ""]
-      .filter(Boolean)
-      .join(" · ");
-  const statusColor = (u: ManagedUser) => (u.disabled ? "gray" : u.lockedOut ? "orange" : "teal");
+  // A pending user is listed disabled: they are waiting for their invitation,
+  // not shut out — unless an Owner disabled them, which Staff never undoes.
+  const access = (u: ManagedUser) =>
+    u.pending
+      ? [t("admin.userPending"), u.disabledBy === "owner" ? t("admin.disabledByOwner") : ""].filter(Boolean).join(" · ")
+      : !u.disabled
+        ? t("common.active")
+        : u.disabledBy === "staff"
+          ? t("admin.disabledByStaff")
+          : u.disabledBy === "owner"
+            ? t("admin.disabledByOwner")
+            : t("admin.administratorDisabled");
+  const status = (u: ManagedUser) => [access(u), u.lockedOut ? t("admin.lockedOut") : ""].filter(Boolean).join(" · ");
+  const statusColor = (u: ManagedUser) => (u.pending ? "blue" : u.disabled ? "gray" : u.lockedOut ? "orange" : "teal");
+  const staffManaged = (u: ManagedUser) => u.managedBy === "staff";
   const actions = (u: ManagedUser) =>
     self(u) ? (
       <Text size="sm" c="dimmed">
@@ -242,7 +314,7 @@ const UsersPage = () => {
           <ActionIcon
             variant="subtle"
             aria-label={t("admin.actionsFor", { user: u.displayName || u.email || t("common.user") })}
-            disabled={action.isPending || reset.isPending}
+            disabled={action.isPending || reset.isPending || adopt.isPending || unmanage.isPending}
           >
             <IconDots size={18} />
           </ActionIcon>
@@ -261,8 +333,38 @@ const UsersPage = () => {
           >
             {t("admin.setInitialPassword")}
           </Menu.Item>
+          {staffManaged(u) ? (
+            <Menu.Item
+              leftSection={<IconBriefcaseOff size={15} />}
+              onClick={() => confirmUnmanage(u)}
+              disabled={unmanage.isPending}
+            >
+              {t("admin.stopManaging")}
+            </Menu.Item>
+          ) : (
+            u.role !== "Owner" && (
+              <Menu.Item
+                leftSection={<IconBriefcase size={15} />}
+                onClick={() => {
+                  adoptForm.reset();
+                  setAdoptUser(u);
+                }}
+              >
+                {t("admin.adoptForStaff")}
+              </Menu.Item>
+            )
+          )}
           <Menu.Divider />
-          {u.disabled ? (
+          {u.pending ? (
+            <Menu.Item leftSection={<IconUserCheck size={15} />} disabled>
+              <Stack gap={0}>
+                <span>{t("admin.enableAccess")}</span>
+                <Text size="xs" c="dimmed">
+                  {t("admin.enablePendingReason")}
+                </Text>
+              </Stack>
+            </Menu.Item>
+          ) : u.disabled ? (
             <Menu.Item
               leftSection={<IconUserCheck size={15} />}
               onClick={() => confirm(u, "enable")}
@@ -279,14 +381,20 @@ const UsersPage = () => {
               {t("admin.disableAccess")}
             </Menu.Item>
           )}
-          <Menu.Item
-            color="red"
-            leftSection={<IconTrash size={15} />}
-            onClick={() => confirm(u, "delete")}
-            disabled={action.isPending}
-          >
-            {t("admin.deleteUser")}
-          </Menu.Item>
+          {staffManaged(u) ? (
+            <Text size="xs" c="dimmed" px="sm" py={6} maw={260}>
+              {t("admin.deleteManagedReason")}
+            </Text>
+          ) : (
+            <Menu.Item
+              color="red"
+              leftSection={<IconTrash size={15} />}
+              onClick={() => confirm(u, "delete")}
+              disabled={action.isPending}
+            >
+              {t("admin.deleteUser")}
+            </Menu.Item>
+          )}
         </Menu.Dropdown>
       </Menu>
     );
@@ -296,6 +404,11 @@ const UsersPage = () => {
       <Text size="sm" c="dimmed">
         {u.email || t("admin.noEmail")}
       </Text>
+      {staffManaged(u) && (
+        <Badge variant="light" color="grape" size="sm" mt={4}>
+          {t("admin.managedByStaff", { number: u.employeeNumber ?? "" })}
+        </Badge>
+      )}
     </>
   );
   const avatar = (u: ManagedUser) => (
@@ -550,6 +663,33 @@ const UsersPage = () => {
             )}
             <Button type="submit" loading={change.isPending}>
               {t("common.save")}
+            </Button>
+          </Stack>
+        </form>
+      </Modal>
+      <Modal
+        opened={!!adoptUser}
+        onClose={() => setAdoptUser(null)}
+        title={t("admin.adoptTitle", { user: adoptUser?.displayName || adoptUser?.email || t("common.user") })}
+        centered
+      >
+        <form
+          onSubmit={adoptForm.onSubmit((v) => {
+            if (adoptUser) adopt.mutate({ id: adoptUser.id, employeeNumber: v.employeeNumber.trim() });
+          })}
+        >
+          <Stack>
+            <Text size="sm" c="dimmed">
+              {t("admin.adoptDescription")}
+            </Text>
+            <TextInput
+              label={t("admin.employeeNumber")}
+              description={t("admin.employeeNumberHelp")}
+              maxLength={40}
+              {...adoptForm.getInputProps("employeeNumber")}
+            />
+            <Button type="submit" loading={adopt.isPending}>
+              {t("admin.adopt")}
             </Button>
           </Stack>
         </form>

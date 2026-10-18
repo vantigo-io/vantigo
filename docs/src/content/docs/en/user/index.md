@@ -33,7 +33,15 @@ without a manager, reassessments due, documents the store will not delete, the
 headcount and pension thresholds not yet acknowledged, and the absence items: requests
 awaiting your decision, sick-leave follow-ups due, holiday left from last year or too
 little holiday in the main period, a self-approved absence and sickness during approved
-holiday.
+holiday — for a holder of `staff:personal-data` also an HR-only absence the only such
+holder approved for themselves, which opens that person's Absence tab; and, for
+`staff:manage`, the accounts: each person whose account Staff cannot create, enable or
+keep up to date, saying why — no employment or no address to give it from, an account
+an Owner disabled, stopped managing or that belongs to someone else, a number or an
+address another account holds, invitations unanswered or revoked, attempts that keep
+failing — which opens the person's Account tab, and the accounts that wait on the
+installation (no roles Staff may give, a role among them that grants administration,
+a sign-in mode the worker disagrees with), which open Staff's settings.
 
 Inside an app, the sidebar lists its areas. Many of them are only shown to people who
 hold the matching permission — and a few, such as Invoices' **Quick invoice**, only to
