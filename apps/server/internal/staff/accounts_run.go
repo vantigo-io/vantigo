@@ -37,6 +37,7 @@ const accountsRunBudget = 60 * time.Second
 const (
 	codeAccountNotManaged = "account_not_managed"
 	codeAccountPrivileged = "account_privileged"
+	codeAccountMismatch   = "account_mismatch"
 )
 
 // callerRun is the run a request makes: the caller as identity's actor and
@@ -307,7 +308,7 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 			return nil, err
 		}
 	} else {
-		worked, callErr := s.deactivateClaimed(ctx, run, r, lease, id, f, now)
+		worked, callErr := s.finishRequestedDisable(ctx, run, r, lease, id, f, now)
 		if errors.Is(callErr, errAccountLeaseLost) {
 			b, _ := asRefusal(accountsBusy())
 			return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(b.problem), nil
@@ -333,6 +334,9 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 			"The account flag is off, but the user is an Owner or a SystemAdmin, whom an Owner disables in identity.")), nil
 	case errors.Is(refusal, contracts.ErrUserGone):
 		return nil, nil
+	case errors.Is(refusal, errAccountMismatch):
+		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(conflict(codeAccountMismatch, "Someone else's account",
+			"The account flag is off, but the user the link names carries another employee number, so Staff does nothing to them. Put the person's employee number right; the disable then runs.")), nil
 	default:
 		return nil, fmt.Errorf("staff: Disable now for person %d: %w", personID, refusal)
 	}

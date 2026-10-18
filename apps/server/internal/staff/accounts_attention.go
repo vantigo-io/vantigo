@@ -60,10 +60,11 @@ var accountReasonItems = map[string]gen.StaffStatsAttentionItemType{
 	reasonModeMismatch:         gen.AccountModeMismatch,
 }
 
-// accountDisableRefusals are the reasons a Deactivate is refused with, which
-// raise their item for a flag that is off or an erased record too: a
-// Disable now identity answered with a refusal, the user still enabled.
-var accountDisableRefusals = map[string]bool{reasonNotManaged: true, reasonPrivileged: true}
+// accountDisableRefusals are the answers a disable asked for can meet —
+// Deactivate's refusals, and a user carrying another employee number — which
+// raise their item, not accountFailing, for a flag that is off or an erased
+// record while the request stands: the user still enabled.
+var accountDisableRefusals = map[string]bool{reasonNotManaged: true, reasonPrivileged: true, reasonMismatch: true}
 
 // accountPersonReasons are the reasons judged on the person's rows, never
 // read off a link.
@@ -108,7 +109,9 @@ func readAccountAttention(ctx context.Context, q *store.Queries, today, now time
 // worker retries it at every poll meanwhile.
 func accountLinkFailing(l store.AccountLinkAttentionRow, now time.Time) bool {
 	if l.Erased || !l.ProvisionAccount {
-		return l.DisableRequestedAt != nil && (l.LastError != nil || !now.Before(l.DisableRequestedAt.Add(disableOverdueAfter)))
+		// A refusal raises its own item instead (accountDisableRefusals).
+		return l.DisableRequestedAt != nil && !accountDisableRefusals[deref(l.BlockedReason)] &&
+			(l.LastError != nil || !now.Before(l.DisableRequestedAt.Add(disableOverdueAfter)))
 	}
 	return deref(l.BlockedReason) == reasonInvalidActor || (l.LastError != nil && l.Attempts >= accountsMaxAttempts)
 }
@@ -138,9 +141,11 @@ func (a accountAttention) items() []gen.StaffStatsAttentionItem {
 			continue
 		}
 		// A flag that is off, or an erased record, raises only the refusal a
-		// Disable now was answered with (re-check MEDIUM-1): the user is still
-		// enabled, and an Owner's to disable.
-		if (l.Erased || !l.ProvisionAccount) && !accountDisableRefusals[reason] {
+		// disable asked for was answered with, while it stands (re-check
+		// MEDIUM-1 and LOW-1): the user is still enabled, and an Owner's, or
+		// HR's number, to put right. A reason left from when the flag was on
+		// raises nothing.
+		if (l.Erased || !l.ProvisionAccount) && (l.DisableRequestedAt == nil || !accountDisableRefusals[reason]) {
 			continue
 		}
 		title, isInstallation := accountInstallationItems[kind]

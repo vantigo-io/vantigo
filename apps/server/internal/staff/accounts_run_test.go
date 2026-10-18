@@ -764,35 +764,35 @@ func TestAccountsRun_AManagerIsRefused(t *testing.T) {
 	}
 }
 
-// A refusal identity answers to Disable now is an answer (re-check
-// MEDIUM-1): an Owner's account is account_privileged, the marker cleared at
-// once, no accountFailing even ten minutes on, the accountPrivileged item
-// instead — the flag off — and no cycle calls identity for it again.
+// A refusal identity answers to Disable now (re-check MEDIUM-1, final): the
+// marker is kept, the refusal is the link's reason and raises its own item —
+// never accountFailing, even ten minutes on — and the disable is tried again
+// on the daily schedule, not at every poll.
 func TestAccountsDisable_ARefusalIsAnAnswer(t *testing.T) {
 	t.Parallel()
-	w := newAccountsWorld(t)
 	for _, tc := range []struct {
 		name, code string
 		item       gen.StaffStatsAttentionItemType
-		seed       func(p gen.StaffPerson)
+		seed       func(w accountsWorld, p gen.StaffPerson)
 	}{
-		{"privileged", "account_privileged", gen.AccountPrivileged, func(p gen.StaffPerson) {
+		{"privileged", "account_privileged", gen.AccountPrivileged, func(w accountsWorld, p gen.StaffPerson) {
 			u := uuid.New()
 			w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, Privileged: true, EmployeeNumber: p.EmployeeNumber})
 			workerLink(t, w.h, p.Id, u, "active")
 		}},
-		{"a self-service link", "account_not_managed", gen.AccountNotManaged, func(p gen.StaffPerson) {
+		{"a self-service link", "account_not_managed", gen.AccountNotManaged, func(w accountsWorld, p gen.StaffPerson) {
 			u := uuid.New()
 			w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, EmployeeNumber: p.EmployeeNumber})
 			link(t, w.h, p.Id, u)
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			w := newAccountsWorld(t)
 			p := w.employee(t, "Svar", "2026-01-01", nil)
-			tc.seed(p)
+			tc.seed(w, p)
 			refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusConflict, tc.code)
-			if m := disableMarker(t, w.h, p.Id); m != nil {
-				t.Errorf("the marker is kept after the refusal: %v", m)
+			if disableMarker(t, w.h, p.Id) == nil {
+				t.Error("the refusal cleared the marker")
 			}
 			w.h.Advance(11 * time.Minute)
 			id := strconv.FormatInt(p.Id, 10)
@@ -803,10 +803,15 @@ func TestAccountsDisable_ARefusalIsAnAnswer(t *testing.T) {
 				t.Errorf("HR's items lack %s/%s", tc.item, id)
 			}
 			deactivations := countWrites(w.fake, "Deactivate")
-			w.h.Advance(25 * time.Hour)
+			w.h.Advance(time.Hour)
 			w.cycle(t)
 			if n := countWrites(w.fake, "Deactivate"); n != deactivations {
-				t.Errorf("a cycle called Deactivate %d more times after the refusal", n-deactivations)
+				t.Errorf("the next poll called Deactivate %d more times, want the daily schedule", n-deactivations)
+			}
+			w.h.Advance(25 * time.Hour)
+			w.cycle(t)
+			if n := countWrites(w.fake, "Deactivate"); n != deactivations+1 {
+				t.Errorf("a day on Deactivate was called %d more times, want once", n-deactivations)
 			}
 		})
 	}
@@ -878,5 +883,131 @@ func TestAccountsDisable_AMarkedLinkIsNotRelinked(t *testing.T) {
 	refused(t, w.hr.Do(http.MethodPut, userPath(p.Id), map[string]any{"userId": nil}), http.StatusConflict, "link_managed")
 	if disableMarker(t, w.h, p.Id) == nil {
 		t.Error("a refused relink cleared the marker")
+	}
+}
+
+// The safety net a kept marker is (re-check MEDIUM-1, final): Disable now
+// refused account_not_managed, an Owner adopts the user again, and the
+// worker's next daily try disables them; the item goes.
+func TestAccountsDisable_AReadoptedUserIsDisabledByTheNextTry(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Tilbake", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, EmployeeNumber: p.EmployeeNumber})
+	workerLink(t, w.h, p.Id, u, "active")
+	refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusConflict, "account_not_managed")
+	ref := w.fake.user(u)
+	ref.Managed = true
+	w.fake.setUser(ref)
+	w.h.Advance(25 * time.Hour)
+	w.cycle(t)
+	if got := w.fake.user(u); got.State != contracts.AccountStateDisabled {
+		t.Errorf("after the re-adoption the user = %+v, want disabled", got)
+	}
+	if disableMarker(t, w.h, p.Id) != nil {
+		t.Error("the marker is still set")
+	}
+	if item, ok := hasItem(t, w.hr, "accountNotManaged/"+strconv.FormatInt(p.Id, 10)); ok {
+		t.Errorf("still raised: %+v", item)
+	}
+}
+
+// A refusal, then an Owner disables the user in identity: the next try reads
+// them disabled and clears the marker and the item with no call.
+func TestAccountsDisable_ARefusalThenAnOwnersDisableClears(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Eierstopp", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, Privileged: true, EmployeeNumber: p.EmployeeNumber})
+	workerLink(t, w.h, p.Id, u, "active")
+	refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusConflict, "account_privileged")
+	ref := w.fake.user(u)
+	ref.State, ref.DisabledBy = contracts.AccountStateDisabled, contracts.DisabledByOwner
+	w.fake.setUser(ref)
+	deactivations := countWrites(w.fake, "Deactivate")
+	w.h.Advance(25 * time.Hour)
+	w.cycle(t)
+	if n := countWrites(w.fake, "Deactivate"); n != deactivations {
+		t.Errorf("Deactivate called %d more times for a user an Owner disabled", n-deactivations)
+	}
+	if disableMarker(t, w.h, p.Id) != nil {
+		t.Error("the marker is still set")
+	}
+	if item, ok := hasItem(t, w.hr, "accountPrivileged/"+strconv.FormatInt(p.Id, 10)); ok {
+		t.Errorf("still raised: %+v", item)
+	}
+}
+
+// An old refusal from when the flag was on raises nothing once a plain PUT
+// turns the flag off (re-check LOW-1): flag-off items come from a marker.
+func TestAccountAttention_AnOldRefusalRaisesNothingWithTheFlagOff(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Gammel", "2026-01-01", nil)
+	seedWorkerLink(t, w.h, p.Id, "blocked", "account_privileged", "", 0)
+	id := "accountPrivileged/" + strconv.FormatInt(p.Id, 10)
+	if _, ok := hasItem(t, w.hr, id); !ok {
+		t.Fatalf("HR's items lack %s with the flag on", id)
+	}
+	acc := getAccount(t, w.hr, p.Id)
+	do(t, w.hr, http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": false}, http.StatusOK, nil, ifMatch(acc.Revision))
+	if item, ok := hasItem(t, w.hr, id); ok {
+		t.Errorf("with the flag off HR still reads %+v", item)
+	}
+}
+
+// A marked link whose user the directory keeps inactive (re-check LOW-2) is
+// not taken for disabled: Deactivate is called once and Staff's own record
+// disables the user.
+func TestAccountsDisable_ADirectoryInactiveUserIsStillDisabled(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Katalog", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateDisabled, DisabledBy: contracts.DisabledByDirectory,
+		Managed: true, EmployeeNumber: p.EmployeeNumber})
+	workerLink(t, w.h, p.Id, u, "active")
+	w.h.Exec(t, `UPDATE staff.identity_links SET disable_requested_at = $2 WHERE person_id = $1`, p.Id, w.h.Now())
+	w.h.Exec(t, `UPDATE staff.people SET provision_account = false WHERE id = $1`, p.Id)
+	w.cycle(t)
+	if n := countWrites(w.fake, "Deactivate"); n != 1 {
+		t.Errorf("Deactivate called %d times, want once", n)
+	}
+	if !w.fake.staffDisabledUser(u) {
+		t.Error("Staff's own record of the user is not disabled")
+	}
+	if disableMarker(t, w.h, p.Id) != nil {
+		t.Error("the marker is still set")
+	}
+}
+
+// Disable now on a link whose user carries another employee number (the
+// re-check's INFO): someone else's account — nothing is done to it, 409
+// account_mismatch, the link blocked mismatch and accountMismatch shown; the
+// marker is kept, so the disable runs once HR has put the number right.
+func TestAccountsDisable_AMismatchedUserIsNotDisabled(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	p := w.employee(t, "Feilnr", "2026-01-01", nil)
+	u := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: u, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: "SOMEONE-ELSE"})
+	workerLink(t, w.h, p.Id, u, "active")
+	refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusConflict, "account_mismatch")
+	if n := countWrites(w.fake, "Deactivate"); n != 0 {
+		t.Errorf("Deactivate called %d times for someone else's account", n)
+	}
+	if l := mustLink(t, w.h, p.Id); l.State != "blocked" || l.Reason != "mismatch" {
+		t.Errorf("the link = %+v, want blocked mismatch", l)
+	}
+	if _, ok := hasItem(t, w.hr, "accountMismatch/"+strconv.FormatInt(p.Id, 10)); !ok {
+		t.Error("no accountMismatch item")
+	}
+	w.h.Exec(t, `UPDATE staff.people SET employee_number = 'SOMEONE-ELSE' WHERE id = $1`, p.Id)
+	w.h.Advance(25 * time.Hour)
+	w.cycle(t)
+	if got := w.fake.user(u); got.State != contracts.AccountStateDisabled {
+		t.Errorf("once the number matches the user = %+v, want disabled", got)
 	}
 }

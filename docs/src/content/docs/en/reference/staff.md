@@ -1239,15 +1239,23 @@ result (its facts unreadable, or naming no user) releases its lease at once
   worker writes one (`account_deactivated`, the link `disabled`). With the flag off no
   cycle claims the link again — once the disable is done — so the user stays disabled
   until HR turns the flag on. **The disable asked for is the worker's to finish**:
-  `disable_requested_at` is cleared by any answer of identity's — a `Deactivate`
-  carried out, `ErrUserGone`, or a refusal (`account_not_managed`, `account_privileged`,
-  the last Owner), which stays the link's `blocked_reason` and raises its item, flag
-  off or not (re-check MEDIUM-1); only a failure, and `invalid_actor`, keep it.
+  `disable_requested_at` is cleared only when the user is disabled — a `Deactivate`
+  carried out, or identity's own record found disabled — or gone (`ErrUserGone`). A
+  refusal (`account_not_managed`, `account_privileged`, the last Owner) keeps it, as the
+  link's `blocked_reason` too, and is tried again on the daily schedule, so a user an
+  Owner adopts again or demotes is disabled by the next try (re-check MEDIUM-1, final);
+  a failure keeps it, retried at every poll, as a leaver's; `invalid_actor` keeps it.
   `ClaimAccountLink` also claims a link carrying it whatever the flag and the erasure,
-  and the worker, outside the decision table (whose "flag off: nothing" it overrides, a
-  documented branch), reads the user first: gone, or disabled in identity's own record
-  already (an Owner's disable meanwhile), clears the request with no call; otherwise it
-  deactivates them — a failure retried at every poll, as a leaver's. HR's turning the
+  and the step (`finishRequestedDisable`, *Disable now*'s and the worker's), outside
+  the decision table (whose "flag off: nothing" it overrides, a documented branch),
+  reads the user first: gone, or disabled in identity's own record already (an Owner's
+  disable meanwhile — a directory's deactivation is not that, and is still disabled in
+  identity's record), clears the request with no call; a user carrying another employee
+  number than the person's or the one last synced (`SameEmployeeNumber`, as `decide`
+  judges) is someone else's account — nothing is called, the link is `blocked` `mismatch`
+  (`account_mismatched`), *Disable now* answers 409 `account_mismatch`, and the request
+  is kept, so the disable runs once HR has put the number right; otherwise it
+  deactivates them. HR's turning the
   flag on again lets the request lapse — not for an erased person, whose disable always
   runs; `SetPersonLink` and `DeletePersonLink` clear it with the link, which is safe:
   both refuse a worker's or a Staff-managed link (`link_managed`) before they run, so
@@ -3011,9 +3019,11 @@ disable requested, raised for an erased record too (review M2) under the neutral
 "An erased person" — with `id` `<type>/<person id>`, `entityId` the person, `title`
 the person's display name and nothing more (no address, no reason beyond the type) and
 `occurredAt` the link's `updated_at` (today for the two person-query items).
-For a person whose flag is off, or an erased one (titled "An erased person"), the
-links also raise `accountNotManaged` and `accountPrivileged` — the refusal a *Disable
-now* was answered with, the user still enabled and an Owner's to disable.
+For a person whose flag is off, or an erased one (titled "An erased person"), a link
+carrying `disable_requested_at` raises the answer the disable met —
+`accountNotManaged`, `accountPrivileged` or `accountMismatch`, the user still enabled —
+rather than `accountFailing`; a reason left from when the flag was on raises nothing
+once the flag is off.
 
 | `type` | Source | Trigger |
 | --- | --- | --- |
@@ -3155,6 +3165,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `retention_busy` | 409 | `POST /retention/run` while the retention lease is held — by the worker, here or on another replica, or another run by hand. Nothing ran. |
 | `threshold_unknown` | 404 | `POST /thresholds/{key}/acknowledge` with a key other than `5`, `30`, `50` and `otp`. |
 | `link_managed` | 409 | `PUT /people/{id}/user` naming, or unlinking, a Staff-managed user, or on a link in one of the accounts worker's states. |
+| `account_mismatch` | 409 | `POST /people/{id}/account/disable` on a link whose user carries another employee number: someone else's account, left alone. The flag is off. |
 | `accounts_busy` | 409 | `DELETE /people/{id}` while the accounts worker holds the person's `preparing` link; `POST /people/{id}/account/run` and `/disable` while a live lease holds the person's link. |
 | `account_not_managed` | 409 | `POST /people/{id}/account/disable` on a user Staff does not manage. The flag is off. |
 | `account_privileged` | 409 | `POST /people/{id}/account/disable` on an Owner, a SystemAdmin or the last active Owner. The flag is off. |

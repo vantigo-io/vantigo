@@ -49,6 +49,9 @@ type fakeAccounts struct {
 	recentInvitation bool
 	// actors is the actor of every write, in order.
 	actors []contracts.Actor
+	// staffDisabled is the users Staff's Deactivate disabled in identity's
+	// own record, whatever the directory reports.
+	staffDisabled map[uuid.UUID]bool
 	// blocks holds a method's calls, after they are recorded, until the
 	// channel is closed or the call's context ends — which they then answer.
 	blocks map[string]chan struct{}
@@ -195,6 +198,13 @@ func (f *fakeAccounts) writeCalls() []string {
 	return slices.Clone(f.writes)
 }
 
+// staffDisabledUser is whether Deactivate disabled id's own record.
+func (f *fakeAccounts) staffDisabledUser(id uuid.UUID) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.staffDisabled[id]
+}
+
 // writeActors is the actor of every write so far, in order.
 func (f *fakeAccounts) writeActors() []contracts.Actor {
 	f.mu.Lock()
@@ -336,6 +346,10 @@ func (f *fakeAccounts) Deactivate(ctx context.Context, actor contracts.Actor, id
 	case ref.Privileged:
 		return contracts.AccountRef{}, contracts.ErrAccountPrivileged
 	}
+	if f.staffDisabled == nil {
+		f.staffDisabled = map[uuid.UUID]bool{}
+	}
+	f.staffDisabled[id] = true
 	// identity's record is disabled by Staff; a user the directory keeps
 	// inactive still reads disabled by the directory, as identity reports.
 	if ref.DisabledBy == "" {

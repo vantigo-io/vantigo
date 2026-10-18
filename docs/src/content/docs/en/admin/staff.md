@@ -257,9 +257,15 @@ until HR turns the flag on again.
      the disable by itself.
    - `account_not_managed` (409): the person is linked by hand to a user Staff does not
      manage; `account_privileged` (409): the user is an Owner or a SystemAdmin. The flag
-     is off, but the user stays enabled: an Owner disables them in identity. Staff does
-     not try again; the dashboard shows *accountNotManaged* or *accountPrivileged* for
-     the person until HR turns the flag on again or unlinks them.
+     is off, but the user stays enabled: an Owner disables them in identity, or adopts
+     the user for Staff again (or demotes them). Staff tries the disable again daily —
+     so once an Owner has re-adopted or demoted the user, the next try disables them —
+     and the dashboard shows *accountNotManaged* or *accountPrivileged* until it is done
+     or the user is disabled in identity.
+   - `account_mismatch` (409): the user the link names carries another employee number
+     — someone else's account — and nothing is done to them. The flag is off; the link
+     reads `mismatch` and the dashboard shows *accountMismatch*. Put the person's
+     employee number right: the next daily try then disables the user.
    - `accounts_unavailable` (503): identity could not be reached. **The flag is already
      off**, but the user is still enabled: the link records the error, the worker
      retries the disable at every poll, and the dashboard shows *accountFailing* until
@@ -281,12 +287,12 @@ erased person".
 | `accountNoEmployment` | The flag is on but the person has no employment | Add the employment, or turn the flag off |
 | `accountEmailMissing` | The person has no address of the kind the flag names | Add the work (or private) email, or switch the address choice |
 | `accountNotFound` | Federated: the identity provider has not created the user yet | Create the user in the provider with the person's employee number |
-| `accountNotManaged` | An Owner stopped Staff managing the user — or, with the flag off, a Disable now refused for a user Staff does not manage | An Owner adopts the user again or disables them in identity; HR turns the flag off, or unlinks a self-service link |
+| `accountNotManaged` | An Owner stopped Staff managing the user — or, with the flag off, a Disable now refused for a user Staff does not manage, tried again daily | An Owner adopts the user again (the next try disables them) or disables them in identity; HR unlinks a self-service link |
 | `accountBlockedByOwner` | An Owner disabled the pending user | An Owner enables them in identity, if they should start |
 | `accountDisabledByOwner` | An Owner disabled the user while the person is employed | An Owner decides; Staff does not undo it |
 | `accountUserGone` | The user was deleted in identity | Unlink, or an Owner restores the account |
-| `accountPrivileged` | The user is an Owner or a SystemAdmin — also after a Disable now refused for them | An Owner disables them in identity, by hand |
-| `accountMismatch` | The user carries another employee number: someone else's account | Check the person's employee number |
+| `accountPrivileged` | The user is an Owner or a SystemAdmin — also after a Disable now refused for them, tried again daily | An Owner disables them in identity, or demotes them (the next try disables them) |
+| `accountMismatch` | The user carries another employee number: someone else's account — also after a Disable now that did nothing for it | Check the person's employee number; once it is right the disable runs |
 | `accountModeChanged` | A pending user made in local mode, now under federated mode | An Owner finishes or deletes the user |
 | `accountEmailDiffers` | The user's address in identity differs from the person's | An Owner changes it in identity (Staff changes it only while pending) |
 | `accountEmailTaken` | Another user in identity holds the address | Resolve the duplicate in identity, or change the person's address |
