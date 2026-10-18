@@ -150,3 +150,85 @@ describe("History", () => {
     expect((await events()).length).toBe(3);
   });
 });
+
+/** Ada's account history as HR reads it (delivery C): the flag changed, then the worker's steps. */
+const accountHistory = (): Record<number, StaffEvent[]> => ({
+  101: [
+    {
+      id: 605,
+      kind: "account_deactivated",
+      at: "2026-10-05T08:00:00Z",
+      actor: { kind: "system", displayName: "Staff accounts" },
+      payload: { step: "deactivate", state: "disabled", flagOffMeanwhile: true },
+    },
+    {
+      id: 604,
+      kind: "account_failed",
+      at: "2026-10-04T08:00:00Z",
+      actor: { kind: "system", displayName: "Staff accounts" },
+      payload: { step: "activate", state: "pending", code: "accounts_unavailable" },
+    },
+    {
+      id: 603,
+      kind: "account_blocked",
+      at: "2026-10-03T08:00:00Z",
+      actor: { kind: "system", displayName: "Staff accounts" },
+      payload: { step: "activate", state: "blocked", code: "employee_role_missing" },
+    },
+    {
+      id: 602,
+      kind: "account_activated",
+      at: "2026-10-02T08:00:00Z",
+      actor: hr,
+      payload: { step: "activate", state: "pending", invitation: { state: "active", issued: 1 } },
+    },
+    {
+      id: 601,
+      kind: "account_flag_updated",
+      at: "2026-10-01T08:00:00Z",
+      actor: hr,
+      payload: {
+        fields: {
+          provisionAccount: { from: false, to: true },
+          provisionFrom: { from: null, to: "2026-11-02" },
+          accountEmailKind: { from: "work", to: "private" },
+        },
+      },
+    },
+  ],
+});
+
+describe("History — the account events", () => {
+  it("names each account event and says its fields and codes in words", async () => {
+    stubStaffApi({ role: "manage", events: accountHistory() });
+    renderRoute("/staff/people/101?tab=history");
+
+    const [deactivated, failed, blocked, activated, flag] = await events();
+    expect(within(flag).getByText("Account flag changed")).toBeInTheDocument();
+    expect(within(flag).getByText("Staff provides an account: No → Yes")).toBeInTheDocument();
+    expect(within(flag).getByText("Account from: — → Nov 2, 2026")).toBeInTheDocument();
+    expect(within(flag).getByText("Address: Work email → Private email")).toBeInTheDocument();
+
+    expect(within(activated).getByText("Account enabled")).toBeInTheDocument();
+    expect(within(activated).getByText("Step: Enable the user")).toBeInTheDocument();
+    expect(
+      within(activated).getByText("State: Pending — waiting for the person to choose a password"),
+    ).toBeInTheDocument();
+    expect(
+      within(activated).getByText("Invitation: An invitation is open and can be accepted · 1 sent"),
+    ).toBeInTheDocument();
+
+    expect(within(blocked).getByText("Account held up")).toBeInTheDocument();
+    expect(
+      within(blocked).getByText("No Owner has named the roles Staff may give, so no account is enabled."),
+    ).toBeInTheDocument();
+    expect(within(failed).getByText("Account step failed")).toBeInTheDocument();
+    expect(within(failed).getByText(/Identity could not be reached; the worker tries again/)).toBeInTheDocument();
+
+    expect(within(deactivated).getByText("Account disabled")).toBeInTheDocument();
+    expect(within(deactivated).getByText(/The account flag was turned off meanwhile/)).toBeInTheDocument();
+    // No code is shown raw.
+    for (const raw of ["deactivate", "employee_role_missing", "accounts_unavailable", "pending"])
+      expect(screen.queryByText(raw)).not.toBeInTheDocument();
+  });
+});

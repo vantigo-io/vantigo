@@ -363,6 +363,19 @@ describe("Person page — who sees the Account tab", () => {
     expect(within(await region("User account")).getByText(/Pending — waiting for/)).toBeInTheDocument();
   });
 
+  it("is read-only for a holder of staff:personal-data alone, who reads the links group", async () => {
+    stubStaffApi({ role: "personalDataOnly", accounts: { 101: account({ link: managed({ state: "pending" }) }) } });
+    renderRoute("/staff/people/101?tab=account");
+    const card = await region("Account flag");
+    expect(screen.getByRole("tab", { name: "Account", selected: true })).toBeInTheDocument();
+    expect(within(card).getByText("Yes")).toBeInTheDocument();
+    expect(within(card).queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save the account flag" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Disable now" })).not.toBeInTheDocument();
+    expect(within(await region("User account")).getByText(/Pending — waiting for/)).toBeInTheDocument();
+  });
+
   it("is on My page for the person, read-only", async () => {
     stubStaffApi({ role: "access", me: 101, accounts: { 101: account() } });
     renderRoute("/staff/me?tab=account");

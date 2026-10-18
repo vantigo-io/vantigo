@@ -28,7 +28,8 @@ import { PersonalDataDownload } from "./-personal-data-download";
  * Documents, the tab in the URL. What it shows is what `GET /people/{id}`
  * and its sub-resources answer this reader (§5); what it offers follows the
  * person's capabilities. The Account tab (delivery C) is HR's
- * (`canManageAccount`) and the person's own, read-only for them; a manager,
+ * (`canManageAccount`), and the person's own and `staff:personal-data`'s,
+ * read-only for them; a manager,
  * an Approver and a colleague get the unknown id's 404 for it, so it is not
  * drawn for them.
  *
@@ -93,7 +94,10 @@ export const PersonPage = () => {
       }
     : data;
   const timeZone = meta.data.timeZone;
-  const readsAccount = data.capabilities.canManageAccount || data.capabilities.self;
+  // The links group's readers (design §5): HR, the person and staff:personal-data
+  // (canRevealIdentifiers) — the last two read-only.
+  const readsAccount =
+    data.capabilities.canManageAccount || data.capabilities.self || data.capabilities.canRevealIdentifiers;
 
   const tabs = [
     { value: "profile" as const, label: t("tab_profile") },
