@@ -52,7 +52,8 @@ ORDER BY day;
 -- same date finished late, which is history rather than something to act on,
 -- and a project with no end date can never be overdue. Oldest first, so the
 -- one that has been overdue longest is the one that surfaces when the
--- dashboard takes the top of the list.
+-- dashboard takes the top of the list. today is the business day the caller
+-- passes, never CURRENT_DATE.
 SELECT p.id, p.name, p.end_date FROM projects.projects p
 WHERE projects.visible(p.id, sqlc.arg(user_id), sqlc.arg(see_all)::boolean)
   AND p.status = 'active'

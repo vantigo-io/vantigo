@@ -552,19 +552,19 @@ func floatFromNumeric(n pgtype.Numeric) (float64, error) {
 }
 
 // milestoneOverdue is §3.2's overdue rule: a milestone nobody has billed yet,
-// whose planned day has passed. Both sides are plain calendar dates in UTC —
-// the column is a date, and the clock is the server's (Deps.Clock) — so a
-// milestone planned for today is not overdue anywhere in the world until the
-// server's own day turns over.
-func milestoneOverdue(m store.ProjectsBillingMilestone, now time.Time) bool {
+// whose planned day has passed. The planned date is a civil date, compared
+// as-is; today is the business day of the server's clock (holidays.DayIn in
+// the zone businessZone read), so a milestone planned for today turns overdue
+// at the business time zone's midnight, the one the dashboard's
+// milestoneOverdue item turns at too.
+func milestoneOverdue(m store.ProjectsBillingMilestone, today time.Time) bool {
 	if m.Status != milestoneStatusPlanned && m.Status != milestoneStatusReady {
 		return false
 	}
 	if !m.PlannedDate.Valid {
 		return false
 	}
-	today := now.UTC()
-	return m.PlannedDate.Time.UTC().Before(time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC))
+	return m.PlannedDate.Time.UTC().Before(today)
 }
 
 // milestoneCapabilities is §3.2's rules answered for one caller and one

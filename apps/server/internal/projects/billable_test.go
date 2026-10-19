@@ -27,8 +27,9 @@ func newBillableMilestones(t *testing.T, h *modtest.Harness) contracts.BillableM
 	return build(h.Deps())
 }
 
-// osloDay is the business day an instant falls on in Oslo, as a UTC midnight —
-// the day a milestone is dated by.
+// osloDay is the business day an instant falls on in Oslo — the workspace's
+// business time zone until a test sets another — as a UTC midnight, the day a
+// milestone is dated by.
 func osloDay(t *testing.T, at time.Time) time.Time {
 	t.Helper()
 	oslo, err := time.LoadLocation("Europe/Oslo")
