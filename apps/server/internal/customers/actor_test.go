@@ -45,6 +45,10 @@ func (d stubUserDirectory) PermissionHolders(context.Context, string) ([]contrac
 	panic("actorFor never calls PermissionHolders")
 }
 
+func (d stubUserDirectory) Notify(context.Context, uuid.UUID, contracts.Notice) error {
+	panic("actorFor never calls Notify")
+}
+
 // serverWithUsers builds a *server whose only wired dependency is the given
 // UserDirectory — everything actorFor touches.
 func serverWithUsers(d contracts.UserDirectory) *server {

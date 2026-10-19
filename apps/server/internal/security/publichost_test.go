@@ -16,7 +16,8 @@ type gateRequest struct {
 
 // The allowlist, exact (payments port design D14 as amended by its plan's
 // reading 23: the pay page reads with POST /invoices/pay/read, so the token
-// never travels in an API URL).
+// never travels in an API URL), and the calendar's answer page on the same
+// pattern (calendar invitations design D5).
 var publicHostAllowed = []gateRequest{
 	{http.MethodGet, "/pay?token=x"},
 	{http.MethodGet, "/pay"},
@@ -31,6 +32,11 @@ var publicHostAllowed = []gateRequest{
 	{http.MethodGet, "/api/v1/invoices/pay/attempts/abc"},
 	{http.MethodGet, "/health/ready"},
 	{http.MethodHead, "/health/live"},
+	{http.MethodGet, "/rsvp?token=x"},
+	{http.MethodGet, "/rsvp"},
+	{http.MethodHead, "/rsvp"},
+	{http.MethodPost, "/api/v1/calendar/rsvp/read"},
+	{http.MethodPost, "/api/v1/calendar/rsvp"},
 }
 
 // A sample of every other kind: the SPA's other paths, sign-in and setup,
@@ -72,6 +78,15 @@ var publicHostRefused = []gateRequest{
 	{http.MethodGet, "/api/v1/identity/system/status"},
 	{http.MethodPost, "/api/v1/identity/system/status"},
 	{http.MethodGet, "/api"},
+	{http.MethodGet, "/rsvp/x"},
+	{http.MethodGet, "/rsvp/"},
+	{http.MethodPost, "/rsvp"},
+	{http.MethodGet, "/calendar"},
+	{http.MethodGet, "/api/v1/calendar/rsvp/read"},
+	{http.MethodGet, "/api/v1/calendar/rsvp/read?token=x"},
+	{http.MethodGet, "/api/v1/calendar/rsvp"},
+	{http.MethodPost, "/api/v1/calendar/rsvp/x"},
+	{http.MethodGet, "/api/v1/calendar/appointments"},
 }
 
 // publicHostRefusedEscaped are paths whose escaping is not the canonical one

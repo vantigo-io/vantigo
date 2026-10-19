@@ -13,6 +13,11 @@ type UserEntry struct {
 	ID          uuid.UUID
 	DisplayName string
 	Active      bool // not disabled
+	// PreferredLanguage is the language the user chose for the interface,
+	// "en", "nb" or "" when they chose none: a fact of the user that is not
+	// sensitive, for a module writing something in the user's own language
+	// (calendar invitations design D3).
+	PreferredLanguage string
 }
 
 // UserDirectory is the one sanctioned way a module reads identity's user
@@ -50,7 +55,29 @@ type UserDirectory interface {
 	// PermissionHolders lists the active users who hold the permission key,
 	// ordered by display name. See Holder for who counts.
 	PermissionHolders(ctx context.Context, key string) ([]Holder, error)
+	// Notify mails the user through the installation's mail driver. An
+	// inactive or unknown user is not mailed and is not an error; a driver
+	// that is not configured is not an error either (the notice is simply not
+	// sent). A send that fails is an error that names no address.
+	//
+	// Active means what it means for a Holder. The address is identity's and
+	// stays there: Notify is how a module mails a colleague without ever
+	// being handed it (calendar invitations design D4).
+	Notify(ctx context.Context, userID uuid.UUID, n Notice) error
 }
+
+// Notice is a plain mail to one user, composed by a module in the languages it
+// has, delivered by identity in the user's own, and never answering the
+// address.
+type Notice struct {
+	// Texts is keyed by language, "en" and "nb"; identity picks the user's
+	// preferred language, then "en", then any. A notice with no text is not
+	// sent.
+	Texts map[string]NoticeText
+}
+
+// NoticeText is a Notice in one language: a subject and a plain-text body.
+type NoticeText struct{ Subject, Body string }
 
 // Holder is a user PermissionHolders names: an active user holding the
 // permission asked about.

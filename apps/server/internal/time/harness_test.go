@@ -548,6 +548,11 @@ func (f *fakeCustomers) ContactsByEmail(ctx context.Context, _ string) ([]contra
 	return []contracts.ContactMatch{}, nil
 }
 
+func (f *fakeCustomers) ContactsForCustomer(ctx context.Context, _ int32) ([]contracts.ContactEntry, error) {
+	f.locked.note(ctx, "ContactsForCustomer")
+	return []contracts.ContactEntry{}, nil
+}
+
 func (f *fakeCustomers) CustomersByLegalID(ctx context.Context, _ string, _ []string) (map[string][]contracts.CustomerEntry, error) {
 	f.locked.note(ctx, "CustomersByLegalID")
 	return map[string][]contracts.CustomerEntry{}, nil

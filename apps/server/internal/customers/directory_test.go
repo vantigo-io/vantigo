@@ -179,6 +179,66 @@ func TestDirectory_ContactsByEmailWithoutAMatchIsEmpty(t *testing.T) {
 	}
 }
 
+// TestDirectory_ContactsForCustomerAnswersTheReachableContactsByName proves
+// the picker's list (calendar invitations design D2): the customer's own
+// contacts with an address of their own, by last name then first name, each
+// with that address; never a contact without one or with a blank one, nor
+// one reachable only through the association's address (Contact would not
+// resolve it), nor another customer's contact.
+func TestDirectory_ContactsForCustomerAnswersTheReachableContactsByName(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	customer := insertCustomer(t, h, "Kunde AS", "active")
+	other := insertCustomer(t, h, "Annen AS", "active")
+	berit := insertContact(t, h, "Berit", "Hansen", ptr("berit@example.test"))
+	anders := insertContact(t, h, "Anders", "Hansen", ptr("anders@example.test"))
+	ola := insertContact(t, h, "Ola", "Aasen", ptr("ola@example.test"))
+	noAddress := insertContact(t, h, "Per", "Berg", nil)
+	blank := insertContact(t, h, "Siri", "Dahl", ptr("  "))
+	associationOnly := insertContact(t, h, "Liv", "Eik", nil)
+	elsewhere := insertContact(t, h, "Kari", "Fjell", ptr("kari@example.test"))
+	for _, c := range []int32{berit, anders, ola, noAddress, blank} {
+		associate(t, h, customer, c, nil)
+	}
+	associate(t, h, customer, associationOnly, ptr("liv@kunde.example.test"))
+	associate(t, h, other, elsewhere, nil)
+
+	got, err := newDirectory(t, h).ContactsForCustomer(context.Background(), customer)
+	if err != nil {
+		t.Fatalf("ContactsForCustomer: %v", err)
+	}
+	want := []contracts.ContactEntry{
+		{ID: ola, FirstName: "Ola", LastName: "Aasen", Email: ptr("ola@example.test")},
+		{ID: anders, FirstName: "Anders", LastName: "Hansen", Email: ptr("anders@example.test")},
+		{ID: berit, FirstName: "Berit", LastName: "Hansen", Email: ptr("berit@example.test")},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("ContactsForCustomer = %+v, want %d contacts", got, len(want))
+	}
+	for i := range want {
+		g, w := got[i], want[i]
+		if g.ID != w.ID || g.FirstName != w.FirstName || g.LastName != w.LastName || g.Email == nil || *g.Email != *w.Email {
+			t.Errorf("ContactsForCustomer[%d] = %+v (%v), want %+v (%s)", i, g, g.Email, w, *w.Email)
+		}
+	}
+}
+
+// TestDirectory_ContactsForAnUnknownCustomerIsEmpty proves a customer nobody
+// holds, like one with no contacts, is an empty, non-nil result and no error.
+func TestDirectory_ContactsForAnUnknownCustomerIsEmpty(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	dir := newDirectory(t, h)
+	empty := insertCustomer(t, h, "Tom AS", "active")
+
+	for name, id := range map[string]int32{"unknown": 999_999, "no contacts": empty} {
+		got, err := dir.ContactsForCustomer(context.Background(), id)
+		if err != nil || got == nil || len(got) != 0 {
+			t.Errorf("ContactsForCustomer(%s) = %#v, %v, want an empty, non-nil result and no error", name, got, err)
+		}
+	}
+}
+
 // --- Customers (batch) ------------------------------------------------------
 
 // TestDirectory_Customers_ReturnsFoundOnesOnly proves the batch lookup

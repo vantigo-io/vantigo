@@ -138,6 +138,10 @@ func (*importDirectory) ContactsByEmail(context.Context, string) ([]contracts.Co
 	return nil, nil
 }
 
+func (*importDirectory) ContactsForCustomer(context.Context, int32) ([]contracts.ContactEntry, error) {
+	return nil, nil
+}
+
 func (*importDirectory) BillingProfile(context.Context, int32) (*contracts.CustomerBillingProfile, error) {
 	return nil, nil
 }

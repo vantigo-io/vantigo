@@ -136,6 +136,21 @@ JOIN customers.contacts c ON c.id = cc.contact_id
 WHERE cc.customer_id = @customer_id
 ORDER BY c.first_name, c.last_name, c.id;
 
+-- name: DirectoryContactsForCustomer :many
+-- DirectoryContactsForCustomer is contracts.CustomerDirectory.
+-- ContactsForCustomer's rows: the contacts associated with the customer that
+-- have an address of their own, by last name, then first name. The address is
+-- the contact's own, the one DirectoryContact answers — never the
+-- association's customer-specific one — so what a caller picks here is what
+-- it later resolves by the contact's id.
+SELECT c.id, c.first_name, c.last_name, c.email
+FROM customers.customers_contacts cc
+JOIN customers.contacts c ON c.id = cc.contact_id
+WHERE cc.customer_id = @customer_id
+  AND c.email IS NOT NULL
+  AND btrim(c.email) <> ''
+ORDER BY c.last_name, c.first_name, c.id;
+
 -- name: ListCustomerAssociationsForContact :many
 -- ListCustomerAssociationsForContact is GetContactCustomersEndpoint's
 -- listing, sorted by the customer's name (GetContactCustomersEndpoint.cs:29-33).

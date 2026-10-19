@@ -711,6 +711,10 @@ func (*fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.Cont
 	return nil, nil
 }
 
+func (*fakeDirectory) ContactsForCustomer(context.Context, int32) ([]contracts.ContactEntry, error) {
+	return nil, nil
+}
+
 func (*fakeDirectory) CustomersByLegalID(context.Context, string, []string) (map[string][]contracts.CustomerEntry, error) {
 	return map[string][]contracts.CustomerEntry{}, nil
 }
@@ -837,6 +841,8 @@ func (*fakeUserDirectory) SearchUsers(context.Context, string, int) ([]contracts
 func (*fakeUserDirectory) PermissionHolders(context.Context, string) ([]contracts.Holder, error) {
 	return nil, nil
 }
+
+func (*fakeUserDirectory) Notify(context.Context, uuid.UUID, contracts.Notice) error { return nil }
 
 // fakeAccounts is a minimal contracts.AccountProvisioning: the slot's tests
 // only need a distinct, comparable value to inject and assert on.
