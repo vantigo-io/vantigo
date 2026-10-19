@@ -146,9 +146,10 @@ Settings live in two files next to `compose.yaml`:
 Every key `vantigo.env` accepts is documented in the field comments of
 [apps/server/internal/config/config.go](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/config/config.go),
 the authoritative reference, and summarised in
-[Identity, authentication and deployment](/en/admin/authentication/). For
-startup-configured workforce OIDC, static SCIM provisioning and recovery procedures,
-see [SSO and SCIM operations](/en/admin/sso-scim/).
+[Identity, authentication and deployment](/en/admin/authentication/). Workforce
+OIDC and SCIM provisioning are not among them: an Owner sets both on the **Single
+sign-on** card, and [SSO and SCIM operations](/en/admin/sso-scim/) has the procedures
+and the recovery.
 
 ### The settings you must decide on
 
@@ -283,15 +284,11 @@ HTTP replica does not multiply the pollers:
 2. Run one extra container from the same image with the `worker` command. It always
    runs the workers regardless of `WORKERS_IN_PROCESS`, and serves only `/health/live`
    and `/health/ready` for probes.
-3. Give the worker container the same `SCIM_TOKEN` and `OIDC_*` settings as the API.
-   Who holds a permission (a directory's deactivation counts only while SCIM is
-   configured) and the accounts mode (local or federated) both follow them, so a
-   worker without them would judge differently from the API. The API records the mode
-   it derives when it starts (see
-   [the authority mode](/en/admin/authentication/#the-authority-mode)); a worker whose
-   own settings derive another prepares, activates and updates no account — Staff's
-   accounts wait, reported as a mode mismatch — until its settings match the API's and
-   it is restarted; it still disables leavers.
+3. The worker needs no OIDC or SCIM settings of its own. Who holds a permission (a
+   directory's deactivation counts only while SCIM is on) and the accounts mode (local
+   or federated) both follow the single sign-on settings in the database, which the
+   worker reads like the API, within 20 seconds of an Owner's change (see
+   [the authority mode](/en/admin/authentication/#the-authority-mode)).
 4. Keep the clocks of the API and worker hosts in sync (NTP). The Staff accounts
    worker's claims are leases that each process compares with its own clock, so a
    clock that runs ahead can take over a link another process is still working on.
@@ -476,17 +473,18 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   keep and finish the deletion of documents' files ([Staff](/en/admin/staff/#retention)),
   and the Staff accounts worker's `STAFF_ACCOUNTS_ENABLED` (default on), which prepares,
   enables and disables the users the account flag asks for on the poll it shares
-  ([Staff](/en/admin/staff/#the-accounts-worker)). The worker process must carry the same
-  `OIDC_*` and `SCIM_*` settings as the API process: where they differ it disables
-  leavers and holds every other step (`mode_mismatch`).
-- `vantigo.env.example` documents the static OIDC and SCIM settings. Configuration is
-  deployment-bound and changes require a restart. Do not put provider or SCIM secrets
-  in source-controlled files — inject `OIDC_CLIENT_SECRET`, `SCIM_TOKEN`,
-  `SCIM_PREVIOUS_TOKEN` and `COMMUNICATIONS_AI_API_KEY` from a secret store instead.
+  ([Staff](/en/admin/staff/#the-accounts-worker)). It reads the accounts mode from the
+  single sign-on settings in the database, as the API does.
+- The workforce OIDC provider and the SCIM token are set on the **Single sign-on**
+  card, not in `vantigo.env`: `OIDC_*` and `SCIM_*` there are imported into the
+  database once, at the first start of the release that brought the card, and then
+  only warned about until you remove them
+  ([Before the card](/en/admin/sso-scim/#before-the-card-the-environment-variables)).
+  Do not put secrets in source-controlled files — inject `COMMUNICATIONS_AI_API_KEY`
+  from a secret store instead.
 - SCIM uses `/api/v1/identity/scim/v2`, bearer tokens and `application/scim+json`.
-  Set `SCIM_TOKEN`; during rotation, optionally set `SCIM_PREVIOUS_TOKEN` together
-  with `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` (in the future, and no more than 24 hours
-  after startup). See [SSO and SCIM operations](/en/admin/sso-scim/).
+  An Owner issues the token with **New token** on the card, and rotates it there with
+  an overlap of at most 24 hours. See [SSO and SCIM operations](/en/admin/sso-scim/#scim).
 - `MANAGEMENT_PORT` and `MANAGEMENT_TOKEN` enable a private status endpoint for a
   control plane; see the [management listener](/en/admin/management-listener/). The
   Compose stack deliberately does not publish that port: reach it from another
@@ -603,6 +601,16 @@ their employee number and whether they are pending, so a pending user Staff made
 as an ordinary disabled user afterwards, and rolling forward again leaves them
 orphaned — managed by nobody, never invited. Before rolling it back, have an Owner stop
 managing and delete those pending users on the **Users** page.
+
+**The release with the Single sign-on card.** It brings identity's
+`00058_identity_sso_settings.sql`, the row the workforce OIDC provider and the SCIM
+credential live in from now on. Keep `OIDC_*` and `SCIM_*` in place for its first
+start: the API imports them into the row, audits `sso-settings.imported` with their
+names and logs a warning; then remove them from every container. A worker no longer
+needs them. Rolling the migration back drops the row with the sealed client secret
+and the token digests, so set the variables again first, with a new `SCIM_TOKEN` when
+the card issued the current one. The procedure is in
+[Before the card](/en/admin/sso-scim/#before-the-card-the-environment-variables).
 
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).

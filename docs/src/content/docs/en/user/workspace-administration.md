@@ -33,8 +33,8 @@ identity integrations":
 - **Operational activity** — a reminder that this overview shows only non-sensitive
   identity activity; credentials and provider configuration are never displayed.
 
-SSO and SCIM are configured by whoever runs the installation, not from this screen;
-see [SSO and SCIM operations](/en/admin/sso-scim/).
+SSO and SCIM are set further down the same overview, on the **Single sign-on** card;
+see [Set up single sign-on](#set-up-single-sign-on).
 
 ## Find a user
 
@@ -349,6 +349,63 @@ Every change is recorded in the authorization audit trail as
 person sees a point in time, they see it in this zone too, until a personal time
 zone of their own exists.
 
+### Set up single sign-on
+
+The **Single sign-on** card, below **Workspace** on the overview, connects the
+workspace to a workforce identity provider — Microsoft Entra ID or Google Workspace —
+so that people sign in with their work account, and gives a directory the token it
+provisions accounts with (SCIM). It needs the Owner role and, when the installation
+requires it, a second factor. What to do at the provider — the app registration, the
+secret, the redirect — is described step by step in
+[SSO and SCIM operations](/en/admin/sso-scim/).
+
+To let people sign in through a provider:
+
+1. Copy the **Callback URL** and register it with the provider.
+2. Choose the **Provider**: Entra or Google.
+3. Fill in the **Authority**, the provider's issuer address —
+   `https://login.microsoftonline.com/<tenant-guid>/v2.0` for Entra,
+   `https://accounts.google.com` for Google — and the **Client ID**.
+4. Give the credential: paste the **Client secret**, or, for Entra on a platform that
+   supplies one, the path of the **Token file**. Once a secret is saved the field is
+   blank and says when it was set: leave it blank to keep it, and type a new one only
+   to replace it.
+5. For Google, list the **Domains** people may sign in from.
+6. Optionally, give the button on the sign-in page a **Display name**; it is
+   `Workforce SSO` otherwise.
+7. Choose **Save**. A field the provider would not accept is marked with the form it
+   must have.
+
+Within 20 seconds the sign-in page offers **Continue with** and the display name, on
+every server, with no restart.
+
+If you change the **Authority** while people already sign in through the provider,
+Vantigo asks you to confirm first: people linked under the old authority are not
+recognised under the new one, so their next sign-in through the provider is refused
+while their account exists. Confirm only when you are moving to another tenant or
+provider. Turning the provider off while people are linked to it asks the same. If
+someone else saved the card after you opened it, saving says so: reload the page and
+make your change again.
+
+To give a directory its SCIM token:
+
+1. Copy the **Endpoint URL** into the directory's provisioning settings.
+2. Choose **New token**. The dialog shows the token **once**: copy it into the
+   directory before you close it. It cannot be shown again; if it is lost, issue a new
+   one.
+3. When a token already existed, the dialog also shows until when the old one is
+   still accepted — the overlap, at most 24 hours — so the directory can switch
+   without a gap. Choose **End overlap** once the directory uses the new token.
+
+**Turn off** stops SCIM: within 20 seconds the directory's requests are refused, and
+the accounts and groups it created stay as they are.
+
+When the settings were imported from the installation's environment, the card says so
+and asks for the variables to be removed; that is for whoever runs the installation
+([Before the card](/en/admin/sso-scim/#before-the-card-the-environment-variables)).
+Every change is recorded in the authorization audit trail as `sso-settings.changed`,
+never with the secret or a token.
+
 ## System administration
 
 The account created at setup is also the installation's **system administrator**,
@@ -380,5 +437,6 @@ provisioning, the provider creates, updates and deactivates accounts and groups 
 itself, and such an account cannot be deleted from the Users page — disable it, or
 let the provider deprovision it. Owner accounts are protected from the provider:
 SCIM cannot change or remove them, and a local Owner with a password remains the
-way in if the provider is unavailable. The configuration and the operator runbook
-are in [SSO and SCIM operations](/en/admin/sso-scim/).
+way in if the provider is unavailable — also to the **Single sign-on** card, where an
+Owner [sets both up](#set-up-single-sign-on). The operator runbook is in
+[SSO and SCIM operations](/en/admin/sso-scim/).

@@ -210,11 +210,14 @@ slutter; til leverandøren har opprettet brukeren, holdes lenken tilbake med `no
 og prøves igjen daglig. En ventende bruker laget i lokal modus før byttet holdes tilbake
 med `mode_changed` for en Owner.
 
-**Ulik modus.** Arbeiderens prosess må ha de samme OIDC- og SCIM-innstillingene som
-API-ets ([Installasjon](/nb/admin/installation/)). Er de ulike, deaktiverer arbeideren
-fortsatt dem som slutter, men holder alt annet tilbake: lenkene viser
-`reason: mode_mismatch`, og loggen sier det. Gjør innstillingene like og start på nytt;
-lenkene som ble holdt tilbake, prøves igjen ved neste kjøring.
+**Ulik modus.** Arbeideren leser modusen fra innstillingene for single sign-on i
+databasen, slik API-et gjør
+([autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen)), så de to er ikke
+lenger uenige. Bare en arbeider som fortsatt kjører utgivelsen før kortet **Single
+sign-on**, under en rullerende oppgradering, melder det fortsatt: den deaktiverer dem
+som slutter, men holder alt annet tilbake, og lenkene viser `reason: mode_mismatch`.
+Fullfør oppgraderingen; lenkene som ble holdt tilbake, prøves igjen ved neste
+kjøring.
 
 **En lenke som holdes tilbake** (`reason` satt; Konto-fanen sier hver årsak i en
 setning) prøves igjen hver dag, så den løser seg

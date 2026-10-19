@@ -1233,6 +1233,9 @@ deactivation — `Deactivate` reads no mode, so a leaver loses access whatever t
 configuration says — and holds every other step before any identity call: the links it
 holds record `blocked_reason = mode_mismatch`, their state kept, and are claimed again
 at the next poll, so the installation's item is derived from link rows (reading 21).
+Identity no longer answers it, since every process derives the mode from the same
+single sign-on row ([the authority mode](/en/admin/authentication/#the-authority-mode));
+it stays one release, for a worker still on the binary before.
 
 **A known remaining risk.** HR may relink a self-service link to a user an Owner has
 adopted for Staff in the instant between a claim's lease renewal and its call: one call

@@ -1,6 +1,6 @@
 ---
 title: "Identitet, autentisering og utrulling"
-description: "Lokale kontoer, brukere Ansatte styrer og rollene Ansatte kan gi, OIDC-leverandøren som konfigureres i miljøet, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
+description: "Lokale kontoer, brukere Ansatte styrer og rollene Ansatte kan gi, OIDC-leverandøren for arbeidsstyrken og SCIM, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
 sidebar:
   order: 20
 sources:
@@ -28,8 +28,9 @@ begge stiene, men den må bevare `Host`-headeren: `X-Forwarded-Host` respekteres
 og vertsfiltreringen utledes fra `APP_URL`. SPA og API på forskjellige opprinnelser er
 ikke en støttet utrullingsform.
 
-For statisk OIDC for arbeidsstyrken, SCIM 2.0, oppsett av leverandør og
-gjenopprettingsprosedyren for operatører, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
+OIDC-leverandøren for arbeidsstyrken og SCIM 2.0 settes av en eier på kortet **Single
+sign-on**, ikke i miljøet; for oppsett av leverandør og gjenopprettingsprosedyren for
+operatører, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
 
 Hver innstilling dette dokumentet nevner leses av
 [`apps/server/internal/config/config.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/config/config.go),
@@ -226,21 +227,23 @@ stående, som for enhver slettet bruker.
 Ansattes klargjøring arbeider i én av to moduser. **Lokal**: identitetsmodulen har
 innloggingsmetodene, så den oppretter brukerne Ansatte ber om, aktiverer dem og
 inviterer dem til å velge et passord. **Føderert**: en identitetsleverandør eier
-kontoene — OIDC for arbeidsstyrken (`OIDC_*`) eller SCIM (`SCIM_TOKEN`) er
-konfigurert — så den bare finner en bruker etter ansattnummer, aktiverer igjen en bruker
+kontoene — OIDC for arbeidsstyrken eller SCIM er på i
+[innstillingene for single sign-on](/nb/admin/sso-scim/#kortet-single-sign-on) — så den
+bare finner en bruker etter ansattnummer, aktiverer igjen en bruker
 Ansatte deaktiverte og deaktiverer; den oppretter og inviterer aldri (se
 [SSO- og SCIM-drift](/nb/admin/sso-scim/#ansatte-i-en-føderert-installasjon)).
 
-Modusen utledes av konfigurasjonen til prosessen som serverer API-et, og registreres når
-identitetsmodulen starter der (`identity.system_settings.authority_mode`, med
-`authority_mode_at`). En prosess som bare kjører bakgrunnsjobber, leser den registrerte
-modusen i stedet for å stole på sine egne innstillinger: når dens egne `OIDC_*` og
-`SCIM_TOKEN` gir en annen, klargjør, aktiverer og oppdaterer klargjøringen ingenting
-til de to stemmer overens — den deaktiverer fortsatt, så en som slutter, aldri beholder
-tilgangen på grunn av en feilkonfigurert worker (se [Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)). Å slå OIDC
-eller SCIM av eller på endrer derfor modusen ved API-ets neste oppstart; endringen
-revisjonslogges `authority-mode.changed` med modusene før og etter, uten aktør og uten
-korrelasjons-ID. En oppstart med samme modus endrer ingenting.
+Modusen utledes av `identity.sso_settings` i hver prosess — API-et og workerne likt —
+så ingen kan være uenige, og en worker trenger ingen OIDC- eller SCIM-innstillinger av
+sine egne. Å slå SSO eller SCIM av eller på på kortet endrer modusen overalt innen 20
+sekunder, uten omstart. Modusen registreres også, som sporet av endringene sine, i
+`identity.system_settings.authority_mode` med `authority_mode_at`: av en eiers lagring
+på kortet som endrer den, i lagringens egen transaksjon, og ved hver oppstart av
+API-et — den første etter oppgraderingen registrerer modusen de
+[importerte innstillingene](/nb/admin/sso-scim/#før-kortet-miljøvariablene) gir. En
+endring revisjonslogges `authority-mode.changed` med modusene før og etter, uten aktør
+og uten korrelasjons-ID. En lagring eller en oppstart med samme modus endrer
+ingenting.
 
 Samme rad holder **arbeidsområdets forretningstidssone**
 (`identity.system_settings.business_time_zone`, `Europe/Oslo` som standard): den ene
@@ -278,9 +281,9 @@ Ansatte når identitetsmodulens brukere bare gjennom identitetsmodulens klargjø
 kjører hver endring i en egen transaksjon — under eierlåsen, deretter brukerens
 invitasjoner, deretter brukeren — revisjonslogger den med aktøren (personen som trykket
 på en knapp i Ansatte, eller `system:staff-accounts`), og sender e-post først når
-endringen er lagret. Den avviser alt uten en gyldig aktør, og så lenge
-[autoritetsmodusen](#autoritetsmodusen) prosessen utleder, er en annen enn den
-registrerte, gjør den ingenting annet enn å deaktivere.
+endringen er lagret. Den avviser alt uten en gyldig aktør, og arbeider i
+[autoritetsmodusen](#autoritetsmodusen) innstillingene for single sign-on gir, lest i
+endringens egen transaksjon.
 
 | Steg | Lokal modus | Føderert modus | Revisjonslogg |
 | --- | --- | --- | --- |
@@ -329,7 +332,7 @@ kontoen som deaktivert av katalogen. Dette avviser den:
 | Adressen er tatt | En annen bruker har personens adresse, eller en eier har invitert noen til å bli eier på den og invitasjonen er fortsatt åpen | Gi personen en annen adresse i Ansatte, eller rydd i den andre kontoen eller invitasjonen |
 | Ansattnummeret er tatt | En bruker Ansatte ikke styrer, har nummeret | Ta inn den brukeren, eller rett nummeret i Ansatte |
 | Ikke funnet | Føderert modus: ingen bruker Ansatte styrer, har nummeret ennå | La identitetsleverandøren opprette kontoen, og ta den inn |
-| Ulik modus | Denne prosessens `OIDC_*`/`SCIM_TOKEN` gir en annen modus enn API-et registrerte (avvist for hvert steg unntatt deaktivering) | Gi workeren API-ets innstillinger ([Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)) |
+| Ulik modus | Meldes bare av en worker som fortsatt kjører utgivelsen før kortet Single sign-on, under en rullerende oppgradering (avvist for hvert steg unntatt deaktivering) | Fullfør oppgraderingen |
 
 ### Ta en eksisterende bruker inn under Ansatte
 
@@ -640,9 +643,10 @@ Kommunikasjons-API-et og forsegles i hvile, aldri via miljøvariabler. Se
 `APP_SECRET` er nøkkelmaterialet for hele prosessen: minst 32 byte, som hver nøkkel
 prosessen bruker utledes fra med HKDF-SHA256 — én utledet nøkkel per formål — og brukes
 som AES-256-GCM (CSRF- og informasjonskapselforsegling, OIDC-state, kryptering av
-TOTP-hemmeligheter, kanalpassord i Kommunikasjon). Formålsstrengen bindes inn som
-ekstra autentiserte data, slik at en verdi forseglet for ett formål ikke kan åpnes under
-et annet, og en nøkkel-id-byte gir rom for et framtidig rotasjonsopplegg.
+TOTP-hemmeligheter, OIDC-klienthemmeligheten, kanalpassord i Kommunikasjon).
+Formålsstrengen bindes inn som ekstra autentiserte data, slik at en verdi forseglet for
+ett formål ikke kan åpnes under et annet, og en nøkkel-id-byte gir rom for et
+framtidig rotasjonsopplegg.
 
 **Det finnes ingen lagret nøkkelring, ingen nøkkelinnpakkingstjeneste og ikke noe
 eksternt nøkkelhvelv.** Ingenting trenger klargjøring utover selve variabelen. To
@@ -651,8 +655,10 @@ konsekvenser betyr noe i drift:
 - **Alle replikaer må dele samme `APP_SECRET`** (og samme database), ellers kan ikke
   økter utstedt av én replika leses av en annen.
 - **Å miste eller rotere den tilsvarer å miste en signeringsnøkkel**: hver åpen økt,
-  hver pågående OIDC-flyt, hver lagret TOTP-hemmelighet og hver forseglet
-  kanallegitimasjon blir umulig å gjenopprette. Roter bare med en migreringsplan.
+  hver pågående OIDC-flyt, hver lagret TOTP-hemmelighet, den forseglede
+  OIDC-klienthemmeligheten og hver forseglet kanallegitimasjon blir umulig å
+  gjenopprette. Roter bare med en migreringsplan, og lagre klienthemmeligheten på
+  kortet Single sign-on igjen etterpå.
 
 ## Konfigurasjonsreferanse
 
@@ -706,19 +712,29 @@ oppstarten feiler.
 
 ### OIDC og SCIM for arbeidsstyrken
 
-| Variabel | Formål | Standard |
+**Disse variablene leses for én import, og konfigurerer ikke lenger noe.**
+Leverandøren og SCIM-legitimasjonen ligger i `identity.sso_settings` og settes på
+[kortet Single sign-on](/nb/admin/sso-scim/#kortet-single-sign-on). Den første
+prosessen som betjener API-et og finner den raden aldri skrevet, importerer de av dem
+som er satt, inn i den, revisjonslogget `sso-settings.imported` med navnene deres; når
+raden er skrevet, ignoreres de, og hver som fortsatt er satt, navngis i en advarsel ved
+hver oppstart. Denne utgivelsen validerer dem fortsatt ved oppstart, så fjern dem etter
+importen; neste utgivelse avviser dem ved oppstart. Se
+[Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene).
+
+| Variabel | Importeres som | Standard |
 | --- | --- | --- |
-| `OIDC_PROVIDER` | `entra` eller `google`; ikke satt slår av OIDC | ikke satt |
+| `OIDC_PROVIDER` | `entra` eller `google`; ikke satt forblir OIDC av | ikke satt |
 | `OIDC_AUTHORITY` | Nøyaktig utsteder for leverandøren | ikke satt |
 | `OIDC_CLIENT_ID` | Entra-GUID, eller en `.apps.googleusercontent.com`-klient-ID | ikke satt |
-| `OIDC_CLIENT_SECRET` | Klienthemmelighet | ikke satt |
+| `OIDC_CLIENT_SECRET` | Klienthemmelighet, forseglet | ikke satt |
 | `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolutt, lesbar assertion-fil (bare Entra) | ikke satt |
 | `AZURE_FEDERATED_TOKEN_FILE` | Plattformlevert reserve for den over | ikke satt |
 | `OIDC_ALLOWED_DOMAINS` | Kommaseparert liste over rene DNS-navn (bare Google, påkrevd der) | ikke satt |
 | `OIDC_DISPLAY_NAME` | Etikett på innloggingsknappen | `Workforce SSO` |
-| `SCIM_TOKEN` | Statisk SCIM-bærertoken; ikke satt slår av SCIM | ikke satt |
-| `SCIM_PREVIOUS_TOKEN` | Forrige token under en rotasjonsoverlapping | ikke satt |
-| `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` | RFC 3339, i framtiden, ≤ 24h fram | ikke satt |
+| `SCIM_TOKEN` | SCIM-bærertokenet, beholdt som sammendrag; ikke satt forblir SCIM av | ikke satt |
+| `SCIM_PREVIOUS_TOKEN` | Forrige token under en rotasjonsoverlapping, beholdt som sammendrag | ikke satt |
+| `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` | Slutten på overlappingen; RFC 3339, i framtiden, ≤ 24h fram | ikke satt |
 
 ### Transport, lagring og moduler
 
@@ -783,18 +799,22 @@ standard `OTEL_EXPORTER_OTLP_*`-variablene, som leses av OTel-SDK-et og ikke av
 
 ## OIDC for arbeidsstyrken
 
-Høyst én OpenID Connect-leverandør for arbeidsstyrken konfigureres, ved oppstart, fra
-miljøet; ingenting om den lagres eller kan redigeres gjennom et API. `OIDC_PROVIDER`
-er av/på-bryteren — når den ikke er satt, gjør enhver annen `OIDC_*`-variabel som
-fortsatt er satt at oppstarten feiler med navn på restene, slik at en halvveis fjernet
-leverandør ikke kan se slått av ut mens den bærer gyldig legitimasjon.
+Høyst én OpenID Connect-leverandør for arbeidsstyrken konfigureres. Den er en del av
+raden `identity.sso_settings` — leverandøren, autoriteten, klient-ID-en,
+klienthemmeligheten forseglet under `APP_SECRET` eller en tokenfil, de tillatte
+domenene og visningsnavnet — som en eier setter på kortet **Single sign-on** (`PUT
+/api/v1/identity/owner/sso/oidc`, `policy:Owner+OwnerManagement`: en eier, med MFA så
+lenge `OWNERS_REQUIRE_MFA` er på) og hver prosess leser gjennom en mellomlagring på 20
+sekunder, så en lagring virker innen 20 sekunder uten omstart. Reglene er de samme som
+`OIDC_*`-variablene var underlagt, kontrollert ved lagringen; en avvisning er en `400`
+med feltfeil. Relying party bygges på nytt når radens versjon flytter seg.
 
 **Klientautentiseringsmodusen utledes, den konfigureres ikke.** Det finnes ingen
-`ClientAuthentication`-innstilling: sett `OIDC_CLIENT_SECRET` for autentisering med
-klienthemmelighet, eller `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` (eller la plattformen
-levere `AZURE_FEDERATED_TOKEN_FILE`) for workload identity. Å sette begge er en
-konfigurasjonsfeil, og det er også å sette ingen av dem. Workload identity er bare for
-Entra; Google er bare klienthemmelighet.
+`ClientAuthentication`-innstilling: kortets **Klienthemmelighet** betyr autentisering
+med klienthemmelighet, dets **Tokenfil** (en absolutt sti prosessen som lagrer, kan
+lese) workload identity. Å lagre begge samtidig avvises, og det gjør også å lagre ingen
+av dem mens ingen er lagret; å lagre den ene fjerner den andre. Workload identity er
+bare for Entra; Google er bare klienthemmelighet.
 
 Flyten er autorisasjonskode pluss PKCE med en nonce. Leverandørmetadata, utsteder,
 mottaker, signatur, state, nonce og korrelasjon valideres, den validerte identiteten
@@ -808,7 +828,7 @@ Deretter gjelder leverandørspesifikke kontroller: Entra krever en `tid` som sam
 med tenant-GUID-en i den konfigurerte autoriteten og en `oid`-GUID, og krever at
 `azp` er lik klient-ID-en når tokenet bærer flere mottakere; Google krever
 `email_verified`, en gyldig e-post og en ikke-tom `hd` som samsvarer med
-e-postdomenet og finnes i `OIDC_ALLOWED_DOMAINS`.
+e-postdomenet og finnes blant de tillatte domenene.
 
 Nye identiteter klargjøres akkurat i tide som lokale `User`-kontoer, med den validerte
 utstederen og `sub` (skiller mellom store og små bokstaver) som nøkkel. E-post fra
@@ -817,7 +837,8 @@ automatisk**. OIDC-claims gir aldri lokale roller og oppfyller aldri det lokale
 MFA-kravet.
 
 `GET /api/v1/identity/providers` er anonymt og rapporterer de konfigurerte
-innloggingsleverandørene til SPA-en.
+innloggingsleverandørene til SPA-en, lest fra raden, så knappen dukker opp innen 20
+sekunder etter en lagring.
 
 ### Påkrevd tilbakekalls-URI
 
@@ -828,16 +849,21 @@ basisstien når en slik er konfigurert:
 https://vantigo.example.com/api/v1/identity/oidc/callback
 ```
 
-Tilbakekallsstien er fast og er ikke en utrullingsinnstilling. Den offentlige
-opprinnelsen, det videresendte skjemaet og leverandørregistreringen må stemme overens.
+Tilbakekallsstien er fast og er ikke en utrullingsinnstilling; kortet **Single
+sign-on** viser hele URL-en som **Tilbakekalls-URL**. Den offentlige opprinnelsen, det
+videresendte skjemaet og leverandørregistreringen må stemme overens.
 
 ## SCIM
 
-SCIM 2.0 betjenes på `/api/v1/identity/scim/v2` og autentiseres med det statiske
-bærertokenet i `SCIM_TOKEN`; ikke satt slår det av. Tokenet kan ikke inneholde
-blanktegn. **Det finnes ingen filbasert tokenvariant** — injiser verdien fra en
-hemmelighetsforvalter. Rotasjon med en avgrenset overlapping er beskrevet i
-[SSO- og SCIM-drift](/nb/admin/sso-scim/).
+SCIM 2.0 betjenes på `/api/v1/identity/scim/v2` og autentiseres med et bærertoken en
+eier utsteder med **Nytt token** på kortet **Single sign-on** (`POST
+/api/v1/identity/owner/sso/scim/token`): laget av serveren, svart én gang, og beholdt i
+`identity.sso_settings` bare som SHA-256-sammendraget. SCIM er på så lenge et token
+finnes, og **Slå av** fjerner det. En rotasjon beholder tokenet den erstatter i en
+overlapping på høyst 24 timer, som **Avslutt overlapp** avslutter tidlig; begge
+sammendragene sammenlignes, det forrige bare til utløpet. Hver prosess leser raden
+gjennom en mellomlagring på 20 sekunder. Prosedyrene står i
+[SSO- og SCIM-drift](/nb/admin/sso-scim/#scim).
 
 ## Videresendte headere og HTTPS
 
