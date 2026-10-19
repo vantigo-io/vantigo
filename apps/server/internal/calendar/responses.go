@@ -33,16 +33,22 @@ func (s *server) PostCalendarAppointmentsByIdResponse(ctx context.Context, req g
 	var (
 		row  store.CalendarAppointment
 		atts []store.CalendarAppointmentAttendee
+		excs []store.CalendarAppointmentException
 	)
+	// An answer changes nothing of the appointment itself — not its time, its
+	// place or its text — so neither its revision nor its sequence moves, and
+	// the owner's If-Match read before it still holds.
 	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		if _, err := txq.GetAppointmentForUpdate(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
+		var err error
+		row, err = txq.GetAppointmentForUpdate(ctx, req.Id)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return errNotFound
-		} else if err != nil {
+		}
+		if err != nil {
 			return fmt.Errorf("calendar: lock appointment %d: %w", req.Id, err)
 		}
-		now := s.deps.Clock()
-		_, err := txq.SetAttendeeStatus(ctx, store.SetAttendeeStatusParams{
-			AppointmentID: req.Id, UserID: me, Status: string(body.Status), Now: now,
+		_, err = txq.SetAttendeeStatus(ctx, store.SetAttendeeStatusParams{
+			AppointmentID: req.Id, UserID: me, Status: string(body.Status), Now: s.deps.Clock(),
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errNotFound
@@ -50,13 +56,11 @@ func (s *server) PostCalendarAppointmentsByIdResponse(ctx context.Context, req g
 		if err != nil {
 			return fmt.Errorf("calendar: record an answer to appointment %d: %w", req.Id, err)
 		}
-		if row, err = txq.TouchAppointment(ctx, store.TouchAppointmentParams{ID: req.Id, Now: now}); err != nil {
-			return fmt.Errorf("calendar: touch appointment %d: %w", req.Id, err)
-		}
 		if atts, err = txq.ListAttendees(ctx, req.Id); err != nil {
 			return fmt.Errorf("calendar: read appointment %d's attendees: %w", req.Id, err)
 		}
-		return nil
+		excs, err = exceptionsOf(ctx, txq, row)
+		return err
 	})
 	if _, ok := asRefusal(err); ok {
 		return gen.PostCalendarAppointmentsByIdResponse404Response{}, nil
@@ -64,7 +68,7 @@ func (s *server) PostCalendarAppointmentsByIdResponse(ctx context.Context, req g
 	if err != nil {
 		return nil, err
 	}
-	out, err := s.respond(ctx, row, atts, me)
+	out, err := s.respond(ctx, row, atts, excs, me)
 	if err != nil {
 		return nil, err
 	}

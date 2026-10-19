@@ -62,9 +62,21 @@ func (s *server) sources(ctx context.Context) ([]contracts.CalendarSource, error
 // sourceItems is one source's items for q, asked with the request's context
 // — contracts.HasPermission reads the request from it, so the provider's
 // gate sees the caller — and never inside a transaction of this module's.
+//
+// A provider trusts q.UserID: it answers that user's rows under the gate of
+// the principal in ctx, and checks no further that the two are one person. So
+// this module never asks about anyone but the principal — a colleague's
+// calendar asks no source at all (calendar design D6) — and a query naming
+// someone else is refused here, answered as nothing and logged, rather than
+// handed to a provider that would answer it.
 func (s *server) sourceItems(ctx context.Context, src contracts.CalendarSource, q contracts.CalendarQuery) ([]contracts.CalendarItem, error) {
 	if err := noteContractCall(ctx, "CalendarSource.CalendarItems"); err != nil {
 		return nil, err
+	}
+	if p, ok := contracts.PrincipalFrom(ctx); !ok || p.UserID != q.UserID {
+		s.deps.Logger.ErrorContext(ctx, "calendar: a calendar source was asked about someone other than the caller; nothing asked",
+			"module", sourceModule(src))
+		return nil, nil
 	}
 	return src.CalendarItems(ctx, q)
 }
@@ -135,6 +147,18 @@ func (s *server) directoryCustomer(ctx context.Context, id int32) (*contracts.Cu
 		return nil, nil
 	}
 	return s.deps.Directory.Customer(ctx, id)
+}
+
+// projectsRole is the role userID holds on project id, "" for none or when
+// Projects is off.
+func (s *server) projectsRole(ctx context.Context, id int32, userID uuid.UUID) (string, error) {
+	if err := noteContractCall(ctx, "Projects.Role"); err != nil {
+		return "", err
+	}
+	if s.deps.Projects == nil {
+		return "", nil
+	}
+	return s.deps.Projects.Role(ctx, id, userID)
 }
 
 // projectsProject is the project an appointment was made from, nil when

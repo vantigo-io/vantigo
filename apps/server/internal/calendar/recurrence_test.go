@@ -185,7 +185,83 @@ func TestPutAppointment_ChangingTheRuleDropsEveryException(t *testing.T) {
 	if n := h.Count(t, `SELECT count(*) FROM calendar.appointment_exceptions WHERE appointment_id = $1`, a.Id); n != 0 {
 		t.Errorf("exceptions after the rule changed = %d, want 0", n)
 	}
-	if seq := h.Count(t, `SELECT sequence FROM calendar.appointments WHERE id = $1`, a.Id); seq != 1 {
-		t.Errorf("sequence = %d, want 1", seq)
+	// One for the cancelled occurrence, one for the rule.
+	if seq := h.Count(t, `SELECT sequence FROM calendar.appointments WHERE id = $1`, a.Id); seq != 2 {
+		t.Errorf("sequence = %d, want 2", seq)
 	}
+}
+
+func TestOccurrence_MovedBeforeTheSeriesStartsStillShows(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "calendar:view-colleagues")
+	viewer, _ := signIn(t, h, "calendar:view-colleagues")
+	a := create(t, c, with(timed(t, "Weekly", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"),
+		"recurrence", map[string]any{"rule": "FREQ=WEEKLY;COUNT=3"}))
+	moved := time.Date(2026, 10, 31, 13, 0, 0, 0, time.UTC)
+	do(t, c, http.MethodPut, occurrencePath(a.Id, "2026-11-02"),
+		map[string]any{"startsAt": moved, "endsAt": moved.Add(time.Hour)}, http.StatusOK, nil)
+
+	got := ofKind(items(t, c, windowPath("2026-10-01", "2026-10-31")), "calendar.appointment")
+	if len(got) != 1 || got[0].Id != itemID(a.Id, "2026-11-02") || !got[0].StartsAt.Equal(moved) {
+		t.Errorf("October = %+v, want the occurrence moved there", got)
+	}
+	var mine gen.Appointment
+	do(t, c, http.MethodGet, appointmentPath(a.Id), nil, http.StatusOK, &mine)
+	var theirs gen.CalendarItems
+	do(t, viewer, http.MethodGet, colleaguePath(mine.Owner.Id, "2026-10-01", "2026-10-31"), nil, http.StatusOK, &theirs)
+	if len(theirs.Items) != 1 || !theirs.Items[0].StartsAt.Equal(moved) {
+		t.Errorf("a colleague's October = %+v", theirs.Items)
+	}
+	// Moved far past the series' last day, too.
+	late := time.Date(2027, 3, 1, 9, 0, 0, 0, time.UTC)
+	do(t, c, http.MethodPut, occurrencePath(a.Id, "2026-11-16"),
+		map[string]any{"startsAt": late, "endsAt": late.Add(time.Hour)}, http.StatusOK, nil)
+	if got := ofKind(items(t, c, windowPath("2027-03-01", "2027-03-01")), "calendar.appointment"); len(got) != 1 || got[0].Id != itemID(a.Id, "2026-11-16") {
+		t.Errorf("March = %v", ids(got))
+	}
+}
+
+func TestPostAppointment_RefusesARuleThatDoesNotProduceTheStartsOwnDay(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h)
+	// 3 November 2026 is a Tuesday.
+	tuesday := timed(t, "Series", "Europe/Oslo", "2026-11-03T09:00", "2026-11-03T10:00")
+	for _, rule := range []string{"FREQ=WEEKLY;BYDAY=MO", "FREQ=MONTHLY;BYMONTHDAY=1", "FREQ=MONTHLY;BYDAY=2TU"} {
+		fieldRefused(t, c.Do(http.MethodPost, appointmentsPath, with(tuesday, "recurrence", map[string]any{"rule": rule})), "recurrence.rule")
+	}
+	a := create(t, c, with(tuesday, "recurrence", map[string]any{"rule": "FREQ=WEEKLY;BYDAY=TU,TH;COUNT=3"}))
+	if a.Recurrence.LastDate == nil || a.Recurrence.LastDate.String() != "2026-11-10" {
+		t.Errorf("COUNT=3 from a Tuesday on TU,TH ends %v, want 2026-11-10 (the start counted)", a.Recurrence.LastDate)
+	}
+}
+
+func TestOccurrence_AMoveACancelAndARestoreEachBumpTheSequence(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h)
+	a := create(t, c, with(allDay("Daily", "Europe/Oslo", "2026-11-02", "2026-11-02"), "recurrence", map[string]any{"rule": "FREQ=DAILY"}))
+	seq := func() int { return h.Count(t, `SELECT sequence FROM calendar.appointments WHERE id = $1`, a.Id) }
+	do(t, c, http.MethodPut, occurrencePath(a.Id, "2026-11-03"), map[string]any{"cancelled": true}, http.StatusOK, nil)
+	do(t, c, http.MethodPut, occurrencePath(a.Id, "2026-11-04"), map[string]any{"startDate": "2026-11-05", "endDate": "2026-11-05"}, http.StatusOK, nil)
+	if n := seq(); n != 2 {
+		t.Errorf("sequence after a cancel and a move = %d, want 2", n)
+	}
+	do(t, c, http.MethodDelete, occurrencePath(a.Id, "2026-11-03"), nil, http.StatusNoContent, nil)
+	do(t, c, http.MethodDelete, occurrencePath(a.Id, "2026-11-03"), nil, http.StatusNoContent, nil)
+	if n := seq(); n != 3 {
+		t.Errorf("sequence after a restore and a restore of nothing = %d, want 3", n)
+	}
+}
+
+func TestWindowAndOccurrence_AreRefusedMoreThanTenYearsFromToday(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h)
+	fieldRefused(t, c.Do(http.MethodGet, windowPath("2037-01-01", "2037-01-31"), nil), "from")
+	fieldRefused(t, c.Do(http.MethodGet, windowPath("2016-01-01", "2016-01-31"), nil), "from")
+	a := create(t, c, with(allDay("Daily", "Europe/Oslo", "2026-11-02", "2026-11-02"), "recurrence", map[string]any{"rule": "FREQ=DAILY"}))
+	fieldRefused(t, c.Do(http.MethodPut, occurrencePath(a.Id, "2040-01-01"), map[string]any{"cancelled": true}), "date")
+	refused(t, c.Do(http.MethodPut, occurrencePath(a.Id, "2026-11-01"), map[string]any{"cancelled": true}), http.StatusConflict, "occurrence_not_in_series")
 }

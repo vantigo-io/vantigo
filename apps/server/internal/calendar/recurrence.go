@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/teambition/rrule-go"
 
@@ -28,16 +29,31 @@ import (
 // days and never meets a daylight-saving shift; each occurrence's wall-clock
 // is then put back into the zone (time.Date in it) and converted to an
 // instant. A 09:00 Oslo series is 09:00 in Oslo in March and in October, its
-// UTC hour shifting with the clock. Like rrule-go, and unlike a strict reading
-// of RFC 5545, the start itself is an occurrence only when the rule produces
-// it: WEEKLY;BYDAY=MO from a Tuesday first occurs the Monday after.
+// UTC hour shifting with the clock. rrule-go, unlike RFC 5545, counts the
+// start as an occurrence only when the rule produces it, so a rule that does
+// not produce the start's own day is refused (seriesFrom): the start is
+// always the first occurrence, as RFC 5545 has it, and COUNT counts it.
 
 // The rule's limits.
 const (
 	maxRuleInterval = 99
 	maxRuleCount    = 730
 	maxRuleYears    = 5
+	// maxRuleLength is the stored column's width; a longer rule is refused
+	// before it is parsed at all.
+	maxRuleLength = 500
+	// maxEcho is the most of a request's own text a refusal repeats back.
+	maxEcho = 60
 )
+
+// clip is v cut to maxEcho characters, for a refusal that names what it
+// refused without repeating whatever a request sent.
+func clip(v string) string {
+	if utf8.RuneCountInString(v) <= maxEcho {
+		return v
+	}
+	return string([]rune(v)[:maxEcho-1]) + "…"
+}
 
 // ruleParts is every part the subset reads; any other is refused by name.
 var ruleParts = map[string]bool{
@@ -65,6 +81,9 @@ const ruleSubset = "a rule repeats DAILY, WEEKLY or MONTHLY with INTERVAL, BYDAY
 // refuses it. loc is the appointment's zone, which an UNTIL given as a UTC
 // date-time is read in to find its day.
 func parseRule(raw string, loc *time.Location) (rule, string) {
+	if len(raw) > maxRuleLength {
+		return rule{}, fmt.Sprintf("A rule is at most %d characters", maxRuleLength)
+	}
 	v := strings.ToUpper(strings.TrimSpace(raw))
 	v = strings.TrimPrefix(v, "RRULE:")
 	if v == "" {
@@ -78,10 +97,10 @@ func parseRule(raw string, loc *time.Location) (rule, string) {
 	for _, part := range strings.Split(v, ";") {
 		key, value, ok := strings.Cut(part, "=")
 		if !ok || value == "" {
-			return rule{}, fmt.Sprintf("'%s' is not a rule part: %s", part, ruleSubset)
+			return rule{}, fmt.Sprintf("'%s' is not a rule part: %s", clip(part), ruleSubset)
 		}
 		if !ruleParts[key] {
-			return rule{}, fmt.Sprintf("%s is not supported: %s", key, ruleSubset)
+			return rule{}, fmt.Sprintf("%s is not supported: %s", clip(key), ruleSubset)
 		}
 		if seen[key] {
 			return rule{}, fmt.Sprintf("%s is given more than once", key)
@@ -91,9 +110,11 @@ func parseRule(raw string, loc *time.Location) (rule, string) {
 			untilRaw = value
 		}
 	}
+	// rrule-go's own words are not the client's: a value it cannot read is
+	// answered in this module's.
 	opt, err := rrule.StrToROptionInLocation(v, time.UTC)
 	if err != nil {
-		return rule{}, fmt.Sprintf("This is not a rule that can be read (%v): %s", err, ruleSubset)
+		return rule{}, "This is not a rule that can be read: " + ruleSubset
 	}
 	r := rule{freq: opt.Freq, interval: opt.Interval, count: opt.Count}
 	switch opt.Freq {
@@ -131,7 +152,9 @@ func parseRule(raw string, loc *time.Location) (rule, string) {
 	}
 	if seen["UNTIL"] {
 		if strings.HasSuffix(untilRaw, "Z") {
-			r.until = civil(opt.Until.In(loc))
+			// UNTIL is inclusive, so an instant exactly at midnight in the
+			// zone ends the day before it, not the one it begins.
+			r.until = civil(opt.Until.Add(-time.Second).In(loc))
 		} else {
 			r.until = civil(opt.Until)
 		}
@@ -222,6 +245,7 @@ type series struct {
 	start    time.Time     // floating: the start's wall-clock in loc, dressed as UTC
 	duration time.Duration // timed: each occurrence's length
 	spanDays int           // all-day: each occurrence's last day minus its first
+	last     time.Time     // the last occurrence's date when known, zero otherwise
 }
 
 // span is one occurrence's time: two civil dates, or two instants.
@@ -276,7 +300,14 @@ func seriesOf(a store.CalendarAppointment) (*series, error) {
 	if msg != "" {
 		return nil, fmt.Errorf("calendar: appointment %d's stored rule %q: %s", a.ID, *a.Rrule, msg)
 	}
-	return newSeries(r, spanOf(a), loc)
+	sr, err := newSeries(r, spanOf(a), loc)
+	if err != nil {
+		return nil, err
+	}
+	if last, ok := fromPgDate(a.SeriesLastDate); ok {
+		sr.last = last
+	}
+	return sr, nil
 }
 
 // spanOf is a stored appointment's own time.
@@ -297,9 +328,21 @@ func spanOf(a store.CalendarAppointment) span {
 func (sr *series) startDay() time.Time { return civil(sr.start) }
 
 // on is every occurrence whose date is from..to, both counted, as floating
-// starts in order.
+// starts in order. A span before the series starts or after its last day
+// answers nothing without asking the rule, which would otherwise step from
+// the start to the far end of whatever it was asked.
 func (sr *series) on(from, to time.Time) []time.Time {
-	return sr.rr.Between(civil(from), civil(to).Add(24*time.Hour-time.Second), true)
+	from, to = civil(from), civil(to)
+	if start := sr.startDay(); from.Before(start) {
+		from = start
+	}
+	if !sr.last.IsZero() && to.After(sr.last) {
+		to = sr.last
+	}
+	if to.Before(from) {
+		return nil
+	}
+	return sr.rr.Between(from, to.Add(24*time.Hour-time.Second), true)
 }
 
 // produces reports whether the rule puts an occurrence on date — the test

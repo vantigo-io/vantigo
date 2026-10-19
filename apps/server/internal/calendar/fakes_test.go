@@ -137,10 +137,16 @@ func (d fakeDirectory) Customer(_ context.Context, id int32) (*contracts.Custome
 }
 
 // fakeProjects is the project directory as Projects would answer it, for
-// the one method the calendar calls.
+// the two methods the calendar calls: Project, and Role — the role a user
+// holds on a project, "" for none, from roles keyed by project and user.
 type fakeProjects struct {
 	contracts.ProjectDirectory
 	projects map[int32][2]string // code, name
+	roles    map[int32]map[uuid.UUID]string
+}
+
+func (p fakeProjects) Role(_ context.Context, projectID int32, userID uuid.UUID) (string, error) {
+	return p.roles[projectID][userID], nil
 }
 
 func (p fakeProjects) Project(_ context.Context, id int32) (*contracts.ProjectEntry, error) {

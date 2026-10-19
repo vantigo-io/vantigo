@@ -180,8 +180,10 @@ CHECK, by house style — holds that exactly one pair is set, that `end_date >= 
 and `ends_at > starts_at`, and that a timed appointment is at most 31 days and an all-day
 one at most 366. `time_zone` is the one thing the design asked this module to store:
 the **TZID the appointment was made in**, the creator's effective zone at creation —
-taken from the request body, where the SPA puts the session's `timeZone`, and held to the
-workspace zone's two checks (Go loads it; Postgres agrees). A recurring appointment's
+taken from the request body on creation, where the SPA puts the session's `timeZone`, and
+held to the workspace zone's two checks (Go loads it; Postgres agrees); an update sends the
+appointment's own zone back, never the viewer's, so a person whose personal zone changed
+does not re-anchor a series by renaming it. A recurring appointment's
 "every Monday 09:00" is 09:00 in that zone across the clock change: the `rrule` expands
 in `time_zone` and the occurrences' instants are derived from it (D4), never the other
 way round. A later change of the person's own zone changes how they *see* it, not what
@@ -196,7 +198,10 @@ counts every change of when or where, so both exist from the first row rather th
 backfilled. `customer_id` and `project_id` are opaque ids (module boundaries rule 4), set
 when the appointment is made **from a record** — the customer page's "New appointment"
 — and answered on the response with the name resolved through `Deps.Directory` and
-`Deps.Projects` when those are wired, blank when not; the calendar does not refuse an id
+`Deps.Projects` when those are wired **and the viewer may see the record** — `customers:view`
+for a customer, a role on the project or view-all for a project — and as the bare id
+otherwise, so an appointment is never a way to read a name its reader could not; the
+calendar does not refuse an id
 it cannot resolve, as Expenses does with a project, because an appointment is not booked
 on anything and the link is a courtesy. `revision` is `If-Match`'s, Staff's convention.
 
@@ -223,6 +228,7 @@ All under `/api/v1/calendar`:
 | `PUT /appointments/{id}/occurrences/{date}`, `DELETE /appointments/{id}/occurrences/{date}` — move or cancel one occurrence, and put it back | `calendar:access`, the owner, otherwise 404 |
 | `POST /appointments/{id}/response` — `{ status }` from an attendee | `calendar:access`, an attendee, otherwise 404 |
 | `GET /colleagues/{userId}/items?from&to&timeZone` (D6) | `calendar:access` + `calendar:view-colleagues` |
+| `GET /users?query&limit` — active users from identity's directory, `{id, displayName}`, for the attendee and colleague pickers (no other search is open to a plain `calendar:access` holder) | `calendar:access` |
 
 The appointment on the wire:
 
@@ -236,6 +242,7 @@ Appointment {
   customer?: { id, name? }, project?: { id, code?, name? },
   owner: { id, displayName }, attendees: [{ user: {id, displayName}, status, respondedAt? }],
   myStatus?,                       // the caller's own, when an attendee
+  exceptions: [{ occurrenceDate, cancelled, startDate?, endDate?, startsAt?, endsAt? }], // a series' cancelled and moved occurrences; empty for a single one
   revision, createdAt, updatedAt
 }
 ```
@@ -250,7 +257,9 @@ no cancelled state in A, because nobody outside the company has been told; B, wh
 tells them, adds `cancelled_at` with the `METHOD:CANCEL` that must follow. A response is
 `accepted`, `declined` or `tentative`; `needs-action` is not something a person sends.
 An attendee who declined still sees the appointment, struck, and may change their
-answer; the owner's status is implicitly accepted and not stored.
+answer; the owner's status is implicitly accepted and not stored. An answer bumps
+neither `revision` nor `sequence`: it is not a change of what was agreed, and the
+owner's open sheet must not fail with 409 because a colleague accepted.
 
 The refusals are this module's `CalendarProblem`: field errors on the body (400), 404
 for what the caller may not see, 409 `revision_mismatch` on a stale `If-Match`, 409
@@ -266,7 +275,11 @@ COUNT=10` — without `DTSTART`, which is the appointment's start. The subset ac
 names for `WEEKLY`, and with one ordinal (`2TU`, `-1FR`) for `MONTHLY`; `BYMONTHDAY`
 with one day for `MONTHLY`; one of `COUNT` (at most 730) or `UNTIL` (a date, at most
 five years after the start), or neither. Anything else — `YEARLY`, `BYHOUR`, `BYSETPOS`,
-a second `BYDAY` list, `WKST` — is a field error on `recurrence.rule`. The rule is
+a second `BYDAY` list, `WKST` — is a field error on `recurrence.rule`, as is a rule
+that does not produce the appointment's own first day (a Tuesday start with `BYDAY=MO`):
+the start is always the first occurrence, as RFC 5545 has it and as B's and C's
+`DTSTART` will say. The rule is at most 500 characters, and a refusal never echoes the
+library's words. The rule is
 parsed with `teambition/rrule-go` and **re-serialised** before it is stored, so the row
 holds a canonical form, and `series_last_date` is computed from it at write time: the
 last occurrence's day for `COUNT` and `UNTIL`, null when the series never ends. An
@@ -283,11 +296,16 @@ subset). That date is the key of an exception and of the two occurrence endpoint
 An **exception** is one of two things, never both: `cancelled`, or a move (`startsAt`/
 `endsAt` for a timed series, `startDate`/`endDate` for an all-day one, the pair the
 series uses). A moved occurrence keeps its `occurrence_date` as its identity and shows at
-its new time; it may move to another day and still answers to the day it came from.
+its new time; it may move to another day — before the series' start or after its end
+included, the window read admitting a series by its exceptions too — and still answers
+to the day it came from. A move or a cancellation bumps `sequence`, since when is what
+changed. The appointment answers its `exceptions`, so the sheet lists the cancelled and
+the moved with **Put back** against each.
 `PUT /appointments/{id}/occurrences/{date}` creates or replaces the exception (409
 `occurrence_not_in_series` when the rule never produced `{date}`, judged by expanding
 the rule to that day); `DELETE` removes it, and the series' own occurrence returns. A
-`PUT` of the appointment that changes the rule or the start **drops every exception**,
+`PUT` of the appointment that changes the rule, the start, the all-day switch or the
+zone **drops every exception** — not one that changes only the end, the title or the place —
 with a sentence in the sheet saying so: the days the exceptions named may no longer
 exist, and a person re-does the one or two that matter. The iCalendar names for all of
 this (`RECURRENCE-ID`, `EXDATE`, an overriding `VEVENT`) are C's, and the model is shaped
@@ -298,7 +316,9 @@ so C can write them without a migration.
 `from` and `to` are civil dates, inclusive, at most 93 days apart (the month grid's six
 weeks and a quarter's list both fit; Staff's limit is the same); `timeZone` is the
 viewer's effective zone, which the SPA takes from the session and the server holds to
-the two checks, defaulting to the business zone when absent; `kinds` is an optional
+the two checks, defaulting to the business zone when absent; a window, like an
+occurrence date, lies within ten years of today, so no request walks a series across
+centuries; `kinds` is an optional
 comma list to narrow the providers asked (the filter is the client's, but a dashboard
 that wants only appointments need not pay for five queries). The answer:
 

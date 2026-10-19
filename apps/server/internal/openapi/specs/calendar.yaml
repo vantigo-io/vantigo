@@ -25,6 +25,11 @@ components:
                     description: A timed appointment's end, exclusive. Absent on an all-day one.
                     format: date-time
                     type: string
+                exceptions:
+                    description: A recurring appointment's cancelled and moved occurrences, by occurrenceDate — each one DELETE /appointments/{id}/occurrences/{date} puts back. Empty on a single appointment.
+                    items:
+                        $ref: '#/components/schemas/AppointmentOccurrence'
+                    type: array
                 id:
                     format: int64
                     type: integer
@@ -71,6 +76,7 @@ components:
                 - transparency
                 - owner
                 - attendees
+                - exceptions
                 - revision
                 - createdAt
                 - updatedAt
@@ -626,7 +632,7 @@ paths:
             x-vantigo-access: permission:calendar:access
     /api/v1/calendar/appointments/{id}/occurrences/{date}:
         delete:
-            description: Removes one occurrence's exception, the owner only, so the series' own occurrence returns. A date with no exception is already that, and answers the same.
+            description: Removes one occurrence's exception, the owner only, so the series' own occurrence returns, moving the appointment's revision and its sequence on. A date with no exception is already that, and answers the same with nothing changed.
             operationId: deleteCalendarAppointmentsByIdOccurrencesByDate
             parameters:
                 - in: path
@@ -664,7 +670,7 @@ paths:
                 - Calendar
             x-vantigo-access: permission:calendar:access
         put:
-            description: Creates or replaces one occurrence's exception — cancelled, or moved — the owner only. The date must be one the series' rule produces.
+            description: Creates or replaces one occurrence's exception — cancelled, or moved — the owner only. The date must be one the series' rule produces, within ten years of today. A change of when, it moves the appointment's revision and its sequence on.
             operationId: putCalendarAppointmentsByIdOccurrencesByDate
             parameters:
                 - in: path
@@ -725,7 +731,7 @@ paths:
             x-vantigo-access: permission:calendar:access
     /api/v1/calendar/appointments/{id}/response:
         post:
-            description: An attendee's answer to an appointment — accepted, declined or tentative — which they may change at any time. Anyone who is not an attendee, the owner included, gets the 404 an unknown id gets.
+            description: An attendee's answer to an appointment — accepted, declined or tentative — which they may change at any time. An answer changes nothing of the appointment itself, so its revision stays and the owner's If-Match still holds. Anyone who is not an attendee, the owner included, gets the 404 an unknown id gets.
             operationId: postCalendarAppointmentsByIdResponse
             parameters:
                 - in: path
@@ -782,14 +788,14 @@ paths:
                   schema:
                     format: uuid
                     type: string
-                - description: The window's first day, inclusive.
+                - description: The window's first day, inclusive, within ten years of today.
                   in: query
                   name: from
                   required: true
                   schema:
                     format: date
                     type: string
-                - description: The window's last day, inclusive, at most 93 days after from.
+                - description: The window's last day, inclusive. The window is at most 93 days, both ends counted.
                   in: query
                   name: to
                   required: true
@@ -837,14 +843,14 @@ paths:
             description: 'The caller''s calendar in a window (calendar design D5): their appointments — owned, or attended with any status — expanded in their own zones with their exceptions applied, then every enabled module''s calendar source in module order, each under its own permission, then the public holidays. A timed item is in the window when it overlaps from 00:00 to the end of to in timeZone; an all-day one when its dates overlap from..to.'
             operationId: getCalendarItems
             parameters:
-                - description: The window's first day, inclusive.
+                - description: The window's first day, inclusive, within ten years of today.
                   in: query
                   name: from
                   required: true
                   schema:
                     format: date
                     type: string
-                - description: The window's last day, inclusive, at most 93 days after from.
+                - description: The window's last day, inclusive. The window is at most 93 days, both ends counted.
                   in: query
                   name: to
                   required: true

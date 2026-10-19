@@ -24,13 +24,19 @@ func TestColleague_ShowsSharedTitlesBusyForPrivateAndNothingForFree(t *testing.T
 		"attendees", []string{colleagueID.String()}))
 	create(t, organiser, with(timed(t, "Unanswered invite", "Europe/Oslo", "2026-11-04T11:00", "2026-11-04T12:00"),
 		"attendees", []string{colleagueID.String()}))
+	declined := create(t, organiser, with(timed(t, "Declined invite", "Europe/Oslo", "2026-11-05T09:00", "2026-11-05T10:00"),
+		"attendees", []string{colleagueID.String()}))
+	tentative := create(t, organiser, with(timed(t, "Tentative invite", "Europe/Oslo", "2026-11-05T11:00", "2026-11-05T12:00"),
+		"attendees", []string{colleagueID.String()}))
 	do(t, colleague, http.MethodPost, responsePath(accepted.Id), map[string]any{"status": "accepted"}, http.StatusOK, nil)
+	do(t, colleague, http.MethodPost, responsePath(declined.Id), map[string]any{"status": "declined"}, http.StatusOK, nil)
+	do(t, colleague, http.MethodPost, responsePath(tentative.Id), map[string]any{"status": "tentative"}, http.StatusOK, nil)
 	h.sources.customers.give(colleagueID)
 
 	var got gen.CalendarItems
 	do(t, viewer, http.MethodGet, colleaguePath(colleagueID, "2026-11-02", "2026-11-08"), nil, http.StatusOK, &got)
 	if len(got.Items) != 3 {
-		t.Fatalf("colleague's items = %+v, want the shared, the private and the accepted invitation", got.Items)
+		t.Fatalf("colleague's items = %+v, want the shared, the private and the accepted invitation — no free, unanswered, declined or tentative one", got.Items)
 	}
 	byID := map[int64]gen.CalendarItem{}
 	for _, it := range got.Items {
