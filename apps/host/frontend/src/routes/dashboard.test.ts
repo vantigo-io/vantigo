@@ -587,6 +587,31 @@ describe("the dashboard's staff card", () => {
     expect(metrics.some((metric) => (metric.module as string) === "staff")).toBe(false);
   });
 
+  // Calendar has a module card and the agenda above the KPI row, but no stats
+  // endpoint: no KPI card, no activity series and nothing in the attention list.
+  it("shows the calendar card with the module and calendar:access, and keeps Calendar out of the KPI row", () => {
+    const calendarCard = (modules: Parameters<typeof visibleModuleCards>[0], permissions: string[] | undefined) =>
+      visibleModuleCards(modules, permissions).find((card) => card.module === "calendar");
+
+    expect(calendarCard(["calendar", "time"], ["calendar:access"])).toMatchObject({
+      title: "dashboard.calendar",
+      description: "dashboard.manageCalendar",
+      path: "/calendar",
+      requiredPermissions: ["calendar:access"],
+    });
+    expect(calendarCard(["calendar"], ["calendar:view-colleagues"])).toBeUndefined();
+    expect(calendarCard(["time"], ["*"])).toBeUndefined();
+
+    const cards = visibleModuleCards(["calendar", "time"], ["*"]);
+    expect(cards.map((card) => card.module)).toEqual(["time", "calendar"]);
+    expect(kpiCards(cards, ["*"]).map((card) => card.module)).toEqual(["time"]);
+    expect(metrics.some((metric) => (metric.module as string) === "calendar")).toBe(false);
+    for (const key of ["dashboard.calendar", "dashboard.manageCalendar"] as const) {
+      expect(dashboardCatalog.en[key]).toBeTruthy();
+      expect(dashboardCatalog.nb[key]).toBeTruthy();
+    }
+  });
+
   it("shows the headcount, the full-time equivalents and who starts and ends soon", () => {
     const t = (key: string, values?: Record<string, unknown>) => `${key}:${JSON.stringify(values)}`;
     const formatNumber = (value: number) => value.toFixed(2);

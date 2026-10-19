@@ -1,6 +1,7 @@
 import {
   IconBolt,
   IconBriefcase,
+  IconCalendar,
   IconClock,
   IconFileInvoice,
   IconMessage,
@@ -68,6 +69,14 @@ export const moduleCards = [
     requiredPermissions: ["time:access"],
   },
   {
+    title: "dashboard.calendar",
+    description: "dashboard.manageCalendar",
+    path: "/calendar",
+    icon: IconCalendar,
+    module: "calendar" as ModuleKey,
+    requiredPermissions: ["calendar:access"],
+  },
+  {
     title: "dashboard.expenses",
     description: "dashboard.manageExpenses",
     path: "/expenses",
@@ -108,11 +117,15 @@ export const visibleModuleCards = (enabledModules: readonly ModuleKey[], permiss
 export const canReadStaffStats = (permissions: string[] | undefined) =>
   hasPermissions(permissions, ["staff:view", "staff:manage"]);
 
-/** The cards of the KPI row: every visible module card, Staff's for those who may read its figures. */
+/**
+ * The cards of the KPI row: every visible module card, Staff's for those who
+ * may read its figures. Calendar has none: it serves no stats endpoints, and
+ * its place on the page is the agenda above the row (calendar design D7).
+ */
 export const kpiCards = <Card extends { module: ModuleKey }>(
   cards: readonly Card[],
   permissions: string[] | undefined,
-) => cards.filter((card) => card.module !== "staff" || canReadStaffStats(permissions));
+) => cards.filter((card) => card.module !== "calendar" && (card.module !== "staff" || canReadStaffStats(permissions)));
 
 /** The activity chart's series. Invoices has none: it serves no timeseries (payments and delivery design D7). */
 export const metrics = [

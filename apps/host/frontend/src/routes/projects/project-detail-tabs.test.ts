@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { moduleKeys } from "../../navigation";
-import { visibleProjectDetailTabs } from "./-project-detail-layout";
+import { showProjectNewAppointmentAction, visibleProjectDetailTabs } from "./-project-detail-layout";
 
 const values = (
   enabledModules: Parameters<typeof visibleProjectDetailTabs>[0],
@@ -165,5 +165,21 @@ describe("project detail tab visibility", () => {
       "billing",
       "economy",
     ]);
+  });
+});
+
+// Calendar design D7: the header's New appointment opens the calendar's sheet
+// with the project set, gated on the module and calendar:access as the
+// cross-module tabs are.
+describe("the New appointment action", () => {
+  it("shows when calendar is enabled and the caller holds calendar:access", () => {
+    expect(showProjectNewAppointmentAction(moduleKeys, ["*"])).toBe(true);
+    expect(showProjectNewAppointmentAction(moduleKeys, ["calendar:access"])).toBe(true);
+  });
+
+  it("hides when the calendar module is disabled, without calendar:access, and while permissions load", () => {
+    expect(showProjectNewAppointmentAction(["projects", "time"], ["*"])).toBe(false);
+    expect(showProjectNewAppointmentAction(moduleKeys, ["projects:access", "calendar:view-colleagues"])).toBe(false);
+    expect(showProjectNewAppointmentAction(moduleKeys, undefined)).toBe(false);
   });
 });

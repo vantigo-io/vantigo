@@ -9,6 +9,7 @@ import { type ModuleKey, visibleNavSections } from "../navigation";
 import { AppSpotlight } from "./app-spotlight";
 
 const allModules: ModuleKey[] = [
+  "calendar",
   "communications",
   "customers",
   "energy",
@@ -280,6 +281,30 @@ describe("AppSpotlight navigation authorization", () => {
     renderSpotlight(["*"], true, true, undefined, ["customers"]);
     await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
     expect(screen.queryByText("Request absence", { exact: true })).not.toBeInTheDocument();
+  });
+
+  // New appointment is everyone's in the calendar: it lands on the calendar
+  // with the appointment sheet open (the package's `new` seam).
+  it("opens the appointment sheet from New appointment for calendar:access", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["calendar:access"], false, false, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText("New appointment", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/calendar", search: { new: 1 } }));
+  });
+
+  it("hides New appointment without calendar:access and when the calendar module is not enabled", async () => {
+    renderSpotlight(["calendar:view-colleagues", "time:access"], false, false);
+    await waitFor(() => expect(screen.getByText("Log time", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("New appointment", { exact: true })).not.toBeInTheDocument();
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["*"], true, true, undefined, ["customers"]);
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("New appointment", { exact: true })).not.toBeInTheDocument();
   });
 
   // The Staff destinations are the sidebar's: My page for everyone in the app,

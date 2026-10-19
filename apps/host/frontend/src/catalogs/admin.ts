@@ -405,6 +405,18 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.staffPersonalData",
     descriptionKey: "admin.permission.staffPersonalDataDescription",
   },
+  "calendar:access": {
+    moduleKey: "admin.permission.module.calendar",
+    categoryKey: "admin.permission.category.calendar",
+    displayNameKey: "admin.permission.calendarAccess",
+    descriptionKey: "admin.permission.calendarAccessDescription",
+  },
+  "calendar:view-colleagues": {
+    moduleKey: "admin.permission.module.calendar",
+    categoryKey: "admin.permission.category.calendar",
+    displayNameKey: "admin.permission.calendarViewColleagues",
+    descriptionKey: "admin.permission.calendarViewColleaguesDescription",
+  },
 } as const;
 
 export const getHostPermissionTranslation = (permissionKey: string) =>
@@ -505,6 +517,7 @@ const en = {
   "admin.permission.module.time": "Time",
   "admin.permission.module.expenses": "Expenses",
   "admin.permission.module.invoices": "Invoices",
+  "admin.permission.module.calendar": "Calendar",
   "admin.permission.module.staff": "Staff",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
@@ -525,6 +538,7 @@ const en = {
   "admin.permission.category.time": "Time",
   "admin.permission.category.expenses": "Expenses",
   "admin.permission.category.invoices": "Invoices",
+  "admin.permission.category.calendar": "Calendar",
   "admin.permission.category.staff": "Staff",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
@@ -680,6 +694,12 @@ const en = {
   "admin.permission.staffPersonalData": "Reveal and erase personal data",
   "admin.permission.staffPersonalDataDescription":
     "Reveal and change national identity numbers and bank accounts, read health documents and sick-leave notes, see HR-only absence types, export anyone's personal data, set legal holds, and erase and re-assess people.",
+  "admin.permission.calendarAccess": "Use Calendar",
+  "admin.permission.calendarAccessDescription":
+    "Use the Calendar app: your own calendar, your appointments and your answers to them, and the dashboard's agenda.",
+  "admin.permission.calendarViewColleagues": "See colleagues' calendars",
+  "admin.permission.calendarViewColleaguesDescription":
+    "See a colleague's appointments as busy or free, with the title when it is shared.",
   "admin.accountExists": "An account already exists for this email address.",
   "admin.filterUsers": "Filter users by {{label}}",
   "admin.searchUsers": "Search users",
@@ -945,6 +965,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.time": "Timer",
   "admin.permission.module.expenses": "Utlegg",
   "admin.permission.module.invoices": "Fakturaer",
+  "admin.permission.module.calendar": "Kalender",
   "admin.permission.module.staff": "Ansatte",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
@@ -965,6 +986,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.time": "Timer",
   "admin.permission.category.expenses": "Utlegg",
   "admin.permission.category.invoices": "Fakturaer",
+  "admin.permission.category.calendar": "Kalender",
   "admin.permission.category.staff": "Ansatte",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
@@ -1123,6 +1145,12 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.staffPersonalData": "Vise og slette personopplysninger",
   "admin.permission.staffPersonalDataDescription":
     "Vise og endre fødselsnumre og bankkontoer, lese helsedokumenter og sykmeldinger, se fraværstyper bare HR ser, eksportere hvem som helst sine personopplysninger, sette rettslig hold, og slette og vurdere personer på nytt.",
+  "admin.permission.calendarAccess": "Bruk Kalender",
+  "admin.permission.calendarAccessDescription":
+    "Bruk Kalender-appen: din egen kalender, avtalene dine og svarene dine på dem, og agendaen på kontrollpanelet.",
+  "admin.permission.calendarViewColleagues": "Se kollegers kalendere",
+  "admin.permission.calendarViewColleaguesDescription":
+    "Se en kollegas avtaler som opptatt eller ledig, med tittelen når den er delt.",
   "admin.accountExists": "Det finnes allerede en konto for denne e-postadressen.",
   "admin.filterUsers": "Filtrer brukere etter {{label}}",
   "admin.searchUsers": "Søk etter brukere",

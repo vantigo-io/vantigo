@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
+import { NewAppointmentButton } from "@vantigo/calendar-ui/components/new-appointment-button";
 import { PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { type ProjectCapabilities, projectQueryOptions } from "@vantigo/projects-ui/api/projects";
 import { ProjectDetailHeader } from "@vantigo/projects-ui/pages/projects.$projectId";
@@ -160,6 +161,22 @@ const passesGate = (
   (gate.allPermissions ?? []).every((permission) => hasPermissions(permissions, [permission])) &&
   (gate.capability === undefined || capabilities?.[gate.capability] === true);
 
+/**
+ * The header's **New appointment** action (calendar design D7): it opens the
+ * calendar's sheet with the project set, gated the way the cross-module tabs
+ * are — the module mounted and the caller holding `calendar:access`.
+ */
+export const projectNewAppointmentAction = {
+  module: "calendar",
+  requiredPermissions: ["calendar:access"],
+} as const satisfies ProjectDetailGate;
+
+/** Whether the "New appointment" action shows, under the same rules as a tab. */
+export const showProjectNewAppointmentAction = (
+  enabledModules: readonly ModuleKey[] | undefined,
+  permissions: string[] | undefined,
+) => passesGate(projectNewAppointmentAction, enabledModules, permissions, undefined);
+
 /** The tabs the caller may see: module enabled, permission granted, capability held on this project. */
 export const visibleProjectDetailTabs = (
   enabledModules: readonly ModuleKey[] | undefined,
@@ -200,7 +217,14 @@ export const ProjectDetailLayout = () => {
 
   return (
     <>
-      <ProjectDetailHeader projectId={projectId} />
+      <ProjectDetailHeader
+        projectId={projectId}
+        actions={
+          showProjectNewAppointmentAction(enabledModuleKeys(), authorization.data?.permissions) ? (
+            <NewAppointmentButton projectId={projectId} variant="light" />
+          ) : undefined
+        }
+      />
       {visibleTabs.length > 1 && (
         <PageTabs
           aria-label={t("project.views")}

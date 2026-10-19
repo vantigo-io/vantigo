@@ -3,6 +3,7 @@ import { moduleKeys } from "../../navigation";
 import {
   activeCustomerDetailTab,
   showCorrespondenceAction,
+  showNewAppointmentAction,
   visibleCustomerDetailTabs,
 } from "./-customer-detail-layout";
 
@@ -83,5 +84,23 @@ describe("the correspondence action", () => {
   it("hides without the conversations permission, and while permissions are loading", () => {
     expect(showCorrespondenceAction(moduleKeys, ["customers:view"])).toBe(false);
     expect(showCorrespondenceAction(moduleKeys, undefined)).toBe(false);
+  });
+});
+
+// Calendar design D7: New appointment opens the calendar's sheet with the
+// customer set, gated on the module and calendar:access as the tabs are.
+describe("the New appointment action", () => {
+  it("shows when calendar is enabled and the caller holds calendar:access", () => {
+    expect(showNewAppointmentAction(moduleKeys, ["*"])).toBe(true);
+    expect(showNewAppointmentAction(moduleKeys, ["calendar:access"])).toBe(true);
+  });
+
+  it("hides when the calendar module is disabled", () => {
+    expect(showNewAppointmentAction(["customers", "communications"], ["*"])).toBe(false);
+  });
+
+  it("hides without calendar:access, and while permissions are loading", () => {
+    expect(showNewAppointmentAction(moduleKeys, ["calendar:view-colleagues", "customers:view"])).toBe(false);
+    expect(showNewAppointmentAction(moduleKeys, undefined)).toBe(false);
   });
 });

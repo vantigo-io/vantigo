@@ -24,6 +24,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { AgendaWidget } from "@vantigo/calendar-ui/components/agenda-widget";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
 import { fetchSession, sessionQueryKey } from "../api/auth";
@@ -458,6 +459,11 @@ const DashboardPage = () => {
           </Group>
         }
       />
+
+      {/* The agenda is the one card every employee has a reason to look at, so
+          it sits above the manager's figures (calendar design D7): the module
+          on and calendar:access held, the same rule as the module card. */}
+      {allowed("calendar") && <AgendaWidget />}
 
       {/* One column per card up to four; a fifth module wraps rather than
           squeezing every card past reading width. */}

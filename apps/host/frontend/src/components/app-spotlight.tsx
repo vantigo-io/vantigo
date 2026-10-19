@@ -5,6 +5,7 @@ import {
   IconBolt,
   IconBriefcase,
   IconBuilding,
+  IconCalendarEvent,
   IconCalendarPlus,
   IconClock,
   IconListCheck,
@@ -149,6 +150,11 @@ export const AppSpotlight = ({
             search: { tab: "absence", create: "absence" },
           },
         ]
+      : []),
+    // New appointment is everyone's in the app, for themselves: the calendar
+    // opens the appointment sheet on arrival (the package's `new` seam).
+    ...(enabledModules?.includes("calendar") && hasPermissions(permissions, ["calendar:access"])
+      ? [{ label: t("dashboard.newAppointment"), icon: IconCalendarEvent, path: "/calendar", search: { new: 1 } }]
       : []),
   ];
 
