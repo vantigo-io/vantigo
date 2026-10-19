@@ -25,12 +25,14 @@ import { type JSX, useState } from "react";
 import {
   type Appointment,
   type AppointmentAnswer,
+  type AppointmentOccurrence,
   type AppointmentTransparency,
   type AppointmentVisibility,
   type AppointmentWrite,
   appointmentQueryOptions,
   createAppointment,
   deleteAppointment,
+  deleteOccurrence,
   putOccurrence,
   REVISION_MISMATCH,
   respondToAppointment,
@@ -180,7 +182,7 @@ const valuesOf = (span: Span, timeZone: string, appointment?: Appointment): Form
     transparency: appointment?.transparency ?? "busy",
     recurrence: parseRule(
       appointment?.recurrence?.rule,
-      appointment ? spanStartDate(spanOf(appointment), timeZone) : startDate,
+      appointment ? spanStartDate(spanOf(appointment), appointment.timeZone) : startDate,
     ),
     attendees: appointment?.attendees.map((attendee) => attendee.user.id) ?? [],
   };
@@ -284,7 +286,10 @@ const AppointmentForm = ({
       title: values.title.trim(),
       allDay: span.allDay,
       ...spanFields(span),
-      timeZone,
+      // A new appointment is made in the writer's zone; a change keeps the
+      // zone it was made in, which its series expands in and its attendees
+      // agreed to (design D2) — the times typed are instants whatever the zone.
+      timeZone: appointment?.timeZone ?? timeZone,
       visibility: values.visibility,
       transparency: values.transparency,
       ...(values.location.trim() ? { location: values.location.trim() } : {}),
@@ -441,6 +446,7 @@ const AppointmentForm = ({
           onChange={(recurrence) => form.setFieldValue("recurrence", recurrence)}
           error={typeof form.errors.recurrence === "string" ? form.errors.recurrence : undefined}
         />
+        {appointment?.recurrence && <OccurrenceExceptions appointment={appointment} />}
         <AttendeePicker
           value={form.values.attendees}
           onChange={(attendees) => form.setFieldValue("attendees", attendees)}
@@ -527,6 +533,72 @@ const AttendeePicker = ({
         onChange([...new Set(ids)].filter((id) => id !== owner));
       }}
     />
+  );
+};
+
+/**
+ * The occurrences of a series cancelled or moved one by one, each with the
+ * way back: putting it back removes the exception, and the series' own
+ * occurrence returns (design D4).
+ */
+const OccurrenceExceptions = ({ appointment }: { appointment: Appointment }) => {
+  const { t, formatters } = useI18n("calendar");
+  const queryClient = useQueryClient();
+  const putBack = useMutation({
+    mutationFn: (occurrenceDate: string) => deleteOccurrence(appointment.id, occurrenceDate),
+    onSuccess: async () => {
+      notifications.show({ color: "teal", title: t("occurrencePutBack"), message: "" });
+      await queryClient.invalidateQueries({ queryKey: [CALENDAR_QUERY_KEY] });
+    },
+    onError: (error: Error) =>
+      notifications.show({ color: "red", title: t("couldNotPutBack"), message: error.message }),
+  });
+  const exceptions = [...appointment.exceptions].sort((a, b) => a.occurrenceDate.localeCompare(b.occurrenceDate));
+  if (exceptions.length === 0) return null;
+  const day = (date: string) =>
+    formatters.formatDate(civilDateValue(date), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const instant = (at: string) =>
+    `${formatters.formatDate(at, { day: "numeric", month: "short", year: "numeric" })} ${formatters.formatDate(at, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })}`;
+  const movedTo = (exception: AppointmentOccurrence) => {
+    if (exception.startsAt) return instant(exception.startsAt);
+    const start = exception.startDate ?? exception.occurrenceDate;
+    const end = exception.endDate ?? start;
+    return end === start ? day(start) : t("dayRange", { start: day(start), end: day(end) });
+  };
+  return (
+    <Stack gap={4}>
+      <Text size="sm" fw={500}>
+        {t("exceptions")}
+      </Text>
+      {exceptions.map((exception) => (
+        <Group
+          key={exception.occurrenceDate}
+          justify="space-between"
+          wrap="nowrap"
+          gap="xs"
+          data-testid="occurrence-exception"
+        >
+          <Text size="sm">
+            {exception.cancelled
+              ? t("exceptionCancelled", { date: day(exception.occurrenceDate) })
+              : t("exceptionMoved", { from: day(exception.occurrenceDate), to: movedTo(exception) })}
+          </Text>
+          <Button
+            size="compact-xs"
+            variant="subtle"
+            loading={putBack.isPending && putBack.variables === exception.occurrenceDate}
+            disabled={putBack.isPending}
+            onClick={() => putBack.mutate(exception.occurrenceDate)}
+          >
+            {t("putBack")}
+          </Button>
+        </Group>
+      ))}
+    </Stack>
   );
 };
 

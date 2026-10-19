@@ -220,7 +220,7 @@ export function CalendarPage() {
       if (kind === "occurrence") return putOccurrence(appointment.id, appointment.occurrenceDate ?? "", spanFields(to));
       const current = await queryClient.fetchQuery({ ...appointmentQueryOptions(appointment.id), staleTime: 0 });
       const next = kind === "series" ? shiftSeries(spanOf(current), from, to) : to;
-      return updateAppointment(current.id, current.revision, appointmentWriteOf(current, next, timeZone));
+      return updateAppointment(current.id, current.revision, appointmentWriteOf(current, next));
     },
     onSuccess: async () => {
       notifications.show({ color: "teal", title: t("appointmentMoved"), message: "" });

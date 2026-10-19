@@ -136,6 +136,13 @@ export const calendarCatalog = {
     answerSent: "Answer sent",
     couldNotAnswer: "The answer could not be sent",
     timeRange: "{{start}}–{{end}}",
+    dayRange: "{{start}} – {{end}}",
+    exceptions: "Changed occurrences",
+    exceptionCancelled: "Cancelled {{date}}",
+    exceptionMoved: "Moved from {{from}} to {{to}}",
+    putBack: "Put back",
+    occurrencePutBack: "The occurrence is back as the series has it",
+    couldNotPutBack: "The occurrence could not be put back",
 
     agenda: {
       title: "Today and this week",
@@ -283,6 +290,13 @@ export const calendarCatalog = {
     answerSent: "Svaret er sendt",
     couldNotAnswer: "Svaret kunne ikke sendes",
     timeRange: "{{start}}–{{end}}",
+    dayRange: "{{start}} – {{end}}",
+    exceptions: "Endrede forekomster",
+    exceptionCancelled: "Avlyst {{date}}",
+    exceptionMoved: "Flyttet fra {{from}} til {{to}}",
+    putBack: "Legg tilbake",
+    occurrencePutBack: "Forekomsten er tilbake slik serien har den",
+    couldNotPutBack: "Forekomsten kunne ikke legges tilbake",
 
     agenda: {
       title: "I dag og denne uken",
