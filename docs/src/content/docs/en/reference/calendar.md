@@ -366,14 +366,17 @@ keyed by the element's place in the request (`attendees[3]`):
   its `name` at most 200; a `user` or `contact` field beside it is refused.
 
 Two elements naming the same colleague, the same contact or the same address (compared
-lower-cased) are kept once, and the limit counts what is left: at most **50** attendees
-of all kinds together, and more is one field error on `attendees`.
+lower-cased) are kept once, and a typed address equal to the address of a contact in
+the same list is collapsed into the contact, so nobody is invited twice. The limit
+counts what is left: at most **50** attendees of all kinds together, and more is one
+field error on `attendees`.
 
 On a `PUT` the list replaces the old one. An attendee still listed is **kept**, with
 their answer, their link and their invitation record — unless [when
-changed](#changing-and-deleting), which resets every answer; one left out is
+changed](#changing-and-deleting), which resets every answer — and a kept email
+attendee's `name`, when the request changes it, is stored; one left out is
 **dropped**, with their answer, and is told ([a `CANCEL`](#when-it-goes) to an outside
-one, [a notice](#what-a-colleague-receives) to a colleague); a new one is **added** at
+one who had been invited, [a notice](#what-a-colleague-receives) to a colleague); a new one is **added** at
 `needs-action`. A new outside attendee gets its [answer link](#the-answer-by-link) as
 its row is inserted.
 
@@ -615,7 +618,9 @@ no answer sentence. The texts are the module's own, in `words.go`.
 
 **Every outside attendee is on every copy**, as the clients expect, and **no colleague
 is**: a colleague's address is identity's and is not put in a file that leaves the
-company. `PARTSTAT` is the attendee's answer in iCalendar's words (`NEEDS-ACTION`,
+company. `SUMMARY`, `LOCATION` and `DESCRIPTION` are written with their carriage returns
+normalised and control characters stripped, so a title cannot break the object's lines.
+`PARTSTAT` is the attendee's answer in iCalendar's words (`NEEDS-ACTION`,
 `ACCEPTED`, `DECLINED`, `TENTATIVE`). The one exception is the `CANCEL` to an attendee
 dropped from the appointment, which names that one alone.
 
@@ -658,18 +663,20 @@ mail in it.
 
 After the commit, never inside it — through the module's own accessor for the mail seam,
 which refuses a call made inside one of its transactions — one message per outside
-attendee, one after the other, under a budget of **thirty seconds** for the lot, on a
-context detached from the request, so a caller who leaves does not stop the sends; when
-the budget runs out, the attendees not yet reached are marked failed:
+attendee, one after the other, on a context detached from the request, so a caller who
+leaves does not stop the sends. **All the after-commit work of one request** — its
+invitations and its colleague notices together — shares one budget of **thirty
+seconds**; when it runs out, the attendees not yet reached are marked failed. A change's
+`CANCEL`s go before its `REQUEST`s:
 
 | On | To whom | Method, `SEQUENCE` |
 | --- | --- | --- |
 | a create | every outside attendee | `REQUEST`, the row's sequence |
 | a `PUT` that bumped `sequence` (when or where changed) | every outside attendee, kept or new | `REQUEST`, the new sequence |
 | a `PUT` that did not | the outside attendees **added** | `REQUEST`, the current sequence |
-| a `PUT` | each outside attendee **dropped** | `CANCEL` to that one, the current sequence, with that one as the only `ATTENDEE` |
+| a `PUT` | each outside attendee **dropped** who had been invited (`invited_at` set) — unless their address is still on the appointment under another kind | `CANCEL` to that one, the current sequence, with that one as the only `ATTENDEE` |
 | an occurrence moved, cancelled or put back | every outside attendee | `REQUEST`, the new sequence — the whole series |
-| the appointment [cancelled](#cancellation) | every outside attendee, one whose earlier send failed included | `CANCEL`, the new sequence |
+| the appointment [cancelled](#cancellation) | every outside attendee who had been invited (`invited_at` set); one never reached is sent nothing | `CANCEL`, the new sequence |
 | `POST /appointments/{id}/attendees/{attendeeId}/resend` | that one attendee | `REQUEST`, the current sequence |
 
 So a change of the title, the description or the visibility alone mails nobody: the
@@ -774,22 +781,25 @@ The page answers what the invitee needs to decide, and nothing more: **no descri
 (it may be internal), **no other attendee**, no address of the owner's. `company` is
 **reserved and never answered**: no contract the module consumes exposes the
 workspace's name, so the page names the organiser alone; `attendee.name` is the
-contact's name or the name typed, else the address's part before the `@` — never the
-address; `status` the attendee's
+contact's name or the name typed — for an email attendee typed without one, the
+address's part before the `@` — never the address; `status` the attendee's
 current answer; `cancelled` whether the appointment has been
 [cancelled](#cancellation); `language` the organiser's ([the
 language](#the-language)), which the page is shown in rather than the browser's. A timed
 appointment carries `startsAt` and `endsAt`, an all-day one `startDate` and `endDate`
-(inclusive); a series answers its first occurrence. A body that does not decode, or
-carries no token, is a 400, and so is a `status` that is not an answer.
+(inclusive); a series answers its first occurrence. On both operations a body that
+does not decode, or whose token is absent or blank, is a 400, and on the answer so is a
+`status` that is not an answer.
 
 The answer takes `status` — `accepted`, `tentative` or `declined` — sets the attendee's
 `status` and `respondedAt`, under the appointment's row lock, and answers the page again.
 It changes nothing of the appointment itself: neither its `revision`, its `sequence` nor
 its `updatedAt`. An answer to a cancelled appointment is a 409
 `appointment_cancelled`. The answer may be changed through the same link at any time
-until then. After the commit the owner is told through identity — "Ola Hansen
-accepted: Kundemøte" ([what a colleague receives](#what-a-colleague-receives)).
+until then. An answer that repeats the status the attendee already holds writes
+nothing — `respondedAt` stays — and tells nobody. Otherwise, after the commit, the owner
+is told through identity, within ten seconds — "Ola Hansen accepted: Kundemøte" ([what
+a colleague receives](#what-a-colleague-receives)).
 
 **The public host.** `GET /rsvp`, `POST /api/v1/calendar/rsvp/read` and
 `POST /api/v1/calendar/rsvp` are on `security.PayRoutes()`, the public host's allowlist
@@ -809,9 +819,11 @@ lock:
   none sees it vanish untold.
 - **Otherwise the appointment is cancelled**: `cancelled_at` is set and `sequence` bumped
   under the row's lock; after the commit a `CANCEL` with the new `SEQUENCE` and
-  `STATUS:CANCELLED` is mailed to every outside attendee — one whose earlier send failed
-  included — and recorded on each as a send is ([when it goes](#when-it-goes)), and the
-  colleagues are told ([what a colleague receives](#what-a-colleague-receives)).
+  `STATUS:CANCELLED` is mailed to every outside attendee who had been invited
+  (`invited_at` set) — one never reached is sent nothing, since there is nothing on
+  their calendar to take off — and recorded on each as a send is ([when it
+  goes](#when-it-goes)), and the colleagues are told ([what a colleague
+  receives](#what-a-colleague-receives)).
 
 The delete answers 204 on either path.
 
@@ -834,7 +846,8 @@ has passed — with its attendees and exceptions, by the cascade — so the modu
 keep what nobody can see. The last day is:
 
 - for a single appointment, its end;
-- for a bounded series, `series_last_date`;
+- for a bounded series, the later of `series_last_date` and the end of its latest moved
+  occurrence, since a move may take an occurrence past the series' last day;
 - for a series that never ends, ninety days after `cancelled_at`.
 
 It is contributed through `Workers` behind `CALENDAR_CANCELLATIONS_ENABLED` (default
@@ -881,14 +894,18 @@ in English and Norwegian (`words.go`, `notices.go`):
 | an outside attendee's answer by the link | the owner | "Ola Hansen accepted: Kundemøte", "… declined: …", "… tentatively accepted: …" · "Ola Hansen takket ja: Kundemøte", "… takket nei: …", "… svarte kanskje: …" |
 
 The time is the appointment's start in its own zone, the day alone for an all-day one;
-an answer from an invitee with no name is "An invitee" ("En invitert"). A move, cancel
+the answer's notice names the invitee as the appointment holds them — a contact
+with no name as "a contact" ("en kontakt"), never by any part of its address; an email
+attendee typed without a name by the part of the address before the `@`. A move, cancel
 or restore of one occurrence sends no notice. The body is the same sentence and
 "Open it in Vantigo: <link>" ("Åpne den i Vantigo: …"), the link into the app
 `APP_URL/calendar?date=<the first day>&appointment=<id>`, and nothing else: the
 appointment is on the colleague's calendar already, and their answer is the in-app one.
 A colleague gets no ICS and no native buttons, by design. A notice that fails is logged
 as a warning, `calendar: a notice could not be sent`, with `appointment_id` and
-`user_id`, and never fails the request.
+`user_id`, and never fails the request. The notices of a write share its thirty-second
+budget with its invitations ([when it goes](#when-it-goes)); the owner's notice of an
+answer has ten seconds of its own.
 
 ## The window
 
