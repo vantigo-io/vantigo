@@ -489,7 +489,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 - OIDC-leverandøren for arbeidsstyrken og SCIM-tokenet settes på kortet **Single
   sign-on**, ikke i `vantigo.env`: `OIDC_*` og `SCIM_*` der importeres i databasen én
   gang, ved første oppstart av utgivelsen som kom med kortet, og varsles deretter bare
-  om til du fjerner dem
+  om — men valideres fortsatt ved oppstart — til du fjerner dem
   ([Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene)). Ikke legg
   hemmeligheter i filer under versjonskontroll — injiser `COMMUNICATIONS_AI_API_KEY`
   fra en hemmelighetsforvalter i stedet.

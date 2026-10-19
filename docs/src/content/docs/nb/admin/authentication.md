@@ -239,7 +239,8 @@ sine egne. Å slå SSO eller SCIM av eller på på kortet endrer modusen overalt
 sekunder, uten omstart. Modusen registreres også, som sporet av endringene sine, i
 `identity.system_settings.authority_mode` med `authority_mode_at`: av en eiers lagring
 på kortet som endrer den, i lagringens egen transaksjon, og ved hver oppstart av
-API-et — den første etter oppgraderingen registrerer modusen de
+API-et, i transaksjonen som holder raden for importen — den første etter
+oppgraderingen registrerer modusen de
 [importerte innstillingene](/nb/admin/sso-scim/#før-kortet-miljøvariablene) gir. En
 endring revisjonslogges `authority-mode.changed` med modusene før og etter, uten aktør
 og uten korrelasjons-ID. En lagring eller en oppstart med samme modus endrer
@@ -715,8 +716,8 @@ oppstarten feiler.
 **Disse variablene leses for én import, og konfigurerer ikke lenger noe.**
 Leverandøren og SCIM-legitimasjonen ligger i `identity.sso_settings` og settes på
 [kortet Single sign-on](/nb/admin/sso-scim/#kortet-single-sign-on). Den første
-prosessen som betjener API-et og finner den raden aldri skrevet, importerer de av dem
-som er satt, inn i den, revisjonslogget `sso-settings.imported` med navnene deres; når
+prosessen som betjener API-et og finner den raden aldri skrevet, mens `OIDC_PROVIDER`
+eller `SCIM_TOKEN` er satt, importerer disse inn i den, revisjonslogget `sso-settings.imported` med navnene deres; når
 raden er skrevet, ignoreres de, og hver som fortsatt er satt, navngis i en advarsel ved
 hver oppstart. Denne utgivelsen validerer dem fortsatt ved oppstart, så fjern dem etter
 importen; neste utgivelse avviser dem ved oppstart. Se
@@ -725,13 +726,13 @@ importen; neste utgivelse avviser dem ved oppstart. Se
 | Variabel | Importeres som | Standard |
 | --- | --- | --- |
 | `OIDC_PROVIDER` | `entra` eller `google`; ikke satt forblir OIDC av | ikke satt |
-| `OIDC_AUTHORITY` | Nøyaktig utsteder for leverandøren | ikke satt |
-| `OIDC_CLIENT_ID` | Entra-GUID, eller en `.apps.googleusercontent.com`-klient-ID | ikke satt |
+| `OIDC_AUTHORITY` | Nøyaktig utsteder for leverandøren; over 200 tegn importeres leverandøren av | ikke satt |
+| `OIDC_CLIENT_ID` | Entra-GUID, eller en `.apps.googleusercontent.com`-klient-ID; over 200 tegn importeres leverandøren av | ikke satt |
 | `OIDC_CLIENT_SECRET` | Klienthemmelighet, forseglet | ikke satt |
-| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolutt, lesbar assertion-fil (bare Entra) | ikke satt |
+| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolutt, lesbar assertion-fil (bare Entra); over 500 tegn importeres leverandøren av | ikke satt |
 | `AZURE_FEDERATED_TOKEN_FILE` | Plattformlevert reserve for den over | ikke satt |
 | `OIDC_ALLOWED_DOMAINS` | Kommaseparert liste over rene DNS-navn (bare Google, påkrevd der) | ikke satt |
-| `OIDC_DISPLAY_NAME` | Etikett på innloggingsknappen | `Workforce SSO` |
+| `OIDC_DISPLAY_NAME` | Etikett på innloggingsknappen, avkortet til 100 tegn | `Workforce SSO` |
 | `SCIM_TOKEN` | SCIM-bærertokenet, beholdt som sammendrag; ikke satt forblir SCIM av | ikke satt |
 | `SCIM_PREVIOUS_TOKEN` | Forrige token under en rotasjonsoverlapping, beholdt som sammendrag | ikke satt |
 | `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` | Slutten på overlappingen; RFC 3339, i framtiden, ≤ 24h fram | ikke satt |
@@ -811,9 +812,11 @@ med feltfeil. Relying party bygges på nytt når radens versjon flytter seg.
 
 **Klientautentiseringsmodusen utledes, den konfigureres ikke.** Det finnes ingen
 `ClientAuthentication`-innstilling: kortets **Klienthemmelighet** betyr autentisering
-med klienthemmelighet, dets **Tokenfil** (en absolutt sti prosessen som lagrer, kan
-lese) workload identity. Å lagre begge samtidig avvises, og det gjør også å lagre ingen
-av dem mens ingen er lagret; å lagre den ene fjerner den andre. Workload identity er
+med klienthemmelighet, dets **Tokenfil** (en absolutt sti til en vanlig fil på høyst
+16 KiB som prosessen som lagrer, kan lese) workload identity. Å lagre begge samtidig
+avvises, og det gjør også å lagre ingen av dem, med mindre en klienthemmelighet er
+lagret for samme leverandør og klient-ID, som da beholdes; å lagre den ene fjerner den
+andre. Workload identity er
 bare for Entra; Google er bare klienthemmelighet.
 
 Flyten er autorisasjonskode pluss PKCE med en nonce. Leverandørmetadata, utsteder,
