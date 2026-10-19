@@ -27,7 +27,7 @@ func TestPostAppointment_AllDayAndTimedAre201WithTheirZoneUIDAndSequenceZero(t *
 		t.Errorf("timed appointment = %+v", block)
 	}
 	for _, a := range []gen.Appointment{day, block} {
-		if a.Owner.Id != me || a.Revision != 1 || a.Visibility != gen.Shared || a.Transparency != gen.Busy || len(a.Attendees) != 0 {
+		if a.Owner.Id != me || a.Revision != 1 || a.Visibility != gen.Shared || a.Transparency != gen.AppointmentTransparencyBusy || len(a.Attendees) != 0 {
 			t.Errorf("appointment %d = %+v, want owned by the caller at revision 1, shared and busy", a.Id, a)
 		}
 		zone := modtest.One[string](t, h.Harness, `SELECT time_zone FROM calendar.appointments WHERE id = $1`, a.Id)
@@ -109,7 +109,7 @@ func TestPostAppointment_AttendeesAreDeduplicatedAtNeedsActionWithTheirNames(t *
 			t.Errorf("attendee %+v, want needs-action", at)
 		}
 	}
-	if a.Visibility != gen.Private || a.Transparency != gen.Free || a.Location == nil || *a.Location != "Room 4" || *a.Description != "Agenda" {
+	if a.Visibility != gen.Private || a.Transparency != gen.AppointmentTransparencyFree || a.Location == nil || *a.Location != "Room 4" || *a.Description != "Agenda" {
 		t.Errorf("appointment = %+v", a)
 	}
 	if a.MyStatus != nil {

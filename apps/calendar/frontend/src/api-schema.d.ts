@@ -154,6 +154,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's calendar addresses
+         * @description The caller's calendar addresses (calendar feed design D1) — full before busy, a variant without one absent — each opened from its sealed copy for its owner alone, with when it was created or last reset and when it was last read, and whether they are on the public host. calendar:access's, on the caller's own rows.
+         */
+        get: operations["getCalendarFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/feed/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A calendar address's feed
+         * @description A calendar address's iCalendar feed (calendar feed design D2–D4), for a calendar program to subscribe to. It is the module's one anonymous GET with its token in the path: Google, Apple, Outlook and Thunderbird take one address and ask it, with no header and no body of ours. It is held to its mitigations. The token is stored only as its SHA-256 and found by it, so a database read answers no address. It is per person and per variant, and a reset kills it at once. It is rate limited to 120 per client address per 10 minutes (calendar-feed). A token nobody holds is the bare 404, and so is a file without the .ics suffix. The feed carries nothing the person's own calendar does not, and the busy variant nothing but spans. The path is logged as every path is, so the operator keeps the proxy's access log to the path on the public host, or to nothing. A signed-in caller is answered alike, by the token and not the session. The calendar is today −3 months to today +12 months in the business time zone, series as rules, with no METHOD, ORGANIZER or ATTENDEE; its ETag is the SHA-256 of the calendar without its DTSTAMP lines, so an unchanged calendar keeps its tag, and an If-None-Match naming it, or *, is 304 with no body. A 200 or a 304 records when the address was last read.
+         */
+        get: operations["getCalendarFeedByFile"];
+        put?: never;
+        /**
+         * Create or reset a calendar address
+         * @description Creates the caller's address of one variant (calendar feed design D1), or resets the one they have: a new token — 32 random bytes, stored only as its SHA-256 — and the whole address sealed, so the old address answers 404 from this moment and nothing has read the new one yet. Answers the address.
+         */
+        post: operations["postCalendarFeedByVariant"];
+        /**
+         * Turn off a calendar address
+         * @description Turns off the caller's address of one variant (calendar feed design D1); it answers 404 from this moment. The other variant's is untouched.
+         */
+        delete: operations["deleteCalendarFeedByVariant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/items": {
         parameters: {
             query?: never;
@@ -163,7 +211,7 @@ export interface paths {
         };
         /**
          * The caller's calendar
-         * @description The caller's calendar in a window (calendar design D5): their appointments — owned, or attended with any status — expanded in their own zones with their exceptions applied, then every enabled module's calendar source in module order, each under its own permission, then the public holidays. A timed item is in the window when it overlaps from 00:00 to the end of to in timeZone; an all-day one when its dates overlap from..to.
+         * @description The caller's calendar in a window (calendar design D5): their appointments — owned, or attended with any status — expanded in their own zones with their exceptions applied, then every enabled module's calendar source in module order, each under its own permission, then the caller's subscriptions' events as last fetched (calendar feed design D8), then the public holidays. A timed item is in the window when it overlaps from 00:00 to the end of to in timeZone; an all-day one when its dates overlap from..to.
          */
         get: operations["getCalendarItems"];
         put?: never;
@@ -228,6 +276,74 @@ export interface paths {
          * @description The RSVP page's read (calendar invitations design D5; a POST, so the token travels in the body and never in an API URL). Anonymous: no session is needed, and a signed-in caller is answered alike. The token is hashed and looked up; 404 with no body when no attendee holds it, an erased one included. 200 with what the page shows — the title, when, where, the organiser's name, the invitee's name and current answer, whether it is cancelled and the language — and never the description, another attendee or an address. Rate limited to 60 per client address per 10 minutes (calendar-rsvp-read).
          */
         post: operations["postCalendarRsvpRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's subscriptions
+         * @description The caller's subscriptions (calendar feed design D6), by name, each with the worker's record of its last fetch. calendar:access's, on the caller's own rows.
+         */
+        get: operations["getCalendarSubscriptions"];
+        put?: never;
+        /**
+         * Subscribe to a calendar
+         * @description Subscribes the caller to a calendar from elsewhere (calendar feed design D6). The rules at write are field errors (CalendarSubscriptionWrite), and the eleventh is 409 subscription_limit: ten calendars beside one's own is more than anyone reads, and each is a fetch every half hour. The address is fetched once before the answer, under a budget of twenty seconds and through the outbound guard — no private address, no redirect, at most 1 MiB — so a wrong one is seen at once and a right one shows its events at the next load; the row is created whatever the fetch answers, its error set when it failed, and the calendar-subscriptions worker fetches it from then on. 201 with the row as it stands.
+         */
+        post: operations["postCalendarSubscriptions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/subscriptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a subscription
+         * @description Replaces one of the caller's subscriptions whole (calendar feed design D6), the rules at write as for POST. There is no revision and no If-Match: the row is the caller's own, small, and last write wins. A new url forgets every fetch of the old one — its validators, its calendar and its record — and is fetched once before the answer, as POST fetches; a change of the rest fetches nothing. Another person's is the 404 an unknown id gets.
+         */
+        put: operations["putCalendarSubscriptionsById"];
+        post?: never;
+        /**
+         * Remove a subscription
+         * @description Removes one of the caller's subscriptions (calendar feed design D6); its events are gone from the next read. Another person's is the 404 an unknown id gets.
+         */
+        delete: operations["deleteCalendarSubscriptionsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/subscriptions/{id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh a subscription
+         * @description Fetches one of the caller's subscriptions now (calendar feed design D6) — the screen's Refresh now — under the same budget and guard as POST /subscriptions, and answers the row as the fetch left it: fetchedAt on a calendar or a 304, error when it failed, which is not an error of this request. Another person's is the 404 an unknown id gets.
+         */
+        post: operations["postCalendarSubscriptionsByIdRefresh"];
         delete?: never;
         options?: never;
         head?: never;
@@ -471,28 +587,30 @@ export interface components {
             id: number;
             name: string;
         };
-        /** @description One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set) or a row another module projects through its calendar source (with path set). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length). */
+        /** @description One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), or an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length). */
         CalendarItem: {
             allDay: boolean;
             appointment?: components["schemas"]["CalendarItemAppointment"];
-            /** @description A follow-up done, a task done, an entry approved — rendered struck. Always false on an appointment. */
+            /** @description A follow-up done, a task done, an entry approved — rendered struck. Always false on an appointment and on a subscription's item. */
             done: boolean;
             /** Format: date */
             endDate?: string;
             /** Format: date-time */
             endsAt?: string;
-            /** @description Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id. */
+            /** @description Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one). */
             id: string;
-            /** @description calendar.appointment, or one of the kinds in sources. */
+            /** @description calendar.appointment, calendar.subscription, or one of the kinds in sources. */
             kind: string;
-            /** @description The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id. */
+            /** @description The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id, and on a subscription's item, which opens nothing — the event's own URL is the other calendar's and is not followed. */
             path?: string;
             /** Format: date */
             startDate?: string;
             /** Format: date-time */
             startsAt?: string;
-            /** @description One line — the customer's name, the project's code. Absent when empty. */
+            subscription?: components["schemas"]["CalendarItemSubscription"];
+            /** @description One line — the customer's name, the project's code, the subscription's name. Absent when empty. */
             subtitle?: string;
+            /** @description Empty on a busy-only subscription's item, which the app labels Busy. */
             title: string;
         };
         /** @description What the view needs about the appointment behind an item. */
@@ -509,6 +627,14 @@ export interface components {
             recurring: boolean;
             transparency: components["schemas"]["AppointmentTransparency"];
             visibility: components["schemas"]["AppointmentVisibility"];
+        };
+        /** @description The subscription behind an item of kind calendar.subscription (calendar feed design D8): what the app draws it by — its colour and its name — and whether it is busy only, in which case the item's title is empty and the app labels it Busy. */
+        CalendarItemSubscription: {
+            busyOnly: boolean;
+            colour: components["schemas"]["CalendarSubscriptionColour"];
+            /** Format: int64 */
+            id: number;
+            name: string;
         };
         /** @description One person's calendar in a window (calendar design D5), sorted by start, all-day first within a day, never paged. */
         CalendarItems: {
@@ -529,7 +655,7 @@ export interface components {
             canViewColleagues: boolean;
             /** @description Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent. */
             invitationsAvailable: boolean;
-            /** @description Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours. */
+            /** @description Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — and calendar.subscription when the caller has at least one subscription. */
             sources: components["schemas"]["CalendarSourceKind"][];
             /** @description The workspace's business time zone. */
             timeZone: string;
@@ -539,7 +665,7 @@ export interface components {
              */
             today: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes) and invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent) and subscription_limit (409: the caller has ten subscriptions already). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
         CalendarProblem: {
             code?: string | null;
             detail?: string | null;
@@ -563,12 +689,80 @@ export interface components {
             kind: string;
             module: string;
         };
+        /** @description A calendar from elsewhere the caller subscribes to (calendar feed design D6, D7): what they wrote, and the worker's record of the last fetch — fetchedAt, the last that answered a calendar or a 304; attemptedAt, the last tried, whatever it answered; error, why the last one failed, absent after one that did not. A failed fetch keeps the calendar last fetched, so its items still show, and the screen says both when it last worked and why it does not now. */
+        CalendarSubscription: {
+            /**
+             * Format: date-time
+             * @description The last fetch tried, whatever it answered. Absent before the first.
+             */
+            attemptedAt?: string;
+            /** @description Its items are shown with an empty title, which the app labels Busy. */
+            busyOnly: boolean;
+            colour: components["schemas"]["CalendarSubscriptionColour"];
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Why the last fetch failed, as one sentence — never the response's body or the address it resolved to. Absent after a fetch that did not fail. */
+            error?: string;
+            /**
+             * Format: date-time
+             * @description The last fetch that answered a calendar or a 304. Absent while none has.
+             */
+            fetchedAt?: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description The address as stored — webcal and webcals rewritten to https. */
+            url: string;
+        };
+        /**
+         * @description The palette a subscription is drawn in (calendar feed design D9) — twelve Mantine hues, each a --vantigo-calendar-<name> variable in the app, so a subscription's items follow the colour scheme as a module's do.
+         * @enum {string}
+         */
+        CalendarSubscriptionColour: "blue" | "cyan" | "teal" | "green" | "lime" | "yellow" | "orange" | "red" | "pink" | "grape" | "violet" | "indigo";
+        /** @description A subscription as POST creates it and PUT replaces it whole (calendar feed design D6), each rule a field error: name 1 to 100 characters; url at most 2048 characters, absolute, with a scheme of https, http, webcal or webcals (the last two stored as https, since they are the same thing in a program's address bar), a host that is not empty and not an address Vantigo may not fetch, and no user name or password — they would be written to the row and the log; colour one of the palette's. */
+        CalendarSubscriptionWrite: {
+            busyOnly: boolean;
+            colour: components["schemas"]["CalendarSubscriptionColour"];
+            name: string;
+            url: string;
+        };
         /** @description A user as the directory names them. */
         CalendarUserRef: {
             displayName: string;
             /** Format: uuid */
             id: string;
         };
+        /** @description One of the caller's calendar addresses (calendar feed design D1): the address a calendar program subscribes to, in its https form and its webcal form — the same address, which Apple's and Outlook's programs subscribe to in one click; the server serves https alone. It is kept sealed and opened for its owner's screen only, so it can be shown again; a reset gives a new one and the old answers 404 from that moment. */
+        FeedAddress: {
+            /** @description <base>/api/v1/calendar/feed/<token>.ics, the base PUBLIC_BASE_URL when it is set and APP_URL with APP_BASE_PATH otherwise. */
+            address: string;
+            /**
+             * Format: date-time
+             * @description When the address was created, or last reset.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description The last request that answered 200 or 304. Absent while nothing has read the address.
+             */
+            lastUsedAt?: string;
+            variant: components["schemas"]["FeedVariant"];
+            /** @description The same address with webcal:// in place of https://. */
+            webcalAddress: string;
+        };
+        /** @description The caller's calendar addresses, full before busy; a variant without one is absent. */
+        FeedAddresses: {
+            addresses: components["schemas"]["FeedAddress"][];
+            /** @description Whether the addresses are on PUBLIC_BASE_URL, reachable from the internet. False is APP_URL, which may answer on the company's network only. */
+            public: boolean;
+        };
+        /**
+         * @description A calendar address's variant (calendar feed design D3): full is the person's calendar as they see it — never a colleague's appointment, a cancelled or a declined one, a subscription's item or a public holiday; busy is its busy spans and nothing else, each titled Busy.
+         * @enum {string}
+         */
+        FeedVariant: "full" | "busy";
         /** @description One occurrence's exception: cancelled true, or a move — startsAt and endsAt for a timed series, startDate and endDate for an all-day one — never both. A moved occurrence keeps the day it came from as its identity. */
         OccurrenceWrite: {
             cancelled?: boolean;
@@ -1243,6 +1437,207 @@ export interface operations {
             };
         };
     };
+    getCalendarFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedAddresses"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getCalendarFeedByFile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description An ETag this feed answered, or *. An unchanged calendar is 304. */
+                "If-None-Match"?: string;
+            };
+            path: {
+                /** @description The token with the .ics suffix, as one segment — the address's last. */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the calendar. */
+            200: {
+                headers: {
+                    /** @description private, no-cache — a program may keep the calendar, and must ask again. */
+                    "Cache-Control"?: string;
+                    /** @description inline; filename="vantigo.ics". */
+                    "Content-Disposition"?: string;
+                    /** @description The quoted hex SHA-256 of the calendar with every DTSTAMP line removed. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar; charset=utf-8": string;
+                };
+            };
+            /** @description Not Modified — If-None-Match named the calendar's ETag, or *. The body is empty. */
+            304: {
+                headers: {
+                    /** @description private, no-cache, as on the 200. */
+                    "Cache-Control"?: string;
+                    /** @description The calendar's ETag, the one If-None-Match named. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found — no address holds that token, or the file does not end in .ics. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests — calendar-feed's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — a calendar source could not be read. The problem names no module. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+        };
+    };
+    postCalendarFeedByVariant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The variant, full or busy; anything else is the 404 an address the caller does not have gets. The segment is named file because the feed's GET shares this path, where it is the token's file. */
+                file: components["schemas"]["FeedVariant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the address, new or reset. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedAddress"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the variant is neither full nor busy. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteCalendarFeedByVariant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The variant, full or busy; anything else is the 404 an address the caller does not have gets. The segment is named file because the feed's GET shares this path, where it is the token's file. */
+                file: components["schemas"]["FeedVariant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the caller has no address of that variant, or the variant is neither full nor busy. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getCalendarItems: {
         parameters: {
             query: {
@@ -1452,6 +1847,256 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+        };
+    };
+    getCalendarSubscriptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSubscription"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postCalendarSubscriptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarSubscriptionWrite"];
+            };
+        };
+        responses: {
+            /** @description Created — the row as the fetch left it. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSubscription"];
+                };
+            };
+            /** @description Bad Request — field errors on the body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — subscription_limit, the caller has ten subscriptions already. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+        };
+    };
+    putCalendarSubscriptionsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarSubscriptionWrite"];
+            };
+        };
+        responses: {
+            /** @description OK — the row as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSubscription"];
+                };
+            };
+            /** @description Bad Request — field errors on the body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription, or another person's. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteCalendarSubscriptionsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription, or another person's. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postCalendarSubscriptionsByIdRefresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the row as the fetch left it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSubscription"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such subscription, or another person's. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

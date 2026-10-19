@@ -13,6 +13,8 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/health"
@@ -170,6 +172,10 @@ type allowAllAccess struct{}
 
 func (allowAllAccess) Check(*http.Request, contracts.Rule) (contracts.Principal, error) {
 	return contracts.Principal{}, nil
+}
+
+func (allowAllAccess) UserHolds(context.Context, uuid.UUID, ...string) (bool, error) {
+	return true, nil
 }
 
 func (allowAllAccess) Reject(w http.ResponseWriter, r *http.Request, _ contracts.Rule, _ error) {

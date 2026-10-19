@@ -40,7 +40,7 @@ func TestColleague_ShowsSharedTitlesBusyForPrivateAndNothingForFree(t *testing.T
 	}
 	byID := map[int64]gen.CalendarItem{}
 	for _, it := range got.Items {
-		if it.Kind != "calendar.appointment" || it.Appointment == nil || it.Appointment.Transparency != gen.Busy {
+		if it.Kind != "calendar.appointment" || it.Appointment == nil || it.Appointment.Transparency != gen.AppointmentTransparencyBusy {
 			t.Errorf("item = %+v", it)
 			continue
 		}

@@ -67,3 +67,30 @@ type CalendarAppointmentException struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
+
+type CalendarFeedToken struct {
+	UserID            uuid.UUID
+	Variant           string
+	TokenSha256       string
+	AddressCiphertext string
+	CreatedAt         time.Time
+	LastUsedAt        *time.Time
+}
+
+type CalendarSubscription struct {
+	ID           int64
+	UserID       uuid.UUID
+	Name         string
+	Url          string
+	Colour       string
+	BusyOnly     bool
+	Etag         *string
+	LastModified *string
+	Body         *string
+	FetchedAt    *time.Time
+	AttemptedAt  *time.Time
+	NextFetchAt  *time.Time
+	Error        *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}

@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00055_calendar_baseline.sql
       - ../db/migrations/00056_calendar_invitations.sql
+      - ../db/migrations/00057_calendar_feed.sql
     queries: queries
     gen:
       go:

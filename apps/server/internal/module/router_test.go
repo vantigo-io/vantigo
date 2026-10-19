@@ -2,6 +2,7 @@ package module
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
@@ -194,6 +196,12 @@ func (f *fakeAccess) Check(r *http.Request, rule contracts.Rule) (contracts.Prin
 		return f.check(r, rule)
 	}
 	return contracts.Principal{}, nil
+}
+
+// UserHolds answers false: the router never asks it — it checks requests —
+// and these tests are about the router.
+func (f *fakeAccess) UserHolds(context.Context, uuid.UUID, ...string) (bool, error) {
+	return false, nil
 }
 
 func (f *fakeAccess) Reject(w http.ResponseWriter, _ *http.Request, rule contracts.Rule, err error) {

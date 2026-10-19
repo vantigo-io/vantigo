@@ -32,6 +32,10 @@ func (denyingAccess) Check(*http.Request, contracts.Rule) (contracts.Principal, 
 	return contracts.Principal{}, contracts.ErrForbidden
 }
 
+func (denyingAccess) UserHolds(context.Context, uuid.UUID, ...string) (bool, error) {
+	return false, nil
+}
+
 func (denyingAccess) Reject(w http.ResponseWriter, _ *http.Request, _ contracts.Rule, _ error) {
 	w.WriteHeader(http.StatusForbidden)
 }
