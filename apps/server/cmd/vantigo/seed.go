@@ -101,6 +101,7 @@ var demoCustomRoles = []demoRoleSpec{
 			"staff:access", "staff:view", "staff:approve",
 			"communications:conversations-view", "communications:conversations-reply", "communications:conversations-manage",
 			"energy:metering-points-view", "energy:meters-view", "energy:supply-periods-view", "energy:consumption-view",
+			"calendar:access", "calendar:view-colleagues",
 		},
 	},
 	{
@@ -122,6 +123,7 @@ var demoCustomRoles = []demoRoleSpec{
 			"products:categories-view", "products:categories-manage",
 			"products:tax-categories-view", "products:tax-categories-manage",
 			"staff:access", "staff:view",
+			"calendar:access", "calendar:view-colleagues",
 		},
 	},
 	{
@@ -134,6 +136,7 @@ var demoCustomRoles = []demoRoleSpec{
 			"projects:access", "projects:view-all",
 			"time:access", "time:view-all", "time:approve",
 			"expenses:access", "expenses:view-all",
+			"calendar:access", "calendar:view-colleagues",
 		},
 	},
 	{
@@ -158,6 +161,7 @@ var demoCustomRoles = []demoRoleSpec{
 			"projects:access", "projects:view-all",
 			"invoices:access",
 			"time:access", "expenses:access", "staff:access", "staff:view",
+			"calendar:access",
 		},
 	},
 	{
@@ -175,6 +179,7 @@ var demoCustomRoles = []demoRoleSpec{
 			"products:categories-view", "products:tax-categories-view",
 			"energy:metering-points-view", "energy:meters-view",
 			"energy:supply-periods-view", "energy:consumption-view",
+			"calendar:access",
 		},
 	},
 	{
@@ -194,6 +199,7 @@ var demoCustomRoles = []demoRoleSpec{
 			"energy:metering-points-view", "energy:meters-view",
 			"energy:supply-periods-view", "energy:consumption-view",
 			"communications:conversations-view",
+			"calendar:access",
 		},
 	},
 }
@@ -238,6 +244,9 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 			if err := backfillDemoAvatarsIfMissing(ctx, tx, now); err != nil {
 				return fmt.Errorf("backfill demo avatars: %w", err)
 			}
+			if err := backfillDemoCalendar(ctx, tx, now); err != nil {
+				return fmt.Errorf("backfill demo calendar: %w", err)
+			}
 			skipped = true
 			return nil
 		}
@@ -273,6 +282,10 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 
 		if err := seedEnergyAndCommunications(ctx, tx, now, userIDs, customerIDs, contactIDs); err != nil {
 			return fmt.Errorf("seed energy and communications: %w", err)
+		}
+
+		if err := seedCalendar(ctx, tx, now, userIDs, customerIDs); err != nil {
+			return fmt.Errorf("seed calendar: %w", err)
 		}
 
 		return nil
