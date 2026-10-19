@@ -276,3 +276,39 @@ func wallClock(d time.Time, loc *time.Location) time.Time {
 	y, m, day := d.Date()
 	return time.Date(y, m, day, 0, 0, 0, 0, loc)
 }
+
+// plainText is text a person typed, made fit for a mail and a calendar file
+// (calendar invitations design D3): CRLF and a lone CR become LF, and every
+// other C0 control but the tab is removed, so nothing typed can break a
+// header line or an iCalendar property.
+func plainText(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 && r != '\t' && r != '\n' {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// oneLine is plainText on one line, its line breaks as spaces: a title, a
+// place or a name, which a subject and SUMMARY carry on one line.
+func oneLine(s string) string {
+	return strings.ReplaceAll(plainText(s), "\n", " ")
+}
+
+// cleanText is a with its title, location and description as plainText and
+// oneLine make them, for what leaves the installation in a mail.
+func cleanText(a store.CalendarAppointment) store.CalendarAppointment {
+	a.Title = oneLine(a.Title)
+	if a.Location != nil {
+		v := oneLine(*a.Location)
+		a.Location = &v
+	}
+	if a.Description != nil {
+		v := plainText(*a.Description)
+		a.Description = &v
+	}
+	return a
+}

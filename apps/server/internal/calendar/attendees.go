@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -103,7 +104,8 @@ func contactName(c *contracts.ContactEntry) *string {
 // keeps whatever the directory now says, so an erased contact does not lock
 // the owner out of their appointment; an address net/mail accepts, at most
 // 254 characters, with a name of at most 200. Two naming the same user,
-// contact or address are one, and at most 50 remain. An element is refused by
+// contact or address are one, an address that is a listed contact's own is
+// that contact, and at most 50 remain. An element is refused by
 // its index in the request. It answers the names for the response, read
 // from the directories before any transaction.
 //
@@ -212,6 +214,19 @@ func (s *server) readAttendees(ctx context.Context, raw *[]gen.AttendeeWrite, ow
 			f.add(field, "This contact has no email address to send the invitation to")
 		}
 	}
+
+	// An address typed in that is a listed contact's own is that contact:
+	// one person is one attendee, mailed once, and dropping the one never
+	// cancels the event on the calendar of the other.
+	contactAddresses := map[string]bool{}
+	for _, c := range ppl.contacts {
+		if c != nil && c.Email != nil {
+			contactAddresses[strings.ToLower(strings.TrimSpace(*c.Email))] = true
+		}
+	}
+	if len(contactAddresses) > 0 {
+		in.attendees.emails = slices.DeleteFunc(in.attendees.emails, func(e emailAttendee) bool { return contactAddresses[e.address] })
+	}
 	return ppl, nil
 }
 
@@ -269,9 +284,12 @@ func (s *server) currentAttendees(ctx context.Context, id int64, me uuid.UUID) (
 
 // insertAttendees adds each attendee of set not already on the appointment,
 // at needs-action, an outside one with a fresh RSVP token and its sealed
-// link; one already there keeps their row, their answer and their token. It
-// answers the rows it added.
-func (s *server) insertAttendees(ctx context.Context, txq *store.Queries, id int64, set attendeeSet, now time.Time) ([]store.CalendarAppointmentAttendee, error) {
+// link; one already there keeps their row, their answer and their token — an
+// email attendee takes the name the write gives them now. It answers the rows
+// it added: a user or a contact already there returns no row, and an email
+// attendee already there returns its row, told from a new one by kept, the
+// row ids dropUnlisted kept (nil on a create).
+func (s *server) insertAttendees(ctx context.Context, txq *store.Queries, id int64, set attendeeSet, kept map[int64]bool, now time.Time) ([]store.CalendarAppointmentAttendee, error) {
 	var added []store.CalendarAppointmentAttendee
 	keep := func(row store.CalendarAppointmentAttendee, err error) error {
 		switch {
@@ -279,6 +297,8 @@ func (s *server) insertAttendees(ctx context.Context, txq *store.Queries, id int
 			return nil
 		case err != nil:
 			return fmt.Errorf("calendar: add appointment %d's attendees: %w", id, err)
+		case kept[row.ID]:
+			return nil
 		}
 		added = append(added, row)
 		return nil
@@ -315,11 +335,12 @@ func (s *server) insertAttendees(ctx context.Context, txq *store.Queries, id int
 
 // dropUnlisted removes every attendee of the appointment that set does not
 // name — all of them when it is empty — and answers the rows it removed, with
-// their sealed links, so a dropped outside attendee can be sent its CANCEL.
-func dropUnlisted(ctx context.Context, txq *store.Queries, id int64, set attendeeSet) ([]store.CalendarAppointmentAttendee, error) {
+// their sealed links, so a dropped outside attendee can be sent its CANCEL,
+// and the ids of the rows it kept.
+func dropUnlisted(ctx context.Context, txq *store.Queries, id int64, set attendeeSet) ([]store.CalendarAppointmentAttendee, map[int64]bool, error) {
 	atts, err := txq.ListAttendees(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("calendar: read appointment %d's attendees: %w", id, err)
+		return nil, nil, fmt.Errorf("calendar: read appointment %d's attendees: %w", id, err)
 	}
 	users, contacts, emails := map[uuid.UUID]bool{}, map[int32]bool{}, map[string]bool{}
 	for _, u := range set.users {
@@ -331,20 +352,21 @@ func dropUnlisted(ctx context.Context, txq *store.Queries, id int64, set attende
 	for _, e := range set.emails {
 		emails[e.address] = true
 	}
-	keep := []int64{}
+	keep, kept := []int64{}, map[int64]bool{}
 	for _, at := range atts {
 		switch {
 		case at.Kind == kindUser && at.UserID != nil && users[*at.UserID],
 			at.Kind == kindContact && at.ContactID != nil && contacts[*at.ContactID],
 			at.Kind == kindEmail && at.Email != nil && emails[*at.Email]:
 			keep = append(keep, at.ID)
+			kept[at.ID] = true
 		}
 	}
 	dropped, err := txq.DeleteAttendeesNotIn(ctx, store.DeleteAttendeesNotInParams{AppointmentID: id, Ids: keep})
 	if err != nil {
-		return nil, fmt.Errorf("calendar: remove appointment %d's attendees: %w", id, err)
+		return nil, nil, fmt.Errorf("calendar: remove appointment %d's attendees: %w", id, err)
 	}
-	return dropped, nil
+	return dropped, kept, nil
 }
 
 // newRSVPToken is a fresh RSVP token: 32 random bytes, base64url without

@@ -438,7 +438,7 @@ func (s *server) PostCalendarAppointments(ctx context.Context, req gen.PostCalen
 		if err != nil {
 			return fmt.Errorf("calendar: insert an appointment: %w", err)
 		}
-		if _, err := s.insertAttendees(ctx, txq, row.ID, in.attendees, now); err != nil {
+		if _, err := s.insertAttendees(ctx, txq, row.ID, in.attendees, nil, now); err != nil {
 			return err
 		}
 		atts, err = txq.ListAttendees(ctx, row.ID)
@@ -450,8 +450,10 @@ func (s *server) PostCalendarAppointments(ctx context.Context, req gen.PostCalen
 	if err != nil {
 		return nil, err
 	}
-	s.sendInvitations(ctx, invitationJob{appt: row, listed: atts, to: atts, method: methodRequest})
-	s.notifyUsers(ctx, row, userAttendees(atts), noticeInvited)
+	b := s.newBudget(ctx, afterCommitBudget)
+	s.sendInvitations(b, invitationJob{appt: row, listed: atts, to: atts, method: methodRequest})
+	s.notifyUsers(b, row, userAttendees(atts), noticeInvited)
+	b.done()
 	if atts, err = s.reread(ctx, row.ID, atts); err != nil {
 		return nil, err
 	}
@@ -598,10 +600,11 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 				return fmt.Errorf("calendar: drop appointment %d's exceptions: %w", cur.ID, err)
 			}
 		}
-		if dropped, err = dropUnlisted(ctx, txq, cur.ID, in.attendees); err != nil {
+		var kept map[int64]bool
+		if dropped, kept, err = dropUnlisted(ctx, txq, cur.ID, in.attendees); err != nil {
 			return err
 		}
-		if added, err = s.insertAttendees(ctx, txq, cur.ID, in.attendees, now); err != nil {
+		if added, err = s.insertAttendees(ctx, txq, cur.ID, in.attendees, kept, now); err != nil {
 			return err
 		}
 		atts, err = txq.ListAttendees(ctx, cur.ID)
@@ -627,8 +630,13 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 	return gen.PutCalendarAppointmentsById200JSONResponse(appointmentOut(row, atts, excs, me, ppl, links)), nil
 }
 
-// afterChange is what a PUT that committed tells (D3's table, D4's notices).
+// afterChange is what a PUT that committed tells (D3's table, D4's notices),
+// all of it under one budget: the CANCELs to the dropped first, so that when
+// one address is both dropped and listed anew the invitation is the last mail
+// it gets; then the REQUESTs; then the notices.
 func (s *server) afterChange(ctx context.Context, row store.CalendarAppointment, atts []store.CalendarAppointmentAttendee, excs []store.CalendarAppointmentException, added, dropped []store.CalendarAppointmentAttendee, bumped bool) {
+	b := s.newBudget(ctx, afterCommitBudget)
+	defer b.done()
 	addedIDs := map[int64]bool{}
 	for _, at := range added {
 		addedIDs[at.ID] = true
@@ -637,8 +645,8 @@ func (s *server) afterChange(ctx context.Context, row store.CalendarAppointment,
 	if bumped {
 		to = atts
 	}
-	s.sendInvitations(ctx, invitationJob{appt: row, excs: excs, listed: atts, to: to, method: methodRequest})
-	s.sendInvitations(ctx, invitationJob{appt: row, excs: excs, listed: atts, to: dropped, method: methodCancel, dropped: true})
+	s.sendInvitations(b, invitationJob{appt: row, excs: excs, listed: atts, to: dropped, method: methodCancel, dropped: true})
+	s.sendInvitations(b, invitationJob{appt: row, excs: excs, listed: atts, to: to, method: methodRequest})
 
 	var invited, changed []uuid.UUID
 	for _, at := range atts {
@@ -650,9 +658,9 @@ func (s *server) afterChange(ctx context.Context, row store.CalendarAppointment,
 			changed = append(changed, *at.UserID)
 		}
 	}
-	s.notifyUsers(ctx, row, invited, noticeInvited)
-	s.notifyUsers(ctx, row, changed, noticeChanged)
-	s.notifyUsers(ctx, row, userAttendees(dropped), noticeRemoved)
+	s.notifyUsers(b, row, invited, noticeInvited)
+	s.notifyUsers(b, row, changed, noticeChanged)
+	s.notifyUsers(b, row, userAttendees(dropped), noticeRemoved)
 }
 
 // change is what a PUT changes of an appointment that matters beyond its

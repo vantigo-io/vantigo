@@ -361,7 +361,13 @@ WHERE a.cancelled_at IS NOT NULL
     (a.rrule IS NULL AND NOT a.all_day AND a.ends_at <= $1::timestamptz)
     OR (a.rrule IS NULL AND a.all_day AND a.end_date < timezone(a.time_zone, $1::timestamptz)::date)
     OR (a.rrule IS NOT NULL AND a.series_last_date IS NOT NULL
-        AND a.series_last_date < timezone(a.time_zone, $1::timestamptz)::date)
+        AND a.series_last_date < timezone(a.time_zone, $1::timestamptz)::date
+        AND NOT EXISTS (
+            SELECT 1 FROM calendar.appointment_exceptions e
+            WHERE e.appointment_id = a.id AND NOT e.cancelled
+              AND (e.ends_at > $1::timestamptz
+                OR e.end_date >= timezone(a.time_zone, $1::timestamptz)::date)
+        ))
     OR (a.rrule IS NOT NULL AND a.series_last_date IS NULL
         AND a.cancelled_at < $2::timestamptz)
   )
@@ -378,8 +384,9 @@ type ListCancelledDueParams struct {
 // ListCancelledDue is the cancelled appointments whose last day has passed,
 // for the calendar-cancellations worker, oldest first and at most row_limit:
 // a single one when its end has (a timed one's instant, an all-day one's last
-// day before today in its own zone), a bounded series when its last
-// occurrence's day has, and an unbounded series when it was cancelled before
+// day before today in its own zone), a bounded series when both its last
+// occurrence's day and the end of every occurrence moved — perhaps past that
+// day — have, and an unbounded series when it was cancelled before
 // unbounded_cancelled_before (ninety days ago, the caller's constant).
 func (q *Queries) ListCancelledDue(ctx context.Context, arg ListCancelledDueParams) ([]int64, error) {
 	rows, err := q.db.Query(ctx, listCancelledDue, arg.Now, arg.UnboundedCancelledBefore, arg.RowLimit)

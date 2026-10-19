@@ -73,6 +73,12 @@ type icsInput struct {
 
 // buildICS is the VCALENDAR of in, CRLF line endings and all.
 func buildICS(in icsInput) (string, error) {
+	in.appt = cleanText(in.appt)
+	in.organiser = oneLine(in.organiser)
+	in.attendees = slices.Clone(in.attendees)
+	for i := range in.attendees {
+		in.attendees[i].name = oneLine(in.attendees[i].name)
+	}
 	sr, err := seriesOf(in.appt)
 	if err != nil {
 		return "", err

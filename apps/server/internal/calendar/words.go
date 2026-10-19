@@ -46,7 +46,7 @@ type words struct {
 	// an answer: who, the title.
 	noticeInvited, noticeChanged, noticeCancelled, noticeRemoved string
 	answerAccepted, answerDeclined, answerTentative              string
-	anInvitee, openInVantigo                                     string
+	anInvitee, aContact, openInVantigo                           string
 }
 
 var english = words{
@@ -73,6 +73,7 @@ var english = words{
 	answerDeclined:  "%s declined: %s",
 	answerTentative: "%s tentatively accepted: %s",
 	anInvitee:       "An invitee",
+	aContact:        "A contact",
 	openInVantigo:   "Open it in Vantigo:",
 }
 
@@ -100,6 +101,7 @@ var norwegian = words{
 	answerDeclined:  "%s takket nei: %s",
 	answerTentative: "%s svarte kanskje: %s",
 	anInvitee:       "En invitert",
+	aContact:        "En kontakt",
 	openInVantigo:   "Åpne den i Vantigo:",
 }
 

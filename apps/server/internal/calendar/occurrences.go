@@ -83,7 +83,7 @@ func (s *server) PutCalendarAppointmentsByIdOccurrencesByDate(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	s.sendInvitations(ctx, changed.job())
+	s.tell(ctx, changed)
 	return gen.PutCalendarAppointmentsByIdOccurrencesByDate200JSONResponse(occurrenceOut(exc)), nil
 }
 
@@ -144,7 +144,7 @@ func (s *server) DeleteCalendarAppointmentsByIdOccurrencesByDate(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	s.sendInvitations(ctx, changed.job())
+	s.tell(ctx, changed)
 	return gen.DeleteCalendarAppointmentsByIdOccurrencesByDate204Response{}, nil
 }
 
@@ -154,6 +154,13 @@ type written struct {
 	appt store.CalendarAppointment
 	atts []store.CalendarAppointmentAttendee
 	excs []store.CalendarAppointmentException
+}
+
+// tell sends w's REQUEST under the request's after-commit budget.
+func (s *server) tell(ctx context.Context, w written) {
+	b := s.newBudget(ctx, afterCommitBudget)
+	defer b.done()
+	s.sendInvitations(b, w.job())
 }
 
 // job is the REQUEST of the whole series to every outside attendee.

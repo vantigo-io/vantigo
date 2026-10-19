@@ -241,3 +241,32 @@ func TestSafeCN_WritesANameWithoutTheCharactersGolangICalWouldEscape(t *testing.
 		}
 	}
 }
+
+func TestCleanText_NormalisesLineBreaksAndDropsControlsBeforeAMailOrAnObject(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{"a\r\nb": "a\nb", "a\rb\x00c\x07d\te\x1b": "a\nbcd\te", "plain": "plain"} {
+		if got := plainText(in); got != want {
+			t.Errorf("plainText(%q) = %q, want %q", in, got, want)
+		}
+	}
+	in := icsFixtures(t)["single-timed"]
+	in.appt.Title, in.appt.Location, in.appt.Description = "a\r\nb", ptr("Storgata\r1"), ptr("a\r\nb\x00")
+	got, err := buildICS(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ics := unfoldICS(got)
+	for _, want := range []string{"SUMMARY:a b\r\n", "LOCATION:Storgata 1\r\n", "DESCRIPTION:a\\nb\\n\\nAnswer"} {
+		if !strings.Contains(ics, want) {
+			t.Errorf("the object lacks %q:\n%s", want, ics)
+		}
+	}
+	if strings.Count(got, "\r") != strings.Count(got, "\r\n") || strings.Contains(got, "\x00") {
+		t.Errorf("a lone CR or a control reached the object:\n%q", got)
+	}
+	subject, text, html := invitationTexts(english, mailInvitation, in.appt, "Kari\r\nNordmann", in.link)
+	if strings.ContainsAny(subject, "\r\n") || strings.Contains(text, "\r") || strings.Contains(html, "\r") || strings.Contains(text, "\x00") ||
+		!strings.HasPrefix(subject, "Invitation: a b · ") || !strings.Contains(text, "Kari Nordmann invites you") {
+		t.Errorf("the mail carries what was typed raw: %q\n%q", subject, text)
+	}
+}
