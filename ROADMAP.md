@@ -5,7 +5,7 @@ Other modules add their own sections as their roadmaps solidify.
 
 ## Platform
 
-### Time zones (deliveries A and B done)
+### Time zones (deliveries A, B and C done)
 
 Decided in
 [`docs/superpowers/specs/2026-10-19-time-zones-design.md`](docs/superpowers/specs/2026-10-19-time-zones-design.md),
@@ -31,10 +31,14 @@ payments, bank files, Vipps' `paid_on`, a milestone's day, the customer receivab
 is the business day, the zone read through `Deps.Calendar` once per request or worker
 claim and before any transaction; the contract's descriptions say so.
 
-*Still to land:* **C** Projects' SQL literal and dashboard day, **D** Time's "today"
-and the meaning of its start and end times, **E** Customers' follow-up day and timeline
-rendering, **F** the personal zone's setting and the shell's formatters. The calendar
-module depends on A and F.
+**Delivery C (done)** — Projects off its hard-coded Oslo and UTC days: the billable
+milestones' `Until` buckets `ready_at` in the business zone, handed to the SQL as a
+parameter, and the dashboard's "today", its attention items and a milestone's
+`overdue` flag judge the business day; the contract's descriptions say so.
+
+*Still to land:* **D** Time's "today" and the meaning of its start and end times,
+**E** Customers' follow-up day and timeline rendering, **F** the personal zone's
+setting and the shell's formatters. The calendar module depends on A and F.
 
 ### Cross-module domain events (deferred until Orders)
 
