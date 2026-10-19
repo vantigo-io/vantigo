@@ -587,7 +587,15 @@ through this SMTP server and its guard ([Invoices](/en/reference/invoices/#sendi
 Under `MAIL_DRIVER=log` nothing can be sent that way: the send answers 503
 `mail_unavailable`, and `GET /invoices/meta` answers `mailAvailable: false`.
 
-This is identity's application mail, and Invoices'. Communications' per-channel
+Calendar sends through it too. An invitation to someone outside the company goes out
+from `SMTP_FROM` under the organiser's name, with `SMTP_FROM` as the invitation's
+organiser, and a colleague on an appointment is mailed a notice by identity at the
+address identity holds; under any driver but `smtp` no invitation is sent and
+`GET /calendar/meta` answers `invitationsAvailable: false`. An invitation that Gmail is
+to put on the invitee's calendar needs `SMTP_FROM`'s domain to pass SPF, DKIM and DMARC
+([Calendar](/en/admin/calendar/#invitations-to-people-outside-the-company)).
+
+This is identity's application mail, and Invoices' and Calendar's. Communications' per-channel
 mailbox credentials are a different thing entirely — configured through the
 Communications API and sealed at rest, never environment variables. See
 [Communications](/en/reference/communications/).
@@ -623,7 +631,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `APP_ENV` | `production` or `development`; only development relaxes anything | `production` |
 | `APP_URL` | Public origin (scheme + host [+ port]); no path | **required** |
 | `APP_BASE_PATH` | Path prefix on a shared domain, e.g. `/vantigo` | empty (domain root) |
-| `PUBLIC_BASE_URL` | The `https` URL the Invoices pay page is reachable at from the internet: an origin and `APP_BASE_PATH`, nothing else, its host name ASCII (punycode for an internationalised one) with no trailing dot, and never `APP_URL`'s host name on another port; on a host of its own only the pay page's allowlist is served there. Unset, there are no pay links ([The public host](/en/admin/payments/#the-public-host)) | unset |
+| `PUBLIC_BASE_URL` | The `https` URL the Invoices pay page and the Calendar answer page are reachable at from the internet: an origin and `APP_BASE_PATH`, nothing else, its host name ASCII (punycode for an internationalised one) with no trailing dot, and never `APP_URL`'s host name on another port; on a host of its own only the public host's allowlist is served there. Unset, there are no pay links, and an invitation's answer link is on `APP_URL` ([The public host](/en/admin/payments/#the-public-host), [Calendar](/en/admin/calendar/#preconditions)) | unset |
 | `PORT` | Listen port | `8080` |
 | `DATABASE_URL` | Runtime connection, the least-privilege role | **required** |
 | `MIGRATIONS_DATABASE_URL` | Connection `migrate` uses (the owner role) | `DATABASE_URL` |
@@ -700,6 +708,8 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `STAFF_RETENTION_ENABLED` | On/off switch for the Staff retention worker, `staff-retention`, which erases what the retention rules no longer let the register keep and finishes deleting documents' files; off, nothing is erased on a schedule and `POST /retention/run` still runs it by hand ([Staff](/en/admin/staff/#retention)) | `1` |
 | `STAFF_ACCOUNTS_ENABLED` | On/off switch for the Staff accounts worker, `staff-accounts`, which prepares, enables, updates and disables the users the account flag asks for — with a flag on it creates the person's pending, disabled user even before an Owner names the employee roles, and enables nobody until they are named; off, nothing is done on a schedule — leavers keep their access until it is on again or an Owner disables them ([Staff](/en/admin/staff/#the-accounts-worker)) | `1` |
 | `STAFF_WORKERS_POLL` | How often the Staff workers look: an erase cycle of at most fifty people and a pass over the deletion ledger, and at most fifty due account links, a failed one retried at the next poll; a duration of at least `1m` | `1h` |
+| `CALENDAR_CANCELLATIONS_ENABLED` | On/off switch for the Calendar cancellations worker, `calendar-cancellations`, which erases a cancelled appointment — one deleted after someone outside the company had been sent an invitation — once its last day has passed; off, cancelled appointments are kept until it is on again ([Calendar](/en/admin/calendar/#the-cancellations-worker)) | `1` |
+| `CALENDAR_WORKERS_POLL` | How often the Calendar workers look: an erase cycle of at most 200 cancelled appointments; a duration of at least `1m` | `1h` |
 | `CUSTOMERS_IMPORT_ENABLED` | Run the customers import worker, which checks and imports uploaded files; `0` leaves imports waiting | `1` |
 | `CUSTOMERS_IMPORT_POLL` | How often the customers import worker looks for a queued import | `5s` |
 | `CUSTOMERS_IMPORT_RETENTION` | How long a finished or abandoned customer import and its rows are kept | `720h` |

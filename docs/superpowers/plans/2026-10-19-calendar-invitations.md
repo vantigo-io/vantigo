@@ -30,7 +30,7 @@ Task 2 first; then 3 (backend), 4 (the app) and 5 (docs) in parallel; 6 last.
 ## Tasks
 
 - [x] **1. The spec and this plan.**
-- [ ] **2. The contracts and the seams.** `openapi/calendar.yaml`: `AttendeeWrite`,
+- [x] **2. The contracts and the seams.** `openapi/calendar.yaml`: `AttendeeWrite`,
   `AppointmentAttendee` with `kind`, `contact`, `email`, `name` and `invitation`,
   `Appointment.cancelledAt`, `CalendarMeta.invitationsAvailable`, `GET /contacts`,
   `POST /appointments/{id}/attendees/{attendeeId}/resend`, the two anonymous `rsvp`
@@ -47,7 +47,7 @@ Task 2 first; then 3 (backend), 4 (the app) and 5 (docs) in parallel; 6 last.
   `CalendarWorkersPoll` with the loader and `vantigo.env.example`; the secrets purpose
   `calendar/rsvp-link`; `modtest`'s fake `Users` recording notices if the harness needs
   one.
-- [ ] **3. The backend, tests first.** `attendees.go` (the kinds' validation, the
+- [x] **3. The backend, tests first.** `attendees.go` (the kinds' validation, the
   directory and contact checks, the token and the sealed link, kept/dropped/added);
   `invitations.go` (the ICS with golang-ical — `go get github.com/arran4/golang-ical
   v0.3.8` — the text and HTML bodies in the owner's language, the send table of D3,
@@ -58,14 +58,14 @@ Task 2 first; then 3 (backend), 4 (the app) and 5 (docs) in parallel; 6 last.
   `Module.Workers`); `meta.go`'s flag; `contacts.go` (`GET /contacts`); `appointments.
   go` and `occurrences.go` calling the sender after their commits; the golden under
   `testdata/invite/`; the tests of the spec's backend paragraph.
-- [ ] **4. The app, tests first.** `apps/calendar/frontend`: `api/attendees.ts`,
+- [x] **4. The app, tests first.** `apps/calendar/frontend`: `api/attendees.ts`,
   `api/contacts.ts`, `api/rsvp.ts`; the sheet's three adders and the attendee rows with
   their invitation state and Resend; the cancelled banner and read-only sheet;
   `pages/rsvp.tsx` on the pay page's shape (token from the query to `sessionStorage`,
   cleared, posted; the states); `i18n.ts` en + nb. `apps/host/frontend`: `routes/rsvp.tsx`,
   `lib/public-paths.ts`, `routes/pay.test.tsx`'s allowlist extended (or a sibling
   `rsvp.test.tsx`).
-- [ ] **5. Docs, both languages.** `en/reference/calendar.md` (the kinds, Invitations,
+- [x] **5. Docs, both languages.** `en/reference/calendar.md` (the kinds, Invitations,
   The answer by link, Cancellation and the worker, the endpoints), the `UserDirectory`
   and `CustomerDirectory` additions where those contracts are described,
   `{en,nb}/user/calendar.md`, `{en,nb}/admin/calendar.md` (new) and `admin/index.md`,

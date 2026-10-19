@@ -2932,6 +2932,7 @@ type CustomerDirectory interface {
     CustomersByLegalID(ctx, country string, ids []string) (map[string][]CustomerEntry, error) // by organisation number
     Contact(ctx, id int32) (*ContactEntry, error)                // {ID, FirstName, LastName, Email}
     ContactsByEmail(ctx, email string) ([]ContactMatch, error)   // {ContactID, CandidateCustomerIDs}
+    ContactsForCustomer(ctx, customerID int32) ([]ContactEntry, error) // the customer's contacts with an address
     BillingProfile(ctx, id int32) (*CustomerBillingProfile, error) // resolved, see below
 }
 ```
@@ -2964,6 +2965,21 @@ exists once. Projects' project list is the first consumer: it gathers the page's
 distinct customer ids once and calls `Customers` a single time, so a page of 25
 projects for one customer costs one directory call, and a page spanning five
 customers still costs exactly one — not 25 or five.
+
+### `ContactsForCustomer` — a customer's contacts
+
+`ContactsForCustomer(ctx, customerID)` lists the contacts associated with the customer
+**that have an address of their own** — not blank — ordered by last name, then first
+name (`DirectoryContactsForCustomer`): the people a caller may invite on the customer's
+behalf. Calendar's attendee picker is the one consumer
+([a customer's contacts](/en/reference/calendar/#a-customers-contacts)). `Email` is the
+contact's own address, never nil or blank here, and never the customer-specific
+address an association may carry — the one `Contact` answers, so what a caller picks is
+what it later resolves by the contact's id. An unknown customer, or one with no such
+contact, is an empty, non-nil result, not an error. The directory does not judge the
+caller: the consumer that puts an address on its wire requires Customers' own keys for
+it first — Calendar requires `customers:contacts-view` and
+`customers:associations-view`, the pair the customer's own contact list requires.
 
 ### `CustomersByLegalID` — the lookup by organisation number
 

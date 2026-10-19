@@ -273,8 +273,10 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert modul
 (utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber,
 kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
-`INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid, og
-fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på)
+`INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid,
+fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på, og
+kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
+`CALENDAR_CANCELLATIONS_ENABLED=0`)
 inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:
@@ -300,8 +302,8 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
-Uansett topologi tar oppbevaringsoppryddingen, registerjobbene og EHF-hendelsesjobben en
-rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
+Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben og
+kalenderens avlysningsjobb en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben og
 `invoices-payments`-jobben tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger. Purrejobben sender ett brev om

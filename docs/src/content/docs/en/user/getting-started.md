@@ -128,7 +128,9 @@ sign in from. The public [pay page](/en/user/invoices/#what-the-customer-sees-on
 your customers open from a pay link is not signed in and does not use it: it speaks the
 language the invoice names, and the customer can switch. It asks Vantigo for nothing of
 an account — no session, no maintenance notice — and sends no referrer to the sites it
-links to.
+links to. Calendar's [answer page](/en/user/calendar/#if-you-received-an-invitation),
+which someone you invite opens from their invitation, is the same: not signed in, it
+asks for no session, and it speaks the language the invitation was written in.
 
 ### Choose your time zone
 

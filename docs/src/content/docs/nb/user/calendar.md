@@ -1,10 +1,12 @@
 ---
 title: Kalender
-description: Avtalene dine og det de andre appene har lagt inn i dagene dine, når kolleger er opptatt, gjentakende avtaler og agendaen på dashbordet.
+description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler og agendaen på dashbordet.
 sidebar:
   order: 35
 sources:
   - apps/calendar/frontend
+  - apps/host/frontend/src/routes/rsvp.tsx
+  - apps/host/frontend/src/lib/public-paths.ts
 ---
 
 Kalender-appen er én oversikt over dagene dine: avtalene du lager selv, med kolleger på,
@@ -21,6 +23,8 @@ siden handler om hva du gjør på hvert skjermbilde.
 | --- | --- |
 | **Kalender** i sidemenyen, din egen kalender, avtalene dine og svarene dine på invitasjoner, og **I dag og denne uken** på dashbordet | alle med `calendar:access` |
 | **En kollegas kalender** | `calendar:access` og `calendar:view-colleagues` |
+| **Kontakter** under **Deltakere**, for å invitere en kundes kontaktpersoner | `calendar:access`, `customers:contacts-view` og `customers:associations-view` |
+| Svarsiden en invitasjon lenker til | alle med lenken, uten innlogging |
 
 Det de andre appene legger i kalenderen din, følger deres egne rettigheter: du ser
 oppfølgingene dine bare hvis du kan lese tidslinjen i Kunder, fraværet ditt bare hvis
@@ -83,13 +87,16 @@ gjentakelsesmerke (↻).
 6. Under **Vis meg som** velger du **Opptatt** eller **Ledig**. En ledig avtale — en
    påminnelse til deg selv, for eksempel — vises ikke i kalenderen din for kolleger i
    det hele tatt.
-7. Under **Deltakere** søker du etter en kollega på navn og velger dem. Opptil 50
-   kolleger kan stå på én avtale. Hver av dem ser den i sin egen kalender og kan svare
-   på den.
-8. Trykk **Lagre**. Avtalen står i kalenderen din med en gang, og i deltakernes.
+7. Under **Deltakere** søker du etter en kollega på navn under **Kolleger** og velger
+   dem. Hver av dem ser den i sin egen kalender, kan svare på den og får beskjed på
+   e-post. Du kan også invitere folk utenfor bedriften her, under **Kontakter** og
+   **Med e-post** ([Inviter folk utenfor bedriften](#inviter-folk-utenfor-bedriften)).
+   Opptil 50 personer kan stå på én avtale.
+8. Trykk **Lagre**. Avtalen står i kalenderen din med en gang, og i kollegenes.
 
 Klikk en av avtalene dine for å åpne den igjen, endre den og **Lagre**, eller **Slett**
-den. Drar du en av dine egne avtaler til et annet tidspunkt eller en annen dag i
+den — når noen utenfor bedriften er invitert, blir en sletting en
+[avlysning](#slett-en-avtale-du-har-invitert-folk-til). Drar du en av dine egne avtaler til et annet tidspunkt eller en annen dag i
 **Måned**, **Uke** eller **Dag**, eller strekker den fra kanten, lagres det nye
 tidspunktet med en gang. Elementer fra de andre appene kan ikke dras.
 
@@ -107,6 +114,101 @@ ikke, eller hvordan den gjentas — går svaret til hver deltaker tilbake til
 tittelen, beskrivelsen eller stedet, blir svarene stående. Et svar på en invitasjon
 endrer ingenting ved selve avtalen, så arrangøren kan fortsette å endre den mens svarene
 kommer inn.
+
+## Inviter folk utenfor bedriften
+
+En avtale kan ha folk på seg som ikke bruker Vantigo: en kontaktperson hos en av
+kundene dine, eller hvem som helst med en e-postadresse. De får en invitasjon på e-post,
+som deres eget e-postprogram — Gmail, Outlook, Apple Mail — viser som en invitasjon, og
+de svarer med en lenke i e-posten. Svaret deres vises på avtalen i Vantigo.
+
+Under **Deltakere** i arket er det tre måter å legge til noen på, alle i samme liste:
+
+- **Kolleger** — søk etter en kollega på navn, som før.
+- **Kontakter** — velg én eller flere av kundens kontaktpersoner. Dette vises på en
+  avtale som er laget fra en kunde (handlingen **Ny avtale** der), og bare for den som kan se
+  kundens kontaktpersoner og adressene deres (`customers:contacts-view` og
+  `customers:associations-view`). Bare kontaktpersoner med en e-postadresse tilbys,
+  siden poenget er å sende dem e-post.
+- **Med e-post** — skriv inn en adresse, og et navn om du vil, og legg den til.
+
+Opptil 50 personer av alle de tre slagene til sammen kan stå på én avtale. Trykk
+**Lagre**: hver person du la til utenfra, får invitasjonen sin med en gang, én e-post
+hver. Lagringen venter aldri på e-posten.
+
+Hver rad i listen viser hva slags deltaker det er, navnet og svaret. En kontaktperson
+eller en adresse viser også hvordan det gikk med invitasjonen:
+
+- **Invitert 3. nov. 2026** — den siste invitasjonen ble sendt den dagen.
+- **Ikke sendt** — ingenting er sendt. Når installasjonen din ikke kan sende e-post,
+  viser alle kontaktpersoner og adresser dette, og arket sier «Invitasjoner på e-post er
+  ikke satt opp på denne installasjonen». Personen blir stående på avtalen; når e-post
+  er satt opp, trykker du **Send på nytt** (eller endrer tidspunktet eller stedet).
+- **Sending mislyktes** — den siste e-posten til dem gikk ikke ut. Trykk
+  **Send på nytt** for å prøve igjen. Feiler den fortsatt, spør administratoren din; for
+  en kontaktperson, sjekk at de fortsatt har en adresse i Kunder.
+
+**Send på nytt** står ved hver kontaktperson og adresse på en lagret avtale, så lenge
+installasjonen din kan sende e-post.
+
+En kontaktperson Kunder har anonymisert, vises som **En kontakt**, og får ikke mer
+sendt.
+
+### Hva personen får
+
+Én e-post, fra bedriftens egen avsenderadresse, under navnet ditt, med emnet
+**Invitasjon:** fulgt av tittelen og dagen, og skrevet på språket ditt — **Foretrukket
+språk** i [profilen din](/nb/user/getting-started/#rediger-profilen-din): norsk når det er
+**Norsk**, ellers engelsk, også når det er **Automatisk**. Den sier hva
+avtalen er, når (i tidssonen du laget den i), hvor, at det er du som arrangerer den, og
+beskrivelsen din, og ber dem svare med lenken i e-posten så du ser svaret i Vantigo.
+Avtalen er lagt ved, så e-postprogrammet deres kan vise sine egne svarknapper og legge
+den i kalenderen deres.
+
+Svaret som når deg, er det som gis **gjennom lenken**. Bruker de e-postprogrammets egne
+knapper i stedet, legges avtalen i kalenderen deres, men svaret går til bedriftens
+avsenderadresse og ikke til deg — e-posten sier det.
+
+Gjennom lenken ser de aldri beskrivelsen din, og heller ikke hvem andre som er
+invitert; selve e-posten lister de andre utenfra, slik e-postprogrammer venter, men
+aldri kollegene dine.
+
+### Se svarene deres
+
+Åpne avtalen: hver rad viser **Godtatt**, **Kanskje**, **Avslått** eller
+**Ikke svart**. Når noen utenfra svarer gjennom lenken, får du også en kort e-post —
+«Ola Hansen takket ja: Kundemøte», «… takket nei: …» eller «… svarte kanskje: …» — med en
+lenke til avtalen.
+
+### Når du endrer avtalen
+
+- Endrer du **når** (datoene, klokkeslettene, hele dagen eller ikke, hvordan den
+  gjentas) eller **hvor**, får alle utenfra en oppdatert invitasjon, med emnet
+  **Oppdatert: …**. Som for kolleger går svarene deres tilbake til **Ikke svart**,
+  bortsett fra at en endring av stedet alene lar dem stå.
+- Flytter, avlyser eller legger du tilbake én forekomst av en gjentakende avtale, får
+  alle den oppdaterte serien.
+- Legger du til noen, får bare de invitasjonen; tar du noen av, får de en avlysning.
+- Endrer du bare tittelen, beskrivelsen eller hvem som kan se den, sendes ingenting.
+
+### Send en invitasjon på nytt
+
+**Send på nytt** på raden til en kontaktperson eller en adresse sender den samme
+invitasjonen igjen, med den samme lenken, så en tidligere e-post fortsatt virker — med
+emnet **Oppdatert: …** hvis de har fått en før. Bruk den når en sending mislyktes, eller
+når personen ikke finner e-posten. Meldingen «Invitasjonen er sendt» bekrefter at den
+gikk.
+
+## Slett en avtale du har invitert folk til
+
+Så lenge ingen invitasjon har gått ut til noen utenfor bedriften, fjerner **Slett**
+avtalen som den alltid har gjort, og kollegene dine på den får beskjed på e-post om at
+den er avlyst. Når noen utenfra har fått en, **avlyser** slettingen
+den i stedet: hver av dem får **Avlyst: …**, som e-postprogrammet deres bruker til å ta
+den ut av kalenderen, og kollegene dine på den får beskjed på e-post. Avtalen forsvinner
+fra alle kalendere i Vantigo, men du og deltakerne kan fortsatt åpne den fra en lenke:
+den åpnes skrivebeskyttet, med banneret **Avlyst 3. nov. 2026** og ingenting å endre. En tid
+etter den siste dagen fjernes den for godt.
 
 ## Gjentakende avtaler
 
@@ -146,7 +248,12 @@ angrer den ene endringen og henter seriens egen forekomst tilbake.
 
 ## Svar på en invitasjon
 
-En avtale en kollega har satt deg på, vises i kalenderen din så snart den er laget.
+En avtale en kollega har satt deg på, vises i kalenderen din så snart den er laget, og
+du får en kort e-post om den — «Kari Nordmann inviterte deg: Kundemøte, tir. 3. nov.
+09:00» — og igjen når tidspunktet eller stedet endres, når du tas av den, og når den
+avlyses eller slettes (en endring av én forekomst av en gjentakende avtale sender
+ingen). E-posten er på ditt eget språk og lenker til avtalen («Åpne den i Vantigo»); du
+svarer i Vantigo.
 Klikk den for å åpne den: du ser hva den er, når, **Arrangør** og de andre
 **Deltakere** med svarene sine, og **Ditt svar**. Svar med **Godta**, **Kanskje** eller
 **Avslå**. Du kan endre svaret når som helst. En avtale du har avslått, blir stående i
@@ -177,9 +284,28 @@ klikker for å se dem; **Ny avtale**; og **Åpne kalenderen**. Listen
 **Trenger oppfølging** under beholder oppfølgingene og oppgavene som forfaller: den sier
 hva som trenger deg, agendaen sier når.
 
+## Hvis du har fått en invitasjon
+
+Denne delen er for personen utenfor bedriften som har fått en invitasjon fra noen som
+bruker Vantigo.
+
+1. Åpne e-posten, **Invitasjon: …**. Den sier hva avtalen er, når og hvor, og hvem som
+   arrangerer den.
+2. Klikk lenken i e-posten. En side åpnes i nettleseren — ingen konto eller innlogging
+   trengs — med avtalen, tidspunktet i avtalens egen tidssone og, hvis din er en annen,
+   i din, hvor den er, og hvem som arrangerer den. Den er på språket invitasjonen ble
+   skrevet på.
+3. Under **Kommer du?** svarer du **Godta**, **Kanskje** eller **Avslå**. Siden sier
+   «Takk. Svaret ditt er sendt til arrangøren.», og arrangøren ser det. Du kan åpne lenken igjen og endre svaret når som helst.
+
+E-postprogrammets egne svarknapper legger avtalen i kalenderen din, men sier ikke fra
+til arrangøren: bruk lenken til det. Endres avtalen, får du en oppdatert invitasjon med
+den samme lenken; avlyses den, får du en avlysning, og siden sier
+**Denne avtalen er avlyst**. En side som sier **Denne lenken er ikke gyldig**, betyr at
+du er tatt av avtalen, eller at den er lenge siden.
+
 ## Hva som kommer
 
-Invitasjoner til folk utenfor bedriften, på e-post med et svar de kan gi fra meldingen;
-en kalenderadresse mobilen din kan abonnere på, så Vantigo-kalenderen din vises i
+En kalenderadresse mobilen din kan abonnere på, så Vantigo-kalenderen din vises i
 mobilens egen kalenderapp; og kalendere fra andre steder, abonnert på og vist ved siden
-av din egen. Ingen av disse er bygget ennå.
+av din egen. Ingen av dem er bygget ennå.

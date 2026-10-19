@@ -395,7 +395,9 @@ rule is what makes the public host safe; the steps below set it.
 1. **Choose the host.** Recommended: a host of its own, such as `pay.example.com`, with
    the **same base path** as `APP_URL` — `PUBLIC_BASE_URL=https://pay.example.com` when
    `APP_BASE_PATH` is unset, `https://pay.example.com/vantigo` when it is `/vantigo`.
-   On that host Vantigo serves only what the pay page needs and answers 404 to
+   On that host Vantigo serves only what the pay page — and Calendar's answer page for
+   invitations ([Calendar](/en/admin/calendar/#the-public-hosts-three-routes)) — needs,
+   and answers 404 to
    everything else. The alternative is `APP_URL`'s own origin: then there is no second
    host and nothing is filtered, so publishing the pay page means publishing all of
    Vantigo — the sign-in, the API and the documentation — to the internet.
@@ -520,6 +522,9 @@ on no list.
 | `POST` | `/api/v1/invoices/pay/read` (the page's read; the token in the body) |
 | `POST` | `/api/v1/invoices/pay/attempts` (a payment started) |
 | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (its status) |
+| `GET`, `HEAD` | `/rsvp` (Calendar's answer page for an invitation; any query) |
+| `POST` | `/api/v1/calendar/rsvp/read` (that page's read; the token in the body) |
+| `POST` | `/api/v1/calendar/rsvp` (an invitee's answer) |
 | `GET`, `HEAD` | `/health/…` (probes) |
 
 **Verify** from outside, against the public host:
@@ -528,6 +533,7 @@ on no list.
 curl -i https://pay.example.com/sign-in            # 404
 curl -i https://pay.example.com/api/v1/identity/me # 404, a problem document
 curl -i 'https://pay.example.com/pay?token=x'      # 200, the pay page
+curl -i 'https://pay.example.com/rsvp?token=x'     # 200, Calendar's answer page
 curl -i https://vantigo.example.com/sign-in        # 200 on APP_URL's host
 # The proxy must not pass on another Host: neither of these may answer 200.
 curl -i https://pay.example.com/sign-in -H 'Host: localhost'

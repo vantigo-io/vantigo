@@ -395,7 +395,9 @@ verten trygg; stegene nedenfor setter den.
 1. **Velg verten.** Anbefalt: en egen vert, for eksempel `pay.example.com`, med **samme
    basissti** som `APP_URL` — `PUBLIC_BASE_URL=https://pay.example.com` når
    `APP_BASE_PATH` ikke er satt, `https://pay.example.com/vantigo` når den er `/vantigo`.
-   På den verten serverer Vantigo bare det betalingssiden trenger, og svarer 404 på alt
+   På den verten serverer Vantigo bare det betalingssiden — og svarsiden i Kalender for
+   invitasjoner ([Kalender](/nb/admin/calendar/#de-tre-rutene-på-den-offentlige-verten))
+   — trenger, og svarer 404 på alt
    annet. Alternativet er opprinnelsen til `APP_URL` selv: da finnes det ingen egen
    vert og ingenting filtreres, så å publisere betalingssiden betyr å publisere hele
    Vantigo — innloggingen, API-et og dokumentasjonen — på internett.
@@ -522,6 +524,9 @@ kodet `/`, `%2F`), står ikke på noen liste.
 | `POST` | `/api/v1/invoices/pay/read` (sidens lesing; tokenet i innholdet) |
 | `POST` | `/api/v1/invoices/pay/attempts` (en betaling startet) |
 | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (statusen dens) |
+| `GET`, `HEAD` | `/rsvp` (svarsiden i Kalender for en invitasjon; enhver spørring) |
+| `POST` | `/api/v1/calendar/rsvp/read` (den sidens lesing; tokenet i innholdet) |
+| `POST` | `/api/v1/calendar/rsvp` (en mottakers svar) |
 | `GET`, `HEAD` | `/health/…` (prober) |
 
 **Kontroller** utenfra, mot den offentlige verten:
@@ -530,6 +535,7 @@ kodet `/`, `%2F`), står ikke på noen liste.
 curl -i https://pay.example.com/sign-in            # 404
 curl -i https://pay.example.com/api/v1/identity/me # 404, et problemdokument
 curl -i 'https://pay.example.com/pay?token=x'      # 200, betalingssiden
+curl -i 'https://pay.example.com/rsvp?token=x'     # 200, svarsiden i Kalender
 curl -i https://vantigo.example.com/sign-in        # 200 på verten til APP_URL
 # Proxyen må ikke sende videre en annen Host: ingen av disse kan svare 200.
 curl -i https://pay.example.com/sign-in -H 'Host: localhost'
