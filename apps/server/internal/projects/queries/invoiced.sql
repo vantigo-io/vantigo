@@ -11,8 +11,11 @@
 -- milestone is not. The project's currency and fixed price ride along, read
 -- from this module's own projects table, because a percent milestone's amount
 -- is a share of that price and its currency is the project's. until bounds the
--- milestones by the Oslo business day they became ready (the day Invoices
--- dates a milestone by); NULL is no bound. The plan's own order within each
+-- milestones by the business day they became ready (the day Invoices dates a
+-- milestone by): the instant read in time_zone, the workspace's business time
+-- zone the caller resolved through contracts.BusinessCalendar — never a
+-- literal, so Go and the database judge the same day. NULL is no bound. The
+-- plan's own order within each
 -- project, and one row past the limit the caller asks for, so it can say there
 -- was more.
 SELECT m.id, m.revision, m.project_id, m.name, m.description, m.planned_date,
@@ -24,7 +27,7 @@ JOIN projects.projects p ON p.id = m.project_id
 WHERE m.project_id = ANY(@project_ids::integer[])
   AND m.status = 'ready'
   AND (sqlc.narg(until)::date IS NULL
-       OR (COALESCE(m.ready_at, m.updated_at) AT TIME ZONE 'Europe/Oslo')::date <= sqlc.narg(until)::date)
+       OR (COALESCE(m.ready_at, m.updated_at) AT TIME ZONE @time_zone::text)::date <= sqlc.narg(until)::date)
 ORDER BY m.project_id, m.position, m.id
 LIMIT @row_limit;
 
@@ -41,7 +44,7 @@ JOIN projects.projects p ON p.id = m.project_id
 WHERE m.id = ANY(@ids::integer[])
   AND m.status = 'ready'
   AND (sqlc.narg(until)::date IS NULL
-       OR (COALESCE(m.ready_at, m.updated_at) AT TIME ZONE 'Europe/Oslo')::date <= sqlc.narg(until)::date)
+       OR (COALESCE(m.ready_at, m.updated_at) AT TIME ZONE @time_zone::text)::date <= sqlc.narg(until)::date)
 ORDER BY m.project_id, m.position, m.id
 LIMIT @row_limit;
 

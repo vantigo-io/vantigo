@@ -19,17 +19,20 @@ import (
 // billableMilestones is this module's contracts.BillableMilestones (invoices
 // work design D3): the billing milestones ready to invoice, row by row, read
 // on the pool from this module's own tables — the project's currency and fixed
-// price included, so nothing here calls a directory back.
+// price included, so nothing here calls a directory back. The business
+// calendar is the one other thing it reads: the day a milestone became ready
+// is a day of the workspace's business time zone (time zones design D2).
 type billableMilestones struct {
-	pool   *pgxpool.Pool
-	logger *slog.Logger
+	pool     *pgxpool.Pool
+	calendar contracts.BusinessCalendar
+	logger   *slog.Logger
 }
 
 var _ contracts.BillableMilestones = billableMilestones{}
 
 // newBillableMilestones is Module's BillableMilestones.
 func newBillableMilestones(d module.Deps) contracts.BillableMilestones {
-	return billableMilestones{pool: d.Pool, logger: d.Logger}
+	return billableMilestones{pool: d.Pool, calendar: d.Calendar, logger: d.Logger}
 }
 
 // billableMilestoneRow is the one row both reads answer: sqlc emits a type per
@@ -45,9 +48,17 @@ type billableMilestoneRow = store.BillableMilestonesForProjectsRow
 // no longer has, which the project's own guard refuses to leave behind — is
 // not billable and is left out, with a warning, as the invoice plan leaves it
 // out of its totals: invoicing it at any amount would be a guess.
+//
+// Until is compared with the business day each milestone became ready: the
+// zone is read through the calendar first, on a pool connection of its own and
+// before the query takes one, and handed to the SQL as a parameter.
 func (b billableMilestones) BillableMilestones(ctx context.Context, req contracts.BillableRequest) (contracts.BillableMilestonesPage, error) {
 	if err := req.Validate(); err != nil {
 		return contracts.BillableMilestonesPage{}, err
+	}
+	zone, err := b.calendar.Zone(ctx)
+	if err != nil {
+		return contracts.BillableMilestonesPage{}, fmt.Errorf("projects: read the business time zone: %w", err)
 	}
 	until := pgtype.Date{}
 	if !req.Until.IsZero() {
@@ -57,15 +68,14 @@ func (b billableMilestones) BillableMilestones(ctx context.Context, req contract
 
 	q := store.New(b.pool)
 	var rows []billableMilestoneRow
-	var err error
 	if len(req.ProjectIDs) > 0 {
 		rows, err = q.BillableMilestonesForProjects(ctx, store.BillableMilestonesForProjectsParams{
-			ProjectIds: req.ProjectIDs, Until: until, RowLimit: limit,
+			ProjectIds: req.ProjectIDs, Until: until, TimeZone: zone.String(), RowLimit: limit,
 		})
 	} else {
 		var found []store.BillableMilestonesByIDsRow
 		found, err = q.BillableMilestonesByIDs(ctx, store.BillableMilestonesByIDsParams{
-			Ids: milestoneIDs(req.IDs), Until: until, RowLimit: limit,
+			Ids: milestoneIDs(req.IDs), Until: until, TimeZone: zone.String(), RowLimit: limit,
 		})
 		for _, r := range found {
 			rows = append(rows, billableMilestoneRow(r))

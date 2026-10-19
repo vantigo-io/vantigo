@@ -477,7 +477,9 @@ this module's own tables. Each carries its id, revision, project, name, descript
 planned date, when it became ready, its currency (its own for a flat amount, the
 project's for a percent) and `Amount` — the effective amount to the cent, the same exact
 figure the stamp compares and freezes (`milestoneEffectiveAmountRat`: 33.33 % of
-3 750.30 is 1 249.97). `Until` bounds the milestones by the Oslo day they became ready.
+3 750.30 is 1 249.97). `Until` bounds the milestones by the business day they became
+ready ([The business day](#the-business-day)): the read resolves the zone through the
+business calendar itself, on the pool, before its query.
 A ready percent milestone nothing can price is left out with a warning.
 
 **Editing and deleting.** A milestone's content (name, dates, amount or percent) can
@@ -1090,6 +1092,42 @@ own currency), so it reads exactly those two: at the 2 000-project cap that save
 tens of thousands of discarded decimal parses, and it means a malformed figure in a
 currency the table would never have printed cannot take the whole page down with it.
 
+## The business day
+
+Every day this module derives from an instant is a calendar day of the workspace's
+**business time zone**, `Europe/Oslo` until an Owner changes it under [Workspace
+administration](/en/user/workspace-administration/#workspace-settings)
+([time zones design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-19-time-zones-design.md),
+D2 and D7). It enters in three places:
+
+- **today**, which a project's `endDate` and a milestone's `plannedDate` are overdue
+  against — the milestone's `overdue` flag in the invoice plan and in the portfolio's
+  `nextMilestone`, and the dashboard's `projectOverdue` and `milestoneOverdue` items
+  ([The dashboard signals](#the-dashboard-signals)) — so all of them turn at the
+  business time zone's midnight, together;
+- the bound on a budget alert's `occurredAt`: a last logged day after today answers the
+  present moment instead;
+- the day a milestone **became ready** (`ready_at`, falling back to `updated_at`),
+  which `contracts.BillableMilestones`' `Until` compares and Invoices dates the
+  milestone by.
+
+The module keeps no zone of its own. It reads the zone through the platform's
+`contracts.BusinessCalendar` (`Deps.Calendar`) once per request, **before** any of its
+transactions opens and never under `withProjectLock`: the read takes a pool connection
+of its own, so it goes through the same accessor in `contracts.go` as every other
+cross-module call, and the tests fail a calendar read made under the lock
+([Locking](#locking)). The day an instant falls on is `holidays.DayIn(t, zone)`, a date
+at midnight UTC, the form every date column is compared at; the SQL that buckets
+`ready_at` into a day takes the zone as a parameter, never a literal, and no query
+uses PostgreSQL's `CURRENT_DATE`, which is UTC in the container.
+
+The dates themselves — a project's `startDate` and `endDate`, a milestone's
+`plannedDate` and `invoiceDate`, a task's `dueDate` — are civil dates and are compared
+as stored. A changed zone changes which day "today" is from the next request on, and
+which day a milestone's `ready_at` falls on; it never moves a stored date. The
+dashboard's `newProjects` time series is the exception the design leaves alone: it
+buckets `created_at` by the UTC day, as every module's dashboard series does.
+
 ## Locking
 
 Every transaction that changes a project's currency, fixed price or billing type — or
@@ -1126,8 +1164,8 @@ decides whether that prefetched answer matters, against the row its own lock ret
 **This is enforced for the whole module, not documented and hoped for.** Every guarded
 write goes through one helper, `withProjectLock`, which takes the lock as its first
 statement and hands the body a context marked as holding it; and every call this
-module makes into `Deps.Products`, `Deps.Users`, `Deps.Directory` or `Deps.Actuals`
-goes through a thin accessor in `contracts.go` and through nowhere else. The
+module makes into `Deps.Products`, `Deps.Users`, `Deps.Directory`, `Deps.Actuals` or
+`Deps.Calendar` goes through a thin accessor in `contracts.go` and through nowhere else. The
 accessors report each call to a hook that is nil in production — one nil comparison,
 no behaviour change — and that the test suite installs for every test, failing it when
 the context is a marked one. A new write path, or a new cross-module call on an
