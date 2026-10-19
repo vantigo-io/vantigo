@@ -31,13 +31,15 @@ RETURNING *;
 -- InsertEmailAttendee adds an address typed in, lower-cased by the caller,
 -- with the name as typed, at needs-action with its RSVP token's hash and
 -- sealed link. One already on the appointment keeps their row, their answer
--- and their token: nothing is inserted and no row is returned.
+-- and their token, and takes the name the write gives them now — so a row is
+-- returned either way, and the caller tells a kept one from a new one by the
+-- row ids it kept (insertAttendees).
 INSERT INTO calendar.appointment_attendees (
     appointment_id, kind, email, name, status, rsvp_token_sha256, rsvp_link_ciphertext, created_at
 ) VALUES (
     @appointment_id, 'email', @email::varchar, @name, 'needs-action', @rsvp_token_sha256::char(64), @rsvp_link_ciphertext::text, @now::timestamptz
 )
-ON CONFLICT (appointment_id, email) WHERE kind = 'email' DO NOTHING
+ON CONFLICT (appointment_id, email) WHERE kind = 'email' DO UPDATE SET name = EXCLUDED.name
 RETURNING *;
 
 -- name: DeleteAttendeesNotIn :many

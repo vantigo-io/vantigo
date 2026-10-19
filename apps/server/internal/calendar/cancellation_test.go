@@ -226,3 +226,61 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 		t.Errorf("a Deps with no Config gets workers %v", got)
 	}
 }
+
+func TestCancellationsWorker_ACancelledAllDayEndsWithItsLastDayInItsOwnZone(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	// Auckland is twelve hours ahead in September: its 20th ends at 12:00 UTC.
+	a := cancelled(t, w, allDay("Hui", "Pacific/Auckland", "2026-09-20", "2026-09-20"))
+	worker := cancellationsWorker(t, w.h)
+	w.h.Advance(8*24*time.Hour - time.Hour) // 2026-09-20 11:00 UTC, 23:00 in Auckland
+	if _, n, err := worker.RunCycle(context.Background()); err != nil || n != 0 {
+		t.Errorf("on its last day in its zone the cycle erased %d, %v", n, err)
+	}
+	w.h.Advance(time.Hour) // the 21st in Auckland, still the 20th in UTC
+	if _, n, err := worker.RunCycle(context.Background()); err != nil || n != 1 {
+		t.Errorf("the day after in its zone the cycle erased %d, %v", n, err)
+	}
+	if n := w.h.Count(t, `SELECT count(*) FROM calendar.appointments WHERE id = $1`, a.Id); n != 0 {
+		t.Error("the cancelled all-day appointment is still there")
+	}
+}
+
+func TestCancellationsWorker_ABoundedSeriesWaitsForAnOccurrenceMovedPastItsLastDay(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	a := create(t, w.owner, with(timed(t, "Weekly", "Europe/Oslo", "2026-09-14T09:00", "2026-09-14T10:00"),
+		"recurrence", map[string]any{"rule": "FREQ=WEEKLY;COUNT=2"}, "attendees", []map[string]any{emailAttendee(perMail, "")}))
+	do(t, w.owner, http.MethodPut, occurrencePath(a.Id, "2026-09-21"), map[string]any{
+		"startsAt": at(t, "Europe/Oslo", "2026-09-28T09:00").UTC().Format("2006-01-02T15:04:05Z"),
+		"endsAt":   at(t, "Europe/Oslo", "2026-09-28T10:00").UTC().Format("2006-01-02T15:04:05Z"),
+	}, http.StatusOK, nil)
+	do(t, w.owner, http.MethodDelete, appointmentPath(a.Id), nil, http.StatusNoContent, nil)
+	worker := cancellationsWorker(t, w.h)
+	w.h.Advance(11 * 24 * time.Hour) // 2026-09-23: the series' last day has passed, the moved one has not
+	if _, n, err := worker.RunCycle(context.Background()); err != nil || n != 0 {
+		t.Errorf("before the moved occurrence the cycle erased %d, %v", n, err)
+	}
+	w.h.Advance(6 * 24 * time.Hour) // 2026-09-29
+	if _, n, err := worker.RunCycle(context.Background()); err != nil || n != 1 {
+		t.Errorf("after the moved occurrence the cycle erased %d, %v", n, err)
+	}
+}
+
+func TestCancellationsWorker_ErasesAtMost200ACycle(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, owner := signIn(t, h)
+	h.Exec(t, `INSERT INTO calendar.appointments (owner_user_id, title, all_day, starts_at, ends_at, time_zone, visibility, transparency,
+	               ical_uid, created_at, updated_at, cancelled_at)
+	           SELECT $1, 'Old', false, $2::timestamptz - interval '2 hours', $2::timestamptz - interval '1 hour', 'Europe/Oslo', 'shared', 'busy',
+	                  'bulk-' || n || '@vantigo', $2, $2, $2
+	           FROM generate_series(1, 201) AS n`, owner, h.Now())
+	worker := cancellationsWorker(t, h)
+	if _, n, err := worker.RunCycle(context.Background()); err != nil || n != 200 {
+		t.Errorf("the first cycle erased %d, %v; want 200", n, err)
+	}
+	if _, n, err := worker.RunCycle(context.Background()); err != nil || n != 1 {
+		t.Errorf("the second cycle erased %d, %v; want the one left", n, err)
+	}
+}

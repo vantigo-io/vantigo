@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -20,11 +21,14 @@ import (
 )
 
 // The contacts the invitations' directory answers, for customer 42: Ola with
-// an address, Nina without one, Siri with one.
+// an address, Nina without one, Siri with one; and Anon, of no customer, with
+// an address and no name.
 const (
 	olaID     int32 = 7
 	ninaID    int32 = 8
 	siriID    int32 = 9
+	anonID    int32 = 10
+	anonMail        = "anon@kunde.example"
 	customer  int32 = 42
 	olaMail         = "ola@kunde.example"
 	siriMail        = "siri@kunde.example"
@@ -34,13 +38,14 @@ const (
 
 // newDirectory is the customer directory of the invitations' tests.
 func newDirectory() *contactsDirectory {
-	ola, siri := olaMail, siriMail
+	ola, siri, anon := olaMail, siriMail, anonMail
 	return &contactsDirectory{
 		customers: map[int32]string{customer: "Fjord AS"},
 		contacts: map[int32]contracts.ContactEntry{
 			olaID:  {ID: olaID, FirstName: "Ola", LastName: "Hansen", Email: &ola},
 			ninaID: {ID: ninaID, FirstName: "Nina", LastName: "Berg"},
 			siriID: {ID: siriID, FirstName: "Siri", LastName: "Dahl", Email: &siri},
+			anonID: {ID: anonID, Email: &anon},
 		},
 		of: map[int32][]int32{customer: {olaID, ninaID, siriID}},
 	}
@@ -622,5 +627,144 @@ func TestInvitations_AnOccurrenceWriteSendsTheWholeSeriesInItsZone(t *testing.T)
 	do(t, w.owner, http.MethodDelete, occurrencePath(a.Id, "2026-10-26"), nil, http.StatusNoContent, nil)
 	if msgs := w.h.mail.take(); len(msgs) != 0 {
 		t.Errorf("restoring a day with no exception sent %d mails", len(msgs))
+	}
+}
+
+func TestInvitations_AnAddressTypedThatIsAListedContactsIsThatContact(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	a := create(t, w.owner, meeting(t, emailAttendee(strings.ToUpper(olaMail), "Ola"), contactAttendee(olaID)))
+	if len(a.Attendees) != 1 || a.Attendees[0].Kind != gen.Contact {
+		t.Errorf("attendees = %+v, want the contact alone", a.Attendees)
+	}
+	if got := recipients(w.h.mail.messages()); !slices.Equal(got, []string{olaMail}) {
+		t.Errorf("mailed %v, want the one person once", got)
+	}
+}
+
+func TestInvitations_NoCancelGoesToAnAddressStillOnTheAppointment(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	base := func(list ...map[string]any) map[string]any { return meeting(t, list...) }
+
+	// A typed duplicate of a contact — the contact's address changed to it
+	// in Customers after both were listed — removed: the contact still has
+	// the address, so no CANCEL.
+	shared := "shared@kunde.example"
+	a := create(t, w.owner, base(contactAttendee(siriID), emailAttendee(shared, "")))
+	w.dir.setEmail(siriID, shared)
+	w.h.mail.take()
+	put(t, w.owner, a, base(contactAttendee(siriID)))
+	if msgs := w.h.mail.take(); len(msgs) != 0 {
+		t.Errorf("removing the typed duplicate mailed %d: %+v", len(msgs), msgs)
+	}
+
+	// A contact swapped for its own address typed in, in one PUT: no CANCEL
+	// to the address, which is now the typed attendee's, and the invitation
+	// to the new attendee.
+	b := create(t, w.owner, base(contactAttendee(olaID)))
+	w.h.mail.take()
+	b = put(t, w.owner, b, base(emailAttendee(olaMail, "Ola")))
+	msgs := w.h.mail.take()
+	if len(msgs) != 1 || msgs[0].Calendar.Method != "REQUEST" || !slices.Equal(msgs[0].To, []string{olaMail}) {
+		t.Fatalf("swapping the contact for its address mailed %+v", msgs)
+	}
+	// And back: the typed address swapped for the contact.
+	put(t, w.owner, b, base(contactAttendee(olaID)))
+	msgs = w.h.mail.take()
+	if len(msgs) != 1 || msgs[0].Calendar.Method != "REQUEST" || !slices.Equal(msgs[0].To, []string{olaMail}) {
+		t.Errorf("swapping the address for the contact mailed %+v", msgs)
+	}
+}
+
+func TestInvitations_APutThatDropsAndAddsSendsTheCancelFirst(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	a := create(t, w.owner, meeting(t, contactAttendee(olaID), emailAttendee(perMail, "")))
+	w.h.mail.take()
+	put(t, w.owner, a, with(meeting(t, contactAttendee(olaID), contactAttendee(siriID)),
+		"startsAt", at(t, "Europe/Oslo", "2026-11-02T13:00").UTC().Format("2006-01-02T15:04:05Z"),
+		"endsAt", at(t, "Europe/Oslo", "2026-11-02T14:00").UTC().Format("2006-01-02T15:04:05Z")))
+	msgs := w.h.mail.take()
+	if len(msgs) != 3 || msgs[0].Calendar.Method != "CANCEL" || !slices.Equal(msgs[0].To, []string{perMail}) ||
+		msgs[1].Calendar.Method != "REQUEST" || msgs[2].Calendar.Method != "REQUEST" {
+		var got []string
+		for _, m := range msgs {
+			got = append(got, m.Calendar.Method+" "+strings.Join(m.To, ","))
+		}
+		t.Errorf("a PUT that drops and adds sent %v, want the CANCEL to the dropped first", got)
+	}
+}
+
+func TestInvitations_TheBudgetMarksTheSendsItLeftUnmadeFailed(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	colleague := directoryUser(t, w.h, "Liv Lund", true)
+	sent := 0
+	w.h.mail.failWith(func(mail.Outbound) error {
+		// The first send takes the whole budget on the installation's clock.
+		if sent++; sent == 1 {
+			w.h.Advance(31 * time.Second)
+		}
+		return nil
+	})
+	a := create(t, w.owner, meeting(t, attendees(userAttendees(colleague.String()),
+		[]map[string]any{contactAttendee(olaID), contactAttendee(siriID), emailAttendee(perMail, "")})...))
+	if n := len(w.h.mail.messages()); n != 1 {
+		t.Errorf("%d mails sent, want the one the budget allowed", n)
+	}
+	if ola := attendeeOf(t, a, olaID); ola.Invitation.SentAt == nil {
+		t.Errorf("the first invitation = %+v, want sent", ola.Invitation)
+	}
+	for _, key := range []any{siriID, perMail} {
+		if at := attendeeOf(t, a, key); at.Invitation.FailedAt == nil || at.Invitation.SentAt != nil {
+			t.Errorf("attendee %v's invitation = %+v, want marked failed", key, at.Invitation)
+		}
+	}
+	if n := len(w.h.Notices()); n != 0 {
+		t.Errorf("%d notices sent after the budget ran out", n)
+	}
+	if logs := w.h.Logs(); !strings.Contains(logs, "invitations not sent: the time for them ran out") || !strings.Contains(logs, "notices not sent: the time for them ran out") {
+		t.Errorf("the cut-off is not logged:\n%s", logs)
+	}
+}
+
+func TestInvitations_AKeptAddressTakesItsNewNameAndIsNotInvitedAgain(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	a := create(t, w.owner, meeting(t, emailAttendee(perMail, "Per")))
+	w.h.mail.take()
+	a = put(t, w.owner, a, meeting(t, emailAttendee(perMail, "Per Olsen")))
+	if at := attendeeOf(t, a, perMail); at.Name == nil || *at.Name != "Per Olsen" || at.Invitation.SentAt == nil {
+		t.Errorf("the kept address = %+v, want renamed with its invitation kept", at)
+	}
+	if n := len(w.h.mail.take()); n != 0 {
+		t.Errorf("renaming a kept address mailed %d", n)
+	}
+}
+
+func TestInvitations_ACancelGoesOnlyToAttendeesOnceInvited(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	w.h.mail.failWith(func(out mail.Outbound) error {
+		if out.To[0] != olaMail {
+			return errors.New("421 try again later")
+		}
+		return nil
+	})
+	a := create(t, w.owner, meeting(t, contactAttendee(olaID), contactAttendee(siriID), emailAttendee(perMail, "")))
+	w.h.mail.failWith(nil)
+	w.h.mail.take()
+
+	// Dropping one never invited sends it nothing.
+	put(t, w.owner, a, meeting(t, contactAttendee(olaID), contactAttendee(siriID)))
+	if msgs := w.h.mail.take(); len(msgs) != 0 {
+		t.Errorf("dropping one never invited mailed %+v", msgs)
+	}
+	// The cancellation goes to the one invited alone.
+	do(t, w.owner, http.MethodDelete, appointmentPath(a.Id), nil, http.StatusNoContent, nil)
+	msgs := w.h.mail.take()
+	if got := recipients(msgs); !slices.Equal(got, []string{olaMail}) || msgs[0].Calendar.Method != "CANCEL" {
+		t.Errorf("the cancellation mailed %v", got)
 	}
 }

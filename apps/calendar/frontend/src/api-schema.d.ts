@@ -225,7 +225,7 @@ export interface paths {
         put?: never;
         /**
          * Read an invitation for the RSVP page
-         * @description The RSVP page's read (calendar invitations design D5; a POST, so the token travels in the body and never in an API URL). Anonymous: no session is needed, and a signed-in caller is answered alike. The token is hashed and looked up; 404 with no body when no attendee holds it, an erased one included. 200 with what the page shows — the title, when, where, the organiser's name, the workspace's name, the invitee's name and current answer, whether it is cancelled and the language — and never the description, another attendee or an address. Rate limited to 60 per client address per 10 minutes (calendar-rsvp-read).
+         * @description The RSVP page's read (calendar invitations design D5; a POST, so the token travels in the body and never in an API URL). Anonymous: no session is needed, and a signed-in caller is answered alike. The token is hashed and looked up; 404 with no body when no attendee holds it, an erased one included. 200 with what the page shows — the title, when, where, the organiser's name, the invitee's name and current answer, whether it is cancelled and the language — and never the description, another attendee or an address. Rate limited to 60 per client address per 10 minutes (calendar-rsvp-read).
          */
         post: operations["postCalendarRsvpRead"];
         delete?: never;
@@ -581,11 +581,12 @@ export interface components {
             /** Format: date-time */
             startsAt?: string;
         };
-        /** @description What the RSVP page shows an invitee (calendar invitations design D5) — what they need to decide and nothing more: no description, no other attendee, no address. A timed appointment carries startsAt and endsAt, an all-day one startDate and endDate (inclusive); a series answers its first occurrence. company is the workspace's name, absent when it has none. language is the organiser's, the one the invitation was written in. */
+        /** @description What the RSVP page shows an invitee (calendar invitations design D5) — what they need to decide and nothing more: no description, no other attendee, no address. A timed appointment carries startsAt and endsAt, an all-day one startDate and endDate (inclusive); a series answers its first occurrence. company is reserved for the workspace's name and is not answered yet — no contract the calendar reads exposes one. language is the organiser's, the one the invitation was written in. */
         RsvpPage: {
             allDay: boolean;
             attendee: components["schemas"]["RsvpPerson"];
             cancelled: boolean;
+            /** @description Reserved for the workspace's name, and not answered yet; a client shows the organiser alone. */
             company?: string;
             /** Format: date */
             endDate?: string;

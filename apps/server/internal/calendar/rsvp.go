@@ -18,8 +18,20 @@ import (
 // address (module.go's limits), that find the attendee by the hash of the
 // token the page posts — never a GET with the token in an API path. Neither
 // has a principal; neither answers the description, another attendee or an
-// address. A token nobody holds, an erased attendee's included, is the bare
-// 404.
+// address. A blank token is a 400; a token nobody holds, an erased
+// attendee's included, is the bare 404.
+
+// invalidRsvpTitle is the title of a refused RSVP body.
+const invalidRsvpTitle = "Invalid answer"
+
+// blankToken is the field error of a body with no token.
+func blankToken(token string) (fieldErrors, bool) {
+	var f fieldErrors
+	if strings.TrimSpace(token) == "" {
+		f.add("token", "token is required")
+	}
+	return f, f.failed()
+}
 
 // PostCalendarRsvpRead Read an invitation for the RSVP page
 // (POST /api/v1/calendar/rsvp/read)
@@ -27,6 +39,9 @@ func (s *server) PostCalendarRsvpRead(ctx context.Context, req gen.PostCalendarR
 	var token string
 	if req.Body != nil {
 		token = req.Body.Token
+	}
+	if f, blank := blankToken(token); blank {
+		return gen.PostCalendarRsvpRead400ApplicationProblemPlusJSONResponse(invalid(invalidRsvpTitle, f)), nil
 	}
 	row, err := s.queries().GetAttendeeByRsvpToken(ctx, tokenSHA256(token))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -48,20 +63,26 @@ func (s *server) PostCalendarRsvpRead(ctx context.Context, req gen.PostCalendarR
 // The invitee's answer sets their status and respondedAt under the
 // appointment's lock, which neither its revision nor its sequence moves; a
 // cancelled appointment is 409 appointment_cancelled. After the commit the
-// owner is told (D4).
+// owner is told (D4), under a budget of its own. The answer they already gave
+// writes nothing and tells nobody: the page is answered as it stands. An
+// attendee or an appointment erased between the lookup and the lock is the
+// 404 of a token nobody holds.
 func (s *server) PostCalendarRsvp(ctx context.Context, req gen.PostCalendarRsvpRequestObject) (gen.PostCalendarRsvpResponseObject, error) {
 	var body gen.RsvpWrite
 	if req.Body != nil {
 		body = *req.Body
 	}
+	f, _ := blankToken(body.Token)
 	if !body.Status.Valid() {
-		var f fieldErrors
 		f.add("status", "status is accepted, declined or tentative")
-		return gen.PostCalendarRsvp400ApplicationProblemPlusJSONResponse(invalid(invalidResponseTitle, f)), nil
+	}
+	if f.failed() {
+		return gen.PostCalendarRsvp400ApplicationProblemPlusJSONResponse(invalid(invalidRsvpTitle, f)), nil
 	}
 	var (
-		appt store.CalendarAppointment
-		att  store.CalendarAppointmentAttendee
+		appt    store.CalendarAppointment
+		att     store.CalendarAppointmentAttendee
+		changed bool
 	)
 	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		found, err := txq.GetAttendeeByRsvpToken(ctx, tokenSHA256(body.Token))
@@ -71,18 +92,30 @@ func (s *server) PostCalendarRsvp(ctx context.Context, req gen.PostCalendarRsvpR
 		if err != nil {
 			return fmt.Errorf("calendar: find an RSVP token: %w", err)
 		}
-		if appt, err = txq.GetAppointmentForUpdate(ctx, found.CalendarAppointment.ID); err != nil {
+		appt, err = txq.GetAppointmentForUpdate(ctx, found.CalendarAppointment.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errNotFound
+		}
+		if err != nil {
 			return fmt.Errorf("calendar: lock appointment %d: %w", found.CalendarAppointment.ID, err)
 		}
 		if appt.CancelledAt != nil {
 			return errCancelled(appt)
 		}
+		att = found.CalendarAppointmentAttendee
+		if att.Status == string(body.Status) {
+			return nil
+		}
 		att, err = txq.SetAttendeeStatusByID(ctx, store.SetAttendeeStatusByIDParams{
 			ID: found.CalendarAppointmentAttendee.ID, Status: string(body.Status), Now: s.deps.Clock(),
 		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errNotFound
+		}
 		if err != nil {
 			return fmt.Errorf("calendar: record attendee %d's answer: %w", found.CalendarAppointmentAttendee.ID, err)
 		}
+		changed = true
 		return nil
 	})
 	if r, ok := asRefusal(err); ok {
@@ -98,7 +131,19 @@ func (s *server) PostCalendarRsvp(ctx context.Context, req gen.PostCalendarRsvpR
 	if err != nil {
 		return nil, err
 	}
-	s.notifyAnswer(ctx, appt, page.Attendee.Name, att.Status)
+	if changed {
+		b := s.newBudget(ctx, noticeBudget)
+		defer b.done()
+		who, named, err := s.answererName(b.ctx, att)
+		if err != nil {
+			s.deps.Logger.WarnContext(b.records(), "calendar: the invitee could not be named for the owner's notice",
+				"appointment_id", appt.ID, "attendee_id", att.ID, "error", err.Error())
+		}
+		if !named {
+			who = ""
+		}
+		s.notifyAnswer(b, appt, who, att.Kind == kindContact, att.Status)
+	}
 	return gen.PostCalendarRsvp200JSONResponse(page), nil
 }
 
@@ -130,31 +175,41 @@ func (s *server) rsvpPage(ctx context.Context, a store.CalendarAppointment, at s
 	}, nil
 }
 
-// inviteeName is the name the appointment holds for an outside attendee: a
+// inviteeName is the name the RSVP page greets an outside attendee by: a
 // contact's as the directory answers it, an email attendee's as typed, else
 // the address's local part — never the address itself.
 func (s *server) inviteeName(ctx context.Context, at store.CalendarAppointmentAttendee) (string, error) {
+	name, _, err := s.answererName(ctx, at)
+	return name, err
+}
+
+// answererName is inviteeName, and whether it is a name the appointment holds
+// — a contact's from the directory or an email attendee's as typed — rather
+// than an address's local part. The owner's notice names a contact by the
+// first alone, and says "a contact" otherwise; an email attendee falls back
+// to the local part.
+func (s *server) answererName(ctx context.Context, at store.CalendarAppointmentAttendee) (string, bool, error) {
 	address := ""
 	switch {
 	case at.Kind == kindContact && at.ContactID != nil:
 		c, err := s.directoryContact(ctx, *at.ContactID)
 		if err != nil {
-			return "", fmt.Errorf("calendar: read contact %d: %w", *at.ContactID, err)
+			return "", false, fmt.Errorf("calendar: read contact %d: %w", *at.ContactID, err)
 		}
 		if name := contactName(c); name != nil {
-			return *name, nil
+			return *name, true, nil
 		}
 		if c != nil && c.Email != nil {
 			address = *c.Email
 		}
 	case at.Kind == kindEmail:
 		if at.Name != nil && *at.Name != "" {
-			return *at.Name, nil
+			return *at.Name, true, nil
 		}
 		if at.Email != nil {
 			address = *at.Email
 		}
 	}
 	local, _, _ := strings.Cut(address, "@")
-	return local, nil
+	return local, at.Kind == kindEmail && local != "", nil
 }

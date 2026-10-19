@@ -214,7 +214,7 @@ INSERT INTO calendar.appointment_attendees (
 ) VALUES (
     $1, 'email', $2::varchar, $3, 'needs-action', $4::char(64), $5::text, $6::timestamptz
 )
-ON CONFLICT (appointment_id, email) WHERE kind = 'email' DO NOTHING
+ON CONFLICT (appointment_id, email) WHERE kind = 'email' DO UPDATE SET name = EXCLUDED.name
 RETURNING id, appointment_id, user_id, status, responded_at, created_at, kind, contact_id, email, name, rsvp_token_sha256, rsvp_link_ciphertext, invited_at, invited_sequence, send_failed_at
 `
 
@@ -230,7 +230,9 @@ type InsertEmailAttendeeParams struct {
 // InsertEmailAttendee adds an address typed in, lower-cased by the caller,
 // with the name as typed, at needs-action with its RSVP token's hash and
 // sealed link. One already on the appointment keeps their row, their answer
-// and their token: nothing is inserted and no row is returned.
+// and their token, and takes the name the write gives them now — so a row is
+// returned either way, and the caller tells a kept one from a new one by the
+// row ids it kept (insertAttendees).
 func (q *Queries) InsertEmailAttendee(ctx context.Context, arg InsertEmailAttendeeParams) (CalendarAppointmentAttendee, error) {
 	row := q.db.QueryRow(ctx, insertEmailAttendee,
 		arg.AppointmentID,

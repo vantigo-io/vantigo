@@ -182,6 +182,15 @@ func (d *contactsDirectory) ContactsForCustomer(_ context.Context, customerID in
 	return out, nil
 }
 
+// setEmail gives contact id a new address, as an edit in Customers does.
+func (d *contactsDirectory) setEmail(id int32, address string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	c := d.contacts[id]
+	c.Email = &address
+	d.contacts[id] = c
+}
+
 // erase makes the directory answer nothing for contact id, as Customers does
 // for an anonymised one.
 func (d *contactsDirectory) erase(id int32) {

@@ -497,18 +497,20 @@ type OccurrenceWrite struct {
 	StartsAt  *time.Time          `json:"startsAt,omitempty"`
 }
 
-// RsvpPage What the RSVP page shows an invitee (calendar invitations design D5) — what they need to decide and nothing more: no description, no other attendee, no address. A timed appointment carries startsAt and endsAt, an all-day one startDate and endDate (inclusive); a series answers its first occurrence. company is the workspace's name, absent when it has none. language is the organiser's, the one the invitation was written in.
+// RsvpPage What the RSVP page shows an invitee (calendar invitations design D5) — what they need to decide and nothing more: no description, no other attendee, no address. A timed appointment carries startsAt and endsAt, an all-day one startDate and endDate (inclusive); a series answers its first occurrence. company is reserved for the workspace's name and is not answered yet — no contract the calendar reads exposes one. language is the organiser's, the one the invitation was written in.
 type RsvpPage struct {
 	AllDay bool `json:"allDay"`
 
 	// Attendee A person as the RSVP page names them — the organiser by their display name, the invitee by the name the appointment holds for them.
-	Attendee  RsvpPerson          `json:"attendee"`
-	Cancelled bool                `json:"cancelled"`
-	Company   *string             `json:"company,omitempty"`
-	EndDate   *openapi_types.Date `json:"endDate,omitempty"`
-	EndsAt    *time.Time          `json:"endsAt,omitempty"`
-	Language  RsvpPageLanguage    `json:"language"`
-	Location  *string             `json:"location,omitempty"`
+	Attendee  RsvpPerson `json:"attendee"`
+	Cancelled bool       `json:"cancelled"`
+
+	// Company Reserved for the workspace's name, and not answered yet; a client shows the organiser alone.
+	Company  *string             `json:"company,omitempty"`
+	EndDate  *openapi_types.Date `json:"endDate,omitempty"`
+	EndsAt   *time.Time          `json:"endsAt,omitempty"`
+	Language RsvpPageLanguage    `json:"language"`
+	Location *string             `json:"location,omitempty"`
 
 	// Organiser A person as the RSVP page names them — the organiser by their display name, the invitee by the name the appointment holds for them.
 	Organiser RsvpPerson          `json:"organiser"`

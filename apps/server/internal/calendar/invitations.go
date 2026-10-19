@@ -22,21 +22,58 @@ import (
 // object (ics.go) as the third alternative and as an attachment. It goes
 // after the write has committed, never inside it, through the module's one
 // SMTP accessor (smtpSend), one after the other on a context detached from
-// the request under one budget for the lot. Nothing is queued and nothing
-// retries by itself: a send that fails is recorded on the attendee for the
-// owner's Resend and logged with the address redacted.
+// the request, under one budget for the request's whole after-commit work —
+// its colleagues' notices included. Nothing is queued and nothing retries by
+// itself: a send that fails, or that the budget left unmade, is recorded on
+// the attendee for the owner's Resend and logged with the address redacted.
 //
 // When it goes, and what (D3's table): a create sends REQUEST to every
-// outside attendee; a PUT that bumped the sequence REQUEST to every outside
-// attendee, kept or new, and one that did not REQUEST to the ones it added; a
-// PUT CANCEL to each one it dropped, listing that one alone; an occurrence
-// moved, cancelled or put back REQUEST to every outside attendee; a
-// cancellation (cancellation.go) CANCEL to every outside attendee; and the
-// resend REQUEST to the one named. When the mail driver is not smtp nothing
-// is sent and nothing is marked.
+// outside attendee; a PUT CANCEL first to each one it dropped who had been
+// invited, listing that one alone — unless the address is still on the
+// appointment under another attendee — then REQUEST to every outside
+// attendee, kept or new, when it bumped the sequence, or to the ones it added
+// when it did not; an occurrence moved, cancelled or put back REQUEST to
+// every outside attendee; a cancellation (cancellation.go) CANCEL to every
+// outside attendee who had been invited; and the resend REQUEST to the one
+// named. When the mail driver is not smtp nothing is sent and nothing is
+// marked.
 
-// invitationBudget bounds one write's invitations, all of them together.
-const invitationBudget = 30 * time.Second
+// afterCommitBudget bounds everything one request does after its commit —
+// its invitations and its colleagues' notices, all of them together — and
+// noticeBudget the owner's one notice of an answer by link.
+const (
+	afterCommitBudget = 30 * time.Second
+	noticeBudget      = 10 * time.Second
+)
+
+// budget is the time one request's after-commit work has, on a context
+// detached from the request (its cancellation does not reach the sends). It
+// is spent when the context's real-time limit is, or when the installation's
+// clock has passed the same limit, which is how a test crosses it without
+// waiting.
+type budget struct {
+	ctx      context.Context
+	cancel   context.CancelFunc
+	deadline time.Time
+	clock    func() time.Time
+}
+
+// newBudget is d from now for the after-commit work of the request in ctx.
+// The caller ends it (done) when the work is over.
+func (s *server) newBudget(ctx context.Context, d time.Duration) *budget {
+	bctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d)
+	return &budget{ctx: bctx, cancel: cancel, deadline: s.deps.Clock().Add(d), clock: s.deps.Clock}
+}
+
+// spent reports whether the budget has run out.
+func (b *budget) spent() bool { return b.ctx.Err() != nil || !b.clock().Before(b.deadline) }
+
+// records is a context for what is written after the sends — a send's mark,
+// a log line — which the budget running out must not stop.
+func (b *budget) records() context.Context { return context.WithoutCancel(b.ctx) }
+
+// done releases the budget's timer.
+func (b *budget) done() { b.cancel() }
 
 // invitationJob is one write's invitations: what is sent, to whom, and whom
 // every copy lists.
@@ -50,54 +87,64 @@ type invitationJob struct {
 	to     []store.CalendarAppointmentAttendee
 	method string
 	// dropped is a CANCEL to attendees the write removed: each copy lists
-	// its recipient alone, and no row is left to mark.
+	// its recipient alone, no row is left to mark, and an address still
+	// listed under another attendee is not sent one — it would cancel the
+	// event on the calendar of someone still invited.
 	dropped bool
 }
 
-// sendInvitations sends job's mails, and records each on its attendee: a
-// success sets invited_at and invited_sequence and clears send_failed_at, a
-// failure — a contact the directory no longer answers or that has no address
-// among them — sets send_failed_at. It runs after the write committed; the
-// request's cancellation does not reach the sends.
-func (s *server) sendInvitations(ctx context.Context, job invitationJob) {
-	to := outsideAttendees(job.to)
+// sendInvitations sends job's mails under b, and records each on its
+// attendee: a success sets invited_at and invited_sequence and clears
+// send_failed_at, a failure — a contact the directory no longer answers or
+// that has no address among them, and every send the budget left unmade —
+// sets send_failed_at. A CANCEL goes only to an attendee who was once sent an
+// invitation: one never told of the appointment is not told it is off. It
+// runs after the write committed.
+func (s *server) sendInvitations(b *budget, job invitationJob) {
+	var to []store.CalendarAppointmentAttendee
+	for _, at := range outsideAttendees(job.to) {
+		if job.method == methodCancel && at.InvitedAt == nil {
+			continue
+		}
+		to = append(to, at)
+	}
 	if len(to) == 0 {
 		return
 	}
+	ctx := b.records()
 	logger := s.deps.Logger
 	if !s.mailAvailable() {
 		logger.InfoContext(ctx, "calendar: invitations not sent: the mail driver is not smtp",
 			"appointment_id", job.appt.ID, "attendees", len(to))
 		return
 	}
-	ctx = context.WithoutCancel(ctx)
-	organiser, lang := s.organiserOf(ctx, job.appt)
+	if b.spent() {
+		s.ranOut(ctx, job, to)
+		return
+	}
+	organiser, lang := s.organiserOf(b.ctx, job.appt)
 
 	addresses := map[int64]icsAttendee{}
 	for _, at := range append(outsideAttendees(job.listed), to...) {
 		if _, done := addresses[at.ID]; done {
 			continue
 		}
-		if a, ok := s.addressOf(ctx, at); ok {
+		if a, ok := s.addressOf(b.ctx, at); ok {
 			addresses[at.ID] = a
 		}
 	}
 	var everyone []icsAttendee
+	stillListed := map[string]bool{}
 	for _, at := range outsideAttendees(job.listed) {
 		if a, ok := addresses[at.ID]; ok {
 			everyone = append(everyone, a)
+			stillListed[strings.ToLower(a.address)] = true
 		}
 	}
 
-	budget, cancel := context.WithTimeout(ctx, invitationBudget)
-	defer cancel()
 	for i, at := range to {
-		if budget.Err() != nil {
-			logger.WarnContext(ctx, "calendar: invitations not sent: the time for them ran out",
-				"appointment_id", job.appt.ID, "unsent", len(to)-i)
-			for _, rest := range to[i:] {
-				s.markFailed(ctx, job, rest)
-			}
+		if b.spent() {
+			s.ranOut(ctx, job, to[i:])
 			return
 		}
 		recipient, ok := addresses[at.ID]
@@ -107,9 +154,14 @@ func (s *server) sendInvitations(ctx context.Context, job invitationJob) {
 			s.markFailed(ctx, job, at)
 			continue
 		}
+		if job.dropped && stillListed[strings.ToLower(recipient.address)] {
+			logger.InfoContext(ctx, "calendar: no CANCEL to a dropped attendee: the address is still on the appointment",
+				"appointment_id", job.appt.ID, "attendee_id", at.ID)
+			continue
+		}
 		out, err := s.invitationMail(job, at, recipient, everyone, organiser, lang)
 		if err == nil {
-			err = s.smtpSend(budget, s.deps.Config.Mail, out)
+			err = s.smtpSend(b.ctx, s.deps.Config.Mail, out)
 		}
 		if err != nil {
 			redact := regexp.MustCompile("(?i)" + regexp.QuoteMeta(recipient.address))
@@ -128,6 +180,16 @@ func (s *server) sendInvitations(ctx context.Context, job invitationJob) {
 			logger.ErrorContext(ctx, "calendar: an invitation was sent but could not be recorded",
 				"appointment_id", job.appt.ID, "attendee_id", at.ID, "error", err.Error())
 		}
+	}
+}
+
+// ranOut logs the sends the budget left unmade, and marks each failed for the
+// owner's Resend.
+func (s *server) ranOut(ctx context.Context, job invitationJob, unsent []store.CalendarAppointmentAttendee) {
+	s.deps.Logger.WarnContext(ctx, "calendar: invitations not sent: the time for them ran out",
+		"appointment_id", job.appt.ID, "unsent", len(unsent))
+	for _, at := range unsent {
+		s.markFailed(ctx, job, at)
 	}
 }
 
@@ -243,6 +305,7 @@ const (
 // the answer by the link, then the link; last, on whose behalf the
 // installation writes.
 func invitationTexts(w words, kind mailKind, a store.CalendarAppointment, organiser, link string) (string, string, string) {
+	a, organiser = cleanText(a), oneLine(organiser)
 	if organiser == "" {
 		organiser = w.theOrganiser
 	}
@@ -345,7 +408,9 @@ func (s *server) PostCalendarAppointmentsByIdAttendeesByAttendeeIdResend(ctx con
 	if err != nil {
 		return nil, err
 	}
-	s.sendInvitations(ctx, invitationJob{appt: a, excs: excs, listed: atts, to: []store.CalendarAppointmentAttendee{at}, method: methodRequest})
+	b := s.newBudget(ctx, afterCommitBudget)
+	s.sendInvitations(b, invitationJob{appt: a, excs: excs, listed: atts, to: []store.CalendarAppointmentAttendee{at}, method: methodRequest})
+	b.done()
 	if atts, err = q.ListAttendees(ctx, a.ID); err != nil {
 		return nil, fmt.Errorf("calendar: read appointment %d's attendees: %w", a.ID, err)
 	}

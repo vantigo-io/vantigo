@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
 )
@@ -36,10 +37,14 @@ func TestRsvpRead_AnswersThePageForALiveTokenAnd404ForAnyOther(t *testing.T) {
 		t.Errorf("an address with no name is named %q, want its local part", page.Attendee.Name)
 	}
 
-	for _, token := range []string{"", "not-a-token", strings.Repeat("A", 43)} {
+	for _, token := range []string{"not-a-token", strings.Repeat("A", 43)} {
 		if r := anonymous.Do(http.MethodPost, rsvpReadPath, map[string]any{"token": token}); r.Status != http.StatusNotFound || len(r.Body) != 0 {
 			t.Errorf("read of %q = %d %s, want the bare 404", token, r.Status, r.Body)
 		}
+	}
+	for _, body := range []map[string]any{{"token": ""}, {"token": "  "}} {
+		fieldRefused(t, anonymous.Do(http.MethodPost, rsvpReadPath, body), "token")
+		fieldRefused(t, anonymous.Do(http.MethodPost, rsvpPath, with(body, "status", "accepted")), "token")
 	}
 }
 
@@ -79,6 +84,14 @@ func TestRsvp_SetsTheStatusAndTellsTheOwner(t *testing.T) {
 	if got.Revision != a.Revision {
 		t.Errorf("an answer moved the revision from %d to %d", a.Revision, got.Revision)
 	}
+	// The same answer again writes nothing and tells nobody.
+	answeredAt := *per.RespondedAt
+	w.h.Advance(time.Hour)
+	do(t, anonymous, http.MethodPost, rsvpPath, map[string]any{"token": token, "status": "accepted"}, http.StatusOK, &page)
+	do(t, w.owner, http.MethodGet, appointmentPath(a.Id), nil, http.StatusOK, &got)
+	if at := attendeeOf(t, got, perMail); page.Status != gen.AppointmentAttendeeStatusAccepted || !at.RespondedAt.Equal(answeredAt) {
+		t.Errorf("a repeated answer = %+v, respondedAt %v; want nothing written", page, at.RespondedAt)
+	}
 	notices := w.h.Notices()
 	if len(notices) != 1 || notices[0].UserID != w.ownerID ||
 		notices[0].Notice.Texts["en"].Subject != "Per Olsen accepted: Kundemøte" || notices[0].Notice.Texts["nb"].Subject != "Per Olsen takket ja: Kundemøte" {
@@ -101,5 +114,41 @@ func TestRsvp_SetsTheStatusAndTellsTheOwner(t *testing.T) {
 	do(t, anonymous, http.MethodPost, rsvpReadPath, map[string]any{"token": token}, http.StatusOK, &page)
 	if !page.Cancelled || page.Status != gen.AppointmentAttendeeStatusTentative {
 		t.Errorf("the cancelled appointment's page = %+v", page)
+	}
+}
+
+func TestRsvp_IsLimitedTo30AnswersPerClientIn10Minutes(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	create(t, w.owner, meeting(t, emailAttendee(perMail, "")))
+	token := tokenOf(t, to(t, w.h.mail.messages(), perMail))
+	anonymous := w.h.Client(t)
+	answers := []string{"accepted", "declined", "tentative"}
+	for i := 0; i < 30; i++ {
+		do(t, anonymous, http.MethodPost, rsvpPath, map[string]any{"token": token, "status": answers[i%3]}, http.StatusOK, nil)
+	}
+	if r := anonymous.Do(http.MethodPost, rsvpPath, map[string]any{"token": token, "status": "accepted"}); r.Status != http.StatusTooManyRequests {
+		t.Errorf("the 31st answer = %d, want 429", r.Status)
+	}
+	do(t, w.h.Client(t), http.MethodPost, rsvpPath, map[string]any{"token": token, "status": "declined"}, http.StatusOK, nil)
+}
+
+func TestRsvp_TheOwnersNoticeNamesAContactWithNoNameAsAContactNeverByItsAddress(t *testing.T) {
+	t.Parallel()
+	w := newInviting(t, "en")
+	create(t, w.owner, meeting(t, contactAttendee(anonID), emailAttendee(perMail, "")))
+	msgs := w.h.mail.messages()
+	anonymous := w.h.Client(t)
+	do(t, anonymous, http.MethodPost, rsvpPath, map[string]any{"token": tokenOf(t, to(t, msgs, anonMail)), "status": "accepted"}, http.StatusOK, nil)
+	do(t, anonymous, http.MethodPost, rsvpPath, map[string]any{"token": tokenOf(t, to(t, msgs, perMail)), "status": "declined"}, http.StatusOK, nil)
+	notices := w.h.Notices()
+	if len(notices) != 2 {
+		t.Fatalf("notices = %+v", notices)
+	}
+	if en, nb := notices[0].Notice.Texts["en"].Subject, notices[0].Notice.Texts["nb"].Subject; en != "A contact accepted: Kundemøte" || nb != "En kontakt takket ja: Kundemøte" {
+		t.Errorf("a nameless contact's answer = %q / %q", en, nb)
+	}
+	if en := notices[1].Notice.Texts["en"].Subject; en != "per declined: Kundemøte" {
+		t.Errorf("a nameless address's answer = %q, want its local part", en)
 	}
 }

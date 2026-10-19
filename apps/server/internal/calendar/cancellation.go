@@ -26,7 +26,7 @@ import (
 // colleague is told it was cancelled, so none sees it vanish untold.
 // Otherwise it is cancelled: cancelled_at set and the sequence bumped under
 // the row's lock, then, after the commit, a CANCEL to every outside attendee
-// and the notice to every colleague. A cancelled series keeps its exceptions,
+// who had been sent an invitation and the notice to every colleague. A cancelled series keeps its exceptions,
 // so the CANCEL names what it cancels.
 func (s *server) DeleteCalendarAppointmentsById(ctx context.Context, req gen.DeleteCalendarAppointmentsByIdRequestObject) (gen.DeleteCalendarAppointmentsByIdResponseObject, error) {
 	me := callerID(ctx)
@@ -68,10 +68,12 @@ func (s *server) DeleteCalendarAppointmentsById(ctx context.Context, req gen.Del
 	if err != nil {
 		return nil, err
 	}
+	b := s.newBudget(ctx, afterCommitBudget)
+	defer b.done()
 	if cancelled {
-		s.sendInvitations(ctx, invitationJob{appt: row, excs: excs, listed: atts, to: atts, method: methodCancel})
+		s.sendInvitations(b, invitationJob{appt: row, excs: excs, listed: atts, to: atts, method: methodCancel})
 	}
-	s.notifyUsers(ctx, row, userAttendees(atts), noticeCancelled)
+	s.notifyUsers(b, row, userAttendees(atts), noticeCancelled)
 	return gen.DeleteCalendarAppointmentsById204Response{}, nil
 }
 
