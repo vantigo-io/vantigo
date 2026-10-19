@@ -121,7 +121,7 @@ export const calendarCatalog = {
     thisOccurrenceSaveHint: "Only this occurrence's time changes; the rest of the series stays.",
     thisOccurrenceDeleteHint: "Only this occurrence is cancelled.",
     theSeriesSaveHint:
-      "Every occurrence changes. A change of the time or the rule removes the changes made to single occurrences.",
+      "Every occurrence changes. A new start or a new rule puts the changed occurrences back to the pattern; a new end alone keeps them.",
     theSeriesDeleteHint: "The whole series is deleted, with every occurrence.",
 
     organiser: "Organiser: {{name}}",
@@ -275,7 +275,7 @@ export const calendarCatalog = {
     thisOccurrenceSaveHint: "Bare tidspunktet for denne forekomsten endres; resten av serien blir som den er.",
     thisOccurrenceDeleteHint: "Bare denne forekomsten avlyses.",
     theSeriesSaveHint:
-      "Alle forekomstene endres. En endring av tidspunktet eller regelen fjerner endringene som er gjort på enkeltforekomster.",
+      "Alle forekomstene endres. En ny start eller en ny regel setter de endrede forekomstene tilbake til mønsteret; en ny slutt alene beholder dem.",
     theSeriesDeleteHint: "Hele serien slettes, med alle forekomstene.",
 
     organiser: "Arrangør: {{name}}",

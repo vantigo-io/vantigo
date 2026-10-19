@@ -176,7 +176,7 @@ describe("AppointmentSheet — an occurrence of a series", () => {
 
   it("moves the series by the same hour with the appointment PUT at its revision", async () => {
     const { fetchMock, dialog } = await openOccurrence();
-    expect(within(dialog).getByText(/removes the changes made to single occurrences/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/puts the changed occurrences back to the pattern/)).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "The series" }));
 
     await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
