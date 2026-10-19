@@ -2082,6 +2082,24 @@ with no row id and no hour row (as `GET /absences` answers a colleague); anyone 
 the people whose terms place them in that department on the day judged — today, held
 inside the range.
 
+### On the calendar
+
+When the Calendar module is on, Staff fills its `CalendarSource` slot
+(`internal/staff/calendar_source.go`, with its own query) and projects one kind,
+**`staff.absence`**: the caller's **own** absences — requested, approved or registered —
+overlapping the window, found through the caller's [self-service
+link](#the-self-service-link). It needs `staff:access` and a link; without either, it
+answers nothing. Each is an all-day item over `first_day`..`last_day` (an hour type's is
+one day), never done, titled with the type's name in the **person's own language** —
+`staff.people.preferred_language`, `name_en` when it is `en` and `name_nb` otherwise, the
+rule the module's own mail follows — not the language of whoever is looking. Its subtitle
+is an hour type's hours (`3 h`) and, for a request not yet decided, the word `Requested`
+or `Søkt om` in that same language, joined by ` · `; an approved or registered absence
+carries no status word. An HR-only type is shown: the absence is the person's own. Every
+item links to `/staff/me?tab=absence`. No colleague's absence is projected: a colleague's days away are
+this calendar's, above, to the audience it chooses. See
+[the kinds](/en/reference/calendar/#the-kinds).
+
 ### The absence events
 
 An absence's write is one event — `absence_requested`, `absence_registered`,

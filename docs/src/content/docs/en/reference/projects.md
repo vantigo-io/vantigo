@@ -1247,6 +1247,21 @@ sidebar entry beside Projects. Spotlight's **Create task** action lands there wi
 the ordinary task form on the project chosen — nothing in the spotlight knows which
 project a new task belongs to.
 
+### On the calendar
+
+When the Calendar module is on, Projects fills its `CalendarSource` slot
+(`internal/projects/calendar_source.go`, with its own query) and projects one kind,
+**`projects.task`**: the tasks **assigned to the caller** with a `due_date` in the
+window, in any status, on a project `visible()` admits — the caller's role, or
+`projects:view-all` or `projects:manage-all`, which widen only which of the caller's own
+tasks are shown. It needs `projects:access`, and answers nothing without it. Each task is
+an all-day item on its due date, done (drawn struck) when its status is `done` — unlike
+`GET /my-tasks`, which is open tasks only — titled with the task's title and the
+project's code below, and links to the task's deep link,
+`/projects/{projectId}/tasks?task={taskId}`. A task without a due date is not on the
+calendar, and the calendar cannot move one: projected items are not draggable. See
+[the kinds](/en/reference/calendar/#the-kinds).
+
 ## Contracts for other modules
 
 Cross-module reads go through `internal/contracts` — never another module's schema or

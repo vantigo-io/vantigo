@@ -32,6 +32,7 @@ Vantigo-installasjon serverer under `/docs/`.
 | [Utlegg](/en/reference/expenses/) | Utlegg og kjøregodtgjørelse, kvitteringer, godkjenning, refusjon og fakturering. |
 | [Fakturaer](/en/reference/invoices/) | Salgsdokumentet: nummerering, mva, utstedelse, kreditnotaer, PDF-en, betalinger, sending og eksport. |
 | [Ansatte](/en/reference/staff/) | Registeret over de ansatte: innstillingene, forretningstidssonen og bedriftens struktur. |
+| [Kalender](/en/reference/calendar/) | Avtaler med gjentakelse og kolleger, kildene de andre modulene projiserer radene sine gjennom, vinduet i seerens tidssone og en kollegas opptatt og ledig. |
 
 Identitet er ikke en modul: kontoer, økter, MFA, RBAC, OIDC og SCIM er alltid en del av
 applikasjonen og er dokumentert under [Administrasjon](/nb/admin/authentication/).

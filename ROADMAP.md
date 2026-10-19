@@ -60,7 +60,9 @@ means; Customers' "today" on the business day and its timeline form's time read 
 writer's zone; Time's "today" on the business day; the Inbox's times in the viewer's
 zone. SCIM's `timezone` attribute, which the design left optional, is not mapped.
 
-Nothing is left to land. The calendar module, which depends on A and F, may start.
+Nothing is left to land. The [calendar module](#calendar), which depends on A and F, has
+started on them: its delivery A reads every window in the viewer's zone and stores the
+zone each appointment was made in.
 
 ### Cross-module domain events (deferred until Orders)
 
@@ -1125,6 +1127,90 @@ that settles which model is viable for which customer:
 The register itself (basket, product grid, payment screen, shifts and cash counts,
 receipts, X/Z reports, the product declaration) · gift cards and deposits · a
 customer-facing display.
+
+## Calendar
+
+A new module, researched in
+[`docs/superpowers/research/2026-10-19-calendar-module.md`](docs/superpowers/research/2026-10-19-calendar-module.md)
+and designed in
+[`docs/superpowers/specs/2026-10-19-calendar-design.md`](docs/superpowers/specs/2026-10-19-calendar-design.md):
+one view of every time-bound thing the other modules know about one person — the
+follow-ups, the absence, the tasks, the hours, the trips — beside the appointments they
+schedule themselves, with colleagues on them. Like Expenses and Staff it **depends on
+nobody but identity**: what it shows from the other modules it never copies, each
+enabled module projecting its own rows at read time through a many-provider contract,
+under its own permission. The one thing it owns is the appointment. It needs the
+[time zones](#time-zones-done) design's deliveries A and F, both done.
+
+### Phase 1 — The calendar, invitations and the feed (A done)
+
+Three deliveries, A specified in full by the design, B and C decided there and planned
+on their own.
+
+**A — The calendar, built** on `feat/calendar-foundation`
+([the plan](docs/superpowers/plans/2026-10-19-calendar-foundation.md);
+[the reference](docs/src/content/docs/en/reference/calendar.md)): the `calendar` module
+and `@vantigo/calendar-ui`; appointments, timed as two instants or all-day as two dates,
+storing the zone they were made in, shared or private, busy or free, with `ical_uid` and
+`sequence` from the first row; a recurrence subset of RFC 5545 (daily, weekly, monthly,
+every *n*, until or *n* times) expanded in the appointment's own zone across the clock
+change, with exceptions by the occurrence's day; colleagues on an appointment and their
+answers, reset when the time changes; the `contracts.CalendarSource` many-provider slot,
+collected from enabled modules only, with five providers — Customers' follow-ups and
+interactions, Staff's own absence, Projects' tasks, Time's entries, Expenses' travel
+claims — each its own gatekeeper, a failing one failing the read; `GET /items`, a
+window of up to 93 days judged in the viewer's zone, with the public holidays; a
+colleague's busy and free behind `calendar:view-colleagues`; the Month, Week, Day and
+List views with the legend and filter, the appointment sheet and the colleague picker;
+the dashboard's **Today and this week** agenda and **New appointment** on the customer
+page and the project page. Two permissions, one migration,
+`00055_calendar_baseline.sql`, and the contract `openapi/calendar.yaml`.
+
+Decisions taken while building it:
+
+- **FullCalendar 7 draws the grids**, proven in the shell before anything else was
+  built. Version 7 has no global colour variables to map: the app takes the Breezy
+  theme's layout and writes its palette in one stylesheet from Mantine's variables, so
+  the grid follows the Vantigo theme and the colour scheme. The fallback — a month grid
+  and an agenda of our own — was not needed.
+- **A colleague's calendar has one audience rule, the permission**: every active
+  colleague, with no manager relation, since the calendar has no org chart and does not
+  borrow Staff's, which may be off. Their absences are not shown there (the design's
+  open question, left for the owner to overrule).
+- **The attention list keeps its dated items**: a follow-up or a task due is on the list
+  and on the agenda, the one saying "this needs you", the other "when"; no module's
+  `/stats/attention` changed.
+
+*Unblocks:* one place a person sees their week, appointments with colleagues, and the
+model B and C write from without a migration of the appointment.
+
+**B — Invitations.** Attendees from outside the company — a customer's contact, read
+through the customer directory at send time, or a typed address — each with an RSVP
+token; the invitation in the iMIP layout (a `method=REQUEST` part and the `.ics`
+attachment, `UID` the row's `ical_uid`, `SEQUENCE` the row's), sent from the
+installation's `SMTP_FROM` with the owner's name, after the commit; the answer through a
+web link on the public host, since no inbound mail route exists; an update resent with
+the next `SEQUENCE`, and a delete become a cancellation kept until the series' last day.
+A colleague is mailed through a new `contracts.UserDirectory.Notify`, so no address
+crosses into the calendar; they answer in the app. Not built.
+
+*Unblocks:* meetings with customers booked from Vantigo, answered from any mail client.
+
+**C — The feed and the subscriptions.** A calendar address per person in two variants,
+full and busy-only, behind a hashed, resettable token — the module's one anonymous
+`GET`, on the public host's list — windowed, with series as `RRULE` and their exceptions,
+one `VTIMEZONE` per zone, and the projected items in the full variant; calendars from
+elsewhere subscribed to, polled by a `calendar-subscriptions` worker through `netguard`
+and shown beside the person's own, never in their feed; a **My calendar** settings
+screen for the addresses and the subscriptions. Not built.
+
+*Unblocks:* the Vantigo calendar on a phone, and a person's other calendars beside it.
+
+### Later
+
+Two-way sync with Google and Microsoft · booking pages · rooms and resources · reminders
+in the app and by mail · CalDAV · the inbound `METHOD:REPLY` route · moving a projected
+item from the calendar (a write back into its module) · team calendars and delegation.
 
 ## Staff
 

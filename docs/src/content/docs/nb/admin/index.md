@@ -42,6 +42,13 @@ applikasjonen.
   tilgang til det med de fem rettighetene, og setter ansattnummerserien.
   Forretningstidssonen hver modul dømmer en dag etter, er arbeidsområdets, satt under
   [Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet).
+- **Kalender.** Kalender trenger ingenting en installasjon ikke allerede har: før opp
+  `calendar` i `MODULES` (den er på når `MODULES` ikke er satt), og gi folk de to
+  rettighetene — `calendar:access` for å bruke den, og `calendar:view-colleagues` for å
+  se når kolleger er opptatt og ledige, som et arbeidsområde som vil at alle skal se
+  hverandres, gir til ansattrollen. Den har ingen innstillinger og ingen
+  bakgrunnsjobb; det den viser fra de andre modulene, følger deres egne rettigheter
+  ([referansen](/en/reference/calendar/#permissions)).
 
 ## Den komplette konfigurasjonsreferansen
 

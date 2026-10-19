@@ -224,7 +224,9 @@ nettlesere eller enheter der du er logget inn, forblir innlogget til deres egne
 ## Kontrollpanelet og app-velgeren
 
 Etter innlogging havner du på kontrollpanelet — **Hjem** i app-velgeren øverst på
-siden. Det hilser deg med navn og viser et kort for hver app du har tilgang til, med
+siden. Det hilser deg med navn; når Kalender er på og du kan bruke den, åpner det med
+**I dag og denne uken**, avtalene og de daterte elementene dine for i dag og de seks
+neste dagene ([agendaen](/nb/user/calendar/#dashbordet)). Under viser det et kort for hver app du har tilgang til, med
 nøkkeltallene for valgt datoperiode (**7d**, **30d**, **90d**, **12m** eller
 **Tilpasset**), listen **Trenger oppfølging** med det som venter på deg, og
 **Hurtighandlinger** for det du gjør oftest. Ansatte har ingen tall ennå, så appen står

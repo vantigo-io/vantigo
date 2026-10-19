@@ -570,6 +570,22 @@ caller to shape.
 See [module boundaries](/en/contributing/module-boundaries/) for how this contract is resolved
 without either module importing the other.
 
+### On the calendar
+
+When the Calendar module is on, Time fills its `CalendarSource` slot
+(`internal/time/calendar_source.go`, with its own query) and projects one kind,
+**`time.entry`**: the caller's **own** entries with an `entryDate` in the window, in any
+status. It needs `time:access`; `time:view-all` widens nothing here, since a calendar is
+a person's. An entry with `startTime` and `endTime`, the end after the start, is a block
+between them, read as wall-clock times on its day in the **business** zone ([the
+start/end rule](#hours-and-the-startend-rule)); one without the pair is an all-day item
+on its day. Its title is the project's name, read in one call through `Deps.Projects`;
+when the directory is not wired or does not name the project, the task's title; else the
+note's first line; else `Time`. The hours are the subtitle (`7.5 h`) when the entry has
+them. It is done (drawn struck) when approved, and links to the day in the Time app,
+`/time/day?date={entryDate}`. See
+[the kinds](/en/reference/calendar/#the-kinds).
+
 ## Enabling and disabling
 
 `MODULES` is a positive allowlist; unset enables every module the binary can mount.
