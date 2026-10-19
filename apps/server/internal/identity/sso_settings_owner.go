@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -85,11 +86,14 @@ func (s *server) PutIdentityOwnerSsoOidc(ctx context.Context, req gen.PutIdentit
 	if req.Body != nil {
 		in = *req.Body
 	}
+	// The token file is checked here, before the transaction opens: no
+	// filesystem access happens while the row is held.
+	fileProblem := tokenFileProblem(string(in.Provider), deref(in.WorkloadTokenFile))
 	body, err := s.changeSSOSettings(ctx, func(ctx context.Context, q *store.Queries, current store.IdentitySsoSetting, now time.Time) (store.SaveSsoSettingsParams, bool, error) {
 		if current.Version != version {
 			return store.SaveSsoSettingsParams{}, false, refuse(http.StatusPreconditionFailed, "version_mismatch", ssoVersionMismatchMessage, nil)
 		}
-		v, fields := validateOIDCSettings(in, current)
+		v, fields := validateOIDCSettings(in, current, fileProblem)
 		if len(fields) > 0 {
 			return store.SaveSsoSettingsParams{}, false, refuse(http.StatusBadRequest, "invalid_request", invalidRequestMessage, fields)
 		}
@@ -203,7 +207,19 @@ func (s *server) PostIdentityOwnerSsoScimToken(ctx context.Context, req gen.Post
 	if rotated {
 		answer.PreviousExpiresAt = body.Scim.PreviousExpiresAt
 	}
-	return answer, nil
+	return scimTokenAnswer{answer}, nil
+}
+
+// scimTokenAnswer is the issued token's 200, which no cache may keep: it
+// carries the one copy of the token there will ever be.
+type scimTokenAnswer struct {
+	body gen.PostIdentityOwnerSsoScimToken200JSONResponse
+}
+
+func (r scimTokenAnswer) VisitPostIdentityOwnerSsoScimTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	return r.body.VisitPostIdentityOwnerSsoScimTokenResponse(w)
 }
 
 // DeleteIdentityOwnerSsoScimPrevious ends a rotation's overlap: the
@@ -517,9 +533,10 @@ const googleAuthority = "https://accounts.google.com"
 // secret; with neither, the sealed secret is kept only while the provider
 // and the client id are the ones it was set for — a new application never
 // inherits the old one's credential. An empty string is absent. The token
-// file must be readable by this process, which is all a save can check;
-// every replica must see it at the same path.
-func validateOIDCSettings(in gen.SsoOidcSettingsRequest, current store.IdentitySsoSetting) (oidcSettingsInput, map[string][]string) {
+// file is judged by tokenFileProblem before the caller's transaction opens,
+// and its answer is fileProblem ("" when the file passes); this function
+// touches no file.
+func validateOIDCSettings(in gen.SsoOidcSettingsRequest, current store.IdentitySsoSetting, fileProblem string) (oidcSettingsInput, map[string][]string) {
 	fields := map[string][]string{}
 	add := func(field, message string) { fields[field] = append(fields[field], message) }
 	v := oidcSettingsInput{provider: string(in.Provider), authority: in.Authority, clientID: in.ClientId}
@@ -551,14 +568,9 @@ func validateOIDCSettings(in gen.SsoOidcSettingsRequest, current store.IdentityS
 	case secret != "":
 		v.clientSecret = secret
 	case tokenFile != "":
-		switch {
-		case v.provider != "entra":
-			add("workloadTokenFile", "The workload token file is supported only for the entra provider.")
-		case !filepath.IsAbs(tokenFile):
-			add("workloadTokenFile", "The workload token file must be an absolute path.")
-		case !readableFile(tokenFile):
-			add("workloadTokenFile", "The workload token file must be a file this server can read, at the same path on every replica.")
-		default:
+		if fileProblem != "" {
+			add("workloadTokenFile", fileProblem)
+		} else {
 			v.workloadTokenFile = tokenFile
 		}
 	case current.OidcEnabled && !sameApplication:
@@ -643,18 +655,48 @@ func normalizeDomains(raw []string) ([]string, bool) {
 	return out, ok
 }
 
-// readableFile reports whether path names a regular file this process can
-// open for reading: config.go's readableFile, the check
-// WorkforceOidcOptions made of the workload identity token file.
-func readableFile(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return false
+// tokenFileProblem is why a PUT's workload identity token file may not be
+// saved for provider, "" when it may (or when there is none): Entra only,
+// an absolute path, and a regular file of at most maxAssertionBytes this
+// process can open. It reads the filesystem, so the PUT calls it before its
+// transaction opens.
+func tokenFileProblem(provider, path string) string {
+	switch {
+	case path == "":
+		return ""
+	case provider != "entra":
+		return "The workload token file is supported only for the entra provider."
+	case !filepath.IsAbs(path):
+		return "The workload token file must be an absolute path."
 	}
-	f, err := os.Open(path)
+	switch readable, regular := readableFile(path); {
+	case !regular:
+		return fmt.Sprintf("The workload token file must be a regular file of at most %d KiB.", maxAssertionBytes/1024)
+	case !readable:
+		return "The workload token file must be a file this server can read, at the same path on every replica."
+	}
+	return ""
+}
+
+// readableFile reports whether path names a file this process can open for
+// reading — config.go's readableFile, the check WorkforceOidcOptions made of
+// the workload identity token file — and whether it is a regular file of at
+// most maxAssertionBytes. A device, a FIFO or a socket is not: /dev/zero
+// would be read without end at every sign-in, and a FIFO's open would block.
+// The open is non-blocking for the same reason, should the path be swapped
+// for a FIFO between the stat and the open.
+func readableFile(path string) (readable, regular bool) {
+	info, err := os.Stat(path)
 	if err != nil {
-		return false
+		return false, true
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxAssertionBytes {
+		return false, false
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return false, true
 	}
 	_ = f.Close()
-	return true
+	return true, true
 }
