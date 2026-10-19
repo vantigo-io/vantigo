@@ -1141,6 +1141,16 @@ these mitigations:
   address is the proxy's unless `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` are set.
 - **A token nobody holds is the bare 404**, with no body — one never issued, one reset,
   one turned off — and so is a `file` without the `.ics` suffix.
+- **A token whose person may not act is the same bare 404.** Once the token is matched,
+  the feed asks identity, through `Access.UserHolds`, whether its person may act at all
+  and holds `calendar:access` — before anything else is read. A person who is disabled,
+  locked out, pending, deactivated by the directory while SCIM is configured (unless an
+  Owner), or who no longer holds `calendar:access`, gets the 404 an unknown token gets,
+  so the answer never says the token was right, and `last_used_at` is not written. The
+  address is a session's stand-in and outlives nothing a session would not: a colleague
+  who leaves, or loses the permission, stops reading at once, with no reset needed. The
+  row is not removed, so the same address answers again once the person may act and
+  holds the permission again. A failure to ask is an error, never a 404.
 - **The feed carries nothing the person's own calendar does not**, and the busy variant
   nothing but spans, so a leaked full address reads that one calendar until it is reset,
   and a leaked busy address the shape of the person's days.
@@ -1154,7 +1164,8 @@ The route is on `security.PayRoutes()`, the public host's allowlist, as
 `GET /api/v1/calendar/feed/` with exactly one segment after it — not under `HEAD` or
 `POST`, not with a segment more — and no page goes with it: the address is pasted into a
 calendar program, not opened in a browser. A signed-in caller is answered alike, by the
-token and not the session. A request that answers 200 or 304 writes `last_used_at`.
+token and not the session, and its person's right to act is asked as above. A request
+that answers 200 or 304 writes `last_used_at`.
 
 ### What the two variants carry
 
@@ -1172,18 +1183,18 @@ public holiday: every phone has a holiday calendar, and a second copy is noise.
 | An appointment the person owns, or is on with any answer but `declined` | its `VEVENT`: title, place, description, class, transparency, link, and a series' rule and exceptions | a `VEVENT` of its time alone, when its transparency is `busy`; a `free` one is left out |
 | An appointment the person declined | left out: they said no | left out |
 | A [cancelled](#cancellation) appointment | left out | left out |
-| A provider's **timed** item (hours with a start and an end, a trip) | a `VEVENT` with the title, the subtitle as `DESCRIPTION`, the module in `CATEGORIES` and the link in `URL`; a done one with `✓ ` before its title, since no client draws a strike | a `VEVENT` of its time alone |
+| A provider's **timed** item (hours with a start and an end, a trip) | a `VEVENT` with the title, the subtitle as `DESCRIPTION`, the module in `CATEGORIES` and the link in `URL`; a done one with `✓ ` before its title, since no client draws a strike | a `VEVENT` of its time alone, under an [opaque `UID`](#the-icalendar-object) |
+| A provider's **point** — a timed item whose end is not after its start, such as a customer interaction logged at a time | the same, with no `DTEND` | left out: a point is not a span of busy time |
 | A provider's **all-day** item (a follow-up, a task due, an absence) | the same, as dates (`VALUE=DATE`) | left out: a day with a task on it is not a day the person is busy |
 | A [subscription's](#subscriptions) event | never | never |
 | A public holiday | never | never |
 
-The busy variant's `VEVENT` is `UID`, `DTSTAMP`, `SEQUENCE`, `DTSTART`, `DTEND` (none for a
-projected item that is a point in time), a `SUMMARY` of the one
-word *Busy* — *Opptatt* when the person's preferred language, read through the user
+The busy variant's `VEVENT` is `UID`, `DTSTAMP`, `SEQUENCE`, `DTSTART`, `DTEND`, a
+`SUMMARY` of the one word *Busy* — *Opptatt* when the person's preferred language, read through the user
 directory, is `nb` — and `TRANSP:OPAQUE`; for a series, its `RRULE`, its `EXDATE`s and its
 overriding `VEVENT`s with the same `UID`, since a moved occurrence's time is a span too.
-No title, no place, no description, no category, no link, no class: nothing a reader
-could tell one block from another by.
+No title, no place, no description, no category, no link, no class, and no `UID` that
+names the module or the row: nothing a reader could tell one block from another by.
 
 Neither variant writes `ORGANIZER` or `ATTENDEE`: the copy on a phone is read-only, and
 the appointment's sheet is where its owner reads who is on it. The `URL` is the app's own
@@ -1214,7 +1225,7 @@ them and never copied:
 | `VTIMEZONE` | one per `TZID` used, each over the span of the series written in it ([a series](#a-series)), before the first `VEVENT` |
 | `DTSTART`, `DTEND` | a single timed appointment: UTC instants; a timed series: wall-clock with its zone's `TZID`; a timed projected item: UTC instants, and no `DTEND` for a point in time (its end its start); an all-day item: dates, the end exclusive |
 | `DTSTAMP` | the request's time, on every `VEVENT` |
-| `UID`, `SEQUENCE` | an appointment's `ical_uid` and `sequence`; a projected item's `<kind>:<id>@vantigo` and `0` — stable across requests, so a client updates rather than duplicates |
+| `UID`, `SEQUENCE` | an appointment's `ical_uid` and `sequence`, in both variants — random already; a projected item's `<kind>:<id>@vantigo` and `0` in the full variant, and in the busy one an **opaque** `UID` and `0`: the first 32 hex digits of a MAC, under the secrets box purpose `calendar/feed-busy-uid`, of the person's id and the item's kind and id, followed by `@vantigo`. Every `UID` is stable across requests, so a client updates rather than duplicates; the busy one is different for two people, so two busy feeds cannot be joined on it, and a rotated `APP_SECRET` changes it, so a program then sees the projected blocks anew |
 
 The answer is 200 with `Content-Type: text/calendar; charset=utf-8`,
 `Content-Disposition: inline; filename="vantigo.ics"`, `Cache-Control: private, no-cache`
@@ -1255,11 +1266,18 @@ func AsUser(ctx context.Context, userID uuid.UUID) context.Context
 checked through `Check`, as the router checks it, whatever else `ctx` carries; with no
 request but the `AsUser` mark, the keys are asked of `UserHolds` for that user, in one
 question. Anything else is false, and so is any failure. Identity answers `UserHolds`
-from what its session check reads: the user's `is_disabled` and `lockout_end`, a pending
-user — invited, never signed in — holding nothing, the Owner role holding everything,
-and `EffectivePermissionForUser` per key. The rule that holds an Owner to a second factor
-is not applied: it is a rule about a session, and there is none. A user who does not
-exist holds nothing, and naming no key is false.
+in two steps. First, whether the person **may act at all**, through one query,
+`UserMayAct`, which applies the session query's (`GetSessionByTokenHash`) person
+predicates — not disabled; not pending, invited and never signed in, so nothing can have
+been handed a token on their behalf; and while SCIM is configured not deactivated by the
+directory, unless an Owner — and lockout besides, as a session's permission check
+applies it. The two queries must agree, so a change to one is a change to the other: a
+token outlives nothing a session would not. Then the Owner role holding everything, and
+`EffectivePermissionForUser` per key. The rule that holds an Owner to a second factor is
+not applied: it is a rule about a session, and there is none. A user who does not exist
+may not act and holds nothing, and naming no key is false. The feed asks it once for the
+token's person and `calendar:access` ([above](#the-one-anonymous-get)), and the
+[subscriptions worker](#the-subscriptions-worker) once per person per cycle.
 
 Once the token has named the person, the feed asks the providers under
 `AsUser(ctx, userID)`, on a context that does not carry the anonymous request — whose
@@ -1309,7 +1327,8 @@ palette's twelve names — `blue`, `cyan`, `teal`, `green`, `lime`, `yellow`, `o
 the app, so a subscription's events follow the colour scheme as a module's items do;
 `busyOnly` a boolean. The **eleventh** subscription is 409 `subscription_limit`: ten
 calendars beside one's own is more than anyone reads, and each is a fetch every half
-hour. There is no `revision` and no `If-Match`: the row is the person's own and small,
+hour. The count and the insert are one transaction under the person's own lock
+([locks](#locks)), so two saves at nine cannot both be the tenth. There is no `revision` and no `If-Match`: the row is the person's own and small,
 and the last write wins.
 
 **The inline fetch.** A `POST` fetches the address **once before it answers**, under a
@@ -1321,6 +1340,16 @@ changes `url` forgets every fetch of the old one — `etag`, `last_modified`, `b
 `error` and the timestamps — and fetches inline too; one that changes only the rest fetches nothing.
 `POST /refresh` fetches under the same budget, and so does a save, whether or not the
 worker is on.
+
+**One rate limit for the three.** `POST /subscriptions`, `PUT /subscriptions/{id}` —
+whether or not it changes `url`, since the limiter counts before the body is read — and
+`POST /subscriptions/{id}/refresh` share one bucket, the policy
+`calendar-subscription-fetch`, **30 requests per client address per 10 minutes**, counted
+before access is checked: each is an outbound request of up to twenty seconds made on a
+click, and nobody saving their own calendars clicks thirty times in ten minutes, while a
+script turning the server into a fetcher would. Over it is the limiter's 429
+`rate_limited`, with `Retry-After`. Behind a reverse proxy the client address is the
+proxy's unless `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` are set, as for the feed.
 
 ### The subscriptions worker
 
@@ -1350,6 +1379,17 @@ and why it does not now. The next attempt is the next one due, with no backoff: 
 down for an hour costs two requests. Turned off, the worker fetches nothing and every
 subscription shows its last read; a save and **Refresh now** still fetch.
 
+**A person who may no longer use Calendar is not fetched for.** The worker asks
+`Access.UserHolds` with `calendar:access` — [the feed's rule](#reading-the-providers-for-the-feed):
+disabled, locked out, pending, deactivated by the directory while SCIM is configured
+(unless an Owner), or without the permission — once per person per cycle, and that
+person's due rows are **put off**: nothing is fetched, `next_fetch_at` moves by the poll
+plus jitter, and `body`, `error`, `attempted_at`, `fetched_at` and the validators stay as
+they were, since nothing was attempted. So a departed person's calendars are neither
+fetched for nobody nor read again every tick, and are fetched at their first due time
+after the person may act again. A failure to ask ends the cycle with an error; the next
+tick takes it up.
+
 #### The fetch
 
 One `GET` through an `http.Client` of the module's own:
@@ -1366,7 +1406,11 @@ One `GET` through an `http.Client` of the module's own:
   `If-None-Match` and `If-Modified-Since` from the row when it has them;
 - the budget is **twenty seconds** in all — within it the dial has ten, the TLS handshake
   ten and the response's headers fifteen — the headers are capped at 64 KiB, and the body
-  is read through a limit of **1 MiB** plus one byte.
+  is read through a limit of **1 MiB** plus one byte;
+- the transport **keeps no idle connection** (`DisableKeepAlives`): a subscription is
+  fetched once every half hour, so a kept connection is never reused in time and only sits
+  open to a stranger's server; every fetch dials afresh, through the guard, and closes
+  when it is read.
 
 A 2xx with a calendar writes `body`, the new validators (null when it sent none),
 `fetched_at` and `attempted_at`; a 304 writes `fetched_at` and `attempted_at` and keeps the
@@ -1377,6 +1421,7 @@ one sentence in `error`:
 | --- | --- |
 | a 3xx | "the address redirects; subscribe to the address it points at" |
 | a body over 1 MiB — not kept | "the calendar is larger than 1 MiB" |
+| a calendar of more than 10,000 `VEVENT`s — not kept, since it would be parsed on every load | "the calendar has more than 10,000 events" |
 | a 2xx whose body is not valid UTF-8, carries a NUL, does not begin — after blank space and a byte-order mark — with `BEGIN:VCALENDAR`, or does not parse | "the address did not answer a calendar" |
 | any other status | "the address answered <status>", the code and its standard text (`404 Not Found`), never the server's own reason phrase |
 | a dial the guard refused | "the address is not one Vantigo may fetch" |
@@ -1386,6 +1431,15 @@ one sentence in `error`:
 The error is the sentence, never the response's body or the address the host resolved
 to. The log carries the subscription's id and the error at warning, and nothing of the
 URL beyond its host.
+
+**A fetch overtaken by a change of address records nothing.** Each of the three records
+matches the `url` the fetch was made to as well as the row's id, so a fetch still out
+when a `PUT` changed the address writes nothing over the new address's row — its
+calendar, its validators and its due time would be the old address's; it is logged at
+debug, and the row is answered as it now stands. A row deleted while its fetch was out
+is the 404 an unknown id gets on `PUT` and on `POST /refresh`; a `POST` whose new row was
+deleted from another tab meanwhile answers 201 with the row as it was inserted, and the
+worker passes over it.
 
 ### Parsed on read
 
@@ -1430,18 +1484,35 @@ No description reaches the wire, in either case. The parse rules:
   replaces the occurrence at that instant of the master with the same `UID`, wherever it
   moved to. `RDATE` is not read. A rule rrule-go refuses makes the event a single one at
   its start; a `VEVENT` without a `DTSTART` that can be read is not shown at all.
-- **Caps.** At most **1,000** occurrences are taken from one rule and **5,000** items from
-  one subscription in one read, nearest the window's start first; the rest are dropped
-  with a log line. A rule is stepped at most **100,000** times to reach and cross the
-  window, so one stepping by the minute from years ago stops short rather than being
-  walked for ever.
+- **Bounds.** The body is what a stranger's server answered, and it is parsed on every
+  load, so every part of one read is bounded:
+  - at most **10,000** `VEVENT`s are read from one body and the rest ignored, logged at
+    debug — the fetch stores no calendar with more, so only a body stored before that
+    rule meets it;
+  - one **budget of 200,000 steps** per subscription per read, shared by every event and
+    every rule: an event read, an item offered and a rule's step each spend one, first
+    come first served in the calendar's order, so a rule stepping by the second from
+    years ago — or two thousand such rules — stops where the budget does, and what comes
+    after contributes nothing;
+  - a **deadline of one second** per read, looked at before every rule and every 4,096
+    steps, since one rule no date satisfies (the 30th of February) can cost rrule-go a
+    tenth of a second inside a single step; a read stops too when its request goes away;
+  - at most **1,000** occurrences from one rule, and **5,000** items kept from one
+    subscription: past that a bounded heap keeps the 5,000 nearest the window's start,
+    whatever order the calendar wrote them in, the farthest given up as nearer ones
+    come, so memory is bounded by the cap however many items a calendar offers.
+
+  Once a bound is hit the read answers what it has, and logs it at info with the
+  subscription's id — the deadline, the spent budget, the rule's cap or the item cap; a
+  read stopped because its request went away is logged at debug.
 - **Status.** `STATUS:CANCELLED` is left out. `TRANSP` and `CLASS` are not read: a
   subscription is not a colleague, and the person subscribed to it.
 - **Text.** `SUMMARY` is unescaped (`\,`, `\;`, `\n`, `\\`) and cut to one line of 200
   characters; an event without one is titled *(untitled)* in the caller's language. The
   busy-only rule overrides both.
 - **A body that does not parse** contributes nothing now, and is the fetch's error at the
-  next fetch.
+  next fetch. It is logged at debug with the subscription's id alone, never the parser's
+  error, which may quote the body — a stranger's text.
 
 [A colleague's calendar](#a-colleagues-calendar) reads no subscription, as it asks no
 provider.
@@ -1475,7 +1546,7 @@ a date, a missing `If-Match` — is a bare 400 with neither `code` nor `errors`.
 | `invitations_unavailable` | 503 | `POST /appointments/{id}/attendees/{attendeeId}/resend` when the mail driver is not `smtp`. |
 | `subscription_limit` | 409 | `POST /subscriptions` when the caller has ten subscriptions already. |
 | — | 403 | `GET /contacts` without `customers:contacts-view` and `customers:associations-view`. |
-| — | 429 | `POST /rsvp/read` over 60, `POST /rsvp` over 30, or the feed's `GET /feed/{file}` over 120, per client address in 10 minutes: the limiter's `rate_limited`, with `Retry-After`. |
+| — | 429 | `POST /rsvp/read` over 60, `POST /rsvp` over 30, the feed's `GET /feed/{file}` over 120, or `POST /subscriptions`, `PUT /subscriptions/{id}` and `POST /subscriptions/{id}/refresh` together over 30 (`calendar-subscription-fetch`), per client address in 10 minutes: the limiter's `rate_limited`, with `Retry-After`. |
 | — | 503 | `GET /items`, and the feed's `GET /feed/{file}`, when a calendar source failed or ran out of time: "Calendar source unavailable", naming no module. |
 
 **A 404 is bare, with no body**, and says nothing more than "not for you": an unknown
@@ -1484,9 +1555,10 @@ own (a change, a delete, an occurrence, a resend), one the caller does not atten
 answer), a colleague who is not an active user, an attendee to resend who is not an
 outside one on the appointment, a customer the directory does not know (`GET /contacts`),
 a token no attendee holds (the two anonymous operations of the answer by link), a feed
-`file` that no address holds or that does not end in `.ics`, a variant that is neither
-`full` nor `busy` or that the caller has no address of (the feed's writes), and a
-subscription that is unknown or another person's. The uniform 403 is the access layer's.
+`file` that no address holds, that does not end in `.ics`, or whose address's person may
+not act or no longer holds `calendar:access`, a variant that is neither `full` nor `busy`
+or that the caller has no address of (the feed's writes), and a subscription that is
+unknown, another person's, or deleted while its fetch was out. The uniform 403 is the access layer's.
 
 `revision` starts at 1 and moves on with every write of the appointment itself: each
 `PUT`, and an exception written or removed. An attendee's answer is not one: it moves
@@ -1516,6 +1588,11 @@ appointment again.
   takes the appointment's row `FOR UPDATE` (`withLockedTx`); the revision, the attendees'
   reset, the dropped exceptions and the occurrence's place in the series are judged
   under it. Nothing locks two appointments.
+- **The person's subscriptions.** A subscription's `POST` counts the person's
+  subscriptions and inserts the new one in one transaction that first takes a
+  transaction-scoped advisory lock on the person's id, under the table's own prefix
+  (`LockSubscriptionsOfUser`), so two saves at nine cannot both see nine and both insert;
+  its inline fetch runs after the commit.
 - **No fetch inside a transaction.** A subscription's fetch — a save's, **Refresh now**'s
   or the worker's — is made with no transaction of the module's open, and its outcome is
   written to the row after it, so a slow calendar elsewhere never holds a lock here.
@@ -1541,10 +1618,12 @@ All under `/api/v1/calendar`.
 | `POST /rsvp` | `anonymous`; 30 per 10 minutes per client address |
 | `GET /feed` | `calendar:access`; the caller's own addresses |
 | `POST /feed/{file}`, `DELETE /feed/{file}` | `calendar:access`; `file` the variant, `full` or `busy` (otherwise 404); the caller's own address |
-| `GET /feed/{file}` | `anonymous`; `file` the token with `.ics`; 120 per 10 minutes per client address (`calendar-feed`) |
-| `GET /subscriptions`, `POST /subscriptions` | `calendar:access`; the caller's own |
-| `PUT /subscriptions/{id}`, `DELETE /subscriptions/{id}` | `calendar:access`, then the caller's own (otherwise 404) |
-| `POST /subscriptions/{id}/refresh` | `calendar:access`, then the caller's own (otherwise 404) |
+| `GET /feed/{file}` | `anonymous`; `file` the token with `.ics`; 120 per 10 minutes per client address (`calendar-feed`); then the token's person may act and holds `calendar:access` (otherwise 404) |
+| `GET /subscriptions` | `calendar:access`; the caller's own |
+| `POST /subscriptions` | `calendar:access`; the caller's own; 30 per 10 minutes per client address, shared with the next two (`calendar-subscription-fetch`) |
+| `PUT /subscriptions/{id}` | `calendar:access`, then the caller's own (otherwise 404); in `calendar-subscription-fetch` |
+| `DELETE /subscriptions/{id}` | `calendar:access`, then the caller's own (otherwise 404) |
+| `POST /subscriptions/{id}/refresh` | `calendar:access`, then the caller's own (otherwise 404); in `calendar-subscription-fetch` |
 
 Every operation requires `calendar:access` but the three `anonymous` ones, which the token
 alone admits. The request and response shapes are in the

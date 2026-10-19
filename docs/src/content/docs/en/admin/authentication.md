@@ -497,6 +497,15 @@ role change applies immediately across every replica.
 Each sign-in also purges that user's dead sessions (revoked, or past the standard
 absolute lifetime), so the table stays bounded by sessions that could still be valid.
 
+The same holds for a read made on a user's behalf with no session behind it — today a
+person's calendar address, which a phone reads with a token instead of a cookie.
+Identity answers it through `UserHolds`, whose person checks are one query,
+`UserMayAct`, applying the session query's own: not disabled, not pending, and while SCIM
+is configured not deactivated by the directory unless an Owner — and not locked out, as
+every permission check requires. The two queries are kept in step, so a disable, a
+lockout, a deactivation in the directory or a role change stops such a read at its very
+next request, as it stops a session ([Calendar → the feed](/en/admin/calendar/#the-feed-on-the-public-host)).
+
 ## Rate limits
 
 Authentication endpoints are rate limited by a fixed-window limiter whose counters

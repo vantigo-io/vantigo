@@ -344,6 +344,10 @@ the address has got into the wrong hands. The screen asks first, since your phon
 updating until you give it the new address. **Turn off** removes the address altogether,
 after asking too; whatever subscribed to it stops updating.
 
+An address works only while its owner may use Calendar. When a colleague leaves and their
+account is disabled, or `calendar:access` is taken from them, their addresses stop answering at once, and every phone or program subscribed to
+them stops updating — nobody needs to reset anything.
+
 ### Add it to your calendar program
 
 - **iPhone or iPad:** **Settings → Calendar → Accounts → Add Account → Other → Add
@@ -368,8 +372,10 @@ What is not in it: appointments you declined, cancelled appointments, the calend
 subscribe to from elsewhere ([below](#calendars-from-elsewhere)) and public holidays —
 your phone has its own. Nor does it say who else is on an appointment; open it in
 Vantigo for that. The **Busy only** address also leaves out what does not make you busy:
-appointments shown as **Free**, and the all-day items from the other apps, such as a task
-due, a follow-up or a day of absence.
+appointments shown as **Free**, the all-day items from the other apps, such as a task
+due, a follow-up or a day of absence, and the items that are a moment rather than a
+span, such as a customer interaction logged at a time. Its events carry nothing that
+says which app or record they came from.
 
 ## Calendars from elsewhere
 
@@ -397,6 +403,9 @@ The table lists each calendar with its colour, its name, the address's site, whe
 is busy only, and when it was last updated (**Updated 10 minutes ago**). Vantigo fetches
 each one again about every half hour; **Refresh now** on its row fetches it at once.
 **Edit** changes it, and **Remove** takes it off your calendar. You can have at most ten.
+Adding, saving a change and **Refresh now** together are limited: Vantigo fetches at
+most thirty times in ten minutes from one address — your computer's, or your office
+network's — so if it refuses, wait a few minutes and try again.
 
 When a fetch fails, the reason is shown in red under the row, and the calendar goes on
 showing what it last read:
@@ -409,8 +418,9 @@ showing what it last read:
   been removed, or the address is mistyped;
 - **the address is not one Vantigo may fetch** — it is on a private network Vantigo does
   not reach out to;
-- **the calendar is larger than 1 MiB**, or **the address did not answer in time** — the
-  calendar is too big, or its site too slow; ask whoever publishes it;
+- **the calendar is larger than 1 MiB**, **the calendar has more than 10,000 events**, or
+  **the address did not answer in time** — the calendar is too big, or its site too slow;
+  ask whoever publishes it;
 - **the address could not be reached** — the site does not answer, or its name does not
   exist; check the address.
 
