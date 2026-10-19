@@ -19,8 +19,8 @@ deleted, so the workspace always has one.
 
 ## Read the overview
 
-**Overview** opens the **Admin dashboard**, "a read-only overview of accounts and
-identity integrations":
+**Overview** opens the **Admin dashboard**, "An overview of accounts and identity
+integrations, and the workspace's own settings.":
 
 - **People** — **Total**, **Active**, **Disabled** accounts and **Pending
   invitations**, with a link to **View users**.
@@ -30,8 +30,10 @@ identity integrations":
   Entra ID, Google Workspace, or just **Enabled**), that **Client authentication** is
   **Set on the Single sign-on card**, and the **Last successful SSO use**.
 - **SCIM provisioning** — its **Status** and the **Last authenticated request**.
-- **Operational activity** — a reminder that this overview shows only non-sensitive
-  identity activity; credentials and provider configuration are never displayed.
+- **Operational activity** — a note that these status cards report only
+  non-sensitive identity activity. No credential is ever displayed; the **Single
+  sign-on** card below shows the provider's settings, but never its secret or a
+  token.
 
 SSO and SCIM are set further down the same overview, on the **Single sign-on** card;
 see [Set up single sign-on](#set-up-single-sign-on).
@@ -351,7 +353,8 @@ zone of their own exists.
 
 ### Set up single sign-on
 
-The **Single sign-on** card, below **Workspace** on the overview, connects the
+The **Single sign-on** card, across the full width below the overview's other cards,
+connects the
 workspace to a workforce identity provider — Microsoft Entra ID or Google Workspace —
 so that people sign in with their work account, and gives a directory the token it
 provisions accounts with (SCIM). It needs the Owner role and, when the installation
@@ -362,47 +365,55 @@ secret, the redirect — is described step by step in
 To let people sign in through a provider:
 
 1. Copy the **Callback URL** and register it with the provider.
-2. Choose the **Provider**: Entra or Google.
+2. Choose the **Provider**: **Microsoft Entra ID** or **Google Workspace**.
 3. Fill in the **Authority**, the provider's issuer address —
-   `https://login.microsoftonline.com/<tenant-guid>/v2.0` for Entra,
-   `https://accounts.google.com` for Google — and the **Client ID**.
+   `https://login.microsoftonline.com/<tenant-guid>/v2.0` for Entra; for Google the
+   card fills in `https://accounts.google.com` — and the **Client ID**.
 4. Give the credential: paste the **Client secret**, or, for Entra on a platform that
-   supplies one, the path of the **Token file**. Once a secret is saved the field is
-   blank and says when it was set: leave it blank to keep it, and type a new one only
-   to replace it.
+   supplies one, choose **Token file** as the **Credential** and enter its path. Once a
+   secret is saved the field is blank and reads "Set on _date_. Leave it blank to keep
+   it.": type a new one only to replace it. A new **Provider** or **Client ID** needs
+   its own secret or token file.
 5. For Google, list the **Domains** people may sign in from.
 6. Optionally, give the button on the sign-in page a **Display name**; it is
-   `Workforce SSO` otherwise.
-7. Choose **Save**. A field the provider would not accept is marked with the form it
-   must have.
+   `Workforce SSO` when left empty.
+7. Choose **Save**. The card says "OIDC settings saved"; a field the provider would
+   not accept is marked with the form it must have.
 
 Within 20 seconds the sign-in page offers **Continue with** and the display name, on
 every server, with no restart.
 
 If you change the **Authority** while people already sign in through the provider,
-Vantigo asks you to confirm first: people linked under the old authority are not
-recognised under the new one, so their next sign-in through the provider is refused
-while their account exists. Confirm only when you are moving to another tenant or
-provider. Turning the provider off while people are linked to it asks the same. If
-someone else saved the card after you opened it, saving says so: reload the page and
-make your change again.
+Vantigo asks first — "Change the provider's authority?" — because people linked
+under the old authority are not recognised under the new one, so their next sign-in
+through the provider is refused while their account exists. Choose **Change
+authority** only when you are moving to another tenant or provider. **Turn off** — or
+**Off** as the provider and **Save** — asks first too, "Turn off SSO?", and while
+people are linked to the provider a second dialog, "People are linked to this
+provider", asks again. If someone else saved the card after you opened it, it says
+"The settings have changed": choose **Reload** and make your change again.
 
 To give a directory its SCIM token:
 
 1. Copy the **Endpoint URL** into the directory's provisioning settings.
-2. Choose **New token**. The dialog shows the token **once**: copy it into the
-   directory before you close it. It cannot be shown again; if it is lost, issue a new
-   one.
-3. When a token already existed, the dialog also shows until when the old one is
-   still accepted — the overlap, at most 24 hours — so the directory can switch
-   without a gap. Choose **End overlap** once the directory uses the new token.
+2. Choose **New token**. When a token already exists, you are asked first, "Issue a
+   new token?", how long to "Accept the current token for (hours)" — 1 to 24, 24 by
+   default — so the directory can switch without a gap; choose **Issue token**.
+3. The dialog, "The new SCIM token", shows it **once**: choose **Copy token**, paste
+   it into the directory, and only then choose **Done**. It will not be shown again;
+   if it is lost, issue a new one.
+4. Once the directory uses the new token, choose **End overlap** to stop accepting
+   the old one, or let the overlap run out.
 
-**Turn off** stops SCIM: within 20 seconds the directory's requests are refused, and
-the accounts and groups it created stay as they are.
+**Turn off** in the SCIM block asks first, "Turn off SCIM?", and stops SCIM: within
+20 seconds the directory's requests are refused, and the accounts and groups it
+created stay as they are.
 
-When the settings were imported from the installation's environment, the card says so
-and asks for the variables to be removed; that is for whoever runs the installation
+When the settings were imported from the installation's environment, the card says
+so — **Imported from the environment** — and asks for the variables to be removed;
+that is for whoever runs the installation
 ([Before the card](/en/admin/sso-scim/#before-the-card-the-environment-variables)).
+The notice stays until the provider is next saved with **Save**.
 Every change is recorded in the authorization audit trail as `sso-settings.changed`,
 never with the secret or a token.
 

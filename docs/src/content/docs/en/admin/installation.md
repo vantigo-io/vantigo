@@ -478,7 +478,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 - The workforce OIDC provider and the SCIM token are set on the **Single sign-on**
   card, not in `vantigo.env`: `OIDC_*` and `SCIM_*` there are imported into the
   database once, at the first start of the release that brought the card, and then
-  only warned about until you remove them
+  only warned about — though still validated at startup — until you remove them
   ([Before the card](/en/admin/sso-scim/#before-the-card-the-environment-variables)).
   Do not put secrets in source-controlled files — inject `COMMUNICATIONS_AI_API_KEY`
   from a secret store instead.
