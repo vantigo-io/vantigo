@@ -1,6 +1,6 @@
 ---
 title: Calendar
-description: Turning Calendar on and giving people its two permissions; what invitations to people outside the company need — the SMTP driver, a sending domain with SPF, DKIM and DMARC, the public host and its three routes; the cancellations worker and its two settings; how to check that an invitation went, and what can go wrong.
+description: Turning Calendar on and giving people its two permissions; what invitations to people outside the company need — the SMTP driver, a sending domain with SPF, DKIM and DMARC, the public host and its routes; the calendar feed on the public host, its rate limit and the proxy's log; the cancellations and subscriptions workers and their settings, and what Vantigo fetches from the internet; how to check that an invitation went and that the feed answers, and what can go wrong.
 sidebar:
   order: 45
 sources:
@@ -8,12 +8,18 @@ sources:
   - apps/server/internal/calendar/rsvp.go
   - apps/server/internal/calendar/cancellations_worker.go
   - apps/server/internal/calendar/module.go
+  - apps/server/internal/calendar/feed.go
+  - apps/server/internal/calendar/feed_tokens.go
+  - apps/server/internal/calendar/subscriptions_worker.go
+  - apps/server/internal/calendar/subscriptions_fetch.go
 ---
 
 Calendar is one view of each person's days: the appointments they make, with colleagues,
 customers' contacts and other people on them, beside what the other modules know about
 them. This page is the operator's side: turning it on, what the invitations to people
-outside the company need, and the worker that tidies up after a cancellation. What the
+outside the company need, the worker that tidies up after a cancellation, the calendar
+feed a phone subscribes to, and the worker that fetches the calendars people subscribe
+to from elsewhere. What the
 module does and the rules it checks are in [the reference](/en/reference/calendar/); what
 a person does on its screens is in [the user guide](/en/user/calendar/).
 
@@ -26,7 +32,8 @@ a person does on its screens is in [the user guide](/en/user/calendar/).
 - The migrations create the `calendar` schema whether or not the module is enabled, so
   turning it on later needs no migration. A least-privilege application role needs the
   `calendar` schema granted like every other ([Installation](/en/admin/installation/)).
-- Calendar has no settings of its own. Its two permissions are `calendar:access`, to use
+- Calendar has no workspace settings of its own: each person's calendar addresses and
+  subscriptions are theirs, on their **My calendar** screen. Its two permissions are `calendar:access`, to use
   it, and `calendar:view-colleagues`, to see colleagues' busy and free times, which a
   workspace that wants everyone to see each other's grants to the employee role
   ([Permissions](/en/reference/calendar/#permissions)).
@@ -87,16 +94,17 @@ mail configuration; nothing here has a setting of its own.
    A link is fixed when the person is added to an appointment, so set `PUBLIC_BASE_URL`
    before people start inviting.
 
-### The public host's three routes
+### The public host's routes
 
-On the public host Vantigo serves the answer page beside the pay page, and nothing else
-of the calendar:
+On the public host Vantigo serves the answer page beside the pay page, and the
+[calendar feed](#the-feed-on-the-public-host), and nothing else of the calendar:
 
 | Method | Path |
 | --- | --- |
 | `GET`, `HEAD` | `/rsvp` (the answer page; any query) |
 | `POST` | `/api/v1/calendar/rsvp/read` (the page's read; the token in the body) |
 | `POST` | `/api/v1/calendar/rsvp` (the answer) |
+| `GET` | `/api/v1/calendar/feed/{token}.ics` (a calendar address; exactly one segment) |
 
 The two operations are anonymous and rate limited per client address — 60 reads and 30
 answers in ten minutes — so behind a proxy, `TRUSTED_PROXY_HOPS` and
@@ -141,6 +149,66 @@ notices — go one after the other after it is saved, within thirty seconds toge
 invitations not reached by then are marked **Sending failed**, and the save itself never
 fails for the mail. An organiser's notice of an answer has ten seconds.
 
+## The feed on the public host
+
+Each person can create a **calendar address** on their **My calendar** screen — a full
+one and a busy-only one — that their phone, Google Calendar or Outlook subscribes to
+([the feed](/en/reference/calendar/#the-feed)). A calendar program takes one address and
+`GET`s it, with nothing of Vantigo's, so this is the one anonymous `GET` in Vantigo with
+its token in the path:
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/v1/calendar/feed/{token}.ics` |
+
+It is on the public host's list beside the answer page's routes
+([the public host's routes](#the-public-hosts-routes)), under `GET` alone and with exactly
+one segment after `/feed/`. A token nobody holds — never issued, reset or turned off — is
+a bare 404.
+
+### What it needs
+
+1. **The base.** The address is `PUBLIC_BASE_URL/api/v1/calendar/feed/<token>.ics` when
+   `PUBLIC_BASE_URL` is set, and on `APP_URL` (with `APP_BASE_PATH`) otherwise. A phone
+   off the company's network needs the public host; a laptop on it does not. Without a
+   public host the screen tells the person *"This address works on the company's network
+   only."* An address is fixed when it is created, so set `PUBLIC_BASE_URL` before people
+   create theirs; one created before needs a **Reset** to move to the public host.
+2. **The proxy, as for the answer page.** The feed is rate limited per client address —
+   `calendar-feed`, **120 requests per 10 minutes** — which a phone asking hourly, or an
+   office of phones behind one NAT, stays well under. Behind a proxy,
+   `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` must name it, or every phone shares the
+   proxy's one bucket ([Forwarded headers and
+   HTTPS](/en/admin/authentication/#forwarded-headers-and-https)).
+3. **The proxy's access log.** The token is the path's last segment, not a query: Vantigo
+   logs the path of every request, and so does a proxy. **Keep the proxy's access log on
+   the public host to the path without the feed's last segment, or to nothing**, and
+   restrict who reads Vantigo's own request log, which writes the path. A token in a log
+   is a read of that person's calendar until they reset it.
+
+### Verify the feed
+
+1. **Create an address.** Sign in, open **Calendar → My calendar**, press **Create
+   address** under **Full calendar** and **Copy**.
+2. **Fetch it** from outside the company's network:
+
+   ```sh
+   curl -i 'https://pay.example.com/api/v1/calendar/feed/<token>.ics'
+   ```
+
+   It answers 200 with `Content-Type: text/calendar; charset=utf-8`, an `ETag` and
+   `Cache-Control: private, no-cache`, and a body that starts `BEGIN:VCALENDAR`.
+3. **Fetch it again with the tag:**
+
+   ```sh
+   curl -i -H 'If-None-Match: "<the ETag>"' 'https://pay.example.com/api/v1/calendar/feed/<token>.ics'
+   ```
+
+   It answers 304 with no body. The screen now shows when the address was last read.
+4. **A wrong token** — change one character — answers 404, and so does the address after a
+   **Reset**.
+5. **The proxy's log** holds no token for these requests.
+
 ## The cancellations worker
 
 When an appointment someone outside the company has been sent an invitation to is
@@ -169,6 +237,61 @@ it is on again — on nobody's calendar, but a row each.
 | `CALENDAR_CANCELLATIONS_ENABLED` | On/off switch for the `calendar-cancellations` worker | `1` |
 | `CALENDAR_WORKERS_POLL` | How often the calendar's workers look; a duration of at least `1m` | `1h` |
 
+## The subscriptions worker
+
+A person can subscribe to calendars from elsewhere on their **My calendar** screen — at
+most ten each — and see their events beside their own
+([subscriptions](/en/reference/calendar/#subscriptions)). The `calendar-subscriptions`
+worker fetches them. It runs unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, in worker mode,
+and in api mode with `WORKERS_IN_PROCESS=1`. It **wakes every five minutes** — not a
+setting — takes an advisory lock so several replicas take turns, and fetches each
+subscription that is due, at most 200 a cycle, one at a time. Each subscription is due
+`CALENDAR_SUBSCRIPTIONS_POLL` (default `30m`, at least `5m`) after its last fetch, or
+later when the calendar itself asks to be read less often (at most once a day), plus a
+little jitter. A failed fetch keeps the calendar's last good copy and records the
+reason, and the next due fetch tries again, with no backoff. Turned off, nothing is
+fetched in the background and every subscription shows its last read; saving one, or
+**Refresh now**, still fetches it once.
+
+### What Vantigo fetches from the internet
+
+The worker, a save and **Refresh now** fetch **the addresses people subscribe to**, and
+nothing else: one `GET` each, `User-Agent: Vantigo-Calendar`, sent straight from the
+Vantigo container, through the same address guard as mail and the Peppol lookup:
+
+- the host is resolved and every address checked: **no private, loopback, link-local,
+  carrier-grade-NAT or cloud-metadata address** is dialled, and the connection goes to
+  the address that was checked, so DNS rebinding cannot turn it inward;
+- **no redirect is followed** — a 3xx is a failure the person sees;
+- **at most 1 MiB** is read, and the fetch has **20 seconds**;
+- there is **no outbound proxy**: an `HTTPS_PROXY` is not used, since a proxy would send
+  the request to an address the guard never saw. An installation whose containers reach
+  the internet only through a proxy cannot fetch subscriptions.
+
+An address a person types is refused at save when its host is an address the guard
+forbids, or when it carries a user name or password.
+
+### What the log says
+
+Each failed fetch is logged at warning with the subscription's id and the reason, and
+nothing of the address beyond its host; the person sees the same reason on their row. The
+reasons are one sentence each:
+
+| Reason | Means |
+| --- | --- |
+| the address redirects; subscribe to the address it points at | the site answered 3xx; the person must use the address it points at |
+| the calendar is larger than 1 MiB | the calendar is too big to keep; the last good copy stays |
+| the address did not answer a calendar | a 2xx that is not an iCalendar file — a web page, usually |
+| the address answered <status> (such as `404 Not Found`) | any other status: 404 for a removed calendar, 401 or 403 for one that needs a sign-in Vantigo does not do |
+| the address is not one Vantigo may fetch | the host resolves to an address the guard forbids |
+| the address did not answer in time | no answer within 20 seconds |
+| the address could not be reached | the name did not resolve, the connection was refused, or there is no route out |
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CALENDAR_SUBSCRIPTIONS_ENABLED` | On/off switch for the `calendar-subscriptions` worker | `1` |
+| `CALENDAR_SUBSCRIPTIONS_POLL` | How often each subscription is fetched; a duration of at least `5m` | `30m` |
+
 ## Key material
 
 The answer links are sealed at rest under a key derived from `APP_SECRET` (the purpose
@@ -178,6 +301,13 @@ its token is kept as a plain hash, which needs no key — but an update or a **R
 an attendee added before the rotation fails and shows **Sending failed**; take them off
 the appointment and add them again for a new link
 ([Key material](/en/admin/authentication/#key-material)).
+
+The calendar addresses are sealed the same way, under the purpose
+`calendar/feed-address`, so a person's **My calendar** screen can show their address
+again. After a rotation the screen cannot open them and shows no address, but every
+address still works — a request is matched by the token's plain hash, which needs no key
+— so phones go on updating. A person who needs to see their address again presses
+**Reset** and gives their programs the new one.
 
 ## What can go wrong
 
@@ -215,3 +345,23 @@ the appointment and add them again for a new link
   is off (`CALENDAR_CANCELLATIONS_ENABLED=0`).
 - **`CALENDAR_WORKERS_POLL` refused at start.** It is not a duration, or is under a
   minute.
+- **A phone never updates.** The client decides when it refreshes — Apple Calendar as
+  set on the device, Outlook about every three hours, Google Calendar up to a day — so
+  wait before suspecting Vantigo. Otherwise: the address was **Reset** or turned off,
+  and the phone holds the dead one (a 404 in the proxy's log); or it is on `APP_URL`,
+  which the phone cannot reach off the company's network — the screen says
+  *"This address works on the company's network only"*; set up the public host, and the
+  person resets the address to get one there. A 429 in the log means the proxy is not
+  trusted and every phone shares one bucket.
+- **A feed answers 503.** One of the modules whose items are in it could not be read;
+  the log names it. The feed is never served with something missing.
+- **A person's calendar is over 1 MiB.** The feed drops the projected items farthest from
+  today, the farthest first, until it fits, logs it at info
+  with the person's id, and never drops an appointment. Nothing needs doing.
+- **A subscription shows an error.** Read the sentence on the row
+  ([what the log says](#what-the-log-says)). "Not one Vantigo may fetch" for a public calendar
+  means the host resolves to a private address from the container — split DNS; "could
+  not be reached" or "did not answer in time" for every subscription means the containers have no route to the
+  internet, or reach it only through a proxy, which the fetch does not use.
+- **`CALENDAR_SUBSCRIPTIONS_POLL` refused at start.** It is not a duration, or is under
+  five minutes.

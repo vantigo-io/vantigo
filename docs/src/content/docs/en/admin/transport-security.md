@@ -110,7 +110,10 @@ SMTP has a protection that is not about TLS: the destination is resolved and che
 before the socket opens, and private, loopback, link-local, carrier-grade-NAT and
 cloud-metadata addresses (including `169.254.169.254`) are refused. The connection is
 then made to the address that was checked rather than to a fresh lookup, which is
-what defeats DNS rebinding. This applies whatever `SMTP_TLS` says.
+what defeats DNS rebinding. This applies whatever `SMTP_TLS` says. The same guard, from
+the same table, holds for the Peppol lookup and for Calendar's fetch of the calendars
+people subscribe to, which also follows no redirect and uses no proxy
+([Calendar](/en/admin/calendar/#what-vantigo-fetches-from-the-internet)).
 
 ## Upgrading from the fail-closed rules
 

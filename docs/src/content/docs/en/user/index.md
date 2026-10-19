@@ -54,7 +54,7 @@ shorter than yours:
 | [Customers](/en/user/customers/) | Customers, Contacts, Follow-ups |
 | [Projects](/en/user/projects/) | Projects, My tasks, Project economy |
 | [Time](/en/user/time/) | My week, Approvals, People, Time settings |
-| [Calendar](/en/user/calendar/) | Calendar (your own, and a colleague's with the picker) |
+| [Calendar](/en/user/calendar/) | Calendar (your own, and a colleague's with the picker), My calendar (your calendar on your phone, and calendars from elsewhere) |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
 | [Staff](/en/user/staff/) | My page (its **Absence** tab and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Staff settings |
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |

@@ -1142,7 +1142,7 @@ enabled module projecting its own rows at read time through a many-provider cont
 under its own permission. The one thing it owns is the appointment. It needs the
 [time zones](#time-zones-done) design's deliveries A and F, both done.
 
-### Phase 1 — The calendar, invitations and the feed (A and B done)
+### Phase 1 — The calendar, invitations and the feed (done)
 
 Three deliveries, A specified in full by the design, B and C decided there and planned
 on their own.
@@ -1245,13 +1245,67 @@ Decisions taken while building it:
 
 *Unblocks:* meetings with customers booked from Vantigo, answered from any mail client.
 
-**C — The feed and the subscriptions.** A calendar address per person in two variants,
-full and busy-only, behind a hashed, resettable token — the module's one anonymous
-`GET`, on the public host's list — windowed, with series as `RRULE` and their exceptions,
-one `VTIMEZONE` per zone, and the projected items in the full variant; calendars from
-elsewhere subscribed to, polled by a `calendar-subscriptions` worker through `netguard`
-and shown beside the person's own, never in their feed; a **My calendar** settings
-screen for the addresses and the subscriptions. Not built.
+**C — The feed and the subscriptions, built** on `feat/calendar-feed`
+([the design](docs/superpowers/specs/2026-10-20-calendar-feed-design.md);
+[the plan](docs/superpowers/plans/2026-10-20-calendar-feed.md);
+[the reference](docs/src/content/docs/en/reference/calendar.md#the-feed);
+[the operator's page](docs/src/content/docs/en/admin/calendar.md#the-feed-on-the-public-host)):
+a calendar address per person in two variants, `full` and `busy`, behind a token of 32
+random bytes stored only as its SHA-256 and the whole address sealed under
+`calendar/feed-address`, created, reset and turned off from a **My calendar** screen;
+`GET /feed/{token}.ics`, the module's one anonymous `GET`, on the public host's list,
+rate limited to 120 per 10 minutes per client address — today −3 to +12 months in the
+business zone, series as `RRULE` with their `EXDATE`s and moved occurrences, one
+`VTIMEZONE` per zone, the projected items in the full variant with `CATEGORIES`, `URL`
+and `✓ ` for a done one, an hour's `REFRESH-INTERVAL`, an `ETag` and 304, and a 1 MiB
+bound that drops the farthest projected items first; the providers read for a person
+with no session behind the request through `contracts.AsUser` and a new
+`Access.UserHolds`, each under its own gate; calendars from elsewhere subscribed to — at
+most ten, `webcal` taken as `https` — fetched once on save and by the
+`calendar-subscriptions` worker (`CALENDAR_SUBSCRIPTIONS_ENABLED`,
+`CALENDAR_SUBSCRIPTIONS_POLL`) through `netguard`, with no redirect, no proxy and at
+most 1 MiB, the last good copy kept through a failure and the reason shown on the row;
+parsed on read into the kind `calendar.subscription`, drawn in the colour the person
+chose, busy-only when they ask, and never in their feed. One migration,
+`00057_calendar_feed.sql`.
+
+Decisions taken while building it:
+
+- **The address is shown again, not once**: the design's "shown once" gave way to B's
+  precedent — the whole address sealed, opened for its owner's screen alone — since a
+  person sets up a phone today and a laptop next month, and a secret they must reset to
+  see is one they paste into a note. The hash is still what a request is matched by, so
+  a rotated `APP_SECRET` hides the addresses from the screen and breaks none.
+- **One path for the three feed operations, and `.ics` inside the segment**: OpenAPI
+  refuses two paths differing only in a parameter's name, so the create or reset and
+  the turn-off take the variant in the segment the anonymous `GET` takes the token in;
+  and the router matches a parameter to a whole segment, so the handler takes
+  `<token>.ics` as one and requires the suffix.
+- **The feed asks the providers through `AsUser` and `UserHolds`**: the gate stays the
+  provider's and identity still answers it — active, not locked out, not pending, an
+  Owner holding all, no MFA rule without a session — rather than a flag on the query the
+  providers would honour, which would have shown a person their tasks after
+  `projects:access` was taken from them.
+- **The busy variant is spans alone**: busy appointments and the timed projected items,
+  each titled *Busy* (*Opptatt* in `nb`); free appointments and all-day items are left
+  out, since a day with a task on it is not a busy day.
+- **Declined and cancelled appointments are left out** of both variants, and so are a
+  colleague's appointments, the subscriptions and the public holidays.
+- **No `ORGANIZER` and no `ATTENDEE`** in the feed: the copy is read-only, and an
+  address in a file on a phone is one the module need not put there.
+- **The `ETag` ignores `DTSTAMP`**: the hash of the calendar without its `DTSTAMP` lines,
+  so an unchanged calendar keeps its tag from hour to hour; no `Last-Modified`, since a
+  provider's items have no one time they changed at.
+- **Subscriptions are at most ten, parsed on read, never in the feed**: nothing is
+  reconciled into the module's tables, so two people subscribed to each other's feeds
+  cannot copy each other back and forth, and a subscription's body never leaves the
+  installation.
+- **The worker wakes every five minutes, and each subscription is due a poll plus
+  jitter**: `next_fetch_at` is the poll or the feed's own `REFRESH-INTERVAL` (capped at a
+  day), whichever is longer, plus up to a tenth of the poll, so installations drift
+  apart; no backoff, since a feed down for an hour costs two requests.
+- **`TZID` is resolved in a chain**: Go's tzdata, the `VTIMEZONE`'s `X-LIC-LOCATION`, the
+  CLDR table of Windows names Outlook writes, the `STANDARD` offset, and UTC last.
 
 *Unblocks:* the Vantigo calendar on a phone, and a person's other calendars beside it.
 

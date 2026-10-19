@@ -1,12 +1,14 @@
 ---
 title: Calendar
-description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments and the dashboard's agenda.
+description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments, the dashboard's agenda, your calendar on your phone and calendars from elsewhere beside your own.
 sidebar:
   order: 35
 sources:
   - apps/calendar/frontend
   - apps/host/frontend/src/routes/rsvp.tsx
   - apps/host/frontend/src/lib/public-paths.ts
+  - apps/host/frontend/src/routes/calendar
+  - apps/host/frontend/src/routes/calendar.tsx
 ---
 
 The Calendar app is one view of your days: the appointments you make yourself, with
@@ -24,7 +26,9 @@ page is about what you do on each screen.
 | **Calendar** in the sidebar, your own calendar, your appointments and your answers to invitations, and the dashboard's **Today and this week** | everyone with `calendar:access` |
 | **A colleague's calendar** | `calendar:access` and `calendar:view-colleagues` |
 | **Contacts** under **Attendees**, to invite a customer's contacts | `calendar:access`, `customers:contacts-view` and `customers:associations-view` |
+| **My calendar** in the sidebar: your calendar addresses and the calendars you subscribe to from elsewhere | everyone with `calendar:access` |
 | The answer page an invitation links to | anyone with the link, without signing in |
+| What a calendar address carries | any program given the address, without signing in — so keep it to yourself |
 
 What the other apps put on your calendar follows their own permissions: you see your
 follow-ups only if you may read Customers' timeline, your absence only if your user is
@@ -64,6 +68,7 @@ of it takes you:
 | **Hours** | Hours you logged, titled with the project, at their start and end time when you gave them, otherwise all day; struck through once approved | opens the day in Time |
 | **Travel** | One of your travel claims, from departure to return; struck through once approved | opens the travel claim |
 | **Absence** | Your own absence, requested, approved or registered; one you have requested shows **Requested** under its name until it is decided. The name and that word are in the language set under **Language** on your Staff record | opens **My page** on its **Absence** tab |
+| **Subscriptions** | An event of a calendar you subscribe to from elsewhere, in the colour you gave it ([Calendars from elsewhere](#calendars-from-elsewhere)) | — |
 | **Public holidays** | Norway's public holidays, shaded on their days | — |
 
 Appointments have a look of their own: one that does not block your time (**Free**) is
@@ -306,8 +311,114 @@ updated invitation with the same link; if it is cancelled, you are sent a cancel
 and the page says **This appointment has been cancelled**. A page that says **This link
 is not valid** means you were taken off the appointment, or it is long past.
 
+## Your calendar on your phone
+
+Vantigo can give you a **calendar address**: a link your phone's calendar app — or Google
+Calendar, Outlook, or any other program that subscribes to calendars — reads to show your
+Vantigo calendar beside your other calendars. It is read-only there: you change
+appointments in Vantigo, and the phone shows the change the next time it refreshes.
+
+Open **Calendar** and choose **My calendar** in its sidebar. Under **Your calendar on your
+phone** there are two addresses, each with a sentence saying what it carries:
+
+- **Full calendar** — your calendar as you see it in Vantigo: your appointments, with
+  their titles, places and descriptions, and your hours, trips, tasks, follow-ups and
+  absence from the other apps. Each event links back to Vantigo.
+- **Busy only** — the times you are busy, each titled **Busy**, and nothing else. Give
+  this one to someone who should see when you are free but not what you are doing — a
+  receptionist, or your partner's calendar.
+
+For each one you want:
+
+1. Press **Create address**. The address appears in a field, with when it was created
+   and when a program last read it (**never read** until one has).
+2. Press **Copy**, or **Copy as webcal** for the same address starting `webcal://`, which
+   Apple Calendar and Outlook subscribe to with one click.
+3. Add it to your calendar program, as below.
+
+The screen shows the address again whenever you come back, so you can add it to your
+laptop next month without changing anything.
+
+**Reset** gives the address a new link, and the old one stops working at once — use it if
+the address has got into the wrong hands. The screen asks first, since your phone stops
+updating until you give it the new address. **Turn off** removes the address altogether,
+after asking too; whatever subscribed to it stops updating.
+
+### Add it to your calendar program
+
+- **iPhone or iPad:** **Settings → Calendar → Accounts → Add Account → Other → Add
+  Subscribed Calendar**, paste the address, then **Next** and **Save**.
+- **Calendar on a Mac:** **File → New Calendar Subscription**, paste the address, and
+  **Subscribe**.
+- **Google Calendar**, in a browser: beside **Other calendars**, press **+**, then
+  **From URL**, paste the address and **Add calendar**. The events can take up to a day
+  to appear.
+- **Outlook:** **Add calendar → Subscribe from web**, paste the address, give it a name
+  and import it.
+
+Your phone decides how often it refreshes: Apple Calendar as you set it, Outlook about
+every three hours, Google Calendar up to a day. So a change you make in Vantigo reaches
+the phone later, not at once.
+
+When the screen says **This address works on the company's network only**, your
+installation has no public address: a phone reads it on the office network or its VPN,
+but not out and about. Ask your administrator if you need more.
+
+What is not in it: appointments you declined, cancelled appointments, the calendars you
+subscribe to from elsewhere ([below](#calendars-from-elsewhere)) and public holidays —
+your phone has its own. Nor does it say who else is on an appointment; open it in
+Vantigo for that. The **Busy only** address also leaves out what does not make you busy:
+appointments shown as **Free**, and the all-day items from the other apps, such as a task
+due, a follow-up or a day of absence.
+
+## Calendars from elsewhere
+
+You can show other calendars beside your own: a school's term dates, a club's
+matches, your private Google Calendar. They are shown on your calendar page, in the
+colour you choose, and to nobody else.
+
+1. Open **Calendar → My calendar**, and under **Calendars from elsewhere** press
+   **Add calendar**.
+2. Give it a **Name**, and paste its **Address**: the address a calendar program gives
+   you to subscribe to — it usually ends in `.ics`, and one starting `webcal://` works too.
+3. Pick a **Colour**, and tick **Show as busy only** if you want to see when, not what.
+4. Save. Vantigo fetches the calendar at once, and its events are on your calendar page
+   the next time it loads. An address Vantigo cannot use is refused on the field, with
+   the reason.
+
+An event from a calendar you subscribe to is drawn in its colour, with the calendar's
+name under its title, and labelled **Busy** when you chose busy only. The legend gains a
+**Subscriptions** chip, which hides them all at once. You cannot drag them, and clicking
+one opens nothing: they belong to the other calendar. Events the other calendar has
+cancelled are not shown.
+
+The table lists each calendar with its colour, its name, the address's site, whether it
+is busy only, and when it was last updated (**Updated 10 minutes ago**). Vantigo fetches
+each one again about every half hour; **Refresh now** on its row fetches it at once.
+**Edit** changes it, and **Remove** takes it off your calendar. You can have at most ten.
+
+When a fetch fails, the reason is shown in red under the row, and the calendar goes on
+showing what it last read:
+
+- **the address redirects; subscribe to the address it points at** — open the address in
+  a browser and use the one it ends up on;
+- **the address did not answer a calendar** — it is a web page, not the calendar: look on
+  that page for its subscribe or `.ics` address;
+- **the address answered 404 Not Found** (or another number) — the calendar has moved or
+  been removed, or the address is mistyped;
+- **the address is not one Vantigo may fetch** — it is on a private network Vantigo does
+  not reach out to;
+- **the calendar is larger than 1 MiB**, or **the address did not answer in time** — the
+  calendar is too big, or its site too slow; ask whoever publishes it;
+- **the address could not be reached** — the site does not answer, or its name does not
+  exist; check the address.
+
+These calendars are yours alone: a colleague looking at your calendar does not see them,
+and they are never in your own calendar address, so a phone subscribed to your Vantigo
+calendar does not get them twice.
+
 ## What comes next
 
-A calendar address your phone can subscribe to, so your Vantigo calendar shows in the
-phone's own calendar app; and calendars from elsewhere, subscribed to and shown beside
-your own. Neither is built yet.
+Both the calendar address for your phone and calendars from elsewhere are built. What
+remains is further off: two-way sync with Google and Microsoft, booking pages, rooms and
+resources, reminders in the app and by mail, CalDAV, and team calendars.

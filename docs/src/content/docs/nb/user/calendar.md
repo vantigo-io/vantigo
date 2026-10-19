@@ -1,12 +1,14 @@
 ---
 title: Kalender
-description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler og agendaen på dashbordet.
+description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler, agendaen på dashbordet, kalenderen din på mobilen og kalendere fra andre steder ved siden av din egen.
 sidebar:
   order: 35
 sources:
   - apps/calendar/frontend
   - apps/host/frontend/src/routes/rsvp.tsx
   - apps/host/frontend/src/lib/public-paths.ts
+  - apps/host/frontend/src/routes/calendar
+  - apps/host/frontend/src/routes/calendar.tsx
 ---
 
 Kalender-appen er én oversikt over dagene dine: avtalene du lager selv, med kolleger på,
@@ -24,7 +26,9 @@ siden handler om hva du gjør på hvert skjermbilde.
 | **Kalender** i sidemenyen, din egen kalender, avtalene dine og svarene dine på invitasjoner, og **I dag og denne uken** på dashbordet | alle med `calendar:access` |
 | **En kollegas kalender** | `calendar:access` og `calendar:view-colleagues` |
 | **Kontakter** under **Deltakere**, for å invitere en kundes kontaktpersoner | `calendar:access`, `customers:contacts-view` og `customers:associations-view` |
+| **Min kalender** i sidemenyen: kalenderadressene dine og kalenderne du abonnerer på fra andre steder | alle med `calendar:access` |
 | Svarsiden en invitasjon lenker til | alle med lenken, uten innlogging |
+| Det en kalenderadresse inneholder | ethvert program som får adressen, uten innlogging — så hold den for deg selv |
 
 Det de andre appene legger i kalenderen din, følger deres egne rettigheter: du ser
 oppfølgingene dine bare hvis du kan lese tidslinjen i Kunder, fraværet ditt bare hvis
@@ -64,6 +68,7 @@ klikk på et element av den tar deg:
 | **Timer** | Timer du har ført, med prosjektet som tittel, på start- og sluttiden når du oppga dem, ellers hele dagen; strøket over når de er godkjent | åpner dagen i Timer |
 | **Reiser** | En av reiseregningene dine, fra avreise til hjemkomst; strøket over når den er godkjent | åpner reiseregningen |
 | **Fravær** | Ditt eget fravær, søkt, godkjent eller registrert; et fravær du har søkt om, viser **Søkt om** under navnet til det er avgjort. Navnet og det ordet står på språket som er satt under **Språk** på personen din i Ansatte | åpner **Min side** på fanen **Fravær** |
+| **Abonnementer** | En hendelse i en kalender du abonnerer på fra et annet sted, i fargen du ga den ([Kalendere fra andre steder](#kalendere-fra-andre-steder)) | — |
 | **Helligdager** | Norges helligdager, skyggelagt på dagene sine | — |
 
 Avtaler har sitt eget utseende: en som ikke gjør deg opptatt (**Ledig**), tegnes med
@@ -307,8 +312,118 @@ den samme lenken; avlyses den, får du en avlysning, og siden sier
 **Denne avtalen er avlyst**. En side som sier **Denne lenken er ikke gyldig**, betyr at
 du er tatt av avtalen, eller at den er lenge siden.
 
+## Kalenderen din på telefonen
+
+Vantigo kan gi deg en **kalenderadresse**: en lenke som kalenderappen på mobilen — eller
+Google Kalender, Outlook eller et annet program som abonnerer på kalendere — leser for å
+vise Vantigo-kalenderen din ved siden av de andre kalenderne dine. Der kan den bare
+leses: du endrer avtaler i Vantigo, og mobilen viser endringen neste gang den
+oppdaterer.
+
+Åpne **Kalender** og velg **Min kalender** i sidemenyen. Under **Kalenderen din på
+telefonen** er det to adresser, hver med en setning om hva den inneholder:
+
+- **Hele kalenderen** — kalenderen din slik du ser den i Vantigo: avtalene dine, med
+  tittel, sted og beskrivelse, og timene, reisene, oppgavene, oppfølgingene og fraværet
+  ditt fra de andre appene. Hver hendelse lenker tilbake til Vantigo.
+- **Bare opptatt** — tidene du er opptatt, hver med tittelen **Opptatt**, og ingenting
+  annet. Gi denne til den som skal se når du er ledig, men ikke hva du gjør — en
+  resepsjonist, eller kalenderen til partneren din.
+
+For hver av dem du vil ha:
+
+1. Trykk **Lag adresse**. Adressen vises i et felt, med når den ble laget og når et
+   program sist leste den (**aldri lest** til et har gjort det).
+2. Trykk **Kopier**, eller **Kopier som webcal** for den samme adressen med `webcal://`
+   foran, som Apple Kalender og Outlook abonnerer på med ett klikk.
+3. Legg den til i kalenderprogrammet ditt, som under.
+
+Skjermbildet viser adressen igjen hver gang du kommer tilbake, så du kan legge den til på
+den bærbare neste måned uten å endre noe.
+
+**Tilbakestill** gir adressen en ny lenke, og den gamle slutter å virke med en gang — bruk
+den hvis adressen har kommet på avveie. Skjermbildet spør først, siden mobilen slutter å
+oppdatere til du gir den den nye adressen. **Slå av** fjerner adressen helt, også etter å
+ha spurt; det som abonnerte på den, slutter å oppdatere.
+
+### Legg den til i kalenderprogrammet ditt
+
+- **iPhone eller iPad:** **Innstillinger → Kalender → Kontoer → Legg til konto → Annet →
+  Legg til abonnert kalender**, lim inn adressen, og trykk **Neste** og **Arkiver**.
+- **Kalender på en Mac:** **Arkiv → Nytt kalenderabonnement**, lim inn adressen, og
+  **Abonner**.
+- **Google Kalender**, i en nettleser: ved siden av **Andre kalendere** trykker du **+**,
+  så **Fra nettadresse**, limer inn adressen og trykker **Legg til kalender**. Det kan
+  ta opptil et døgn før hendelsene vises.
+- **Outlook:** **Legg til kalender → Abonner fra nettet**, lim inn adressen, gi den et
+  navn og importer den.
+
+Mobilen bestemmer selv hvor ofte den oppdaterer: Apple Kalender slik du har stilt den
+inn, Outlook omtrent hver tredje time, Google Kalender opptil et døgn. En endring du gjør
+i Vantigo, når derfor mobilen senere, ikke med en gang.
+
+Når skjermbildet sier **Denne adressen virker bare på bedriftens nettverk**, har
+installasjonen din ingen offentlig adresse: en mobil leser den på kontornettet eller
+gjennom VPN, men ikke ute på farten. Spør administratoren din om du trenger mer.
+
+Dette er ikke med: avtaler du har avslått, avlyste avtaler, kalenderne du abonnerer på
+fra andre steder ([under](#kalendere-fra-andre-steder)) og helligdager — mobilen har sine
+egne. Den sier heller ikke hvem andre som er på en avtale; åpne den i Vantigo for det.
+Adressen **Bare opptatt** utelater også det som ikke gjør deg opptatt: avtaler vist som
+**Ledig**, og heldagselementene fra de andre appene, som en oppgave som forfaller, en
+oppfølging eller en fraværsdag.
+
+## Kalendere fra andre steder
+
+Du kan vise andre kalendere ved siden av din egen: skoleruta, kampene til en klubb, den
+private Google-kalenderen din. De vises på kalendersiden din, i fargen du velger, og for
+ingen andre.
+
+1. Åpne **Kalender → Min kalender**, og trykk **Legg til kalender** under **Kalendere fra
+   andre steder**.
+2. Gi den et **Navn**, og lim inn **Adresse**: adressen et kalenderprogram gir deg å
+   abonnere på — den slutter som regel på `.ics`, og en som begynner med `webcal://`,
+   virker også.
+3. Velg en **Farge**, og huk av for **Vis bare som opptatt** hvis du vil se når, ikke hva.
+4. Lagre. Vantigo henter kalenderen med en gang, og hendelsene står på kalendersiden din
+   neste gang den lastes. En adresse Vantigo ikke kan bruke, avvises på feltet, med
+   grunnen.
+
+En hendelse fra en kalender du abonnerer på, tegnes i fargen sin, med navnet på
+kalenderen under tittelen, og merkes **Opptatt** når du valgte bare opptatt.
+Forklaringen får en brikke, **Abonnementer**, som skjuler alle på en gang. Du kan ikke
+dra dem, og et klikk på en åpner ingenting: de hører til den andre kalenderen. Hendelser
+den andre kalenderen har avlyst, vises ikke.
+
+Tabellen lister hver kalender med fargen, navnet, nettstedet adressen er på, om den er
+bare opptatt, og når den sist ble oppdatert (**Oppdatert for 10 minutter siden**).
+Vantigo henter hver av dem igjen omtrent hver halvtime; **Oppdater nå** på raden henter
+den med en gang. **Rediger** endrer den, og **Fjern** tar den ut av kalenderen din. Du kan
+ha høyst ti.
+
+Når en henting feiler, vises grunnen i rødt under raden, og kalenderen fortsetter å vise
+det den sist leste. Grunnen står på engelsk, slik serveren skriver den:
+
+- **the address redirects; subscribe to the address it points at** — adressen sender
+  videre: åpne den i en nettleser og bruk den du ender opp på;
+- **the address did not answer a calendar** — det er en nettside, ikke kalenderen: se
+  etter abonnements- eller `.ics`-adressen på den siden;
+- **the address answered 404 Not Found** (eller et annet tall) — kalenderen er flyttet
+  eller fjernet, eller adressen er skrevet feil;
+- **the address is not one Vantigo may fetch** — den er på et privat nettverk Vantigo ikke
+  henter fra;
+- **the calendar is larger than 1 MiB**, eller **the address did not answer in time** —
+  kalenderen er for stor, eller nettstedet for tregt; spør den som publiserer den;
+- **the address could not be reached** — nettstedet svarer ikke, eller navnet finnes
+  ikke; sjekk adressen.
+
+Disse kalenderne er bare dine: en kollega som ser på kalenderen din, ser dem ikke, og de
+er aldri med i din egen kalenderadresse, så en mobil som abonnerer på Vantigo-kalenderen
+din, får dem ikke to ganger.
+
 ## Hva som kommer
 
-En kalenderadresse mobilen din kan abonnere på, så Vantigo-kalenderen din vises i
-mobilens egen kalenderapp; og kalendere fra andre steder, abonnert på og vist ved siden
-av din egen. Ingen av dem er bygget ennå.
+Både kalenderadressen til telefonen og kalendere fra andre steder er bygget. Det som
+gjenstår, ligger lenger frem: toveis synkronisering med Google og Microsoft,
+bookingsider, rom og ressurser, påminnelser i appen og på e-post, CalDAV og
+teamkalendere.

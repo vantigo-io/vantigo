@@ -1,10 +1,13 @@
 ---
 title: "Calendar module"
-description: "One person's calendar: the appointments the module owns, with recurrence, colleagues, customers' contacts and typed addresses on them and their answers; the invitations mailed to the people outside, the answer by link and the cancellation; the sources contract through which other modules project their rows; the window read in the viewer's zone; a colleague's busy and free; the dashboard's agenda; the permissions and the lock rules."
+description: "One person's calendar: the appointments the module owns, with recurrence, colleagues, customers' contacts and typed addresses on them and their answers; the invitations mailed to the people outside, the answer by link and the cancellation; the sources contract through which other modules project their rows; the window read in the viewer's zone; a colleague's busy and free; the dashboard's agenda; the calendar feed a phone subscribes to, in a full and a busy variant; the calendars from elsewhere a person subscribes to, fetched by a worker and parsed on read; the permissions and the lock rules."
 sources:
   - apps/server/internal/calendar
   - apps/calendar/frontend
   - openapi/calendar.yaml
+  - apps/server/internal/db/migrations/00055_calendar_baseline.sql
+  - apps/server/internal/db/migrations/00056_calendar_invitations.sql
+  - apps/server/internal/db/migrations/00057_calendar_feed.sql
 ---
 The Calendar module is one view of every time-bound thing Vantigo knows about one
 person — the follow-ups Customers holds for them, their absences in Staff, their tasks in
@@ -21,13 +24,21 @@ when they are wired — a customer's name, a contact's name and address and a cu
 contacts through `contracts.CustomerDirectory`, and a project's code and name through
 `contracts.ProjectDirectory`. It sends the invitations to the people outside the company
 through the installation's own mail configuration (`SMTP_FROM`), the way Staff sends its
-mails. `MODULES=calendar` alone is a valid installation: a calendar of appointments and
-public holidays, with colleagues and typed addresses on them. It provides no
-single-provider contract.
+mails. It fetches the calendars a person subscribes to from the internet through
+`internal/netguard`, the platform's guard on outbound addresses. `MODULES=calendar` alone
+is a valid installation: a calendar of appointments and public holidays, with colleagues
+and typed addresses on them. It provides no single-provider contract.
 What it shows from the other modules it never copies: it consumes the many-provider slot
 `CalendarSources`, through which each enabled module **projects** its own rows at read
 time, under its own permission, so a follow-up ticked in Customers is ticked on the
 calendar with nothing to synchronise. The one thing the module owns is the appointment.
+
+Two things go the other way. Each person may have a **calendar address** — the
+[feed](#the-feed) — that a phone or another calendar program subscribes to, in a full
+and a busy-only variant, behind a token hashed at rest: the module's one anonymous
+`GET`. And each person may **subscribe** to calendars from elsewhere —
+[subscriptions](#subscriptions) — which a worker fetches and the window shows beside
+their own, and which are never in their feed.
 
 This page grows with the module. What is here today: the [schema](#the-schema), the
 [permissions](#permissions), the [sources contract](#the-sources-contract) and its
@@ -44,14 +55,20 @@ agenda](#the-dashboards-agenda), [how a refusal looks](#refusals-and-revisions),
 company, the [three kinds of attendee](#three-kinds-of-attendee), the
 [invitations](#invitations) mailed to them, [the answer by link](#the-answer-by-link) and
 [the cancellation](#cancellation) a delete becomes once they have been told — and [what a
-colleague receives](#what-a-colleague-receives) instead.
+colleague receives](#what-a-colleague-receives) instead; and, beyond the app, [the
+feed](#the-feed) — its address, [what each variant carries](#what-the-two-variants-carry),
+[the iCalendar object](#the-icalendar-object) and [how it reads the
+providers](#reading-the-providers-for-the-feed) — and [subscriptions](#subscriptions), with
+[the worker](#the-subscriptions-worker) that fetches them and [how they are
+parsed](#parsed-on-read).
 
 ## The schema
 
-Two migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
-tables, and `00056_calendar_invitations.sql` adds the attendees from outside the company
-and the cancelled state. Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
-owner, an attendee, a customer, a project — is opaque: users, customers and projects
+Three migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
+tables, `00056_calendar_invitations.sql` adds the attendees from outside the company
+and the cancelled state, and `00057_calendar_feed.sql` adds the feed addresses and the
+subscriptions. Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
+owner, an attendee, a customer, a project, the holder of an address — is opaque: users, customers and projects
 live in other schemas and are read through contracts, never through SQL (see [module
 boundaries](/en/contributing/module-boundaries/) rule 4). No table has a CHECK
 constraint: the module's own validation owns the rules and reports them per field.
@@ -85,14 +102,35 @@ constraint: the module's own validation owns the rules and reports them per fiel
   appointment's zone, as the series made it), `cancelled`, the moved pair — `start_date`
   and `end_date` for an all-day series, `starts_at` and `ends_at` for a timed one — and
   the two stamps. `ux_appointment_exceptions` holds at most one exception per occurrence.
+- **`feed_tokens`** — one person's [calendar address](#the-feed) of one variant:
+  `user_id`, `variant` (`full` or `busy`), `token_sha256` (the token's hex SHA-256; the
+  token itself is never stored), `address_ciphertext` (the whole address, sealed under
+  `calendar/feed-address`), `created_at` (the create or the last reset) and
+  `last_used_at` (the last request that answered 200 or 304). The primary key
+  `(user_id, variant)` holds at most one address per person per variant, and
+  `ux_feed_tokens_hash` finds a request's row by its hash and keeps two addresses from
+  sharing one.
+- **`subscriptions`** — one calendar from elsewhere a person [subscribes
+  to](#subscriptions): `user_id`, `name` (100), `url` (2048, as typed, `webcal` and
+  `webcals` rewritten to `https`), `colour` (one of the [palette's](#the-rows-and-the-rules-at-write)
+  names), `busy_only`, and the worker's record of the last fetch — `etag` (500) and
+  `last_modified` (100), the validators sent back as `If-None-Match` and
+  `If-Modified-Since`; `body`, the last calendar fetched, at most 1 MiB and kept through
+  a failed attempt; `fetched_at`, the last attempt that answered a calendar or a 304;
+  `attempted_at`, the last attempt whatever it answered; `next_fetch_at`, when the
+  worker fetches next (null is now); and `error` (500), why the last attempt failed,
+  null after one that did not — and the two stamps. `ix_subscriptions_user` serves a
+  person's list and `ix_subscriptions_due` the worker's due list.
 
-The baseline's down migration drops the schema with everything in it.
+The baseline's down migration drops the schema with everything in it; `00057`'s drops
+the two tables, so every address stops answering and every subscription is forgotten —
+nothing of either was copied anywhere else.
 
 ## Permissions
 
 | Key | Name | Grants | Sensitive |
 | --- | --- | --- | --- |
-| `calendar:access` | Use Calendar | The calendar, one's own appointments and answers, the dashboard's agenda. **Every operation requires it**, but the two anonymous ones of [the answer by link](#the-answer-by-link). | no |
+| `calendar:access` | Use Calendar | The calendar, one's own appointments and answers, the dashboard's agenda, one's own calendar addresses and subscriptions. **Every operation requires it**, but the three anonymous ones: the two of [the answer by link](#the-answer-by-link) and [the feed's](#the-feed) `GET`. | no |
 | `calendar:view-colleagues` | See colleagues' calendars | [A colleague's calendar](#a-colleagues-calendar): their appointments as busy or free, with the title when it is shared. | no |
 
 Both are in the category "Calendar" and delegable. The Owner holds them through the
@@ -104,7 +142,9 @@ contract's `x-vantigo-access`; a caller without it gets the access layer's unifo
 
 `GET /meta` (`getCalendarMeta`) answers `canViewColleagues`, so the app never re-derives
 the rule, beside the business `timeZone`, `today` in it, the
-[sources](#the-kinds), and `invitationsAvailable` — whether the installation can mail an
+[sources](#the-kinds) — with `calendar.subscription` among them when the caller has at
+least one [subscription](#subscriptions), so the legend has its chip — and
+`invitationsAvailable` — whether the installation can mail an
 invitation at all ([without mail](#without-mail)).
 
 Inviting a customer's contact is judged by Customers' own keys, not the calendar's: a
@@ -167,7 +207,9 @@ answers nothing, not an error, when the caller lacks its permission. The calenda
 what comes back and never says what was withheld; re-stating the rule here would be a
 copy that drifts. The calendar passes the request's context, since
 `contracts.HasPermission` reads the request from it, and never calls a provider inside a
-transaction. Each provider is "mine" by construction — a calendar is a person's — so
+transaction. The one read with no request behind it is [the feed's](#reading-the-providers-for-the-feed):
+once its token has named the person, it asks the providers under `contracts.AsUser`, and
+each gate is answered by identity for that person as it would be for their session. Each provider is "mine" by construction — a calendar is a person's — so
 Time's and Expenses' "everyone's" keys widen nothing here, and Projects' view-all only
 widens which of the caller's *own* tasks are visible. No provider touches a table it does
 not own.
@@ -183,7 +225,10 @@ Five providers answer six kinds, each from a small file in its own module, each 
 module's own query. The table is in module order, the order `sources` lists them in and
 the order their items are added to the window. The calendar's own kind,
 `calendar.appointment`, is not a provider's and is never listed in `sources`, neither on
-`GET /meta` nor on `GET /items`.
+`GET /meta` nor on `GET /items`. Its other kind, `calendar.subscription` — the events of a
+[calendar subscribed to](#parsed-on-read) — is listed in `GET /meta`'s `sources`, with
+module `calendar`, when the caller has at least one subscription, and never in
+`GET /items`'.
 
 | Kind | The rows | The gate | Rendered | `path` |
 | --- | --- | --- | --- | --- |
@@ -924,7 +969,9 @@ window:
   (`calendar.appointment,projects.task`), so a caller that wants only appointments does
   not pay for five queries. A provider is asked only when one of its kinds is named, and
   the caller's appointments only when `calendar.appointment` is; a name no one declares
-  asks nothing, so a list of only such names answers no items. `kinds` narrows `items`
+  asks nothing, so a list of only such names answers no items. The caller's
+  [subscriptions](#parsed-on-read) are read only when `calendar.subscription` is named,
+  or `kinds` is absent. `kinds` narrows `items`
   alone: `sources` still lists every kind and `publicHolidays` is always answered. The
   filter in the app is the client's own and does not use it.
 
@@ -939,8 +986,9 @@ CalendarItems {
 }
 CalendarItem {
   kind, id, title, subtitle?, allDay, startDate?, endDate?, startsAt?, endsAt?, done,
-  path?,                               // a provider's record; absent on an appointment
-  appointment?: { id, occurrenceDate?, isOwner, myStatus?, visibility, transparency, recurring }
+  path?,                               // a provider's record; absent on an appointment and a subscription's item
+  appointment?: { id, occurrenceDate?, isOwner, myStatus?, visibility, transparency, recurring },
+  subscription?: { id, name, colour, busyOnly }   // kind calendar.subscription only
 }
 ```
 
@@ -952,7 +1000,8 @@ series is expanded in its own zone over the window, with its exceptions
 applied (a cancelled occurrence left out, a moved one at its new time). An appointment's
 item has no `path` — the app opens the sheet by `appointment.id` — and `done` is always
 false. Then each provider's `CalendarItems`, asked with the window and the zone, in
-module order. Then the public holidays.
+module order. Then the events of the caller's [subscriptions](#parsed-on-read), as last
+fetched. Then the public holidays.
 
 **The edges are judged in `timeZone`.** A timed item is in the window when its instants
 overlap `from` 00:00 to the end of `to` in that zone; an all-day one when its dates
@@ -988,8 +1037,9 @@ free ones and private titles included — though still with no provider's items,
 `sources` and no directory check, so the app need not treat it apart. A window the
 request cannot have is the same 400 "Invalid window" as on `GET /items`.
 
-No provider is asked: a colleague's follow-ups, tasks and hours are the other modules'
-data behind their own doors, and Staff already shows a colleague's days away on its own
+No provider is asked, and no subscription is read: a colleague's follow-ups, tasks and
+hours are the other modules' data behind their own doors, the calendars they subscribe to
+are theirs to read, and Staff already shows a colleague's days away on its own
 calendar to the audience it chooses. The one audience rule here is the permission:
 `calendar:view-colleagues` sees every active colleague this way, with no manager relation
 — the calendar has no org chart of its own and does not borrow Staff's, which may be off.
@@ -1012,6 +1062,380 @@ The **Needs attention** list keeps its dated items: a follow-up due and a task d
 there and also appear on the agenda. The list says "this needs you", the agenda says
 "when"; no module's `/stats/attention` changed for the calendar.
 
+## The feed
+
+A **calendar address** is a person's calendar as an iCalendar file at one URL, for a
+phone or another calendar program to subscribe to. It is read-only by nature: the
+program fetches it on its own schedule, and nothing is ever written back.
+
+### The address and its two variants
+
+A person has at most one address per **variant** ([`feed_tokens`](#the-schema)):
+
+- **`full`** — their calendar as they see it;
+- **`busy`** — its busy spans and nothing else, for a receptionist's or a partner's
+  calendar to subscribe to ([what each carries](#what-the-two-variants-carry)).
+
+The address is `<base>/api/v1/calendar/feed/<token>.ics`. The token is the pay link's and
+the answer link's: 32 random bytes, base64url without padding, 43 characters. The row
+keeps its hex SHA-256, by which a request is matched, and **never the token**; and it
+keeps the whole address **sealed** by the secrets box under the purpose
+`calendar/feed-address`, opened for its owner's own screen alone, so the screen can show
+it again — a person sets up their phone today and their laptop next month, and a secret
+they had to reset to see is one they would paste into a note. `<base>` is
+`PUBLIC_BASE_URL` when it is set, and `APP_URL` with `APP_BASE_PATH` otherwise —
+[the answer link's rule](#the-links-base): a phone off the company's network needs the
+public host, a laptop on it does not. The address is sealed whole when it is created, so
+a change of `PUBLIC_BASE_URL` reaches the addresses created or reset after it.
+
+Three operations manage the addresses, all `calendar:access`'s, each on the caller's own
+rows alone:
+
+- `GET /feed` (`getCalendarFeed`) answers both variants' addresses, for those that exist:
+
+  ```
+  FeedAddresses { public, addresses: [FeedAddress…] }   // full before busy; a variant without one absent
+  FeedAddress   { variant, address, webcalAddress, createdAt, lastUsedAt? }
+  ```
+
+  `public` says whether the base is `PUBLIC_BASE_URL`, reachable from the internet, or
+  `APP_URL`, which may answer on the company's network only; `webcalAddress` is the same
+  address with `webcal://` in place of `https://`, which Apple's and Outlook's programs
+  subscribe to in one click — the server serves `https` alone; `createdAt` is the create
+  or the last reset, and `lastUsedAt` the last request that answered 200 or 304.
+- `POST /feed/{file}` (`postCalendarFeedByVariant`), `file` the variant, **creates** the
+  address, or **resets** the one that exists: a new token, its hash written over the old
+  one — so the old address answers 404 from that moment — and the new address sealed. It
+  answers 200 with the `FeedAddress`.
+- `DELETE /feed/{file}` (`deleteCalendarFeedByVariant`) **turns off** that variant's
+  address and answers 204; the address answers 404 from that moment, and the other
+  variant's is untouched. A variant the caller has no address of is 404.
+
+**One path for the three.** The two writes take the variant in the segment the feed's
+`GET` takes the token in — all three are `/api/v1/calendar/feed/{file}` — since OpenAPI
+refuses two paths that differ only in a parameter's name. A `file` that is neither
+`full` nor `busy` is the bare 404 on both writes.
+
+### The one anonymous GET
+
+`GET /feed/{file}` (`getCalendarFeedByFile`), `file` the token with the `.ics` suffix, is
+the feed itself, and the module's one anonymous `GET`. Every other anonymous operation in
+Vantigo is a `POST` with its token in the body, so the token never sits in an API address
+or a proxy log; a calendar program allows nothing else — Google, Apple, Outlook and
+Thunderbird take one URL and `GET` it, with no header and no body of ours. It is held to
+these mitigations:
+
+- **The token is hashed at rest** and found by its hash; a read of the database answers
+  no address.
+- **It is per person and per variant, and resettable** in one click; a reset kills the
+  old address at once, and nothing but the calendar is behind it.
+- **It is rate limited per client address**: the policy `calendar-feed`, **120 requests
+  per 10 minutes**, counted before anything is read — a phone asks hourly, Google a few
+  times a day, and an office of phones behind one NAT is dozens an hour. Over it is the
+  limiter's 429 `rate_limited`, with `Retry-After`. Behind a reverse proxy the client
+  address is the proxy's unless `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` are set.
+- **A token nobody holds is the bare 404**, with no body — one never issued, one reset,
+  one turned off — and so is a `file` without the `.ics` suffix.
+- **The feed carries nothing the person's own calendar does not**, and the busy variant
+  nothing but spans, so a leaked full address reads that one calendar until it is reset,
+  and a leaked busy address the shape of the person's days.
+- **The path is logged, the query is not**, as for every request, and the token is the
+  path's last segment: the operator keeps the proxy's access log on the public host to
+  the path, or to nothing ([Calendar administration](/en/admin/calendar/#the-feed-on-the-public-host)).
+
+The platform router matches a parameter to a whole segment and nothing else, so
+`{token}.ics` cannot be a pattern: the handler takes the segment and requires the suffix.
+The route is on `security.PayRoutes()`, the public host's allowlist, as
+`GET /api/v1/calendar/feed/` with exactly one segment after it — not under `HEAD` or
+`POST`, not with a segment more — and no page goes with it: the address is pasted into a
+calendar program, not opened in a browser. A signed-in caller is answered alike, by the
+token and not the session. A request that answers 200 or 304 writes `last_used_at`.
+
+### What the two variants carry
+
+The window is **today −3 months to today +12 months**, today in the business zone
+(`contracts.BusinessCalendar`), its edges judged as [the window](#the-window) judges them
+with the business zone as the viewer's. A series is written as a rule, so the window does
+not bound a series: it decides which series are in. The items are the person's own as
+`GET /items` builds them — the appointments they own or are on, and the enabled
+providers' items under each provider's own gate ([below](#reading-the-providers-for-the-feed)) —
+and **never** a colleague's appointment, a cancelled one, a subscription's event or a
+public holiday: every phone has a holiday calendar, and a second copy is noise.
+
+| In the feed | `full` | `busy` |
+| --- | --- | --- |
+| An appointment the person owns, or is on with any answer but `declined` | its `VEVENT`: title, place, description, class, transparency, link, and a series' rule and exceptions | a `VEVENT` of its time alone, when its transparency is `busy`; a `free` one is left out |
+| An appointment the person declined | left out: they said no | left out |
+| A [cancelled](#cancellation) appointment | left out | left out |
+| A provider's **timed** item (hours with a start and an end, a trip) | a `VEVENT` with the title, the subtitle as `DESCRIPTION`, the module in `CATEGORIES` and the link in `URL`; a done one with `✓ ` before its title, since no client draws a strike | a `VEVENT` of its time alone |
+| A provider's **all-day** item (a follow-up, a task due, an absence) | the same, as dates (`VALUE=DATE`) | left out: a day with a task on it is not a day the person is busy |
+| A [subscription's](#subscriptions) event | never | never |
+| A public holiday | never | never |
+
+The busy variant's `VEVENT` is `UID`, `DTSTAMP`, `DTSTART`, `DTEND`, a `SUMMARY` of the one
+word *Busy* — *Opptatt* when the person's preferred language, read through the user
+directory, is `nb` — and `TRANSP:OPAQUE`; for a series, its `RRULE`, its `EXDATE`s and its
+overriding `VEVENT`s with the same `UID`, since a moved occurrence's time is a span too.
+No title, no place, no description, no category, no link, no class: nothing a reader
+could tell one block from another by.
+
+Neither variant writes `ORGANIZER` or `ATTENDEE`: the copy on a phone is read-only, and
+the appointment's sheet is where its owner reads who is on it. The `URL` is the app's own
+page: `APP_URL/calendar?date=<the first day>&appointment=<id>` for an appointment, as
+[a colleague's notice](#what-a-colleague-receives) carries it, and `APP_URL` with the
+provider's `path` for a projected item.
+
+**Size.** Fifteen months of one person's calendar is hundreds of `VEVENT`s; a heavy Time
+user's entries are the one thing that could reach the 1 MB a Google Calendar import
+takes. So the projected items are ordered by their distance from today, nearest first,
+and when the serialised calendar exceeds **1 MiB** the farthest quarter of them is
+dropped and the calendar serialised again, until it fits. The appointments are never
+dropped; a drop is logged at info with the person's id. The feed is not paged and has no
+other limit.
+
+### The iCalendar object
+
+The calendar is written with `arran4/golang-ical` through the writers of
+[the invitations' `VEVENT`](#the-vevent) (`ics.go`), generalised where the feed needs
+them and never copied:
+
+| Property | Value |
+| --- | --- |
+| `PRODID`, `VERSION` | the invitations' `PRODID`; `2.0` |
+| `METHOD` | none: a published calendar has none, and one makes Outlook treat the file as an invitation |
+| `NAME`, `X-WR-CALNAME` | *Vantigo*; for the busy variant *Vantigo (busy)*, or *Vantigo (opptatt)* in `nb` |
+| `REFRESH-INTERVAL;VALUE=DURATION`, `X-PUBLISHED-TTL` | `PT1H`: the two spellings of an hour's refresh that the clients honouring one read, Apple's the second |
+| `VTIMEZONE` | one per `TZID` used, each over the span of the series written in it ([a series](#a-series)), before the first `VEVENT` |
+| `DTSTART`, `DTEND` | a single timed appointment: UTC instants; a timed series: wall-clock with its zone's `TZID`; a timed projected item: UTC instants; an all-day item: dates, the end exclusive |
+| `DTSTAMP` | the request's time, on every `VEVENT` |
+| `UID`, `SEQUENCE` | an appointment's `ical_uid` and `sequence`; a projected item's `<kind>:<id>@vantigo` and `0` — stable across requests, so a client updates rather than duplicates |
+
+The answer is 200 with `Content-Type: text/calendar; charset=utf-8`,
+`Content-Disposition: inline; filename="vantigo.ics"`, `Cache-Control: private, no-cache`
+— a program may keep the calendar, and must ask again — and an **`ETag`**: the quoted hex
+SHA-256 of the serialised calendar with every `DTSTAMP` line removed, so an unchanged
+calendar keeps its tag from one hour to the next while `DTSTAMP` still says when it was
+written. An `If-None-Match` naming that tag, or `*`, is **304** with the same `ETag` and
+`Cache-Control` and no body — after the token was found and `last_used_at` written. There
+is no `Last-Modified`: a provider's items have no one time they changed at, and a tag that
+is right is better than a date that is a guess. A provider that fails, or runs out of
+time, makes the feed the [503](#refusals-and-revisions) "Calendar source unavailable", as
+it makes `GET /items`: a calendar with something missing is never served.
+
+### Reading the providers for the feed
+
+A provider's gate is `contracts.HasPermission(ctx, Access, key)`, which asks
+`Access.Check` about the session of the request in `ctx`. The feed's request has no
+session — its caller is a calendar program holding a token — so the providers would
+answer it nothing; and skipping their gates would show a person their tasks on their
+phone after `projects:access` was taken from them. The gate stays the provider's, and
+identity still answers it, through one seam of the contracts in two parts:
+
+```go
+// Access
+// UserHolds reports whether userID — active, not locked out — holds every key:
+// an owner holds all, anyone else each through an effective role. It is for a
+// read made on a user's behalf where there is no request to check: the
+// calendar feed. Any failure is an error, never a false.
+UserHolds(ctx context.Context, userID uuid.UUID, keys ...string) (bool, error)
+
+// AsUser is the context of a read on one user's behalf with no request behind
+// it: a Principal of that id alone — no session, no roles — and the mark
+// HasPermission reads.
+func AsUser(ctx context.Context, userID uuid.UUID) context.Context
+```
+
+`HasPermissions` (and so `HasPermission`) has two rules, in order: a request in `ctx` is
+checked through `Check`, as the router checks it, whatever else `ctx` carries; with no
+request but the `AsUser` mark, the keys are asked of `UserHolds` for that user, in one
+question. Anything else is false, and so is any failure. Identity answers `UserHolds`
+from what its session check reads: the user's `is_disabled` and `lockout_end`, a pending
+user — invited, never signed in — holding nothing, the Owner role holding everything,
+and `EffectivePermissionForUser` per key. The rule that holds an Owner to a second factor
+is not applied: it is a rule about a session, and there is none. A user who does not
+exist holds nothing, and naming no key is false.
+
+Once the token has named the person, the feed asks the providers under
+`AsUser(ctx, userID)`, on a context that does not carry the anonymous request — whose
+session `Check` would judge first, and find none — through the same accessor and under
+the same ten-second budget `GET /items` uses, with the person's id as the query's
+`UserID`, so the module's own check that the principal is the person the query names
+holds as it does there. A provider is asked exactly as it would be for the person's own
+session, and answers nothing once they no longer hold its key. A module uses `AsUser`
+only for a read whose caller is a token it has already matched to that user, never to
+widen a request ([module boundaries](/en/contributing/module-boundaries/) rule 12).
+
+## Subscriptions
+
+A person may subscribe to calendars from elsewhere — a school's, a club's, the secret
+address of their own Google calendar — which the module fetches, keeps as last fetched
+and shows beside their own calendar.
+
+### The rows and the rules at write
+
+Five operations, all `calendar:access`'s, all on the caller's own rows — another
+person's subscription is the bare 404 an unknown id gets:
+
+| Operation | Does |
+| --- | --- |
+| `GET /subscriptions` (`getCalendarSubscriptions`) | the caller's subscriptions, by name |
+| `POST /subscriptions` (`postCalendarSubscriptions`) | subscribes, fetches once, and answers 201 with the row |
+| `PUT /subscriptions/{id}` (`putCalendarSubscriptionsById`) | replaces one whole and answers 200 with the row |
+| `DELETE /subscriptions/{id}` (`deleteCalendarSubscriptionsById`) | removes one, 204; its events are gone from the next read |
+| `POST /subscriptions/{id}/refresh` (`postCalendarSubscriptionsByIdRefresh`) | fetches one now — the screen's **Refresh now** — and answers 200 with the row as the fetch left it |
+
+```
+CalendarSubscription {
+  id, name, url, colour, busyOnly,
+  fetchedAt?, attemptedAt?, error?,   // the record of the last fetch
+  createdAt, updatedAt
+}
+CalendarSubscriptionWrite { name, url, colour, busyOnly }
+```
+
+The rules at write, each a field error: `name` 1 to 100 characters; `url` at most 2048
+characters, absolute, with a scheme of `https`, `http`, `webcal` or `webcals` — the last
+two stored as `https`, since they are the same thing in a program's address bar — a host
+that is not empty and not an IP literal [the guard](#the-fetch) refuses, and no user
+name or password, which would be written to the row and the log; `colour` one of the
+palette's twelve names — `blue`, `cyan`, `teal`, `green`, `lime`, `yellow`, `orange`,
+`red`, `pink`, `grape`, `violet`, `indigo`, each a `--vantigo-calendar-<name>` variable in
+the app, so a subscription's events follow the colour scheme as a module's items do;
+`busyOnly` a boolean. The **eleventh** subscription is 409 `subscription_limit`: ten
+calendars beside one's own is more than anyone reads, and each is a fetch every half
+hour. There is no `revision` and no `If-Match`: the row is the person's own and small,
+and the last write wins.
+
+**The inline fetch.** A `POST` fetches the address **once before it answers**, under a
+budget of twenty seconds and through [the same fetch](#the-fetch) as the worker, so a
+wrong address is seen at once and a right one shows its events at the next load rather
+than after the worker's next cycle. The row is created whatever the fetch answers, with
+`error` set when it failed: a failed fetch is not an error of the request. A `PUT` that
+changes `url` forgets every fetch of the old one — `etag`, `last_modified`, `body` and the
+timestamps — and fetches inline too; one that changes only the rest fetches nothing.
+`POST /refresh` fetches under the same budget, and so does a save, whether or not the
+worker is on.
+
+### The subscriptions worker
+
+The **`calendar-subscriptions`** worker keeps the subscriptions fresh. It is contributed
+through `Workers` behind `CALENDAR_SUBSCRIPTIONS_ENABLED` (default on), and
+`CALENDAR_SUBSCRIPTIONS_POLL` (default `30m`, at least `5m`) is how often each
+subscription is fetched. It **wakes every five minutes** — a constant, not a setting —
+takes its advisory lease, `0x43414C5355425331` ("CALSUBS1"), on one pooled connection as
+[the cancellations worker](#the-cancellations-worker) does, so several replicas take
+turns, and fetches every subscription whose `next_fetch_at` is null or past, the longest
+due first, at most **200** a cycle, one at a time. After each attempt it sets
+
+```
+next_fetch_at = now + max(poll, the feed's REFRESH-INTERVAL, capped at 24 hours) + jitter
+```
+
+the jitter uniform over `[0, poll/10)`, so two installations subscribed to the same
+calendar drift apart, and a feed that asks to be read daily is read daily; the
+five-minute tick is the most a subscription is late. An attempt that fails sets `error`
+and `attempted_at` and leaves `body`, `fetched_at` and the validators as they were, so the
+calendar keeps showing the last good read and the screen says both when it last worked
+and why it does not now. The next attempt is the next one due, with no backoff: a feed
+down for an hour costs two requests. Turned off, the worker fetches nothing and every
+subscription shows its last read; a save and **Refresh now** still fetch.
+
+#### The fetch
+
+One `GET` through an `http.Client` of the module's own:
+
+- its dialler is `netguard.DialContext` over the system resolver: the host is resolved,
+  every address checked against the platform's one table of forbidden ranges — private,
+  loopback, link-local, carrier-grade NAT and cloud metadata — and the connection made to
+  the address that was checked, not to a fresh lookup;
+- `Proxy` is nil, the Peppol lookup's reasoning: a proxy would send the request to an
+  address the guard never saw;
+- **no redirect is followed** (`CheckRedirect` answers `http.ErrUseLastResponse`): the
+  next address is one neither the guard nor the person saw;
+- the request carries `User-Agent: Vantigo-Calendar`, `Accept: text/calendar`, and
+  `If-None-Match` and `If-Modified-Since` from the row when it has them;
+- the budget is **twenty seconds**, the response's headers are capped at 64 KiB, and the
+  body is read through a limit of **1 MiB** plus one byte.
+
+A 2xx with a calendar writes `body`, the new validators and `fetched_at`; a 304 writes
+`fetched_at` alone; either clears `error`. Every other outcome is a failure, recorded as
+one sentence in `error`:
+
+| Outcome | `error` |
+| --- | --- |
+| a 3xx | "the address redirects; subscribe to the address it points at" |
+| a body over 1 MiB — not kept | "the calendar is larger than 1 MiB" |
+| a 2xx whose body does not begin, after blank lines, with `BEGIN:VCALENDAR`, or that does not parse | "the address did not answer a calendar" |
+| any other status | "the address answered <status>", the code and its standard text (`404 Not Found`), never the server's own reason phrase |
+| a dial the guard refused | "the address is not one Vantigo may fetch" |
+| no answer within the budget | "the address did not answer in time" |
+| any other failure to connect — a name that does not resolve, a connection refused | "the address could not be reached" |
+
+The error is the sentence, never the response's body or the address the host resolved
+to. The log carries the subscription's id and the error at warning, and nothing of the
+URL beyond its host.
+
+### Parsed on read
+
+`GET /items` reads the bodies of the caller's subscriptions after the providers' items
+and before the public holidays, parses each with golang-ical, and answers every `VEVENT`
+that overlaps the window as a `CalendarItem` of **kind `calendar.subscription`**, module
+`calendar`:
+
+- `id` is `<subscription id>:<UID>`, with `:<start>` after it for an occurrence of a rule
+  — `20261103T080000Z`, or the date for an all-day one;
+- `title` is the event's `SUMMARY`, `subtitle` the subscription's name, and `done` false;
+- there is no `path`: the event's `URL` is the other calendar's and is not followed, so a
+  click on one opens nothing;
+- `subscription: { id, name, colour, busyOnly }` is what the app draws it by;
+- a **busy-only** subscription's item has an empty `title`, which the app labels *Busy*,
+  as it does a colleague's private appointment.
+
+No description reaches the wire, in either case. The parse rules:
+
+- **Time.** A `DTSTART` with `VALUE=DATE` is all-day; `DTEND` (exclusive) or `DURATION`
+  gives its last day, and neither gives one day. A `DTSTART` ending in `Z` is an instant;
+  one with a `TZID` is wall-clock in that zone; one with neither is *floating*, read in
+  the request's `timeZone`. `DTEND` or `DURATION` gives the end; neither gives a point
+  (`endsAt` equal to `startsAt`, drawn at the default length), and so does an end before
+  its start.
+- **`TZID`**, resolved in order: Go's tzdata by that name; the `X-LIC-LOCATION` of the
+  calendar's `VTIMEZONE` of that `TZID` (libical's and Google's hint), when it names a
+  zone Go knows; the CLDR `windowsZones` table — its territory-001 entries, about 140, in
+  `windowszones.go` — for a Windows name such as `W. Europe Standard Time`, which Outlook
+  writes; the `TZOFFSETTO` of that `VTIMEZONE`'s `STANDARD` component as a fixed offset —
+  right in winter and an hour off in summer, which is still better than a day off; and
+  UTC when there is nothing. Each fallback is logged at debug, once per subscription per
+  read.
+- **Recurrence.** `RRULE` is expanded with rrule-go over the window widened by a year
+  back, `DTSTART` dressed as floating in the resolved zone and each occurrence put back
+  into it — [the module's own way](#expansion-in-the-zone), so a 09:00 stays 09:00 across
+  the clock change; `EXDATE`s remove occurrences; a `VEVENT` with a `RECURRENCE-ID`
+  replaces the occurrence at that instant of the master with the same `UID`, wherever it
+  moved to. `RDATE` is not read. A rule rrule-go refuses, or one without a `DTSTART`,
+  makes the event a single one at its start.
+- **Caps.** At most **1,000** occurrences are taken from one rule and **5,000** items from
+  one subscription in one read, nearest the window's start first; the rest are dropped
+  with a log line.
+- **Status.** `STATUS:CANCELLED` is left out. `TRANSP` and `CLASS` are not read: a
+  subscription is not a colleague, and the person subscribed to it.
+- **Text.** `SUMMARY` is unescaped (`\,`, `\;`, `\n`, `\\`) and cut to one line of 200
+  characters; an event without one is titled *(untitled)* in the caller's language. The
+  busy-only rule overrides both.
+- **A body that does not parse** contributes nothing now, and is the fetch's error at the
+  next fetch.
+
+[A colleague's calendar](#a-colleagues-calendar) reads no subscription, as it asks no
+provider.
+
+### Never in the person's own feed
+
+[The feed](#what-the-two-variants-carry) is built from the appointments and the
+providers, and a subscription is neither; nothing of a subscription is ever reconciled
+into the module's tables. Two people subscribed to each other's feeds would otherwise
+copy each other's calendars back and forth for ever — and so a subscription's body never
+leaves the installation.
+
 ## Refusals and revisions
 
 Every refusal of the module's own is an RFC 9457 problem, `CalendarProblem`: `title`,
@@ -1019,28 +1443,32 @@ Every refusal of the module's own is an RFC 9457 problem, `CalendarProblem`: `ti
 the words. A 400 carries `errors`, the field errors keyed by the request's camelCase
 field, a nested one by its path and a list element by its place: `startsAt`,
 `recurrence.rule`, `attendees[0]`. Its `title` says what was refused — "Invalid
-appointment", "Invalid occurrence", "Invalid response", "Invalid window" or "Invalid
-query parameters" — so a client can tell them apart without reading the field errors. A
+appointment", "Invalid occurrence", "Invalid response", "Invalid window", "Invalid
+query parameters" or "Invalid subscription" — so a client can tell them apart without reading the field errors. A
 request the server cannot decode — a body that is not JSON, a date parameter that is not
 a date, a missing `If-Match` — is a bare 400 with neither `code` nor `errors`.
 
 | Code | Status | When |
 | --- | --- | --- |
-| *(field errors)* | 400 | "Invalid appointment": a body that breaks a rule above — the title, the wrong pair or a missing field, an end before the start, a span too long, a zone either check refuses, a visibility or transparency that is not one, a rule outside the subset, over 500 characters or not producing the start, more than 50 distinct attendees, an attendee whose fields do not match its kind, a colleague who is unknown, inactive or the owner, a contact the directory does not answer or that has no address, a contact named by a writer without `customers:contacts-view`, an address that is not one, a description or location too long — or an `If-Match` that holds no revision (the field error on `If-Match`). "Invalid occurrence": an occurrence `PUT` whose `date` is more than ten years from today, or on an appointment that does not recur (both on `date`), or a body that is both or neither of cancelled and moved (on `cancelled`), or a move that breaks the span rules. "Invalid response": a `status` that is not an answer. "Invalid window": `to` before `from`, over 93 days, `from` or `to` more than ten years from today, or a `timeZone` either check refuses. "Invalid query parameters": a `limit` on `GET /users` outside 1 to 50. |
+| *(field errors)* | 400 | "Invalid appointment": a body that breaks a rule above — the title, the wrong pair or a missing field, an end before the start, a span too long, a zone either check refuses, a visibility or transparency that is not one, a rule outside the subset, over 500 characters or not producing the start, more than 50 distinct attendees, an attendee whose fields do not match its kind, a colleague who is unknown, inactive or the owner, a contact the directory does not answer or that has no address, a contact named by a writer without `customers:contacts-view`, an address that is not one, a description or location too long — or an `If-Match` that holds no revision (the field error on `If-Match`). "Invalid occurrence": an occurrence `PUT` whose `date` is more than ten years from today, or on an appointment that does not recur (both on `date`), or a body that is both or neither of cancelled and moved (on `cancelled`), or a move that breaks the span rules. "Invalid response": a `status` that is not an answer. "Invalid window": `to` before `from`, over 93 days, `from` or `to` more than ten years from today, or a `timeZone` either check refuses. "Invalid query parameters": a `limit` on `GET /users` outside 1 to 50. "Invalid subscription": a subscription's `POST` or `PUT` that breaks [the rules at write](#the-rows-and-the-rules-at-write) — the name, the address, the colour — with the field error on that field. |
 | `revision_mismatch` | 409 | A `PUT /appointments/{id}` whose `If-Match` revision has moved on. The detail names both revisions. |
 | `occurrence_not_in_series` | 409 | `PUT /appointments/{id}/occurrences/{date}` for a date the series' rule never produces. |
 | `appointment_cancelled` | 409 | Any write to a [cancelled](#cancellation) appointment — a `PUT`, a `DELETE`, an occurrence's `PUT` or `DELETE`, a colleague's answer, a resend — and an answer by the link (`POST /rsvp`). |
 | `invitations_unavailable` | 503 | `POST /appointments/{id}/attendees/{attendeeId}/resend` when the mail driver is not `smtp`. |
+| `subscription_limit` | 409 | `POST /subscriptions` when the caller has ten subscriptions already. |
 | — | 403 | `GET /contacts` without `customers:contacts-view` and `customers:associations-view`. |
-| — | 429 | `POST /rsvp/read` over 60, or `POST /rsvp` over 30, per client address in 10 minutes: the limiter's `rate_limited`, with `Retry-After`. |
-| — | 503 | `GET /items` when a calendar source failed or ran out of time: "Calendar source unavailable", naming no module. |
+| — | 429 | `POST /rsvp/read` over 60, `POST /rsvp` over 30, or the feed's `GET /feed/{file}` over 120, per client address in 10 minutes: the limiter's `rate_limited`, with `Retry-After`. |
+| — | 503 | `GET /items`, and the feed's `GET /feed/{file}`, when a calendar source failed or ran out of time: "Calendar source unavailable", naming no module. |
 
 **A 404 is bare, with no body**, and says nothing more than "not for you": an unknown
 appointment, one the caller neither owns nor attends (a read), one the caller does not
 own (a change, a delete, an occurrence, a resend), one the caller does not attend (an
 answer), a colleague who is not an active user, an attendee to resend who is not an
 outside one on the appointment, a customer the directory does not know (`GET /contacts`),
-and a token no attendee holds (the two anonymous operations). The uniform 403 is the access layer's.
+a token no attendee holds (the two anonymous operations of the answer by link), a feed
+`file` that no address holds or that does not end in `.ics`, a variant that is neither
+`full` nor `busy` or that the caller has no address of (the feed's writes), and a
+subscription that is unknown or another person's. The uniform 403 is the access layer's.
 
 `revision` starts at 1 and moves on with every write of the appointment itself: each
 `PUT`, and an exception written or removed. An attendee's answer is not one: it moves
@@ -1070,6 +1498,9 @@ appointment again.
   takes the appointment's row `FOR UPDATE` (`withLockedTx`); the revision, the attendees'
   reset, the dropped exceptions and the occurrence's place in the series are judged
   under it. Nothing locks two appointments.
+- **No fetch inside a transaction.** A subscription's fetch — a save's, **Refresh now**'s
+  or the worker's — is made with no transaction of the module's open, and its outcome is
+  written to the row after it, so a slow calendar elsewhere never holds a lock here.
 
 ## Endpoints
 
@@ -1090,8 +1521,14 @@ All under `/api/v1/calendar`.
 | `GET /colleagues/{userId}/items` | `calendar:access` and `calendar:view-colleagues`; then an active user (otherwise 404) |
 | `POST /rsvp/read` | `anonymous`; 60 per 10 minutes per client address |
 | `POST /rsvp` | `anonymous`; 30 per 10 minutes per client address |
+| `GET /feed` | `calendar:access`; the caller's own addresses |
+| `POST /feed/{file}`, `DELETE /feed/{file}` | `calendar:access`; `file` the variant, `full` or `busy` (otherwise 404); the caller's own address |
+| `GET /feed/{file}` | `anonymous`; `file` the token with `.ics`; 120 per 10 minutes per client address (`calendar-feed`) |
+| `GET /subscriptions`, `POST /subscriptions` | `calendar:access`; the caller's own |
+| `PUT /subscriptions/{id}`, `DELETE /subscriptions/{id}` | `calendar:access`, then the caller's own (otherwise 404) |
+| `POST /subscriptions/{id}/refresh` | `calendar:access`, then the caller's own (otherwise 404) |
 
-Every operation requires `calendar:access` but the two `anonymous` ones, which the token
+Every operation requires `calendar:access` but the three `anonymous` ones, which the token
 alone admits. The request and response shapes are in the
 contract, [`openapi/calendar.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/calendar.yaml),
 and in the API reference generated from it.

@@ -1,6 +1,6 @@
 ---
 title: Kalender
-description: Slå på Kalender og gi folk de to rettighetene; hva invitasjoner til folk utenfor bedriften trenger — SMTP-driveren, et avsenderdomene med SPF, DKIM og DMARC, den offentlige verten og de tre rutene dens; avlysningsarbeideren og de to innstillingene dens; hvordan du sjekker at en invitasjon gikk, og hva som kan gå galt.
+description: Slå på Kalender og gi folk de to rettighetene; hva invitasjoner til folk utenfor bedriften trenger — SMTP-driveren, et avsenderdomene med SPF, DKIM og DMARC, den offentlige verten og rutene dens; kalenderstrømmen på den offentlige verten, grensen for den og proxyens logg; avlysnings- og abonnementsarbeideren og innstillingene deres, og hva Vantigo henter fra internett; hvordan du sjekker at en invitasjon gikk og at strømmen svarer, og hva som kan gå galt.
 sidebar:
   order: 45
 sources:
@@ -8,12 +8,18 @@ sources:
   - apps/server/internal/calendar/rsvp.go
   - apps/server/internal/calendar/cancellations_worker.go
   - apps/server/internal/calendar/module.go
+  - apps/server/internal/calendar/feed.go
+  - apps/server/internal/calendar/feed_tokens.go
+  - apps/server/internal/calendar/subscriptions_worker.go
+  - apps/server/internal/calendar/subscriptions_fetch.go
 ---
 
 Kalender er én oversikt over dagene til hver person: avtalene de lager, med kolleger,
 kunders kontaktpersoner og andre på, ved siden av det de andre modulene vet om dem.
 Denne siden er driftssiden: å slå modulen på, hva invitasjonene til folk utenfor
-bedriften trenger, og arbeideren som rydder opp etter en avlysning. Hva modulen gjør og
+bedriften trenger, arbeideren som rydder opp etter en avlysning, kalenderstrømmen en
+mobil abonnerer på, og arbeideren som henter kalenderne folk abonnerer på fra andre
+steder. Hva modulen gjør og
 reglene den sjekker, står i [referansen](/en/reference/calendar/); hva en person gjør på
 skjermbildene, står i [brukerveiledningen](/nb/user/calendar/).
 
@@ -27,7 +33,9 @@ skjermbildene, står i [brukerveiledningen](/nb/user/calendar/).
   senere trenger ingen migrering. En applikasjonsrolle med minst mulig rettigheter
   trenger `calendar`-skjemaet tildelt som alle de andre
   ([Installasjon](/nb/admin/installation/)).
-- Kalender har ingen egne innstillinger. De to rettighetene er `calendar:access`, for å
+- Kalender har ingen egne innstillinger for arbeidsområdet: kalenderadressene og
+  abonnementene til hver person er deres egne, på skjermbildet **Min kalender**. De to
+  rettighetene er `calendar:access`, for å
   bruke den, og `calendar:view-colleagues`, for å se når kolleger er opptatt og ledige,
   som et arbeidsområde som vil at alle skal se hverandres, gir til ansattrollen
   ([Permissions](/en/reference/calendar/#permissions)).
@@ -90,16 +98,18 @@ e-postkonfigurasjon; ingenting her har en egen innstilling.
    gjør for betalingslenkens. En lenke er fast fra personen legges til på en avtale, så
    sett `PUBLIC_BASE_URL` før folk begynner å invitere.
 
-### De tre rutene på den offentlige verten
+### Rutene på den offentlige verten
 
 På den offentlige verten serverer Vantigo svarsiden ved siden av betalingssiden, og
-ingenting annet av kalenderen:
+[kalenderstrømmen](#kalenderstrømmen-på-den-offentlige-verten), og ingenting annet av
+kalenderen:
 
 | Metode | Sti |
 | --- | --- |
 | `GET`, `HEAD` | `/rsvp` (svarsiden; hvilken som helst spørrestreng) |
 | `POST` | `/api/v1/calendar/rsvp/read` (sidens lesing; tokenet i kroppen) |
 | `POST` | `/api/v1/calendar/rsvp` (svaret) |
+| `GET` | `/api/v1/calendar/feed/{token}.ics` (en kalenderadresse; nøyaktig ett segment) |
 
 De to operasjonene er anonyme og begrenset per klientadresse — 60 lesinger og 30 svar
 på ti minutter — så bak en proxy må `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` nevne
@@ -143,6 +153,68 @@ tretti sekunder til sammen; invitasjonene som ikke er nådd da, merkes
 **Sending mislyktes**, og selve lagringen feiler aldri på grunn av e-posten. En melding
 til arrangøren om et svar har ti sekunder.
 
+## Kalenderstrømmen på den offentlige verten
+
+Hver person kan lage en **kalenderadresse** på skjermbildet **Min kalender** — en full og
+en med bare opptatt — som mobilen, Google Kalender eller Outlook abonnerer på
+([the feed](/en/reference/calendar/#the-feed)). Et kalenderprogram tar én adresse og
+gjør en `GET` mot den, uten noe fra Vantigo, så dette er den ene anonyme `GET`-en i
+Vantigo med tokenet i stien:
+
+| Metode | Sti |
+| --- | --- |
+| `GET` | `/api/v1/calendar/feed/{token}.ics` |
+
+Den står på listen til den offentlige verten ved siden av rutene til svarsiden
+([rutene på den offentlige verten](#rutene-på-den-offentlige-verten)), bare under `GET` og
+med nøyaktig ett segment etter `/feed/`. Et token ingen har — aldri utstedt,
+tilbakestilt eller slått av — er en naken 404.
+
+### Hva den trenger
+
+1. **Basen.** Adressen er `PUBLIC_BASE_URL/api/v1/calendar/feed/<token>.ics` når
+   `PUBLIC_BASE_URL` er satt, og på `APP_URL` (med `APP_BASE_PATH`) ellers. En mobil
+   utenfor bedriftens nettverk trenger den offentlige verten; en bærbar på nettverket
+   gjør ikke det. Uten en offentlig vert sier skjermbildet til personen *«Denne adressen
+   virker bare på bedriftens nettverk.»* En adresse er fast fra den lages, så sett
+   `PUBLIC_BASE_URL` før folk lager sine; en som ble laget før, må **Tilbakestilles** for
+   å flytte til den offentlige verten.
+2. **Proxyen, som for svarsiden.** Strømmen er begrenset per klientadresse —
+   `calendar-feed`, **120 forespørsler per 10 minutter** — som en mobil som spør hver
+   time, eller et kontor fullt av mobiler bak én NAT, holder seg godt under. Bak en proxy
+   må `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` nevne den, ellers deler alle mobiler
+   proxyens ene bøtte ([Videresendte headere og
+   HTTPS](/nb/admin/authentication/#videresendte-headere-og-https)).
+3. **Proxyens tilgangslogg.** Tokenet er stiens siste segment, ikke en spørrestreng:
+   Vantigo logger stien til hver forespørsel, og det gjør en proxy også. **Hold proxyens
+   tilgangslogg på den offentlige verten til stien uten strømmens siste segment, eller
+   til ingenting**, og begrens hvem som leser Vantigos egen forespørselslogg, som skriver
+   stien. Et token i en logg er lesetilgang til den personens kalender til de
+   tilbakestiller det.
+
+### Kontroller strømmen
+
+1. **Lag en adresse.** Logg inn, åpne **Kalender → Min kalender**, trykk **Lag adresse**
+   under **Hele kalenderen**, og **Kopier**.
+2. **Hent den** fra utenfor bedriftens nettverk:
+
+   ```sh
+   curl -i 'https://pay.example.com/api/v1/calendar/feed/<token>.ics'
+   ```
+
+   Den svarer 200 med `Content-Type: text/calendar; charset=utf-8`, en `ETag` og
+   `Cache-Control: private, no-cache`, og en kropp som begynner med `BEGIN:VCALENDAR`.
+3. **Hent den igjen med taggen:**
+
+   ```sh
+   curl -i -H 'If-None-Match: "<ETag-en>"' 'https://pay.example.com/api/v1/calendar/feed/<token>.ics'
+   ```
+
+   Den svarer 304 uten kropp. Skjermbildet viser nå når adressen sist ble lest.
+4. **Et feil token** — endre ett tegn — svarer 404, og det gjør adressen også etter en
+   **Tilbakestill**.
+5. **Proxyens logg** inneholder ikke noe token for disse forespørslene.
+
 ## Avlysningsarbeideren
 
 Når en avtale som noen utenfor bedriften har fått invitasjon til, slettes, fjernes den
@@ -171,6 +243,62 @@ er på igjen — i ingens kalender, men én rad hver.
 | `CALENDAR_CANCELLATIONS_ENABLED` | Av/på-bryter for arbeideren `calendar-cancellations` | `1` |
 | `CALENDAR_WORKERS_POLL` | Hvor ofte kalenderens arbeidere ser etter; en varighet på minst `1m` | `1h` |
 
+## Abonnementsarbeideren
+
+En person kan abonnere på kalendere fra andre steder på skjermbildet **Min kalender** —
+høyst ti hver — og se hendelsene deres ved siden av sine egne
+([subscriptions](/en/reference/calendar/#subscriptions)). Arbeideren
+`calendar-subscriptions` henter dem. Den kjører med mindre
+`CALENDAR_SUBSCRIPTIONS_ENABLED=0`, i worker-modus, og i api-modus med
+`WORKERS_IN_PROCESS=1`. Den **våkner hvert femte minutt** — ikke en innstilling — tar en
+rådgivende lås så flere replikaer bytter på, og henter hvert abonnement som er forfalt,
+høyst 200 per runde, ett om gangen. Hvert abonnement forfaller
+`CALENDAR_SUBSCRIPTIONS_POLL` (standard `30m`, minst `5m`) etter forrige henting, eller
+senere når kalenderen selv ber om å bli lest sjeldnere (høyst én gang i døgnet), pluss
+litt tilfeldig slingring. En henting som feiler, beholder kalenderens siste gode kopi og
+skriver ned grunnen, og neste forfalte henting prøver igjen, uten å vente lenger. Slått
+av hentes ingenting i bakgrunnen, og hvert abonnement viser det det sist leste; å lagre
+et, eller **Oppdater nå**, henter det likevel én gang.
+
+### Hva Vantigo henter fra internett
+
+Arbeideren, en lagring og **Oppdater nå** henter **adressene folk abonnerer på**, og
+ingenting annet: én `GET` hver, `User-Agent: Vantigo-Calendar`, sendt rett fra
+Vantigo-containeren, gjennom den samme adressevakten som e-post og Peppol-oppslaget:
+
+- verten slås opp og hver adresse kontrolleres: **ingen privat adresse, loopback,
+  link-local, carrier-grade NAT eller sky-metadataadresse** ringes opp, og tilkoblingen
+  går til adressen som ble kontrollert, så DNS rebinding ikke kan snu den innover;
+- **ingen videresending følges** — en 3xx er en feil personen ser;
+- **høyst 1 MiB** leses, og hentingen har **20 sekunder**;
+- det er **ingen utgående proxy**: en `HTTPS_PROXY` brukes ikke, siden en proxy ville
+  sendt forespørselen til en adresse vakten aldri så. En installasjon der containerne
+  bare når internett gjennom en proxy, kan ikke hente abonnementer.
+
+En adresse en person skriver inn, avvises ved lagring når verten er en adresse vakten
+forbyr, eller når den har med et brukernavn eller passord.
+
+### Hva loggen sier
+
+Hver henting som feiler, logges som advarsel med abonnementets id og grunnen, og
+ingenting av adressen utover verten; personen ser den samme grunnen på raden sin.
+Grunnene er én setning hver, på engelsk:
+
+| Grunn | Betyr |
+| --- | --- |
+| the address redirects; subscribe to the address it points at | nettstedet svarte 3xx; personen må bruke adressen den peker på |
+| the calendar is larger than 1 MiB | kalenderen er for stor til å beholdes; den siste gode kopien blir stående |
+| the address did not answer a calendar | en 2xx som ikke er en iCalendar-fil — som regel en nettside |
+| the address answered <status> (som `404 Not Found`) | enhver annen status: 404 for en fjernet kalender, 401 eller 403 for en som krever en innlogging Vantigo ikke gjør |
+| the address is not one Vantigo may fetch | verten slås opp til en adresse vakten forbyr |
+| the address did not answer in time | ikke noe svar innen 20 sekunder |
+| the address could not be reached | navnet kunne ikke slås opp, tilkoblingen ble avvist, eller det er ingen vei ut |
+
+| Variabel | Formål | Standard |
+| --- | --- | --- |
+| `CALENDAR_SUBSCRIPTIONS_ENABLED` | Av/på-bryter for arbeideren `calendar-subscriptions` | `1` |
+| `CALENDAR_SUBSCRIPTIONS_POLL` | Hvor ofte hvert abonnement hentes; en varighet på minst `5m` | `30m` |
+
 ## Nøkkelmateriale
 
 Svarlenkene lagres forseglet under en nøkkel avledet fra `APP_SECRET` (formålet
@@ -181,6 +309,13 @@ en oppdatering eller **Send på nytt** til en deltaker som ble lagt til før rot
 feiler og viser **Sending mislyktes**; ta dem av avtalen og legg dem til igjen for en ny
 lenke
 ([Nøkkelmateriale](/nb/admin/authentication/#nøkkelmateriale)).
+
+Kalenderadressene lagres forseglet på samme måte, under formålet
+`calendar/feed-address`, så skjermbildet **Min kalender** kan vise en persons adresse
+igjen. Etter en rotasjon kan skjermbildet ikke åpne dem og viser ingen adresse, men hver
+adresse virker fortsatt — en forespørsel matches mot tokenets vanlige hash, som ikke
+trenger noen nøkkel — så mobilene fortsetter å oppdatere. En person som trenger å se
+adressen sin igjen, trykker **Tilbakestill** og gir programmene sine den nye.
 
 ## Hva som kan gå galt
 
@@ -219,3 +354,23 @@ lenke
   arbeideren er av (`CALENDAR_CANCELLATIONS_ENABLED=0`).
 - **`CALENDAR_WORKERS_POLL` avvist ved oppstart.** Den er ikke en varighet, eller er
   under ett minutt.
+- **En mobil oppdaterer aldri.** Klienten bestemmer når den oppdaterer — Apple Kalender
+  slik det er stilt inn på enheten, Outlook omtrent hver tredje time, Google Kalender
+  opptil et døgn — så vent før du mistenker Vantigo. Ellers: adressen er
+  **Tilbakestilt** eller slått av, og mobilen har den døde (en 404 i proxyens logg);
+  eller den står på `APP_URL`, som mobilen ikke når utenfor bedriftens nettverk —
+  skjermbildet sier *«Denne adressen virker bare på bedriftens nettverk»*; sett opp den
+  offentlige verten, og personen tilbakestiller adressen for å få en der. En 429 i loggen
+  betyr at proxyen ikke er klarert, og at alle mobiler deler én bøtte.
+- **En strøm svarer 503.** En av modulene som har elementer i den, kunne ikke leses;
+  loggen nevner den. Strømmen serveres aldri med noe som mangler.
+- **En persons kalender er over 1 MiB.** Strømmen dropper de projiserte elementene
+  lengst fra i dag, de fjerneste først, til den får plass, logger det på info-nivå med
+  personens id, og dropper aldri en avtale. Ingenting må gjøres.
+- **Et abonnement viser en feil.** Les setningen på raden
+  ([hva loggen sier](#hva-loggen-sier)). «Not one Vantigo may fetch» for en offentlig
+  kalender betyr at verten slås opp til en privat adresse fra containeren — delt DNS;
+  «could not be reached» eller «did not answer in time» for alle abonnementer betyr at containerne ikke har noen vei
+  til internett, eller bare når det gjennom en proxy, som hentingen ikke bruker.
+- **`CALENDAR_SUBSCRIPTIONS_POLL` avvist ved oppstart.** Den er ikke en varighet, eller
+  er under fem minutter.

@@ -227,8 +227,12 @@ implements `UserHolds` over the same tables `permitted` reads — the user's `is
 and `lockout_end`, a pending user answered false, the owner role,
 `EffectivePermissionForUser` per key — and the MFA-for-owners rule `businessSatisfied`
 enforces on a session is not applied: it is a rule about a session, and there is none. The feed handler, once the token has named
-the user, builds `AsUser(ctx, userID)` and asks `sourceItemsIn` with it, through the
-same accessor and under the same budget `GET /items` uses; `sourceItems`' check that the
+the user, builds `AsUser` over a context **stripped of the request** — the router
+attaches the anonymous request to every operation's context, and `HasPermissions`
+checks a request before it looks for the mark, so a provider asked with the feed's own
+request in the context would be refused for the session it does not have — and asks
+`sourceItemsIn` with it, through the same accessor and under the same budget `GET
+/items` uses; `sourceItems`' check that the
 principal is the user the query names holds as it did. The module's test fakes
 (`fakeSource`) gate through `HasPermission` as the real providers do, so the feed's test
 proves the gate is honoured: a provider's kind is in the feed with the key held and
@@ -343,10 +347,12 @@ The parse rules, each with a test:
   `VTIMEZONE`'s `STANDARD` component's `TZOFFSETTO` as a fixed offset, right in winter
   and an hour off in summer, which is still better than a day off; and UTC when there
   is nothing — each fallback counted in the log at debug once per subscription per read.
-- **Recurrence.** `RRULE` is expanded with rrule-go over the window widened by a year
-  back (a series' occurrences are no longer than its longest event), `DTSTART` dressed as
-  floating in the resolved zone and each occurrence put back into it, the calendar
-  module's own way (A's D4); `EXDATE`s remove occurrences; a `VEVENT` with
+- **Recurrence.** `RRULE` is expanded with rrule-go over the window widened back by
+  the event's own length and two days (an occurrence that started before the window
+  may still cover it; a year back would spend an hourly rule's cap before the window),
+  with a hard limit of 100,000 steps so a minutely rule from years ago is not walked
+  step by step, `DTSTART` dressed as floating in the resolved zone and each occurrence
+  put back into it, the calendar module's own way (A's D4); `EXDATE`s remove occurrences; a `VEVENT` with
   `RECURRENCE-ID` replaces the occurrence at that instant of the master with the same
   `UID`, wherever it moved to; `RDATE` is not read (Outlook and Google do not write it);
   a rule rrule-go refuses, or without a `DTSTART`, makes the event a single one at its
