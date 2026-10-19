@@ -195,7 +195,7 @@ type BillingMilestoneRequest struct {
 	// Percent A share of the project's fixed price, greater than zero and at most 100, with at most two decimals. Exactly one of amount and percent.
 	Percent *float64 `json:"percent,omitempty"`
 
-	// PlannedDate The day the milestone is expected to be billed. A plain calendar date, compared with the server's own UTC date to decide whether the milestone is overdue.
+	// PlannedDate The day the milestone is expected to be billed. A plain calendar date, compared with today in the workspace's business time zone to decide whether the milestone is overdue.
 	PlannedDate *openapi_types.Date `json:"plannedDate,omitempty"`
 }
 
@@ -230,7 +230,7 @@ type BillingMilestoneResponse struct {
 	InvoicedByInvoice *BillingMilestoneInvoice `json:"invoicedByInvoice,omitempty"`
 	Name              string                   `json:"name"`
 
-	// Overdue Whether the milestone is still planned or ready and its planned date has passed, compared as plain UTC dates against the server's clock.
+	// Overdue Whether the milestone is still planned or ready and its planned date has passed, the date compared as-is with today in the workspace's business time zone.
 	Overdue bool `json:"overdue"`
 
 	// Percent The share of the fixed price as entered, absent on an amount milestone.
@@ -670,7 +670,7 @@ type ProjectEconomyNextMilestone struct {
 	Id              int32    `json:"id"`
 	Name            string   `json:"name"`
 
-	// Overdue Whether the milestone's planned day has passed, on the server's own UTC calendar.
+	// Overdue Whether the milestone's planned day has passed, judged against today in the workspace's business time zone.
 	Overdue bool `json:"overdue"`
 
 	// PlannedDate The day the milestone is planned for. Absent when nobody has dated it, which is what sorts it after every dated one.
