@@ -31,7 +31,7 @@ Task 2 first: everything else reads the contract it writes. Then 3–4 (backend)
 ## Tasks
 
 - [x] **1. The spec and this plan.**
-- [ ] **2. The module's skeleton and the contracts.** `openapi/calendar.yaml` (D3's
+- [x] **2. The module's skeleton and the contracts.** `openapi/calendar.yaml` (D3's
   operations and D5's shapes, `x-vantigo-access` on each, `CalendarProblem` with its
   codes); `internal/openapi/openapi.go`'s `Modules`; `internal/openapi/gen/
   cfg-calendar.yaml` and `generate.go`'s two lines; `internal/contracts/
@@ -46,7 +46,7 @@ Task 2 first: everything else reads the contract it writes. Then 3–4 (backend)
   clean. Migration `00055_calendar_baseline.sql` (D2's three tables) with the pin in
   `internal/db/migrations_test.go`; `internal/calendar/sqlc.yaml` and `queries/
   appointments.sql`, `attendees.sql`, `exceptions.sql`, `items.sql`; `sqlc generate`.
-- [ ] **3. The backend, tests first.** `main_test.go` (`contracttest.NewForModule`,
+- [x] **3. The backend, tests first.** `main_test.go` (`contracttest.NewForModule`,
   `RequireCoverage`), `harness_test.go`, `fakes_test.go` (a fake `CalendarSource` per
   kind); `appointments_test.go`, `recurrence_test.go`, `items_test.go`,
   `colleagues_test.go` (the spec's testing section); `server.go`, `authorize.go`
@@ -59,7 +59,7 @@ Task 2 first: everything else reads the contract it writes. Then 3–4 (backend)
   bump, `withLockedTx`), `occurrences.go` (the exception endpoints), `responses.go`,
   `items.go` (the window, the appointments' expansion, the providers under an
   `errgroup`, the holidays, the sort), `colleagues.go`, `meta.go`.
-- [ ] **4. The five providers, tests in each module.** `internal/customers/
+- [x] **4. The five providers, tests in each module.** `internal/customers/
   calendar_source.go` with `queries/calendar.sql` (follow-ups assigned to the caller in
   the window on a live customer; the caller's interaction entries), gated on the
   timeline pair; `internal/staff/calendar_source.go` (the link, own absences
@@ -70,7 +70,7 @@ Task 2 first: everything else reads the contract it writes. Then 3–4 (backend)
   business zone); `internal/expenses/calendar_source.go` (claims overlapping the
   window); each module's `module.go` fills `CalendarSource`; a `calendar_source_test.go`
   in each, through its own harness.
-- [ ] **5. The frontend package, tests first.** `apps/calendar/frontend` (package.json
+- [x] **5. The frontend package, tests first.** `apps/calendar/frontend` (package.json
   `@vantigo/calendar-ui` with the FullCalendar packages, tsconfigs, `vite.config.ts`
   with `TZ` off Oslo, `eslint.config.js`, `src/test/*`); **the spike first**:
   `pages/calendar.tsx` with FullCalendar's week and month views inside the shell and
@@ -82,7 +82,7 @@ Task 2 first: everything else reads the contract it writes. Then 3–4 (backend)
   `source-legend.tsx`, `colleague-picker.tsx`, `agenda-widget.tsx`; `i18n.ts` en + nb;
   `index.ts`; tests beside each; `@vantigo/calendar-ui` added to every other package's
   `eslint.config.js` deny list.
-- [ ] **6. The host.** `package.json`; `navigation.ts`'s `moduleKeys`; `apps.ts` (the
+- [x] **6. The host.** `package.json`; `navigation.ts`'s `moduleKeys`; `apps.ts` (the
   app, its one nav item) and `apps.test.ts`; `routes/calendar.tsx` (`appLayoutOptions`)
   and `routes/calendar/index.tsx` with the search validator; `i18n.ts`'s import;
   `catalogs/navigation.ts`, `catalogs/dashboard.ts`, `catalogs/admin.ts` (the two
@@ -90,10 +90,10 @@ Task 2 first: everything else reads the contract it writes. Then 3–4 (backend)
   top) and its test; `lib/dashboard-helpers.ts` (the module card); the **New
   appointment** action on the customer page's overview and the project page's header,
   gated as the cross-module tabs are; `app-spotlight.tsx`'s quick action.
-- [ ] **7. The demo seed.** `seedCalendar` in `cmd/vantigo/seed.go`: a handful of
+- [x] **7. The demo seed.** `seedCalendar` in `cmd/vantigo/seed.go`: a handful of
   appointments per demo user over the demo weeks, one weekly series, one with
   colleagues, one from a customer.
-- [ ] **8. Docs, both languages.** `en/reference/calendar.md` (new) and `reference/
+- [x] **8. Docs, both languages.** `en/reference/calendar.md` (new) and `reference/
   index.md`; `{en,nb}/user/calendar.md` (new), `{en,nb}/user/index.md`,
   `{en,nb}/user/getting-started.md`; `{en,nb}/admin/index.md`;
   `en/contributing/module-boundaries.md` (the slot, the provider rule, the checklist);

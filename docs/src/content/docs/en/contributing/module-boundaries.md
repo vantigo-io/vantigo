@@ -9,7 +9,7 @@ sources:
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications,
-Projects, Time, Expenses, Invoices and Staff are vertical-slice modules composed only
+Projects, Time, Expenses, Invoices, Staff and Calendar are vertical-slice modules composed only
 by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
@@ -23,8 +23,8 @@ Communications' outbox is the working example.
    import platform packages (`internal/config`, `internal/db`, `internal/httpx`,
    `internal/module`, `internal/contracts`, `internal/peppol` — the Peppol
    SML/SMP lookup, shared by Customers and Invoices — `internal/holidays` — the
-   Norwegian public-holiday calendar, by which Invoices moves its due dates and Staff
-   counts working days — `internal/netguard`
+   Norwegian public-holiday calendar, by which Invoices moves its due dates, Staff
+   counts working days and Calendar marks the holidays beside a person's items — `internal/netguard`
    — the shared table of addresses the guarded outbound clients refuse to
    dial (today `internal/mail`'s SMTP guard and `internal/peppol`'s SMP
    client; Brreg, OIDC and the AI client use `http.DefaultTransport`) —
@@ -57,7 +57,7 @@ Communications' outbox is the working example.
    type, never a store type, and the reason is rules 8, 9 and 10's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`, `expenses`, `invoices`, `staff`), and no module's migrations or queries reference
+   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`), and no module's migrations or queries reference
    another's. **No cross-schema foreign keys or joins** — reference other modules'
    data by opaque ID only. That is what keeps a future "move this schema to its own
    server" a connection-string change instead of a data migration.
@@ -86,13 +86,21 @@ Communications' outbox is the working example.
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
    the project directory or the customer directory (none does, but a future
    provider could).
-   Four slots are *many-provider* instead — any number of modules may fill them,
+   Five slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
-   the enabled modules), `CustomerReferences`
+   the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
+   from the enabled modules too), `CustomerReferences`
    (`contracts.CustomerReferenceHolder`, rule 8), `CustomerPersonalData`
    (`contracts.CustomerPersonalData`, rule 9) and `InvoicedWork`
    (`contracts.InvoicedWorkHolder`, rule 10), the last three from every module
    Compose is given, enabled or not — see [Turning a module off](#turning-a-module-off).
+   `CalendarSources` is collected from enabled modules only, by Compose and by
+   Workers alike, because a source is a read under the module's own permission: a
+   disabled module's permissions are not in the catalog, so its gate could only fail
+   closed, and its tables may be empty — whereas a customer holder must run whether
+   or not its module is on, because a switched-off module still holds rows naming the
+   customer. The slot is not called `Calendar`, which is `Deps.Calendar`, the business
+   calendar identity provides.
    No two invoiced-work holders may claim one source kind. `module.Workers`
    collects `CustomerPersonalData` and `InvoicedWork` as well, because worker mode
    never composes: the anonymisation worker is where rule 9's erase runs, and the
@@ -271,6 +279,21 @@ Communications' outbox is the working example.
     instances answer the same and that `module.Workers` hands a worker identity's own
     provider. With no provider `Deps.Accounts` is nil, which a
     caller answers as "accounts are unavailable".
+12. **The provider is the gatekeeper.** A module that answers a many-provider *read*
+    on behalf of a person — today `contracts.CalendarSource`, the rows it projects onto
+    that person's calendar — applies its own visibility rule to the principal in the
+    request's `ctx` (`contracts.HasPermission` reads the request from it) and answers
+    **nothing, not an error**, when the caller lacks its permission. The consumer never
+    re-states the rule, which already exists in the provider as a query the provider's
+    module owns — Projects' `visible()`, Time's "mine", Staff's self-service link — and
+    a copy would drift; it shows what comes back and never says what was withheld. A
+    provider that **fails** returns an error, and the consumer fails the whole request
+    rather than show the rest: absent must never also mean "could not be read",
+    Customer 360's rule. The consumer calls a provider with the request's context and
+    never inside one of its own transactions, through one accessor in its
+    `contractscalls.go` that refuses such a call; a provider called without a request —
+    from a worker — answers nothing. A provider reads its own tables only
+    ([Calendar](/en/reference/calendar/#the-sources-contract)).
 
 ## How they are enforced
 
@@ -363,6 +386,11 @@ Communications' outbox is the working example.
   batch reimbursement, a milestone move and a fixed-price project's price edit, a time
   unapprove, a customers merge — both must finish within their deadline, and the
   loser's refusal is the named one ([the races](/en/reference/invoices/#the-races)).
+- **Rule 12**: by test. Each calendar source's package test, through its own module's
+  harness, proves it answers the caller's rows with its gate held and nothing without
+  it; the calendar's own tests run fake sources per kind, prove a failing one fails
+  `GET /items`, and `internal/module`'s tests pin that the slot is collected from
+  enabled modules only.
 - **The harness**, `apps/server/internal/modtest`, is what these tests mount their
   modules through: an in-process installation on a real, migrated PostgreSQL database,
   the real server stack over `module.Compose` with identity beside the module under
@@ -395,7 +423,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time,expenses,invoices,staff`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -665,6 +693,14 @@ pass over `staff.object_deletions` takes no lease and holds no connection across
    it.
 6. Add its schema to `moduleSchemas` in `internal/db/schema_test.go`, and its name to
    the known set and any `MODULES` dependency check in `internal/config`.
+
+A module that fills a many-provider slot sets the field on its `module.Module` and
+keeps that slot's rule: `CustomerReferences`, `CustomerPersonalData` and `InvoicedWork`
+run on the caller's transaction (rules 8–10) and are collected whether or not the
+module is on; `CalendarSource`, for a module with time-bound rows about a person, is
+its own gatekeeper (rule 12), is collected from enabled modules only, and needs a
+`calendar_source_test.go` in the module proving it answers the caller's rows with its
+gate held and nothing without it.
 
 A module contributing no recorded exchanges needs nothing in
 `openapi/testdata/exchanges/`: that corpus is frozen evidence from the retired .NET

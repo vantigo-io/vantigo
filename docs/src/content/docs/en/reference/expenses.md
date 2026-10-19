@@ -370,6 +370,21 @@ the whole time (`rejected` is editable exactly as `draft` is), so the only
 difference is what the trip *says* about itself in between, and it says the
 truthful thing: nobody has been asked to look at it again yet.
 
+### On the calendar
+
+The travel claim is the unit on a person's calendar too. When the Calendar module is on,
+Expenses fills its `CalendarSource` slot (`internal/expenses/calendar_source.go`, with
+its own query) and projects one kind, **`expenses.claim`**: the caller's **own** travel
+claims, in any status, whose `departureAt`..`returnAt` overlaps the window — no
+standalone expense and no line. A journey is two instants, so the window is taken as two
+too: the first day's midnight and the midnight after the last day, in the viewer's zone,
+compared half-open (`departure_at < end`, `return_at > start`), so a trip that returns
+exactly at the window's first midnight is not on it. It needs `expenses:access`;
+`expenses:view-all` widens nothing here. Each claim is a block over its two instants,
+titled with its purpose and its destination below when it has one, done (drawn struck)
+when approved, and links to the claim, `/expenses/claims/{claimId}`. See
+[the kinds](/en/reference/calendar/#the-kinds).
+
 ## The lock order inside a claim
 
 Every write takes its locks in one order, and nothing may invent another:

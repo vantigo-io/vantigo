@@ -1174,6 +1174,32 @@ is there. The frontend's own page offers only `me` and `none` for
 `assignee`, the same choice the customer list's Owner filter makes — a uuid in
 the URL would narrow the rows by something the Select cannot show.
 
+### On the calendar
+
+When the Calendar module is on, Customers fills its `CalendarSource` slot
+(`internal/customers/calendar_source.go`, with its own query) and projects two kinds onto
+a person's calendar, both gated on `customers:timeline-view` and `customers:view` — a
+caller without the pair gets nothing from this module, and the calendar says nothing
+about it:
+
+- **`customers.follow-up`** — the follow-ups **assigned to the caller**
+  (`follow_up_assignee_user_id`) on manual, active entries with `follow_up_on` in the
+  window, done or not, on a customer that is neither merged away nor anonymised: an
+  all-day item on the due day, done (drawn struck) when `follow_up_done_at` is set,
+  titled with the entry's summary (its event type should the summary be blank) and the
+  customer's name below. Unassigned follow-ups — everyone's on the attention list — are
+  not on anyone's calendar.
+- **`customers.interaction`** — the caller's own (`actor_user_id`) manual, active
+  entries of the three interaction kinds (`interaction.call`, `interaction.meeting`,
+  `interaction.email`) with `occurred_on` in the window, on a customer that is likewise
+  neither merged away nor anonymised: an all-day item on that day, or a point at
+  `occurred_at` when it is set (the window is still judged on `occurred_on`); never
+  done; the summary, the customer below.
+
+Both link to the customer, `/customers/{customerId}`. A follow-up due stays on the
+attention list as well ([the calendar's agenda](/en/reference/calendar/#the-dashboards-agenda)).
+See [the kinds](/en/reference/calendar/#the-kinds).
+
 ### What is not built
 
 No priorities, no recurrence, no reminders by mail or notification — the

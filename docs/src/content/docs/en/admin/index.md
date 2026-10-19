@@ -42,6 +42,13 @@ application.
   access to it with its five permissions, and sets the employee number sequence. The
   business time zone every module judges a day in is the workspace's, set under
   [Workspace administration](/en/user/workspace-administration/#workspace-settings).
+- **Calendar.** Calendar needs nothing an installation does not already have: list
+  `calendar` in `MODULES` (it is on when `MODULES` is unset), and give people its two
+  permissions — `calendar:access` to use it, and `calendar:view-colleagues` to see
+  colleagues' busy and free times, which a workspace that wants everyone to see each
+  other's grants to the employee role. It has no settings and no worker; what it shows
+  from the other modules follows their own permissions
+  ([the reference](/en/reference/calendar/#permissions)).
 
 ## The complete configuration reference
 

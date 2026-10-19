@@ -218,7 +218,9 @@ or devices where you are signed in stay signed in until their own sessions expir
 ## The dashboard and the app switcher
 
 After signing in you land on the dashboard — **Home** in the app switcher at the top
-of the page. It greets you by name and shows a card for each app you have access to,
+of the page. It greets you by name; when Calendar is on and you may use it, it opens
+with **Today and this week**, your appointments and dated items for today and the six
+days after ([the dashboard](/en/user/calendar/#the-dashboard)). Below, it shows a card for each app you have access to,
 with its key numbers for the chosen date range (**7d**, **30d**, **90d**, **12m** or
 **Custom**), a **Needs attention** list of things waiting for you, and **Quick
 actions** for the things you do most. Staff has no numbers yet, so it is listed only

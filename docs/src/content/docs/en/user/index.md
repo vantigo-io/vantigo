@@ -15,10 +15,11 @@ shown.
 
 ## Apps and the switcher
 
-Each module is an **app** with its own sidebar: Customers, Projects, Time, Expenses,
-Staff, Invoices, Communications, Products and Energy. The app switcher in the top bar lists
-the apps you can open; **Home** is the dashboard, where every app you use shows its own
-card with the numbers that need your attention — Staff's, the people employed today
+Each module is an **app** with its own sidebar: Customers, Projects, Time, Calendar,
+Expenses, Staff, Invoices, Communications, Products and Energy. The app switcher in the top bar lists
+the apps you can open; **Home** is the dashboard, which opens with Calendar's **Today and
+this week** agenda when you use Calendar ([the dashboard](/en/user/calendar/#the-dashboard)),
+and where every app you use shows its own card with the numbers that need your attention — Staff's, the people employed today
 with the full-time equivalents, who starts and ends soon and who is away today, for
 `staff:view` or `staff:manage` ([the dashboard](/en/user/staff/#the-dashboard)). Its **Needs attention**
 list gathers the apps' items that wait for someone — Invoices' among them: overdue
@@ -53,6 +54,7 @@ shorter than yours:
 | [Customers](/en/user/customers/) | Customers, Contacts, Follow-ups |
 | [Projects](/en/user/projects/) | Projects, My tasks, Project economy |
 | [Time](/en/user/time/) | My week, Approvals, People, Time settings |
+| [Calendar](/en/user/calendar/) | Calendar (your own, and a colleague's with the picker) |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
 | [Staff](/en/user/staff/) | My page (its **Absence** tab and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Staff settings |
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |

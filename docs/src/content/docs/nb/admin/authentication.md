@@ -655,7 +655,7 @@ oppstarten feiler.
 | `MIGRATIONS_DATABASE_URL` | Tilkoblingen `migrate` bruker (eierrollen) | `DATABASE_URL` |
 | `SHUTDOWN_TIMEOUT` | Budsjett for å tømme pågående forespørsler og arbeidere | `30s` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
-| `MODULES` | Kommaseparert liste over forretningsmoduler som skal betjenes | `customers,products,energy,communications,projects,time,expenses,invoices,staff` |
+| `MODULES` | Kommaseparert liste over forretningsmoduler som skal betjenes | `customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar` |
 | `WORKERS_IN_PROCESS` | Om `api` også kjører bakgrunnsarbeidere i samme prosess | `1` |
 
 ### Hemmeligheter og identitet

@@ -14,9 +14,11 @@ rollene dine gir deg. En modul du ikke har rettighet til vises rett og slett ikk
 
 ## Apper og app-velgeren
 
-Hver modul er en **app** med sin egen sidemeny: Kunder, Prosjekter, Timer, Utlegg,
-Ansatte, Fakturaer, Kommunikasjon, Produkter og Energi. App-velgeren i toppfeltet lister appene
-du kan åpne; **Hjem** er dashbordet, der hver app du bruker viser sitt eget kort med
+Hver modul er en **app** med sin egen sidemeny: Kunder, Prosjekter, Timer, Kalender,
+Utlegg, Ansatte, Fakturaer, Kommunikasjon, Produkter og Energi. App-velgeren i toppfeltet lister appene
+du kan åpne; **Hjem** er dashbordet, som åpner med agendaen **I dag og denne uken** fra
+Kalender når du bruker Kalender ([dashbordet](/nb/user/calendar/#dashbordet)), og der
+hver app du bruker viser sitt eget kort med
 tallene som trenger oppmerksomheten din — Ansattes, hvor mange som er ansatt i dag med
 årsverkene, hvem som begynner og slutter snart og hvem som er borte i dag, for
 `staff:view` eller `staff:manage`
@@ -55,6 +57,7 @@ kortere enn din:
 | [Kunder](/nb/user/customers/) | Kunder, Kontakter, Oppfølginger |
 | [Prosjekter](/nb/user/projects/) | Prosjekter, Mine oppgaver, Prosjektøkonomi |
 | [Timer](/nb/user/time/) | Min uke, Godkjenning, Personer, Timeinnstillinger |
+| [Kalender](/nb/user/calendar/) | Kalender (din egen, og en kollegas med velgeren) |
 | [Utlegg](/nb/user/expenses/) | Mine utlegg, Godkjenning av utlegg, Refusjoner, Utleggsinnstillinger |
 | [Ansatte](/nb/user/staff/) | Min side (fanen **Fravær** og, for en leder, **Mitt team**), Ansattoversikt, Fravær (kalenderen og godkjenningene), Ansatteinnstillinger |
 | [Fakturaer](/nb/user/invoices/) | Fakturaer, Hurtigfaktura, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
