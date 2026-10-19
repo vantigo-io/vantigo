@@ -186,7 +186,7 @@ components:
                 - free
             type: string
         AppointmentVisibility:
-            description: iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows as Busy and nothing else.
+            description: iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows with an empty title and nothing else, which the app labels Busy.
             enum:
                 - shared
                 - private
@@ -773,7 +773,7 @@ paths:
             x-vantigo-access: permission:calendar:access
     /api/v1/calendar/colleagues/{userId}/items:
         get:
-            description: 'A colleague''s calendar in a window (calendar design D6): their appointments — owned, or attended and accepted — that block time (transparency busy), expanded as GET /items does. A shared one carries its title and location; a private one is "Busy" with visibility private and nothing else. No provider is asked and sources is empty. The caller''s own id answers as their own calendar would, private titles included.'
+            description: 'A colleague''s calendar in a window (calendar design D6): their appointments — owned, or attended and accepted — that block time (transparency busy), expanded as GET /items does. A shared one carries its title and location; a private one carries an empty title, no subtitle and visibility private, which the app labels Busy. No provider is asked and sources is empty. The caller''s own id answers as their own calendar would, private titles included.'
             operationId: getCalendarColleaguesByUserIdItems
             parameters:
                 - in: path

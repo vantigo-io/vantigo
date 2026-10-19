@@ -149,7 +149,7 @@ type Appointment struct {
 	Transparency AppointmentTransparency `json:"transparency"`
 	UpdatedAt    time.Time               `json:"updatedAt"`
 
-	// Visibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows as Busy and nothing else.
+	// Visibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows with an empty title and nothing else, which the app labels Busy.
 	Visibility AppointmentVisibility `json:"visibility"`
 }
 
@@ -216,7 +216,7 @@ type AppointmentResponseWriteStatus string
 // AppointmentTransparency iCalendar's TRANSP in this module's words — busy (OPAQUE) blocks the time on a colleague's view, free (TRANSPARENT) does not show there.
 type AppointmentTransparency string
 
-// AppointmentVisibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows as Busy and nothing else.
+// AppointmentVisibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows with an empty title and nothing else, which the app labels Busy.
 type AppointmentVisibility string
 
 // AppointmentWrite An appointment as POST creates it and PUT replaces it whole. Exactly one pair is set: startsAt and endsAt (endsAt after startsAt, at most 31 days) when allDay is false, startDate and endDate (endDate on or after startDate, at most 366 days) when it is true. A PUT that changes when, where or the rule bumps the sequence; one that changes when resets every attendee to needs-action; one that changes the rule or the start drops every exception.
@@ -254,7 +254,7 @@ type AppointmentWrite struct {
 	// Transparency iCalendar's TRANSP in this module's words — busy (OPAQUE) blocks the time on a colleague's view, free (TRANSPARENT) does not show there.
 	Transparency *AppointmentTransparency `json:"transparency,omitempty"`
 
-	// Visibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows as Busy and nothing else.
+	// Visibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows with an empty title and nothing else, which the app labels Busy.
 	Visibility *AppointmentVisibility `json:"visibility,omitempty"`
 }
 
@@ -301,7 +301,7 @@ type CalendarItemAppointment struct {
 	// Transparency iCalendar's TRANSP in this module's words — busy (OPAQUE) blocks the time on a colleague's view, free (TRANSPARENT) does not show there.
 	Transparency AppointmentTransparency `json:"transparency"`
 
-	// Visibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows as Busy and nothing else.
+	// Visibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows with an empty title and nothing else, which the app labels Busy.
 	Visibility AppointmentVisibility `json:"visibility"`
 }
 
