@@ -178,7 +178,9 @@ tilbakestilt eller slått av — er en naken 404.
    gjør ikke det. Uten en offentlig vert sier skjermbildet til personen *«Denne adressen
    virker bare på bedriftens nettverk.»* En adresse er fast fra den lages, så sett
    `PUBLIC_BASE_URL` før folk lager sine; en som ble laget før, må **Tilbakestilles** for
-   å flytte til den offentlige verten.
+   å flytte til den offentlige verten. Merknaden følger innstillingen, ikke adressen: så
+   snart `PUBLIC_BASE_URL` er satt, er den borte for alle, også ved en adresse som
+   fortsatt står på `APP_URL` — les selve adressen.
 2. **Proxyen, som for svarsiden.** Strømmen er begrenset per klientadresse —
    `calendar-feed`, **120 forespørsler per 10 minutter** — som en mobil som spør hver
    time, eller et kontor fullt av mobiler bak én NAT, holder seg godt under. Bak en proxy
@@ -253,9 +255,9 @@ høyst ti hver — og se hendelsene deres ved siden av sine egne
 `WORKERS_IN_PROCESS=1`. Den **våkner hvert femte minutt** — ikke en innstilling — tar en
 rådgivende lås så flere replikaer bytter på, og henter hvert abonnement som er forfalt,
 høyst 200 per runde, ett om gangen. Hvert abonnement forfaller
-`CALENDAR_SUBSCRIPTIONS_POLL` (standard `30m`, minst `5m`) etter forrige henting, eller
-senere når kalenderen selv ber om å bli lest sjeldnere (høyst én gang i døgnet), pluss
-litt tilfeldig slingring. En henting som feiler, beholder kalenderens siste gode kopi og
+`CALENDAR_SUBSCRIPTIONS_POLL` (standard `30m`, minst `5m`) etter forrige forsøk, eller —
+etter en henting som svarte med kalenderen — senere når kalenderen selv ber om å bli lest
+sjeldnere (høyst én gang i døgnet), pluss litt tilfeldig slingring. En henting som feiler, beholder kalenderens siste gode kopi og
 skriver ned grunnen, og neste forfalte henting prøver igjen, uten å vente lenger. Slått
 av hentes ingenting i bakgrunnen, og hvert abonnement viser det det sist leste; å lagre
 et, eller **Oppdater nå**, henter det likevel én gang.
@@ -291,7 +293,7 @@ Grunnene er én setning hver, på engelsk:
 | the address did not answer a calendar | en 2xx som ikke er en iCalendar-fil — som regel en nettside |
 | the address answered <status> (som `404 Not Found`) | enhver annen status: 404 for en fjernet kalender, 401 eller 403 for en som krever en innlogging Vantigo ikke gjør |
 | the address is not one Vantigo may fetch | verten slås opp til en adresse vakten forbyr |
-| the address did not answer in time | ikke noe svar innen 20 sekunder |
+| the address did not answer in time | ikke noe svar innen de 20 sekundene en henting har, eller ingen tilkobling innen 10 eller ingen headere innen 15 |
 | the address could not be reached | navnet kunne ikke slås opp, tilkoblingen ble avvist, eller det er ingen vei ut |
 
 | Variabel | Formål | Standard |
@@ -315,7 +317,8 @@ Kalenderadressene lagres forseglet på samme måte, under formålet
 igjen. Etter en rotasjon kan skjermbildet ikke åpne dem og viser ingen adresse, men hver
 adresse virker fortsatt — en forespørsel matches mot tokenets vanlige hash, som ikke
 trenger noen nøkkel — så mobilene fortsetter å oppdatere. En person som trenger å se
-adressen sin igjen, trykker **Tilbakestill** og gir programmene sine den nye.
+adressen sin igjen, trykker **Lag adresse**, som skjermbildet viser i stedet: den
+tilbakestiller adressen, den gamle slutter å virke, og de gir programmene sine den nye.
 
 ## Hva som kan gå galt
 

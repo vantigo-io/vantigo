@@ -173,7 +173,9 @@ a bare 404.
    off the company's network needs the public host; a laptop on it does not. Without a
    public host the screen tells the person *"This address works on the company's network
    only."* An address is fixed when it is created, so set `PUBLIC_BASE_URL` before people
-   create theirs; one created before needs a **Reset** to move to the public host.
+   create theirs; one created before needs a **Reset** to move to the public host. The
+   note follows the setting, not the address: once `PUBLIC_BASE_URL` is set it is gone
+   for everyone, even beside an address still on `APP_URL` — read the address itself.
 2. **The proxy, as for the answer page.** The feed is rate limited per client address —
    `calendar-feed`, **120 requests per 10 minutes** — which a phone asking hourly, or an
    office of phones behind one NAT, stays well under. Behind a proxy,
@@ -246,9 +248,9 @@ worker fetches them. It runs unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, in worke
 and in api mode with `WORKERS_IN_PROCESS=1`. It **wakes every five minutes** — not a
 setting — takes an advisory lock so several replicas take turns, and fetches each
 subscription that is due, at most 200 a cycle, one at a time. Each subscription is due
-`CALENDAR_SUBSCRIPTIONS_POLL` (default `30m`, at least `5m`) after its last fetch, or
-later when the calendar itself asks to be read less often (at most once a day), plus a
-little jitter. A failed fetch keeps the calendar's last good copy and records the
+`CALENDAR_SUBSCRIPTIONS_POLL` (default `30m`, at least `5m`) after its last attempt, or —
+after a fetch that answered the calendar — later when the calendar itself asks to be read
+less often (at most once a day), plus a little jitter. A failed fetch keeps the calendar's last good copy and records the
 reason, and the next due fetch tries again, with no backoff. Turned off, nothing is
 fetched in the background and every subscription shows its last read; saving one, or
 **Refresh now**, still fetches it once.
@@ -284,7 +286,7 @@ reasons are one sentence each:
 | the address did not answer a calendar | a 2xx that is not an iCalendar file — a web page, usually |
 | the address answered <status> (such as `404 Not Found`) | any other status: 404 for a removed calendar, 401 or 403 for one that needs a sign-in Vantigo does not do |
 | the address is not one Vantigo may fetch | the host resolves to an address the guard forbids |
-| the address did not answer in time | no answer within 20 seconds |
+| the address did not answer in time | no answer within the 20 seconds a fetch has, or no connection within 10 or no headers within 15 |
 | the address could not be reached | the name did not resolve, the connection was refused, or there is no route out |
 
 | Variable | Purpose | Default |
@@ -307,7 +309,8 @@ The calendar addresses are sealed the same way, under the purpose
 again. After a rotation the screen cannot open them and shows no address, but every
 address still works — a request is matched by the token's plain hash, which needs no key
 — so phones go on updating. A person who needs to see their address again presses
-**Reset** and gives their programs the new one.
+**Create address**, which the screen shows in its place: it resets the address, the old one
+stops working, and they give their programs the new one.
 
 ## What can go wrong
 
