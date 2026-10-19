@@ -139,11 +139,14 @@ func (s *server) PutIdentitySystemMaintenance(ctx context.Context, req gen.PutId
 // account, invitation, or secret value is ever included.
 func (s *server) GetIdentityOwnerSystemStatus(ctx context.Context, _ gen.GetIdentityOwnerSystemStatusRequestObject) (gen.GetIdentityOwnerSystemStatusResponseObject, error) {
 	now := s.deps.Clock()
-	cfg := s.deps.Config
+	sso, err := s.access.sso.get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("identity: owner system status: %w", err)
+	}
 
 	counts, err := s.q.GetOwnerSystemStatusCounts(ctx, store.GetOwnerSystemStatusCountsParams{
 		Now:         now,
-		ScimEnabled: cfg.SCIM != nil,
+		ScimEnabled: sso.SCIM != nil,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("identity: owner system status counts: %w", err)
@@ -161,9 +164,9 @@ func (s *server) GetIdentityOwnerSystemStatus(ctx context.Context, _ gen.GetIden
 	}
 
 	var provider *string
-	oidcEnabled := cfg.OIDC != nil
+	oidcEnabled := sso.OIDC != nil
 	if oidcEnabled {
-		p := cfg.OIDC.Provider
+		p := sso.OIDC.Provider
 		provider = &p
 	}
 
@@ -174,7 +177,7 @@ func (s *server) GetIdentityOwnerSystemStatus(ctx context.Context, _ gen.GetIden
 		PendingInvitations:                int32(pending),
 		StaticOidcEnabled:                 oidcEnabled,
 		StaticOidcProvider:                provider,
-		StaticScimEnabled:                 cfg.SCIM != nil,
+		StaticScimEnabled:                 sso.SCIM != nil,
 		LastStaticOidcSignInAtUtc:         events.LastOidcSignInAt,
 		LastAuthenticatedScimRequestAtUtc: events.LastScimRequestAt,
 	}, nil

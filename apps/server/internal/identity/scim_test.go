@@ -337,7 +337,10 @@ func TestScim_StaticTokenUsersGroupsEtagsLifecycleAndAuditRemainProtocolOnly(t *
 			t.Errorf("%d %s rows, want 1", n, action)
 		}
 	}
-	if n := h.count(t, `SELECT count(*) FROM identity.authorization_audit_events WHERE action NOT LIKE 'scim.%' OR actor_user_id IS NOT NULL OR mfa_authenticated`); n != 0 {
+	// The mount's import of SCIM_TOKEN (sso-settings.imported) is the
+	// installation's, not the protocol's.
+	if n := h.count(t, `SELECT count(*) FROM identity.authorization_audit_events
+	                    WHERE action <> 'sso-settings.imported' AND (action NOT LIKE 'scim.%' OR actor_user_id IS NOT NULL OR mfa_authenticated)`); n != 0 {
 		t.Errorf("%d audit rows are not SCIM events without an actor", n)
 	}
 	userID := h.userOf(t, user.ID)

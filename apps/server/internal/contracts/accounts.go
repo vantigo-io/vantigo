@@ -236,6 +236,11 @@ var (
 	// one identity's API process recorded (their OIDC or SCIM settings
 	// differ), so a provider prepares, activates and updates nothing — it
 	// still deactivates, so a leaver never keeps access over it.
+	//
+	// No provider answers it any more: identity derives the mode from its
+	// single sign-on row, which every process reads (Entra design D1). It
+	// stays this release so a worker on the previous binary still reports
+	// sanely during a rolling upgrade, and goes in the next.
 	ErrModeMismatch = errors.New("contracts: this process's authority mode differs from the recorded one")
 	// ErrLastOwner: deactivating the user would leave no active Owner.
 	ErrLastOwner = errors.New("contracts: the account is the last active Owner")
@@ -274,10 +279,11 @@ var (
 // the creating Prepare answers. Every write refuses an
 // Actor that is not Valid with ErrInvalidActor before it writes anything.
 type AccountProvisioning interface {
-	// Mode answers AccountModeLocal or AccountModeFederated — the mode
-	// identity's API process recorded — or ErrModeMismatch when this
-	// process's own configuration derives another; every write but
-	// Deactivate then answers ErrModeMismatch too.
+	// Mode answers AccountModeLocal or AccountModeFederated, the mode
+	// identity's single sign-on settings derive. (A provider of the
+	// previous release answered ErrModeMismatch when this process's own
+	// configuration derived another, and every write but Deactivate then
+	// did too; identity answers it no more.)
 	Mode(ctx context.Context) (string, error)
 	// Prepare finds the managed user holding spec.EmployeeNumber or, in local
 	// mode only, creates one: Staff-managed, disabled by Staff, pending, with

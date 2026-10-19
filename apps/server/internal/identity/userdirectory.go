@@ -26,14 +26,14 @@ const (
 
 // userDirectory is this module's contracts.UserDirectory, the one sanctioned
 // way another module reads identity's user data. It is read-only and holds
-// nothing but the queries, whether SCIM is configured and the mail sender
-// Notify delivers through: Compose builds it once, before any module mounts,
-// and hands it to every module including this one.
+// nothing but the queries, its reader of the single sign-on settings and the
+// mail sender Notify delivers through: Compose builds it once, before any
+// module mounts, and hands it to every module including this one.
 type userDirectory struct {
 	q *store.Queries
-	// scimEnabled is whether SCIM is configured, which makes a directory's
+	// sso says, per call, whether SCIM is on, which makes a directory's
 	// deactivation of a non-Owner count against PermissionHolders and Notify.
-	scimEnabled bool
+	sso *ssoSettingsReader
 	// mail is the installation's mail driver, nil when none was composed.
 	mail mail.Sender
 }
@@ -43,7 +43,7 @@ var _ contracts.UserDirectory = (*userDirectory)(nil)
 // newUserDirectory is Module's Users: the constructor Compose calls with the
 // dependencies it was given.
 func newUserDirectory(d module.Deps) contracts.UserDirectory {
-	return &userDirectory{q: store.New(d.Pool), scimEnabled: d.Config != nil && d.Config.SCIM != nil, mail: d.Mail}
+	return &userDirectory{q: store.New(d.Pool), sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets), mail: d.Mail}
 }
 
 // User looks up a user by id.
@@ -103,8 +103,12 @@ func (d *userDirectory) SearchUsers(ctx context.Context, query string, limit int
 // placeholder address — a directory's or an identity provider's, which no
 // mail reaches (publicEmail) — is answered empty; the holder is kept.
 func (d *userDirectory) PermissionHolders(ctx context.Context, key string) ([]contracts.Holder, error) {
+	scimEnabled, err := d.sso.scimEnabled(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("identity: user directory permission holders: %w", err)
+	}
 	rows, err := d.q.DirectoryPermissionHolders(ctx, store.DirectoryPermissionHoldersParams{
-		ScimEnabled:   d.scimEnabled,
+		ScimEnabled:   scimEnabled,
 		PermissionKey: key,
 	})
 	if err != nil {
@@ -134,7 +138,11 @@ func (d *userDirectory) Notify(ctx context.Context, userID uuid.UUID, n contract
 	if d.mail == nil || len(n.Texts) == 0 {
 		return nil
 	}
-	row, err := d.q.DirectoryUserForNotice(ctx, store.DirectoryUserForNoticeParams{ID: userID, ScimEnabled: d.scimEnabled})
+	scimEnabled, err := d.sso.scimEnabled(ctx)
+	if err != nil {
+		return fmt.Errorf("identity: user directory notice for user %s: %w", userID, err)
+	}
+	row, err := d.q.DirectoryUserForNotice(ctx, store.DirectoryUserForNoticeParams{ID: userID, ScimEnabled: scimEnabled})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}

@@ -15,8 +15,6 @@ import (
 	"unicode/utf16"
 
 	"github.com/google/uuid"
-
-	"github.com/vantigo-io/vantigo/server/internal/config"
 )
 
 // oidcClaims are the id_token claims workforce OIDC reads: the ones the
@@ -127,7 +125,7 @@ func normalizeIssuer(v string) (string, bool) {
 // checkClaimPolicy is .NET's StaticOidcClaimValidation.Validate
 // (EA/StaticOidcClaimValidation.cs:20-27): the configured provider's claim
 // policy. Its error is a reason to log, never shown to the browser.
-func checkClaimPolicy(cfg *config.OIDCConfig, c oidcClaims) error {
+func checkClaimPolicy(cfg *oidcSettings, c oidcClaims) error {
 	switch cfg.Provider {
 	case "entra":
 		return checkEntraClaims(cfg, c)
@@ -144,7 +142,7 @@ func checkClaimPolicy(cfg *config.OIDCConfig, c oidcClaims) error {
 // configured tenant is the one config pinned into the authority
 // (CFG/WorkforceOidcOptions.cs:151-158). Entra has no domain restriction:
 // OIDC_ALLOWED_DOMAINS is refused for it.
-func checkEntraClaims(cfg *config.OIDCConfig, c oidcClaims) error {
+func checkEntraClaims(cfg *oidcSettings, c oidcClaims) error {
 	tenant, ok := parseGUID(c.TenantID)
 	configured, configuredOK := parseGUID(entraTenant(cfg.Authority))
 	if !ok || !configuredOK || tenant != configured {
@@ -197,7 +195,7 @@ func parseGUID(s string) (uuid.UUID, bool) {
 // domain restriction there is. The allowed domains are compared in .NET's
 // normalized form, lowercased without trailing dots
 // (CFG/WorkforceOidcOptions.cs:183-199), whatever config kept.
-func checkGoogleClaims(cfg *config.OIDCConfig, c oidcClaims) error {
+func checkGoogleClaims(cfg *oidcSettings, c oidcClaims) error {
 	if !c.EmailVerified {
 		return errors.New("the Google email address is not verified")
 	}

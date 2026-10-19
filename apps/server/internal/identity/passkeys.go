@@ -452,6 +452,13 @@ func (s *server) PostIdentityPasskeysLoginBegin(ctx context.Context, req gen.Pos
 		return nil, fmt.Errorf("identity: passkey sign-in: %w", err)
 	}
 
+	// Read before the transaction, which then holds its connection
+	// without waiting for another.
+	sso, err := s.access.sso.get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("identity: passkey sign-in: %w", err)
+	}
+
 	var answer gen.PasskeyOptionsResponse
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
@@ -468,7 +475,7 @@ func (s *server) PostIdentityPasskeysLoginBegin(ctx context.Context, req gen.Pos
 		candidate, err := q.GetPasskeyLoginCandidate(ctx, store.GetPasskeyLoginCandidateParams{
 			NormalizedEmail: normalizeEmail(email),
 			Now:             now,
-			ScimEnabled:     s.deps.Config.SCIM != nil,
+			ScimEnabled:     sso.SCIM != nil,
 		})
 		if err != nil {
 			return fmt.Errorf("identity: passkey sign-in: %w", err)
@@ -560,10 +567,16 @@ func (s *server) PostIdentityPasskeysLoginComplete(ctx context.Context, req gen.
 		return passkeySignInFailed, nil
 	}
 
+	// Read before the transaction, which then holds its connection
+	// without waiting for another.
+	sso, err := s.access.sso.get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("identity: passkey sign-in: %w", err)
+	}
 	var answer loginOK
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var err error
-		answer, err = s.verifyPasskeyLogin(ctx, tx, r, *ceremony.UserID, session, parsed, now)
+		answer, err = s.verifyPasskeyLogin(ctx, tx, r, *ceremony.UserID, session, parsed, now, sso.SCIM != nil)
 		return err
 	})
 	if err != nil {
@@ -582,9 +595,10 @@ func (s *server) PostIdentityPasskeysLoginComplete(ctx context.Context, req gen.
 // verifyPasskeyLogin is PostIdentityPasskeysLoginComplete's transaction, 3
 // and 4 for the account userID the ceremony was begun for. Every refusal is
 // passkeySignInFailed, returned as an error so that nothing is kept.
-func (s *server) verifyPasskeyLogin(ctx context.Context, tx pgx.Tx, r *http.Request, userID uuid.UUID, session webauthn.SessionData, parsed *protocol.ParsedCredentialAssertionData, now time.Time) (loginOK, error) {
+// scimEnabled is whether SCIM is on (the single sign-on settings).
+func (s *server) verifyPasskeyLogin(ctx context.Context, tx pgx.Tx, r *http.Request, userID uuid.UUID, session webauthn.SessionData, parsed *protocol.ParsedCredentialAssertionData, now time.Time, scimEnabled bool) (loginOK, error) {
 	q := store.New(tx)
-	u, err := q.LockPasskeyLoginUser(ctx, store.LockPasskeyLoginUserParams{ScimEnabled: s.deps.Config.SCIM != nil, ID: userID})
+	u, err := q.LockPasskeyLoginUser(ctx, store.LockPasskeyLoginUserParams{ScimEnabled: scimEnabled, ID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return loginOK{}, passkeySignInFailed
 	}

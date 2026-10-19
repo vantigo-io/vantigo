@@ -2,6 +2,7 @@ package identity
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -471,7 +472,10 @@ func TestScimBearerToken(t *testing.T) {
 	}
 
 	expires := time.Date(2026, time.September, 11, 13, 0, 0, 0, time.UTC)
-	a := &Access{cfg: &config.Config{SCIM: &config.SCIMConfig{Token: "current", PreviousToken: "previous", PreviousTokenExpiresAt: expires}}}
+	scim := &scimSettings{
+		Token: sha256.Sum256([]byte("current")), Previous: sha256.Sum256([]byte("previous")), PreviousExpiresAt: expires,
+		hasToken: true, hasPrevious: true,
+	}
 	checks := []struct {
 		token string
 		at    time.Time
@@ -485,11 +489,11 @@ func TestScimBearerToken(t *testing.T) {
 		{"", expires, false},
 	}
 	for _, c := range checks {
-		if got := a.scimTokenValid(c.token, c.at); got != c.valid {
+		if got := scimDigestsAdmit(scim, c.token, c.at); got != c.valid {
 			t.Errorf("%q at %s: valid %t, want %t", c.token, c.at, got, c.valid)
 		}
 	}
-	if (&Access{cfg: &config.Config{}}).scimTokenValid("current", expires) {
+	if scimDigestsAdmit(nil, "current", expires) {
 		t.Error("a token is valid while SCIM is not configured")
 	}
 }
@@ -589,8 +593,12 @@ func (failingBody) Read([]byte) (int, error) { return 0, errors.New("the SCIM cl
 // or reading the body, is a SCIM 500 as application/scim+json that echoes
 // neither the error nor the token, and is logged without the token.
 func TestScimIngressFailuresAreScimServerErrors(t *testing.T) {
-	srv, _ := newInternalServer(t)
-	srv.deps.Config.SCIM = &config.SCIMConfig{Token: "the-scim-token"}
+	srv, pool := newInternalServer(t)
+	digest := sha256.Sum256([]byte("the-scim-token"))
+	if _, err := pool.Exec(t.Context(), `INSERT INTO identity.sso_settings (id, version, scim_enabled, scim_token_sha256, updated_at)
+	        VALUES (1, 1, true, $1, $2)`, digest[:], internalNow); err != nil {
+		t.Fatal(err)
+	}
 	var logged bytes.Buffer
 	srv.deps.Logger = slog.New(slog.NewTextHandler(&logged, nil))
 	unreachable, err := pgxpool.New(t.Context(), "postgres://vantigo@127.0.0.1:1/unreachable?connect_timeout=1")
