@@ -90,11 +90,16 @@ func (s *server) approvalScopeFor(ctx context.Context, c *caller) (approvalScope
 // Both figures are a state now, as projects' activeProjects is: the period
 // is echoed and only moves awaitingMyApprovalDelta, which compares against
 // how many of the same entries were already waiting when it began.
-// hoursThisWeek's delta is against the week before.
+// hoursThisWeek's delta is against the week before. This week is the one
+// the business day falls in (businessToday).
 func (s *server) GetTimeStatsSummary(ctx context.Context, req gen.GetTimeStatsSummaryRequestObject) (gen.GetTimeStatsSummaryResponseObject, error) {
 	periodFrom, periodTo, _, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, s.deps.Clock())
 	if !ok {
 		return gen.GetTimeStatsSummary400ApplicationProblemPlusJSONResponse(apicommon.InvalidPeriod()), nil
+	}
+	today, err := s.businessToday(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	q := store.New(s.deps.Pool)
@@ -102,7 +107,7 @@ func (s *server) GetTimeStatsSummary(ctx context.Context, req gen.GetTimeStatsSu
 	if err != nil {
 		return nil, err
 	}
-	week := mondayOf(s.today())
+	week := mondayOf(today)
 	hours, err := q.StatsWeekHours(ctx, store.StatsWeekHoursParams{
 		UserID:        c.UserID,
 		WeekStart:     pgDate(week),
@@ -197,6 +202,10 @@ func (s *server) GetTimeStatsTimeseries(ctx context.Context, req gen.GetTimeStat
 // whose entries have waited more than seven days, oldest week first and then
 // by name, as the queue orders them; occurredAt is the oldest submission.
 func (s *server) GetTimeStatsAttention(ctx context.Context, _ gen.GetTimeStatsAttentionRequestObject) (gen.GetTimeStatsAttentionResponseObject, error) {
+	today, err := s.businessToday(ctx)
+	if err != nil {
+		return nil, err
+	}
 	q := store.New(s.deps.Pool)
 	c, err := s.callerFor(ctx, q)
 	if err != nil {
@@ -208,7 +217,7 @@ func (s *server) GetTimeStatsAttention(ctx context.Context, _ gen.GetTimeStatsAt
 	}
 
 	weeks, err := q.StatsUnsubmittedWeeks(ctx, store.StatsUnsubmittedWeeksParams{
-		UserID: c.UserID, CurrentWeek: pgDate(mondayOf(s.today())), LockedBefore: scope.lock,
+		UserID: c.UserID, CurrentWeek: pgDate(mondayOf(today)), LockedBefore: scope.lock,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("time: list the caller's unsubmitted weeks: %w", err)
