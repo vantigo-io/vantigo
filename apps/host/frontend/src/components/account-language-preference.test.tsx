@@ -1,6 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react";
-import { getLanguagePreference, setLanguagePreference } from "@vantigo/frontend-shell";
+import {
+  browserTimeZone,
+  getLanguagePreference,
+  getTimeZones,
+  setLanguagePreference,
+  setTimeZones,
+} from "@vantigo/frontend-shell";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountLanguagePreference } from "./account-language-preference";
 
@@ -39,6 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setLanguagePreference("auto");
+  setTimeZones(null);
 });
 
 describe("AccountLanguagePreference", () => {
@@ -62,5 +69,28 @@ describe("AccountLanguagePreference", () => {
     await queryClient.invalidateQueries({ queryKey: ["account", "profile", "user-1"] });
 
     expect(getLanguagePreference()).toBe("nb");
+  });
+
+  it("hands the session's time zones to the shell, and the browser's back when the session goes", async () => {
+    fetchSessionMock.mockResolvedValue({
+      ...session,
+      timeZone: "America/New_York",
+      timeZoneSource: "personal",
+      businessTimeZone: "Europe/Oslo",
+    });
+    getProfileMock.mockResolvedValue(profile);
+    const { queryClient } = renderPreference();
+
+    await waitFor(() =>
+      expect(getTimeZones()).toEqual({
+        timeZone: "America/New_York",
+        source: "personal",
+        businessTimeZone: "Europe/Oslo",
+      }),
+    );
+
+    queryClient.setQueryData(["auth", "session"], null);
+    await waitFor(() => expect(getTimeZones().timeZone).toBe(browserTimeZone()));
+    expect(getTimeZones().businessTimeZone).toBe(browserTimeZone());
   });
 });

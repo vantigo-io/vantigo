@@ -1,9 +1,16 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createLocaleFormatters, setLanguagePreference } from "@vantigo/frontend-shell";
+import {
+  civilDateIn,
+  createLocaleFormatters,
+  getTimeZones,
+  instantFromWallClock,
+  setLanguagePreference,
+  setTimeZones,
+} from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEntry } from "../api/timeline";
 import {
@@ -60,6 +67,7 @@ const actionsButton = () => screen.getByRole("button", { name: /actions for note
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  setTimeZones(null);
 });
 
 describe("timeline API contract", () => {
@@ -320,6 +328,61 @@ describe("CustomerTimeline", () => {
     const [, postInit] = postCalls[0] ?? [];
     expect(postInit?.headers).toEqual({ "Content-Type": "application/json" });
     expect(JSON.parse(String(postInit?.body))).toMatchObject({ eventType: "interaction.meeting", note: "Meet" });
+  });
+
+  it("reads a typed time as a moment in the writer's own zone, and names the zone", async () => {
+    // The writer chose New York; the workspace keeps Oslo's day (time zones
+    // design D6): the date defaults to the business day, the time is theirs.
+    setTimeZones({ timeZone: "America/New_York", timeZoneSource: "personal", businessTimeZone: "Europe/Oslo" });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/assignable-users")) return Promise.resolve(json([]));
+      if (url.endsWith("/api/v1/customers/42/timeline") && init?.method === "POST")
+        return Promise.resolve(json(entry()));
+      return Promise.resolve(json({ data: [], nextCursor: null }));
+    });
+    await renderTimeline(fetchMock);
+    await userEvent.click(screen.getByRole("button", { name: "Add event" }));
+    const createDialog = await screen.findByRole("dialog", { name: "Add timeline event" });
+    fireEvent.change(within(createDialog).getByLabelText("Time (America/New_York)"), { target: { value: "09:15" } });
+    await userEvent.type(within(createDialog).getByRole("textbox", { name: "Description" }), "Call");
+    await userEvent.click(within(createDialog).getByRole("button", { name: /^Add event$/ }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.find(([url, init]) => String(url).endsWith("/timeline") && init?.method === "POST"),
+      ).toBeDefined(),
+    );
+    const [, postInit] =
+      fetchMock.mock.calls.find(([url, init]) => String(url).endsWith("/timeline") && init?.method === "POST") ?? [];
+    const today = civilDateIn("Europe/Oslo");
+    expect(JSON.parse(String(postInit?.body))).toMatchObject({
+      occurredOn: today,
+      occurredAt: instantFromWallClock(today, "09:15", "America/New_York").toISOString(),
+    });
+  });
+
+  it("shows an edit its stored time in the reader's zone, and saves it back untouched", async () => {
+    // 22:30 UTC on 20 July is 00:30 on the 21st in Oslo, the entry's day, and
+    // 18:30 on the 20th to a reader in New York.
+    setTimeZones({ timeZone: "America/New_York", timeZoneSource: "personal", businessTimeZone: "Europe/Oslo" });
+    const stored = entry({ occurredOn: "2026-07-21", occurredAt: "2026-07-20T22:30:00Z" });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/assignable-users")) return Promise.resolve(json([]));
+      if (init?.method === "PUT") return Promise.resolve(json(stored));
+      return Promise.resolve(json({ data: [stored], nextCursor: null }));
+    });
+    await renderTimeline(fetchMock);
+    await userEvent.click(await waitFor(actionsButton));
+    await userEvent.click(await screen.findByText("Edit"));
+    expect(await screen.findByLabelText("Time (America/New_York)")).toHaveValue("18:30");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(fetchMock.mock.calls.find(([, init]) => init?.method === "PUT")).toBeDefined());
+    const [, putInit] = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT") ?? [];
+    expect(JSON.parse(String(putInit?.body))).toMatchObject({
+      occurredOn: "2026-07-21",
+      occurredAt: "2026-07-20T22:30:00Z",
+    });
   });
 
   it("renders revisions returned inside the data envelope", async () => {
@@ -652,7 +715,8 @@ describe("CustomerTimeline", () => {
     await renderTimeline(fetchMock);
     await userEvent.click(screen.getByRole("button", { name: "Add event" }));
     const formDialog = await screen.findByRole("dialog", { name: "Add timeline event" });
-    expect(within(formDialog).getByLabelText("Time (UTC)")).toBeInTheDocument();
+    // The time field names the zone a typed time is read in: the reader's own.
+    expect(within(formDialog).getByLabelText(`Time (${getTimeZones().timeZone})`)).toBeInTheDocument();
     // The time is the instant in the reader's zone, with no zone named after
     // it (time zones design D8): whatever zone the test runs in, the card
     // shows what the shell's formatters make of the instant there.

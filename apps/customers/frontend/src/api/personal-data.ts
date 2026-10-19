@@ -14,7 +14,7 @@ export const downloadPersonalData = (customer: Pick<CustomerResponse, "id" | "cu
   );
 
 /**
- * Puts the anonymisation on `anonymiseOn` (yyyy-MM-dd, UTC), or moves it there
+ * Puts the anonymisation on `anonymiseOn` (yyyy-MM-dd, a business day), or moves it there
  * (GDPR design D4); answers the customer as it now is, its revision included. A
  * refusal is an `ApiConflictError` whose `code` says which —
  * `personal_data_not_a_person`, `personal_data_customer_active`,

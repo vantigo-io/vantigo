@@ -1,8 +1,11 @@
+import { civilDateIn, getTimeZones } from "@vantigo/frontend-shell";
+
 /**
  * Calendar days and hours as the time module speaks them. A day is a plain
  * `YYYY-MM-DD` string, never a `Date`: the arithmetic below runs on UTC
  * midnight so a daylight-saving change never moves a day, and only `today()`
- * asks the local clock, because "this week" is the caller's own week.
+ * asks the clock — in the workspace's business time zone, the day the server
+ * judges an entry's date by (time zones design D6), not the browser's.
  */
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -22,11 +25,8 @@ const fromUtc = (date: Date): string =>
 export const isIsoDate = (value: unknown): value is string =>
   typeof value === "string" && ISO_DATE.test(value) && fromUtc(toUtc(value)) === value;
 
-/** The caller's calendar date on their own clock. */
-export const today = (): string => {
-  const now = new Date();
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-};
+/** Today on the business day: the calendar date in the workspace's time zone, which the shell holds. */
+export const today = (): string => civilDateIn(getTimeZones().businessTimeZone);
 
 export const addDays = (date: string, days: number): string => fromUtc(new Date(toUtc(date).getTime() + days * DAY_MS));
 

@@ -6,5 +6,14 @@ export { i18n } from "./instance";
 export type { LanguagePreference, SupportedLocale } from "./locale";
 export { localeToIntlLocale, resolveLocale, supportedLocales } from "./locale";
 export type { I18nProviderProps } from "./provider";
-export { I18nProvider, useI18n, useLocale, useTranslation } from "./provider";
+export { I18nProvider, useI18n, useLocale, useTimeZones, useTranslation } from "./provider";
 export { getLanguagePreference, getLocale, setLanguagePreference } from "./store";
+export type { TimeZoneSource, TimeZones } from "./time-zone";
+export {
+  browserTimeZone,
+  civilDateIn,
+  getTimeZones,
+  instantFromWallClock,
+  setTimeZones,
+  wallClockIn,
+} from "./time-zone";
