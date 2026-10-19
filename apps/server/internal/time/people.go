@@ -25,8 +25,8 @@ const (
 // (GET /api/v1/time/people)
 //
 // time:view-all only, which the contract's access rule enforces. The window
-// is the current week — the Monday on or before today, dates in UTC, as the
-// harness clock and the week endpoints read them — and the weeks before it.
+// is the current week — the Monday on or before today, the business day
+// (businessToday) — and the weeks before it.
 // Everyone with an entry dated in the window or a week submission for one of
 // its weeks is listed, with every week of the window, oldest first; nobody
 // else is, since identity's users are not this module's to enumerate.
@@ -39,7 +39,11 @@ func (s *server) GetTimePeople(ctx context.Context, req gen.GetTimePeopleRequest
 		}
 		weeks = *w
 	}
-	current := mondayOf(s.today())
+	today, err := s.businessToday(ctx)
+	if err != nil {
+		return nil, err
+	}
+	current := mondayOf(today)
 	windowStart := current.AddDate(0, 0, -daysInWeek*int(weeks-1))
 	window := store.PeopleWeekTotalsParams{WindowStart: pgDate(windowStart), WindowEnd: pgDate(weekEnd(current))}
 
