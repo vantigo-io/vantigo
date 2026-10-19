@@ -140,6 +140,15 @@ func (w *RetentionWorker) RunLedger(ctx context.Context) (attempted, succeeded i
 // that fails closes the connection, which ends the session and the lock with
 // it (communications' and customers' rule).
 func (s *server) eraseUnderLease(ctx context.Context, who actor) (bool, []erasedKind, error) {
+	// The business time zone is read before the lease's connection is held:
+	// the calendar reads through the pool, and a cycle that held one
+	// connection while asking the pool for another would wait for itself on
+	// a pool of one, and wedge a small pool at startup beside the other
+	// workers' first cycles.
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return false, nil, err
+	}
 	conn, err := s.deps.Pool.Acquire(ctx)
 	if err != nil {
 		return false, nil, fmt.Errorf("staff: acquire a connection for the retention lease: %w", err)
@@ -162,7 +171,7 @@ func (s *server) eraseUnderLease(ctx context.Context, who actor) (bool, []erased
 			_ = conn.Conn().Close(release)
 		}
 	}()
-	kinds, err := s.eraseCycle(ctx, conn, who)
+	kinds, err := s.eraseCycle(ctx, conn, who, zone)
 	return true, kinds, err
 }
 

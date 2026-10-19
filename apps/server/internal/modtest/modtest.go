@@ -655,6 +655,22 @@ func (h *Harness) Workers(d module.Deps) []worker.Worker { return module.Workers
 // Directory, say.
 func (h *Harness) Deps() module.Deps { return h.deps }
 
+// DepsOn is Deps with pool in place of the installation's, and the
+// single-provider slots identity fills rebuilt on that pool — the business
+// calendar today — the way worker mode builds them on its own pool. A test
+// that starves a worker on a pool of one uses this rather than replacing
+// Deps().Pool by hand, or the calendar would keep reading through the
+// harness's own pool and the starvation it is there to catch would never
+// happen.
+func (h *Harness) DepsOn(pool *pgxpool.Pool) module.Deps {
+	d := h.deps
+	d.Pool = pool
+	if len(h.mods) > 0 && h.mods[0].Calendar != nil {
+		d.Calendar = h.mods[0].Calendar(d)
+	}
+	return d
+}
+
 // Pool is the harness's own pool on the installation's database, for a fixture
 // that Exec, Count and One cannot express.
 func (h *Harness) Pool() *pgxpool.Pool { return h.pool }

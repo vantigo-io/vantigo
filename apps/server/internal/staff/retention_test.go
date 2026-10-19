@@ -665,8 +665,7 @@ func TestRetention_TheCycleRunsOnTheLeasesConnection(t *testing.T) {
 		t.Fatalf("open a pool of one: %v", err)
 	}
 	defer one.Close()
-	deps := h.Deps()
-	deps.Pool = one
+	deps := h.DepsOn(one)
 	if ran, err := staff.NewRetentionWorker(deps).RunCycle(ctx); err != nil || !ran {
 		t.Fatalf("RunCycle on a pool of one = %v, %v; want true, nil", ran, err)
 	}

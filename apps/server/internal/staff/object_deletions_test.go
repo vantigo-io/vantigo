@@ -129,8 +129,7 @@ func TestLedger_CallsTheStoreHoldingNoConnection(t *testing.T) {
 	defer one.Close()
 	var held []int32
 	h.objects.whenDeleting(func(string) { held = append(held, one.Stat().AcquiredConns()) })
-	deps := h.Deps()
-	deps.Pool = one
+	deps := h.DepsOn(one)
 	attempted, succeeded, err := staff.NewRetentionWorker(deps).RunLedger(ctx)
 	if err != nil || attempted != 3 || succeeded != 3 {
 		t.Fatalf("pass on a pool of one = %d, %d, %v; want 3, 3, nil", attempted, succeeded, err)

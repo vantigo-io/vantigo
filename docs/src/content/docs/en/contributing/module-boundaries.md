@@ -429,9 +429,14 @@ handle nil**. The two exceptions are `contracts.UserDirectory` and
 `contracts.BusinessCalendar`: identity is always mounted, so `Deps.Users` and
 `Deps.Calendar` are always set once composed — and, since `module.Workers` resolves
 them as well, in worker mode too. A module reads the calendar **before** it opens a
-transaction, never inside one: the read takes a pool connection of its own, which a
-transaction holding locks must not wait for (rule 7); `modtest.SetBusinessTimeZone`
-sets the zone for a test whose subject is another zone.
+transaction or takes a connection of its own, never while holding either: the read
+takes a pool connection, which a transaction holding locks — or a worker holding its
+advisory lease's connection — must not wait for (rule 7). A worker that did would
+wait for itself on a pool of one, and wedged the image smoke test's pool of four at
+startup beside the other workers' first cycles. `modtest.SetBusinessTimeZone` sets
+the zone for a test whose subject is another zone, and `modtest.DepsOn(pool)` is
+`Deps` on a pool of a test's own with the calendar built on that pool, for the test
+that starves a worker to prove it never asks for a second connection.
 
 `UserDirectory.PermissionHolders(key)` names the **active users holding a
 permission**, ordered by display name, in one query of identity's: a user holds the
