@@ -1851,7 +1851,7 @@ components:
                 - callbackUrl
             type: object
         SsoOidcSettingsRequest:
-            description: The workforce OpenID Connect provider, whole; a PUT replaces every field and turns OIDC on. The rules are the ones the OIDC_* environment variables were held to, now checked at the save, and each refusal is a field error under the request's own field name.
+            description: 'The workforce OpenID Connect provider, whole; a PUT replaces every field and turns OIDC on. The rules are the ones the OIDC_* environment variables were held to, now checked at the save, and each refusal is a field error under the request''s own field name. The credential: a present workloadTokenFile clears the sealed secret; a present clientSecret clears the token file; a change of provider or clientId requires clientSecret or workloadTokenFile in the same request, since the old application''s credential is never carried to a new one; clientSecret absent with the same provider and clientId keeps the sealed one.'
             properties:
                 allowedDomains:
                     description: Google only, where at least one is required — the email domains a sign-in is admitted from, as bare DNS names such as example.com. Each is trimmed, lower-cased and stripped of trailing dots, and duplicates are dropped; a URL, an address, a port or a single label is refused. Absent or empty for Entra.
@@ -1867,7 +1867,7 @@ components:
                     maxLength: 200
                     type: string
                 clientSecret:
-                    description: The client secret, sealed at rest and never answered. Absent keeps the secret already set; present replaces it. A secret and workloadTokenFile are mutually exclusive, and one of the two is required.
+                    description: The client secret, sealed at rest and never answered. Present, it replaces the secret and clears the token file. Absent with the same provider and clientId as the settings hold, it keeps the secret already set; a change of provider or clientId needs clientSecret or workloadTokenFile in the same request, since the old application's credential is never carried to a new one. A secret and workloadTokenFile are mutually exclusive, and one of the two is required.
                     type: string
                 confirmIssuerChange:
                     description: True to change the authority while people are linked to the provider under the current one. The links are keyed on the issuer, so each linked person is provisioned anew at their next sign-in; without it such a change is refused 409 oidc_links_exist.
@@ -1883,7 +1883,7 @@ components:
                         - google
                     type: string
                 workloadTokenFile:
-                    description: Entra only — the absolute path of a workload identity token file, presented as a client assertion in place of a secret. The process that saves it must be able to read it, and every replica must see the same file at the same path.
+                    description: Entra only — the absolute path of a workload identity token file, presented as a client assertion in place of a secret. Present, it clears the sealed client secret. The process that saves it must be able to read it, and every replica must see the same file at the same path.
                     maxLength: 500
                     type: string
             required:
@@ -1922,12 +1922,15 @@ components:
                     description: When the token this one replaced stops being accepted; absent when there was none.
                     format: date-time
                     type: string
+                settings:
+                    $ref: '#/components/schemas/SsoSettings'
                 token:
                     description: The bearer token — 32 random bytes, base64url without padding.
                     type: string
             required:
                 - token
                 - endpointUrl
+                - settings
             type: object
         SsoScimTokenRequest:
             description: How long the token being replaced is still accepted, so a directory can be moved to the new one without a gap. Ignored when there is no token yet.
@@ -1956,7 +1959,7 @@ components:
                 scim:
                     $ref: '#/components/schemas/SsoScimSettings'
                 version:
-                    description: The settings' version, 0 while they were never written; every write moves it on. Send it back as If-Match on PUT /owner/sso/oidc.
+                    description: The settings' version, 0 while they were never written. Every write — the PUT, the token issue and the deletes included — moves it on and answers the whole row with the new version, so a screen holding the row stays current after its own action. Send it back as If-Match on PUT /owner/sso/oidc.
                     format: int32
                     type: integer
             required:
@@ -5008,8 +5011,18 @@ paths:
                   schema:
                     type: boolean
             responses:
-                "204":
-                    description: No Content
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SsoSettings'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request — a confirm that is not a boolean.
                 "401":
                     content:
                         application/json:
@@ -5115,8 +5128,12 @@ paths:
             description: Turns SCIM off and forgets its tokens, so the endpoint refuses every request within 20 seconds. The users, mappings and groups it provisioned stay as they are. Audited sso-settings.changed.
             operationId: deleteIdentityOwnerSsoScim
             responses:
-                "204":
-                    description: No Content
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SsoSettings'
+                    description: OK
                 "401":
                     content:
                         application/json:
@@ -5148,8 +5165,12 @@ paths:
             description: 'Ends a rotation''s overlap early: the token the current one replaced stops being accepted now rather than at previousExpiresAt. Audited sso-settings.changed.'
             operationId: deleteIdentityOwnerSsoScimPrevious
             responses:
-                "204":
-                    description: No Content
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SsoSettings'
+                    description: OK
                 "401":
                     content:
                         application/json:
