@@ -30,9 +30,9 @@ import (
 // orders them. Mail is sent only after the commit. Each change is audited
 // with the actor: a user as actor_user_id, a system as a null actor with
 // details.actor and no correlation id. The provider holds no state of its
-// own but the single sign-on settings' 20-second cache, which only "is SCIM
-// on" is read through — no memory of an earlier call — so any two
-// instances, in an API process or a worker, answer the same within it.
+// own — no cache, no memory of an earlier call: the single sign-on row is
+// read on the caller's own q every time — so any two instances, in an API
+// process or a worker, answer the same.
 
 // maxProvisionedInvitations is how many delivered invitations one pending
 // spell gets before Activate stops issuing (InvitationExhausted).
@@ -45,19 +45,17 @@ var errInvalidSpec = errors.New("identity: the account spec is invalid")
 // provisioning is the provider. access is identity's own, whose catalog —
 // set at identity's mount, absent in a worker-only process — widens the
 // denied keys (provisioningDeniedKeys) and whose stamp rotation ends a
-// deactivated user's sessions. sso is its own reader of the single sign-on
-// settings, which says whether SCIM is on.
+// deactivated user's sessions.
 type provisioning struct {
 	access *Access
 	deps   module.Deps
-	sso    *ssoSettingsReader
 }
 
 var _ contracts.AccountProvisioning = (*provisioning)(nil)
 
 // newProvisioning is Module's Accounts over a and d.
 func newProvisioning(a *Access, d module.Deps) contracts.AccountProvisioning {
-	return &provisioning{access: a, deps: d, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets)}
+	return &provisioning{access: a, deps: d}
 }
 
 // provisionedUser is a user as the provider judges them: GetProvisioningUser
@@ -122,11 +120,6 @@ func (p *provisioning) writeIn(ctx context.Context, actor contracts.Actor, withM
 	if !actor.Valid() {
 		return contracts.ErrInvalidActor
 	}
-	// Warm the reader ref asks whether SCIM is on, before the transaction
-	// holds a connection, so ref answers from the cache inside it.
-	if _, err := p.sso.get(ctx); err != nil {
-		return err
-	}
 	return db.RetrySerializable(ctx, serializableAttempts, func() error {
 		return db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{IsoLevel: pgx.Serializable}, func(tx pgx.Tx) error {
 			q := store.New(tx)
@@ -161,13 +154,17 @@ func lockUser(ctx context.Context, q *store.Queries, id uuid.UUID) (provisionedU
 // directoryInactive reports whether the directory has deactivated u: SCIM
 // is on, the directory reports them inactive, and they are no Owner — no
 // session of theirs is accepted, whatever identity's record says. The ref
-// reports it; the writes act on identity's record all the same. A failure
-// to read whether SCIM is on is an error.
-func (p *provisioning) directoryInactive(ctx context.Context, u provisionedUser) (bool, error) {
+// reports it; the writes act on identity's record all the same. Whether
+// SCIM is on is read from the single sign-on row on q, uncached, as
+// authorityMode reads it: inside a provisioning transaction nothing touches
+// a cache or asks the pool for a second connection. A failure to read is an
+// error.
+func directoryInactive(ctx context.Context, q *store.Queries, u provisionedUser) (bool, error) {
 	if !u.ScimInactive || u.IsOwner {
 		return false, nil
 	}
-	return p.sso.scimEnabled(ctx)
+	settings, err := readSSOSettings(ctx, q, nil)
+	return settings.SCIM != nil, err
 }
 
 // spellStart is when u's current invitation spell began.
@@ -227,7 +224,7 @@ func (p *provisioning) ref(ctx context.Context, q *store.Queries, u provisionedU
 		HasCredential:  u.HasPassword || u.HasPasskey || u.HasOidcLink,
 		Invitation:     contracts.Invitation{State: contracts.InvitationNone},
 	}
-	inactive, err := p.directoryInactive(ctx, u)
+	inactive, err := directoryInactive(ctx, q, u)
 	if err != nil {
 		return contracts.AccountRef{}, err
 	}
