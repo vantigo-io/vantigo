@@ -70,7 +70,8 @@ user active, a contact one the directory answers **and** one the writer may name
 writer holds `customers:contacts-view`, the sensitive key that guards a contact's address
 — else a field error on `attendees[i]`; a contact without an address is refused the same
 way, since the point is to mail them; an email attendee's address well-formed; two
-attendees naming the same user, contact or address are one. A `PUT` keeps an attendee
+attendees naming the same user, contact or address are one, and a typed address that is a
+listed contact's address is the contact. A `PUT` keeps an attendee
 who is still listed (their answer, their token and their invitation record with them),
 drops one who is not (D4 tells them), and adds the new ones. Customers' anonymisation
 reaches a contact through nothing here — the row holds an id and the directory answers
@@ -95,8 +96,8 @@ holds the sensitive key that guards it in Customers; it is **not** on the appoin
 Built with `arran4/golang-ical` and sent through `mail.Outbound`, which gains one field,
 `Calendar *mail.CalendarPart{ Method, Body }`: `internal/mail` adds it as the **third
 alternative** after the text and the HTML — `text/calendar; method=<Method>`, which
-go-mail completes with `charset=UTF-8` — and attaches the same body as `invite.ics`
-(`application/ics`). The message is therefore the research's layout, which the clients
+go-mail completes with `charset=UTF-8` — and attaches the same body as `invite.ics`,
+`cancel.ics` on a cancellation (`application/ics`). The message is therefore the research's layout, which the clients
 key on:
 
 ```
@@ -160,9 +161,9 @@ thirty seconds for the lot, on a context detached from the request:
 | create | every outside attendee | `REQUEST`, the row's sequence |
 | a `PUT` that bumped `sequence` (when or where changed) | every outside attendee, kept or new | `REQUEST`, the new sequence |
 | a `PUT` that did not | the outside attendees **added** | `REQUEST`, the current sequence |
-| a `PUT` | each outside attendee **dropped** | `CANCEL` to that one, the current sequence, with that one as the only `ATTENDEE` |
+| a `PUT` | each outside attendee **dropped** who was invited, unless their address is still on the appointment under another kind | `CANCEL` to that one, the current sequence, with that one as the only `ATTENDEE`, sent **before** any `REQUEST` of the same change, so the last mail in their inbox is the live one |
 | an occurrence moved, cancelled or put back | every outside attendee | `REQUEST`, the new sequence (the whole series again, which is how the clients learn of an exception) |
-| the appointment cancelled (D6) | every outside attendee | `CANCEL`, the new sequence |
+| the appointment cancelled (D6) | every outside attendee **who was invited** (`invited_at` set; one never reached gets no cancellation of what they never received) | `CANCEL`, the new sequence |
 | `POST /appointments/{id}/attendees/{attendeeId}/resend` | that one, by the owner | `REQUEST`, the current sequence |
 
 A send that succeeds writes `invited_at` and `invited_sequence` and clears
@@ -231,10 +232,12 @@ anonymous operations, rate-limited per client address, on the public host's list
 `RsvpPage { title, allDay, startsAt?, endsAt?, startDate?, endDate?, timeZone, location?,
 organiser: { name }, company, attendee: { name }, status, cancelled, language }` — what
 the invitee needs to decide and nothing more: no description (it may be internal), no
-other attendee, no owner address. `company` is the workspace's name from identity's
-system settings if it has one, else absent. 404 with no body for a token nobody holds; an
+other attendee, no owner address. `company` is reserved: no contract answers the
+workspace's name yet, so B leaves it absent. 404 with no body for a token nobody holds; an
 answer to a cancelled appointment is 409 `appointment_cancelled`. The answer sets the
-attendee's `status` and `responded_at`, and the owner is told (D4). `security.PayRoutes()`
+attendee's `status` and `responded_at`, and the owner is told (D4); an answer that repeats
+the status already held writes nothing and tells nobody, so a forwarded link cannot be
+used to mail the owner at will. `security.PayRoutes()`
 gains `GET /rsvp`, the two `POST`s, and `TestPublicHostGate` the three; the host's
 `publicPaths` and `sessionlessPaths` gain `/rsvp`.
 
