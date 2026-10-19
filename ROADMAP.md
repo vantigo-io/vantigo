@@ -5,7 +5,7 @@ Other modules add their own sections as their roadmaps solidify.
 
 ## Platform
 
-### Time zones (deliveries A, B and C done)
+### Time zones (deliveries A, B, C and D done)
 
 Decided in
 [`docs/superpowers/specs/2026-10-19-time-zones-design.md`](docs/superpowers/specs/2026-10-19-time-zones-design.md),
@@ -36,9 +36,15 @@ milestones' `Until` buckets `ready_at` in the business zone, handed to the SQL a
 parameter, and the dashboard's "today", its attention items and a milestone's
 `overdue` flag judge the business day; the contract's descriptions say so.
 
-*Still to land:* **D** Time's "today" and the meaning of its start and end times,
-**E** Customers' follow-up day and timeline rendering, **F** the personal zone's
-setting and the shell's formatters. The calendar module depends on A and F.
+**Delivery D (done)** — Time off the UTC day: "today", the day the current week is read
+from for the dashboard's hours this week, its unsubmitted-week items and the people
+overview, is the business day; an entry's start and end times are documented as
+wall-clock times in the business zone, with no column changed; the contract's
+descriptions say so.
+
+*Still to land:* **E** Customers' follow-up day and timeline rendering, **F** the
+personal zone's setting and the shell's formatters. The calendar module depends on A
+and F.
 
 ### Cross-module domain events (deferred until Orders)
 

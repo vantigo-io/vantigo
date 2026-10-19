@@ -88,6 +88,11 @@ liste, med start- og sluttider og notater, en **Sum for dagen**, og piler for
 | **Notat** | Fritekst, høyst 2000 tegn. |
 | **Fakturerbar** | Vises bare på et prosjekt som fakturerer; på som standard for en ny føring. |
 
+Start og slutt er klokkeslettet på jobben, slik en klokke i virksomhetens tidssone
+viser det (satt under [Administrasjon av
+arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet)),
+og flyttes aldri til en annen tidssone.
+
 **Lagre** lagrer føringen og viser «Timene er lagret». En avvisning tjeneren knytter til
 et felt — en arbeidstype som ikke lenger er aktiv, en dag over 24 timer — havner på det
 feltet; alt annet vises som «Kunne ikke lagre timene».

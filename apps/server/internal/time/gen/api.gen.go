@@ -125,7 +125,7 @@ type TimeEntryRequest struct {
 	// BillingLineId One of the project's active billing lines.
 	BillingLineId *int32 `json:"billingLineId,omitempty"`
 
-	// EndTime HH:MM on the entry date, after startTime. Required when startTime is given.
+	// EndTime HH:MM on the entry date, wall-clock time in the workspace's business time zone, after startTime. Required when startTime is given.
 	EndTime *string `json:"endTime,omitempty"`
 
 	// EntryDate The day worked. Not before the lock date, unless the caller holds time:manage.
@@ -140,7 +140,7 @@ type TimeEntryRequest struct {
 	// ProjectId A project the caller may log time on — active, and the caller holds the member or manager role on it.
 	ProjectId int32 `json:"projectId"`
 
-	// StartTime HH:MM on the entry date. Required when endTime is given.
+	// StartTime HH:MM on the entry date, wall-clock time in the workspace's business time zone. Required when endTime is given.
 	StartTime *string `json:"startTime,omitempty"`
 
 	// TaskId A task on the project. Its title is snapshotted on the entry, so the entry stays readable after the task is deleted.
@@ -224,7 +224,7 @@ type TimeEntryUpdateRequest struct {
 	// BillingLineId One of the project's active billing lines.
 	BillingLineId *int32 `json:"billingLineId,omitempty"`
 
-	// EndTime HH:MM on the entry date, after startTime. Required when startTime is given.
+	// EndTime HH:MM on the entry date, wall-clock time in the workspace's business time zone, after startTime. Required when startTime is given.
 	EndTime *string `json:"endTime,omitempty"`
 
 	// EntryDate The day worked. Not before the lock date, unless the caller holds time:manage.
@@ -242,7 +242,7 @@ type TimeEntryUpdateRequest struct {
 	// Revision The revision the caller read the entry at. Revisions start at 1; an absent or smaller one is refused on revision.
 	Revision int32 `json:"revision"`
 
-	// StartTime HH:MM on the entry date. Required when endTime is given.
+	// StartTime HH:MM on the entry date, wall-clock time in the workspace's business time zone. Required when endTime is given.
 	StartTime *string `json:"startTime,omitempty"`
 
 	// TaskId A task on the project. Its title is snapshotted on the entry, so the entry stays readable after the task is deleted.
@@ -440,7 +440,7 @@ type TimeStatsSummaryResponse struct {
 	AwaitingMyApprovalDelta int32     `json:"awaitingMyApprovalDelta"`
 	From                    time.Time `json:"from"`
 
-	// HoursThisWeek The caller's own hours dated in the current week (Monday to Sunday, dates in UTC), whatever their status apart from rejected.
+	// HoursThisWeek The caller's own hours dated in the current week (Monday to Sunday, the week today falls in, in the workspace's business time zone), whatever their status apart from rejected.
 	HoursThisWeek float64 `json:"hoursThisWeek"`
 
 	// HoursThisWeekDelta hoursThisWeek against the same hours of the week before.
@@ -525,7 +525,7 @@ type GetTimeEntriesParams struct {
 
 // GetTimePeopleParams defines parameters for GetTimePeople.
 type GetTimePeopleParams struct {
-	// Weeks How many weeks, 1 to 12, ending with the current one (weeks start on Monday, dates are UTC). Default 4.
+	// Weeks How many weeks, 1 to 12, ending with the current one (weeks start on Monday; the current week is the one today falls in, in the workspace's business time zone). Default 4.
 	Weeks *int32 `form:"weeks,omitempty" json:"weeks,omitempty"`
 }
 

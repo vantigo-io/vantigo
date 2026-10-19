@@ -492,7 +492,7 @@ export interface components {
              * @description One of the project's active billing lines.
              */
             billingLineId?: number | null;
-            /** @description HH:MM on the entry date, after startTime. Required when startTime is given. */
+            /** @description HH:MM on the entry date, wall-clock time in the workspace's business time zone, after startTime. Required when startTime is given. */
             endTime?: string | null;
             /**
              * Format: date
@@ -511,7 +511,7 @@ export interface components {
              * @description A project the caller may log time on — active, and the caller holds the member or manager role on it.
              */
             projectId: number;
-            /** @description HH:MM on the entry date. Required when endTime is given. */
+            /** @description HH:MM on the entry date, wall-clock time in the workspace's business time zone. Required when endTime is given. */
             startTime?: string | null;
             /**
              * Format: int32
@@ -598,7 +598,7 @@ export interface components {
              * @description One of the project's active billing lines.
              */
             billingLineId?: number | null;
-            /** @description HH:MM on the entry date, after startTime. Required when startTime is given. */
+            /** @description HH:MM on the entry date, wall-clock time in the workspace's business time zone, after startTime. Required when startTime is given. */
             endTime?: string | null;
             /**
              * Format: date
@@ -622,7 +622,7 @@ export interface components {
              * @description The revision the caller read the entry at. Revisions start at 1; an absent or smaller one is refused on revision.
              */
             revision: number;
-            /** @description HH:MM on the entry date. Required when endTime is given. */
+            /** @description HH:MM on the entry date, wall-clock time in the workspace's business time zone. Required when endTime is given. */
             startTime?: string | null;
             /**
              * Format: int32
@@ -864,7 +864,7 @@ export interface components {
             from: string;
             /**
              * Format: double
-             * @description The caller's own hours dated in the current week (Monday to Sunday, dates in UTC), whatever their status apart from rejected.
+             * @description The caller's own hours dated in the current week (Monday to Sunday, the week today falls in, in the workspace's business time zone), whatever their status apart from rejected.
              */
             hoursThisWeek: number;
             /**
@@ -1501,7 +1501,7 @@ export interface operations {
     getTimePeople: {
         parameters: {
             query?: {
-                /** @description How many weeks, 1 to 12, ending with the current one (weeks start on Monday, dates are UTC). Default 4. */
+                /** @description How many weeks, 1 to 12, ending with the current one (weeks start on Monday; the current week is the one today falls in, in the workspace's business time zone). Default 4. */
                 weeks?: number;
             };
             header?: never;
