@@ -227,7 +227,7 @@ export const calendarCatalog = {
 
       elsewhereHeading: "Calendars from elsewhere",
       elsewhereDescription:
-        "Calendars you subscribe to are shown beside your own and refreshed every half hour. They are never in your own calendar's address.",
+        "Calendars you subscribe to are shown beside your own and refreshed in the background, about every half hour unless your installation is set otherwise. They are never in your own calendar's address.",
       addCalendar: "Add calendar",
       noSubscriptions: "No calendars from elsewhere",
       noSubscriptionsDescription: "Add one with the address another calendar program gives you to subscribe to.",
@@ -515,7 +515,7 @@ export const calendarCatalog = {
 
       elsewhereHeading: "Kalendere fra andre steder",
       elsewhereDescription:
-        "Kalendere du abonnerer på, vises ved siden av din egen og oppdateres hver halvtime. De er aldri med i adressen til din egen kalender.",
+        "Kalendere du abonnerer på, vises ved siden av din egen og oppdateres i bakgrunnen, omtrent hver halvtime om ikke installasjonen er satt opp annerledes. De er aldri med i adressen til din egen kalender.",
       addCalendar: "Legg til kalender",
       noSubscriptions: "Ingen kalendere fra andre steder",
       noSubscriptionsDescription: "Legg til en med adressen et annet kalenderprogram gir deg å abonnere på.",
