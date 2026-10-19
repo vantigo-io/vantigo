@@ -223,7 +223,8 @@ its own. Turning SSO or SCIM on or off on the card changes the mode everywhere w
 20 seconds, with no restart. The mode is also recorded, as the trail of its changes,
 in `identity.system_settings.authority_mode` with `authority_mode_at`: by an Owner's
 save on the card that changes it, in the save's own transaction, and at every API
-start — the first after the upgrade records the mode the
+start, in the transaction that holds the row for the import — the first after the
+upgrade records the mode the
 [imported settings](/en/admin/sso-scim/#before-the-card-the-environment-variables)
 derive. A change is audited `authority-mode.changed` with the modes before and after,
 no actor and no correlation id. A save or a start with the same mode changes
@@ -688,8 +689,8 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 **These variables are read for one import, and no longer configure anything.** The
 provider and the SCIM credential are kept in `identity.sso_settings` and set on the
 [Single sign-on card](/en/admin/sso-scim/#the-single-sign-on-card). The first process
-serving the API that finds that row never written imports whichever of these is set
-into it, audited `sso-settings.imported` with their names; once the row is written
+serving the API that finds that row never written, while `OIDC_PROVIDER` or
+`SCIM_TOKEN` is set, imports these into it, audited `sso-settings.imported` with their names; once the row is written
 they are ignored, and each one still set is named in a warning at every start. This
 release still validates them at startup, so remove them after the import; the next
 release refuses them at startup. See
@@ -698,13 +699,13 @@ release refuses them at startup. See
 | Variable | Imported as | Default |
 | --- | --- | --- |
 | `OIDC_PROVIDER` | `entra` or `google`; unset, OIDC stays off | unset |
-| `OIDC_AUTHORITY` | Exact issuer for the provider | unset |
-| `OIDC_CLIENT_ID` | Entra GUID, or a `.apps.googleusercontent.com` client ID | unset |
+| `OIDC_AUTHORITY` | Exact issuer for the provider; over 200 characters, the provider is imported off | unset |
+| `OIDC_CLIENT_ID` | Entra GUID, or a `.apps.googleusercontent.com` client ID; over 200 characters, the provider is imported off | unset |
 | `OIDC_CLIENT_SECRET` | Client secret, sealed | unset |
-| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolute, readable assertion file (Entra only) | unset |
+| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolute, readable assertion file (Entra only); over 500 characters, the provider is imported off | unset |
 | `AZURE_FEDERATED_TOKEN_FILE` | Platform-supplied fallback for the above | unset |
 | `OIDC_ALLOWED_DOMAINS` | Comma list of bare DNS names (Google only, required there) | unset |
-| `OIDC_DISPLAY_NAME` | Sign-in button label | `Workforce SSO` |
+| `OIDC_DISPLAY_NAME` | Sign-in button label, cut to 100 characters | `Workforce SSO` |
 | `SCIM_TOKEN` | The SCIM bearer token, kept as its digest; unset, SCIM stays off | unset |
 | `SCIM_PREVIOUS_TOKEN` | Prior token during a rotation overlap, kept as its digest | unset |
 | `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` | The overlap's end; RFC 3339, in the future, ≤ 24h ahead | unset |
@@ -784,9 +785,10 @@ version moves.
 
 **The client-authentication mode is inferred, not configured.** There is no
 `ClientAuthentication` setting: the card's **Client secret** means client-secret
-authentication, its **Token file** (an absolute path the saving process can read)
-workload identity. Saving both at once is refused, and so is saving neither while none
-is stored; saving one clears the other. Workload identity is Entra-only; Google is
+authentication, its **Token file** (an absolute path to a regular file of at most
+16 KiB that the saving process can read) workload identity. Saving both at once is
+refused, and so is saving neither, unless a client secret is stored for the same
+provider and client ID, which is then kept; saving one clears the other. Workload identity is Entra-only; Google is
 client-secret-only.
 
 The flow is authorization code plus PKCE with a nonce. Provider metadata, issuer,

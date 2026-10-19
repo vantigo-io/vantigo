@@ -20,8 +20,8 @@ så arbeidsområdet har alltid én.
 
 ## Les oversikten
 
-**Oversikt** åpner **Administrasjonspanel**, "en skrivebeskyttet oversikt over
-kontoer og identitetsintegrasjoner":
+**Oversikt** åpner **Administrasjonspanel**, "En oversikt over kontoer og
+identitetsintegrasjoner, og arbeidsområdets egne innstillinger.":
 
 - **Personer** — **Totalt**, **Aktive**, **Deaktivert** kontoer og **Ventende
   invitasjoner**, med lenken **Vis brukere**.
@@ -31,9 +31,10 @@ kontoer og identitetsintegrasjoner":
   Entra ID, Google Workspace, eller bare **Aktivert**), at **Klientautentisering**
   **Settes på Single sign-on-kortet**, og **Siste vellykkede SSO-bruk**.
 - **SCIM-klargjøring** — **Status** og **Siste autentiserte forespørsel**.
-- **Operativ aktivitet** — en påminnelse om at denne oversikten bare viser
-  ikke-sensitiv identitetsaktivitet; legitimasjon og leverandørkonfigurasjon vises
-  aldri.
+- **Operativ aktivitet** — en merknad om at disse statuskortene bare viser
+  ikke-sensitiv identitetsaktivitet. Legitimasjon vises aldri; kortet **Single
+  sign-on** nedenfor viser leverandørens innstillinger, men aldri hemmeligheten eller
+  et token.
 
 SSO og SCIM settes lenger ned på den samme oversikten, på kortet **Single sign-on**;
 se [Sett opp single sign-on](#sett-opp-single-sign-on).
@@ -361,7 +362,7 @@ tidspunkt, ser de det i denne sonen også, til en egen personlig tidssone finnes
 
 ### Sett opp single sign-on
 
-Kortet **Single sign-on**, under **Arbeidsområde** på oversikten, kobler
+Kortet **Single sign-on**, i full bredde under oversiktens andre kort, kobler
 arbeidsområdet til en identitetsleverandør for arbeidsstyrken — Microsoft Entra ID
 eller Google Workspace — så folk logger inn med jobbkontoen sin, og gir en katalog
 tokenet den klargjør kontoer med (SCIM). Det krever eierrollen og, når installasjonen
@@ -372,46 +373,53 @@ hemmeligheten, omdirigeringen — er beskrevet trinn for trinn i
 Slik lar du folk logge inn gjennom en leverandør:
 
 1. Kopier **Tilbakekalls-URL** og registrer den hos leverandøren.
-2. Velg **Leverandør**: Entra eller Google.
+2. Velg **Leverandør**: **Microsoft Entra ID** eller **Google Workspace**.
 3. Fyll inn **Autoritet**, leverandørens utstederadresse —
-   `https://login.microsoftonline.com/<tenant-guid>/v2.0` for Entra,
-   `https://accounts.google.com` for Google — og **Klient-ID**.
+   `https://login.microsoftonline.com/<tenant-guid>/v2.0` for Entra; for Google fyller
+   kortet inn `https://accounts.google.com` — og **Klient-ID**.
 4. Oppgi legitimasjonen: lim inn **Klienthemmelighet**, eller, for Entra på en
-   plattform som leverer en, stien til **Tokenfil**. Når en hemmelighet er lagret, er
-   feltet tomt og sier når den ble satt: la det stå tomt for å beholde den, og skriv
-   en ny bare for å erstatte den.
+   plattform som leverer en, velg **Tokenfil** under **Legitimasjon** og skriv stien.
+   Når en hemmelighet er lagret, er feltet tomt og sier «Satt _dato_. La feltet stå
+   tomt for å beholde den.»: skriv en ny bare for å erstatte den. En ny
+   **Leverandør** eller **Klient-ID** trenger sin egen hemmelighet eller tokenfil.
 5. For Google, list opp **Domener** folk kan logge inn fra.
-6. Gi eventuelt knappen på innloggingssiden et **Visningsnavn**; ellers er det
+6. Gi eventuelt knappen på innloggingssiden et **Visningsnavn**; står det tomt, er det
    `Workforce SSO`.
-7. Velg **Lagre**. Et felt leverandøren ikke ville godta, merkes med formen det må
-   ha.
+7. Velg **Lagre**. Kortet sier «OIDC-innstillingene er lagret»; et felt leverandøren
+   ikke ville godta, merkes med formen det må ha.
 
 Innen 20 sekunder tilbyr innloggingssiden **Fortsett med** og visningsnavnet, på hver
 server, uten omstart.
 
-Endrer du **Autoritet** mens folk allerede logger inn gjennom leverandøren, ber
-Vantigo deg bekrefte først: folk som er koblet under den gamle autoriteten, gjenkjennes
-ikke under den nye, så deres neste innlogging gjennom leverandøren avvises så lenge
-kontoen deres finnes. Bekreft bare når du flytter til en annen leietaker eller
-leverandør. Å slå leverandøren av mens folk er koblet til den, spør om det samme. Har
-noen andre lagret kortet etter at du åpnet det, sier lagringen det: last siden på nytt
-og gjør endringen igjen.
+Endrer du **Autoritet** mens folk allerede logger inn gjennom leverandøren, spør
+Vantigo først — «Endre leverandørens autoritet?» — fordi folk som er koblet under den
+gamle autoriteten, ikke gjenkjennes under den nye, så deres neste innlogging gjennom
+leverandøren avvises så lenge kontoen deres finnes. Velg **Endre autoritet** bare når
+du flytter til en annen leietaker eller leverandør. **Slå av** — eller **Av** som
+leverandør og **Lagre** — spør også først, «Slå av SSO?», og mens folk er koblet til
+leverandøren, spør en ny dialog, «Personer er koblet til denne leverandøren», en gang
+til. Har noen andre lagret kortet etter at du åpnet det, sier det «Innstillingene er
+endret»: velg **Last inn på nytt** og gjør endringen igjen.
 
 Slik gir du en katalog SCIM-tokenet:
 
 1. Kopier **Endepunkt-URL** inn i katalogens klargjøringsinnstillinger.
-2. Velg **Nytt token**. Dialogen viser tokenet **én gang**: kopier det inn i
-   katalogen før du lukker den. Det kan ikke vises igjen; er det tapt, utsted et nytt.
-3. Fantes det allerede et token, viser dialogen også til når det gamle fortsatt
-   godtas — overlappet, høyst 24 timer — så katalogen kan bytte uten opphold. Velg
-   **Avslutt overlapp** når katalogen bruker det nye tokenet.
+2. Velg **Nytt token**. Finnes det allerede et token, blir du først spurt, «Utstede et
+   nytt token?», i feltet «Godta det nåværende tokenet i (timer)» — 1 til 24, 24 som
+   standard — så katalogen kan bytte uten opphold; velg **Utsted token**.
+3. Dialogen, «Det nye SCIM-tokenet», viser det **én gang**: velg **Kopier token**, lim
+   det inn i katalogen, og velg **Ferdig** først etterpå. Det vises ikke igjen; er det
+   tapt, utsted et nytt.
+4. Når katalogen bruker det nye tokenet, velg **Avslutt overlapp** for å slutte å godta
+   det gamle, eller la overlappet løpe ut.
 
-**Slå av** stopper SCIM: innen 20 sekunder avvises katalogens forespørsler, og kontoene
-og gruppene den opprettet, blir som de er.
+**Slå av** i SCIM-delen spør først, «Slå av SCIM?», og stopper SCIM: innen 20 sekunder
+avvises katalogens forespørsler, og kontoene og gruppene den opprettet, blir som de er.
 
-Når innstillingene ble importert fra installasjonens miljø, sier kortet det og ber om
-at variablene fjernes; det er for den som drifter installasjonen
-([Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene)). Hver endring føres i
+Når innstillingene ble importert fra installasjonens miljø, sier kortet det —
+**Importert fra miljøet** — og ber om at variablene fjernes; det er for den som
+drifter installasjonen ([Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene)).
+Meldingen blir stående til leverandøren lagres neste gang med **Lagre**. Hver endring føres i
 revisjonsloggen for autorisasjon som `sso-settings.changed`, aldri med hemmeligheten
 eller et token.
 
