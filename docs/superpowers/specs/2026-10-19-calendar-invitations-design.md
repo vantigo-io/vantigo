@@ -127,8 +127,17 @@ identity's and is not put in a file that leaves the company. A series carries `R
 start, in the series' zone, as the series would have made it), and one further `VEVENT`
 per moved occurrence with the same `UID`, `RECURRENCE-ID` the original start, and the new
 `DTSTART`/`DTEND` — written with the library's generic property since it has no helper,
-and covered by a golden test. Instants are written in UTC throughout, so no `VTIMEZONE`
-is needed; C, which must write `TZID` for the feed, adds it there.
+and covered by a golden test. A **single** timed appointment's instants are written in
+UTC, which is exact. A **series** is not: with an `RRULE`, a UTC `DTSTART` repeats at a
+fixed UTC time, and a weekly 09:00 Oslo series would show at 08:00 or 10:00 on the
+invitee's calendar across the clock change. A timed series therefore writes its
+`DTSTART`, `DTEND`, `EXDATE`s and `RECURRENCE-ID`s as local wall-clock with
+`TZID=<the appointment's zone>`, and the calendar carries one `VTIMEZONE` for that
+zone built from Go's tzdata — one `STANDARD` or `DAYLIGHT` component per transition
+over the series' span (three years for an unbounded one), with `DTSTART`,
+`TZOFFSETFROM`, `TZOFFSETTO` and `TZNAME` — the form every client, Outlook desktop
+included, reads. An all-day series is dates and needs none of it. C reuses the
+`VTIMEZONE` writer for the feed.
 
 The **text and HTML bodies** are in the organiser's language — `contracts.UserEntry`
 gains `PreferredLanguage` (`"en"`, `"nb"` or `""`), a fact of the user that is not
@@ -136,8 +145,11 @@ sensitive and that the directory already holds — with the title, when (in the
 appointment's zone, named), where, who is organising and on whose behalf the
 installation writes, the description, and the sentence the research asked for:
 *"Answer with the link below so the organiser sees it in Vantigo"*, then the link. The
-subject is `Invitation: <title> · <day>` (`Invitasjon: …`), `Updated: …` on a resend and
-`Cancelled: …` on a cancellation.
+subject is `Invitation: <title> · <day>` (`Invitasjon: …`) on the first send to that
+attendee, `Updated: …` (`Oppdatert: …`) on any later `REQUEST` to one already invited,
+and `Cancelled: …` (`Avlyst: …`) on a `CANCEL`. The organiser's language is Norwegian
+when their preference is `nb` and English otherwise, including when they chose none;
+`RsvpPage.language` says the same.
 
 **When it goes.** After the commit, never inside it, through the module's own `smtpSend`
 accessor (Staff's shape), one message per outside attendee, in order, under a budget of
@@ -188,8 +200,9 @@ Notify(ctx context.Context, userID uuid.UUID, n Notice) error
 Identity implements it over `Deps.Mail` (`mail.Message`, text only, `SMTP_FROM`), the
 way it sends its own invitations. The calendar calls it after the commit for every
 **user** attendee: on create ("Kari Nordmann invited you: Kundemøte, Tue 3 Nov 09:00"),
-on a `PUT` that bumped the sequence ("… changed …"), on a cancellation, and for one who
-is dropped; and for the **owner** when an outside attendee answers through the link (D5)
+on a `PUT` that bumped the sequence ("… changed …"), for one added by a `PUT` that did
+not, on a cancellation and on a plain delete (so a colleague never sees an appointment
+vanish untold), and for one who is dropped; and for the **owner** when an outside attendee answers through the link (D5)
 — "Ola Hansen accepted: Kundemøte". The body carries the link into the app
 (`APP_URL/calendar?date=…&appointment=…`), and nothing else: the appointment is on the
 colleague's calendar already, and their answer is the in-app one. No ICS and no native
