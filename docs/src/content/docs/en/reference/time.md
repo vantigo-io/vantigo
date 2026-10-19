@@ -53,11 +53,12 @@ one person on one day may not exceed 24 either. The day total is checked under a
 PostgreSQL advisory lock keyed on `<userId>/<date>`, so two entries racing on the same
 day cannot slip past 24 together.
 
-`startTime` and `endTime` are both given or neither. They are clock times on the
-entry's own day, `endTime` is strictly after `startTime` (an entry ending at midnight
-ends at `23:59`; crossing midnight is refused), and **`hours` must equal the
-difference to two decimals** — the request is refused on `hours` if it does not. Times
-are optional because a day's work is often reconstructed, not clocked.
+`startTime` and `endTime` are both given or neither. They are wall-clock times on the
+entry's own day in the business time zone ([the business day](#the-business-day)),
+`endTime` is strictly after `startTime` (an entry ending at midnight ends at `23:59`;
+crossing midnight is refused), and **`hours` must equal the difference to two
+decimals** — the request is refused on `hours` if it does not. Times are optional
+because a day's work is often reconstructed, not clocked.
 
 Hours are handled as integer hundredths end to end, so neither the cap nor the
 start/end comparison depends on float rounding.
@@ -313,6 +314,38 @@ today, but it is a seam that may one day do I/O, and a slow one under a day lock
 Structurally, every locked transaction goes through `withLockedTx`, which marks its
 context; the test fakes record any call made with such a context, and the harness
 fails any test in which one happened. The rule is the whole suite's, not one test's.
+
+## The business day
+
+Every day this module derives from an instant is a calendar day of the workspace's
+**business time zone**, `Europe/Oslo` until an Owner changes it under [Workspace
+administration](/en/user/workspace-administration/#workspace-settings)
+([time zones design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-19-time-zones-design.md),
+D2 and D7). It enters in one place: **today**, the day the current week is read from —
+the dashboard summary's `hoursThisWeek` and its delta, the current week the
+`weekUnsubmitted` attention items leave out because it is still being written, and the
+last week of the people overview's window. All three turn at the business time zone's
+midnight, together: at 00:30 on a Monday in Oslo the new week has begun, although the
+server's UTC clock still says Sunday.
+
+The module keeps no zone of its own. It reads the zone through the platform's
+`contracts.BusinessCalendar` (`Deps.Calendar`) once per request, **before** the
+request's queries and never inside `withLockedTx`, since the read takes a pool
+connection of its own ([no directory call inside a locked
+transaction](#no-directory-call-inside-a-locked-transaction)). Today is
+`holidays.DayIn(clock, zone)`, a date at midnight UTC, the form an entry date is
+compared at; no query uses PostgreSQL's `CURRENT_DATE`.
+
+Everything else is a civil date or a wall-clock time and is never converted. An
+entry's `entryDate`, a week's `weekStart`, the period lock's `lockedBefore` and a rate
+card's `validFrom` are civil dates, compared as stored. `startTime` and `endTime`
+(`time` without zone) are **wall-clock times in the business time zone**: the time of
+day at work, with no instant behind them, which is how the planned calendar module
+will place an entry on its day. A changed zone changes which day "today" is from the
+next request on; it never moves a stored date or time. The dashboard's `hours` and
+`billableHours` time series is the exception the design leaves alone: it places an
+entry date in the period at the date's UTC midnight, as every module's dashboard
+series uses the UTC day.
 
 ## API
 

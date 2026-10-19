@@ -10,6 +10,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/time/gen"
 	"github.com/vantigo-io/vantigo/server/internal/time/store"
@@ -45,12 +46,31 @@ func callerID(ctx context.Context) uuid.UUID {
 	return p.UserID
 }
 
-// today is the calendar day of Deps.Clock in UTC — the day "the current
-// week" is read from wherever the module needs one (the people overview, the
-// dashboard stats), as entry dates are UTC calendar days.
-func (s *server) today() time.Time {
-	now := s.deps.Clock().UTC()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+// businessZone is the workspace's business time zone (time zones design D2),
+// read through contracts.BusinessCalendar: the calendar "today" is judged in.
+// It is read once per request, before any query of the request, and — like
+// every directory call here — never inside withLockedTx, since the read takes
+// a pool connection of its own. A stored name Go cannot load is answered as
+// UTC by the calendar itself.
+func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
+	zone, err := s.deps.Calendar.Zone(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("time: read the business time zone: %w", err)
+	}
+	return zone, nil
+}
+
+// businessToday is the business day of Deps.Clock: today in the workspace's
+// business time zone, as the UTC midnight an entry date is compared at
+// (holidays.DayIn). It is the day "the current week" is read from wherever
+// the module needs one (the people overview, the dashboard stats). Entry
+// dates themselves are civil dates, compared as stored.
+func (s *server) businessToday(ctx context.Context) (time.Time, error) {
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return holidays.DayIn(s.deps.Clock(), zone), nil
 }
 
 // userEntries resolves ids through contracts.UserDirectory — the only way
