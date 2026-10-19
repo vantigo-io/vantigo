@@ -147,11 +147,18 @@ func readSSOSettings(ctx context.Context, q *store.Queries, box *secrets.Box) (s
 	return parseSSOSettings(row, box), nil
 }
 
-// ssoSettingsReader is the row through a cache of maintenanceCache's shape
-// (system.go): re-read at most every ssoSettingsCacheTTL of clock, which a
-// test moves with h.advance, and evicted by the process that writes it.
-// Each holder — Access, the user directory, the provisioning provider —
-// has its own.
+// ssoSettingsReader is the row through a cache of maintenanceCache's
+// period (system.go): re-read at most every ssoSettingsCacheTTL of clock,
+// which a test moves with h.advance, and evicted by the process that writes
+// it. Each holder — Access and the user directory — has its own.
+//
+// Unlike maintenanceCache it never holds its mutex across the database
+// read: the lock is taken only to check and to store. Callers read it on
+// every request, and a holder waiting on the mutex while the fetcher waits
+// for a pool connection would be a deadlock on an exhausted pool. So two
+// readers that find it stale at once may both fetch; the row is a single
+// small read, which is cheaper than a single-flight. Nothing reads through
+// it inside a transaction that already holds a connection.
 type ssoSettingsReader struct {
 	q     *store.Queries
 	clock func() time.Time
@@ -161,6 +168,9 @@ type ssoSettingsReader struct {
 	cached    ssoSettings
 	fetchedAt time.Time
 	fresh     bool
+	// evictions counts evict calls, so a fetch that began before one does
+	// not store what it read as fresh.
+	evictions uint64
 }
 
 // newSSOSettingsReader is a reader over pool, timed by clock, whose client
@@ -170,20 +180,31 @@ func newSSOSettingsReader(pool *pgxpool.Pool, clock func() time.Time, box *secre
 }
 
 // get answers the cached settings while they were read within
-// ssoSettingsCacheTTL, else reads the row again. A failed read is an
-// error, never "off", and is not cached.
+// ssoSettingsCacheTTL, else reads the row again, with no lock held. What it
+// read is stored unless a fetch begun later already stored, or the reader
+// was evicted meanwhile. A failed read is an error, never "off", and is
+// not cached.
 func (r *ssoSettingsReader) get(ctx context.Context) (ssoSettings, error) {
 	now := r.clock()
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.fresh && now.Sub(r.fetchedAt) < ssoSettingsCacheTTL {
-		return r.cached, nil
+		cached := r.cached
+		r.mu.Unlock()
+		return cached, nil
 	}
+	evictions := r.evictions
+	r.mu.Unlock()
+
 	s, err := readSSOSettings(ctx, r.q, r.box)
 	if err != nil {
 		return ssoSettings{}, err
 	}
-	r.cached, r.fetchedAt, r.fresh = s, now, true
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.evictions == evictions && (!r.fresh || !now.Before(r.fetchedAt)) {
+		r.cached, r.fetchedAt, r.fresh = s, now, true
+	}
 	return s, nil
 }
 
@@ -194,11 +215,13 @@ func (r *ssoSettingsReader) scimEnabled(ctx context.Context) (bool, error) {
 	return s.SCIM != nil, err
 }
 
-// evict makes the next get read the row.
+// evict makes the next get read the row, and keeps a fetch already under
+// way from storing what it read.
 func (r *ssoSettingsReader) evict() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.fresh = false
+	r.evictions++
 }
 
 // importedVariablesAudit is sso-settings.imported's after: the names of the
