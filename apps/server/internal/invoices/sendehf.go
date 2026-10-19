@@ -532,7 +532,11 @@ func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoic
 		}
 	}
 	canIssue := true // the operation's own rule
-	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue, loc)
 	if err != nil {
 		return nil, err
 	}

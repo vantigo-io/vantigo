@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -106,7 +107,7 @@ type overdueJudgement struct {
 // inputs through ruleInputs and reminderrules.Next on each. A paid invoice
 // the charges filter brought in stays only while its charges are
 // outstanding. A refusal is answered as the problem, nothing else.
-func (s *server) judgeOverdue(ctx context.Context, q *store.Queries, today time.Time, f overdueFilter) (overdueJudgement, *gen.InvoicesConflictProblem, error) {
+func (s *server) judgeOverdue(ctx context.Context, q *store.Queries, today time.Time, loc *time.Location, f overdueFilter) (overdueJudgement, *gen.InvoicesConflictProblem, error) {
 	var j overdueJudgement
 	params := store.CountOverdueCandidatesParams{CustomerID: f.customerID, Today: pgDate(today), WithCharges: f.withCharges}
 	if f.dueBefore != nil {
@@ -128,7 +129,7 @@ func (s *server) judgeOverdue(ctx context.Context, q *store.Queries, today time.
 	for _, r := range rows {
 		ids = append(ids, r.ID)
 	}
-	ins, err := s.ruleInputs(ctx, s.deps.Pool, ids, today)
+	ins, err := s.ruleInputs(ctx, s.deps.Pool, ids, today, loc)
 	if err != nil {
 		return j, nil, err
 	}
@@ -385,13 +386,17 @@ func (s *server) GetInvoicesOverdue(ctx context.Context, req gen.GetInvoicesOver
 		return gen.GetInvoicesOverdue400ApplicationProblemPlusJSONResponse(apicommon.Problem(invalidQueryTitle, strings.Join(errs, " "))), nil
 	}
 	page, pageSize := pageParams(p.Page, p.PageSize)
-	today := businessDay(s.deps.Clock())
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(s.deps.Clock(), loc)
 	f := overdueFilter{customerID: p.CustomerId, withCharges: p.Charges != nil && *p.Charges == gen.GetInvoicesOverdueParamsCharges("outstanding")}
 	if p.DueBefore != nil {
 		f.dueBefore = ptr(utcDay(p.DueBefore.Time))
 	}
 	q := store.New(s.deps.Pool)
-	j, refusal, err := s.judgeOverdue(ctx, q, today, f)
+	j, refusal, err := s.judgeOverdue(ctx, q, today, loc, f)
 	switch {
 	case err != nil:
 		return nil, err
@@ -450,8 +455,8 @@ func (s *server) GetInvoicesOverdue(ctx context.Context, req gen.GetInvoicesOver
 // renders a document after its transaction has ended, never under a lock —
 // and the letters with q. A letter's recipient is answered only to a caller
 // holding invoices:payments.
-func (s *server) withReminders(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, today time.Time, resp *gen.InvoicesInvoiceResponse) error {
-	ins, err := s.ruleInputs(ctx, s.deps.Pool, []int64{inv.ID}, today)
+func (s *server) withReminders(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, today time.Time, loc *time.Location, resp *gen.InvoicesInvoiceResponse) error {
+	ins, err := s.ruleInputs(ctx, s.deps.Pool, []int64{inv.ID}, today, loc)
 	if err != nil {
 		return err
 	}

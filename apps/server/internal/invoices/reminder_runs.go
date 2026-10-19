@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -233,15 +234,19 @@ func (s *server) recipients(ctx context.Context, customers []int32) (map[int32]r
 // (POST /api/v1/invoices/reminder-runs)
 func (s *server) PostInvoicesReminderRuns(ctx context.Context, req gen.PostInvoicesReminderRunsRequestObject) (gen.PostInvoicesReminderRunsResponseObject, error) {
 	now := s.deps.Clock() // the run's one clock read (D18)
-	today := businessDay(now)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(now, loc)
 	if req.Body.DryRun {
 		f := overdueFilter{customerID: req.Body.CustomerId}
 		if req.Body.DueBefore != nil {
 			f.dueBefore = ptr(utcDay(req.Body.DueBefore.Time))
 		}
-		return s.previewRun(ctx, today, f)
+		return s.previewRun(ctx, today, loc, f)
 	}
-	return s.makeRun(ctx, *req.Body, now, today)
+	return s.makeRun(ctx, *req.Body, now, today, loc)
 }
 
 // previewRun is the preview (D10): the overdue set judged as the list judges
@@ -249,8 +254,8 @@ func (s *server) PostInvoicesReminderRuns(ctx context.Context, req gen.PostInvoi
 // blocked or waiting — narrowed, as the list is, by a customer and a due
 // date before a day, so a set past the cap can be previewed in parts.
 // Nothing is written and no lock is taken.
-func (s *server) previewRun(ctx context.Context, today time.Time, f overdueFilter) (gen.PostInvoicesReminderRunsResponseObject, error) {
-	j, refusal, err := s.judgeOverdue(ctx, store.New(s.deps.Pool), today, f)
+func (s *server) previewRun(ctx context.Context, today time.Time, loc *time.Location, f overdueFilter) (gen.PostInvoicesReminderRunsResponseObject, error) {
+	j, refusal, err := s.judgeOverdue(ctx, store.New(s.deps.Pool), today, loc, f)
 	switch {
 	case err != nil:
 		return nil, err
@@ -337,7 +342,7 @@ func parseRunItems(items *[]gen.InvoicesReminderRunItem) map[string][]string {
 // collection_rates_outdated, collection_regime_unreviewed and
 // bank_import_stale (plan reading 27) — the profiles read, the run row, one
 // transaction per item, the counts set once.
-func (s *server) makeRun(ctx context.Context, body gen.InvoicesReminderRunRequest, now, today time.Time) (gen.PostInvoicesReminderRunsResponseObject, error) {
+func (s *server) makeRun(ctx context.Context, body gen.InvoicesReminderRunRequest, now, today time.Time, loc *time.Location) (gen.PostInvoicesReminderRunsResponseObject, error) {
 	if errs := parseRunItems(body.Items); errs != nil {
 		return gen.PostInvoicesReminderRuns400ApplicationProblemPlusJSONResponse(invalid(invalidRunTitle, errs)), nil
 	}
@@ -380,7 +385,7 @@ func (s *server) makeRun(ctx context.Context, body gen.InvoicesReminderRunReques
 
 	// The pre-pass: every item judged on the pool, before anything is
 	// written (plan reading 27).
-	ins, err := s.ruleInputs(ctx, s.deps.Pool, ids, today)
+	ins, err := s.ruleInputs(ctx, s.deps.Pool, ids, today, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +449,7 @@ func (s *server) makeRun(ctx context.Context, body gen.InvoicesReminderRunReques
 			// judged free of charges is not let through with one unconfirmed.
 			staleGuard: fresh.Stale && !acknowledged && !carriesCharge(outcomes[it.InvoiceId].Letter),
 		}
-		letter, skip, err := s.runItem(ctx, run.ID, it, judged, by, now, today)
+		letter, skip, err := s.runItem(ctx, run.ID, it, judged, by, now, today, loc)
 		if err != nil {
 			return nil, err
 		}
@@ -486,7 +491,9 @@ type runItemJudged struct {
 // stale guard does not let through, skipped action_changed — then the letter
 // inserted, queued for e-mail (due at once) or awaiting print for paper,
 // without facts. It answers the letter, or the skip's reason.
-func (s *server) runItem(ctx context.Context, runID int64, it gen.InvoicesReminderRunItem, judged runItemJudged, by uuid.UUID, now, today time.Time) (store.InvoicesReminder, string, error) {
+func (s *server) runItem(ctx context.Context, runID int64, it gen.InvoicesReminderRunItem, judged runItemJudged, by uuid.UUID, now, today time.Time,
+	loc *time.Location,
+) (store.InvoicesReminder, string, error) {
 	to := judged.to
 	var letter store.InvoicesReminder
 	skip := ""
@@ -514,7 +521,7 @@ func (s *server) runItem(ctx context.Context, runID int64, it gen.InvoicesRemind
 			skip = skipCustomerAnonymed
 			return nil
 		}
-		in, err := s.ruleInputLocked(ctx, txq, inv, today, 0)
+		in, err := s.ruleInputLocked(ctx, txq, inv, today, loc, 0)
 		if err != nil {
 			return err
 		}

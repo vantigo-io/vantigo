@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -90,9 +91,9 @@ func lettersLeftWire(left []store.InvoicesReminder) []gen.InvoicesLetterLeft {
 }
 
 // holdOrHandoffResult is what the four writes answer, rendered after their
-// transaction: the document and the letters left.
-func (s *server) holdOrHandoffResult(ctx context.Context, inv store.InvoicesInvoice, left []store.InvoicesReminder) (gen.InvoicesHoldOrHandoffResult, error) {
-	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), inv, nil)
+// transaction: the document, judged in loc, and the letters left.
+func (s *server) holdOrHandoffResult(ctx context.Context, inv store.InvoicesInvoice, left []store.InvoicesReminder, loc *time.Location) (gen.InvoicesHoldOrHandoffResult, error) {
+	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), inv, nil, loc)
 	if err != nil {
 		return gen.InvoicesHoldOrHandoffResult{}, err
 	}
@@ -156,6 +157,10 @@ func (s *server) PostInvoicesByIdHold(ctx context.Context, req gen.PostInvoicesB
 		return gen.PostInvoicesByIdHold404Response{}, nil
 	}
 	now := s.deps.Clock()
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var locked store.InvoicesInvoice
 	var left []store.InvoicesReminder
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
@@ -169,7 +174,7 @@ func (s *server) PostInvoicesByIdHold(ctx context.Context, req gen.PostInvoicesB
 		}
 		if len(live) > 0 {
 			refusal = ptr(conflict(codeInvoiceOnHold, cannotHoldTitle, fmt.Sprintf(
-				"This invoice has been on hold since %s. Lift that hold before placing another.", businessDay(live[0].PlacedAt).Format(time.DateOnly))))
+				"This invoice has been on hold since %s. Lift that hold before placing another.", holidays.DayIn(live[0].PlacedAt, loc).Format(time.DateOnly))))
 			return errRefused
 		}
 		if _, err := txq.InsertHold(ctx, store.InsertHoldParams{
@@ -188,7 +193,7 @@ func (s *server) PostInvoicesByIdHold(ctx context.Context, req gen.PostInvoicesB
 	case err != nil:
 		return nil, err
 	}
-	result, err := s.holdOrHandoffResult(ctx, locked, left)
+	result, err := s.holdOrHandoffResult(ctx, locked, left, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -219,10 +224,14 @@ func (s *server) PostInvoicesByIdHoldLift(ctx context.Context, req gen.PostInvoi
 	}
 	now := s.deps.Clock()
 	by := callerID(ctx)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var refusal *gen.InvoicesConflictProblem
 	var locked store.InvoicesInvoice
 	var left []store.InvoicesReminder
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		var err error
 		if locked, err = lockIssuedInvoice(ctx, txq, req.Id); err != nil {
 			return err
@@ -263,7 +272,7 @@ func (s *server) PostInvoicesByIdHoldLift(ctx context.Context, req gen.PostInvoi
 	case err != nil:
 		return nil, err
 	}
-	result, err := s.holdOrHandoffResult(ctx, locked, left)
+	result, err := s.holdOrHandoffResult(ctx, locked, left, loc)
 	if err != nil {
 		return nil, err
 	}

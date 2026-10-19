@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -487,7 +488,11 @@ var errRefused = errors.New("invoices: refused")
 func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSettingsRequestObject) (gen.PutInvoicesSettingsResponseObject, error) {
 	parsed, errs := parseSettings(*req.Body)
 	q := store.New(s.deps.Pool)
-	codes, err := vatCodesOn(ctx, q, pgDate(businessDay(s.deps.Clock())))
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	codes, err := vatCodesOn(ctx, q, pgDate(holidays.DayIn(s.deps.Clock(), loc)))
 	if err != nil {
 		return nil, err
 	}

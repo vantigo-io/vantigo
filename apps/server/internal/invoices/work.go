@@ -17,6 +17,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -247,7 +248,11 @@ func (s *server) GetInvoicesWork(ctx context.Context, req gen.GetInvoicesWorkReq
 	if err != nil {
 		return nil, fmt.Errorf("invoices: name the people of the hours: %w", err)
 	}
-	view, err := s.workView(ctx, q, settings.DefaultCurrency, customerID, projects, page)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	view, err := s.workView(ctx, q, settings.DefaultCurrency, customerID, projects, page, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -267,9 +272,10 @@ func (s *server) GetInvoicesWork(ctx context.Context, req gen.GetInvoicesWorkReq
 }
 
 // workView renders the view from what was read, judging each row against
-// what this module's own rows hold of it.
+// what this module's own rows hold of it, every day in loc, the business time
+// zone.
 func (s *server) workView(ctx context.Context, q *store.Queries, currency string, customerID *int32,
-	projects []contracts.ProjectEntry, page workPage,
+	projects []contracts.ProjectEntry, page workPage, loc *time.Location,
 ) (gen.InvoicesWorkResponse, error) {
 	view := gen.InvoicesWorkResponse{
 		CustomerId: customerID, Projects: []gen.InvoicesWorkProject{}, Totals: []gen.InvoicesWorkTotal{}, Warnings: []string{},
@@ -333,7 +339,7 @@ func (s *server) workView(ctx context.Context, q *store.Queries, currency string
 		}
 	}
 
-	today := businessDay(s.deps.Clock())
+	today := holidays.DayIn(s.deps.Clock(), loc)
 	deadline := monthBefore(today)
 	totals := map[string]*big.Rat{}
 	addTotal := func(cur string, amount *big.Rat) {
@@ -479,11 +485,11 @@ func (s *server) workView(ctx context.Context, q *store.Queries, currency string
 		reason := r.reason(currency)
 		out := gen.InvoicesWorkMilestone{
 			Id: m.ID, Revision: m.Revision, Name: m.Name, Description: m.Description, PlannedDate: planned,
-			ReadyAt: m.ReadyAt, Date: wireDate(businessDay(m.ReadyAt)), Amount: floatFromRat(amount, 2), Currency: m.Currency,
+			ReadyAt: m.ReadyAt, Date: wireDate(holidays.DayIn(m.ReadyAt, loc)), Amount: floatFromRat(amount, 2), Currency: m.Currency,
 			Selectable: reason == "", Reason: nonEmpty(reason), HeldBy: r.held, Warnings: rowWarnings(m.Currency),
 		}
 		if out.Selectable {
-			noteSelectable(m.ProjectID, businessDay(m.ReadyAt), m.Currency, amount)
+			noteSelectable(m.ProjectID, holidays.DayIn(m.ReadyAt, loc), m.Currency, amount)
 		}
 		p.Milestones = append(p.Milestones, out)
 	}
@@ -956,7 +962,11 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 
 	// (6) The lines: the VAT codes, the people a line names, the grouping.
 	sel := found.selection(refs)
-	codes, err := vatCodesOn(ctx, q, pgDate(businessDay(s.deps.Clock())))
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	codes, err := vatCodesOn(ctx, q, pgDate(holidays.DayIn(s.deps.Clock(), loc)))
 	if err != nil {
 		return nil, err
 	}
@@ -1012,7 +1022,7 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 		}
 	}
 	language := lineLanguage(profile.Language)
-	lines, held, err := groupLines(language, grouping, projects, people, sel, vat)
+	lines, held, err := groupLines(language, grouping, projects, people, sel, vat, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -1028,7 +1038,7 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 		refusal := conflict(codeTooManyLines, cannotInvoiceWorkTitle, fmt.Sprintf(
 			"Grouped by %s the work makes %d lines, and a document holds at most %d.", grouping, existing+len(lines), maxLines))
 		for g := suggestCoarser(grouping); g != ""; g = suggestCoarser(g) {
-			coarser, _, err := groupLines(language, g, projects, people, sel, vat)
+			coarser, _, err := groupLines(language, g, projects, people, sel, vat, loc)
 			if err != nil {
 				return nil, err
 			}
@@ -1235,7 +1245,7 @@ func (s *server) PostInvoicesFromWork(ctx context.Context, req gen.PostInvoicesF
 	case err != nil:
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, q, out.doc, profile)
+	resp, err := s.invoiceResponse(ctx, q, out.doc, profile, loc)
 	if err != nil {
 		return nil, err
 	}

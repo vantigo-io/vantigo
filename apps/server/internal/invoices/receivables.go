@@ -28,41 +28,47 @@ import (
 // panel's two figures need not be one snapshot, and the two queries read
 // with no connection held between them.
 //
-// It owns "today". Every state is judged on the Oslo business day of this
-// module's clock, as the list, the stats and the overdue list judge it
-// (values.go's businessDay), and AsOf says which day that was, so the
-// consumer can never show a state the Invoices app does not.
+// It owns "today". Every state is judged on the business day of this
+// module's clock — the day it falls on in the workspace's business time zone,
+// read through the business calendar (time zones design D2) — as the list,
+// the stats and the overdue list judge it, and AsOf says which day that was,
+// so the consumer can never show a state the Invoices app does not.
 //
 // Arithmetic: the query sums the stored two-decimal figures as numeric and
 // hands each over whole; it crosses into decimal text here (ratFromNumeric,
 // then two decimals) and is never a float on this side of the boundary.
 
 // customerReceivables is this module's contracts.CustomerReceivables. Like
-// expenses' provider it is read-only and holds the queries and the clock:
-// Compose builds it once, before any module mounts.
+// expenses' provider it is read-only and holds the queries, the clock and
+// the business calendar: Compose builds it once, before any module mounts.
 type customerReceivables struct {
-	q     *store.Queries
-	clock func() time.Time
+	q        *store.Queries
+	clock    func() time.Time
+	calendar contracts.BusinessCalendar
 }
 
 var _ contracts.CustomerReceivables = (*customerReceivables)(nil)
 
 // newCustomerReceivables is Module's Receivables: the constructor Compose
-// calls with the dependencies it was given. It takes the pool and the clock
-// and nothing else — no directory reaches the served answer, and holding one
-// here would only invite that.
+// calls with the dependencies it was given. It takes the pool, the clock and
+// the business calendar and nothing else — no directory reaches the served
+// answer, and holding one here would only invite that.
 func newCustomerReceivables(d module.Deps) contracts.CustomerReceivables {
 	clock := d.Clock
 	if clock == nil {
 		clock = time.Now
 	}
-	return &customerReceivables{q: store.New(d.Pool), clock: clock}
+	return &customerReceivables{q: store.New(d.Pool), clock: clock, calendar: d.Calendar}
 }
 
 // ReceivablesForCustomer is the contract's one read: the per-currency money
-// and the cross-currency counts and dates, judged on today in Oslo.
+// and the cross-currency counts and dates, judged on today's business day.
 func (r *customerReceivables) ReceivablesForCustomer(ctx context.Context, customerID int32) (contracts.CustomerReceivableTotals, error) {
-	today := businessDay(r.clock())
+	noteContractCall(ctx, "Calendar.Today")
+	today, err := r.calendar.Today(ctx, r.clock())
+	if err != nil {
+		return contracts.CustomerReceivableTotals{}, fmt.Errorf("invoices: read the business day: %w", err)
+	}
 	thisYearFrom := time.Date(today.Year(), time.January, 1, 0, 0, 0, 0, time.UTC)
 	rows, err := r.q.CustomerReceivablesByCurrency(ctx, store.CustomerReceivablesByCurrencyParams{
 		CustomerID:   customerID,

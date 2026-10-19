@@ -293,10 +293,15 @@ func (a *allCalls) by(userID uuid.UUID) []contractCall {
 }
 
 // noteContractCall is the hook TestMain installs: every call is recorded, and
-// one the lock rule forbids is also recorded as a failure.
+// one the lock rule forbids is also recorded as a failure. The business
+// calendar's reads are held to the lock rule like every other call, but left
+// out of contractCalls: nearly every request reads the zone once, and the
+// tests that read that record ask which neighbours a request asked for data.
 func noteContractCall(ctx context.Context, method string, txBound bool) {
 	lockedContractCalls.note(ctx, method, txBound)
-	contractCalls.note(ctx, method, txBound)
+	if !strings.HasPrefix(method, "Calendar.") {
+		contractCalls.note(ctx, method, txBound)
+	}
 }
 
 // fakeCustomers is contracts.CustomerDirectory over billing profiles a test

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/payments"
@@ -65,7 +66,7 @@ import (
 //   - the registration: one transaction, the attempt and then the invoice,
 //     the payment inserted (payment_attempt_id is the exactly-once guard)
 //     and the attempt captured with its reservation released in the same
-//     commit, dated by the capture event's Oslo day. A registration that
+//     commit, dated by the capture event's business day. A registration that
 //     fails keeps the state and the reservation, records why in last_error
 //     and is tried again on the backoff.
 //   - cancelling, a release pending: money Vipps shows captured on an attempt
@@ -695,19 +696,24 @@ func (c *paymentClaim) unknown(ctx context.Context, cause error) error {
 	return c.retry(ctx, cause.Error(), wait)
 }
 
-// register is the registration (D16): the capture event's Oslo day read
-// outside any lock — the claim's day when the log cannot be read — then one
+// register is the registration (D16): the capture event's day in the
+// business time zone, both read outside any lock — the claim's day when the
+// log cannot be read — then one
 // transaction, the attempt and then the invoice, the payment inserted and
 // the attempt captured, its reservation released in the same commit.
 func (c *paymentClaim) register(ctx context.Context, capturedMinor int64) error {
-	paidOn := businessDay(c.now)
+	loc, err := c.s.businessZone(ctx)
+	if err != nil {
+		return err
+	}
+	paidOn := holidays.DayIn(c.now, loc)
 	at, ok, err := c.provider.CaptureTime(ctx, c.row.Reference)
 	switch {
 	case err != nil:
 		c.w.logger().WarnContext(ctx, "invoices: Vipps' event log could not be read; the payment is dated today",
 			"worker", paymentWorkerName, "attempt_id", c.row.ID, "error", err.Error())
 	case ok:
-		paidOn = businessDay(at)
+		paidOn = holidays.DayIn(at, loc)
 	}
 	captured := ratOfMinor(capturedMinor)
 	amount, err := numericFromRat(captured, 2)

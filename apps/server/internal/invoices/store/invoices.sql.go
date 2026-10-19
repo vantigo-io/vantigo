@@ -589,7 +589,7 @@ type ListInvoicesRow struct {
 //
 // Each row carries its derived state (D3): credited (the issued credit notes'
 // gross) and paid (the live payments' sum) from one lateral join each, read
-// once per row and handed to invoices.document_state with today, the Oslo
+// once per row and handed to invoices.document_state with today, the
 // business day the caller passes — never CURRENT_DATE. open_amount is gross
 // less both; the two themselves are not selected, since the list answers
 // neither. The state filter runs the same call; CountInvoices repeats the
