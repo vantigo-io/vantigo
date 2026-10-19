@@ -11,6 +11,14 @@ SELECT * FROM calendar.subscriptions
 WHERE user_id = @user_id
 ORDER BY name, id;
 
+-- name: LockSubscriptionsOfUser :exec
+-- LockSubscriptionsOfUser takes the person's subscriptions lock for the rest
+-- of the transaction, so a count and the insert it allows are one step: two
+-- POSTs at nine cannot both see nine and both insert. The key is the
+-- person's id under this table's own prefix, so it shares no key with
+-- another lock keyed on a user.
+SELECT pg_advisory_xact_lock(hashtextextended('calendar.subscriptions:' || sqlc.arg(user_id)::uuid::text, 0));
+
 -- name: CountSubscriptions :one
 -- CountSubscriptions is how many subscriptions the person has, for the limit
 -- of ten.
@@ -57,6 +65,11 @@ UPDATE calendar.subscriptions SET
 WHERE id = @id
 RETURNING *;
 
+-- The three records of a fetch each match the url the fetch was made to as
+-- well as the id: a PUT that changed the address while the fetch was out
+-- has made it a fetch of an address the row no longer names, and it writes
+-- nothing — no row, which the caller reads as overtaken.
+
 -- name: RecordSubscriptionFetched :one
 -- RecordSubscriptionFetched records a fetch that answered a calendar: its
 -- validators (null when it sent none), its body, and when the next is due,
@@ -69,7 +82,7 @@ UPDATE calendar.subscriptions SET
     attempted_at = @now::timestamptz,
     next_fetch_at = @next_fetch_at::timestamptz,
     error = NULL
-WHERE id = @id
+WHERE id = @id AND url = @url
 RETURNING *;
 
 -- name: RecordSubscriptionNotModified :one
@@ -80,7 +93,7 @@ UPDATE calendar.subscriptions SET
     attempted_at = @now::timestamptz,
     next_fetch_at = @next_fetch_at::timestamptz,
     error = NULL
-WHERE id = @id
+WHERE id = @id AND url = @url
 RETURNING *;
 
 -- name: RecordSubscriptionFailed :one
@@ -91,8 +104,15 @@ UPDATE calendar.subscriptions SET
     attempted_at = @now::timestamptz,
     next_fetch_at = @next_fetch_at::timestamptz,
     error = @error::varchar
-WHERE id = @id
+WHERE id = @id AND url = @url
 RETURNING *;
+
+-- name: GetSubscriptionByID :one
+-- GetSubscriptionByID is a subscription by its id alone: the row as it now
+-- stands, for a fetch that was overtaken to answer, its owner already
+-- checked by the caller.
+SELECT * FROM calendar.subscriptions
+WHERE id = @id;
 
 -- name: ListSubscriptionsDue :many
 -- ListSubscriptionsDue is the worker's cycle: the subscriptions due at now,
@@ -105,6 +125,14 @@ WHERE next_fetch_at IS NULL OR next_fetch_at <= @now::timestamptz
 ORDER BY next_fetch_at NULLS FIRST, id
 LIMIT @row_limit::integer
 FOR UPDATE SKIP LOCKED;
+
+-- name: DeferSubscriptionFetch :exec
+-- DeferSubscriptionFetch puts a subscription off until next_fetch_at without
+-- fetching it: its person may no longer use Calendar, so it is not fetched,
+-- and not read again every tick either. Nothing of the last fetch's record
+-- changes, since nothing was attempted.
+UPDATE calendar.subscriptions SET next_fetch_at = @next_fetch_at::timestamptz
+WHERE id = @id;
 
 -- name: ListSubscriptionBodies :many
 -- ListSubscriptionBodies is what GET /items parses: each of the person's

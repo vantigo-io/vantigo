@@ -3165,6 +3165,30 @@ func (response PostCalendarSubscriptions409ApplicationProblemPlusJSONResponse) V
 	return err
 }
 
+type PostCalendarSubscriptions429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostCalendarSubscriptions429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostCalendarSubscriptions429ResponseHeaders
+}
+
+func (response PostCalendarSubscriptions429JSONResponse) VisitPostCalendarSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteCalendarSubscriptionsByIdRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -3290,6 +3314,30 @@ func (response PutCalendarSubscriptionsById404Response) VisitPutCalendarSubscrip
 	return nil
 }
 
+type PutCalendarSubscriptionsById429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PutCalendarSubscriptionsById429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PutCalendarSubscriptionsById429ResponseHeaders
+}
+
+func (response PutCalendarSubscriptionsById429JSONResponse) VisitPutCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostCalendarSubscriptionsByIdRefreshRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -3346,6 +3394,30 @@ type PostCalendarSubscriptionsByIdRefresh404Response struct {
 func (response PostCalendarSubscriptionsByIdRefresh404Response) VisitPostCalendarSubscriptionsByIdRefreshResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PostCalendarSubscriptionsByIdRefresh429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostCalendarSubscriptionsByIdRefresh429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostCalendarSubscriptionsByIdRefresh429ResponseHeaders
+}
+
+func (response PostCalendarSubscriptionsByIdRefresh429JSONResponse) VisitPostCalendarSubscriptionsByIdRefreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetCalendarUsersRequestObject struct {

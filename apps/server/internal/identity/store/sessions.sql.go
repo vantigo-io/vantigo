@@ -85,6 +85,9 @@ type GetSessionByTokenHashRow struct {
 // parameter, the caller's clock, never the database's: a session is rejected once
 // now - last_seen_at >= idle or now - created_at >= absolute
 // (SV/SessionValidationService.cs:83-93).
+// UserMayAct repeats this query's user predicates for a read on a user's
+// behalf with no session (Access.UserHolds); the two must agree, so a change
+// to one is a change to the other.
 func (q *Queries) GetSessionByTokenHash(ctx context.Context, arg GetSessionByTokenHashParams) (GetSessionByTokenHashRow, error) {
 	row := q.db.QueryRow(ctx, getSessionByTokenHash,
 		arg.TokenHash,
@@ -250,4 +253,44 @@ type TouchSessionParams struct {
 func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) error {
 	_, err := q.db.Exec(ctx, touchSession, arg.Now, arg.ID)
 	return err
+}
+
+const userMayAct = `-- name: UserMayAct :one
+SELECT EXISTS (
+    SELECT 1
+    FROM identity.users u
+    CROSS JOIN LATERAL (
+        SELECT coalesce(bool_or(ro.name = 'Owner'), false)::boolean AS is_owner
+        FROM identity.user_roles ur
+        JOIN identity.roles ro ON ro.id = ur.role_id
+        WHERE ur.user_id = u.id
+    ) r
+    LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
+    WHERE u.id = $1
+      AND NOT u.is_disabled
+      AND u.pending_since IS NULL
+      AND (u.lockout_end IS NULL OR u.lockout_end <= $2::timestamptz)
+      AND (NOT $3::boolean OR m.upstream_active IS NOT FALSE OR r.is_owner)
+)::boolean AS may_act
+`
+
+type UserMayActParams struct {
+	UserID      uuid.UUID
+	Now         time.Time
+	ScimEnabled bool
+}
+
+// UserMayAct reports whether user_id may act at all at now, for a read made on
+// their behalf with no request behind it (Access.UserHolds, the calendar
+// feed). It applies GetSessionByTokenHash's user predicates, which must agree
+// with these — not disabled, not pending, and while SCIM is configured not
+// deactivated by the directory unless they hold Owner — and lockout besides,
+// which permitted applies to a session's permission check: a feed is
+// permission-gated, so a locked-out user holds nothing there either. A user
+// who does not exist may not act.
+func (q *Queries) UserMayAct(ctx context.Context, arg UserMayActParams) (bool, error) {
+	row := q.db.QueryRow(ctx, userMayAct, arg.UserID, arg.Now, arg.ScimEnabled)
+	var may_act bool
+	err := row.Scan(&may_act)
+	return may_act, err
 }

@@ -1,11 +1,14 @@
 package calendar
 
 import (
+	"encoding/hex"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
 
 	ics "github.com/arran4/golang-ical"
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
 	"github.com/vantigo-io/vantigo/server/internal/calendar/store"
@@ -19,7 +22,8 @@ import (
 // ics.go's writers, a series as its rule with its exceptions, and the
 // providers' projected items. Neither variant writes ORGANIZER or ATTENDEE;
 // the busy one writes spans and nothing a reader could tell one from another
-// by (D3).
+// by (D3) — so a projected item's UID there is opaque (busyUID), and a
+// point, which is no span, is left out.
 
 // feedRefresh is how often the feed asks to be read, as an iCalendar
 // DURATION.
@@ -46,7 +50,10 @@ type feedAppointment struct {
 
 // feedInput is what one feed is built from.
 type feedInput struct {
-	busy bool
+	// userID is the person whose feed it is, which keys the busy variant's
+	// UIDs.
+	userID uuid.UUID
+	busy   bool
 	// lang is the person's language, which names the busy variant.
 	lang      string
 	appts     []feedAppointment
@@ -120,10 +127,17 @@ func (s *server) buildFeed(in feedInput) (string, error) {
 	projected := slices.Clone(in.projected)
 	sortItems(projected, in.loc)
 	for _, it := range projected {
-		if in.busy && it.AllDay {
+		if in.busy && (it.AllDay || isPoint(it)) {
 			continue
 		}
-		ev := cal.AddEvent(it.Kind + ":" + it.Id + "@vantigo")
+		uid := it.Kind + ":" + it.Id + "@vantigo"
+		if in.busy {
+			var err error
+			if uid, err = s.busyUID(in.userID, it); err != nil {
+				return "", err
+			}
+		}
+		ev := cal.AddEvent(uid)
 		stamp(ev, in.now, 0)
 		setItemWhen(ev, it)
 		if in.busy {
@@ -134,6 +148,29 @@ func (s *server) buildFeed(in feedInput) (string, error) {
 		s.describeProjected(ev, it)
 	}
 	return cal.Serialize(ics.WithNewLineWindows), nil
+}
+
+// isPoint reports whether a timed projected item is a point — its end its
+// start, a follow-up at a time — which the busy variant leaves out: a point
+// is not a span of busy time.
+func isPoint(it gen.CalendarItem) bool {
+	return !it.AllDay && it.StartsAt != nil && (it.EndsAt == nil || !it.EndsAt.After(*it.StartsAt))
+}
+
+// busyUID is a projected item's UID in the busy variant: the first 32 hex
+// digits of a MAC, under feedBusyUIDPurpose, of the person's id and the
+// item's kind and id. The full variant's kind:id would name the module and
+// the row, which is what a busy feed must not tell; a MAC is opaque, the same
+// for one item from one request to the next — so a client updates the event
+// rather than duplicating it — and different for two people, so two busy
+// feeds cannot be joined on it. An appointment keeps its ical_uid, which is
+// random already.
+func (s *server) busyUID(userID uuid.UUID, it gen.CalendarItem) (string, error) {
+	mac, err := s.deps.Secrets.MAC(feedBusyUIDPurpose, []byte(userID.String()+"\x00"+it.Kind+":"+it.Id))
+	if err != nil {
+		return "", fmt.Errorf("calendar: key a busy feed's UID: %w", err)
+	}
+	return hex.EncodeToString(mac)[:32] + "@vantigo", nil
 }
 
 // setItemWhen writes a projected item's DTSTART and DTEND: dates with the

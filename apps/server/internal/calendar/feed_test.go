@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +73,36 @@ func feedText(t *testing.T, h *harness, address string) string {
 func setUID(t *testing.T, h *harness, id int64, uid string) {
 	t.Helper()
 	h.Exec(t, `UPDATE calendar.appointments SET ical_uid = $1 WHERE id = $2`, uid, id)
+}
+
+// opaqueUID is the busy variant's UID of a projected item: 32 hex digits of a
+// keyed MAC, then @vantigo.
+var opaqueUID = regexp.MustCompile(`^UID:[0-9a-f]{32}@vantigo$`)
+
+// maskOpaqueUIDs is body with every opaque UID written as one placeholder,
+// for a golden: the MAC is keyed to the person's id, which the harness draws
+// at random, so the digits differ from run to run while the rest does not.
+// The digits' own rules are projectedUIDs' to check.
+func maskOpaqueUIDs(body string) string {
+	return regexp.MustCompile(`(?m)^UID:[0-9a-f]{32}@vantigo\r$`).ReplaceAllString(body, "UID:opaque-mac@vantigo\r")
+}
+
+// projectedUIDs is the busy feed's opaque UIDs, in order, failing on a UID
+// that is neither one nor an appointment's — every UID the fixtures give an
+// appointment ends @vantigo with no colon before it, and the harness's own
+// are random hex too, so a colon is what a kind:id UID would show.
+func projectedUIDs(t *testing.T, ics string) []string {
+	t.Helper()
+	var out []string
+	for _, l := range lines(ics, "UID:") {
+		if strings.Contains(l[len("UID:"):], ":") {
+			t.Errorf("the busy feed carries %q, a UID with a colon before @vantigo", l)
+		}
+		if opaqueUID.MatchString(l) {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 // allSourceKeys is every fake provider's gate.
@@ -202,7 +234,7 @@ func TestFeed_TheBusyFeedIsSpansAloneAndMatchesItsGolden(t *testing.T) {
 			t.Parallel()
 			f := newFeedFixture(t, tc.language)
 			body := string(feedOf(t, f.h, f.busy.Address, http.StatusOK).Body)
-			matchesGolden(t, tc.golden, body)
+			matchesGolden(t, tc.golden, maskOpaqueUIDs(body))
 			ics := unfold(body)
 			if !strings.Contains(ics, "NAME:"+tc.name+"\r\n") || !strings.Contains(ics, "X-WR-CALNAME:"+tc.name+"\r\n") {
 				t.Errorf("the busy feed is not named %q", tc.name)
@@ -219,10 +251,27 @@ func TestFeed_TheBusyFeedIsSpansAloneAndMatchesItsGolden(t *testing.T) {
 				}
 			}
 			for _, want := range []string{"UID:single@vantigo\r\n", "UID:all-day@vantigo\r\n", "UID:series@vantigo\r\n",
-				"UID:time.entry:14@vantigo\r\n", "RECURRENCE-ID;TZID=Europe/Oslo:20261102T090000\r\n"} {
+				"RECURRENCE-ID;TZID=Europe/Oslo:20261102T090000\r\n"} {
 				if !strings.Contains(ics, want) {
 					t.Errorf("the busy feed lacks %q", want)
 				}
+			}
+			// A projected item's UID is opaque: neither the module, the kind
+			// nor the row's id, which would tell one block from another.
+			projected := projectedUIDs(t, ics)
+			if len(projected) != 1 {
+				t.Errorf("the busy feed's projected UIDs are %v, want the time entry's alone", projected)
+			}
+			for _, never := range []string{"time.entry", "time", "customers", "projects", ":14@"} {
+				for _, l := range lines(ics, "UID:") {
+					if strings.Contains(strings.TrimPrefix(l, "UID:"), never) {
+						t.Errorf("the busy feed's %q names %q", l, never)
+					}
+				}
+			}
+			again := projectedUIDs(t, unfold(string(feedOf(t, f.h, f.busy.Address, http.StatusOK).Body)))
+			if !slices.Equal(projected, again) {
+				t.Errorf("the projected UIDs changed between two requests: %v then %v", projected, again)
 			}
 		})
 	}
@@ -329,5 +378,72 @@ func TestFeed_OverOneMiBOfProviderItemsDropsTheFarthestAndKeepsTheAppointments(t
 	}
 	if !strings.Contains(h.Logs(), "the feed was over 1 MiB") || !strings.Contains(h.Logs(), meID.String()) {
 		t.Error("the drop was not logged with the person's id")
+	}
+}
+
+// TestFeed_IsThe404OnceThePersonMayNoLongerUseCalendar pins the feed to the
+// person behind it, not only to the token: a disabled person's address, and
+// that of one whose calendar:access was taken away, each answer the bare 404
+// a token nobody holds gets — nothing in the response says the token was
+// right — and neither read is recorded on the address.
+func TestFeed_IsThe404OnceThePersonMayNoLongerUseCalendar(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		revoke string
+	}{
+		{"disabled", `UPDATE identity.users SET is_disabled = true WHERE id = $1`},
+		{"calendar:access revoked", `DELETE FROM identity.role_permissions WHERE permission_key = 'calendar:access'
+		                             AND role_id IN (SELECT role_id FROM identity.user_roles WHERE user_id = $1)`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t)
+			me, meID := signIn(t, h)
+			create(t, me, timed(t, "Planning", "Europe/Oslo", "2026-10-05T09:00", "2026-10-05T10:00"))
+			a := newAddress(t, me, "full")
+			feedOf(t, h, a.Address, http.StatusOK)
+			read := modtest.One[time.Time](t, h.Harness, `SELECT last_used_at FROM calendar.feed_tokens WHERE user_id = $1`, meID)
+
+			h.Advance(time.Minute)
+			h.Exec(t, tc.revoke, meID)
+			r := feedOf(t, h, a.Address, http.StatusNotFound)
+			if len(r.Body) != 0 {
+				t.Errorf("the 404 carries a body: %s", r.Body)
+			}
+			if after := modtest.One[time.Time](t, h.Harness, `SELECT last_used_at FROM calendar.feed_tokens WHERE user_id = $1`, meID); !after.Equal(read) {
+				t.Errorf("the refused read moved last_used_at from %v to %v", read, after)
+			}
+		})
+	}
+}
+
+// TestFeed_TheBusyFeedLeavesOutAPointAndKeysEachUIDToThePerson: a point —
+// a provider's item whose end is its start, a follow-up at a time — is no
+// span of busy time and is left out of the busy feed, and kept in the full
+// one; and one item's opaque UID differs between two people, so two busy
+// feeds cannot be joined on it.
+func TestFeed_TheBusyFeedLeavesOutAPointAndKeysEachUIDToThePerson(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	start := at(t, "Europe/Oslo", "2026-10-05T13:00")
+	var uids []string
+	for i := range 2 {
+		me, meID := signIn(t, h, "time:access", "customers:view")
+		h.sources.time.give(meID, contracts.CalendarItem{Kind: "time.entry", ID: "1", Title: "Entry", StartsAt: start, EndsAt: start.Add(time.Hour)})
+		h.sources.customers.give(meID, contracts.CalendarItem{Kind: "customers.follow-up", ID: "2", Title: "Call Ola", StartsAt: start, EndsAt: start})
+		busy := feedText(t, h, newAddress(t, me, "busy").Address)
+		got := projectedUIDs(t, busy)
+		if len(got) != 1 || strings.Count(busy, "BEGIN:VEVENT") != 1 {
+			t.Errorf("person %d: the busy feed's projected UIDs are %v, want the entry's alone:\n%s", i, got, busy)
+		}
+		uids = append(uids, got...)
+		full := feedText(t, h, newAddress(t, me, "full").Address)
+		if !strings.Contains(full, "UID:customers.follow-up:2@vantigo\r\n") || !strings.Contains(full, "UID:time.entry:1@vantigo\r\n") {
+			t.Errorf("person %d: the full feed lacks the point or the entry:\n%s", i, full)
+		}
+	}
+	if len(uids) == 2 && uids[0] == uids[1] {
+		t.Errorf("two people's busy feeds give one item the same UID %s", uids[0])
 	}
 }

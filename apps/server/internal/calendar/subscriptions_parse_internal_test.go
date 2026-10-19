@@ -1,6 +1,9 @@
 package calendar
 
 import (
+	"context"
+	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +56,7 @@ var testSub = subscriptionSource{id: 1001, name: "Football", colour: "teal"}
 
 func parse(t *testing.T, body string, w window) []gen.CalendarItem {
 	t.Helper()
-	return parseSubscriptionItems(body, testSub, w, langEnglish, nil)
+	return parseSubscriptionItems(context.Background(), body, testSub, w, langEnglish, nil)
 }
 
 // one is the single item of list, failing unless there is exactly one.
@@ -239,12 +242,12 @@ func TestParseSubscription_TitlesUnescapedOnOneLineUntitledInTheLanguageBlankWhe
 	if len(got) != 3 || got[0].Title != `Lunch, then a walk; bring shoes \ boots` || got[1].Title != "(untitled)" || len(got[2].Title) != maxTitle {
 		t.Errorf("titles = %q", []string{got[0].Title, got[1].Title, got[2].Title})
 	}
-	if nb := parseSubscriptionItems(body, testSub, w, langNorwegian, nil); nb[1].Title != "(uten tittel)" {
+	if nb := parseSubscriptionItems(context.Background(), body, testSub, w, langNorwegian, nil); nb[1].Title != "(uten tittel)" {
 		t.Errorf("an untitled event in Norwegian is %q", nb[1].Title)
 	}
 	busy := testSub
 	busy.busyOnly = true
-	for _, it := range parseSubscriptionItems(body, busy, w, langEnglish, nil) {
+	for _, it := range parseSubscriptionItems(context.Background(), body, busy, w, langEnglish, nil) {
 		if it.Title != "" || !it.Subscription.BusyOnly {
 			t.Errorf("a busy-only subscription's item = %q, busyOnly %v", it.Title, it.Subscription.BusyOnly)
 		}
@@ -260,6 +263,88 @@ func TestParseSubscription_TakesAtMostAThousandOccurrencesFromOneRule(t *testing
 	wantTimed(t, got[0], "2026-11-01T00:00:00Z", "2026-11-01T00:05:00Z")
 }
 
+// TestParseSubscription_TwoThousandSecondlyRulesShareOneBudget is the read a
+// hostile calendar would make expensive: two thousand rules stepping by the
+// second, each of which alone could reach the per-rule cap. One step budget
+// for the whole subscription bounds the work, and the item cap bounds the
+// answer.
+func TestParseSubscription_TwoThousandSecondlyRulesShareOneBudget(t *testing.T) {
+	w := testWindow(t, "2026-11-01", "2026-12-31", "UTC")
+	var lines []string
+	for i := range 2000 {
+		lines = append(lines, vevent(fmt.Sprintf("UID:tick-%d", i), "SUMMARY:Tick", "DTSTART:20261101T000000Z", "RRULE:FREQ=SECONDLY")...)
+	}
+	body := vcalendar(lines...)
+	start := time.Now()
+	got := parse(t, body, w)
+	if took := time.Since(start); took > parseBudgetWallClock {
+		t.Errorf("two thousand secondly rules took %v to parse, want under %v", took, parseBudgetWallClock)
+	}
+	if len(got) == 0 || len(got) > maxSubscriptionItems {
+		t.Errorf("two thousand secondly rules answered %d items, want between 1 and %d", len(got), maxSubscriptionItems)
+	}
+}
+
+// TestParseSubscription_RulesThatNeverMatchAreBoundedByTheReadsDeadline: a
+// rule no date satisfies (the 30th of February) costs rrule-go a walk to the
+// year 9999 inside one step, which the step budget cannot see; the read's
+// deadline, looked at before every rule, is what bounds a calendar of them.
+func TestParseSubscription_RulesThatNeverMatchAreBoundedByTheReadsDeadline(t *testing.T) {
+	w := testWindow(t, "2026-11-01", "2026-12-31", "UTC")
+	var lines []string
+	for i := range 200 {
+		lines = append(lines, vevent(fmt.Sprintf("UID:never-%d", i), "SUMMARY:Never", "DTSTART:20261101T000000Z",
+			"RRULE:FREQ=DAILY;BYMONTH=2;BYMONTHDAY=30")...)
+	}
+	start := time.Now()
+	if got := parse(t, vcalendar(lines...), w); len(got) != 0 {
+		t.Errorf("rules that never match answered %d items", len(got))
+	}
+	if took, limit := time.Since(start), maxSubscriptionReadTime+parseBudgetWallClock; took > limit {
+		t.Errorf("two hundred rules that never match took %v to parse, want under %v", took, limit)
+	}
+}
+
+// TestParseSubscription_TheItemCapKeepsTheNearestToTheWindowsStart writes six
+// thousand events farthest first, so a cap that kept the first it met would
+// keep the farthest: the five thousand kept are the nearest, nearest first.
+func TestParseSubscription_TheItemCapKeepsTheNearestToTheWindowsStart(t *testing.T) {
+	w := testWindow(t, "2026-11-01", "2027-12-31", "UTC")
+	const n = 6000
+	var lines []string
+	for i := n - 1; i >= 0; i-- {
+		at := w.fromAt.Add(time.Duration(i) * time.Hour).UTC().Format("20060102T150405Z")
+		lines = append(lines, vevent(fmt.Sprintf("UID:e-%d", i), "SUMMARY:E", "DTSTART:"+at, "DURATION:PT30M")...)
+	}
+	got := parse(t, vcalendar(lines...), w)
+	if len(got) != maxSubscriptionItems {
+		t.Fatalf("%d events answered %d items, want %d", n, len(got), maxSubscriptionItems)
+	}
+	for i, it := range got {
+		if want := fmt.Sprintf("1001:e-%d", i); it.Id != want {
+			t.Fatalf("item %d is %s, want %s: the nearest first", i, it.Id, want)
+		}
+	}
+}
+
+// TestParseSubscription_ACancelledContextStopsTheRead: a request that went
+// away stops the parse, which answers what it had — here nothing.
+func TestParseSubscription_ACancelledContextStopsTheRead(t *testing.T) {
+	w := testWindow(t, "2026-11-01", "2026-12-31", "UTC")
+	body := vcalendar(events(
+		vevent("UID:a", "SUMMARY:A", "DTSTART:20261103T080000Z", "RRULE:FREQ=HOURLY"),
+		vevent("UID:b", "SUMMARY:B", "DTSTART:20261104T080000Z", "DTEND:20261104T090000Z"),
+	)...)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := parseSubscriptionItems(ctx, body, testSub, w, langEnglish, nil); len(got) != 0 {
+		t.Errorf("a cancelled read answered %d items, want none", len(got))
+	}
+	if got := parse(t, body, w); len(got) == 0 {
+		t.Error("the same body read under a live context answered nothing")
+	}
+}
+
 func TestParseSubscription_ARuleThatCannotBeReadIsASingleEvent(t *testing.T) {
 	w := testWindow(t, "2026-11-01", "2026-11-30", "UTC")
 	it := one(t, parse(t, vcalendar(vevent("UID:odd", "SUMMARY:Odd", "DTSTART:20261103T080000Z", "RRULE:FREQ=SOMETIMES")...), w))
@@ -272,6 +357,25 @@ func TestParseSubscription_ABodyThatIsNotACalendarContributesNothing(t *testing.
 	w := testWindow(t, "2026-11-01", "2026-11-30", "UTC")
 	if got := parse(t, "<html>nope</html>", w); len(got) != 0 {
 		t.Errorf("HTML answered %v", got)
+	}
+}
+
+// TestParseSubscription_ABodyThatDoesNotParseIsLoggedWithoutItsText: the
+// parser's error may quote the body, a stranger's text, so the log line is a
+// fixed reason and the subscription's id, never the error.
+func TestParseSubscription_ABodyThatDoesNotParseIsLoggedWithoutItsText(t *testing.T) {
+	w := testWindow(t, "2026-11-01", "2026-11-30", "UTC")
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	body := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nplanted-text-from-elsewhere\r\n"
+	if got := parseSubscriptionItems(context.Background(), body, testSub, w, langEnglish, log); len(got) != 0 {
+		t.Errorf("a body that does not parse answered %v", got)
+	}
+	if !strings.Contains(logs.String(), "could not be parsed") || !strings.Contains(logs.String(), "subscription_id=1001") {
+		t.Errorf("the failure was not logged with the subscription's id: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), "planted-text") {
+		t.Errorf("the log carries the body's text: %s", logs.String())
 	}
 }
 

@@ -14,7 +14,8 @@ import (
 
 // This file is the whole of this module's reach into its neighbours: the
 // calendar sources (deps.CalendarSources, calendar design D1), the business
-// calendar (deps.Calendar), the user directory (deps.Users) and, when wired,
+// calendar (deps.Calendar), the user directory (deps.Users), identity's
+// UserHolds for a read with no request behind it (deps.Access) and, when wired,
 // the customer directory (deps.Directory) and the project directory
 // (deps.Projects). Every call is made through one of the thin accessors below
 // and through nowhere else, so "what does Calendar ask of another module, and
@@ -81,6 +82,19 @@ func (s *server) sourceItems(ctx context.Context, src contracts.CalendarSource, 
 		return nil, nil
 	}
 	return src.CalendarItems(ctx, q)
+}
+
+// accessUserHolds is identity's answer for a read on userID's behalf with no
+// request behind it (calendar feed design D5): whether the person may act at
+// all — not disabled, locked out, pending or deactivated by the directory —
+// and holds every key. The feed asks it before it answers a token, and the
+// subscriptions worker before it fetches for a person, so neither serves
+// someone who has left. A failure to answer is an error, never a false.
+func (s *server) accessUserHolds(ctx context.Context, userID uuid.UUID, keys ...string) (bool, error) {
+	if err := noteContractCall(ctx, "Access.UserHolds"); err != nil {
+		return false, err
+	}
+	return s.deps.Access.UserHolds(ctx, userID, keys...)
 }
 
 // calendarZone and calendarToday are the business calendar: the workspace's

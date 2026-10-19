@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +48,9 @@ func TestFetchSubscription_TheGuardRefusesAHostThatResolvesToAPrivateAddress(t *
 	if transport := subscriptionTransport(); transport.Proxy != nil || transport.DialContext == nil {
 		t.Error("the production transport has a proxy or no guarded dialler")
 	}
+	if !subscriptionTransport().DisableKeepAlives {
+		t.Error("the production transport keeps idle connections to the addresses it fetched")
+	}
 }
 
 func TestFetchSubscription_ASlowAddressDidNotAnswerInTime(t *testing.T) {
@@ -82,5 +86,38 @@ func TestFetchSubscription_KeepsTheValidatorsAndTheRefreshInterval(t *testing.T)
 	o := fetchingServer(srv.Client().Transport).fetchSubscription(context.Background(), fetchTarget{id: 1, url: srv.URL})
 	if o.failure != "" || o.etag == nil || *o.etag != `"abc"` || o.lastModified == nil || *o.lastModified != "Tue, 15 Sep 2026 10:00:00 GMT" || o.refresh != 24*time.Hour {
 		t.Errorf("the outcome = %+v", o)
+	}
+}
+
+// TestFetchSubscription_ACalendarOfMoreThanTenThousandEventsIsRefused: the
+// read on every load parses what is stored, so a body with more VEVENTs than
+// a read takes is never stored at all; ten thousand is.
+func TestFetchSubscription_ACalendarOfMoreThanTenThousandEventsIsRefused(t *testing.T) {
+	calendarOf := func(n int) string {
+		var b strings.Builder
+		b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//x//EN\r\n")
+		for range n {
+			b.WriteString("BEGIN:VEVENT\r\nDTSTART:20261103T080000Z\r\nEND:VEVENT\r\n")
+		}
+		b.WriteString("END:VCALENDAR\r\n")
+		return b.String()
+	}
+	for _, tc := range []struct {
+		events int
+		want   string
+	}{
+		{maxSubscriptionEvents, ""},
+		{maxSubscriptionEvents + 1, fetchTooManyEvents},
+	} {
+		body := calendarOf(tc.events)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }))
+		o := fetchingServer(srv.Client().Transport).fetchSubscription(context.Background(), fetchTarget{id: 1, url: srv.URL})
+		srv.Close()
+		if o.failure != tc.want || (tc.want == "" && o.body == "") {
+			t.Errorf("%d events: failure %q, want %q", tc.events, o.failure, tc.want)
+		}
+	}
+	if fetchTooManyEvents != "the calendar has more than 10,000 events" {
+		t.Errorf("the sentence is %q", fetchTooManyEvents)
 	}
 }

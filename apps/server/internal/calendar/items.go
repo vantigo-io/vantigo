@@ -365,7 +365,7 @@ func (s *server) subscriptionItems(ctx context.Context, userID uuid.UUID, w wind
 	var out []gen.CalendarItem
 	for _, r := range rows {
 		sub := subscriptionSource{id: r.ID, name: r.Name, colour: r.Colour, busyOnly: r.BusyOnly}
-		out = append(out, parseSubscriptionItems(r.Body, sub, w, lang, s.deps.Logger)...)
+		out = append(out, parseSubscriptionItems(ctx, r.Body, sub, w, lang, s.deps.Logger)...)
 	}
 	return out, nil
 }

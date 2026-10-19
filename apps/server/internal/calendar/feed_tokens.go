@@ -20,6 +20,10 @@ import (
 // under.
 const feedAddressPurpose = "calendar/feed-address"
 
+// feedBusyUIDPurpose is the secrets box purpose the busy variant's UID of a
+// projected item is a MAC under (feed_ics.go, busyUID).
+const feedBusyUIDPurpose = "calendar/feed-busy-uid"
+
 // feedPath is where a calendar address points below its base; the token and
 // feedSuffix follow it as one path segment (D2).
 const (

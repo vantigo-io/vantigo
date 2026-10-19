@@ -406,6 +406,48 @@ func TestAccess_UserHolds(t *testing.T) {
 	}
 }
 
+// TestAccess_UserHoldsAppliesTheSessionsSCIMRule pins UserHolds to the user
+// predicates GetSessionByTokenHash applies (UserMayAct): while SCIM is
+// configured, a non-Owner the directory deactivated holds nothing, whatever
+// their roles grant, and a deactivated Owner — the break-glass account —
+// still holds every key. Without SCIM the same mapping is not read, as it is
+// not read for a session.
+func TestAccess_UserHoldsAppliesTheSessionsSCIMRule(t *testing.T) {
+	t.Parallel()
+	const manage = "identity:manage"
+	for _, tc := range []struct {
+		name                string
+		scim                bool
+		wantUser, wantOwner bool
+	}{
+		{"with SCIM", true, false, true},
+		{"without SCIM", false, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var opts []harnessOption
+			if tc.scim {
+				opts = append(opts, withEnv("SCIM_TOKEN", "identity-harness-scim-token"))
+			}
+			h := newHarness(t, opts...)
+			auditor := h.insertRole(t, "Auditor", manage)
+			user := h.insertUser(t, "deactivated@example.test", identity.RoleUserID, auditor)
+			owner := h.insertUser(t, "deactivatedowner@example.test", identity.RoleOwnerID)
+			for _, id := range []uuid.UUID{user, owner} {
+				h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+				          VALUES ($1, $2, $3, $3, false, 1, 'etag', $4, $4)`, uuid.New(), id, id.String(), h.now())
+			}
+			ctx := context.Background()
+			if got, err := h.access.UserHolds(ctx, user, manage); err != nil || got != tc.wantUser {
+				t.Errorf("a directory-deactivated user: UserHolds = %v, %v; want %v", got, err, tc.wantUser)
+			}
+			if got, err := h.access.UserHolds(ctx, owner, manage); err != nil || got != tc.wantOwner {
+				t.Errorf("a directory-deactivated Owner: UserHolds = %v, %v; want %v", got, err, tc.wantOwner)
+			}
+		})
+	}
+}
+
 // TestAccess_PrincipalCarriesTheSessionAndOrderedRoles proves the principal
 // handed to handlers: the session's user and id, MFA state, and roles in
 // orderRoles order.

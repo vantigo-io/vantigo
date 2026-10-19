@@ -21,7 +21,10 @@
 // picker), rsvp.go (the answer by link), cancellation.go (a delete that
 // becomes a cancellation) and cancellations_worker.go (its sweeper). The
 // feed (calendar feed design) is feed_tokens.go (the addresses), feed.go
-// (the anonymous GET) and feed_ics.go (its iCalendar object).
+// (the anonymous GET) and feed_ics.go (its iCalendar object); the
+// subscriptions are subscriptions.go (the rows), subscriptions_fetch.go (the
+// guarded fetch), subscriptions_parse.go and windowszones.go (parsed on read)
+// and subscriptions_worker.go (the poll).
 package calendar
 
 import (
@@ -54,16 +57,30 @@ var permissions = []contracts.Permission{
 }
 
 // limits maps each rate-limited operationId to its policy; the router hits
-// it per client address before access is checked. The module's three
-// anonymous operations, each a bucket of its own: the RSVP page's read 60 and
-// answer 30 per client per 10 minutes (calendar invitations design D5), and
-// the feed 120 (calendar feed design D2) — a phone asks hourly, and an office
-// of phones behind one NAT is dozens of requests an hour.
+// it per client address before access is checked, and a bucket is the
+// policy's Name and the address, so operations that share a Name share a
+// bucket. The module's three anonymous operations, each a bucket of its own:
+// the RSVP page's read 60 and answer 30 per client per 10 minutes (calendar
+// invitations design D5), and the feed 120 (calendar feed design D2) — a
+// phone asks hourly, and an office of phones behind one NAT is dozens of
+// requests an hour. And the three that fetch a stranger's address inline —
+// a subscription's POST, its PUT and Refresh now — one bucket between them,
+// calendar-subscription-fetch, 30 per client per 10 minutes: each is an
+// outbound request of up to twenty seconds made on a click, and nobody
+// saving their own calendars clicks thirty times in ten minutes, while a
+// script turning the server into a fetcher would.
 var limits = map[string]ratelimit.Policy{
-	"postCalendarRsvpRead":  {Name: "calendar-rsvp-read", Limit: 60, Window: 10 * time.Minute},
-	"postCalendarRsvp":      {Name: "calendar-rsvp", Limit: 30, Window: 10 * time.Minute},
-	"getCalendarFeedByFile": {Name: "calendar-feed", Limit: 120, Window: 10 * time.Minute},
+	"postCalendarRsvpRead":                 {Name: "calendar-rsvp-read", Limit: 60, Window: 10 * time.Minute},
+	"postCalendarRsvp":                     {Name: "calendar-rsvp", Limit: 30, Window: 10 * time.Minute},
+	"getCalendarFeedByFile":                {Name: "calendar-feed", Limit: 120, Window: 10 * time.Minute},
+	"postCalendarSubscriptions":            subscriptionFetchLimit,
+	"putCalendarSubscriptionsById":         subscriptionFetchLimit,
+	"postCalendarSubscriptionsByIdRefresh": subscriptionFetchLimit,
 }
+
+// subscriptionFetchLimit is the one policy of the three operations that
+// fetch inline.
+var subscriptionFetchLimit = ratelimit.Policy{Name: "calendar-subscription-fetch", Limit: 30, Window: 10 * time.Minute}
 
 // Module is calendar as a platform module: its contract mounted under
 // /api/v1/calendar/, its two permissions in the composed catalog and the

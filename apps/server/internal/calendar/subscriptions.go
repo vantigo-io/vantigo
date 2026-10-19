@@ -23,8 +23,11 @@ import (
 // the person's own, small, and last write wins. A POST, a PUT that changes
 // the address and a refresh fetch once inline (subscriptions_fetch.go) before
 // they answer, so a wrong address is seen at once; the row is kept whatever
-// the fetch answered, its error set when it failed. Nothing here runs inside
-// a transaction, so no call out of the module ever could.
+// the fetch answered, its error set when it failed. The three share one rate
+// limit (module.go, calendar-subscription-fetch). The one transaction is the
+// POST's count and insert, under the person's lock so the limit of ten
+// cannot be raced; the fetch runs after it commits, as every call out of the
+// module must.
 
 // The bounds of a subscription.
 const (
@@ -133,24 +136,44 @@ func (s *server) PostCalendarSubscriptions(ctx context.Context, req gen.PostCale
 		return gen.PostCalendarSubscriptions400ApplicationProblemPlusJSONResponse(invalid(invalidSubscriptionTitle, f)), nil
 	}
 	userID := callerID(ctx)
-	q := s.queries()
-	n, err := q.CountSubscriptions(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("calendar: count the subscriptions: %w", err)
-	}
-	if n >= maxSubscriptions {
-		return gen.PostCalendarSubscriptions409ApplicationProblemPlusJSONResponse(subscriptionLimit(maxSubscriptions)), nil
-	}
-	row, err := q.InsertSubscription(ctx, store.InsertSubscriptionParams{
-		UserID: userID, Name: in.name, Url: in.url, Colour: in.colour, BusyOnly: in.busyOnly, Now: s.deps.Clock(),
+	var row store.CalendarSubscription
+	full := false
+	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+		if err := txq.LockSubscriptionsOfUser(ctx, userID); err != nil {
+			return fmt.Errorf("calendar: lock the subscriptions: %w", err)
+		}
+		n, err := txq.CountSubscriptions(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("calendar: count the subscriptions: %w", err)
+		}
+		if n >= maxSubscriptions {
+			full = true
+			return nil
+		}
+		row, err = txq.InsertSubscription(ctx, store.InsertSubscriptionParams{
+			UserID: userID, Name: in.name, Url: in.url, Colour: in.colour, BusyOnly: in.busyOnly, Now: s.deps.Clock(),
+		})
+		if err != nil {
+			return fmt.Errorf("calendar: insert the subscription: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("calendar: insert the subscription: %w", err)
-	}
-	if row, err = s.refreshSubscription(ctx, q, targetOf(row)); err != nil {
 		return nil, err
 	}
-	return gen.PostCalendarSubscriptions201JSONResponse(toSubscription(row)), nil
+	if full {
+		return gen.PostCalendarSubscriptions409ApplicationProblemPlusJSONResponse(subscriptionLimit(maxSubscriptions)), nil
+	}
+	fetched, err := s.refreshSubscription(ctx, s.queries(), targetOf(row))
+	switch {
+	case errors.Is(err, errSubscriptionGone):
+		// Deleted from another tab while its first fetch was out: it was
+		// created, and is gone, which the row as inserted says best.
+		return gen.PostCalendarSubscriptions201JSONResponse(toSubscription(row)), nil
+	case err != nil:
+		return nil, err
+	}
+	return gen.PostCalendarSubscriptions201JSONResponse(toSubscription(fetched)), nil
 }
 
 // PutCalendarSubscriptionsById replaces one of the caller's subscriptions.
@@ -185,7 +208,11 @@ func (s *server) PutCalendarSubscriptionsById(ctx context.Context, req gen.PutCa
 		if row, err = q.ResetSubscriptionFetch(ctx, row.ID); err != nil {
 			return nil, fmt.Errorf("calendar: reset subscription %d's fetch: %w", req.Id, err)
 		}
-		if row, err = s.refreshSubscription(ctx, q, targetOf(row)); err != nil {
+		row, err = s.refreshSubscription(ctx, q, targetOf(row))
+		if errors.Is(err, errSubscriptionGone) {
+			return gen.PutCalendarSubscriptionsById404Response{}, nil
+		}
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -216,7 +243,11 @@ func (s *server) PostCalendarSubscriptionsByIdRefresh(ctx context.Context, req g
 	if err != nil {
 		return nil, fmt.Errorf("calendar: read subscription %d: %w", req.Id, err)
 	}
-	if row, err = s.refreshSubscription(ctx, q, targetOf(row)); err != nil {
+	row, err = s.refreshSubscription(ctx, q, targetOf(row))
+	if errors.Is(err, errSubscriptionGone) {
+		return gen.PostCalendarSubscriptionsByIdRefresh404Response{}, nil
+	}
+	if err != nil {
 		return nil, err
 	}
 	return gen.PostCalendarSubscriptionsByIdRefresh200JSONResponse(toSubscription(row)), nil
