@@ -55,8 +55,8 @@ gjelder hele installasjonen.
   **Siste forespørsel**.
 - En melding, **Importert fra miljøet**, når innstillingene ble importert fra miljøet,
   om å fjerne variablene (se [Før kortet](#før-kortet-miljøvariablene)). Den blir
-  stående til leverandøren lagres neste gang med **Lagre**; å slå av en av delene eller
-  å utstede et token lar den stå.
+  stående til neste endring som gjøres på kortet — en lagring, et utstedt token, en del
+  som slås av — og å slå av noe som allerede er av endrer ingenting.
 
 Bak kortet ligger seks operasjoner under `/api/v1/identity/owner/sso`, i kontrakten
 [`openapi/identity.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/identity.yaml):
@@ -402,7 +402,7 @@ Prosedyren, én gang, ved oppgraderingen til den utgivelsen:
 2. Se etter importadvarselen i loggen, eller etter `sso-settings.imported` i
    revisjonsloggen, og åpne kortet **Single sign-on**: leverandøren, autoriteten,
    klient-ID-en, «Satt» for hemmeligheten og **Token utstedt** for SCIM står der, med
-   meldingen. Den blir stående til leverandøren lagres neste gang med **Lagre**.
+   meldingen. Den blir stående til neste endring som gjøres på kortet.
 3. Fjern hver `OIDC_*`- og `SCIM_*`-variabel fra hver API- og worker-container —
    `vantigo.env`, hemmelighetslageret, plattformens miljø — alle samtidig, og start på
    nytt når det passer. `AZURE_FEDERATED_TOKEN_FILE`, som webhooken for workload

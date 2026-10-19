@@ -419,7 +419,7 @@ avvises katalogens forespørsler, og kontoene og gruppene den opprettet, blir so
 Når innstillingene ble importert fra installasjonens miljø, sier kortet det —
 **Importert fra miljøet** — og ber om at variablene fjernes; det er for den som
 drifter installasjonen ([Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene)).
-Meldingen blir stående til leverandøren lagres neste gang med **Lagre**. Hver endring føres i
+Meldingen blir stående til neste endring som gjøres på kortet. Hver endring føres i
 revisjonsloggen for autorisasjon som `sso-settings.changed`, aldri med hemmeligheten
 eller et token.
 

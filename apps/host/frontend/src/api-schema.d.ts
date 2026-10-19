@@ -2131,7 +2131,7 @@ export interface components {
             scim: components["schemas"]["SsoScimSettings"];
             /**
              * Format: int32
-             * @description The settings' version, 0 while they were never written. Every write — the PUT, the token issue and the deletes included — moves it on and answers the whole row with the new version, so a screen holding the row stays current after its own action. Send it back as If-Match on PUT /owner/sso/oidc.
+             * @description The settings' version, 0 while they were never written. Every write that changes something — the PUT, the token issue and the deletes included — moves it on; a delete with nothing to clear writes nothing. Every write answers the whole row with its version, so a screen holding the row stays current after its own action. Send it back as If-Match on PUT /owner/sso/oidc.
              */
             version: number;
         };
