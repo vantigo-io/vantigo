@@ -76,6 +76,9 @@ func Module() module.Module {
 		Actuals:       newActuals,
 		BillableHours: newBillableHours,
 		InvoicedWork:  newInvoicedWorkHolder,
+		// CalendarSource is the caller's own entries on the calendar
+		// (calendar design D1, calendar_source.go).
+		CalendarSource: newCalendarSource,
 	}
 }
 
