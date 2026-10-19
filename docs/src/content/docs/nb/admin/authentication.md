@@ -253,8 +253,24 @@ Et navn serveren ikke kan laste, og et navn databasen leser annerledes enn serve
 sonen før og etter, av eieren som gjorde den. Før denne innstillingen hadde Ansatte og
 Utlegg hver sin sone; en installasjon oppgradert derfra kjører på `Europe/Oslo` til en
 eier setter arbeidsområdets, og migreringsloggen advarer når en av modulenes verdi var
-en annen. En brukers egen `time_zone`-kolonne finnes ved siden av, tom — «følg
-arbeidsområdet» — til en personlig innstilling kommer; økten svarer med begge.
+en annen.
+
+Ved siden av har hver bruker en **personlig tidssone** (`identity.users.time_zone`):
+sonen tidspunkter vises i for den brukeren, og som et klokkeslett brukeren skriver inn,
+leses i. Den er tom — «følg arbeidsområdet» — til brukeren velger en under **Personlige
+innstillinger** ([Kom i gang](/nb/user/getting-started/#velg-tidssonen-din)), eller en klient
+sender `timeZone` til `PUT` eller `PATCH /api/v1/identity/account/profile`. Navnet
+holdes til de samme to kontrollene som arbeidsområdets, og avvises ellers på `timeZone`
+med `400 invalid_request`; `null` eller et blankt navn tømmer den igjen, og en
+forespørsel som utelater `timeZone`, beholder den. `GET /api/v1/identity/account`
+svarer med det lagrede valget (`null` når brukeren følger arbeidsområdet), og
+`GET /api/v1/identity/session` svarer med sonen som gjelder som `timeZone`, hvor den kom
+fra som `timeZoneSource` (`personal` eller `business`), og arbeidsområdets som
+`businessTimeZone`. En personlig sone flytter aldri en regnskapsdag; en tom sone følger
+en senere endring av arbeidsområdets sone med en gang, siden den slås opp når økten
+leses og ikke kopieres når brukeren opprettes. Den er en preferanse, så en endring
+revisjonslogges ikke, og ingen eier eller katalog setter den for brukeren: verken SCIM
+eller Ansattes klargjøring skriver den.
 
 ### Hva Ansattes klargjøring gjør i identitetsmodulen
 

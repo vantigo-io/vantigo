@@ -49,7 +49,8 @@ toppen, deretter meldingene i rekkefølge. Hver melding er merket **You** for en
 sendt fra Vantigo, **Internal note** for et notat en kollega har skrevet, og
 avsenderens navn for en melding fra kunden (disse merkelappene vises på engelsk). En
 melding skrevet som HTML vises i en sandkasse som blokkerer skript, skjemaer og
-nettverkstilgang.
+nettverkstilgang. Klokkeslettet på hver melding, og på hver samtale i listen, er i din
+egen tidssone ([Velg tidssonen din](/nb/user/getting-started/#velg-tidssonen-din)).
 
 Et vedlegg vises som en lenke du kan laste ned; mens det venter på å bli sjekket, vises
 det som **Skanner**, og et som ikke kan leveres, som **Vedlegg utilgjengelig**.
