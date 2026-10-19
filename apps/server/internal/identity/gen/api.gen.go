@@ -964,7 +964,7 @@ type SsoOidcSettingsRequest struct {
 	// ClientSecret The client secret, sealed at rest and never answered. Present, it replaces the secret and clears the token file. Absent with the same provider and clientId as the settings hold, it keeps the secret already set; a change of provider or clientId needs clientSecret or workloadTokenFile in the same request, since the old application's credential is never carried to a new one. A secret and workloadTokenFile are mutually exclusive, and one of the two is required.
 	ClientSecret *string `json:"clientSecret,omitempty"`
 
-	// ConfirmIssuerChange True to change the authority while people are linked to the provider under the current one. The links are keyed on the issuer, so each linked person is provisioned anew at their next sign-in; without it such a change is refused 409 oidc_links_exist.
+	// ConfirmIssuerChange True to change the authority while people are linked to the provider under the current one. The links are keyed on the issuer, so a linked person has no link under the new one, so their next sign-in through it finds their address already an account's and is refused oidc_email_conflict, and they sign in with a local credential, if they have one, until a later release relinks them; without this flag such a change is refused 409 oidc_links_exist.
 	ConfirmIssuerChange *bool `json:"confirmIssuerChange,omitempty"`
 
 	// DisplayName The label of the sign-in page's provider button, at most 100 characters; Workforce SSO when absent or empty.
