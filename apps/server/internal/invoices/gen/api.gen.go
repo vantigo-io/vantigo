@@ -1696,7 +1696,7 @@ type InvoicesBankFileDetail struct {
 	Transactions []InvoicesBankTransaction `json:"transactions"`
 }
 
-// InvoicesBankFreshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in Oslo — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
+// InvoicesBankFreshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in the business time zone — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
 type InvoicesBankFreshness struct {
 	LastBookedOn    *openapi_types.Date `json:"lastBookedOn,omitempty"`
 	OcrAccounts     []string            `json:"ocrAccounts"`
@@ -1920,7 +1920,7 @@ type InvoicesChargePayment struct {
 // InvoicesChargePaymentSource manual, ocr or camt054.
 type InvoicesChargePaymentSource string
 
-// InvoicesChargePaymentRequest POST /invoices/{id}/charge-payments' body (D9), a payment's fields and rules (D2): paidOn on or after the invoice's issue date and not after today (Oslo); amount greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its charges outstanding (409 charge_payment_exceeds_outstanding); reference at most 100 characters and note at most 500, both trimmed; absent is empty.
+// InvoicesChargePaymentRequest POST /invoices/{id}/charge-payments' body (D9), a payment's fields and rules (D2): paidOn on or after the invoice's issue date and not after today in the business time zone; amount greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its charges outstanding (409 charge_payment_exceeds_outstanding); reference at most 100 characters and note at most 500, both trimmed; absent is empty.
 type InvoicesChargePaymentRequest struct {
 	Amount    float64            `json:"amount"`
 	Note      *string            `json:"note,omitempty"`
@@ -1975,7 +1975,7 @@ type InvoicesCharges struct {
 	Waived        float64  `json:"waived"`
 }
 
-// InvoicesCollectionRate One statutory rate as a dated row (invoices payments and reminders design D6), in force from validFrom until the next row of its kind. seeded rows came with a release and have no createdBy; a user adds later ones ahead of a release. releaseValue and releaseSourceRef are what a later release seeded for this kind and date over a user's row, equal or not — while releaseValue differs from value the list warns collection_rate_differs_from_release. inForce is whether the row is the one in force today (Oslo). usable is false once a printed or sent letter dated on or after validFrom and before the next row of the kind has relied on it; a row in force, a used row and a seeded row cannot be deleted.
+// InvoicesCollectionRate One statutory rate as a dated row (invoices payments and reminders design D6), in force from validFrom until the next row of its kind. seeded rows came with a release and have no createdBy; a user adds later ones ahead of a release. releaseValue and releaseSourceRef are what a later release seeded for this kind and date over a user's row, equal or not — while releaseValue differs from value the list warns collection_rate_differs_from_release. inForce is whether the row is the one in force today in the business time zone. usable is false once a printed or sent letter dated on or after validFrom and before the next row of the kind has relied on it; a row in force, a used row and a seeded row cannot be deleted.
 type InvoicesCollectionRate struct {
 	CreatedAt time.Time `json:"createdAt"`
 
@@ -2013,7 +2013,7 @@ type InvoicesCollectionRateList struct {
 // InvoicesCollectionRateListWarnings defines model for InvoicesCollectionRateList.Warnings.
 type InvoicesCollectionRateListWarnings string
 
-// InvoicesCollectionRateRequest POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today (Oslo) and after the date of the latest printed or sent letter, so a new rate never contradicts a letter already printed or posted; late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists.
+// InvoicesCollectionRateRequest POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today in the business time zone and after the date of the latest printed or sent letter, so a new rate never contradicts a letter already printed or posted; late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists.
 type InvoicesCollectionRateRequest struct {
 	Kind      InvoicesCollectionRateRequestKind `json:"kind"`
 	SourceRef string                            `json:"sourceRef"`
@@ -2213,7 +2213,7 @@ type InvoicesHandoff struct {
 	WithdrawnOn      *openapi_types.Date `json:"withdrawnOn,omitempty"`
 }
 
-// InvoicesHandoffRequest POST /invoices/{id}/collection's body (invoices payments and reminders design D11): the hand-off to a collection agency, recorded after it was made outside Vantigo. handedOn is the day it was handed over — not after today (Oslo) and not before the invoice's issue date; agency the agency's name, 1-200 characters once trimmed; agencyReference its case number, at most 100; note at most 500 (absent is empty). acknowledgeNotDelivered confirms the hand-off of an invoice with no delivery on or before its due date, which is otherwise refused invoice_not_delivered (plan reading 10).
+// InvoicesHandoffRequest POST /invoices/{id}/collection's body (invoices payments and reminders design D11): the hand-off to a collection agency, recorded after it was made outside Vantigo. handedOn is the day it was handed over — not after today in the business time zone and not before the invoice's issue date; agency the agency's name, 1-200 characters once trimmed; agencyReference its case number, at most 100; note at most 500 (absent is empty). acknowledgeNotDelivered confirms the hand-off of an invoice with no delivery on or before its due date, which is otherwise refused invoice_not_delivered (plan reading 10).
 type InvoicesHandoffRequest struct {
 	AcknowledgeNotDelivered *bool              `json:"acknowledgeNotDelivered,omitempty"`
 	Agency                  string             `json:"agency"`
@@ -2222,7 +2222,7 @@ type InvoicesHandoffRequest struct {
 	Note                    *string            `json:"note,omitempty"`
 }
 
-// InvoicesHandoffWithdrawRequest POST /invoices/{id}/collection/withdraw's body (D11): withdrawnOn is the day the claim came back from the agency — not after today (Oslo) and not before the hand-off's handedOn; reason is why, 1-200 characters once trimmed.
+// InvoicesHandoffWithdrawRequest POST /invoices/{id}/collection/withdraw's body (D11): withdrawnOn is the day the claim came back from the agency — not after today in the business time zone and not before the hand-off's handedOn; reason is why, 1-200 characters once trimmed.
 type InvoicesHandoffWithdrawRequest struct {
 	Reason      string             `json:"reason"`
 	WithdrawnOn openapi_types.Date `json:"withdrawnOn"`
@@ -2439,13 +2439,13 @@ type InvoicesInvoiceResponse struct {
 	// Seller The seller snapshot (D4), copied from the settings at issue.
 	Seller *InvoicesSeller `json:"seller,omitempty"`
 
-	// SendDefaults What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read.
+	// SendDefaults What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read.
 	SendDefaults *InvoicesSendDefaults `json:"sendDefaults,omitempty"`
 
 	// Sources The work a document bills, counted by state from its own rows (invoices work design D2): count in all, held (on a draft), invoiced (by the issue) and released (by a credit note that returned its line in full, D8). Answered on a document that bills work, absent otherwise. A credit-note draft of an invoice that bills invoiced work answers it too, its counts zero — a credit note holds no work of its own — with wouldRelease.
 	Sources *InvoicesSourcesBlock `json:"sources,omitempty"`
 
-	// State The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise).
+	// State The derived state, judged against today in the business time zone (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise).
 	State string `json:"state"`
 
 	// Status draft or issued.
@@ -2468,7 +2468,7 @@ type InvoicesInvoiceResponse struct {
 	YourReference string                  `json:"yourReference"`
 }
 
-// InvoicesIssueRequest POST /invoices/{id}/issue's body (D6). issueDate is today (Oslo) when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document.
+// InvoicesIssueRequest POST /invoices/{id}/issue's body (D6). issueDate is today in the business time zone when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document.
 type InvoicesIssueRequest struct {
 	IssueDate *openapi_types.Date `json:"issueDate,omitempty"`
 }
@@ -2662,7 +2662,7 @@ type InvoicesManualDelivery struct {
 // InvoicesManualDeliveryKind defines model for InvoicesManualDelivery.Kind.
 type InvoicesManualDeliveryKind string
 
-// InvoicesManualDeliveryRequest POST /invoices/{id}/manual-deliveries' body (D8): kind handed_over or posted; deliveredOn on or after the invoice's issue date and not after today (Oslo); note at most 500 characters, trimmed, absent is empty.
+// InvoicesManualDeliveryRequest POST /invoices/{id}/manual-deliveries' body (D8): kind handed_over or posted; deliveredOn on or after the invoice's issue date and not after today in the business time zone; note at most 500 characters, trimmed, absent is empty.
 type InvoicesManualDeliveryRequest struct {
 	DeliveredOn openapi_types.Date                `json:"deliveredOn"`
 	Kind        InvoicesManualDeliveryRequestKind `json:"kind"`
@@ -2749,7 +2749,7 @@ type InvoicesMetaResponse struct {
 	// StorageAvailable Whether this installation has an object store. Without one nothing can be issued (503 storage_unavailable), because an issued number whose PDF can never be stored is not allowed to exist.
 	StorageAvailable bool `json:"storageAvailable"`
 
-	// Today Today in Europe/Oslo, the business day every date rule of this module is judged on.
+	// Today Today in the workspace's business time zone, the business day every date rule of this module is judged on.
 	Today openapi_types.Date `json:"today"`
 
 	// VatCodes The VAT codes a new line may take — active, with a rate period covering today — each with today's rate.
@@ -2870,7 +2870,7 @@ type InvoicesOverdueItemPolicyMode string
 
 // InvoicesOverdueResponse GET /invoices/overdue (D12): one page of the overdue invoices, judged whole before the action filter and the page apply; total counts them after the filter. freshness is the bank data's. warnings: collection_rates_outdated (a rate a letter in use needs has no row for the current half-year, or a letter is blocked by one), collection_regime_unreviewed (the regime review has lapsed under the 1988 regime: fee letters and collection notices wait), collection_rate_differs_from_release (a release seeded another value over a rate a manager added), bank_data_stale and ocr_without_kid_payments (an account is imported as OCR giro).
 type InvoicesOverdueResponse struct {
-	// Freshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in Oslo — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
+	// Freshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in the business time zone — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
 	Freshness InvoicesBankFreshness             `json:"freshness"`
 	Items     []InvoicesOverdueItem             `json:"items"`
 	Total     int32                             `json:"total"`
@@ -3014,7 +3014,7 @@ type InvoicesPaymentRemovalRequest struct {
 	Reason string `json:"reason"`
 }
 
-// InvoicesPaymentRequest POST /invoices/{id}/payments' body (D2). paidOn is the day the money arrived: on or after the invoice's issue date and not after today (Oslo). amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its open amount (409 payment_exceeds_open). reference (the bank's or the payer's) holds at most 100 characters and note at most 500, both trimmed; absent is empty.
+// InvoicesPaymentRequest POST /invoices/{id}/payments' body (D2). paidOn is the day the money arrived: on or after the invoice's issue date and not after today in the business time zone. amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its open amount (409 payment_exceeds_open). reference (the bank's or the payer's) holds at most 100 characters and note at most 500, both trimmed; absent is empty.
 type InvoicesPaymentRequest struct {
 	Amount    float64            `json:"amount"`
 	Note      *string            `json:"note,omitempty"`
@@ -3123,7 +3123,7 @@ type InvoicesQuickInvoiceLine struct {
 	VatCodeId       int32    `json:"vatCodeId"`
 }
 
-// InvoicesQuickInvoiceRequest POST /invoices/quick's body (invoices payments and reminders design D17): an invoice for customerId with one to ten lines, created and issued in one step. Every field is judged by a draft's rules (D4, D5). deliveryDate is today (Oslo) when omitted; an omitted paymentTermsDays is the billing profile's terms, else the settings' default, and an omitted yourReference the profile's buyer reference. note is at most 1000 characters, yourReference 100. payOnSite asks for a Vipps payment request on site after the issue, as POST /invoices/{id}/payment-requests makes it; it is answered paymentRequest, or paymentRequestError beside the issued invoice when the request could not be made. Only the request that issues the invoice makes one: a replay never does.
+// InvoicesQuickInvoiceRequest POST /invoices/quick's body (invoices payments and reminders design D17): an invoice for customerId with one to ten lines, created and issued in one step. Every field is judged by a draft's rules (D4, D5). deliveryDate is today in the business time zone when omitted; an omitted paymentTermsDays is the billing profile's terms, else the settings' default, and an omitted yourReference the profile's buyer reference. note is at most 1000 characters, yourReference 100. payOnSite asks for a Vipps payment request on site after the issue, as POST /invoices/{id}/payment-requests makes it; it is answered paymentRequest, or paymentRequestError beside the issued invoice when the request could not be made. Only the request that issues the invoice makes one: a replay never does.
 type InvoicesQuickInvoiceRequest struct {
 	CustomerId       int32                      `json:"customerId"`
 	DeliveryDate     *openapi_types.Date        `json:"deliveryDate,omitempty"`
@@ -3263,7 +3263,7 @@ type InvoicesReminderRunItemAction string
 type InvoicesReminderRunPreview struct {
 	BlockedOrWaiting []InvoicesRunPreviewHeld `json:"blockedOrWaiting"`
 
-	// Freshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in Oslo — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
+	// Freshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in the business time zone — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
 	Freshness InvoicesBankFreshness                `json:"freshness"`
 	Letters   []InvoicesRunPreviewLetter           `json:"letters"`
 	Warnings  []InvoicesReminderRunPreviewWarnings `json:"warnings"`
@@ -3326,7 +3326,7 @@ type InvoicesReminderSettingsBusinessCharge string
 // InvoicesReminderSettingsPersonCharge defines model for InvoicesReminderSettings.PersonCharge.
 type InvoicesReminderSettingsPersonCharge string
 
-// InvoicesReminderSettingsRequest PUT /settings/reminders' body, a full replace (D7). Every field is required, revision included — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today (Oslo). revision is the one the caller read: a stale one is a 409 naming both.
+// InvoicesReminderSettingsRequest PUT /settings/reminders' body, a full replace (D7). Every field is required, revision included — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today in the business time zone. revision is the one the caller read: a stale one is a 409 naming both.
 type InvoicesReminderSettingsRequest struct {
 	BusinessCharge        json.RawMessage `json:"businessCharge"`
 	CollectionNotice      json.RawMessage `json:"collectionNotice"`
@@ -3405,7 +3405,7 @@ type InvoicesSeller struct {
 	VatRegistered        bool   `json:"vatRegistered"`
 }
 
-// InvoicesSendDefaults What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read.
+// InvoicesSendDefaults What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read.
 type InvoicesSendDefaults struct {
 	Preference *string  `json:"preference,omitempty"`
 	Recipient  *string  `json:"recipient,omitempty"`
@@ -3528,7 +3528,7 @@ type InvoicesSourcesBlock struct {
 	WouldRelease *[]InvoicesSourceRef `json:"wouldRelease,omitempty"`
 }
 
-// InvoicesStatsAttentionItem One thing the dashboard wants a human to look at (invoices payments and reminders design D12). The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing. Every caller holding invoices:access is answered `invoiceOverdue` and `invoiceRefundDue`; a caller also holding invoices:payments is answered the other four, and a caller without it the two, never a 403. One clock read: today is the Oslo day of the request.
+// InvoicesStatsAttentionItem One thing the dashboard wants a human to look at (invoices payments and reminders design D12). The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing. Every caller holding invoices:access is answered `invoiceOverdue` and `invoiceRefundDue`; a caller also holding invoices:payments is answered the other four, and a caller without it the two, never a 403. One clock read: today is the business day of the request.
 //
 // `invoiceOverdue`: the 20 most overdue issued invoices — overdue today, oldest due date first — each until it is paid or credited; id is 'invoiceOverdue/<invoiceId>', entityId the invoice id, title the buyer's name, occurredAt the day after its effective due date E (the due date moved off a weekend or a public holiday) at UTC midnight. An invoice due on a Saturday is not an item before the Tuesday after it.
 //
@@ -3564,7 +3564,7 @@ type InvoicesStatsAttentionItem struct {
 // InvoicesStatsAttentionItemType defines model for InvoicesStatsAttentionItem.Type.
 type InvoicesStatsAttentionItemType string
 
-// InvoicesStatsSummaryResponse The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK.
+// InvoicesStatsSummaryResponse The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's business day. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on a business day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK.
 type InvoicesStatsSummaryResponse struct {
 	CreditedCount         int32     `json:"creditedCount"`
 	CreditedGrossTotal    float64   `json:"creditedGrossTotal"`
@@ -3721,7 +3721,7 @@ type InvoicesVippsDayReconciliation struct {
 	Total        float64            `json:"total"`
 }
 
-// InvoicesVippsDayReconciliationRequest POST /invoices/vipps-payments/reconciliations' body (D17): day is the Oslo day reconciled, before today; note, trimmed, at most 500 characters, absent is empty.
+// InvoicesVippsDayReconciliationRequest POST /invoices/vipps-payments/reconciliations' body (D17): day is the business day reconciled, before today; note, trimmed, at most 500 characters, absent is empty.
 type InvoicesVippsDayReconciliationRequest struct {
 	Day  openapi_types.Date `json:"day"`
 	Note *string            `json:"note,omitempty"`
@@ -3842,7 +3842,7 @@ type InvoicesWorkHour struct {
 	WorkTypeName *string             `json:"workTypeName,omitempty"`
 }
 
-// InvoicesWorkMilestone One billing milestone ready to invoice (invoices work design D3): its name and description, the planned date, when it became ready (readyAt) and that day in Oslo (date, the work's date), and amount, its effective amount — a percent of the fixed price resolved by Projects. selectable and reason as on an hour.
+// InvoicesWorkMilestone One billing milestone ready to invoice (invoices work design D3): its name and description, the planned date, when it became ready (readyAt) and that day in the business time zone (date, the work's date), and amount, its effective amount — a percent of the fixed price resolved by Projects. selectable and reason as on an hour.
 type InvoicesWorkMilestone struct {
 	Amount      float64            `json:"amount"`
 	Currency    string             `json:"currency"`
@@ -3944,7 +3944,7 @@ type GetInvoicesParams struct {
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 	Kind   *string `form:"kind,omitempty" json:"kind,omitempty"`
 
-	// State One of open, partially_paid, overdue, paid or credited, judged against today in Oslo; only an issued invoice can match it.
+	// State One of open, partially_paid, overdue, paid or credited, judged against today in the business time zone; only an issued invoice can match it.
 	State      *string `form:"state,omitempty" json:"state,omitempty"`
 	CustomerId *int32  `form:"customerId,omitempty" json:"customerId,omitempty"`
 
@@ -4082,13 +4082,13 @@ type GetInvoicesStatsSummaryParams struct {
 
 // GetInvoicesVippsPaymentsParams defines parameters for GetInvoicesVippsPayments.
 type GetInvoicesVippsPaymentsParams struct {
-	// Date The Oslo day, YYYY-MM-DD.
+	// Date The business day, YYYY-MM-DD.
 	Date openapi_types.Date `form:"date" json:"date"`
 }
 
 // GetInvoicesVippsPaymentsCsvParams defines parameters for GetInvoicesVippsPaymentsCsv.
 type GetInvoicesVippsPaymentsCsvParams struct {
-	// Date The Oslo day, YYYY-MM-DD.
+	// Date The business day, YYYY-MM-DD.
 	Date openapi_types.Date `form:"date" json:"date"`
 }
 
