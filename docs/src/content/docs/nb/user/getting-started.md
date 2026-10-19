@@ -128,7 +128,9 @@ med kontoen din, så det gjelder på alle enheter du logger inn fra. Den offentl
 fra en betalingslenke, er ikke innlogget og bruker det ikke: den bruker språket
 fakturaen oppgir, og kunden kan bytte. Den ber ikke Vantigo om noe fra en konto — ingen
 økt, ingen vedlikeholdsmelding — og sender ingen henvisning (referrer) til nettstedene
-den lenker til.
+den lenker til. [Svarsiden](/nb/user/calendar/#hvis-du-har-fått-en-invitasjon) i
+Kalender, som den du inviterer åpner fra invitasjonen sin, er likedan: den er ikke
+innlogget, ber ikke om noen økt, og bruker språket invitasjonen ble skrevet på.
 
 ### Velg tidssonen din
 

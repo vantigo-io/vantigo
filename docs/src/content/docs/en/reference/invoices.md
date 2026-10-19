@@ -3779,8 +3779,10 @@ created, awaits the payer or is being captured, `paid` once its capture is regis
 `cancelled` when the payer
 stopped, it expired or nothing was left to capture.
 
-The three paths, and nothing else of the API, are on the public host's allowlist
-([the public host](/en/admin/payments/#the-public-host)); the page's same-origin POSTs pass the
+The three paths, and nothing else of the Invoices API, are on the public host's allowlist
+([the public host](/en/admin/payments/#the-public-host)), which also carries the
+Calendar's answer page and its two operations
+([the answer by link](/en/reference/calendar/#the-answer-by-link)); the page's same-origin POSTs pass the
 platform's cross-origin protection, and a cross-site one is refused 403.
 
 ### Payment attempts

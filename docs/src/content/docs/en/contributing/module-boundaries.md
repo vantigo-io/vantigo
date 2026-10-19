@@ -128,8 +128,10 @@ Communications' outbox is the working example.
    own, `security.PublicHostGate` (`internal/security/publichost.go`) answers 404 on it
    to every method and path not on `security.PayRoutes()`, before any module's router
    sees the request. A module's anonymous operation is reachable on the public host only
-   when that platform list names it — today the Invoices pay page's three operations, and
-   nothing reserved ahead of what is served — so a module adds a public operation by changing the platform's
+   when that platform list names it — today the Invoices pay page's three operations and
+   the Calendar answer page's two (`POST /api/v1/calendar/rsvp/read` and
+   `POST /api/v1/calendar/rsvp`, beside the page's own `GET /rsvp`), and nothing reserved
+   ahead of what is served — so a module adds a public operation by changing the platform's
    list, in the same change and with its test (`TestPublicHostGate`), never by mounting
    anything of its own there.
 7. **Frontend packages are isolated too.** A module frontend package (for instance
@@ -478,7 +480,32 @@ chosen a credential), and, while SCIM is configured, not deactivated by the dire
 unless an Owner; a lockout is temporary and ignored. Each `contracts.Holder` carries
 the user's address for **mailing that holder and nothing else**: a consumer never puts
 it on its own wire, in a log, an event or an error, and a directory's or identity
-provider's placeholder address, which no mail reaches, is answered empty.
+provider's placeholder address, which no mail reaches, is answered empty. That one
+address stays for Staff's one use; **no other method hands an address over**.
+
+**Mail them, do not hand the value over.** A module that must mail a colleague calls
+`UserDirectory.Notify(ctx, userID, contracts.Notice)`: the module composes the mail in
+the languages it has (`Notice.Texts`, keyed `en` and `nb`, each a `Subject` and a plain
+`Body`), and identity delivers it in the user's own language — their preferred one, then
+`en`, then any — at the address identity holds, from `SMTP_FROM` through the
+installation's mail driver. The address never leaves identity. A user who is not active
+in `PermissionHolders`' sense, an unknown one, one whose only address is a placeholder,
+and an installation with no mail driver are not mailed and are not errors; a send that
+fails is an error naming the user's id and no address. Calendar is the first consumer: it
+tells the colleagues on an appointment, and its owner when an outside attendee answers
+([what a colleague receives](/en/reference/calendar/#what-a-colleague-receives)). The
+non-sensitive facts a module needs to write *for* a user stay on `contracts.UserEntry`:
+`PreferredLanguage` (`en`, `nb`, or empty when they chose none) is there so Calendar can
+write an outside invitation in its organiser's language.
+
+The customer directory follows the same line for a contact, with one difference: a
+contact's address is Customers' to guard, behind its sensitive `customers:contacts-view`,
+so `CustomerDirectory.Contact` and `CustomerDirectory.ContactsForCustomer` do answer it —
+the latter the contacts of one customer that have an address
+([`ContactsForCustomer`](/en/reference/customers/#contactsforcustomer--a-customers-contacts))
+— and the consumer that shows it requires Customers' keys first and never copies it:
+Calendar reads a contact attendee's address each time it mails them and puts it on no
+appointment.
 
 **Identity owns the state of the users Staff manages.** `identity.users.managed_by`
 (`staff` or null), `employee_number`, `pending_since` and `disabled_by`,

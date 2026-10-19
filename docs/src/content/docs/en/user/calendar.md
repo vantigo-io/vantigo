@@ -1,10 +1,12 @@
 ---
 title: Calendar
-description: Your appointments and what the other apps have put in your days, colleagues' busy times, repeating appointments and the dashboard's agenda.
+description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments and the dashboard's agenda.
 sidebar:
   order: 35
 sources:
   - apps/calendar/frontend
+  - apps/host/frontend/src/routes/rsvp.tsx
+  - apps/host/frontend/src/lib/public-paths.ts
 ---
 
 The Calendar app is one view of your days: the appointments you make yourself, with
@@ -21,6 +23,8 @@ page is about what you do on each screen.
 | --- | --- |
 | **Calendar** in the sidebar, your own calendar, your appointments and your answers to invitations, and the dashboard's **Today and this week** | everyone with `calendar:access` |
 | **A colleague's calendar** | `calendar:access` and `calendar:view-colleagues` |
+| **Contacts** under **Attendees**, to invite a customer's contacts | `calendar:access`, `customers:contacts-view` and `customers:associations-view` |
+| The answer page an invitation links to | anyone with the link, without signing in |
 
 What the other apps put on your calendar follows their own permissions: you see your
 follow-ups only if you may read Customers' timeline, your absence only if your user is
@@ -82,13 +86,16 @@ mark (↻).
    **Busy**.
 6. Under **Show me as**, choose **Busy** or **Free**. A free appointment — a reminder to
    yourself, say — is not shown on your calendar to colleagues at all.
-7. Under **Attendees**, search for a colleague by name and pick them. Up to 50
-   colleagues can be on one appointment. Each sees it on their own calendar and can
-   answer it.
-8. Press **Save**. The appointment is on your calendar at once, and on your attendees'.
+7. Under **Attendees**, search for a colleague by name under **Colleagues** and pick
+   them. Each sees it on their own calendar, can answer it, and is told by mail. You can
+   invite people outside the company here too, under **Contacts** and **By email**
+   ([Invite people outside the company](#invite-people-outside-the-company)). Up to 50
+   people can be on one appointment.
+8. Press **Save**. The appointment is on your calendar at once, and on your colleagues'.
 
 Click one of your appointments to open it again, change it and **Save**, or **Delete**
-it. Dragging one of your own appointments to another time or day on **Month**, **Week**
+it — once someone outside the company has been invited, a delete becomes a
+[cancellation](#delete-an-appointment-you-invited-people-to). Dragging one of your own appointments to another time or day on **Month**, **Week**
 or **Day**, or stretching it from its edge, saves the new time straight away. Items from
 the other apps cannot be dragged.
 
@@ -105,6 +112,102 @@ it repeats — every attendee's answer goes back to **Not answered**, because wh
 answered is no longer what is asked. Changing the title, the description or the location
 leaves their answers alone. Answering an invitation changes nothing of the appointment
 itself, so the organiser can go on editing while answers come in.
+
+## Invite people outside the company
+
+An appointment can have people on it who do not use Vantigo: a contact of one of your
+customers, or anyone with an email address. They are sent an invitation by mail, which
+their own mail program — Gmail, Outlook, Apple Mail — shows as an invitation, and they
+answer it with a link in the mail. Their answer shows up on the appointment in Vantigo.
+
+Under **Attendees** in the sheet there are three ways to add someone, all into the same
+list:
+
+- **Colleagues** — search for a colleague by name, as before.
+- **Contacts** — pick one or more of the customer's contacts. This is shown on an
+  appointment made from a customer (its **New appointment** action), and only to
+  someone who may see the customer's contacts and their addresses
+  (`customers:contacts-view` and `customers:associations-view`). Only contacts with an
+  email address are offered, since the point is to mail them.
+- **By email** — type an address, and a name if you like, and add it.
+
+Up to 50 people of all three kinds together can be on one appointment. Press **Save**:
+each person you added from outside is sent their invitation straight away, one mail
+each. Saving never waits for the mail.
+
+Each row in the list shows what kind of attendee it is, their name, and their answer.
+A contact or an address also shows how their invitation went:
+
+- **Invited 3 Nov 2026** — the last invitation was sent that day.
+- **Not sent** — nothing has been sent. When your installation cannot send mail, every
+  contact and address shows this, and the sheet says "Invitations by mail are not set up
+  on this installation". The person is kept on the appointment; once mail is set up,
+  press **Resend** (or change the time or the place).
+- **Sending failed** — the last mail to them did not go out. Press **Resend** to try
+  again. If it keeps failing, ask your administrator; for a contact, check that they
+  still have an address in Customers.
+
+**Resend** is beside every contact and address on a saved appointment, as long as your
+installation can send mail.
+
+A contact Customers has anonymised shows as **A contact**, and nothing more is sent to
+them.
+
+### What the person receives
+
+One mail, from your company's own sending address, under your name, titled
+**Invitation:** followed by the title and the day, and written in your language — the **Preferred
+language** in [your profile](/en/user/getting-started/#edit-your-profile): Norwegian when
+it is **Norwegian**, English otherwise, **Automatic** included. It says what the appointment is, when (in the time zone
+you made it in), where, that you are organising it, and your description, and asks them
+to answer with the link in the mail so you see the answer in Vantigo. The appointment is
+attached, so their mail program can show its own answer buttons and add it to their
+calendar.
+
+The answer that reaches you is the one given **through the link**. If they use their
+mail program's own buttons instead, the appointment is added to their calendar, but the
+answer goes to your company's sending address and not to you — the mail tells them so.
+
+They never see your description through the link, nor who else is invited; the mail
+itself lists the other people from outside the company, as mail programs expect, but
+never your colleagues.
+
+### See their answers
+
+Open the appointment: each row shows **Accepted**, **Tentative**, **Declined** or
+**Not answered**. When someone from outside answers through the link, you are also sent a
+short mail — "Ola Hansen accepted: Customer meeting", "… declined: …" or "… tentatively
+accepted: …" — with a link to the appointment.
+
+### When you change the appointment
+
+- Changing **when** (the dates, the times, all day or not, how it repeats) or
+  **where** sends everyone from outside an updated invitation, titled
+  **Updated: …**. As for colleagues, their answers go back to **Not answered**, except
+  that a change of the place alone keeps them.
+- Moving, cancelling or putting back one occurrence of a repeating appointment sends
+  everyone the updated series.
+- Adding someone sends the invitation to them alone; taking someone off sends them a
+  cancellation.
+- Changing only the title, the description or who can see it sends nothing.
+
+### Resend an invitation
+
+**Resend** on a contact's or an address's row sends the same invitation again, with the
+same link, so an earlier mail still works — titled **Updated: …** if they had been sent
+one before. Use it when a send failed, or when the person cannot find the mail. A
+notice, "Invitation sent", confirms it went.
+
+## Delete an appointment you invited people to
+
+As long as no invitation has gone out to anyone outside the company, **Delete** removes
+the appointment as it always has, and your colleagues on it are told by mail that it was
+cancelled. Once someone outside has been sent one, deleting it
+**cancels** it instead: each of them is mailed **Cancelled: …**, which their mail
+program uses to take it off their calendar, and your colleagues on it are told by mail.
+The appointment leaves every calendar in Vantigo, but you and your attendees can still
+open it from a link: it opens read-only, with the banner **Cancelled on 3 Nov 2026**
+and nothing to change. Some time after its last day it is removed for good.
 
 ## Repeating appointments
 
@@ -144,7 +247,12 @@ back.
 
 ## Answer an invitation
 
-An appointment a colleague put you on shows on your calendar as soon as it is made.
+An appointment a colleague put you on shows on your calendar as soon as it is made, and
+you are sent a short mail about it — "Kari Nordmann invited you: Customer meeting, Tue
+3 Nov 09:00" — and again when its time or place changes, when you are taken off it, and
+when it is cancelled or deleted (a change to one occurrence of a repeating appointment
+sends none). The mail is in your own language and links to the appointment ("Open it in
+Vantigo"); you answer in Vantigo.
 Click it to open it: you see what it is, when, the **Organiser** and the other
 **Attendees** with their answers, and **Your answer**. Answer with **Accept**,
 **Tentative** or **Decline**. You can change your answer at any time. An appointment you
@@ -175,9 +283,29 @@ next six days one line each with how many items are on them, which you click to 
 them; **New appointment**; and **Open the calendar**. The **Needs attention** list below
 keeps its follow-ups and tasks due: it says what needs you, the agenda says when.
 
+## If you received an invitation
+
+This section is for the person outside the company who got an invitation from someone
+using Vantigo.
+
+1. Open the mail, **Invitation: …**. It says what the appointment is, when and where,
+   and who is organising it.
+2. Click the link in the mail. A page opens in your browser — no account or sign-in is
+   needed — with the appointment, the time in its own time zone and, if yours is
+   different, in yours, where it is, and who organises it. It is in the language the
+   invitation was written in.
+3. Under **Will you attend?**, answer **Accept**, **Maybe** or **Decline**. The page
+   says "Thank you. Your answer has been sent to the organiser.", and the organiser sees
+   it. You can open the link again and change it at any time.
+
+Your mail program's own answer buttons add the appointment to your calendar, but do not
+tell the organiser: use the link for that. If the appointment changes, you are sent an
+updated invitation with the same link; if it is cancelled, you are sent a cancellation,
+and the page says **This appointment has been cancelled**. A page that says **This link
+is not valid** means you were taken off the appointment, or it is long past.
+
 ## What comes next
 
-Invitations to people outside the company, by mail with an answer they can give from the
-message; a calendar address your phone can subscribe to, so your Vantigo calendar shows
-in the phone's own calendar app; and calendars from elsewhere, subscribed to and shown
-beside your own. None of these is built yet.
+A calendar address your phone can subscribe to, so your Vantigo calendar shows in the
+phone's own calendar app; and calendars from elsewhere, subscribed to and shown beside
+your own. Neither is built yet.

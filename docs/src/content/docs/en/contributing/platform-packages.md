@@ -1,10 +1,11 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message and its calendar part, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
 sidebar:
   order: 5
 sources:
   - apps/server/internal/secrets
+  - apps/server/internal/mail
   - apps/server/internal/payments
   - apps/server/internal/holidays
 ---
@@ -12,7 +13,8 @@ sources:
 A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
-clear, when it takes a payment, and when it counts days around the public holidays.
+clear, when it sends a mail of its own, when it takes a payment, and when it counts days
+around the public holidays.
 
 ## The secrets box
 
@@ -48,6 +50,7 @@ A purpose is a constant the calling module owns, never input from a request, wri
 | `identity/oidc-state`, `identity/oidc-external` | the OIDC flow's state and external-identity cookies |
 | `communications/channel-smtp-credential` | a channel's SMTP password |
 | `invoices/access-point-credential` | the e-invoicing access point's API key |
+| `calendar/rsvp-link` | an outside attendee's answer link, sealed so every later mail carries the same link ([the answer by link](/en/reference/calendar/#the-token-and-the-link)) |
 | `staff/national-id` | a person's national identity number (sealed) |
 | `staff/national-id-index` | the MAC of a person's national identity number, in a unique column |
 | `staff/bank-account` | a person's bank account (sealed) |
@@ -76,6 +79,26 @@ that exists, `APP_SECRET` is not rotated in place. The operator's side of this i
 A module that adds a purpose names it in the table above, and a module that stores
 sealed values or MACs says on its own administration page what a rotation costs its
 data.
+
+## The mail package
+
+[`apps/server/internal/mail`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/mail)
+sends the installation's own mail through the SMTP configuration of
+[Email delivery](/en/admin/authentication/#email-delivery), behind its guard against
+private destinations. `mail.Message` is identity's three-field application mail;
+`mail.Outbound` is a full message — recipients, both bodies, a display name, a
+Reply-To, threading headers and attachments — which Communications sends through each
+channel's own SMTP configuration, and Invoices, Staff and Calendar through the
+installation's, by the seam `Deps.SMTPSend` (or `mail.SendOutbound` when it is unset).
+
+`Outbound.Calendar`, a `*mail.CalendarPart{Method, Body}`, carries an iCalendar object
+the iMIP way: as the **third alternative** after the text and the HTML,
+`text/calendar; method=<Method>` (go-mail completes it with `charset=UTF-8`), and
+attached again as `application/ics` — `invite.ics` for a `REQUEST`, `cancel.ics` for a
+`CANCEL`, the only two methods it admits. `Method` must be the `METHOD` the body
+declares; the body is the whole `VCALENDAR`, CRLF line endings and all, carried as
+given. Calendar's invitations are the one user
+([invitations](/en/reference/calendar/#the-message)).
 
 ## The payments port
 

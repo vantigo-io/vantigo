@@ -1142,7 +1142,7 @@ enabled module projecting its own rows at read time through a many-provider cont
 under its own permission. The one thing it owns is the appointment. It needs the
 [time zones](#time-zones-done) design's deliveries A and F, both done.
 
-### Phase 1 — The calendar, invitations and the feed (A done)
+### Phase 1 — The calendar, invitations and the feed (A and B done)
 
 Three deliveries, A specified in full by the design, B and C decided there and planned
 on their own.
@@ -1184,15 +1184,64 @@ Decisions taken while building it:
 *Unblocks:* one place a person sees their week, appointments with colleagues, and the
 model B and C write from without a migration of the appointment.
 
-**B — Invitations.** Attendees from outside the company — a customer's contact, read
-through the customer directory at send time, or a typed address — each with an RSVP
-token; the invitation in the iMIP layout (a `method=REQUEST` part and the `.ics`
-attachment, `UID` the row's `ical_uid`, `SEQUENCE` the row's), sent from the
-installation's `SMTP_FROM` with the owner's name, after the commit; the answer through a
-web link on the public host, since no inbound mail route exists; an update resent with
-the next `SEQUENCE`, and a delete become a cancellation kept until the series' last day.
-A colleague is mailed through a new `contracts.UserDirectory.Notify`, so no address
-crosses into the calendar; they answer in the app. Not built.
+**B — Invitations, built** on `feat/calendar-invitations`
+([the design](docs/superpowers/specs/2026-10-19-calendar-invitations-design.md);
+[the plan](docs/superpowers/plans/2026-10-19-calendar-invitations.md);
+[the reference](docs/src/content/docs/en/reference/calendar.md#invitations);
+[the operator's page](docs/src/content/docs/en/admin/calendar.md)): three kinds of
+attendee on one table — a colleague, a customer's contact named by its opaque id and
+read through the customer directory each time it is mailed or shown, and a typed
+address — at most 50 together, a contact only for a writer holding
+`customers:contacts-view`; `GET /contacts` for the picker, through a new
+`CustomerDirectory.ContactsForCustomer`; one invitation per outside attendee in the iMIP
+layout — the text, the HTML and a `text/calendar; method=REQUEST` alternative, and the
+same ICS as `invite.ics` — through the new `mail.CalendarPart`, with `UID` the row's
+`ical_uid`, `SEQUENCE` the row's, a series' `RRULE`, an `EXDATE` per cancelled occurrence
+and a `RECURRENCE-ID` event per moved one, in the organiser's language; sent after the
+commit under a thirty-second budget, by the table of when it goes — a create, a change
+of when or where, an attendee added or dropped, an occurrence changed, a cancellation,
+the owner's **Resend** — with each send's outcome on the attendee; the answer through a
+web link — a hashed token, the link sealed under `calendar/rsvp-link` so every mail
+carries the same one — on two anonymous, rate-limited operations and the `/rsvp` page,
+on the public host's list beside the pay page; a colleague, and the owner on an answer,
+mailed through a new `contracts.UserDirectory.Notify`, so no address crosses into the
+calendar; a delete of an appointment someone outside has been sent become a
+cancellation — mailed, kept read-only and off every calendar — and erased after its last
+day by the `calendar-cancellations` worker (`CALENDAR_CANCELLATIONS_ENABLED`,
+`CALENDAR_WORKERS_POLL`). One migration, `00056_calendar_invitations.sql`.
+
+Decisions taken while building it:
+
+- **From and `ORGANIZER` are both `SMTP_FROM`**, under the organiser's name — the one
+  arrangement the research found no client refuses — so the owner's address never
+  leaves identity, and the native buttons' `REPLY` lands in a mailbox nobody reads; the
+  mail says so and asks for the link. The inbound `METHOD:REPLY` route stays under
+  *Later*, and the ICS is written so it can be added.
+- **The link does not require a public host**: it is on `PUBLIC_BASE_URL` when set, and
+  on `APP_URL` otherwise, where the page is sessionless all the same — the pay link's
+  rule was not copied, since an invitee on the company's own network needs none.
+- **Nothing is queued and nothing retries**: a failed send is on the attendee row and
+  in the log, and the owner resends. Communications' outbox remains the module for mail
+  that must arrive.
+- **A colleague gets a plain notice and no ICS**, and their address is never in a file
+  that leaves the company; the ICS lists the outside attendees only.
+- **A contact's address is never copied and never on the appointment**: it is read at
+  send time, so a corrected address is used by the next mail, and an anonymised contact
+  is simply not mailed — the module registers no `CustomerPersonalData` holder, since it
+  holds nothing of the contact's but an id.
+- **A timed series is written in its own zone**: a single appointment's instants are UTC,
+  which is exact, but a series' `DTSTART`, `EXDATE`s and `RECURRENCE-ID`s are wall-clock
+  with `TZID` and a `VTIMEZONE` walked from Go's tzdata (one component per transition
+  over the series' span, three years for an unbounded one), since a UTC `DTSTART` with an
+  `RRULE` would move a 09:00 meeting by an hour across the clock change. The feed (C)
+  reuses the writer.
+- **The organiser's language is Norwegian for `nb` and English otherwise**, a preference
+  of none included, for the mail and the answer page alike; the page names no company,
+  since no contract answers the workspace's name.
+- **A colleague is told of every change to their place on it**: invited (on a create or
+  any `PUT` that adds them), changed (a change of when or where), cancelled (a
+  cancellation, and a delete that removes the row), removed; one occurrence's change
+  tells nobody.
 
 *Unblocks:* meetings with customers booked from Vantigo, answered from any mail client.
 

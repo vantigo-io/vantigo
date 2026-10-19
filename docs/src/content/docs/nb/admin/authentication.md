@@ -612,7 +612,15 @@ Reply-To, gjennom denne SMTP-serveren og vakten dens
 ingenting sendes den veien: sendingen svarer 503 `mail_unavailable`, og
 `GET /invoices/meta` svarer `mailAvailable: false`.
 
-Dette er identitetsmodulens applikasjonspost, og Fakturaers. Kommunikasjons
+Kalender sender også gjennom den. En invitasjon til noen utenfor bedriften går ut fra
+`SMTP_FROM` under arrangørens navn, med `SMTP_FROM` som invitasjonens arrangør, og en
+kollega på en avtale får en melding fra identitetsmodulen på adressen identitetsmodulen
+har; med en annen driver enn `smtp` sendes ingen invitasjon, og `GET /calendar/meta`
+svarer `invitationsAvailable: false`. En invitasjon Gmail skal legge i mottakerens
+kalender, trenger at domenet til `SMTP_FROM` består SPF, DKIM og DMARC
+([Kalender](/nb/admin/calendar/#invitasjoner-til-folk-utenfor-bedriften)).
+
+Dette er identitetsmodulens applikasjonspost, og Fakturaers og Kalenders. Kommunikasjons
 postkasselegitimasjon per kanal er noe helt annet — den konfigureres gjennom
 Kommunikasjons-API-et og forsegles i hvile, aldri via miljøvariabler. Se
 [Kommunikasjon](/en/reference/communications/).
@@ -649,7 +657,7 @@ oppstarten feiler.
 | `APP_ENV` | `production` eller `development`; bare development lemper på noe | `production` |
 | `APP_URL` | Offentlig opprinnelse (skjema + vert [+ port]); ingen sti | **påkrevd** |
 | `APP_BASE_PATH` | Stiprefiks på et delt domene, f.eks. `/vantigo` | tom (domenets rot) |
-| `PUBLIC_BASE_URL` | `https`-URL-en betalingssiden i Faktura kan nås på fra internett: en opprinnelse og `APP_BASE_PATH`, ingenting annet, med et ASCII-vertsnavn (punycode for et internasjonalisert navn) uten avsluttende punktum, og aldri vertsnavnet til `APP_URL` på en annen port; på en egen vert serveres bare betalingssidens tillatelsesliste der. Uten den finnes det ingen betalingslenker ([Den offentlige verten](/nb/admin/payments/#den-offentlige-verten)) | ikke satt |
+| `PUBLIC_BASE_URL` | `https`-URL-en betalingssiden i Faktura og svarsiden i Kalender kan nås på fra internett: en opprinnelse og `APP_BASE_PATH`, ingenting annet, med et ASCII-vertsnavn (punycode for et internasjonalisert navn) uten avsluttende punktum, og aldri vertsnavnet til `APP_URL` på en annen port; på en egen vert serveres bare den offentlige vertens tillatelsesliste der. Uten den finnes det ingen betalingslenker, og svarlenken i en invitasjon står på `APP_URL` ([Den offentlige verten](/nb/admin/payments/#den-offentlige-verten), [Kalender](/nb/admin/calendar/#forutsetninger)) | ikke satt |
 | `PORT` | Lytteport | `8080` |
 | `DATABASE_URL` | Kjøretidstilkoblingen, rollen med minst rettigheter | **påkrevd** |
 | `MIGRATIONS_DATABASE_URL` | Tilkoblingen `migrate` bruker (eierrollen) | `DATABASE_URL` |
@@ -726,6 +734,8 @@ oppstarten feiler.
 | `STAFF_RETENTION_ENABLED` | Av/på-bryter for oppbevaringsarbeideren i Ansatte, `staff-retention`, som sletter det oppbevaringsreglene ikke lenger lar registeret beholde og fullfører slettingen av dokumentenes filer; slått av slettes ingenting etter tidsplanen, og `POST /retention/run` kjører den fortsatt for hånd ([Ansatte](/nb/admin/staff/#oppbevaring)) | `1` |
 | `STAFF_ACCOUNTS_ENABLED` | Av/på-bryter for kontoarbeideren i Ansatte, `staff-accounts`, som klargjør, aktiverer, oppdaterer og deaktiverer brukerne kontoflagget ber om — med flagget på oppretter den personens ventende, deaktiverte bruker også før en Owner har navngitt ansattrollene, og aktiverer ingen før de er navngitt; slått av gjøres ingenting etter tidsplanen — de som slutter, beholder tilgangen til den slås på igjen eller en Owner deaktiverer dem ([Ansatte](/nb/admin/staff/#kontoarbeideren)) | `1` |
 | `STAFF_WORKERS_POLL` | Hvor ofte arbeiderne i Ansatte ser etter: en sletterunde på høyst femti personer og en runde i sletteloggen, og høyst femti kontolenker som står for tur, der en som feilet prøves igjen ved neste kjøring; en varighet på minst `1m` | `1h` |
+| `CALENDAR_CANCELLATIONS_ENABLED` | Av/på-bryter for avlysningsarbeideren i Kalender, `calendar-cancellations`, som sletter en avlyst avtale — en som ble slettet etter at noen utenfor bedriften hadde fått en invitasjon — når den siste dagen er passert; slått av beholdes avlyste avtaler til den slås på igjen ([Kalender](/nb/admin/calendar/#avlysningsarbeideren)) | `1` |
+| `CALENDAR_WORKERS_POLL` | Hvor ofte arbeiderne i Kalender ser etter: en sletterunde på høyst 200 avlyste avtaler; en varighet på minst `1m` | `1h` |
 | `CUSTOMERS_IMPORT_ENABLED` | Kjør kundemodulens importjobb, som kontrollerer og importerer opplastede filer; `0` lar importer vente | `1` |
 | `CUSTOMERS_IMPORT_POLL` | Hvor ofte kundemodulens importjobb ser etter en import i kø | `5s` |
 | `CUSTOMERS_IMPORT_RETENTION` | Hvor lenge en ferdig eller forlatt kundeimport og radene dens beholdes | `720h` |
