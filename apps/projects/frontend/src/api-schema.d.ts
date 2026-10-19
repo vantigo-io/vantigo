@@ -738,7 +738,7 @@ export interface components {
             percent?: number | null;
             /**
              * Format: date
-             * @description The day the milestone is expected to be billed. A plain calendar date, compared with the server's own UTC date to decide whether the milestone is overdue.
+             * @description The day the milestone is expected to be billed. A plain calendar date, compared with today in the workspace's business time zone to decide whether the milestone is overdue.
              */
             plannedDate?: string | null;
         };
@@ -776,7 +776,7 @@ export interface components {
             /** @description The invoice that invoiced this milestone, when the Invoices module issued it — present only while the milestone is invoiced that way. Such a milestone carries no invoiceReference, and only a credit note that returns its line takes it back to ready; the manual undo refuses it (409 invoiced_by_invoices). Absent on a milestone marked invoiced by hand. */
             invoicedByInvoice?: components["schemas"]["BillingMilestoneInvoice"];
             name: string;
-            /** @description Whether the milestone is still planned or ready and its planned date has passed, compared as plain UTC dates against the server's clock. */
+            /** @description Whether the milestone is still planned or ready and its planned date has passed, the date compared as-is with today in the workspace's business time zone. */
             overdue: boolean;
             /**
              * Format: double
@@ -1310,7 +1310,7 @@ export interface components {
             /** Format: int32 */
             id: number;
             name: string;
-            /** @description Whether the milestone's planned day has passed, on the server's own UTC calendar. */
+            /** @description Whether the milestone's planned day has passed, judged against today in the workspace's business time zone. */
             overdue: boolean;
             /**
              * Format: date

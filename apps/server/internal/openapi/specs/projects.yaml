@@ -293,7 +293,7 @@ components:
                     nullable: true
                     type: number
                 plannedDate:
-                    description: The day the milestone is expected to be billed. A plain calendar date, compared with the server's own UTC date to decide whether the milestone is overdue.
+                    description: The day the milestone is expected to be billed. A plain calendar date, compared with today in the workspace's business time zone to decide whether the milestone is overdue.
                     format: date
                     nullable: true
                     type: string
@@ -352,7 +352,7 @@ components:
                 name:
                     type: string
                 overdue:
-                    description: Whether the milestone is still planned or ready and its planned date has passed, compared as plain UTC dates against the server's clock.
+                    description: Whether the milestone is still planned or ready and its planned date has passed, the date compared as-is with today in the workspace's business time zone.
                     type: boolean
                 percent:
                     description: The share of the fixed price as entered, absent on an amount milestone.
@@ -1131,7 +1131,7 @@ components:
                 name:
                     type: string
                 overdue:
-                    description: Whether the milestone's planned day has passed, on the server's own UTC calendar.
+                    description: Whether the milestone's planned day has passed, judged against today in the workspace's business time zone.
                     type: boolean
                 plannedDate:
                     description: The day the milestone is planned for. Absent when nobody has dated it, which is what sorts it after every dated one.
