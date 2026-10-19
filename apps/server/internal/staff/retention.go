@@ -532,13 +532,10 @@ func (p retentionPlan) dueA(person *int64, limit int32) store.DueEmploymentsAPar
 // retentionBatch people — and each one's erases in one transaction of its
 // own, on conn. One person failing is logged by id and the cycle moves on;
 // they are due again next cycle. It answers what was erased, per kind,
-// summed.
-func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor) ([]erasedKind, error) {
+// summed. zone is the business time zone the caller read before holding
+// conn: nothing here asks the pool for a second connection.
+func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor, zone *time.Location) ([]erasedKind, error) {
 	q := store.New(conn)
-	zone, err := s.businessZone(ctx)
-	if err != nil {
-		return nil, err
-	}
 	plan, err := s.planRetention(ctx, q, zone)
 	if err != nil {
 		return nil, err

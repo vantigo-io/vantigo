@@ -496,8 +496,7 @@ func TestAccountsWorker_ACycleOnAPoolOfOne(t *testing.T) {
 		t.Fatalf("open a pool of one: %v", err)
 	}
 	defer one.Close()
-	deps := w.h.Deps()
-	deps.Pool = one
+	deps := w.h.DepsOn(one)
 	if err := accountsWorker(t, w.h, deps).RunCycle(ctx); err != nil {
 		t.Fatalf("a cycle on a pool of one: %v", err)
 	}
@@ -1086,8 +1085,7 @@ func TestAccountsWorker_ACycleOnAPoolOfOneAgainstIdentity(t *testing.T) {
 		t.Fatalf("open a pool of one: %v", err)
 	}
 	defer one.Close()
-	deps := h.Deps()
-	deps.Pool = one
+	deps := h.DepsOn(one)
 	if err := accountsWorker(t, h, deps).RunCycle(ctx); err != nil {
 		t.Fatalf("a cycle on a pool of one: %v", err)
 	}
