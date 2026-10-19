@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -150,7 +151,7 @@ func readSSOSettings(ctx context.Context, q *store.Queries, box *secrets.Box) (s
 // ssoSettingsReader is the row through a cache of maintenanceCache's
 // period (system.go): re-read at most every ssoSettingsCacheTTL of clock,
 // which a test moves with h.advance, and evicted by the process that writes
-// it. Each holder — Access and the user directory — has its own.
+// it. Access holds the one reader, which the user directory shares.
 //
 // Unlike maintenanceCache it never holds its mutex across the database
 // read: the lock is taken only to check and to store. Callers read it on
@@ -270,30 +271,71 @@ func ssoEnvironmentVariables(cfg *config.Config) []string {
 	return names
 }
 
+// The longest values identity.sso_settings holds, in characters, beside
+// maxProviderDisplayNameLength: the varchar limits of the authority, the
+// client id and the token file path.
+const (
+	maxAuthorityLength     = 200
+	maxClientIDLength      = 200
+	maxTokenFilePathLength = 500
+)
+
+// importCap is a variable the import could not store as it was: cut to
+// the column's length (a display name), or — a value that cannot be cut —
+// the reason the OIDC block was imported off.
+type importCap struct {
+	variable string
+	cut      bool
+}
+
 // importedSSOSettings is the row the environment's cfg imports into at now:
 // the client secret sealed under oidcClientSecretPurpose, the tokens
-// digested, imported_from_environment true and no user behind it.
-func importedSSOSettings(cfg *config.Config, box *secrets.Box, now time.Time) (store.SaveSsoSettingsParams, error) {
+// digested, imported_from_environment true and no user behind it. A value
+// longer than the row holds never stops the import: a display name is cut
+// to maxProviderDisplayNameLength, and an authority, a client id or a
+// token file path that does not fit — none of which can be cut — leaves
+// the OIDC block off, for the Owner to set on the card. Each is answered as
+// an importCap, by the variable's name.
+func importedSSOSettings(cfg *config.Config, box *secrets.Box, now time.Time) (store.SaveSsoSettingsParams, []importCap, error) {
 	p := store.SaveSsoSettingsParams{ImportedFromEnvironment: true, Now: now}
+	var caps []importCap
 	if o := cfg.OIDC; o != nil {
-		p.OidcEnabled = true
-		p.OidcProvider, p.OidcAuthority, p.OidcClientID = &o.Provider, &o.Authority, &o.ClientID
-		p.OidcAllowedDomains = slices.Clone(o.AllowedDomains)
-		if o.DisplayName != "" {
-			p.OidcDisplayName = &o.DisplayName
-		}
-		if o.WorkloadTokenFile != "" {
-			p.OidcWorkloadTokenFile = &o.WorkloadTokenFile
-		}
-		if o.ClientSecret != "" {
-			if box == nil {
-				return p, errors.New("identity: no secrets box to seal the OIDC client secret with")
+		for _, field := range []struct {
+			variable, value string
+			limit           int
+		}{
+			{"OIDC_AUTHORITY", o.Authority, maxAuthorityLength},
+			{"OIDC_CLIENT_ID", o.ClientID, maxClientIDLength},
+			{"OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", o.WorkloadTokenFile, maxTokenFilePathLength},
+		} {
+			if utf8.RuneCountInString(field.value) > field.limit {
+				caps = append(caps, importCap{variable: field.variable})
 			}
-			sealed, err := box.Seal(oidcClientSecretPurpose, []byte(o.ClientSecret))
-			if err != nil {
-				return p, fmt.Errorf("identity: seal the OIDC client secret: %w", err)
+		}
+		if len(caps) == 0 {
+			p.OidcEnabled = true
+			p.OidcProvider, p.OidcAuthority, p.OidcClientID = &o.Provider, &o.Authority, &o.ClientID
+			p.OidcAllowedDomains = slices.Clone(o.AllowedDomains)
+			if name := o.DisplayName; name != "" {
+				if utf8.RuneCountInString(name) > maxProviderDisplayNameLength {
+					name = string([]rune(name)[:maxProviderDisplayNameLength])
+					caps = append(caps, importCap{variable: "OIDC_DISPLAY_NAME", cut: true})
+				}
+				p.OidcDisplayName = &name
 			}
-			p.OidcClientSecretSealed, p.OidcClientSecretSetAt = sealed, &now
+			if o.WorkloadTokenFile != "" {
+				p.OidcWorkloadTokenFile = &o.WorkloadTokenFile
+			}
+			if o.ClientSecret != "" {
+				if box == nil {
+					return p, nil, errors.New("identity: no secrets box to seal the OIDC client secret with")
+				}
+				sealed, err := box.Seal(oidcClientSecretPurpose, []byte(o.ClientSecret))
+				if err != nil {
+					return p, nil, fmt.Errorf("identity: seal the OIDC client secret: %w", err)
+				}
+				p.OidcClientSecretSealed, p.OidcClientSecretSetAt = sealed, &now
+			}
 		}
 	}
 	if s := cfg.SCIM; s != nil {
@@ -306,7 +348,7 @@ func importedSSOSettings(cfg *config.Config, box *secrets.Box, now time.Time) (s
 			p.ScimPreviousTokenSha256, p.ScimPreviousExpiresAt = previous[:], &expires
 		}
 	}
-	return p, nil
+	return p, caps, nil
 }
 
 // importSSOSettingsFromEnvironment imports d's OIDC_* and SCIM_* settings
@@ -318,10 +360,18 @@ func importedSSOSettings(cfg *config.Config, box *secrets.Box, now time.Time) (s
 // warning that it is ignored. Two API processes starting together import
 // once, since the second finds the row written. Only identity's mount — an
 // API process — calls it; a worker never imports.
+//
+// The same transaction records the authority mode the row it holds derives
+// (recordAuthorityModeIn), whether it imported or found the row written, so
+// the mode is recorded from the row as committed — never from a snapshot a
+// process read before another's save — and a rolling start cannot write a
+// false authority-mode.changed. The locks are taken in the order every
+// save takes them: sso_settings, then system_settings.
 func importSSOSettingsFromEnvironment(ctx context.Context, d module.Deps) error {
 	names := ssoEnvironmentVariables(d.Config)
 	now := d.Clock()
 	imported := false
+	var caps []importCap
 	err := db.WithTx(ctx, d.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if err := q.EnsureSsoSettings(ctx, now); err != nil {
@@ -331,24 +381,42 @@ func importSSOSettingsFromEnvironment(ctx context.Context, d module.Deps) error 
 		if err != nil {
 			return err
 		}
-		if row.Version > 0 || d.Config == nil || (d.Config.OIDC == nil && d.Config.SCIM == nil) {
-			return nil
+		if row.Version == 0 && d.Config != nil && (d.Config.OIDC != nil || d.Config.SCIM != nil) {
+			var params store.SaveSsoSettingsParams
+			params, caps, err = importedSSOSettings(d.Config, d.Secrets, now)
+			if err != nil {
+				return err
+			}
+			if err := q.SaveSsoSettings(ctx, params); err != nil {
+				return err
+			}
+			imported = true
+			if err := writeAudit(ctx, q, nil, now, auditEvent{
+				action: "sso-settings.imported",
+				after:  importedVariablesAudit{Variables: names},
+			}); err != nil {
+				return err
+			}
+			if row, err = q.GetSsoSettings(ctx); err != nil {
+				return err
+			}
 		}
-		params, err := importedSSOSettings(d.Config, d.Secrets, now)
-		if err != nil {
-			return err
+		if err := recordAuthorityModeIn(ctx, q, deriveAuthorityMode(parseSSOSettings(row, nil)), now); err != nil {
+			return fmt.Errorf("identity: record the authority mode: %w", err)
 		}
-		if err := q.SaveSsoSettings(ctx, params); err != nil {
-			return err
-		}
-		imported = true
-		return writeAudit(ctx, q, nil, now, auditEvent{
-			action: "sso-settings.imported",
-			after:  importedVariablesAudit{Variables: names},
-		})
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("identity: import the single sign-on settings from the environment: %w", err)
+	}
+	for _, c := range caps {
+		if c.cut {
+			d.Logger.Warn(fmt.Sprintf("identity: %s is longer than the %d characters the single sign-on settings hold; "+
+				"it was imported cut to them", c.variable, maxProviderDisplayNameLength), "variable", c.variable)
+			continue
+		}
+		d.Logger.Warn("identity: the OIDC provider was imported off, since "+c.variable+" is longer than the single "+
+			"sign-on settings hold; set the provider on the Single sign-on card", "variable", c.variable)
 	}
 	switch {
 	case imported:

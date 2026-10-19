@@ -26,13 +26,15 @@ const (
 
 // userDirectory is this module's contracts.UserDirectory, the one sanctioned
 // way another module reads identity's user data. It is read-only and holds
-// nothing but the queries, its reader of the single sign-on settings and the
-// mail sender Notify delivers through: Compose builds it once, before any
+// nothing but the queries, Access's reader of the single sign-on settings and
+// the mail sender Notify delivers through: Compose builds it once, before any
 // module mounts, and hands it to every module including this one.
 type userDirectory struct {
 	q *store.Queries
 	// sso says, per call, whether SCIM is on, which makes a directory's
 	// deactivation of a non-Owner count against PermissionHolders and Notify.
+	// It is Access's own reader, so the save that evicts it (an Owner's
+	// write on the single sign-on settings) reaches the directory at once.
 	sso *ssoSettingsReader
 	// mail is the installation's mail driver, nil when none was composed.
 	mail mail.Sender
@@ -41,9 +43,9 @@ type userDirectory struct {
 var _ contracts.UserDirectory = (*userDirectory)(nil)
 
 // newUserDirectory is Module's Users: the constructor Compose calls with the
-// dependencies it was given.
-func newUserDirectory(d module.Deps) contracts.UserDirectory {
-	return &userDirectory{q: store.New(d.Pool), sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets), mail: d.Mail}
+// dependencies it was given, over a's reader of the single sign-on settings.
+func newUserDirectory(a *Access, d module.Deps) contracts.UserDirectory {
+	return &userDirectory{q: store.New(d.Pool), sso: a.sso, mail: d.Mail}
 }
 
 // User looks up a user by id.
