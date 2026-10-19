@@ -29,7 +29,7 @@ kontoer og identitetsintegrasjoner":
 - **Tilgangskontroll** — **Administrer roller og tilgang**.
 - **Identitetsintegrasjoner** — om **SSO** er på og hvilken leverandør (Microsoft
   Entra ID, Google Workspace, eller bare **Aktivert**), at **Klientautentisering**
-  er **Administrert av distribusjonen**, og **Siste vellykkede SSO-bruk**.
+  **Settes på Single sign-on-kortet**, og **Siste vellykkede SSO-bruk**.
 - **SCIM-klargjøring** — **Status** og **Siste autentiserte forespørsel**.
 - **Operativ aktivitet** — en påminnelse om at denne oversikten bare viser
   ikke-sensitiv identitetsaktivitet; legitimasjon og leverandørkonfigurasjon vises

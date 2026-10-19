@@ -35,17 +35,22 @@ gjelder hele installasjonen.
 ## Kortet Single sign-on
 
 Åpne avatar-menyen, velg **Administrer arbeidsområde**, og bli på **Oversikt**: kortet
-**Single sign-on** ligger under kortet **Arbeidsområde**. Det inneholder:
+**Single sign-on** går i full bredde under oversiktens andre kort, kortet
+**Arbeidsområde** blant dem. Det inneholder:
 
-- **Leverandør** — Entra, Google eller av.
-- **Autoritet**, **Klient-ID** og legitimasjonen: feltet **Klienthemmelighet**, som er
-  tomt ved hvert besøk og beholder den lagrede hemmeligheten når det står tomt («satt
-  _dato_» sier når den sist ble satt), eller, for Entra, en **Tokenfil**.
-- **Domener** (bare Google) og **Visningsnavn** for innloggingsknappen.
-- **Tilbakekalls-URL** å kopiere inn hos leverandøren, vist før noe er satt.
-- **Lagre**.
-- SCIM-delen: **Endepunkt-URL** å kopiere inn i katalogen, **Nytt token**, **Avslutt
-  overlapp** mens en rotasjon overlapper, og **Slå av**.
+- **Leverandør** — av, **Microsoft Entra ID** eller **Google Workspace**.
+- **Autoritet**, **Klient-ID** og legitimasjonen: for Entra et valg under
+  **Legitimasjon** mellom **Klienthemmelighet** og **Tokenfil**; for Google alltid
+  **Klienthemmelighet**. Hemmelighetsfeltet er tomt ved hvert besøk, og når en
+  hemmelighet er lagret, sier det når den ble satt og at feltet kan stå tomt for å
+  beholde den.
+- **Domener** (bare Google) og **Visningsnavn** for innloggingsknappen, `Workforce SSO`
+  når det står tomt.
+- **Tilbakekalls-URL** med en kopieringsknapp, vist før noe er satt.
+- **Lagre**, **Slå av** for leverandøren, og siste innlogging.
+- SCIM-delen: **Endepunkt-URL** å kopiere inn i katalogen, når tokenet ble utstedt,
+  **Nytt token**, **Avslutt overlapp** mens en rotasjon overlapper, **Slå av**, og
+  siste forespørsel.
 - En melding, når innstillingene ble importert fra miljøet, om å fjerne variablene (se
   [Før kortet](#før-kortet-miljøvariablene)).
 
@@ -56,16 +61,17 @@ Bak kortet ligger seks operasjoner under `/api/v1/identity/owner/sso`, i kontrak
 | --- | --- |
 | Når det åpnes | `GET /owner/sso` — raden uten klienthemmeligheten eller noe token, tilbakekalls-URL-en, SCIM-endepunktet, siste OIDC-innlogging og siste SCIM-forespørsel |
 | **Lagre** | `PUT /owner/sso/oidc`, med `If-Match` som bærer versjonen kortet leste |
-| Leverandør av | `DELETE /owner/sso/oidc` |
+| **Slå av** for leverandøren, eller av og **Lagre** | `DELETE /owner/sso/oidc` |
 | **Nytt token** | `POST /owner/sso/scim/token` |
 | **Avslutt overlapp** | `DELETE /owner/sso/scim/previous` |
-| **Slå av** | `DELETE /owner/sso/scim` |
+| **Slå av** i SCIM-delen | `DELETE /owner/sso/scim` |
 
 Hver skriving holder raden i én transaksjon, flytter `version` videre, svarer hele
 raden med den nye versjonen, og revideres som `sso-settings.changed` med innstillingene
 før og etter — aldri klienthemmeligheten og aldri et token eller sammendraget av det.
 En lagring fra et kort som ble åpnet før noen andres lagring, avvises med `412
-version_mismatch`: last kortet på nytt og lagre igjen. Operasjonene er begrenset til 30
+version_mismatch`, og kortet sier at innstillingene er endret: last det inn på nytt
+med knappen det viser, og lagre igjen. Operasjonene er begrenset til 30
 forespørsler i minuttet, som resten av brukeradministrasjonen.
 
 ## OIDC for arbeidsstyrken
@@ -128,9 +134,9 @@ til en ny. Hemmeligheten er forseglet under `APP_SECRET` og vises aldri igjen.
 4. Gi bare de delegerte omfangene innloggingsflyten trenger (`openid`, `profile`,
    `email`). Behandle ikke leverandørens gruppe- eller rollekrav som
    autorisasjonsgrunnlag i Vantigo.
-5. På kortet **Single sign-on**, velg **Entra** som leverandør, og fyll inn
-   **Autoritet**, applikasjons-ID-en (klient-ID-en) som **Klient-ID** (den må være en
-   GUID) og **Klienthemmelighet**. Gi knappen et **Visningsnavn** dersom ikke
+5. På kortet **Single sign-on**, velg **Microsoft Entra ID** som leverandør, og fyll
+   inn **Autoritet** og applikasjons-ID-en (klient-ID-en) som **Klient-ID** (den må
+   være en GUID). Velg **Klienthemmelighet** under **Legitimasjon** og lim den inn. Gi knappen et **Visningsnavn** dersom ikke
    `Workforce SSO` er det folk skal se (høyst 100 tegn). Velg **Lagre**.
 
 Verifiser: innen 20 sekunder viser innloggingssiden **Fortsett med** og visningsnavnet.
@@ -197,8 +203,9 @@ spec:
           image: ghcr.io/vantigo-io/vantigo:<pinned-release>
 ```
 
-Deretter, på kortet: **Entra**, **Autoritet**, **Klient-ID** og stien til den
-projiserte filen i **Tokenfil**; la **Klienthemmelighet** stå tomt. Velg **Lagre**.
+Deretter, på kortet: **Microsoft Entra ID**, **Autoritet** og **Klient-ID**; velg
+**Tokenfil** under **Legitimasjon** og skriv stien til den projiserte filen. Velg
+**Lagre**.
 Prosessen som lagrer, kontrollerer at stien er absolutt og en lesbar fil, og avviser
 den på **Tokenfil** ellers; å lagre den fjerner en eventuell lagret klienthemmelighet.
 
@@ -214,7 +221,7 @@ Roter det projiserte tokenet gjennom plattformen; Vantigo mellomlagrer det ikke.
 1. Opprett en Google OAuth-webklient og kopier hemmeligheten. Google støtter bare
    klienthemmelighet — workload identity godtas ikke.
 2. Registrer kortets **Tilbakekalls-URL** som en autorisert omdirigerings-URI.
-3. På kortet, velg **Google**, skriv nøyaktig utstederen `https://accounts.google.com`
+3. På kortet, velg **Google Workspace**, skriv nøyaktig utstederen `https://accounts.google.com`
    som **Autoritet**, en klient-ID som slutter på `.apps.googleusercontent.com` som
    **Klient-ID**, og **Klienthemmelighet**.
 4. List opp hvert tillatte Workspace-domene i **Domener** som et rent DNS-navn, for
@@ -232,16 +239,19 @@ samsvarer, avvises.
 
 Folk som har logget inn gjennom leverandøren, er koblet til den med utstederen —
 autoriteten — og sitt subject. En lagring som endrer **Autoritet** mens noen er koblet
-under den nåværende, ber først om bekreftelse (forespørselen avvises med `409
-oidc_links_exist` uten `confirmIssuerChange`). Bekreft bare når du mener å flytte til en
+under den nåværende, ber først om bekreftelse på at autoriteten skal endres, og sendes
+på nytt med `confirmIssuerChange` bare når du bekrefter (forespørselen avvises med
+`409 oidc_links_exist` uten den). Bekreft bare når du mener å flytte til en
 annen leietaker eller leverandør: ingen som er koblet under den gamle autoriteten,
 gjenkjennes under den nye. Deres neste SSO-innlogging finner ingen kobling, og fordi en
 adresse aldri kobler en ny identitet til en eksisterende konto, avvises den
 (`oidc_email_conflict`) så lenge brukeren deres finnes.
 
-Å velge av som leverandør slår OIDC av og tømmer innstillingene, den lagrede
-hemmeligheten medregnet. Mens folk er koblet til leverandøren, ber det om den samme
-bekreftelsen (`409 oidc_links_exist` uten `?confirm=true`). Innen 20 sekunder viser
+**Slå av** i leverandørens del av kortet — eller av som leverandør og **Lagre**, som
+gjør det samme — spør først, og slår deretter OIDC av og tømmer innstillingene, den
+lagrede hemmeligheten medregnet. Mens folk er koblet til leverandøren, sier en dialog
+til at folk er koblet til den, og bare en bekreftelse der sender `?confirm=true` (uten
+den avvises forespørselen med `409 oidc_links_exist`). Innen 20 sekunder viser
 innloggingssiden ingen leverandørknapp, og hver prosess slutter å godta leverandørens
 tilbakekall.
 
@@ -260,7 +270,8 @@ standardendepunktene for oppdagelse `ServiceProviderConfig`, `ResourceTypes` og
 `Schemas`.
 
 **Tokenet lages av serveren og vises én gang.** Vantigo lager det (32 tilfeldige byte,
-base64url uten utfylling), viser det i en dialog med en kopieringsknapp, og beholder
+base64url uten utfylling), viser det i en dialog med en kopieringsknapp og beskjed om
+at det ikke vises igjen, og beholder
 bare SHA-256-sammendraget, så et token vises aldri igjen: et tapt token erstattes med
 et nytt, det gjenopprettes aldri.
 
@@ -271,7 +282,7 @@ Slik slår du SCIM på:
    provisjoneringsinnstillinger (i Entra, bedriftsapplikasjonens side
    **Provisioning**: **Tenant URL** er endepunkt-URL-en, **Secret Token** er tokenet)
    og lukk dialogen.
-3. Test tilkoblingen fra katalogen, og sjekk at kortets siste SCIM-forespørsel flytter
+3. Test tilkoblingen fra katalogen, og sjekk at SCIM-delens siste forespørsel flytter
    seg.
 
 SCIM-tilstanden er persistent: brukertilordninger, SCIM-grupper og -medlemskap,
@@ -282,10 +293,10 @@ nødtilgangskontoen utenfor provisjoneringssystemets rekkevidde.
 
 ### Tokenrotasjon med overlapp
 
-1. Velg **Nytt token**. Det nye tokenet vises én gang, med overlappets utløp: tokenet
-   det erstatter, godtas fortsatt frem til da — 24 timer fra nå med mindre
-   forespørselen setter en tidligere `previousExpiresAt`, og aldri mer enn 24 timer
-   frem.
+1. Velg **Nytt token**. Siden et token finnes, spør kortet først hvor mange timer det
+   nåværende tokenet skal godtas: 1 til 24, 24 som standard (forespørselens
+   `previousExpiresAt`). Det nye tokenet vises så én gang, med overlappets utløp:
+   tokenet det erstatter, godtas fortsatt frem til da.
 2. Legg det nye tokenet inn i katalogen og test tilkoblingen der.
 3. Når alle klienter har byttet, velg **Avslutt overlapp**: det gamle tokenet slutter å
    godtas nå i stedet for ved utløpet. Eller la overlappet løpe ut.
@@ -297,7 +308,7 @@ fortiden eller mer enn 24 timer frem avvises på `previousExpiresAt`.
 
 ### Slå av SCIM
 
-Velg **Slå av**. Tokenene glemmes, og innen 20 sekunder avviser endepunktet hver
+Velg **Slå av** i SCIM-delen. Tokenene glemmes, og innen 20 sekunder avviser endepunktet hver
 forespørsel. Brukerne, tilordningene og gruppene SCIM provisjonerte, blir som de er, og
 en katalogs deaktivering av en bruker slutter å telle for hvem som har en rettighet.
 For å slå det på igjen, utsted et **Nytt token** og gi det til katalogen.
@@ -364,8 +375,8 @@ Prosedyren, én gang, ved oppgraderingen til den utgivelsen:
    med variablene fortsatt på plass til den første oppstarten.
 2. Se etter importadvarselen i loggen, eller etter `sso-settings.imported` i
    revisjonsloggen, og åpne kortet **Single sign-on**: leverandøren, autoriteten,
-   klient-ID-en, «satt» for hemmeligheten og SCIM-tokenets dato står der, med
-   meldingen.
+   klient-ID-en, når hemmeligheten ble satt og når SCIM-tokenet ble utstedt, står der,
+   med meldingen.
 3. Fjern hver `OIDC_*`- og `SCIM_*`-variabel fra hver API- og worker-container —
    `vantigo.env`, hemmelighetslageret, plattformens miljø — alle samtidig, og start på
    nytt når det passer. `AZURE_FEDERATED_TOKEN_FILE`, som webhooken for workload
