@@ -181,7 +181,7 @@ components:
                     nullable: true
                     type: integer
                 endTime:
-                    description: HH:MM on the entry date, after startTime. Required when startTime is given.
+                    description: HH:MM on the entry date, wall-clock time in the workspace's business time zone, after startTime. Required when startTime is given.
                     nullable: true
                     pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
                     type: string
@@ -202,7 +202,7 @@ components:
                     format: int32
                     type: integer
                 startTime:
-                    description: HH:MM on the entry date. Required when endTime is given.
+                    description: HH:MM on the entry date, wall-clock time in the workspace's business time zone. Required when endTime is given.
                     nullable: true
                     pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
                     type: string
@@ -383,7 +383,7 @@ components:
                     nullable: true
                     type: integer
                 endTime:
-                    description: HH:MM on the entry date, after startTime. Required when startTime is given.
+                    description: HH:MM on the entry date, wall-clock time in the workspace's business time zone, after startTime. Required when startTime is given.
                     nullable: true
                     pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
                     type: string
@@ -409,7 +409,7 @@ components:
                     minimum: 1
                     type: integer
                 startTime:
-                    description: HH:MM on the entry date. Required when endTime is given.
+                    description: HH:MM on the entry date, wall-clock time in the workspace's business time zone. Required when endTime is given.
                     nullable: true
                     pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
                     type: string
@@ -773,7 +773,7 @@ components:
                     format: date-time
                     type: string
                 hoursThisWeek:
-                    description: The caller's own hours dated in the current week (Monday to Sunday, dates in UTC), whatever their status apart from rejected.
+                    description: The caller's own hours dated in the current week (Monday to Sunday, the week today falls in, in the workspace's business time zone), whatever their status apart from rejected.
                     format: double
                     type: number
                 hoursThisWeekDelta:
@@ -1329,7 +1329,7 @@ paths:
             description: The people overview — for every person with an entry or a week submission in the window, their hours, approved hours and rejected entries per week, and when they submitted each week. Ordered by display name.
             operationId: getTimePeople
             parameters:
-                - description: How many weeks, 1 to 12, ending with the current one (weeks start on Monday, dates are UTC). Default 4.
+                - description: How many weeks, 1 to 12, ending with the current one (weeks start on Monday; the current week is the one today falls in, in the workspace's business time zone). Default 4.
                   in: query
                   name: weeks
                   schema:
