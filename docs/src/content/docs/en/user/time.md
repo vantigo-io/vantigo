@@ -28,6 +28,8 @@ Open **Time → My week**. The page shows one week, Monday to Sunday, with a row
 each project, line and task you log time on and a column for each day. Use the arrows
 to move to the **Previous week** or **Next week**, and **This week** to come back;
 the week also lives in the address bar, so a link to any date opens that date's week.
+This week, like **Today** in the day view, is counted in the workspace's business time
+zone, the day Vantigo counts everywhere, not your own time zone or your computer's.
 
 A week with nothing logged says "Nothing logged this week". Add a row first:
 

@@ -5,7 +5,7 @@ Other modules add their own sections as their roadmaps solidify.
 
 ## Platform
 
-### Time zones (deliveries A to E done)
+### Time zones (done)
 
 Decided in
 [`docs/superpowers/specs/2026-10-19-time-zones-design.md`](docs/superpowers/specs/2026-10-19-time-zones-design.md),
@@ -50,9 +50,17 @@ file's name judge the business day; an entry's `occurredAt` must fall on its
 pair changes; the timeline shows an entry's time without the literal "UTC"; the
 contract's descriptions say so.
 
-*Still to land:* **F** the personal zone's setting and the shell's formatters and
-pickers — with it the Customers pages' own "today" (`utcToday`) and the timeline
-form's UTC time field. The calendar module depends on A and F.
+**Delivery F (done)** — the personal zone: `timeZone` on the profile's `PUT` and
+`PATCH`, held to the workspace zone's two checks, `null` to follow the workspace again
+and kept when left out, answered by `GET /account`; a **Time zone** select under
+Personal settings, "Same as the workspace (…)" first; the shell's formatters showing
+every instant in the session's effective zone, with `useI18n().timeZone`,
+`businessTimeZone` and helpers for "today in a zone" and the instant a typed time
+means; Customers' "today" on the business day and its timeline form's time read in the
+writer's zone; Time's "today" on the business day; the Inbox's times in the viewer's
+zone. SCIM's `timezone` attribute, which the design left optional, is not mapped.
+
+Nothing is left to land. The calendar module, which depends on A and F, may start.
 
 ### Cross-module domain events (deferred until Orders)
 
