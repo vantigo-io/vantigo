@@ -159,25 +159,33 @@ func scimBearer(r *http.Request) (string, bool) {
 }
 
 // scimTokenValid is ScimTokenService.VerifyAsync (ScimTokenService.cs:16-36):
-// SCIM is configured, and token is the current token or, while now is
-// before its expiry, the previous one. Each comparison is of the SHA-256
-// digests, in constant time, so it takes as long whatever the token's
-// length and contents.
-func (a *Access) scimTokenValid(token string, now time.Time) bool {
-	cfg := a.cfg.SCIM
-	if cfg == nil {
+// SCIM is on in the single sign-on settings, and token's SHA-256 is the
+// current token's digest or, while now is before its expiry, the previous
+// one's. Each comparison is of the digests, in constant time, so it takes
+// as long whatever the token's length and contents. A failure to read the
+// settings is an error, never a refusal.
+func (a *Access) scimTokenValid(ctx context.Context, token string, now time.Time) (bool, error) {
+	sso, err := a.sso.get(ctx)
+	if err != nil {
+		return false, err
+	}
+	return scimDigestsAdmit(sso.SCIM, token, now), nil
+}
+
+// scimDigestsAdmit is scimTokenValid's comparison against the settings
+// scim, nil while SCIM is off.
+func scimDigestsAdmit(scim *scimSettings, token string, now time.Time) bool {
+	if scim == nil {
 		return false
 	}
 	presented := sha256.Sum256([]byte(token))
-	current := sameDigest(presented, cfg.Token)
-	previous := cfg.PreviousToken != "" && cfg.PreviousTokenExpiresAt.After(now) && sameDigest(presented, cfg.PreviousToken)
+	current := scim.hasToken && sameDigest(presented, scim.Token)
+	previous := scim.hasPrevious && scim.PreviousExpiresAt.After(now) && sameDigest(presented, scim.Previous)
 	return current || previous
 }
 
-// sameDigest reports, in constant time, whether presented is configured's
-// SHA-256.
-func sameDigest(presented [sha256.Size]byte, configured string) bool {
-	expected := sha256.Sum256([]byte(configured))
+// sameDigest reports, in constant time, whether presented is expected.
+func sameDigest(presented, expected [sha256.Size]byte) bool {
 	return subtle.ConstantTimeCompare(presented[:], expected[:]) == 1
 }
 
@@ -279,7 +287,14 @@ func (s *server) scimIngress(routes []scimRoute, next http.Handler) http.Handler
 func (s *server) scimOperation(body bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, presented := scimBearer(r)
-		valid := presented && s.access.scimTokenValid(token, s.deps.Clock())
+		valid := false
+		if presented {
+			var err error
+			if valid, err = s.access.scimTokenValid(r.Context(), token, s.deps.Clock()); err != nil {
+				s.scimServerError(w, r, err)
+				return
+			}
+		}
 		client := "ip:" + cmp.Or(httpx.ClientIP(r), "unknown")
 		if valid {
 			client = scimConnectionKey

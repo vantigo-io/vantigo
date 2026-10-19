@@ -166,11 +166,22 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Only a process serving the API mounts identity, so the mode recorded
-	// is always an API process's (authority_mode.go).
+	// Only a process serving the API mounts identity, so only an API
+	// process imports the environment's OIDC and SCIM settings, once, into
+	// the single sign-on row (sso_settings.go), and records the mode that
+	// row derives (authority_mode.go). Access's reader is evicted after the
+	// import, so the first request reads the row it wrote.
 	ctx, cancel := context.WithTimeout(context.Background(), recordModeTimeout)
 	defer cancel()
-	if err := recordAuthorityMode(ctx, d); err != nil {
+	if err := importSSOSettingsFromEnvironment(ctx, d); err != nil {
+		return nil, err
+	}
+	a.sso.evict()
+	settings, err := a.sso.get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := recordAuthorityMode(ctx, d, settings); err != nil {
 		return nil, err
 	}
 	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{accessConflictFilter}, gen.StrictHTTPServerOptions{

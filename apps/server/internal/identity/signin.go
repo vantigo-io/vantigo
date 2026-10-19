@@ -88,9 +88,13 @@ func (s *server) PostIdentityLogin(ctx context.Context, req gen.PostIdentityLogi
 	}
 
 	now := s.deps.Clock()
+	sso, err := s.access.sso.get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("identity: login: %w", err)
+	}
 	u, err := s.q.GetLoginCandidate(ctx, store.GetLoginCandidateParams{
 		NormalizedEmail: normalizeEmail(email),
-		ScimEnabled:     s.deps.Config.SCIM != nil,
+		ScimEnabled:     sso.SCIM != nil,
 	})
 	found := err == nil
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -314,10 +318,16 @@ func (s *server) PostIdentityLogin2fa(ctx context.Context, req gen.PostIdentityL
 	if !ok {
 		return s.twoFactorExpired(r), nil
 	}
+	// Read before the transaction, which then holds its connection
+	// without waiting for another.
+	sso, err := s.access.sso.get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
+	}
 	var answer gen.PostIdentityLogin2faResponseObject
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var err error
-		answer, err = s.redeemLoginTicket(ctx, tx, r, ticket, code, rememberMe)
+		answer, err = s.redeemLoginTicket(ctx, tx, r, ticket, code, rememberMe, sso.SCIM != nil)
 		return err
 	})
 	if err != nil {
@@ -329,8 +339,9 @@ func (s *server) PostIdentityLogin2fa(ctx context.Context, req gen.PostIdentityL
 // redeemLoginTicket is PostIdentityLogin2fa's transaction, from 3 on. Its
 // answers commit what they did (a discarded ticket, a counted failure, a
 // session); only the refusals it returns as errors, a lock that won the
-// race and a ticket spent meanwhile, roll the attempt back.
-func (s *server) redeemLoginTicket(ctx context.Context, tx pgx.Tx, r *http.Request, ticket []byte, code string, rememberMe bool) (gen.PostIdentityLogin2faResponseObject, error) {
+// race and a ticket spent meanwhile, roll the attempt back. scimEnabled is
+// whether SCIM is on (the single sign-on settings).
+func (s *server) redeemLoginTicket(ctx context.Context, tx pgx.Tx, r *http.Request, ticket []byte, code string, rememberMe, scimEnabled bool) (gen.PostIdentityLogin2faResponseObject, error) {
 	now := s.deps.Clock()
 	q := store.New(tx)
 	userID, err := q.FindLoginTicket(ctx, store.FindLoginTicketParams{TokenHash: ticket, Now: now})
@@ -349,7 +360,7 @@ func (s *server) redeemLoginTicket(ctx context.Context, tx pgx.Tx, r *http.Reque
 	// against a concurrent disable or regeneration (40P01, a 500). Holding
 	// the row also makes this read authoritative: no failure or lockout can
 	// land between it and the end of the step.
-	u, err := q.GetTwoFactorCandidate(ctx, store.GetTwoFactorCandidateParams{ScimEnabled: s.deps.Config.SCIM != nil, ID: userID})
+	u, err := q.GetTwoFactorCandidate(ctx, store.GetTwoFactorCandidateParams{ScimEnabled: scimEnabled, ID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		// The user was deleted since the ticket was read, and the ticket
 		// went with them (ON DELETE CASCADE).

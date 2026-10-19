@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
 
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
@@ -31,9 +32,14 @@ type server struct {
 	// maintenance is the 20 s cache GetIdentitySystemStatus reads the
 	// system_settings singleton through; see system.go.
 	maintenance maintenanceCache
-	// oidc is the workforce OIDC relying party; nil while OIDC is off, and
-	// then the OIDC operations answer 404 or a failure redirect.
-	oidc *oidcRelyingParty
+	// oidc is the workforce OIDC relying party last built (oidcRP), for
+	// the single sign-on settings' oidcVersion; nil while OIDC is off, and
+	// then the OIDC operations answer 404 or a failure redirect. oidcBuilt
+	// is false until the first build. oidcMu guards the three.
+	oidcMu      sync.Mutex
+	oidc        *oidcRelyingParty
+	oidcVersion int32
+	oidcBuilt   bool
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
@@ -60,17 +66,12 @@ func newServer(a *Access, d module.Deps) (*server, error) {
 			"app_host", d.Config.AppHostname, "error", err.Error())
 		rp = nil
 	}
-	oidcRP, err := newOIDCRelyingParty(d.Config, a.oidcHTTPClient, d.Clock)
-	if err != nil {
-		return nil, err
-	}
 	return &server{
 		access:            a,
 		deps:              d,
 		q:                 store.New(d.Pool),
 		dummyPasswordHash: dummy,
 		relyingParty:      rp,
-		oidc:              oidcRP,
 	}, nil
 }
 

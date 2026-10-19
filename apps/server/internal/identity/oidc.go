@@ -19,14 +19,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/oauth2"
 
-	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 )
 
 // Workforce OIDC sign-in (inventory §9, spec *Workforce OIDC*): one
-// startup-bound Entra or Google provider, the authorization code flow with
+// Entra or Google provider, the single sign-on settings' OIDC block, the authorization code flow with
 // PKCE and a nonce, and just-in-time provisioning keyed on the normalized
 // issuer and the subject. .NET ran it through ASP.NET's OpenIdConnect
 // handler (EA/AuthServiceCollectionExtensions.cs:155-279) and
@@ -111,10 +110,11 @@ var oidcScopes = []string{oidc.ScopeOpenID, "profile", "email"}
 const oidcHTTPTimeout = 30 * time.Second
 
 // oidcRelyingParty is the installation's one workforce OIDC client: the
-// configured provider, the HTTP client every provider request goes through,
-// and the provider's discovered metadata, fetched once and cached.
+// provider of one version of the single sign-on settings, the HTTP client
+// every provider request goes through, and the provider's discovered
+// metadata, fetched once and cached.
 type oidcRelyingParty struct {
-	cfg *config.OIDCConfig
+	cfg *oidcSettings
 	// issuer is the configured authority normalized: the issuer every
 	// oidc_links row is keyed on.
 	issuer      string
@@ -126,29 +126,54 @@ type oidcRelyingParty struct {
 	provider *oidc.Provider
 }
 
-// newOIDCRelyingParty builds the relying party for cfg, or nil while OIDC
-// is off. Nothing is fetched here: a provider that is down at startup
-// fails its first sign-in, never the installation's start. client is the
-// test's fake provider route; nil in production, which gets a client with
-// oidcHTTPTimeout.
-func newOIDCRelyingParty(cfg *config.Config, client *http.Client, now func() time.Time) (*oidcRelyingParty, error) {
-	if cfg.OIDC == nil {
+// newOIDCRelyingParty builds the relying party for o, or nil while OIDC
+// is off (o nil), redirecting to redirectURL. Nothing is fetched here: a
+// provider that is down when the settings change fails its first sign-in,
+// never the save. client is the test's fake provider route; nil in
+// production, which gets a client with oidcHTTPTimeout.
+func newOIDCRelyingParty(o *oidcSettings, redirectURL string, client *http.Client, now func() time.Time) (*oidcRelyingParty, error) {
+	if o == nil {
 		return nil, nil
 	}
-	issuer, ok := normalizeIssuer(cfg.OIDC.Authority)
+	issuer, ok := normalizeIssuer(o.Authority)
 	if !ok {
-		return nil, fmt.Errorf("identity: OIDC_AUTHORITY %q is not a valid issuer", cfg.OIDC.Authority)
+		return nil, fmt.Errorf("identity: the OIDC authority %q is not a valid issuer", o.Authority)
 	}
 	if client == nil {
 		client = &http.Client{Timeout: oidcHTTPTimeout}
 	}
 	return &oidcRelyingParty{
-		cfg:         cfg.OIDC,
+		cfg:         o,
 		issuer:      issuer,
-		redirectURL: cfg.AppOrigin + cfg.BasePath + oidcCallbackPath,
+		redirectURL: redirectURL,
 		client:      client,
 		now:         now,
 	}, nil
+}
+
+// oidcRP is the relying party for the single sign-on settings as the
+// server's reader answers them, or nil while OIDC is off. The party last
+// built is kept with the settings version it was built for, under
+// oidcMu, and rebuilt when the version differs, so a change is in effect
+// within the reader's TTL with no restart; the rebuilt party discovers
+// lazily, as the first did.
+func (s *server) oidcRP(ctx context.Context) (*oidcRelyingParty, error) {
+	settings, err := s.access.sso.get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.oidcMu.Lock()
+	defer s.oidcMu.Unlock()
+	if s.oidcBuilt && s.oidcVersion == settings.Version {
+		return s.oidc, nil
+	}
+	redirectURL := s.deps.Config.AppOrigin + s.deps.Config.BasePath + oidcCallbackPath
+	rp, err := newOIDCRelyingParty(settings.OIDC, redirectURL, s.access.oidcHTTPClient, s.deps.Clock)
+	if err != nil {
+		return nil, err
+	}
+	s.oidc, s.oidcVersion, s.oidcBuilt = rp, settings.Version, true
+	return rp, nil
 }
 
 // clientContext is ctx carrying the relying party's HTTP client, which
@@ -189,14 +214,16 @@ func (rp *oidcRelyingParty) discover(ctx context.Context) (*oidc.Provider, error
 
 // oauth2Config is the code flow's client for provider p. The client secret,
 // when the installation uses one, goes in the token request's form
-// (client_secret_post, as ASP.NET's handler sent it); with workload
-// identity there is none and callback adds a client assertion instead.
-func (rp *oidcRelyingParty) oauth2Config(p *oidc.Provider) *oauth2.Config {
+// (client_secret_post, as ASP.NET's handler sent it): callback opens it for
+// each redemption, and the challenge, which sends none, passes "". With
+// workload identity there is none and callback adds a client assertion
+// instead.
+func (rp *oidcRelyingParty) oauth2Config(p *oidc.Provider, secret string) *oauth2.Config {
 	endpoint := p.Endpoint()
 	endpoint.AuthStyle = oauth2.AuthStyleInParams
 	return &oauth2.Config{
 		ClientID:     rp.cfg.ClientID,
-		ClientSecret: rp.cfg.ClientSecret,
+		ClientSecret: secret,
 		Endpoint:     endpoint,
 		RedirectURL:  rp.redirectURL,
 		Scopes:       oidcScopes,
@@ -228,21 +255,28 @@ func (e externalIdentity) expires() time.Time { return e.ExpiresAt }
 
 // oidcIssuer is the issuer the owner user list's ssoEnabled looks for: the
 // configured authority normalized, or nil while OIDC is off.
-func (s *server) oidcIssuer() *string {
-	if s.oidc == nil {
-		return nil
+func (s *server) oidcIssuer(ctx context.Context) (*string, error) {
+	rp, err := s.oidcRP(ctx)
+	if err != nil || rp == nil {
+		return nil, err
 	}
-	issuer := s.oidc.issuer
-	return &issuer
+	issuer := rp.issuer
+	return &issuer, nil
 }
 
 // GetIdentityProviders lists the workforce sign-in providers: the configured
 // OIDC provider's display name, or none (EA/WorkforceOidcEndpoints.cs:27-29).
-func (s *server) GetIdentityProviders(context.Context, gen.GetIdentityProvidersRequestObject) (gen.GetIdentityProvidersResponseObject, error) {
-	if s.oidc == nil {
+// It reads the single sign-on settings, so the sign-in page's button follows
+// a change within their cache's TTL.
+func (s *server) GetIdentityProviders(ctx context.Context, _ gen.GetIdentityProvidersRequestObject) (gen.GetIdentityProvidersResponseObject, error) {
+	rp, err := s.oidcRP(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if rp == nil {
 		return gen.GetIdentityProviders200JSONResponse{Oidc: nil}, nil
 	}
-	return gen.GetIdentityProviders200JSONResponse{Oidc: &gen.OidcProviderResponse{DisplayName: s.oidc.cfg.DisplayName}}, nil
+	return gen.GetIdentityProviders200JSONResponse{Oidc: &gen.OidcProviderResponse{DisplayName: rp.cfg.DisplayName}}, nil
 }
 
 // GetIdentityOidcChallenge starts a sign-in at the provider
@@ -254,10 +288,14 @@ func (s *server) GetIdentityProviders(context.Context, gen.GetIdentityProvidersR
 // return URL: completion always lands on the base path's root. A provider
 // whose metadata cannot be fetched is a remote failure.
 func (s *server) GetIdentityOidcChallenge(ctx context.Context, _ gen.GetIdentityOidcChallengeRequestObject) (gen.GetIdentityOidcChallengeResponseObject, error) {
-	if s.oidc == nil {
+	rp, err := s.oidcRP(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if rp == nil {
 		return gen.GetIdentityOidcChallenge404Response{}, nil
 	}
-	p, err := s.oidc.discover(ctx)
+	p, err := rp.discover(ctx)
 	if err != nil {
 		s.deps.Logger.WarnContext(ctx, "identity: workforce OIDC discovery failed", "error", err.Error())
 		return s.oidcFailure(ctx, oidcRemoteFailure, "discovery failed"), nil
@@ -272,7 +310,7 @@ func (s *server) GetIdentityOidcChallenge(ctx context.Context, _ gen.GetIdentity
 	if err != nil {
 		return nil, err
 	}
-	location := s.oidc.oauth2Config(p).AuthCodeURL(st.State,
+	location := rp.oauth2Config(p, "").AuthCodeURL(st.State,
 		oauth2.S256ChallengeOption(st.Verifier),
 		oidc.Nonce(st.Nonce),
 		oauth2.SetAuthURLParam("response_mode", "query"))
@@ -330,7 +368,11 @@ func (s *server) oidcCallback(ctx context.Context, code, state, providerError *s
 	fail := func(errorCode, reason string) (oidcRedirect, error) {
 		return s.oidcFailure(ctx, errorCode, reason, spent), nil
 	}
-	if s.oidc == nil {
+	rp, err := s.oidcRP(ctx)
+	if err != nil {
+		return oidcRedirect{}, err
+	}
+	if rp == nil {
 		// OIDC is off: there is no challenge this response can belong to.
 		// .NET's disabled scheme still owned the callback path and failed it
 		// the same way.
@@ -351,26 +393,32 @@ func (s *server) oidcCallback(ctx context.Context, code, state, providerError *s
 		return fail(oidcAuthenticationFailed, "the response carries no code")
 	}
 
-	p, err := s.oidc.discover(ctx)
+	p, err := rp.discover(ctx)
 	if err != nil {
 		s.deps.Logger.WarnContext(ctx, "identity: workforce OIDC discovery failed", "error", err.Error())
 		return fail(oidcRemoteFailure, "discovery failed")
 	}
 	options := []oauth2.AuthCodeOption{oauth2.VerifierOption(st.Verifier)}
-	if s.oidc.cfg.WorkloadTokenFile != "" {
+	secret := ""
+	if rp.cfg.WorkloadTokenFile != "" {
 		// OnAuthorizationCodeReceived (EA/AuthServiceCollectionExtensions.cs:206-232):
 		// the projected token is read for every redemption, never cached,
 		// and no client secret exists in this mode.
-		assertion, err := readClientAssertion(s.oidc.cfg.WorkloadTokenFile)
+		assertion, err := readClientAssertion(rp.cfg.WorkloadTokenFile)
 		if err != nil {
 			return fail(oidcRemoteFailure, "the workload identity token file is unreadable or invalid")
 		}
 		options = append(options,
 			oauth2.SetAuthURLParam("client_assertion_type", jwtBearerAssertionType),
 			oauth2.SetAuthURLParam("client_assertion", assertion))
+	} else if secret, err = rp.cfg.clientSecret(); err != nil {
+		// The sealed secret does not open (APP_SECRET changed since it was
+		// sealed): the error names no part of it.
+		s.deps.Logger.WarnContext(ctx, "identity: workforce OIDC client secret unavailable", "error", err.Error())
+		return fail(oidcRemoteFailure, "the client secret could not be opened")
 	}
-	clientCtx := s.oidc.clientContext(ctx)
-	token, err := s.oidc.oauth2Config(p).Exchange(clientCtx, *code, options...)
+	clientCtx := rp.clientContext(ctx)
+	token, err := rp.oauth2Config(p, secret).Exchange(clientCtx, *code, options...)
 	if err != nil {
 		// Only the OAuth error code is logged: a token endpoint's error body
 		// is the provider's to word, and nothing of it is worth the risk.
@@ -381,7 +429,7 @@ func (s *server) oidcCallback(ctx context.Context, code, state, providerError *s
 		}
 		return fail(oidcAuthenticationFailed, reason)
 	}
-	claims, errorCode, reason := s.oidc.validate(clientCtx, p, token, st.Nonce)
+	claims, errorCode, reason := rp.validate(clientCtx, p, token, st.Nonce)
 	if errorCode != "" {
 		return fail(errorCode, reason)
 	}
@@ -515,7 +563,11 @@ func (rp *oidcRelyingParty) lifetimeProblem(idToken *oidc.IDToken) string {
 // (a failed query) is a 500, as .NET's unhandled exception was, but it
 // consumes the external cookie too (clearOnServerError).
 func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityOidcCompleteRequestObject) (_ gen.GetIdentityOidcCompleteResponseObject, err error) {
-	if s.oidc == nil {
+	rp, err := s.oidcRP(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if rp == nil {
 		return gen.GetIdentityOidcComplete404Response{}, nil
 	}
 	r, err := requestFrom(ctx)
@@ -532,10 +584,10 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 	if !s.openOIDCCookie(r, oidcExternalCookieName, oidcExternalPurpose, &external) {
 		return fail(oidcExternalIdentityMissing, "the external identity cookie is missing, expired or invalid")
 	}
-	if err := checkClaimPolicy(s.oidc.cfg, external.Claims); err != nil {
+	if err := checkClaimPolicy(rp.cfg, external.Claims); err != nil {
 		return fail(oidcIdentityInvalid, err.Error())
 	}
-	account, ok := readExternalAccount(external.Claims, s.oidc.issuer)
+	account, ok := readExternalAccount(external.Claims, rp.issuer)
 	if !ok {
 		return fail(oidcIdentityInvalid, "the external identity's issuer or subject is invalid")
 	}

@@ -28,8 +28,9 @@ Task 2 first; then 3 and 4 in sequence (4 writes what 3 reads); 5 and 6 in paral
   operations under `/api/v1/identity/owner/sso`: `GET /owner/sso` (`policy:Owner`),
   `PUT /owner/sso/oidc` and `DELETE /owner/sso/oidc?confirm=` and
   `POST /owner/sso/scim/token`, `DELETE /owner/sso/scim/previous`, `DELETE /owner/sso/scim`
-  (`policy:OwnerManagement`; `If-Match` on `version` for the PUT), each with
-  `400/401/403/409/412` as the workspace operations spell them, tag `Single sign-on`;
+  (`policy:OwnerManagement`; `If-Match` on `version` for the PUT), each with the
+  workspace operations' responses plus 429, 412 and 409 on the PUT, 409 on `DELETE /oidc`,
+  tag `Single sign-on`;
   the `AuthErrorResponse` codes `oidc_links_exist` (409) and `version_mismatch` (412).
   `mig/00058_identity_sso_settings.sql`: the table of D1 exactly, with its `CHECK`s on
   `oidc_provider`, and a `COMMENT` naming the design. `id/queries/sso_settings.sql`:
