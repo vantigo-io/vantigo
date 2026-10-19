@@ -11,7 +11,7 @@ export interface paths {
         };
         /**
          * Get the Invoices metadata
-         * @description What every Invoices page needs in one read — the currency, the default payment terms, whether the seller is complete and what it lacks, whether anything is issued and the series start, whether an object store exists, today in Oslo, the VAT codes in force today and the caller's capabilities.
+         * @description What every Invoices page needs in one read — the currency, the default payment terms, whether the seller is complete and what it lacks, whether anything is issued and the series start, whether an object store exists, today in the business time zone, the VAT codes in force today and the caller's capabilities.
          */
         get: operations["getInvoicesMeta"];
         put?: never;
@@ -199,7 +199,7 @@ export interface paths {
         };
         /**
          * List the collection rates
-         * @description Every collection rate by kind and date (D6), each with whether it is in force today (Oslo), whether a letter has used it, and the release's value over a user's row; warns collection_rate_differs_from_release while any row's release value differs from its value.
+         * @description Every collection rate by kind and date (D6), each with whether it is in force today in the business time zone, whether a letter has used it, and the release's value over a user's row; warns collection_rate_differs_from_release while any row's release value differs from its value.
          */
         get: operations["getInvoicesCollectionRates"];
         put?: never;
@@ -267,7 +267,7 @@ export interface paths {
         };
         /**
          * List the overdue invoices
-         * @description The overdue list (invoices payments and reminders design D12): the issued invoices whose state is overdue today in Oslo — and, with charges=outstanding, also the paid ones whose charges are still outstanding — filtered by customerId and dueBefore (a due date before that day). Past 5 000 of them, 409 too_many_overdue asks for customerId or dueBefore. The whole set is read on the pool in a handful of statements and judged by the reminder engine, invoice by invoice, before the action filter (reminder, collection_notice, hand_off, blocked, waiting) and the page apply (M7); the oldest due date first. page and pageSize are the codebase's paging, 25 by default, at most 100. With the bank data's freshness and the warnings that apply.
+         * @description The overdue list (invoices payments and reminders design D12): the issued invoices whose state is overdue today in the business time zone — and, with charges=outstanding, also the paid ones whose charges are still outstanding — filtered by customerId and dueBefore (a due date before that day). Past 5 000 of them, 409 too_many_overdue asks for customerId or dueBefore. The whole set is read on the pool in a handful of statements and judged by the reminder engine, invoice by invoice, before the action filter (reminder, collection_notice, hand_off, blocked, waiting) and the page apply (M7); the oldest due date first. page and pageSize are the codebase's paging, 25 by default, at most 100. With the bank data's freshness and the warnings that apply.
          */
         get: operations["getInvoicesOverdue"];
         put?: never;
@@ -893,7 +893,7 @@ export interface paths {
         put?: never;
         /**
          * Record a manual delivery
-         * @description Records that an issued invoice was handed over or posted (D8): an invoice not validly delivered does not fall due (FinKN 2017-492), and a reminder may claim a fee, the compensation or interest only with a delivery — an e-mail, a delivered EHF transmission or this record — on or before the due date. 404; 409 credit_note_no_reminders, invoice_draft; 400 on kind, deliveredOn (on or after the issue date, not after today, Oslo) or note; then one transaction locks the invoice and inserts the record. The response is the document with its manual deliveries.
+         * @description Records that an issued invoice was handed over or posted (D8): an invoice not validly delivered does not fall due (FinKN 2017-492), and a reminder may claim a fee, the compensation or interest only with a delivery — an e-mail, a delivered EHF transmission or this record — on or before the due date. 404; 409 credit_note_no_reminders, invoice_draft; 400 on kind, deliveredOn (on or after the issue date, not after today in the business time zone) or note; then one transaction locks the invoice and inserts the record. The response is the document with its manual deliveries.
          */
         post: operations["postInvoicesByIdManualDeliveries"];
         delete?: never;
@@ -1111,7 +1111,7 @@ export interface paths {
         };
         /**
          * List a day's Vipps payments
-         * @description One Oslo day's Vipps payments (invoices payments and reminders design D17 rule 4, M15): every registered Vipps payment paid on that day — the Oslo day of Vipps' capture event, the payment's day in the ledger and in the Vipps settlement, however late the payments worker registered it — oldest registration first: the invoice, the buyer, the amount, the flow, the refund made since, pay-link payments with the on-site ones — with the count and the totals per flow, and the day's reconciliation when one is recorded. It takes no lock.
+         * @description One business day's Vipps payments (invoices payments and reminders design D17 rule 4, M15): every registered Vipps payment paid on that day — the day of Vipps' capture event in the business time zone, the payment's day in the ledger and in the Vipps settlement, however late the payments worker registered it — oldest registration first: the invoice, the buyer, the amount, the flow, the refund made since, pay-link payments with the on-site ones — with the count and the totals per flow, and the day's reconciliation when one is recorded. It takes no lock.
          */
         get: operations["getInvoicesVippsPayments"];
         put?: never;
@@ -1131,7 +1131,7 @@ export interface paths {
         };
         /**
          * Export a day's Vipps payments as CSV
-         * @description The day's Vipps payments as a file (D17 rule 4; plan reading 15): the rows of GET /invoices/vipps-payments in the module's CSV form (GET /invoices/export.csv) — UTF-8 with a byte order mark, semicolons, the decimal comma, CRLF after every row, RFC 4180 quoting, the formula guard on the text columns only. The header row is Paid on;Registered at;Invoice number;Buyer;Flow;Amount;Refunded;Reference — the day Vipps captured the payment, when it was registered in Oslo (YYYY-MM-DD HH:MM:SS), and the refund made since, empty when none.
+         * @description The day's Vipps payments as a file (D17 rule 4; plan reading 15): the rows of GET /invoices/vipps-payments in the module's CSV form (GET /invoices/export.csv) — UTF-8 with a byte order mark, semicolons, the decimal comma, CRLF after every row, RFC 4180 quoting, the formula guard on the text columns only. The header row is Paid on;Registered at;Invoice number;Buyer;Flow;Amount;Refunded;Reference — the day Vipps captured the payment, when it was registered, in the business time zone (YYYY-MM-DD HH:MM:SS), and the refund made since, empty when none.
          */
         get: operations["getInvoicesVippsPaymentsCsv"];
         put?: never;
@@ -1213,7 +1213,7 @@ export interface paths {
         put?: never;
         /**
          * Record the hand-off to collection
-         * @description Records an issued invoice's hand-off to a collection agency (D11), made outside Vantigo: no letter is made for it while the hand-off is live, and a payment the creditor receives is still registered — the claim is still the creditor's (inkassoloven § 2) — and must be reported to the agency. Refused in order: 400 on agency, agencyReference, note or handedOn after today (Oslo); 404; 409 credit_note_no_reminders, invoice_draft; 400 on handedOn before the issue date; then one transaction locks the invoice and, after that lock, refuses invoice_settled (nothing of the principal is open), invoice_handed_off (a hand-off is live), and invoice_not_delivered when no delivery — an e-mail, a delivered EHF transmission or a manual delivery — is on or before the due date, unless acknowledgeNotDelivered is true (the detail says to record a manual delivery first if it was in fact delivered); records the hand-off and withdraws the letters in flight with the reason handed_off, as a hold does — printed letters and any being sent named in lettersLeft. The lock order is the invoice, then its letters (D18).
+         * @description Records an issued invoice's hand-off to a collection agency (D11), made outside Vantigo: no letter is made for it while the hand-off is live, and a payment the creditor receives is still registered — the claim is still the creditor's (inkassoloven § 2) — and must be reported to the agency. Refused in order: 400 on agency, agencyReference, note or handedOn after today in the business time zone; 404; 409 credit_note_no_reminders, invoice_draft; 400 on handedOn before the issue date; then one transaction locks the invoice and, after that lock, refuses invoice_settled (nothing of the principal is open), invoice_handed_off (a hand-off is live), and invoice_not_delivered when no delivery — an e-mail, a delivered EHF transmission or a manual delivery — is on or before the due date, unless acknowledgeNotDelivered is true (the detail says to record a manual delivery first if it was in fact delivered); records the hand-off and withdraws the letters in flight with the reason handed_off, as a hold does — printed letters and any being sent named in lettersLeft. The lock order is the invoice, then its letters (D18).
          */
         post: operations["postInvoicesByIdCollection"];
         delete?: never;
@@ -1233,7 +1233,7 @@ export interface paths {
         put?: never;
         /**
          * Withdraw the hand-off
-         * @description Withdraws an invoice's live hand-off (D11): the claim is back with the creditor, and the reminder engine judges the invoice again. The body is judged first (400 on reason, or withdrawnOn after today, Oslo); then one transaction locks the invoice (404 for none) and, after that lock, refuses invoice_not_handed_off when no hand-off is live, and 400 on withdrawnOn before the hand-off's handedOn; then withdraws it. lettersLeft names the printed letters and any being sent. The lock order is the invoice alone (D18).
+         * @description Withdraws an invoice's live hand-off (D11): the claim is back with the creditor, and the reminder engine judges the invoice again. The body is judged first (400 on reason, or withdrawnOn after today in the business time zone); then one transaction locks the invoice (404 for none) and, after that lock, refuses invoice_not_handed_off when no hand-off is live, and 400 on withdrawnOn before the hand-off's handedOn; then withdraws it. lettersLeft names the printed letters and any being sent. The lock order is the invoice alone (D18).
          */
         post: operations["postInvoicesByIdCollectionWithdraw"];
         delete?: never;
@@ -1357,7 +1357,7 @@ export interface paths {
         put?: never;
         /**
          * Import a bank file
-         * @description Imports an OCR giro or camt.054 (.001.02 or .001.08) file of incoming payments (invoices payments and reminders design D3), all or nothing, in order: the one multipart part named file, at most 10 MiB; its format detected; the file parsed and checked against its own control totals, every booking day on or before today in Oslo and not before 2000, at most 5 000 transactions, every booked amount in NOK; every account it names the seller's bank account or one an issued document printed (409 bank_account_unknown); the same bytes or the same file identity imported before (409 bank_file_duplicate, naming the earlier import); the bytes stored once in the object store under bank-files/<sha256>.<ocr|xml>, outside any transaction (503 storage_unavailable without one); then one transaction — the file's accounts first, in account order, the first import of an account setting its format, a file of the other format refused (409 bank_import_format_mismatch); the file row; every line in one insert ordered by fingerprint, a line an earlier or overlapping file already brought kept as a duplicate row linked to it. Once that commits, every line that is not a duplicate is matched on its KID (D4), each in a transaction of its own, the uploader registering the payments; a line matching stops on before it ends is left pending.
+         * @description Imports an OCR giro or camt.054 (.001.02 or .001.08) file of incoming payments (invoices payments and reminders design D3), all or nothing, in order: the one multipart part named file, at most 10 MiB; its format detected; the file parsed and checked against its own control totals, every booking day on or before today in the business time zone and not before 2000, at most 5 000 transactions, every booked amount in NOK; every account it names the seller's bank account or one an issued document printed (409 bank_account_unknown); the same bytes or the same file identity imported before (409 bank_file_duplicate, naming the earlier import); the bytes stored once in the object store under bank-files/<sha256>.<ocr|xml>, outside any transaction (503 storage_unavailable without one); then one transaction — the file's accounts first, in account order, the first import of an account setting its format, a file of the other format refused (409 bank_import_format_mismatch); the file row; every line in one insert ordered by fingerprint, a line an earlier or overlapping file already brought kept as a duplicate row linked to it. Once that commits, every line that is not a duplicate is matched on its KID (D4), each in a transaction of its own, the uploader registering the payments; a line matching stops on before it ends is left pending.
          */
         post: operations["postInvoicesBankFiles"];
         delete?: never;
@@ -1752,7 +1752,7 @@ export interface components {
             storageAvailable: boolean;
             /**
              * Format: date
-             * @description Today in Europe/Oslo, the business day every date rule of this module is judged on.
+             * @description Today in the workspace's business time zone, the business day every date rule of this module is judged on.
              */
             today: string;
             /** @description The VAT codes a new line may take — active, with a rate period covering today — each with today's rate. */
@@ -2095,7 +2095,7 @@ export interface components {
             revision: number;
             termsUrl: string | null;
         };
-        /** @description One statutory rate as a dated row (invoices payments and reminders design D6), in force from validFrom until the next row of its kind. seeded rows came with a release and have no createdBy; a user adds later ones ahead of a release. releaseValue and releaseSourceRef are what a later release seeded for this kind and date over a user's row, equal or not — while releaseValue differs from value the list warns collection_rate_differs_from_release. inForce is whether the row is the one in force today (Oslo). usable is false once a printed or sent letter dated on or after validFrom and before the next row of the kind has relied on it; a row in force, a used row and a seeded row cannot be deleted. */
+        /** @description One statutory rate as a dated row (invoices payments and reminders design D6), in force from validFrom until the next row of its kind. seeded rows came with a release and have no createdBy; a user adds later ones ahead of a release. releaseValue and releaseSourceRef are what a later release seeded for this kind and date over a user's row, equal or not — while releaseValue differs from value the list warns collection_rate_differs_from_release. inForce is whether the row is the one in force today in the business time zone. usable is false once a printed or sent letter dated on or after validFrom and before the next row of the kind has relied on it; a row in force, a used row and a seeded row cannot be deleted. */
         InvoicesCollectionRate: {
             /** Format: date-time */
             createdAt: string;
@@ -2133,7 +2133,7 @@ export interface components {
             rates: components["schemas"]["InvoicesCollectionRate"][];
             warnings: "collection_rate_differs_from_release"[];
         };
-        /** @description POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today (Oslo) and after the date of the latest printed or sent letter, so a new rate never contradicts a letter already printed or posted; late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists. */
+        /** @description POST /collection-rates' body (D6): a rate a user adds ahead of a release. validFrom is after today in the business time zone and after the date of the latest printed or sent letter, so a new rate never contradicts a letter already printed or posted; late_interest_percent and b2b_compensation_nok start on 1 January or 1 July; value has at most two decimals and is within its kind's bounds — late_interest_percent 0.01-30, b2b_compensation_nok 100-2000, inkassosats 100-5000; sourceRef is the regulation, 1-100 characters. Each is a 400 on its field; a row of the same kind and date is a 409 collection_rate_exists. */
         InvoicesCollectionRateRequest: {
             /** @enum {string} */
             kind: "late_interest_percent" | "b2b_compensation_nok" | "inkassosats";
@@ -2195,7 +2195,7 @@ export interface components {
             /** Format: uuid */
             updatedBy?: string;
         };
-        /** @description PUT /settings/reminders' body, a full replace (D7). Every field is required, revision included — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today (Oslo). revision is the one the caller read: a stale one is a 409 naming both. */
+        /** @description PUT /settings/reminders' body, a full replace (D7). Every field is required, revision included — a body without one is a 400 on it — and null is a value only for inkassolov2026From. enabled, collectionNotice and lateInterest are true or false; firstReminderDays 1-60; deadlineDays 14-60; graceDays 1-10; remindersBeforeNotice 0-2; staleImportDays 1-30; personCharge fee or none; businessCharge fee, compensation or none; regimeReviewedThrough at most a year after today in the business time zone. revision is the one the caller read: a stale one is a 409 naming both. */
         InvoicesReminderSettingsRequest: {
             /** @enum {string} */
             businessCharge: "fee" | "compensation" | "none";
@@ -2221,7 +2221,7 @@ export interface components {
             /** Format: int32 */
             staleImportDays: number;
         };
-        /** @description The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in Oslo — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run. */
+        /** @description The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in the business time zone — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run. */
         InvoicesBankFreshness: {
             /** Format: date */
             lastBookedOn?: string;
@@ -2249,7 +2249,7 @@ export interface components {
             /** Format: date */
             withdrawnOn?: string;
         };
-        /** @description POST /invoices/{id}/collection's body (invoices payments and reminders design D11): the hand-off to a collection agency, recorded after it was made outside Vantigo. handedOn is the day it was handed over — not after today (Oslo) and not before the invoice's issue date; agency the agency's name, 1-200 characters once trimmed; agencyReference its case number, at most 100; note at most 500 (absent is empty). acknowledgeNotDelivered confirms the hand-off of an invoice with no delivery on or before its due date, which is otherwise refused invoice_not_delivered (plan reading 10). */
+        /** @description POST /invoices/{id}/collection's body (invoices payments and reminders design D11): the hand-off to a collection agency, recorded after it was made outside Vantigo. handedOn is the day it was handed over — not after today in the business time zone and not before the invoice's issue date; agency the agency's name, 1-200 characters once trimmed; agencyReference its case number, at most 100; note at most 500 (absent is empty). acknowledgeNotDelivered confirms the hand-off of an invoice with no delivery on or before its due date, which is otherwise refused invoice_not_delivered (plan reading 10). */
         InvoicesHandoffRequest: {
             acknowledgeNotDelivered?: boolean;
             agency: string;
@@ -2258,7 +2258,7 @@ export interface components {
             handedOn: string;
             note?: string;
         };
-        /** @description POST /invoices/{id}/collection/withdraw's body (D11): withdrawnOn is the day the claim came back from the agency — not after today (Oslo) and not before the hand-off's handedOn; reason is why, 1-200 characters once trimmed. */
+        /** @description POST /invoices/{id}/collection/withdraw's body (D11): withdrawnOn is the day the claim came back from the agency — not after today in the business time zone and not before the hand-off's handedOn; reason is why, 1-200 characters once trimmed. */
         InvoicesHandoffWithdrawRequest: {
             reason: string;
             /** Format: date */
@@ -3220,7 +3220,7 @@ export interface components {
             seller?: components["schemas"]["InvoicesSeller"];
             sendDefaults?: components["schemas"]["InvoicesSendDefaults"];
             sources?: components["schemas"]["InvoicesSourcesBlock"];
-            /** @description The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise). */
+            /** @description The derived state, judged against today in the business time zone (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise). */
             state: string;
             /** @description draft or issued. */
             status: string;
@@ -3392,7 +3392,7 @@ export interface components {
         InvoicesPaymentRemovalRequest: {
             reason: string;
         };
-        /** @description POST /invoices/{id}/payments' body (D2). paidOn is the day the money arrived: on or after the invoice's issue date and not after today (Oslo). amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its open amount (409 payment_exceeds_open). reference (the bank's or the payer's) holds at most 100 characters and note at most 500, both trimmed; absent is empty. */
+        /** @description POST /invoices/{id}/payments' body (D2). paidOn is the day the money arrived: on or after the invoice's issue date and not after today in the business time zone. amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its open amount (409 payment_exceeds_open). reference (the bank's or the payer's) holds at most 100 characters and note at most 500, both trimmed; absent is empty. */
         InvoicesPaymentRequest: {
             /** Format: double */
             amount: number;
@@ -3432,7 +3432,7 @@ export interface components {
              */
             source: "manual" | "ocr" | "camt054";
         };
-        /** @description POST /invoices/{id}/charge-payments' body (D9), a payment's fields and rules (D2): paidOn on or after the invoice's issue date and not after today (Oslo); amount greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its charges outstanding (409 charge_payment_exceeds_outstanding); reference at most 100 characters and note at most 500, both trimmed; absent is empty. */
+        /** @description POST /invoices/{id}/charge-payments' body (D9), a payment's fields and rules (D2): paidOn on or after the invoice's issue date and not after today in the business time zone; amount greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its charges outstanding (409 charge_payment_exceeds_outstanding); reference at most 100 characters and note at most 500, both trimmed; absent is empty. */
         InvoicesChargePaymentRequest: {
             /** Format: double */
             amount: number;
@@ -3510,7 +3510,7 @@ export interface components {
             /** Format: uuid */
             removedByUserId?: string;
         };
-        /** @description POST /invoices/{id}/manual-deliveries' body (D8): kind handed_over or posted; deliveredOn on or after the invoice's issue date and not after today (Oslo); note at most 500 characters, trimmed, absent is empty. */
+        /** @description POST /invoices/{id}/manual-deliveries' body (D8): kind handed_over or posted; deliveredOn on or after the invoice's issue date and not after today in the business time zone; note at most 500 characters, trimmed, absent is empty. */
         InvoicesManualDeliveryRequest: {
             /** Format: date */
             deliveredOn: string;
@@ -3645,7 +3645,7 @@ export interface components {
             confirmNotCaptured: boolean;
             reason: string;
         };
-        /** @description What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read. */
+        /** @description What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read. */
         InvoicesSendDefaults: {
             preference?: string;
             recipient?: string;
@@ -3704,7 +3704,7 @@ export interface components {
             /** Format: double */
             total: number;
         };
-        /** @description POST /invoices/vipps-payments/reconciliations' body (D17): day is the Oslo day reconciled, before today; note, trimmed, at most 500 characters, absent is empty. */
+        /** @description POST /invoices/vipps-payments/reconciliations' body (D17): day is the business day reconciled, before today; note, trimmed, at most 500 characters, absent is empty. */
         InvoicesVippsDayReconciliationRequest: {
             /** Format: date */
             day: string;
@@ -3842,7 +3842,7 @@ export interface components {
             supplierInvoiceNumber?: string;
             warnings?: string[];
         };
-        /** @description One billing milestone ready to invoice (invoices work design D3): its name and description, the planned date, when it became ready (readyAt) and that day in Oslo (date, the work's date), and amount, its effective amount — a percent of the fixed price resolved by Projects. selectable and reason as on an hour. */
+        /** @description One billing milestone ready to invoice (invoices work design D3): its name and description, the planned date, when it became ready (readyAt) and that day in the business time zone (date, the work's date), and amount, its effective amount — a percent of the fixed price resolved by Projects. selectable and reason as on an hour. */
         InvoicesWorkMilestone: {
             /** Format: double */
             amount: number;
@@ -3931,7 +3931,7 @@ export interface components {
             data: components["schemas"]["InvoicesInvoiceListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
-        /** @description POST /invoices/{id}/issue's body (D6). issueDate is today (Oslo) when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document. */
+        /** @description POST /invoices/{id}/issue's body (D6). issueDate is today in the business time zone when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document. */
         InvoicesIssueRequest: {
             /** Format: date */
             issueDate?: string;
@@ -3949,7 +3949,7 @@ export interface components {
             /** Format: int32 */
             vatCodeId: number;
         };
-        /** @description POST /invoices/quick's body (invoices payments and reminders design D17): an invoice for customerId with one to ten lines, created and issued in one step. Every field is judged by a draft's rules (D4, D5). deliveryDate is today (Oslo) when omitted; an omitted paymentTermsDays is the billing profile's terms, else the settings' default, and an omitted yourReference the profile's buyer reference. note is at most 1000 characters, yourReference 100. payOnSite asks for a Vipps payment request on site after the issue, as POST /invoices/{id}/payment-requests makes it; it is answered paymentRequest, or paymentRequestError beside the issued invoice when the request could not be made. Only the request that issues the invoice makes one: a replay never does. */
+        /** @description POST /invoices/quick's body (invoices payments and reminders design D17): an invoice for customerId with one to ten lines, created and issued in one step. Every field is judged by a draft's rules (D4, D5). deliveryDate is today in the business time zone when omitted; an omitted paymentTermsDays is the billing profile's terms, else the settings' default, and an omitted yourReference the profile's buyer reference. note is at most 1000 characters, yourReference 100. payOnSite asks for a Vipps payment request on site after the issue, as POST /invoices/{id}/payment-requests makes it; it is answered paymentRequest, or paymentRequestError beside the issued invoice when the request could not be made. Only the request that issues the invoice makes one: a replay never does. */
         InvoicesQuickInvoiceRequest: {
             /** Format: int32 */
             customerId: number;
@@ -4060,7 +4060,7 @@ export interface components {
             vatTotal: number;
         };
         /**
-         * @description One thing the dashboard wants a human to look at (invoices payments and reminders design D12). The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing. Every caller holding invoices:access is answered `invoiceOverdue` and `invoiceRefundDue`; a caller also holding invoices:payments is answered the other four, and a caller without it the two, never a 403. One clock read: today is the Oslo day of the request.
+         * @description One thing the dashboard wants a human to look at (invoices payments and reminders design D12). The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing. Every caller holding invoices:access is answered `invoiceOverdue` and `invoiceRefundDue`; a caller also holding invoices:payments is answered the other four, and a caller without it the two, never a 403. One clock read: today is the business day of the request.
          *
          *     `invoiceOverdue`: the 20 most overdue issued invoices — overdue today, oldest due date first — each until it is paid or credited; id is 'invoiceOverdue/<invoiceId>', entityId the invoice id, title the buyer's name, occurredAt the day after its effective due date E (the due date moved off a weekend or a public holiday) at UTC midnight. An invoice due on a Saturday is not an item before the Tuesday after it.
          *
@@ -4098,7 +4098,7 @@ export interface components {
             /** @enum {string} */
             type: "invoiceOverdue" | "invoiceRefundDue" | "bankTransactionsOpen" | "reminderFailed" | "remindersHeld" | "reminderBatchUnposted" | "paymentCaptureFailed" | "paymentCaptureUnknown" | "paymentReservationStranded" | "vippsRefundSeen";
         };
-        /** @description The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK. */
+        /** @description The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's business day. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on a business day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK. */
         InvoicesStatsSummaryResponse: {
             /** Format: int32 */
             creditedCount: number;
@@ -6239,7 +6239,7 @@ export interface operations {
             query?: {
                 status?: string;
                 kind?: string;
-                /** @description One of open, partially_paid, overdue, paid or credited, judged against today in Oslo; only an issued invoice can match it. */
+                /** @description One of open, partially_paid, overdue, paid or credited, judged against today in the business time zone; only an issued invoice can match it. */
                 state?: string;
                 customerId?: number;
                 /** @description The documents whose work belongs to this project (invoices work design D9) — the derived project, so a document whose work spans two projects matches neither. */
@@ -8103,7 +8103,7 @@ export interface operations {
     getInvoicesVippsPayments: {
         parameters: {
             query: {
-                /** @description The Oslo day, YYYY-MM-DD. */
+                /** @description The business day, YYYY-MM-DD. */
                 date: string;
             };
             header?: never;
@@ -8153,7 +8153,7 @@ export interface operations {
     getInvoicesVippsPaymentsCsv: {
         parameters: {
             query: {
-                /** @description The Oslo day, YYYY-MM-DD. */
+                /** @description The business day, YYYY-MM-DD. */
                 date: string;
             };
             header?: never;
