@@ -287,3 +287,20 @@ func TestWorkers_HandTheWorkersTheCustomerDirectory(t *testing.T) {
 		t.Errorf("the workers saw Deps.Directory = %v, want the caller's, the owner being disabled", seen)
 	}
 }
+
+// Worker mode never composes, so Workers collects the calendar sources itself,
+// as Compose does: from the enabled modules only (calendar design D1).
+func TestWorkers_CollectCalendarSourcesFromEnabledModulesOnly(t *testing.T) {
+	alpha := &fakeCalendarSource{name: "alpha"}
+	var seen []contracts.CalendarSource
+	Workers(Deps{Config: &config.Config{Modules: []string{"alpha"}}},
+		Module{Name: "alpha", CalendarSource: func(Deps) contracts.CalendarSource { return alpha }, Workers: func(d Deps) []worker.Worker {
+			seen = d.CalendarSources
+			return nil
+		}},
+		Module{Name: "beta", CalendarSource: func(Deps) contracts.CalendarSource { return &fakeCalendarSource{name: "beta"} }},
+	)
+	if want := []contracts.CalendarSource{alpha}; !slices.Equal(seen, want) {
+		t.Errorf("alpha's workers saw Deps.CalendarSources = %v, want alpha's alone (beta is disabled)", seen)
+	}
+}

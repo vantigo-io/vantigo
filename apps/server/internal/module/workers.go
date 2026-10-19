@@ -13,8 +13,9 @@ import "github.com/vantigo-io/vantigo/server/internal/worker"
 // HTTP API, so cmd/vantigo calls Workers directly instead of reaching it
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
-// Deps.InvoicedWork, Deps.Directory, and Deps.Users and Deps.Accounts, which it
-// resolves from the enabled modules the way Compose does — the same base Deps Compose
+// Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts and
+// Deps.CalendarSources, which it resolves from the enabled modules the way
+// Compose does — the same base Deps Compose
 // resolves Directory from, before any Mount runs, with no per-module Doc or
 // Catalog — since a background worker is a data-layer concern (Pool, Config,
 // Clock, Mail, Secrets, ...), not a contract one.
@@ -50,6 +51,11 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
+	// The calendar sources, from the enabled modules only, as Compose
+	// collects them (calendar design D1): no worker reads them in phase 1, but
+	// a worker-mode Deps must not differ from a composed one in what it says
+	// the calendar may ask.
+	deps = withCalendarSources(deps, enabled)
 	var out []worker.Worker
 	for _, mod := range enabled {
 		if mod.Workers == nil {

@@ -614,7 +614,7 @@ func TestCompose_MergesEveryRealContract(t *testing.T) {
 
 	// Every business module contract here must actually mount, so all of
 	// them are enabled; identity mounts regardless.
-	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff"}}}, mods...)
+	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "calendar"}}}, mods...)
 	if err != nil {
 		t.Fatalf("Compose: %v", err)
 	}
@@ -2131,4 +2131,86 @@ func TestCompose_DisabledAccountsProvider_LeavesNil(t *testing.T) {
 	if got.Accounts != nil {
 		t.Errorf("Deps.Accounts = %v, want nil: beta (the provider) is disabled", got.Accounts)
 	}
+}
+
+// fakeCalendarSource is a contracts.CalendarSource that answers nothing:
+// these tests only need distinct values to collect and assert on, and what
+// Deps carried when each was built.
+type fakeCalendarSource struct {
+	name     string
+	calendar contracts.BusinessCalendar // whatever Deps carried when it was built
+}
+
+func (f *fakeCalendarSource) CalendarKinds() []contracts.CalendarKind {
+	return []contracts.CalendarKind{{Key: f.name + ".thing", Module: f.name}}
+}
+
+func (*fakeCalendarSource) CalendarItems(context.Context, contracts.CalendarQuery) ([]contracts.CalendarItem, error) {
+	return nil, nil
+}
+
+// Calendar sources are the fourth many-provider slot (calendar design D1) and
+// the first collected from the enabled modules only: an enabled module's
+// source reaches every Mount, a disabled one's does not, the order is the
+// modules' own, a nil source is dropped, and a preset list is kept ahead of
+// them without being written through.
+func TestCompose_CollectsCalendarSourcesFromEnabledModulesOnly(t *testing.T) {
+	alpha := &fakeCalendarSource{name: "alpha"}
+	gamma := &fakeCalendarSource{name: "gamma"}
+	disabled := &fakeCalendarSource{name: "beta"}
+	preset := &fakeCalendarSource{name: "preset"}
+	presetList := []contracts.CalendarSource{preset}
+	var got Deps
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha", "gamma", "delta"}}, CalendarSources: presetList},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract, "gamma": gammaContract, "delta": deltaContract}),
+		Module{Name: "alpha", CalendarSource: func(Deps) contracts.CalendarSource { return alpha }, Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", CalendarSource: func(Deps) contracts.CalendarSource { return disabled }, Mount: staticHandler("beta")},
+		Module{Name: "gamma", CalendarSource: func(Deps) contracts.CalendarSource { return gamma }, Mount: staticHandler("gamma")},
+		Module{Name: "delta", CalendarSource: func(Deps) contracts.CalendarSource { return nil }, Mount: staticHandler("delta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if want := []contracts.CalendarSource{preset, alpha, gamma}; !slices.Equal(got.CalendarSources, want) {
+		t.Errorf("Deps.CalendarSources = %v, want the preset, then alpha and gamma (beta is disabled, delta's is nil)", got.CalendarSources)
+	}
+	if len(presetList) != 1 || cap(presetList) != 1 {
+		t.Errorf("the preset list was written through: %v", presetList)
+	}
+}
+
+// A calendar source is built after every single-provider slot is resolved,
+// so a provider may read the business calendar while it is built.
+func TestCompose_CalendarSourceSeesTheBusinessCalendar(t *testing.T) {
+	var built *fakeCalendarSource
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Calendar: func(Deps) contracts.BusinessCalendar { return fakeBusinessCalendar{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", CalendarSource: func(d Deps) contracts.CalendarSource {
+			built = &fakeCalendarSource{name: "beta", calendar: d.Calendar}
+			return built
+		}, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if built == nil || built.calendar == nil {
+		t.Errorf("the calendar source was built without Deps.Calendar; want the business calendar resolved before it")
+	}
+}
+
+// fakeBusinessCalendar is a contracts.BusinessCalendar on UTC.
+type fakeBusinessCalendar struct{}
+
+func (fakeBusinessCalendar) Zone(context.Context) (*time.Location, error) { return time.UTC, nil }
+
+func (fakeBusinessCalendar) Today(_ context.Context, now time.Time) (time.Time, error) {
+	return now.UTC().Truncate(24 * time.Hour), nil
+}
+
+func (fakeBusinessCalendar) Day(_ context.Context, t time.Time) (time.Time, error) {
+	return t.UTC().Truncate(24 * time.Hour), nil
 }

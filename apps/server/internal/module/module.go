@@ -147,6 +147,18 @@ type Deps struct {
 	// two modules claim. Only the invoices issue calls them, inside its
 	// transaction. nil when no module given provides invoiced work.
 	InvoicedWork []contracts.InvoicedWorkHolder
+	// CalendarSources are every enabled module's contracts.CalendarSource
+	// (calendar design D1), in the order the modules were given — the fourth
+	// many-provider slot, and the first collected from enabled modules only,
+	// the way Workers is: a disabled module's permissions are not in the
+	// catalog, so its gate could only fail closed. Compose collects them
+	// before any Mount runs, after every single-provider slot, so a provider
+	// may read deps.Calendar while it is built; Workers collects them too.
+	// Both append to whatever the caller preset here. Only the calendar module
+	// calls them, never inside a transaction. nil when no enabled module
+	// projects anything onto the calendar. Not to be confused with Calendar,
+	// the business calendar.
+	CalendarSources []contracts.CalendarSource
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -317,4 +329,12 @@ type Module struct {
 	// that declares it has its CustomerReferences and CustomerPersonalData
 	// placed after every other module's (see invoicedWorkLast in compose.go).
 	InvoicedWork func(Deps) contracts.InvoicedWorkHolder
+	// CalendarSource builds this module's contracts.CalendarSource, if it has
+	// time-bound rows about a person to project onto the calendar (calendar
+	// design D1). Like Workers, any number of enabled modules may set it, and
+	// a module MODULES leaves out contributes nothing: Compose and Workers
+	// call it for the enabled modules only, in mods order, after every
+	// single-provider slot is resolved, and put the list on Deps as
+	// CalendarSources. A nil result contributes nothing.
+	CalendarSource func(Deps) contracts.CalendarSource
 }
