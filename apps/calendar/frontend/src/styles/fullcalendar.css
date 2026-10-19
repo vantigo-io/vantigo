@@ -74,6 +74,14 @@
   --vantigo-calendar-grape: var(--mantine-color-grape-6);
   --vantigo-calendar-red: var(--mantine-color-red-6);
   --vantigo-calendar-gray: var(--mantine-color-gray-6);
+  /* the rest of the subscriptions' palette (feed design D9): with the module
+     colours above, the twelve hues a subscription may be drawn in */
+  --vantigo-calendar-cyan: var(--mantine-color-cyan-6);
+  --vantigo-calendar-lime: var(--mantine-color-lime-6);
+  --vantigo-calendar-yellow: var(--mantine-color-yellow-6);
+  --vantigo-calendar-pink: var(--mantine-color-pink-6);
+  --vantigo-calendar-violet: var(--mantine-color-violet-6);
+  --vantigo-calendar-indigo: var(--mantine-color-indigo-6);
 
   /* neutral borders: the same greys Mantine's Table draws its rules in */
   --fc-breezy-border: var(--mantine-color-gray-3);
@@ -90,6 +98,12 @@
   --vantigo-calendar-grape: var(--mantine-color-grape-4);
   --vantigo-calendar-red: var(--mantine-color-red-4);
   --vantigo-calendar-gray: var(--mantine-color-gray-4);
+  --vantigo-calendar-cyan: var(--mantine-color-cyan-4);
+  --vantigo-calendar-lime: var(--mantine-color-lime-4);
+  --vantigo-calendar-yellow: var(--mantine-color-yellow-4);
+  --vantigo-calendar-pink: var(--mantine-color-pink-4);
+  --vantigo-calendar-violet: var(--mantine-color-violet-4);
+  --vantigo-calendar-indigo: var(--mantine-color-indigo-4);
 
   --fc-breezy-faint: rgba(255, 255, 255, 0.03);
   --fc-breezy-muted: rgba(255, 255, 255, 0.07);

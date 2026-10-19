@@ -63,6 +63,7 @@ describe("the app registry", () => {
     for (const path of paths) expect(path).toMatch(/^\/[a-z-]+(\/[a-z-]+)*$/);
     expect(paths).toEqual([
       "/calendar",
+      "/calendar/settings",
       "/customers",
       "/customers/contacts",
       "/customers/follow-ups",
@@ -95,6 +96,20 @@ describe("the app registry", () => {
       "/products/tax-categories",
       "/energy/metering-points",
     ]);
+  });
+
+  // The calendar and My calendar (calendar feed design D9): the person's own
+  // addresses and subscriptions, behind the one permission the app has.
+  it("gives Calendar the calendar and My calendar, both behind calendar:access", () => {
+    const calendar = appForKey("calendar");
+    expect(calendar.requiredPermissions).toEqual(["calendar:access"]);
+    const items = calendar.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
+      ["navigation.calendar", "/calendar", ["calendar:access"]],
+      ["navigation.myCalendar", "/calendar/settings", ["calendar:access"]],
+    ]);
+    expect(navigationCatalog.en["navigation.myCalendar"]).toBe("My calendar");
+    expect(navigationCatalog.nb["navigation.myCalendar"]).toBe("Min kalender");
   });
 
   it("requires, for a tile, any permission that unlocks one of its sidebar entries", () => {

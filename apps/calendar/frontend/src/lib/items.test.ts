@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CalendarItem } from "../api/items";
+import { colourForName, SUBSCRIPTION_COLOURS } from "./colours";
 import { holidayEventInput, toEventInput } from "./items";
 
 const options = { busyLabel: "Busy" };
@@ -91,6 +92,36 @@ describe("toEventInput", () => {
     expect(event.className).toContain("vantigo-calendar-busy");
   });
 
+  it("draws a subscription's item in its colour, never movable, a busy-only one named Busy", () => {
+    const subscription = { id: 1001, name: "Football club", colour: "lime", busyOnly: false } as const;
+    const item: CalendarItem = {
+      kind: "calendar.subscription",
+      id: "1001:abc@club.example",
+      title: "Training",
+      subtitle: "Football club",
+      allDay: false,
+      startsAt: "2026-10-20T16:00:00Z",
+      endsAt: "2026-10-20T17:30:00Z",
+      done: false,
+      subscription,
+    };
+    expect(toEventInput(item, options)).toMatchObject({
+      id: "calendar.subscription:1001:abc@club.example",
+      title: "Training",
+      color: "var(--vantigo-calendar-lime)",
+      editable: false,
+    });
+    const busy = toEventInput(
+      { ...item, title: "", subscription: { id: 1002, name: "Partner", colour: "indigo", busyOnly: true } },
+      options,
+    );
+    expect(busy).toMatchObject({ title: "Busy", color: "var(--vantigo-calendar-indigo)", editable: false });
+    // Busy only blanks the title; a title that is there is still drawn.
+    expect(toEventInput({ ...item, subscription: { ...subscription, busyOnly: true } }, options).title).toBe(
+      "Training",
+    );
+  });
+
   it("draws a public holiday behind the day in grey", () => {
     expect(holidayEventInput({ date: "2026-12-25", name: "Første juledag" })).toMatchObject({
       start: "2026-12-25",
@@ -98,5 +129,26 @@ describe("toEventInput", () => {
       display: "background",
       color: "var(--vantigo-calendar-gray)",
     });
+  });
+});
+
+describe("the subscriptions' palette", () => {
+  it("is the twelve Mantine hues in the picker's order, each a calendar variable", () => {
+    expect(SUBSCRIPTION_COLOURS).toEqual([
+      "blue",
+      "cyan",
+      "teal",
+      "green",
+      "lime",
+      "yellow",
+      "orange",
+      "red",
+      "pink",
+      "grape",
+      "violet",
+      "indigo",
+    ]);
+    expect(colourForName("violet")).toBe("var(--vantigo-calendar-violet)");
+    expect(colourForName("magenta")).toBe("var(--vantigo-calendar-gray)");
   });
 });
