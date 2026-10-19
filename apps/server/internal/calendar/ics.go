@@ -17,7 +17,9 @@ import (
 // REQUEST or CANCEL, the appointment as a VEVENT and, for a series, one more
 // VEVENT per moved occurrence. Nothing in it is read from another module: the
 // caller resolves the organiser's name, the attendees' addresses and the
-// link first.
+// link first. Its writers — writeAppointment, setWhen, describeAppointment,
+// icsRule, originalStart, zoneSpan, vtimezone — are the feed's too
+// (feed_ics.go, calendar feed design D4).
 //
 // A single timed appointment's instants are written in UTC, which is exact. A
 // timed series is not: with an RRULE, a UTC DTSTART repeats at a fixed UTC
@@ -97,42 +99,53 @@ func buildICS(in icsInput) (string, error) {
 		cal.AddVTimezone(vtimezone(loc, from, to))
 	}
 
-	master := cal.AddEvent(in.appt.IcalUid)
-	stamp(master, in)
-	setWhen(master, spanOf(in.appt), loc)
-	describe(master, in)
-	if in.appt.Rrule != nil {
-		master.AddRrule(icsRule(*in.appt.Rrule, in.appt.AllDay, loc))
+	writeAppointment(cal, in.appt, in.excs, sr, loc, in.now, func(ev *ics.VEvent) { describe(ev, in) })
+	return cal.Serialize(ics.WithNewLineWindows), nil
+}
+
+// writeAppointment adds a's VEVENTs to cal — the invitation's and the
+// feed's alike (calendar feed design D4): the master with its UID, DTSTAMP,
+// SEQUENCE and time, then body, then for a series its RRULE and one EXDATE per
+// cancelled occurrence; and one VEVENT per moved occurrence with the same UID,
+// its RECURRENCE-ID, its new time and body. sr is a's series (nil when single)
+// and loc its zone when the series is timed, nil otherwise. The caller has
+// added the VTIMEZONE loc needs.
+func writeAppointment(cal *ics.Calendar, a store.CalendarAppointment, excs []store.CalendarAppointmentException, sr *series, loc *time.Location, now time.Time, body func(*ics.VEvent)) {
+	master := cal.AddEvent(a.IcalUid)
+	stamp(master, now, a.Sequence)
+	setWhen(master, spanOf(a), loc)
+	body(master)
+	if a.Rrule != nil {
+		master.AddRrule(icsRule(*a.Rrule, a.AllDay, loc))
 	}
-	excs := slices.Clone(in.excs)
-	slices.SortFunc(excs, func(a, b store.CalendarAppointmentException) int {
-		return a.OccurrenceDate.Time.Compare(b.OccurrenceDate.Time)
+	excs = slices.Clone(excs)
+	slices.SortFunc(excs, func(x, y store.CalendarAppointmentException) int {
+		return x.OccurrenceDate.Time.Compare(y.OccurrenceDate.Time)
 	})
 	for _, e := range excs {
 		if !e.Cancelled {
 			continue
 		}
-		value, params := originalStart(e, sr, in.appt.AllDay)
+		value, params := originalStart(e, sr, a.AllDay)
 		master.AddExdate(value, params...)
 	}
 	for _, e := range excs {
 		if e.Cancelled {
 			continue
 		}
-		ev := cal.AddEvent(in.appt.IcalUid)
-		stamp(ev, in)
-		value, params := originalStart(e, sr, in.appt.AllDay)
+		ev := cal.AddEvent(a.IcalUid)
+		stamp(ev, now, a.Sequence)
+		value, params := originalStart(e, sr, a.AllDay)
 		ev.AddProperty(ics.ComponentPropertyRecurrenceId, value, params...)
-		setWhen(ev, exceptionSpan(e, in.appt.AllDay), loc)
-		describe(ev, in)
+		setWhen(ev, exceptionSpan(e, a.AllDay), loc)
+		body(ev)
 	}
-	return cal.Serialize(ics.WithNewLineWindows), nil
 }
 
 // stamp writes DTSTAMP and SEQUENCE, after the UID AddEvent wrote.
-func stamp(ev *ics.VEvent, in icsInput) {
-	ev.SetDtStampTime(in.now)
-	ev.SetSequence(int(in.appt.Sequence))
+func stamp(ev *ics.VEvent, now time.Time, sequence int32) {
+	ev.SetDtStampTime(now)
+	ev.SetSequence(int(sequence))
 }
 
 // setWhen writes DTSTART and DTEND for s: dates with the exclusive end for an
@@ -152,12 +165,25 @@ func setWhen(ev *ics.VEvent, s span, loc *time.Location) {
 	}
 }
 
-// describe writes everything of a VEVENT but its time: SUMMARY, LOCATION,
-// DESCRIPTION (the description, a blank line, then on a REQUEST the RSVP
-// sentence and the link), URL, STATUS, CLASS, TRANSP, ORGANIZER and one
-// ATTENDEE per outside attendee.
+// describe writes everything of an invitation's VEVENT but its time: the
+// appointment's own body (describeAppointment) — its DESCRIPTION followed, on
+// a REQUEST, by the RSVP sentence and the link, its URL the link, its STATUS
+// CANCELLED on a CANCEL — and then its participants.
 func describe(ev *ics.VEvent, in icsInput) {
-	a := in.appt
+	var more []string
+	if in.method == methodRequest && in.link != "" {
+		more = append(more, in.rsvpSentence+"\n"+in.link)
+	}
+	describeAppointment(ev, in.appt, in.link, in.method == methodCancel, more...)
+	describeParticipants(ev, in)
+}
+
+// describeAppointment writes an appointment's VEVENT body but its time and
+// its participants: SUMMARY, LOCATION, DESCRIPTION (the description, then
+// each of more after a blank line), URL when link is set, STATUS (CANCELLED
+// when cancelled, CONFIRMED otherwise), CLASS and TRANSP. a's text is the
+// caller's to have cleaned (cleanText).
+func describeAppointment(ev *ics.VEvent, a store.CalendarAppointment, link string, cancelled bool, more ...string) {
 	ev.SetSummary(a.Title)
 	if a.Location != nil {
 		ev.SetLocation(*a.Location)
@@ -166,16 +192,14 @@ func describe(ev *ics.VEvent, in icsInput) {
 	if a.Description != nil && strings.TrimSpace(*a.Description) != "" {
 		parts = append(parts, *a.Description)
 	}
-	if in.method == methodRequest && in.link != "" {
-		parts = append(parts, in.rsvpSentence+"\n"+in.link)
-	}
+	parts = append(parts, more...)
 	if len(parts) > 0 {
 		ev.SetDescription(strings.Join(parts, "\n\n"))
 	}
-	if in.link != "" {
-		ev.SetURL(in.link)
+	if link != "" {
+		ev.SetURL(link)
 	}
-	if in.method == methodCancel {
+	if cancelled {
 		ev.SetStatus(ics.ObjectStatusCancelled)
 	} else {
 		ev.SetStatus(ics.ObjectStatusConfirmed)
@@ -185,11 +209,22 @@ func describe(ev *ics.VEvent, in icsInput) {
 	} else {
 		ev.SetClass(ics.ClassificationPublic)
 	}
-	if a.Transparency == transparencyFree {
-		ev.SetProperty(ics.ComponentPropertyTransp, "TRANSPARENT")
-	} else {
+	setTransp(ev, a.Transparency != transparencyFree)
+}
+
+// setTransp writes TRANSP: OPAQUE for a span that blocks the time,
+// TRANSPARENT for one that does not.
+func setTransp(ev *ics.VEvent, opaque bool) {
+	if opaque {
 		ev.SetProperty(ics.ComponentPropertyTransp, "OPAQUE")
+	} else {
+		ev.SetProperty(ics.ComponentPropertyTransp, "TRANSPARENT")
 	}
+}
+
+// describeParticipants writes an invitation's ORGANIZER and one ATTENDEE per
+// outside attendee. The feed writes neither (calendar feed design D3).
+func describeParticipants(ev *ics.VEvent, in icsInput) {
 	var organiser []ics.PropertyParameter
 	if cn := safeCN(in.organiser); cn != "" {
 		organiser = append(organiser, ics.WithCN(cn))

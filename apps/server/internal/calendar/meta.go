@@ -14,7 +14,8 @@ import (
 // business zone and today in it, whether the caller may open a colleague's
 // calendar, whether invitations are mailed (calendar invitations design D3:
 // the mail driver is smtp), and every kind the enabled modules' sources declare — for the
-// filter, the legend and the colours — which costs no provider a query.
+// filter, the legend and the colours — which costs no provider a query, with
+// calendar.subscription after them when the caller subscribes to a calendar.
 func (s *server) GetCalendarMeta(ctx context.Context, _ gen.GetCalendarMetaRequestObject) (gen.GetCalendarMetaResponseObject, error) {
 	c, err := s.callerFor(ctx)
 	if err != nil {
@@ -27,6 +28,15 @@ func (s *server) GetCalendarMeta(ctx context.Context, _ gen.GetCalendarMetaReque
 	kinds, err := s.sourceKinds(ctx)
 	if err != nil {
 		return nil, err
+	}
+	// The subscriptions' chip (calendar feed design D8), after the
+	// providers', when the caller has a subscription to show.
+	n, err := s.queries().CountSubscriptions(ctx, c.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("calendar: count the subscriptions: %w", err)
+	}
+	if n > 0 {
+		kinds = append(kinds, gen.CalendarSourceKind{Kind: subscriptionKind, Module: "calendar"})
 	}
 	return gen.GetCalendarMeta200JSONResponse{
 		TimeZone:             c.zone().String(),

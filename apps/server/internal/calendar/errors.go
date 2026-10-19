@@ -20,7 +20,7 @@ import (
 // The uniform 403 is the access layer's own. A client keys off the status
 // and the code, never the words.
 
-// The refusal codes: three 409s and a 503.
+// The refusal codes: four 409s and a 503.
 const (
 	// codeRevisionMismatch is a PUT whose If-Match revision has moved on.
 	codeRevisionMismatch = "revision_mismatch"
@@ -33,17 +33,21 @@ const (
 	// codeInvitationsUnavailable is a resend when the mail driver is not
 	// smtp (calendar invitations design D3), a 503.
 	codeInvitationsUnavailable = "invitations_unavailable"
+	// codeSubscriptionLimit is an eleventh subscription (calendar feed
+	// design D6).
+	codeSubscriptionLimit = "subscription_limit"
 )
 
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refused occurrence from a refused
 // appointment without reading the field errors.
 const (
-	invalidAppointmentTitle = "Invalid appointment"
-	invalidOccurrenceTitle  = "Invalid occurrence"
-	invalidResponseTitle    = "Invalid response"
-	invalidWindowTitle      = "Invalid window"
-	invalidQueryTitle       = "Invalid query parameters"
+	invalidAppointmentTitle  = "Invalid appointment"
+	invalidOccurrenceTitle   = "Invalid occurrence"
+	invalidResponseTitle     = "Invalid response"
+	invalidWindowTitle       = "Invalid window"
+	invalidQueryTitle        = "Invalid query parameters"
+	invalidSubscriptionTitle = "Invalid subscription"
 )
 
 // fieldErrors is a validation pass's outcome: every failure, by field.
@@ -110,6 +114,12 @@ func appointmentCancelled(at time.Time) gen.CalendarProblem {
 // errCancelled is the refusal of a write to the cancelled appointment a.
 func errCancelled(a store.CalendarAppointment) error {
 	return refuse(http.StatusConflict, appointmentCancelled(*a.CancelledAt))
+}
+
+// subscriptionLimit is the 409 an eleventh subscription answers.
+func subscriptionLimit(limit int) gen.CalendarProblem {
+	return conflict(codeSubscriptionLimit, "Too many subscriptions",
+		fmt.Sprintf("You subscribe to %d calendars already, which is as many as one person may.", limit))
 }
 
 // invitationsUnavailable is the 503 a resend answers when the mail driver is

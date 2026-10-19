@@ -19,7 +19,9 @@
 // iCalendar object), invitations.go (the mail and the resend), notices.go
 // (the colleagues' notices), words.go (both languages), contacts.go (the
 // picker), rsvp.go (the answer by link), cancellation.go (a delete that
-// becomes a cancellation) and cancellations_worker.go (its sweeper).
+// becomes a cancellation) and cancellations_worker.go (its sweeper). The
+// feed (calendar feed design) is feed_tokens.go (the addresses), feed.go
+// (the anonymous GET) and feed_ics.go (its iCalendar object).
 package calendar
 
 import (
@@ -52,12 +54,15 @@ var permissions = []contracts.Permission{
 }
 
 // limits maps each rate-limited operationId to its policy; the router hits
-// it per client address before access is checked. The RSVP page's two
-// anonymous operations (calendar invitations design D5), each a bucket of its
-// own: the read 60 and the answer 30 per client per 10 minutes.
+// it per client address before access is checked. The module's three
+// anonymous operations, each a bucket of its own: the RSVP page's read 60 and
+// answer 30 per client per 10 minutes (calendar invitations design D5), and
+// the feed 120 (calendar feed design D2) — a phone asks hourly, and an office
+// of phones behind one NAT is dozens of requests an hour.
 var limits = map[string]ratelimit.Policy{
-	"postCalendarRsvpRead": {Name: "calendar-rsvp-read", Limit: 60, Window: 10 * time.Minute},
-	"postCalendarRsvp":     {Name: "calendar-rsvp", Limit: 30, Window: 10 * time.Minute},
+	"postCalendarRsvpRead":  {Name: "calendar-rsvp-read", Limit: 60, Window: 10 * time.Minute},
+	"postCalendarRsvp":      {Name: "calendar-rsvp", Limit: 30, Window: 10 * time.Minute},
+	"getCalendarFeedByFile": {Name: "calendar-feed", Limit: 120, Window: 10 * time.Minute},
 }
 
 // Module is calendar as a platform module: its contract mounted under

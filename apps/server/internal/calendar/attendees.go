@@ -386,10 +386,11 @@ func tokenSHA256(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// rsvpBase is where the RSVP page is: the public host when PUBLIC_BASE_URL is
-// set, reachable by anyone, else APP_URL with the base path — sessionless
-// all the same (D3).
-func (s *server) rsvpBase() string {
+// publicBase is where a sessionless link of this module points — the RSVP
+// page (invitations design D3) and a calendar address (calendar feed design
+// D1): the public host when PUBLIC_BASE_URL is set, reachable by anyone, else
+// APP_URL with the base path, which may answer on the company's network only.
+func (s *server) publicBase() string {
 	cfg := s.deps.Config
 	if cfg == nil {
 		return ""
@@ -408,7 +409,7 @@ func (s *server) newRSVPLink() (hash, sealed string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	sealed, err = s.deps.Secrets.SealString(rsvpLinkPurpose, s.rsvpBase()+"/rsvp?token="+token)
+	sealed, err = s.deps.Secrets.SealString(rsvpLinkPurpose, s.publicBase()+"/rsvp?token="+token)
 	if err != nil {
 		return "", "", fmt.Errorf("calendar: seal an RSVP link: %w", err)
 	}
