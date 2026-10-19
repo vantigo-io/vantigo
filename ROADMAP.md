@@ -1261,8 +1261,8 @@ and `✓ ` for a done one, an hour's `REFRESH-INTERVAL`, an `ETag` and 304, and 
 bound that drops the farthest projected items first; the providers read for a person
 with no session behind the request through `contracts.AsUser` and a new
 `Access.UserHolds`, each under its own gate; calendars from elsewhere subscribed to — at
-most ten, `webcal` taken as `https` — fetched once on save and by the
-`calendar-subscriptions` worker (`CALENDAR_SUBSCRIPTIONS_ENABLED`,
+most ten, `webcal` taken as `https` — fetched once when added or when its address
+changes, on **Refresh now**, and by the `calendar-subscriptions` worker (`CALENDAR_SUBSCRIPTIONS_ENABLED`,
 `CALENDAR_SUBSCRIPTIONS_POLL`) through `netguard`, with no redirect, no proxy and at
 most 1 MiB, the last good copy kept through a failure and the reason shown on the row;
 parsed on read into the kind `calendar.subscription`, drawn in the colour the person
@@ -1301,9 +1301,10 @@ Decisions taken while building it:
   cannot copy each other back and forth, and a subscription's body never leaves the
   installation.
 - **The worker wakes every five minutes, and each subscription is due a poll plus
-  jitter**: `next_fetch_at` is the poll or the feed's own `REFRESH-INTERVAL` (capped at a
-  day), whichever is longer, plus up to a tenth of the poll, so installations drift
-  apart; no backoff, since a feed down for an hour costs two requests.
+  jitter**: `next_fetch_at` is the poll or, after a fetch that answered the calendar, the
+  feed's own `REFRESH-INTERVAL` or `X-PUBLISHED-TTL` (capped at a day), whichever is
+  longer, plus up to a tenth of the poll, so installations drift apart; a 304 or a
+  failure waits the poll alone; no backoff, since a feed down for an hour costs two requests.
 - **`TZID` is resolved in a chain**: Go's tzdata, the `VTIMEZONE`'s `X-LIC-LOCATION`, the
   CLDR table of Windows names Outlook writes, the `STANDARD` offset, and UTC last.
 

@@ -384,7 +384,8 @@ colour you choose, and to nobody else.
 3. Pick a **Colour**, and tick **Show as busy only** if you want to see when, not what.
 4. Save. Vantigo fetches the calendar at once, and its events are on your calendar page
    the next time it loads. An address Vantigo cannot use is refused on the field, with
-   the reason.
+   the reason. One that is saved but cannot be fetched is kept: the screen says **Saved,
+   but the calendar could not be fetched**, with the reason, which stays on its row.
 
 An event from a calendar you subscribe to is drawn in its colour, with the calendar's
 name under its title, and labelled **Busy** when you chose busy only. The legend gains a

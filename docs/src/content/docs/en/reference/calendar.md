@@ -1098,11 +1098,16 @@ rows alone:
   FeedAddress   { variant, address, webcalAddress, createdAt, lastUsedAt? }
   ```
 
-  `public` says whether the base is `PUBLIC_BASE_URL`, reachable from the internet, or
-  `APP_URL`, which may answer on the company's network only; `webcalAddress` is the same
-  address with `webcal://` in place of `https://`, which Apple's and Outlook's programs
-  subscribe to in one click — the server serves `https` alone; `createdAt` is the create
-  or the last reset, and `lastUsedAt` the last request that answered 200 or 304.
+  `public` says whether `PUBLIC_BASE_URL` is set now, so the base is reachable from the
+  internet, or not, so it is `APP_URL`, which may answer on the company's network only —
+  it is read from the configuration on each request, not from the address, so an address
+  created on `APP_URL` before `PUBLIC_BASE_URL` was set still points there while `public`
+  is `true`; `webcalAddress` is the same address with `webcal://` in place of `https://`
+  (or `http://`), which Apple's and Outlook's programs subscribe to in one click — the
+  server serves `https` alone; `createdAt` is the create or the last reset, and
+  `lastUsedAt` the last request that answered 200 or 304, cleared by a reset. An address
+  whose sealed copy cannot be opened — `APP_SECRET` rotated under it — is logged at
+  warning and left out, as if the variant had none.
 - `POST /feed/{file}` (`postCalendarFeedByVariant`), `file` the variant, **creates** the
   address, or **resets** the one that exists: a new token, its hash written over the old
   one — so the old address answers 404 from that moment — and the new address sealed. It
@@ -1119,9 +1124,9 @@ refuses two paths that differ only in a parameter's name. A `file` that is neith
 ### The one anonymous GET
 
 `GET /feed/{file}` (`getCalendarFeedByFile`), `file` the token with the `.ics` suffix, is
-the feed itself, and the module's one anonymous `GET`. Every other anonymous operation in
-Vantigo is a `POST` with its token in the body, so the token never sits in an API address
-or a proxy log; a calendar program allows nothing else — Google, Apple, Outlook and
+the feed itself, and the module's one anonymous `GET`. The pay page's and the answer
+page's anonymous operations take their token in a `POST` body, so the token never sits in
+an API address or a proxy log; a calendar program allows nothing else — Google, Apple, Outlook and
 Thunderbird take one URL and `GET` it, with no header and no body of ours. It is held to
 these mitigations:
 
@@ -1172,7 +1177,8 @@ public holiday: every phone has a holiday calendar, and a second copy is noise.
 | A [subscription's](#subscriptions) event | never | never |
 | A public holiday | never | never |
 
-The busy variant's `VEVENT` is `UID`, `DTSTAMP`, `DTSTART`, `DTEND`, a `SUMMARY` of the one
+The busy variant's `VEVENT` is `UID`, `DTSTAMP`, `SEQUENCE`, `DTSTART`, `DTEND` (none for a
+projected item that is a point in time), a `SUMMARY` of the one
 word *Busy* — *Opptatt* when the person's preferred language, read through the user
 directory, is `nb` — and `TRANSP:OPAQUE`; for a series, its `RRULE`, its `EXDATE`s and its
 overriding `VEVENT`s with the same `UID`, since a moved occurrence's time is a span too.
@@ -1206,7 +1212,7 @@ them and never copied:
 | `NAME`, `X-WR-CALNAME` | *Vantigo*; for the busy variant *Vantigo (busy)*, or *Vantigo (opptatt)* in `nb` |
 | `REFRESH-INTERVAL;VALUE=DURATION`, `X-PUBLISHED-TTL` | `PT1H`: the two spellings of an hour's refresh that the clients honouring one read, Apple's the second |
 | `VTIMEZONE` | one per `TZID` used, each over the span of the series written in it ([a series](#a-series)), before the first `VEVENT` |
-| `DTSTART`, `DTEND` | a single timed appointment: UTC instants; a timed series: wall-clock with its zone's `TZID`; a timed projected item: UTC instants; an all-day item: dates, the end exclusive |
+| `DTSTART`, `DTEND` | a single timed appointment: UTC instants; a timed series: wall-clock with its zone's `TZID`; a timed projected item: UTC instants, and no `DTEND` for a point in time (its end its start); an all-day item: dates, the end exclusive |
 | `DTSTAMP` | the request's time, on every `VEVENT` |
 | `UID`, `SEQUENCE` | an appointment's `ical_uid` and `sequence`; a projected item's `<kind>:<id>@vantigo` and `0` — stable across requests, so a client updates rather than duplicates |
 
@@ -1311,8 +1317,8 @@ budget of twenty seconds and through [the same fetch](#the-fetch) as the worker,
 wrong address is seen at once and a right one shows its events at the next load rather
 than after the worker's next cycle. The row is created whatever the fetch answers, with
 `error` set when it failed: a failed fetch is not an error of the request. A `PUT` that
-changes `url` forgets every fetch of the old one — `etag`, `last_modified`, `body` and the
-timestamps — and fetches inline too; one that changes only the rest fetches nothing.
+changes `url` forgets every fetch of the old one — `etag`, `last_modified`, `body`,
+`error` and the timestamps — and fetches inline too; one that changes only the rest fetches nothing.
 `POST /refresh` fetches under the same budget, and so does a save, whether or not the
 worker is on.
 
@@ -1324,16 +1330,20 @@ through `Workers` behind `CALENDAR_SUBSCRIPTIONS_ENABLED` (default on), and
 subscription is fetched. It **wakes every five minutes** — a constant, not a setting —
 takes its advisory lease, `0x43414C5355425331` ("CALSUBS1"), on one pooled connection as
 [the cancellations worker](#the-cancellations-worker) does, so several replicas take
-turns, and fetches every subscription whose `next_fetch_at` is null or past, the longest
-due first, at most **200** a cycle, one at a time. After each attempt it sets
+turns, and fetches every subscription whose `next_fetch_at` is null or past, the never-fetched
+first and then the longest due, at most **200** a cycle, one at a time. After each attempt
+— the worker's, a save's or **Refresh now**'s — it sets
 
 ```
-next_fetch_at = now + max(poll, the feed's REFRESH-INTERVAL, capped at 24 hours) + jitter
+next_fetch_at = now + max(poll, min(the calendar's interval, 24 hours)) + jitter
 ```
 
-the jitter uniform over `[0, poll/10)`, so two installations subscribed to the same
-calendar drift apart, and a feed that asks to be read daily is read daily; the
-five-minute tick is the most a subscription is late. An attempt that fails sets `error`
+the calendar's interval being its `REFRESH-INTERVAL` or Apple's `X-PUBLISHED-TTL`, the
+longer when it has both, read from a fetch that answered the calendar; a 304 or a failure
+has none and waits the poll alone. The jitter is uniform over `[0, poll/10)`, so two
+installations subscribed to the same calendar drift apart, and a feed that asks to be read
+daily and answers a calendar is read daily; the five-minute tick is the most a
+subscription is late. An attempt that fails sets `error`
 and `attempted_at` and leaves `body`, `fetched_at` and the validators as they were, so the
 calendar keeps showing the last good read and the screen says both when it last worked
 and why it does not now. The next attempt is the next one due, with no backoff: a feed
@@ -1354,21 +1364,23 @@ One `GET` through an `http.Client` of the module's own:
   next address is one neither the guard nor the person saw;
 - the request carries `User-Agent: Vantigo-Calendar`, `Accept: text/calendar`, and
   `If-None-Match` and `If-Modified-Since` from the row when it has them;
-- the budget is **twenty seconds**, the response's headers are capped at 64 KiB, and the
-  body is read through a limit of **1 MiB** plus one byte.
+- the budget is **twenty seconds** in all — within it the dial has ten, the TLS handshake
+  ten and the response's headers fifteen — the headers are capped at 64 KiB, and the body
+  is read through a limit of **1 MiB** plus one byte.
 
-A 2xx with a calendar writes `body`, the new validators and `fetched_at`; a 304 writes
-`fetched_at` alone; either clears `error`. Every other outcome is a failure, recorded as
+A 2xx with a calendar writes `body`, the new validators (null when it sent none),
+`fetched_at` and `attempted_at`; a 304 writes `fetched_at` and `attempted_at` and keeps the
+body and the validators; either clears `error`. Every other outcome is a failure, recorded as
 one sentence in `error`:
 
 | Outcome | `error` |
 | --- | --- |
 | a 3xx | "the address redirects; subscribe to the address it points at" |
 | a body over 1 MiB — not kept | "the calendar is larger than 1 MiB" |
-| a 2xx whose body does not begin, after blank lines, with `BEGIN:VCALENDAR`, or that does not parse | "the address did not answer a calendar" |
+| a 2xx whose body is not valid UTF-8, carries a NUL, does not begin — after blank space and a byte-order mark — with `BEGIN:VCALENDAR`, or does not parse | "the address did not answer a calendar" |
 | any other status | "the address answered <status>", the code and its standard text (`404 Not Found`), never the server's own reason phrase |
 | a dial the guard refused | "the address is not one Vantigo may fetch" |
-| no answer within the budget | "the address did not answer in time" |
+| no answer within the budget, or a dial, a TLS handshake or the headers past their own bound | "the address did not answer in time" |
 | any other failure to connect — a name that does not resolve, a connection refused | "the address could not be reached" |
 
 The error is the sentence, never the response's body or the address the host resolved
@@ -1383,7 +1395,8 @@ that overlaps the window as a `CalendarItem` of **kind `calendar.subscription`**
 `calendar`:
 
 - `id` is `<subscription id>:<UID>`, with `:<start>` after it for an occurrence of a rule
-  — `20261103T080000Z`, or the date for an all-day one;
+  or a moved one — `20261103T080000Z`, or the date for an all-day one; an event without a
+  `UID` is `event-<its place in the file>`;
 - `title` is the event's `SUMMARY`, `subtitle` the subscription's name, and `done` false;
 - there is no `path`: the event's `URL` is the other calendar's and is not followed, so a
   click on one opens nothing;
@@ -1407,16 +1420,21 @@ No description reaches the wire, in either case. The parse rules:
   right in winter and an hour off in summer, which is still better than a day off; and
   UTC when there is nothing. Each fallback is logged at debug, once per subscription per
   read.
-- **Recurrence.** `RRULE` is expanded with rrule-go over the window widened by a year
-  back, `DTSTART` dressed as floating in the resolved zone and each occurrence put back
+- **Recurrence.** `RRULE` is expanded with rrule-go over the window widened back by the
+  event's own length and two days (its days and two for an all-day one), since an
+  occurrence that began before the window may still cover it, and forward by a day,
+  `DTSTART` dressed as floating in the resolved zone and each occurrence put back
   into it — [the module's own way](#expansion-in-the-zone), so a 09:00 stays 09:00 across
-  the clock change; `EXDATE`s remove occurrences; a `VEVENT` with a `RECURRENCE-ID`
+  the clock change; `EXDATE`s remove occurrences, one written as a date the occurrence on
+  that day in the event's zone; a `VEVENT` with a `RECURRENCE-ID`
   replaces the occurrence at that instant of the master with the same `UID`, wherever it
-  moved to. `RDATE` is not read. A rule rrule-go refuses, or one without a `DTSTART`,
-  makes the event a single one at its start.
+  moved to. `RDATE` is not read. A rule rrule-go refuses makes the event a single one at
+  its start; a `VEVENT` without a `DTSTART` that can be read is not shown at all.
 - **Caps.** At most **1,000** occurrences are taken from one rule and **5,000** items from
   one subscription in one read, nearest the window's start first; the rest are dropped
-  with a log line.
+  with a log line. A rule is stepped at most **100,000** times to reach and cross the
+  window, so one stepping by the minute from years ago stops short rather than being
+  walked for ever.
 - **Status.** `STATUS:CANCELLED` is left out. `TRANSP` and `CLASS` are not read: a
   subscription is not a colleague, and the person subscribed to it.
 - **Text.** `SUMMARY` is unescaped (`\,`, `\;`, `\n`, `\\`) and cut to one line of 200

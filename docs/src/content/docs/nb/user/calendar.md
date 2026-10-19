@@ -387,7 +387,8 @@ ingen andre.
 3. Velg en **Farge**, og huk av for **Vis bare som opptatt** hvis du vil se når, ikke hva.
 4. Lagre. Vantigo henter kalenderen med en gang, og hendelsene står på kalendersiden din
    neste gang den lastes. En adresse Vantigo ikke kan bruke, avvises på feltet, med
-   grunnen.
+   grunnen. En som lagres, men ikke kan hentes, beholdes: skjermbildet sier **Lagret, men
+   kalenderen kunne ikke hentes**, med grunnen, som blir stående på raden.
 
 En hendelse fra en kalender du abonnerer på, tegnes i fargen sin, med navnet på
 kalenderen under tittelen, og merkes **Opptatt** når du valgte bare opptatt.
