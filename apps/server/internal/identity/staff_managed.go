@@ -168,6 +168,12 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 	}
 
 	var out gen.OwnerUserResponse
+	// Read before the transaction, which then holds its connection
+	// without waiting for another.
+	issuer, err := s.oidcIssuer(ctx)
+	if err != nil {
+		return nil, err
+	}
 	err = s.serializable(ctx, userConflict, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if err := lockOwners(ctx, q); err != nil {
@@ -210,7 +216,7 @@ func (s *server) PostIdentityOwnerUsersByIdManage(ctx context.Context, req gen.P
 				return err
 			}
 		}
-		out, err = s.managedUser(ctx, q, target.ID, now)
+		out, err = s.managedUser(ctx, q, target.ID, now, issuer)
 		return err
 	})
 	if err != nil {
@@ -238,6 +244,12 @@ func (s *server) PostIdentityOwnerUsersByIdUnmanage(ctx context.Context, req gen
 		return refusalOr[gen.PostIdentityOwnerUsersByIdUnmanageResponseObject](err)
 	}
 	var out gen.OwnerUserResponse
+	// Read before the transaction, which then holds its connection
+	// without waiting for another.
+	issuer, err := s.oidcIssuer(ctx)
+	if err != nil {
+		return nil, err
+	}
 	err = s.serializable(ctx, userConflict, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if err := lockOwners(ctx, q); err != nil {
@@ -253,7 +265,7 @@ func (s *server) PostIdentityOwnerUsersByIdUnmanage(ctx context.Context, req gen
 				return err
 			}
 		}
-		out, err = s.managedUser(ctx, q, target.ID, now)
+		out, err = s.managedUser(ctx, q, target.ID, now, issuer)
 		return err
 	})
 	if err != nil {
