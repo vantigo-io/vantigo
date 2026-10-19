@@ -390,14 +390,14 @@ func TestManualTimelineEntry_RejectsInvalidAndFutureInput(t *testing.T) {
 	}
 
 	mismatched := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/timeline", customer.Id), map[string]any{
-		"eventType": "note", "occurredOn": "2026-07-27", "occurredAt": "2026-07-28T00:00:00Z", "note": "UTC date mismatch",
+		"eventType": "note", "occurredOn": "2026-07-27", "occurredAt": "2026-07-28T00:00:00Z", "note": "business date mismatch",
 	})
 	if mismatched.Status != http.StatusBadRequest {
 		t.Fatalf("status %d body %s, want 400", mismatched.Status, mismatched.Body)
 	}
 	var mismatchProblem validationProblemJSON
 	mismatched.JSON(&mismatchProblem)
-	if got := mismatchProblem.Errors["occurredAt"]; len(got) != 1 || got[0] != "OccurredAt must have the same UTC calendar date as occurredOn" {
+	if got := mismatchProblem.Errors["occurredAt"]; len(got) != 1 || got[0] != "OccurredAt must fall on occurredOn in the business time zone" {
 		t.Errorf("errors[occurredAt] = %v, want calendar-date mismatch message", got)
 	}
 }

@@ -35,8 +35,8 @@ describe("utcToday", () => {
 
   it("answers the UTC calendar day, not the browser's", () => {
     // 23:30 UTC on 1 January is already 2 January in Oslo: a helper that read
-    // the local date would answer "2026-01-02" for a Norwegian reader; the
-    // server's calendar says the 1st.
+    // the local date would answer "2026-01-02" for a Norwegian reader; the UTC
+    // calendar says the 1st.
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T23:30:00Z"));
     expect(utcToday()).toBe("2026-01-01");

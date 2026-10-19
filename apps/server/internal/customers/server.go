@@ -2,9 +2,12 @@ package customers
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
@@ -76,6 +79,34 @@ func peppolDNSServers(server string) []string {
 		return nil
 	}
 	return []string{server}
+}
+
+// businessZone is the workspace's business time zone (time zones design D2),
+// read through contracts.BusinessCalendar: the calendar every day this module
+// derives from an instant is judged in — today, for the follow-up's overdue
+// and due-today split and an anonymisation's day, and the day a timeline
+// entry's occurredAt falls on. It is read once per request or worker cycle,
+// before any transaction opens and before a worker's lease holds its
+// connection, since the read takes a pool connection of its own. A stored
+// name Go cannot load is answered as UTC by the calendar itself.
+func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
+	zone, err := s.deps.Calendar.Zone(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("customers: read the business time zone: %w", err)
+	}
+	return zone, nil
+}
+
+// businessToday is the business day of Deps.Clock: today in the workspace's
+// business time zone, as the UTC midnight a date column is compared at
+// (holidays.DayIn). The dates this module stores — an entry's occurredOn, a
+// follow-up's dueOn, an anonymiseOn — are civil dates, compared as stored.
+func (s *server) businessToday(ctx context.Context) (time.Time, error) {
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return holidays.DayIn(s.deps.Clock(), zone), nil
 }
 
 // customersView is the permission that admits the module's read operations

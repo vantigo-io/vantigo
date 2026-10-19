@@ -1,10 +1,12 @@
 import type { TimelineFollowUp } from "../api/timeline";
 
 /**
- * "Today" as the server counts it: the follow-up designs put every date-only
- * field on the UTC calendar (`civilDate(deps.Clock())`), so a browser west of
- * Greenwich must not read its own local date here — late afternoon in Oslo and
- * mid-morning in Seattle are the same follow-up day.
+ * "Today" on the UTC calendar. The server judges today on the workspace's
+ * business day (time zones design D7), which this page cannot know until the
+ * shell hands it the business time zone (the design's delivery F); until then
+ * the UTC day stands in, so a browser west of Greenwich still does not read its
+ * own local date here. The two disagree only between UTC midnight and the
+ * business zone's — 22:00 to 24:00 UTC in an Oslo summer.
  */
 export const utcToday = () => new Date().toISOString().slice(0, 10);
 

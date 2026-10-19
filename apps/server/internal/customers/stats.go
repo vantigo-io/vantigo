@@ -113,7 +113,13 @@ func (s *server) GetCustomersStatsAttention(ctx context.Context, _ gen.GetCustom
 			id := p.UserID
 			caller = &id
 		}
-		today := civilDate(s.deps.Clock())
+		// Today is the business day (time zones design D7), read before the
+		// follow-up query: the overdue/due-today split turns at the business
+		// time zone's midnight, as the Follow-ups page's state=overdue does.
+		today, err := s.businessToday(ctx)
+		if err != nil {
+			return nil, err
+		}
 		followUpRows, err := q.FollowUpAttentionCandidates(ctx, store.FollowUpAttentionCandidatesParams{
 			Today: pgtype.Date{Time: today, Valid: true}, CallerID: caller,
 		})

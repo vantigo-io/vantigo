@@ -19,9 +19,11 @@ import (
 // attention types it feeds, and the list that answers "what is on my plate".
 //
 // Every date here is written relative to the harness clock (h.Now()), never as
-// a literal: the overdue-vs-due-today split is a UTC calendar comparison, and a
-// hard-coded date makes a test that passes today and fails on a day this
-// module's clock is moved.
+// a literal: the overdue-vs-due-today split is a comparison with today's
+// business day, and a hard-coded date makes a test that passes today and fails
+// on a day this module's clock is moved. The harness clock stands at noon UTC,
+// where the UTC day and the business day agree; business_zone_test.go is where
+// they differ.
 
 type followUpAssigneeJSON struct {
 	UserId      uuid.UUID `json:"userId"`

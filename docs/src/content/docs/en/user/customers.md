@@ -248,7 +248,13 @@ the **Source** switch (**All**, **Manual**, **Automatic**), **Event types** and 
 **Add event** (`customers:timeline-manage`) records a moment: **Type** (**Call**,
 **Meeting**, **Email**, **Note**, **Other** or **Registry change**), **Date** (not in
 the future), an optional **Time (UTC)**, a **Description**, an optional **Source URL**
-shown as **Open source** on the entry, and a follow-up (next section). The menu on a
+shown as **Open source** on the entry, and a follow-up (next section). The time you
+type is UTC, as the label says, and the entry shows it in your browser's time zone,
+with no zone after it. The **Date** must be the day that time falls on in the
+business time zone (set under [Workspace
+administration](/en/user/workspace-administration/#workspace-settings)): 23:30 UTC on
+30 June is 1 July in Oslo. An entry saved before is left as it is, and editing only
+its description never asks for a new date. The menu on a
 manual entry offers **Edit**, **Revision history** and **Delete**. Every saved version
 is kept, and **Revision history** lists them as **Revision 1**, **Revision 2** and so
 on with who changed it and when. If an entry changed under you, the save is refused
@@ -301,6 +307,12 @@ due date first, with **Due**, **Customer**, **Description** and **Assigned to**.
 **Done** and **All**. With `customers:timeline-manage` each open row has **Mark
 done**. The page needs `customers:view` as well as `customers:timeline-view`, because
 every row names a customer. See [Follow-ups](/en/reference/customers/#follow-ups).
+
+**Overdue** under **State**, and the dashboard's items for overdue follow-ups and
+follow-ups due today, count today in the business time zone (set under [Workspace
+administration](/en/user/workspace-administration/#workspace-settings)), the same day
+for everyone: a follow-up due Monday is overdue from midnight on Tuesday there,
+wherever you are.
 
 ## Export and import
 

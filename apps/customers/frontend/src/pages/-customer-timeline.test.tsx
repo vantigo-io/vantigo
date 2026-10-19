@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { setLanguagePreference } from "@vantigo/frontend-shell";
+import { createLocaleFormatters, setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEntry } from "../api/timeline";
 import {
@@ -632,7 +632,7 @@ describe("CustomerTimeline", () => {
     expect(screen.queryByText(/undefined|none|\[object Object\]/i)).not.toBeInTheDocument();
   });
 
-  it("keeps UTC time labeling and unique action names, and suppresses duplicate delete clicks", async () => {
+  it("shows an entry's time in the reader's zone, keeps unique action names, and suppresses duplicate delete clicks", async () => {
     vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
       matches: false,
       media: query,
@@ -653,7 +653,14 @@ describe("CustomerTimeline", () => {
     await userEvent.click(screen.getByRole("button", { name: "Add event" }));
     const formDialog = await screen.findByRole("dialog", { name: "Add timeline event" });
     expect(within(formDialog).getByLabelText("Time (UTC)")).toBeInTheDocument();
-    expect(screen.getByText(/11:30 PM UTC/)).toBeInTheDocument();
+    // The time is the instant in the reader's zone, with no zone named after
+    // it (time zones design D8): whatever zone the test runs in, the card
+    // shows what the shell's formatters make of the instant there.
+    const shown = createLocaleFormatters("en")
+      .formatDate("2026-07-20T23:30:00Z", { timeStyle: "short" })
+      .replace(/\s+/g, " ");
+    expect(screen.getByText(new RegExp(`· ${shown}`))).toBeInTheDocument();
+    expect(screen.queryByText(/\d UTC/)).not.toBeInTheDocument();
     const actions = screen.getAllByRole("button", { name: /Actions for Note on/ });
     expect(actions).toHaveLength(2);
     expect(new Set(actions.map((button) => button.getAttribute("aria-label"))).size).toBe(2);
