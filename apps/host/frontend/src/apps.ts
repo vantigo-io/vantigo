@@ -5,6 +5,7 @@ import {
   IconBook,
   IconBriefcase,
   IconBuildingBank,
+  IconCalendar,
   IconCalendarEvent,
   IconCashBanknote,
   IconCategory,
@@ -125,6 +126,14 @@ const staffNavPresentation: Record<StaffNavItem["key"], Pick<NavItem, "label" | 
 /** Every app, in switcher order. Home has no module and no sidebar. */
 export const apps: readonly AppDefinition[] = [
   { key: "home", label: "navigation.home", icon: IconLayoutDashboard, home: "/dashboard", navSections: [] },
+  moduleApp("calendar", "navigation.calendar", IconCalendar, "/calendar", [
+    {
+      label: "navigation.calendar",
+      to: "/calendar",
+      icon: IconCalendar,
+      requiredPermissions: ["calendar:access"],
+    },
+  ]),
   moduleApp("customers", "navigation.customers", IconUsers, "/customers", [
     {
       label: "navigation.customers",

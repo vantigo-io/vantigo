@@ -1,0 +1,118 @@
+/*
+ * FullCalendar 7, dressed as Mantine.
+ *
+ * FullCalendar 7 ships no global `--fc-*` colour variables any more: its look
+ * comes from a theme plugin (classic, monarch, breezy, forma, pulse), the
+ * theme's `theme.css`, and a palette stylesheet that sets the theme's own
+ * custom properties. The page imports `skeleton.css` (layout) and Breezy's
+ * `theme.css` (the Tailwind-like theme, nearest to Mantine's look) and NOT a
+ * Breezy palette: this file is the palette, every colour taken from Mantine's
+ * variables so the grid follows the Vantigo theme and the colour scheme.
+ *
+ * The variables are set on :root rather than on the calendar's wrapper,
+ * because FullCalendar appends drag mirrors and popovers to <body>, outside the
+ * wrapper. Mantine sets its scheme on <html> (`data-mantine-color-scheme`), so
+ * `var(--mantine-…)` resolves to the right scheme here; FullCalendar's own
+ * `data-color-scheme` attribute is not used.
+ */
+
+:root {
+  /* primary: the buttons we do not show, today's date marker, the selection */
+  --fc-breezy-primary: var(--mantine-primary-color-filled);
+  --fc-breezy-primary-over: var(--mantine-primary-color-filled-hover);
+  --fc-breezy-primary-foreground: var(--mantine-primary-color-contrast);
+
+  /* secondary: the "+n more" popover's close button and other neutral controls */
+  --fc-breezy-secondary: var(--fc-breezy-background);
+  --fc-breezy-secondary-over: var(--fc-breezy-faint);
+  --fc-breezy-secondary-border: var(--fc-breezy-strong-border);
+  --fc-breezy-secondary-foreground: var(--fc-breezy-strong-foreground);
+  --fc-breezy-secondary-icon: var(--fc-breezy-faint-foreground);
+  --fc-breezy-secondary-icon-over: var(--fc-breezy-muted-foreground);
+
+  /* calendar content. Breezy draws an event as Mantine draws a "light"
+     variant — a tint of the colour behind text in the colour — so an event's
+     colour must read as text on the page: shade 6 in the light scheme, shade 4
+     in the dark one (Mantine's own `light-color` is shade 0 in the dark scheme,
+     which washes the tint out to grey). An event's own `color` overrides the
+     default; it should be one of the `--vantigo-calendar-*` colours below so it
+     follows the scheme too. */
+  --fc-breezy-event: var(--vantigo-calendar-primary);
+  --fc-breezy-event-contrast: var(--mantine-primary-color-contrast);
+  --fc-breezy-background-event: var(--mantine-color-grape-filled);
+  --fc-breezy-highlight: var(--mantine-primary-color-light);
+  --fc-breezy-now: var(--mantine-color-red-filled);
+
+  /* controls */
+  --fc-breezy-selected: var(--fc-breezy-strong);
+
+  /* popover ("+n more") */
+  --fc-breezy-popover: var(--mantine-color-body);
+  --fc-breezy-popover-border: var(--mantine-color-default-border);
+
+  /* neutral backgrounds: translucent overlays, as Breezy's are, so they sit
+     on whatever the cell already shows */
+  --fc-breezy-background: var(--mantine-color-body);
+  --fc-breezy-faint: rgba(0, 0, 0, 0.02);
+  --fc-breezy-muted: rgba(0, 0, 0, 0.05);
+  --fc-breezy-strong: rgba(0, 0, 0, 0.1);
+  --fc-breezy-stronger: rgba(0, 0, 0, 0.14);
+  --fc-breezy-strongest: rgba(0, 0, 0, 0.18);
+
+  /* neutral foregrounds */
+  --fc-breezy-foreground: var(--mantine-color-text);
+  --fc-breezy-strong-foreground: var(--mantine-color-bright);
+  --fc-breezy-muted-foreground: var(--mantine-color-dimmed);
+  --fc-breezy-faint-foreground: var(--mantine-color-placeholder);
+
+  /* the event colours, scheme-aware; the module palette picks from these */
+  --vantigo-calendar-primary: var(--mantine-primary-color-6);
+  --vantigo-calendar-blue: var(--mantine-color-blue-6);
+  --vantigo-calendar-teal: var(--mantine-color-teal-6);
+  --vantigo-calendar-green: var(--mantine-color-green-6);
+  --vantigo-calendar-orange: var(--mantine-color-orange-6);
+  --vantigo-calendar-grape: var(--mantine-color-grape-6);
+  --vantigo-calendar-red: var(--mantine-color-red-6);
+  --vantigo-calendar-gray: var(--mantine-color-gray-6);
+
+  /* neutral borders: the same greys Mantine's Table draws its rules in */
+  --fc-breezy-border: var(--mantine-color-gray-3);
+  --fc-breezy-muted-border: var(--mantine-color-gray-2);
+  --fc-breezy-strong-border: var(--mantine-color-default-border);
+}
+
+:root[data-mantine-color-scheme="dark"] {
+  --vantigo-calendar-primary: var(--mantine-primary-color-4);
+  --vantigo-calendar-blue: var(--mantine-color-blue-4);
+  --vantigo-calendar-teal: var(--mantine-color-teal-4);
+  --vantigo-calendar-green: var(--mantine-color-green-4);
+  --vantigo-calendar-orange: var(--mantine-color-orange-4);
+  --vantigo-calendar-grape: var(--mantine-color-grape-4);
+  --vantigo-calendar-red: var(--mantine-color-red-4);
+  --vantigo-calendar-gray: var(--mantine-color-gray-4);
+
+  --fc-breezy-faint: rgba(255, 255, 255, 0.03);
+  --fc-breezy-muted: rgba(255, 255, 255, 0.07);
+  --fc-breezy-strong: rgba(255, 255, 255, 0.12);
+  --fc-breezy-stronger: rgba(255, 255, 255, 0.16);
+  --fc-breezy-strongest: rgba(255, 255, 255, 0.2);
+
+  --fc-breezy-border: var(--mantine-color-dark-4);
+  --fc-breezy-muted-border: var(--mantine-color-dark-5);
+  --fc-breezy-popover: var(--mantine-color-dark-6);
+}
+
+/* The calendar speaks in Mantine's type: its family, and the small size the
+   rest of a Vantigo page uses for dense content. Breezy hard-codes pixel sizes
+   on a few elements; those are pinned to Mantine's scale in the rules below. */
+.vantigo-calendar {
+  font-family: var(--mantine-font-family);
+  font-size: var(--mantine-font-size-sm);
+  line-height: var(--mantine-line-height-sm);
+  color: var(--mantine-color-text);
+}
+
+.vantigo-calendar > * {
+  font-size: inherit;
+  line-height: inherit;
+}

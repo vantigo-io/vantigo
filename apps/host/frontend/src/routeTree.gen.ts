@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as CommunicationsRouteImport } from './routes/communications'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -32,6 +33,7 @@ import { Route as StaffRouteImport } from './routes/staff'
 import { Route as TimeRouteImport } from './routes/time'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as CalendarIndexRouteImport } from './routes/calendar/index'
 import { Route as CommunicationsIndexRouteImport } from './routes/communications/index'
 import { Route as CommunicationsChannelsRouteImport } from './routes/communications/channels'
 import { Route as CommunicationsInboxRouteImport } from './routes/communications/inbox'
@@ -118,6 +120,11 @@ const AcceptInvitationRoute = AcceptInvitationRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CommunicationsRoute = CommunicationsRouteImport.update({
@@ -219,6 +226,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminRoute,
+} as any)
+const CalendarIndexRoute = CalendarIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => CalendarRoute,
 } as any)
 const CommunicationsIndexRoute = CommunicationsIndexRouteImport.update({
   id: '/',
@@ -601,6 +613,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
   '/admin': typeof AdminRouteWithChildren
+  '/calendar': typeof CalendarRouteWithChildren
   '/communications': typeof CommunicationsRouteWithChildren
   '/customers': typeof CustomersRouteWithChildren
   '/dashboard': typeof DashboardRoute
@@ -654,6 +667,7 @@ export interface FileRoutesByFullPath {
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
+  '/calendar/': typeof CalendarIndexRoute
   '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
@@ -737,6 +751,7 @@ export interface FileRoutesByTo {
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin': typeof AdminIndexRoute
+  '/calendar': typeof CalendarIndexRoute
   '/communications': typeof CommunicationsIndexRoute
   '/customers': typeof CustomersIndexRoute
   '/energy': typeof EnergyIndexRoute
@@ -782,6 +797,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
   '/admin': typeof AdminRouteWithChildren
+  '/calendar': typeof CalendarRouteWithChildren
   '/communications': typeof CommunicationsRouteWithChildren
   '/customers': typeof CustomersRouteWithChildren
   '/dashboard': typeof DashboardRoute
@@ -835,6 +851,7 @@ export interface FileRoutesById {
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
+  '/calendar/': typeof CalendarIndexRoute
   '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
@@ -881,6 +898,7 @@ export interface FileRouteTypes {
     | '/'
     | '/accept-invitation'
     | '/admin'
+    | '/calendar'
     | '/communications'
     | '/customers'
     | '/dashboard'
@@ -934,6 +952,7 @@ export interface FileRouteTypes {
     | '/workspace/roles'
     | '/workspace/users'
     | '/admin/'
+    | '/calendar/'
     | '/communications/'
     | '/customers/'
     | '/energy/'
@@ -1017,6 +1036,7 @@ export interface FileRouteTypes {
     | '/workspace/roles'
     | '/workspace/users'
     | '/admin'
+    | '/calendar'
     | '/communications'
     | '/customers'
     | '/energy'
@@ -1061,6 +1081,7 @@ export interface FileRouteTypes {
     | '/'
     | '/accept-invitation'
     | '/admin'
+    | '/calendar'
     | '/communications'
     | '/customers'
     | '/dashboard'
@@ -1114,6 +1135,7 @@ export interface FileRouteTypes {
     | '/workspace/roles'
     | '/workspace/users'
     | '/admin/'
+    | '/calendar/'
     | '/communications/'
     | '/customers/'
     | '/energy/'
@@ -1159,6 +1181,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcceptInvitationRoute: typeof AcceptInvitationRoute
   AdminRoute: typeof AdminRouteWithChildren
+  CalendarRoute: typeof CalendarRouteWithChildren
   CommunicationsRoute: typeof CommunicationsRouteWithChildren
   CustomersRoute: typeof CustomersRouteWithChildren
   DashboardRoute: typeof DashboardRoute
@@ -1202,6 +1225,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/communications': {
@@ -1343,6 +1373,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/calendar/': {
+      id: '/calendar/'
+      path: '/'
+      fullPath: '/calendar/'
+      preLoaderRoute: typeof CalendarIndexRouteImport
+      parentRoute: typeof CalendarRoute
     }
     '/communications/': {
       id: '/communications/'
@@ -1861,6 +1898,18 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface CalendarRouteChildren {
+  CalendarIndexRoute: typeof CalendarIndexRoute
+}
+
+const CalendarRouteChildren: CalendarRouteChildren = {
+  CalendarIndexRoute: CalendarIndexRoute,
+}
+
+const CalendarRouteWithChildren = CalendarRoute._addFileChildren(
+  CalendarRouteChildren,
+)
+
 interface CommunicationsRouteChildren {
   CommunicationsChannelsRoute: typeof CommunicationsChannelsRoute
   CommunicationsInboxRoute: typeof CommunicationsInboxRoute
@@ -2132,6 +2181,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcceptInvitationRoute: AcceptInvitationRoute,
   AdminRoute: AdminRouteWithChildren,
+  CalendarRoute: CalendarRouteWithChildren,
   CommunicationsRoute: CommunicationsRouteWithChildren,
   CustomersRoute: CustomersRouteWithChildren,
   DashboardRoute: DashboardRoute,
