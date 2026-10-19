@@ -2,11 +2,12 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { I18nProvider, setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import indexHtml from "../../index.html?raw";
 import { AccountLanguagePreference } from "../components/account-language-preference";
-import { publicPaths } from "../lib/public-paths";
+import { publicPaths, sessionlessPaths } from "../lib/public-paths";
 import { routeTree } from "../routeTree.gen";
 
 // A token with characters a URL encodes, so the encoded check below means something.
@@ -62,7 +63,21 @@ const admitted = (routes: AllowedRoute[], method: string, url: string) => {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-/** Every request the SPA makes, recorded; the pay page's read and the maintenance poll answered. */
+/** What the RSVP page's read answers. */
+const rsvpPage = (status = "needs-action") => ({
+  title: "Kickoff with Nordlys AS",
+  allDay: false,
+  startsAt: "2026-11-03T08:00:00Z",
+  endsAt: "2026-11-03T09:00:00Z",
+  timeZone: "Europe/Oslo",
+  organiser: { name: "Kari Nordmann" },
+  attendee: { name: "Per Utenfor" },
+  status,
+  cancelled: false,
+  language: "en",
+});
+
+/** Every request the SPA makes, recorded; the pay and RSVP pages' operations and the maintenance poll answered. */
 const recordFetch = () => {
   const requests: { url: string; method: string; init?: RequestInit }[] = [];
   vi.stubGlobal(
@@ -88,6 +103,9 @@ const recordFetch = () => {
             payable: true,
           }),
         );
+      if (url === "/api/v1/calendar/rsvp/read" && method === "POST") return Promise.resolve(json(rsvpPage()));
+      if (url === "/api/v1/calendar/rsvp" && method === "POST")
+        return Promise.resolve(json(rsvpPage(JSON.parse(String(init?.body)).status)));
       // What the public host answers anything else: a 404.
       return Promise.resolve(new Response(null, { status: 404 }));
     }),
@@ -156,7 +174,47 @@ describe("the /pay route", () => {
   });
 });
 
+describe("the /rsvp route", () => {
+  it("renders without a session, reads and answers, and asks for nothing outside the allowlist", async () => {
+    const requests = recordFetch();
+    const router = renderSpaAt(`/rsvp?token=${encodeURIComponent(TOKEN)}`);
+
+    expect(await screen.findByRole("heading", { name: "Kickoff with Nordlys AS" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Accept" }));
+    expect(await screen.findByText("Your answer: Accepted")).toBeInTheDocument();
+    // Let anything else the root or the page would ask for go out.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const routes = payRoutes();
+    expect(admitted(routes, "GET", "/rsvp")).toBe(true);
+    const refused = requests.filter((request) => !admitted(routes, request.method, request.url));
+    expect(refused.map((request) => `${request.method} ${request.url}`)).toEqual([]);
+    const urls = requests.map((request) => request.url);
+    expect(urls.some((url) => url.startsWith("/api/v1/identity"))).toBe(false);
+    expect(urls.some((url) => url.startsWith("/api/v1/authorization"))).toBe(false);
+    expect(urls.some((url) => url.includes("/profile"))).toBe(false);
+    // The token is in no API URL: the read and the answer carry it in their bodies.
+    expect(urls.some((url) => url.includes(TOKEN) || url.includes(encodeURIComponent(TOKEN)))).toBe(false);
+    const bodies = (url: string) =>
+      requests.filter((request) => request.url === url).map((request) => JSON.parse(String(request.init?.body)));
+    expect(bodies("/api/v1/calendar/rsvp/read")).toEqual([{ token: TOKEN }]);
+    expect(bodies("/api/v1/calendar/rsvp")).toEqual([{ token: TOKEN, status: "accepted" }]);
+    expect(urls.every((url) => url.startsWith("/"))).toBe(true);
+    await vi.waitFor(() => expect(window.location.search).toBe(""));
+    expect(window.location.pathname).toBe("/rsvp");
+    expect(router.state.location.searchStr).toBe("");
+  });
+});
+
 describe("publicPaths", () => {
+  it("holds /rsvp exactly, and not the signed-in calendar", () => {
+    expect(publicPaths.has("/rsvp")).toBe(true);
+    expect(publicPaths.has("/rsvp/")).toBe(false);
+    expect(publicPaths.has("/calendar")).toBe(false);
+    expect(sessionlessPaths.has("/rsvp")).toBe(true);
+    expect(sessionlessPaths.has("/rsvp/")).toBe(false);
+  });
+
   it("holds /pay exactly, and not the signed-in Payments area", () => {
     expect(publicPaths.has("/pay")).toBe(true);
     expect(publicPaths.has("/pay/")).toBe(false);
@@ -181,6 +239,11 @@ describe("the account's language on the public host", () => {
   it("asks for no session on /pay under a base path", async () => {
     window.__VANTIGO_APP__ = { basePath: "/vantigo/" };
     expect(await sessionAsked("/vantigo/pay?token=x")).toBe(false);
+  });
+
+  it("asks for no session on /rsvp under a base path", async () => {
+    window.__VANTIGO_APP__ = { basePath: "/vantigo/" };
+    expect(await sessionAsked("/vantigo/rsvp?token=x")).toBe(false);
   });
 
   it("still asks for the session on a signed-in page under that base path", async () => {

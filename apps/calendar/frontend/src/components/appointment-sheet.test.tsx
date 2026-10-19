@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../i18n";
 import { problemResponse, sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
-import { appointmentFixture, KARI, ME, OLA, stubCalendarServer } from "../test/server";
+import { appointmentFixture, defaultMeta, KARI, ME, OLA, SIRI, stubCalendarServer } from "../test/server";
 import { AppointmentSheet } from "./appointment-sheet";
 
 // The session's zone is Oslo, the machine's New York (vite.config.ts): a
@@ -115,7 +115,7 @@ describe("AppointmentSheet — a new appointment", () => {
     );
     expect(await screen.findByText("Customer: no. 42")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/^Title/), "Visit");
-    await userEvent.click(screen.getByRole("combobox", { name: "Attendees" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Colleagues" }));
     await userEvent.click(await screen.findByRole("option", { name: "Kari Nordmann" }));
     expect(screen.queryByRole("option", { name: "Test User" })).not.toBeInTheDocument();
     await save();
@@ -313,5 +313,175 @@ describe("AppointmentSheet — an attendee", () => {
       url: "/api/v1/calendar/appointments/1001/response",
       body: { status: "accepted" },
     });
+  });
+});
+
+describe("AppointmentSheet — attendees from outside", () => {
+  const newSheet = (customerId?: number) =>
+    renderWithProviders(
+      <AppointmentSheet
+        opened
+        onClose={() => undefined}
+        customerId={customerId}
+        span={{ allDay: true, startDate: "2026-11-03", endDate: "2026-11-03" }}
+      />,
+    );
+
+  it("adds a colleague, a contact of the customer and an address, and sends each by its kind", async () => {
+    const fetchMock = stubCalendarServer();
+    newSheet(42);
+    await userEvent.type(await screen.findByLabelText(/^Title/), "Visit");
+    await userEvent.click(screen.getByRole("combobox", { name: "Colleagues" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Kari Nordmann" }));
+    await userEvent.click(await screen.findByRole("combobox", { name: "Contacts" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Siri Kunde <siri@nordlys.example>" }));
+    await userEvent.type(screen.getByLabelText("By email"), "Per.Utenfor@Example.com");
+    await userEvent.type(screen.getByLabelText("Name"), "Per Utenfor");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    // The same address again, in other letters, is the same attendee.
+    await userEvent.type(screen.getByLabelText("By email"), "per.utenfor@example.com{Enter}");
+
+    const rows = await screen.findAllByTestId("attendee-row");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Kari Nordmann"),
+      expect.stringContaining("Siri Kunde"),
+      expect.stringContaining("Per Utenfor"),
+    ]);
+    await save();
+
+    await waitFor(() => expect(sent(fetchMock, "POST").body).toBeDefined());
+    expect(sent(fetchMock, "POST").body.attendees).toEqual([
+      { kind: "user", userId: KARI.id },
+      { kind: "contact", contactId: SIRI.id },
+      { kind: "email", email: "per.utenfor@example.com", name: "Per Utenfor" },
+    ]);
+    expect(fetchMock.actualCalls.map(([url]) => String(url))).toContain("/api/v1/calendar/contacts?customerId=42");
+  });
+
+  it("refuses an address that is not one, and adds nothing", async () => {
+    const fetchMock = stubCalendarServer();
+    newSheet();
+    await userEvent.type(await screen.findByLabelText(/^Title/), "Visit");
+    await userEvent.type(screen.getByLabelText("By email"), "not an address");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByText("Enter a valid email address")).toBeInTheDocument();
+    expect(screen.queryByTestId("attendee-row")).not.toBeInTheDocument();
+    await save();
+
+    await waitFor(() => expect(sent(fetchMock, "POST").body).toBeDefined());
+    expect(sent(fetchMock, "POST").body.attendees).toEqual([]);
+  });
+
+  it("offers no contacts without a customer", async () => {
+    const fetchMock = stubCalendarServer();
+    newSheet();
+    await screen.findByLabelText(/^Title/);
+    expect(screen.queryByRole("combobox", { name: "Contacts" })).not.toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([url]) => String(url).includes("/contacts"))).toBe(false);
+  });
+
+  it("offers no contacts to a writer the contact list is refused", async () => {
+    stubCalendarServer({ contacts: () => problemResponse(403, "Forbidden") });
+    newSheet(42);
+    await screen.findByLabelText(/^Title/);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Colleagues" })).toBeInTheDocument());
+    expect(screen.queryByRole("combobox", { name: "Contacts" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("By email")).toBeInTheDocument();
+  });
+
+  const invited = appointmentFixture({
+    customer: { id: 42, name: "Nordlys AS" },
+    attendees: [
+      { id: 10, kind: "user", user: KARI, status: "accepted" },
+      {
+        id: 11,
+        kind: "contact",
+        contact: { id: SIRI.id, name: SIRI.name },
+        status: "tentative",
+        invitation: { sentAt: "2026-11-03T10:00:00Z", sequence: 0 },
+      },
+      { id: 12, kind: "email", email: "per@example.com", name: "Per Utenfor", status: "needs-action", invitation: {} },
+      {
+        id: 13,
+        kind: "email",
+        email: "lise@example.com",
+        status: "needs-action",
+        invitation: { failedAt: "2026-11-03T10:05:00Z" },
+      },
+      { id: 14, kind: "contact", contact: { id: 99 }, status: "needs-action", invitation: {} },
+    ],
+  });
+
+  const rowOf = (text: string) =>
+    screen.getAllByTestId("attendee-row").find((row) => row.textContent?.includes(text)) as HTMLElement;
+
+  it("shows each attendee's kind, answer and invitation, and resends one", async () => {
+    const fetchMock = stubCalendarServer({ appointments: [invited] });
+    renderWithProviders(<AppointmentSheet opened onClose={() => undefined} appointmentId={1001} />);
+    await screen.findByDisplayValue("Kickoff with Nordlys AS");
+    await waitFor(() => expect(screen.getAllByTestId("attendee-row")).toHaveLength(5));
+
+    expect(rowOf("Kari Nordmann")).toHaveTextContent("Accepted");
+    expect(within(rowOf("Kari Nordmann")).queryByRole("button", { name: "Resend" })).not.toBeInTheDocument();
+    expect(rowOf("Siri Kunde")).toHaveTextContent("Tentative");
+    expect(rowOf("Siri Kunde")).toHaveTextContent("Invited Nov 3, 2026");
+    expect(rowOf("Per Utenfor")).toHaveTextContent("Not sent");
+    expect(rowOf("Per Utenfor")).toHaveTextContent("per@example.com");
+    expect(rowOf("lise@example.com")).toHaveTextContent("Sending failed");
+    // An anonymised contact: the directory no longer answers its name.
+    expect(rowOf("A contact")).toHaveTextContent("Not sent");
+    expect(screen.queryByText("Invitations by mail are not set up on this installation")).not.toBeInTheDocument();
+
+    await userEvent.click(within(rowOf("lise@example.com")).getByRole("button", { name: "Resend" }));
+    await waitFor(() => expect(sentAll(fetchMock, "POST")).toHaveLength(1));
+    expect(sent(fetchMock, "POST").url).toBe("/api/v1/calendar/appointments/1001/attendees/13/resend");
+    expect(await screen.findByText("Invitation sent")).toBeInTheDocument();
+  });
+
+  it("keeps every kind of attendee on a change", async () => {
+    const fetchMock = stubCalendarServer({ appointments: [invited] });
+    renderWithProviders(<AppointmentSheet opened onClose={() => undefined} appointmentId={1001} />);
+    await screen.findByDisplayValue("Kickoff with Nordlys AS");
+    await waitFor(() => expect(screen.getAllByTestId("attendee-row")).toHaveLength(5));
+    await userEvent.click(within(rowOf("Per Utenfor")).getByRole("button", { name: "Remove Per Utenfor" }));
+    await save();
+
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
+    expect(sent(fetchMock, "PUT").body.attendees).toEqual([
+      { kind: "user", userId: KARI.id },
+      { kind: "contact", contactId: SIRI.id },
+      { kind: "email", email: "lise@example.com" },
+      { kind: "contact", contactId: 99 },
+    ]);
+  });
+
+  it("says when this installation sends no invitations, and offers no resend", async () => {
+    stubCalendarServer({ appointments: [invited], meta: defaultMeta({ invitationsAvailable: false }) });
+    renderWithProviders(<AppointmentSheet opened onClose={() => undefined} appointmentId={1001} />);
+    expect(await screen.findByText("Invitations by mail are not set up on this installation")).toBeInTheDocument();
+    expect(rowOf("Siri Kunde")).toHaveTextContent("Not sent");
+    expect(screen.queryByRole("button", { name: "Resend" })).not.toBeInTheDocument();
+  });
+});
+
+describe("AppointmentSheet — a cancelled appointment", () => {
+  it("opens read-only with the banner, and offers nothing to change or answer", async () => {
+    stubCalendarServer({
+      appointments: [
+        appointmentFixture({
+          cancelledAt: "2026-11-02T12:00:00Z",
+          attendees: [{ id: 12, kind: "email", email: "per@example.com", status: "accepted", invitation: {} }],
+        }),
+      ],
+    });
+    renderWithProviders(<AppointmentSheet opened onClose={() => undefined} appointmentId={1001} />);
+
+    expect(await screen.findByText("Cancelled on Nov 2, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Kickoff with Nordlys AS")).toBeInTheDocument();
+    expect(screen.getByText(/per@example.com/)).toBeInTheDocument();
+    const buttons = screen.queryAllByRole("button").map((button) => button.textContent);
+    for (const name of ["Save", "Delete", "Accept", "Tentative", "Decline", "Resend"])
+      expect(buttons).not.toContain(name);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 });
