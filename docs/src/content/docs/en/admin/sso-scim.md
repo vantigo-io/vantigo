@@ -34,17 +34,21 @@ workforce OIDC provider and the SCIM credential are installation-wide.
 ## The Single sign-on card
 
 Open the avatar menu, choose **Workspace admin**, and stay on **Overview**: the
-**Single sign-on** card is below the **Workspace** card. It holds:
+**Single sign-on** card runs the full width below the overview's other cards, the
+**Workspace** card among them. It holds:
 
-- **Provider** — Entra, Google, or off.
-- **Authority**, **Client ID**, and the credential: a **Client secret** field, which
-  is blank on every visit and keeps the stored secret when left blank ("set on
-  _date_" says when it was last set), or, for Entra, a **Token file**.
-- **Domains** (Google only) and the **Display name** of the sign-in button.
-- The **Callback URL** to copy into the provider, shown before anything is set.
-- **Save**.
-- The SCIM block: the **Endpoint URL** to copy into the directory, **New token**,
-  **End overlap** while a rotation overlaps, and **Turn off**.
+- **Provider** — **Off**, **Microsoft Entra ID** or **Google Workspace**.
+- **Authority**, **Client ID**, and the credential: for Entra a **Credential** choice
+  between **Client secret** and **Token file**; for Google always the **Client
+  secret**. The secret field is blank on every visit and reads "Set on _date_. Leave
+  it blank to keep it." once a secret is stored.
+- **Domains** (Google only) and the **Display name** of the sign-in button,
+  `Workforce SSO` when left empty.
+- The **Callback URL**, with a copy button, shown before anything is set.
+- **Save**, **Turn off** for the provider, and **Last sign-in**.
+- The SCIM block: the **Endpoint URL** to copy into the directory, **Token issued**,
+  **New token**, **End overlap** while a rotation overlaps, **Turn off**, and **Last
+  request**.
 - A notice, when the settings were imported from the environment, to remove the
   variables (see [Before the card](#before-the-card-the-environment-variables)).
 
@@ -55,16 +59,17 @@ contract [`openapi/identity.yaml`](https://github.com/vantigo-io/vantigo/blob/ma
 | --- | --- |
 | Opening it | `GET /owner/sso` — the row without the client secret or any token, the callback URL, the SCIM endpoint, the last OIDC sign-in and the last SCIM request |
 | **Save** | `PUT /owner/sso/oidc`, with `If-Match` carrying the version the card read |
-| Provider off | `DELETE /owner/sso/oidc` |
+| **Turn off** for the provider, or **Off** and **Save** | `DELETE /owner/sso/oidc` |
 | **New token** | `POST /owner/sso/scim/token` |
 | **End overlap** | `DELETE /owner/sso/scim/previous` |
-| **Turn off** | `DELETE /owner/sso/scim` |
+| **Turn off** in the SCIM block | `DELETE /owner/sso/scim` |
 
 Every write holds the row in one transaction, moves its `version` on, answers the
 whole row with the new version, and is audited `sso-settings.changed` with the
 settings before and after — never the client secret and never a token or its digest.
 A save from a card opened before someone else's save is refused `412
-version_mismatch`: reload the card and save again. The operations are limited to 30
+version_mismatch`, and the card says "The settings have changed": choose **Reload**
+and save again. The operations are limited to 30
 requests a minute, like the rest of user management.
 
 ## Workforce OIDC
@@ -124,14 +129,14 @@ The secret is sealed at rest under `APP_SECRET` and never shown again.
 4. Grant only the delegated scopes the sign-in flow needs (`openid`, `profile`,
    `email`). Do not treat provider group or role claims as Vantigo authorization
    grants.
-5. On the **Single sign-on** card, choose **Entra** as the provider, and fill in the
-   **Authority**, the application (client) ID as **Client ID** (it must be a GUID)
-   and the **Client secret**. Give the button a **Display name** if `Workforce SSO`
+5. On the **Single sign-on** card, choose **Microsoft Entra ID** as the provider, and
+   fill in the **Authority** and the application (client) ID as **Client ID** (it
+   must be a GUID). Choose **Client secret** as the **Credential** and paste it. Give the button a **Display name** if `Workforce SSO`
    is not what people should see (at most 100 characters). Choose **Save**.
 
 Verify: within 20 seconds the sign-in page shows **Continue with** and the display
-name. Sign in with an ordinary test account, and check that the card's last sign-in
-moves.
+name. Sign in with an ordinary test account, and check that the card's **Last
+sign-in** moves.
 
 After the built-in token checks, Vantigo requires a `tid` GUID matching the tenant in
 the configured authority and an `oid` GUID. If the validated token carries multiple
@@ -194,8 +199,9 @@ spec:
           image: ghcr.io/vantigo-io/vantigo:<pinned-release>
 ```
 
-Then, on the card: **Entra**, the **Authority**, the **Client ID**, and the projected
-file's path in **Token file**; leave **Client secret** blank. Choose **Save**. The
+Then, on the card: **Microsoft Entra ID**, the **Authority** and the **Client ID**;
+choose **Token file** as the **Credential** and enter the projected file's path.
+Choose **Save**. The
 process that saves checks that the path is absolute and a readable file, and refuses
 it on **Token file** otherwise; saving it clears any stored client secret.
 
@@ -211,7 +217,7 @@ Rotate the projected token through the platform; Vantigo does not cache it.
 1. Create a Google OAuth web client and copy its secret. Google is client-secret only
    — workload identity is not accepted.
 2. Register the card's **Callback URL** as an authorised redirect URI.
-3. On the card, choose **Google**, enter the exact issuer
+3. On the card, choose **Google Workspace**, enter the exact issuer
    `https://accounts.google.com` as **Authority**, a client ID ending in
    `.apps.googleusercontent.com` as **Client ID**, and the **Client secret**.
 4. List every permitted Workspace domain in **Domains** as a bare DNS name, such as
@@ -228,16 +234,19 @@ accounts and unverified or mismatched-domain identities are rejected.
 
 People who have signed in through the provider are linked to it by the issuer — the
 authority — and their subject. A save that changes the **Authority** while anyone is
-linked under the current one asks for confirmation first (the request is refused
-`409 oidc_links_exist` without `confirmIssuerChange`). Confirm only when you mean to
+linked under the current one asks for confirmation first — "Change the provider's
+authority?" — and is sent again with `confirmIssuerChange` only when you confirm (the
+request is refused `409 oidc_links_exist` without it). Confirm only when you mean to
 move to another tenant or provider: nobody linked under the old authority is
 recognised under the new one. Their next SSO sign-in finds no link, and because an
 address never links a new identity to an existing account, it is refused
 (`oidc_email_conflict`) while their user exists.
 
-Choosing off as the provider turns OIDC off and clears its settings, the stored secret
-included. While people are linked to the provider it asks for the same confirmation
-(`409 oidc_links_exist` without `?confirm=true`). Within 20 seconds the sign-in page
+**Turn off** in the provider's part of the card — or **Off** as the provider and
+**Save**, which does the same — asks first, then turns OIDC off and clears its
+settings, the stored secret included. While people are linked to the provider a
+second dialog says "People are linked to this provider", and only confirming it sends
+`?confirm=true` (without it the request is refused `409 oidc_links_exist`). Within 20 seconds the sign-in page
 offers no provider button and every process stops accepting the provider's callback.
 
 ## SCIM
@@ -254,8 +263,8 @@ Requests authenticate with `Authorization: Bearer <token>` and use
 standard `ServiceProviderConfig`, `ResourceTypes` and `Schemas` discovery endpoints.
 
 **The token is generated by the server and shown once.** Vantigo makes it (32 random
-bytes, base64url without padding), shows it in a dialog with a copy button, and keeps
-only its SHA-256, so a token is never shown again: a lost one is replaced with a new
+bytes, base64url without padding), shows it in a dialog with **Copy token** and "It
+will not be shown again.", and keeps only its SHA-256, so a token is never shown again: a lost one is replaced with a new
 token, never recovered.
 
 To turn SCIM on:
@@ -265,8 +274,8 @@ To turn SCIM on:
    directory's provisioning settings (in Entra, the enterprise application's
    **Provisioning** page: **Tenant URL** is the endpoint URL, **Secret Token** the
    token) and close the dialog.
-3. Test the connection from the directory, and check that the card's last SCIM
-   request moves.
+3. Test the connection from the directory, and check that the SCIM block's **Last
+   request** moves.
 
 SCIM state is persistent: user mappings, SCIM groups and memberships, lifecycle
 state, ETags and audit records live in PostgreSQL. SCIM-created users are
@@ -276,9 +285,10 @@ outside the provisioning system's reach.
 
 ### Token rotation with overlap
 
-1. Choose **New token**. The new token is shown once, with the overlap's expiry: the
-   token it replaces is still accepted until then — 24 hours from now unless the
-   request sets an earlier `previousExpiresAt`, and never more than 24 hours ahead.
+1. Choose **New token**. Since a token exists, the card asks first how long to
+   "Accept the current token for": 1 to 24 hours, 24 by default (the request's
+   `previousExpiresAt`). The new token is then shown once, with the overlap's expiry:
+   the token it replaces is still accepted until then.
 2. Put the new token into the directory and test the connection there.
 3. When every client has switched, choose **End overlap**: the old token stops being
    accepted now rather than at the expiry. Or let the overlap run out.
@@ -290,14 +300,15 @@ than 24 hours ahead is refused on `previousExpiresAt`.
 
 ### Turn SCIM off
 
-Choose **Turn off**. The tokens are forgotten and, within 20 seconds, the endpoint
+Choose **Turn off** in the SCIM block. The tokens are forgotten and, within 20 seconds, the endpoint
 refuses every request. The users, mappings and groups SCIM provisioned stay as they
 are, and a directory's deactivation of a user stops counting for who holds a
 permission. To turn it on again, issue a **New token** and give it to the directory.
 
 ### Status and operational evidence
 
-The card shows the last OIDC sign-in and the last authenticated SCIM request. An
+The card shows the last OIDC sign-in (**Last sign-in**) and the last authenticated SCIM
+request (**Last request**). An
 authenticated Owner can also read:
 
 ```text
@@ -354,7 +365,7 @@ The procedure, once, on the upgrade to that release:
    variables still in place for the first start.
 2. Check the log for the import warning, or the audit trail for
    `sso-settings.imported`, and open the **Single sign-on** card: the provider, the
-   authority, the client ID, "set on" for the secret and the SCIM token's date are
+   authority, the client ID, "Set on" for the secret and **Token issued** for SCIM are
    there, with the notice.
 3. Remove every `OIDC_*` and `SCIM_*` variable from every API and worker container —
    `vantigo.env`, the secret store, the platform's environment — all together, and

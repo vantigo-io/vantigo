@@ -28,7 +28,7 @@ identity integrations":
 - **Access control** — **Manage roles & access**.
 - **Identity integrations** — whether **SSO** is on and which provider (Microsoft
   Entra ID, Google Workspace, or just **Enabled**), that **Client authentication** is
-  **Managed by deployment**, and the **Last successful SSO use**.
+  **Set on the Single sign-on card**, and the **Last successful SSO use**.
 - **SCIM provisioning** — its **Status** and the **Last authenticated request**.
 - **Operational activity** — a reminder that this overview shows only non-sensitive
   identity activity; credentials and provider configuration are never displayed.
