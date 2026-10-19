@@ -208,11 +208,13 @@ it, re-enables a user it disabled and disables leavers; until the provider has c
 the user the link is held with `not_found` and tried again daily. A pending user made
 in local mode before the switch is held with `mode_changed` for an Owner.
 
-**The mode mismatch.** The worker's process must have the same OIDC and SCIM settings
-as the API's ([Installation](/en/admin/installation/)). When they differ, the worker
-still disables leavers but holds everything else: the links read
-`reason: mode_mismatch`, and the log says so. Align the settings and restart; the held
-links are tried again at the next poll.
+**The mode mismatch.** The worker reads the mode from the single sign-on settings in
+the database, as the API does
+([the authority mode](/en/admin/authentication/#the-authority-mode)), so the two no
+longer disagree. Only a worker still on the release before the **Single sign-on** card,
+during a rolling upgrade, still reports it: it disables leavers but holds everything
+else, and the links read `reason: mode_mismatch`. Finish the upgrade; the held links
+are tried again at the next poll.
 
 **A held link** (`reason` set; the Account tab says each reason in a sentence) is tried
 again every day, so it clears by itself once its
