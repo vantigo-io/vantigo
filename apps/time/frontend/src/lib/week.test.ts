@@ -1,3 +1,4 @@
+import { setTimeZones } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addDays,
@@ -55,11 +56,19 @@ describe("addDays", () => {
 });
 
 describe("today", () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    setTimeZones(null);
+  });
 
-  it("is the local calendar date, not the UTC one", () => {
+  it("is the business zone's calendar date, not the UTC one or the viewer's", () => {
+    // 22:30 UTC on 20 September is already the 21st in Oslo, still the 20th
+    // in UTC and in New York, where this reader has chosen to sit.
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(2026, 8, 20, 23, 30));
+    vi.setSystemTime(new Date("2026-09-20T22:30:00Z"));
+    setTimeZones({ timeZone: "America/New_York", timeZoneSource: "personal", businessTimeZone: "Europe/Oslo" });
+    expect(today()).toBe("2026-09-21");
+    setTimeZones({ timeZone: "Europe/Oslo", timeZoneSource: "personal", businessTimeZone: "UTC" });
     expect(today()).toBe("2026-09-20");
   });
 });

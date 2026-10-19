@@ -7,12 +7,15 @@ export interface PersonalProfile {
   email: string | null;
   preferredLanguage: Language;
   avatarUrl: string | null;
+  /** The user's own time zone, an IANA name; null follows the workspace's business time zone. */
+  timeZone: string | null;
 }
 interface AccountResponse {
   displayName: string;
   email: string | null;
   preferredLanguage: string | null;
   avatarUrl: string | null;
+  timeZone?: string | null;
 }
 export interface PersonalMfaStatus {
   twoFactorEnabled: boolean;
@@ -75,16 +78,18 @@ const toProfile = (value: AccountResponse): PersonalProfile => ({
       : value.preferredLanguage?.trim().toLowerCase() === "nb"
         ? "nb"
         : "auto",
+  timeZone: value.timeZone ?? null,
 });
 const account = "/api/v1/identity/account";
 export const getProfile = async () => toProfile(await request<AccountResponse>(account));
-export const updateProfile = async (body: Pick<PersonalProfile, "displayName" | "preferredLanguage">) =>
+export const updateProfile = async (body: Pick<PersonalProfile, "displayName" | "preferredLanguage" | "timeZone">) =>
   toProfile(
     await request<AccountResponse>(
       `${account}/profile`,
       json("PATCH", {
         displayName: body.displayName,
         preferredLanguage: body.preferredLanguage === "auto" ? "automatic" : body.preferredLanguage,
+        timeZone: body.timeZone,
       }),
     ),
   );

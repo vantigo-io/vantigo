@@ -18,7 +18,7 @@ import {
 import { isSessionExpired, saveCsv } from "../api/import-export";
 import { cancelAnonymisation, downloadPersonalData, scheduleAnonymisation } from "../api/personal-data";
 import { CUSTOMER_ANONYMISED_CODE, CUSTOMER_MERGED_CODE, customerWriteErrorMessage } from "../lib/customer-write-error";
-import { utcToday } from "../lib/follow-up-dates";
+import { businessToday } from "../lib/follow-up-dates";
 import { formatDateOnly } from "../lib/format-date-only";
 import "../i18n";
 
@@ -167,8 +167,8 @@ export const CustomerPersonalDataMenu = ({ customer }: { customer: CustomerRespo
 
 /**
  * The day, chosen (GDPR design D4): no default — the modal says why, and says
- * that nothing brings the data back — and nothing before today in UTC
- * (`utcToday`, which stands in for the server's business day). A refusal the
+ * that nothing brings the data back — and nothing before today on the
+ * business day (`businessToday`, the day the server judges). A refusal the
  * page could not have known (archived no more, anonymised meanwhile, merged
  * away from another tab) is said in the modal in words, and the page refetches.
  */
@@ -188,7 +188,7 @@ const AnonymisationScheduleModal = ({
     initialValues: { anonymiseOn: "" },
     validate: {
       anonymiseOn: (value: string) =>
-        !value ? t("anonymisationDateRequired") : value < utcToday() ? t("anonymisationDateInPast") : null,
+        !value ? t("anonymisationDateRequired") : value < businessToday() ? t("anonymisationDateInPast") : null,
     },
   });
   // Each opening starts afresh — the day already scheduled (or none), no field
@@ -248,7 +248,7 @@ const AnonymisationScheduleModal = ({
           <DateInput
             label={t("anonymisationDate")}
             valueFormat="YYYY-MM-DD"
-            minDate={utcToday()}
+            minDate={businessToday()}
             withAsterisk
             {...form.getInputProps("anonymiseOn")}
           />

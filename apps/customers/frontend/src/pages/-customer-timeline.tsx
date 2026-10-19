@@ -41,7 +41,7 @@ import {
 } from "@tabler/icons-react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, instantFromWallClock, useI18n, wallClockIn } from "@vantigo/frontend-shell";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { attachmentsQueryKey, type CustomerAttachment } from "../api/attachments";
 import {
@@ -69,7 +69,7 @@ import {
 } from "../lib/attachments";
 import { billingLanguageLabel, deliveryMethodLabel } from "../lib/billing-labels";
 import { customerWriteErrorMessage, isCustomerReadOnly } from "../lib/customer-write-error";
-import { isOverdue, utcToday } from "../lib/follow-up-dates";
+import { businessToday, isOverdue } from "../lib/follow-up-dates";
 import { formatDateOnly } from "../lib/format-date-only";
 import { AttachmentLink } from "./-customer-attachments-card";
 import "../i18n";
@@ -861,11 +861,13 @@ const TimelineForm = ({
   onClose: () => void;
   onSuccess: () => void;
 }) => {
-  const { t } = useI18n("customers");
+  // The time a person types is a moment in their own zone (time zones design
+  // D6), and an entry's stored instant is shown back to them in it.
+  const { t, timeZone } = useI18n("customers");
   const form = useForm({
     initialValues: {
       eventType: "note",
-      occurredOn: utcToday(),
+      occurredOn: businessToday(),
       occurredAt: "",
       note: "",
       sourceUrl: "",
@@ -874,7 +876,7 @@ const TimelineForm = ({
     },
     validate: {
       eventType: (v) => (!v ? t("typeRequired") : null),
-      occurredOn: (v) => (!v ? t("dateRequired") : v > utcToday() ? t("dateFuture") : null),
+      occurredOn: (v) => (!v ? t("dateRequired") : v > businessToday() ? t("dateFuture") : null),
       note: (v) => (!v.trim() ? t("descriptionRequired") : null),
       // The follow-up date has no rule at all, and no future check, which is the
       // point of it: it is the one date in this form allowed to be ahead of
@@ -891,7 +893,7 @@ const TimelineForm = ({
         ? {
             eventType: entry.eventType,
             occurredOn: entry.occurredOn,
-            occurredAt: entry.occurredAt ? entry.occurredAt.slice(11, 16) : "",
+            occurredAt: entry.occurredAt ? wallClockIn(timeZone, new Date(entry.occurredAt)) : "",
             note: entry.note ?? "",
             sourceUrl: entry.sourceUrl ?? "",
             followUpOn: entry.followUp?.dueOn ?? "",
@@ -899,7 +901,7 @@ const TimelineForm = ({
           }
         : {
             eventType: "note",
-            occurredOn: utcToday(),
+            occurredOn: businessToday(),
             occurredAt: "",
             note: "",
             sourceUrl: "",
@@ -927,12 +929,23 @@ const TimelineForm = ({
       });
     },
   });
+  // The typed date and time, read in the writer's zone. An edit that leaves
+  // both as they were sends the stored instant back untouched, so a reader in
+  // another zone than the one it was written in does not move it by saving.
+  const occurredAtFor = (occurredOn: string, time: string) => {
+    if (!time) return undefined;
+    if (
+      entry?.occurredAt &&
+      occurredOn === entry.occurredOn &&
+      time === wallClockIn(timeZone, new Date(entry.occurredAt))
+    )
+      return entry.occurredAt;
+    return instantFromWallClock(occurredOn, time, timeZone).toISOString();
+  };
   const submit = form.onSubmit(({ followUpOn, followUpAssigneeUserId, ...values }) =>
     mutation.mutate({
       ...values,
-      occurredAt: values.occurredAt
-        ? new Date(`${values.occurredOn}T${values.occurredAt}:00Z`).toISOString()
-        : undefined,
+      occurredAt: occurredAtFor(values.occurredOn, values.occurredAt),
       sourceUrl: values.sourceUrl || undefined,
       // No date means no follow-up, whatever the assignee field still holds, and
       // on an update that is an instruction: this PUT is a full replace, so
@@ -957,7 +970,7 @@ const TimelineForm = ({
           />
           <DateInput label={t("date")} valueFormat="YYYY-MM-DD" withAsterisk {...form.getInputProps("occurredOn")} />
           <TextInput
-            label={t("timeUtc")}
+            label={t("timeInZone", { zone: timeZone })}
             type="time"
             leftSection={<IconClock size={16} />}
             {...form.getInputProps("occurredAt")}
