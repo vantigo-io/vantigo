@@ -272,8 +272,9 @@ delivery, retention, attachment cleanup, the customers registry workers, the
 customers import worker `customers-import`, the energy import worker `energy-import`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
 `INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
 always, the invoices payments worker `invoices-payments` when
-`INVOICES_VIPPS_ENABLED` is on, and the calendar cancellations worker
-`calendar-cancellations` unless `CALENDAR_CANCELLATIONS_ENABLED=0`) inside the
+`INVOICES_VIPPS_ENABLED` is on, the calendar cancellations worker
+`calendar-cancellations` unless `CALENDAR_CANCELLATIONS_ENABLED=0`, and the calendar
+subscriptions worker `calendar-subscriptions` unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
 horizontally should move them to one dedicated worker container, so that every extra
 HTTP replica does not multiply the pollers:
@@ -298,7 +299,7 @@ HTTP replica does not multiply the pollers:
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
 you use, retention cleanup, the registry workers, the EHF events worker and the
-calendar cancellations worker take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
+calendar cancellations and subscriptions workers take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
 the `invoices-ehf` worker, the `invoices-reminders` worker and the `invoices-payments`
 worker instead take one row at a time under a time-limited lease, so any number of
 instances share the work without sending anything twice. The reminder worker sends one letter at a time, at most one a

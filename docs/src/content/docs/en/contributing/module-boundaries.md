@@ -26,8 +26,9 @@ Communications' outbox is the working example.
    Norwegian public-holiday calendar, by which Invoices moves its due dates, Staff
    counts working days and Calendar marks the holidays beside a person's items — `internal/netguard`
    — the shared table of addresses the guarded outbound clients refuse to
-   dial (today `internal/mail`'s SMTP guard and `internal/peppol`'s SMP
-   client; Brreg, OIDC and the AI client use `http.DefaultTransport`) —
+   dial (today `internal/mail`'s SMTP guard, `internal/peppol`'s SMP
+   client and the calendar's fetch of the calendars a person subscribes to;
+   Brreg, OIDC and the AI client use `http.DefaultTransport`) —
    `internal/payments` — the payments port, shared by Invoices and a later Point of
    sale, with its Vipps MobilePay adapter `internal/payments/vipps`; interfaces,
    values and the adapter only, no SQL, so each consumer keeps its own tables
@@ -100,7 +101,11 @@ Communications' outbox is the working example.
    closed, and its tables may be empty — whereas a customer holder must run whether
    or not its module is on, because a switched-off module still holds rows naming the
    customer. The slot is not called `Calendar`, which is `Deps.Calendar`, the business
-   calendar identity provides.
+   calendar identity provides. A provider's gate is asked for a user with no request
+   behind them only through `contracts.AsUser`, and only by a module that has matched a
+   token to that user — today the calendar feed's, whose address names one person:
+   `HasPermission` then asks `Access.UserHolds` for that user instead of `Check` for a
+   session (rule 12).
    No two invoiced-work holders may claim one source kind. `module.Workers`
    collects `CustomerPersonalData` and `InvoicedWork` as well, because worker mode
    never composes: the anonymisation worker is where rule 9's erase runs, and the
@@ -130,7 +135,9 @@ Communications' outbox is the working example.
    sees the request. A module's anonymous operation is reachable on the public host only
    when that platform list names it — today the Invoices pay page's three operations and
    the Calendar answer page's two (`POST /api/v1/calendar/rsvp/read` and
-   `POST /api/v1/calendar/rsvp`, beside the page's own `GET /rsvp`), and nothing reserved
+   `POST /api/v1/calendar/rsvp`, beside the page's own `GET /rsvp`) and the calendar
+   feed's `GET /api/v1/calendar/feed/{token}.ics`, the one anonymous `GET` with a token in
+   the path, argued in the calendar feed design D2 — and nothing reserved
    ahead of what is served — so a module adds a public operation by changing the platform's
    list, in the same change and with its test (`TestPublicHostGate`), never by mounting
    anything of its own there.
@@ -294,8 +301,16 @@ Communications' outbox is the working example.
     Customer 360's rule. The consumer calls a provider with the request's context and
     never inside one of its own transactions, through one accessor in its
     `contractscalls.go` that refuses such a call; a provider called without a request —
-    from a worker — answers nothing. A provider reads its own tables only
-    ([Calendar](/en/reference/calendar/#the-sources-contract)).
+    from a worker — answers nothing. The one exception is a read on one user's behalf
+    whose caller is a token the consumer has already matched to that user — the calendar
+    feed: the consumer asks under `contracts.AsUser(ctx, userID)`, on a context that
+    carries no request, and `HasPermission` answers through `Access.UserHolds` — whether
+    that user, active, not locked out and not pending, holds the keys, an Owner holding
+    all — so the provider's gate is still its own and still identity's to answer, with
+    no change to the provider. `AsUser` never widens a request: a request in the context
+    is always checked through `Check` first. A provider reads its own tables only
+    ([Calendar](/en/reference/calendar/#the-sources-contract),
+    [the feed's read](/en/reference/calendar/#reading-the-providers-for-the-feed)).
 
 ## How they are enforced
 

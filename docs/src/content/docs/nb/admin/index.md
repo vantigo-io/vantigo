@@ -48,7 +48,10 @@ applikasjonen.
   til folk utenfor bedriften trenger SMTP-driveren, et avsenderdomene med SPF, DKIM og
   DMARC, og — for mottakere utenfor nettverket ditt — den offentlige verten;
   arbeideren `calendar-cancellations` sletter en avlyst avtale når den siste dagen er
-  passert.
+  passert. En persons kalenderadresse — strømmen en mobil abonnerer på — står på listen
+  til den offentlige verten, med en grense, og med tokenet i stien; arbeideren
+  `calendar-subscriptions` henter kalenderne folk abonnerer på fra internett, gjennom
+  vakten for utgående adresser.
 
 ## Den komplette konfigurasjonsreferansen
 

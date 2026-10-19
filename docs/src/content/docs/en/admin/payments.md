@@ -396,7 +396,7 @@ rule is what makes the public host safe; the steps below set it.
    the **same base path** as `APP_URL` — `PUBLIC_BASE_URL=https://pay.example.com` when
    `APP_BASE_PATH` is unset, `https://pay.example.com/vantigo` when it is `/vantigo`.
    On that host Vantigo serves only what the pay page — and Calendar's answer page for
-   invitations ([Calendar](/en/admin/calendar/#the-public-hosts-three-routes)) — needs,
+   invitations and its calendar feed ([Calendar](/en/admin/calendar/#the-public-hosts-routes)) — needs,
    and answers 404 to
    everything else. The alternative is `APP_URL`'s own origin: then there is no second
    host and nothing is filtered, so publishing the pay page means publishing all of
@@ -525,6 +525,7 @@ on no list.
 | `GET`, `HEAD` | `/rsvp` (Calendar's answer page for an invitation; any query) |
 | `POST` | `/api/v1/calendar/rsvp/read` (that page's read; the token in the body) |
 | `POST` | `/api/v1/calendar/rsvp` (an invitee's answer) |
+| `GET` | `/api/v1/calendar/feed/{token}.ics` (Calendar's feed, a calendar address; exactly one segment) |
 | `GET`, `HEAD` | `/health/…` (probes) |
 
 **Verify** from outside, against the public host:

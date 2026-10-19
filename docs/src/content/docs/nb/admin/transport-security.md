@@ -110,7 +110,10 @@ SMTP har en beskyttelse som ikke handler om TLS: destinasjonen slås opp og kont
 før socketen åpnes, og private adresser, loopback, link-local, carrier-grade NAT og
 sky-metadataadresser (inkludert `169.254.169.254`) avvises. Tilkoblingen gjøres så til
 adressen som ble kontrollert, ikke til et nytt oppslag, og det er det som slår DNS
-rebinding. Dette gjelder uansett hva `SMTP_TLS` sier.
+rebinding. Dette gjelder uansett hva `SMTP_TLS` sier. Den samme vakten, med den samme
+tabellen, gjelder for Peppol-oppslaget og for hentingen i Kalender av kalenderne folk
+abonnerer på, som heller ikke følger noen videresending eller bruker noen proxy
+([Kalender](/nb/admin/calendar/#hva-vantigo-henter-fra-internett)).
 
 ## Oppgradering fra de lukkede reglene
 

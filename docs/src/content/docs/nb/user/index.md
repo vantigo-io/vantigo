@@ -57,7 +57,7 @@ kortere enn din:
 | [Kunder](/nb/user/customers/) | Kunder, Kontakter, Oppfølginger |
 | [Prosjekter](/nb/user/projects/) | Prosjekter, Mine oppgaver, Prosjektøkonomi |
 | [Timer](/nb/user/time/) | Min uke, Godkjenning, Personer, Timeinnstillinger |
-| [Kalender](/nb/user/calendar/) | Kalender (din egen, og en kollegas med velgeren) |
+| [Kalender](/nb/user/calendar/) | Kalender (din egen, og en kollegas med velgeren), Min kalender (kalenderen din på mobilen, og kalendere fra andre steder) |
 | [Utlegg](/nb/user/expenses/) | Mine utlegg, Godkjenning av utlegg, Refusjoner, Utleggsinnstillinger |
 | [Ansatte](/nb/user/staff/) | Min side (fanen **Fravær** og, for en leder, **Mitt team**), Ansattoversikt, Fravær (kalenderen og godkjenningene), Ansatteinnstillinger |
 | [Fakturaer](/nb/user/invoices/) | Fakturaer, Hurtigfaktura, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |

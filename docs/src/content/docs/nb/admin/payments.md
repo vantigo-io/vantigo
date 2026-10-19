@@ -396,7 +396,7 @@ verten trygg; stegene nedenfor setter den.
    basissti** som `APP_URL` — `PUBLIC_BASE_URL=https://pay.example.com` når
    `APP_BASE_PATH` ikke er satt, `https://pay.example.com/vantigo` når den er `/vantigo`.
    På den verten serverer Vantigo bare det betalingssiden — og svarsiden i Kalender for
-   invitasjoner ([Kalender](/nb/admin/calendar/#de-tre-rutene-på-den-offentlige-verten))
+   invitasjoner og kalenderstrømmen ([Kalender](/nb/admin/calendar/#rutene-på-den-offentlige-verten))
    — trenger, og svarer 404 på alt
    annet. Alternativet er opprinnelsen til `APP_URL` selv: da finnes det ingen egen
    vert og ingenting filtreres, så å publisere betalingssiden betyr å publisere hele
@@ -527,6 +527,7 @@ kodet `/`, `%2F`), står ikke på noen liste.
 | `GET`, `HEAD` | `/rsvp` (svarsiden i Kalender for en invitasjon; enhver spørring) |
 | `POST` | `/api/v1/calendar/rsvp/read` (den sidens lesing; tokenet i innholdet) |
 | `POST` | `/api/v1/calendar/rsvp` (en mottakers svar) |
+| `GET` | `/api/v1/calendar/feed/{token}.ics` (kalenderstrømmen i Kalender, en kalenderadresse; nøyaktig ett segment) |
 | `GET`, `HEAD` | `/health/…` (prober) |
 
 **Kontroller** utenfra, mot den offentlige verten:

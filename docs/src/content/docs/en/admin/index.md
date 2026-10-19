@@ -48,7 +48,10 @@ application.
   people outside the company need the SMTP driver, a sending domain with SPF, DKIM and
   DMARC, and — for invitees outside your network — the public host; the
   `calendar-cancellations` worker erases a cancelled appointment once its last day has
-  passed.
+  passed. A person's calendar address — the feed a phone subscribes to — is on the
+  public host's list, rate limited, with its token in the path; the
+  `calendar-subscriptions` worker fetches the calendars people subscribe to from the
+  internet, through the outbound address guard.
 
 ## The complete configuration reference
 
