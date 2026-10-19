@@ -98,7 +98,7 @@ the old issuer is refused `oidc_links_exist` (409) unless the body carries
 would provision anew.
 
 **The import, once.** At identity's mount, where `recordAuthorityMode` runs today, an
-API process that finds `version = 0` and any of `OIDC_*` or `SCIM_*` set imports them
+API process that finds `version = 0` and `OIDC_PROVIDER` or `SCIM_TOKEN` set (the loader's own two switches) imports the two blocks
 in one transaction holding the row (`SELECT … FOR UPDATE`): the secret sealed, the
 token and the previous token digested with the expiry, `imported_from_environment`
 true, `version` 1, `updated_by_user_id` null; audits `sso-settings.imported` with the
@@ -113,7 +113,7 @@ drops `OIDCConfig` and `SCIMConfig`. Workers never import.
 **The authority mode is no longer a guard.** `deriveAuthorityMode` reads the row; the
 API and the workers read the same row, so the recorded mode and a process's derivation
 cannot disagree. `recordAuthorityMode` keeps writing `system_settings.authority_mode`
-when the row's derivation changes — now from the save, not the mount — with the audit
+when the row's derivation changes — at every API start, in the import's own transaction, and at every save — with the audit
 `authority-mode.changed` as today, as a trail. `authorityMode` answers the derivation
 and never `ErrModeMismatch`; the sentinel, `accountModeMismatch` and Staff's
 `mode_mismatch` reason stay one release so a worker on the old binary reports sanely
@@ -133,7 +133,7 @@ rule), rate-limited as `policyUserManagement`:
 | `DELETE /owner/sso/scim/previous` | ends the overlap early |
 | `DELETE /owner/sso/scim` | turns SCIM off; the mappings and groups stay, as they do today when the variable is removed |
 
-Every write is one transaction holding the row, bumps `version`, audits
+Every write is one transaction holding the row; one that changes something bumps `version`, clears `imported_from_environment` (the row is the Owner's from then on) and audits
 `sso-settings.changed` with before and after **minus** the secret and the digests, and
 evicts the cache. `GET /owner/system-status` keeps its three SSO fields, now from the
 row. The problems are identity's `CodeMessageError` shape with field errors as

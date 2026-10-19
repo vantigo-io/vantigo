@@ -54,9 +54,9 @@ Open the avatar menu, choose **Workspace admin**, and stay on **Overview**: the
   request**.
 - A notice, **Imported from the environment**, when the settings were imported from
   the environment, to remove the variables (see
-  [Before the card](#before-the-card-the-environment-variables)). It stays until the
-  provider is next saved with **Save**; turning either part off or issuing a token
-  leaves it.
+  [Before the card](#before-the-card-the-environment-variables)). It stays until
+  the next change made on the card — a save, a token issued, a part turned off — and
+  a turn-off with nothing to turn off changes nothing.
 
 Behind the card are six operations under `/api/v1/identity/owner/sso`, in the
 contract [`openapi/identity.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/identity.yaml):
@@ -394,7 +394,7 @@ The procedure, once, on the upgrade to that release:
 2. Check the log for the import warning, or the audit trail for
    `sso-settings.imported`, and open the **Single sign-on** card: the provider, the
    authority, the client ID, "Set on" for the secret and **Token issued** for SCIM are
-   there, with the notice. It stays until the provider is next saved with **Save**.
+   there, with the notice. It stays until the next change made on the card.
 3. Remove every `OIDC_*` and `SCIM_*` variable from every API and worker container —
    `vantigo.env`, the secret store, the platform's environment — all together, and
    restart when convenient. `AZURE_FEDERATED_TOKEN_FILE`, which the workload identity

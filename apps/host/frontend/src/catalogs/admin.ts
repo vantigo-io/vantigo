@@ -518,7 +518,7 @@ const en = {
   "admin.sso.saveFailed": "The OIDC settings could not be saved",
   "admin.sso.issuerChangeTitle": "Change the provider's authority?",
   "admin.sso.issuerChangeConfirm":
-    "People are linked to the provider under {{from}}. Links are kept per authority, so each of them is provisioned anew at their next sign-in under {{to}}.",
+    "People are linked to the provider under {{from}}. Links are kept per authority, so their next sign-in under {{to}} is refused until a later release relinks them; they sign in with a local credential meanwhile.",
   "admin.sso.issuerChangeButton": "Change authority",
   "admin.sso.turnOff": "Turn off",
   "admin.sso.oidcTurnOffTitle": "Turn off SSO?",
@@ -591,7 +591,7 @@ const en = {
   "admin.noAuthenticatedRequests": "No authenticated requests yet",
   "admin.operationalActivity": "Operational activity",
   "admin.activityDescription":
-    "This overview reports only non-sensitive identity activity. Credentials, authorities, and provider configuration details are intentionally not displayed.",
+    "This overview reports only non-sensitive identity activity. No credential is ever shown; the provider's settings are on the Single sign-on card below.",
   "admin.users": "Users",
   "admin.usersDescription": "Manage access, roles, and sign-in security for your team.",
   "admin.addUser": "Add user",
@@ -1059,7 +1059,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.sso.saveFailed": "OIDC-innstillingene kunne ikke lagres",
   "admin.sso.issuerChangeTitle": "Endre leverandørens autoritet?",
   "admin.sso.issuerChangeConfirm":
-    "Personer er koblet til leverandøren under {{from}}. Koblingene holdes per autoritet, så hver av dem klargjøres på nytt ved neste innlogging under {{to}}.",
+    "Personer er koblet til leverandøren under {{from}}. Koblingene holdes per autoritet, så neste innlogging under {{to}} avvises inntil en senere utgave kobler dem på nytt; i mellomtiden logger de inn med lokal legitimasjon.",
   "admin.sso.issuerChangeButton": "Endre autoritet",
   "admin.sso.turnOff": "Slå av",
   "admin.sso.oidcTurnOffTitle": "Slå av SSO?",
@@ -1132,7 +1132,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.noAuthenticatedRequests": "Ingen autentiserte forespørsler ennå",
   "admin.operationalActivity": "Operativ aktivitet",
   "admin.activityDescription":
-    "Denne oversikten viser bare ikke-sensitiv identitetsaktivitet. Legitimasjon, autoriteter og leverandørkonfigurasjon vises med hensikt ikke.",
+    "Denne oversikten viser bare ikke-sensitiv identitetsaktivitet. Legitimasjon vises aldri; leverandørens innstillinger står på Single sign-on-kortet nedenfor.",
   "admin.users": "Brukere",
   "admin.usersDescription": "Administrer tilgang, roller og innloggingssikkerhet for teamet.",
   "admin.addUser": "Legg til bruker",
