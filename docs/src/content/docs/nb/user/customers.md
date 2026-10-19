@@ -251,6 +251,12 @@ detaljene; **Last inn flere** henter eldre hendelser. Lesing krever
 (**Samtale**, **Møte**, **E-post**, **Notat**, **Annet** eller **Registerendring**),
 **Dato** (ikke i fremtiden), valgfri **Tid (UTC)**, en **Beskrivelse**, en valgfri
 **Kilde-URL** vist som **Åpne kilde** på hendelsen, og en oppfølging (neste avsnitt).
+Tiden du skriver er UTC, slik feltnavnet sier, og hendelsen viser den i nettleserens
+tidssone, uten sone etter. **Dato** må være dagen den tiden faller på i virksomhetens
+tidssone (satt under [Administrasjon av
+arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet)):
+23:30 UTC 30. juni er 1. juli i Oslo. En hendelse som er lagret fra før, blir stående
+som den er, og redigerer du bare beskrivelsen, kreves aldri en ny dato.
 Menyen på en manuell hendelse tilbyr **Rediger**, **Revisjonshistorikk** og **Slett**.
 Alle lagrede versjoner beholdes, og **Revisjonshistorikk** lister dem som **Revisjon
 1**, **Revisjon 2** og så videre, med hvem som endret og når. Er en hendelse endret
@@ -304,6 +310,13 @@ filtrerer til **Meg** eller **Ikke tildelt**; **Status** til **Åpne**, **Forfal
 og **Alle**. Med `customers:timeline-manage` har hver åpen rad **Merk som utført**.
 Siden krever `customers:view` i tillegg til `customers:timeline-view`, fordi hver rad
 navngir en kunde. Se [Follow-ups](/en/reference/customers/#follow-ups).
+
+**Forfalt** under **Status**, og dashbordets punkter for forfalte oppfølginger og
+oppfølginger med frist i dag, regner dagen i dag i virksomhetens tidssone (satt under
+[Administrasjon av
+arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet)),
+den samme dagen for alle: en oppfølging med frist mandag er forfalt fra midnatt natt
+til tirsdag der, uansett hvor du er.
 
 ## Eksport og import
 

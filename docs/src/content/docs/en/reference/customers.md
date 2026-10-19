@@ -884,9 +884,18 @@ These are immutable — there is no edit or delete endpoint for a generated entr
 
 Manual event types: `note`, `interaction.call`, `interaction.meeting`,
 `interaction.email`, `registry.change`, `other`. A manual entry carries an
-`occurredOn` (an ISO date, never in the future), an optional `occurredAt` (must share
-`occurredOn`'s UTC calendar date), a note (≤ 10,000 characters) and an optional
-`sourceUrl`. It can be edited and soft-deleted, and every edit or delete appends a new
+`occurredOn` (an ISO date, never after today's [business day](#the-business-day)), an
+optional `occurredAt` (an instant whose business day must be `occurredOn`: 23:30 UTC on
+30 June is dated 1 July in Oslo and 30 June under UTC — 400 on `occurredAt`, "OccurredAt
+must fall on occurredOn in the business time zone", otherwise), a note (≤ 10,000
+characters) and an optional `sourceUrl`. The day rule is checked on writes only, and an
+existing entry is left as written. A create judges it with every other field; a `PUT`
+judges it once the entry itself has been accepted (after the 404 and the revision
+check), and only when `occurredOn` or `occurredAt` **changes**: re-sending both exactly
+as stored is not judged again, the same division the follow-up's assignee makes between
+validating a change and re-rendering stored state ([Setting one](#setting-one)), so an
+entry written consistent on the UTC day — or under a business time zone the workspace
+has since left — still takes an edit to its note. It can be edited and soft-deleted, and every edit or delete appends a new
 **revision** — a full point-in-time snapshot — guarded by three overlapping
 concurrency checks (a manual comparison before the write, the guarded `UPDATE`'s own
 `WHERE`, and a unique index on entry+revision number as backstop), all answering the
@@ -1079,10 +1088,11 @@ assignee.
 
 Everywhere a follow-up is compared against **today** — the overdue/due-today
 split on the attention list, `state=overdue` on the page — "today" is the
-*server's* UTC calendar day (`civilDate(deps.Clock())`), never the reader's
-local one: a Norwegian reader at 00:30 on Tuesday is two hours into a day the
-server still calls Monday, so a follow-up due Monday reads as due today for
-those two hours rather than overdue.
+[business day](#the-business-day): today in the workspace's business time zone,
+read through `contracts.BusinessCalendar` on the request that judges it, never
+a day of the reader's own. A Norwegian reader and the server agree: at 00:30 on
+Tuesday in Oslo it is Tuesday for both, so a follow-up due Monday is overdue
+from Oslo's midnight, not two hours later at the server's UTC one.
 
 ### Setting one
 
@@ -1152,7 +1162,7 @@ in).
 | Parameter | Values | Default |
 | --- | --- | --- |
 | `assignee` | a user id, `me` (resolved from the session, never sent) or `none` | `me` |
-| `state` | `open`, `overdue` (a subset of `open`: `dueOn` before today, the server's UTC calendar day), `done`, `all` (the superset of the other three, archived customers included) | `open` |
+| `state` | `open`, `overdue` (a subset of `open`: `dueOn` before today's [business day](#the-business-day)), `done`, `all` (the superset of the other three, archived customers included) | `open` |
 | `customerId` | one customer's follow-ups | all |
 
 Archived customers' follow-ups are excluded **unless `state=done` or
@@ -1255,7 +1265,7 @@ so the cell has one reading.
 `GET /customers/export` is the list as the caller sees it: the list's own filters
 (`search`, `status`, `type`, `ownerId`, `tagId`, `groupId`, `includeArchived`) and
 sort, resolved by the very function the list uses, one row per customer, named
-`customers-YYYY-MM-DD.csv` (UTC) and never cached. The legal identity's four columns
+`customers-YYYY-MM-DD.csv` (today's [business day](#the-business-day)) and never cached. The legal identity's four columns
 are **absent** — not blank — without `customers:legal-identity-view`, so such a file
 re-imports without touching an identity; the billing columns are there for every
 viewer, as the billing profile's own GET is. More than **5000** customers is a 400
@@ -1790,8 +1800,8 @@ address.
 
 ### Scheduling
 
-`PUT /customers/{id}/anonymisation` with `{anonymiseOn}` — a UTC calendar day,
-`yyyy-MM-dd`, today or later (400 on `anonymiseOn` otherwise) — puts the day on the
+`PUT /customers/{id}/anonymisation` with `{anonymiseOn}` — a day, `yyyy-MM-dd`,
+today's [business day](#the-business-day) or later (400 on `anonymiseOn` otherwise) — puts the day on the
 customer and records `customer.anonymisation_scheduled` (`{customerId, anonymiseOn,
 previousAnonymiseOn?}`, attributed to the caller: the worker that acts on it later is
 only the system, so this entry is where the decision's author is on record). The
@@ -1836,7 +1846,8 @@ that predates this rule. An anonymised customer's DELETE answers `customer_anony
 ### What the worker does
 
 The `customers-anonymisation` worker takes every archived private person whose day has
-come (UTC) and who is not anonymised yet, at most fifty a cycle, oldest day first, each
+come (on the [business day](#the-business-day), the zone read before the lease's
+connection is held) and who is not anonymised yet, at most fifty a cycle, oldest day first, each
 in **one transaction** with the customer row locked, retried on a deadlock. Under the
 lock it reads the customer again — a cancel, a restore or a change of type may have
 landed since the batch was selected — and one no longer due is left alone. A cycle runs
@@ -2131,7 +2142,7 @@ context, as time's and expenses' own items do:
 
 | Type | Raised when | Clears when |
 | --- | --- | --- |
-| `followUpOverdue` | An open follow-up on a non-archived customer, assigned to the caller **or unassigned**, whose `dueOn` is before today (UTC) | It is ticked done, its due date is moved to a later day (an edit — reopening never moves the date), it is cleared, its entry is deleted, or the customer is archived |
+| `followUpOverdue` | An open follow-up on a non-archived customer, assigned to the caller **or unassigned**, whose `dueOn` is before today (the [business day](#the-business-day)) | It is ticked done, its due date is moved to a later day (an edit — reopening never moves the date), it is cleared, its entry is deleted, or the customer is archived |
 | `followUpDue` | The same, with `dueOn` equal to today | The same |
 
 An **unassigned** follow-up is everyone's until somebody takes it, which is why
@@ -2149,7 +2160,7 @@ backlog of three hundred is read on the Follow-ups page instead. The dashboard
 orders its card **newest-first across modules**, so among the twenty a follow-up
 due today shows above one ten days overdue — the cap picks the worst twenty, the
 card then sorts them by date like everything else on it. `overdue` here is
-measured against the server's UTC calendar day, the same "today" the page's
+measured against today's business day, the same "today" the page's
 `state=overdue` uses.
 
 The dashboard's two sentences (`apps/host/frontend/src/catalogs/dashboard.ts`):
@@ -2693,7 +2704,7 @@ interest are never in either, because Invoices keeps its charges apart from the
 principal. **Invoiced this year** is the invoices issued in the calendar year less the
 credit notes issued in it — a credit note counts in the year it was issued, whatever
 year the invoice it credits was — and **last year** the same for the year before. The
-provider owns "today": every state is judged on the Oslo calendar day of the
+provider owns "today": every state is judged on the business day of the
 server's clock, as every screen of the Invoices app judges it, and `asOf` says which
 day that was. `onHoldCount` and `atCollectionCount` are the outstanding invoices with
 a live hold or a live hand-off to a collection agency; a lifted hold and a withdrawn
@@ -2716,6 +2727,42 @@ is missing too, and nothing says so for their set. The open rows stop at ten; th
 normally, because its page still shows it. A contract that fails fails the whole
 request (500) rather than dropping its section: absent must only ever mean "not for
 you, or not installed".
+
+## The business day
+
+Every day this module derives from an instant is a calendar day of the workspace's
+**business time zone**, `Europe/Oslo` until an Owner changes it under [Workspace
+administration](/en/user/workspace-administration/#workspace-settings)
+([time zones design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-19-time-zones-design.md),
+D2 and D7). It enters in two ways:
+
+- **Today** — the follow-up's overdue/due-today split, on the attention list and behind
+  `state=overdue` ([Follow-ups](#follow-ups)); the bound a manual entry's `occurredOn`
+  may not pass; the earliest `anonymiseOn` a schedule takes and the day the
+  anonymisation worker counts as come ([Scheduling](#scheduling)); and the day in the
+  customers file's name ([Export](#export)). All of them turn at the business time
+  zone's midnight: at 00:30 on Tuesday in Oslo it is Tuesday, although the server's UTC
+  clock still says Monday.
+- **The day an instant falls on** — a manual entry's `occurredAt` must fall on its
+  `occurredOn` ([The timeline](#the-timeline)), checked on writes and, on a `PUT`, only
+  when the pair changes.
+
+The module keeps no zone of its own. It reads the zone through the platform's
+`contracts.BusinessCalendar` (`Deps.Calendar`) once per request — before the request's
+transaction opens, since the read takes a pool connection of its own — and the
+anonymisation worker reads it once per cycle, **before** its advisory lease holds the
+cycle's one connection. Today is `holidays.DayIn(clock, zone)`, a date at midnight
+UTC, the form a date column is compared at; no query uses PostgreSQL's
+`CURRENT_DATE`.
+
+Everything else is a civil date and is never converted: `occurredOn`, a follow-up's
+`dueOn`, `anonymiseOn`. A changed zone changes which day "today" is from the next
+request on; it never moves a stored date, and an entry whose `occurredAt` and
+`occurredOn` agreed under the old zone stays as written. Still on the UTC day: the
+`/stats/timeseries` `newCustomers` and `newContacts` buckets (every module's dashboard
+series uses the UTC day), the `occurredOn` a **generated** entry is stamped with (the
+UTC day of the moment it was recorded), the fetch date a registry deletion without a
+date of its own is given, and the day `customer_anonymised`'s refusal names.
 
 ## Permissions
 
@@ -2971,7 +3018,7 @@ type CustomerReceivableTotals struct {
     OnHoldCount, AtCollectionCount int                   // outstanding invoices with a live hold / hand-off
     OldestOverdueDueOn             *string               // YYYY-MM-DD, nil when nothing is overdue
     LastIssuedOn, LastPaymentOn    *string               // YYYY-MM-DD, nil when none
-    AsOf                           string                // the Oslo day the states were judged on
+    AsOf                           string                // the business day the states were judged on
 }
 
 type CurrencyReceivables struct {
@@ -2983,7 +3030,7 @@ type CurrencyReceivables struct {
 
 The rules it is written to:
 
-- **The provider owns "today".** Every state is judged on the Oslo calendar day of
+- **The provider owns "today".** Every state is judged on the business day of
   the invoices module's own clock, never on a day the consumer passes, so the
   customer page can never show a state the Invoices app does not; `AsOf` says which
   day it was.
@@ -3077,7 +3124,8 @@ The rules it is written to:
   downloaded the customers file's way (a plain `fetch`, the server's filename, an object
   URL), and still offered once the customer is anonymised, for what is left — and
   **Schedule anonymisation…**, a date picker with no default day (the scheduled one when
-  moving it) and nothing before today (UTC), the retention reminder and the
+  moving it) and nothing before today (UTC, standing in for the server's [business
+  day](#the-business-day) until the shell hands the page the zone), the retention reminder and the
   irreversibility said before the button. The item is off, with the reason under it,
   while the customer is not archived ("archive first") or was merged away ("schedule it
   on the survivor"). Once scheduled, **Change anonymisation date…** and **Cancel

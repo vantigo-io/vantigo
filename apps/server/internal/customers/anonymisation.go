@@ -52,15 +52,16 @@ func scheduleRefusal(number int64, name, customerType, status string) *gen.Custo
 }
 
 // validateAnonymiseOn is the body's one field: a yyyy-MM-dd day, parsed the way
-// every date of this module is (parseISODate), today in UTC or later. Today is
-// allowed — the worker takes it on its next cycle — and a day in the past is
-// not: it would read as "already due" to a person who meant something else.
-func validateAnonymiseOn(raw string, now time.Time) (time.Time, string) {
+// every date of this module is (parseISODate), today or later — today being
+// the business day the caller read (time zones design D2). Today is allowed —
+// the worker takes it on its next cycle — and a day in the past is not: it
+// would read as "already due" to a person who meant something else.
+func validateAnonymiseOn(raw string, today time.Time) (time.Time, string) {
 	on, err := parseISODate(raw)
 	if err != nil {
 		return time.Time{}, "AnonymiseOn must be an ISO date (yyyy-MM-dd)"
 	}
-	if on.Before(civilDate(now)) {
+	if on.Before(today) {
 		return time.Time{}, "An anonymisation date cannot be in the past"
 	}
 	return on, ""
@@ -108,7 +109,8 @@ func cancelAnonymisationSchedule(ctx context.Context, txq *store.Queries, id int
 // PutCustomersByIdAnonymisation Schedule a private person's anonymisation
 // (PUT /api/v1/customers/{id}/anonymisation)
 //
-// Order: (1) the day, 400 before any database access; (2) the customer on the
+// Order: (1) the day, 400 before any database access but the business time
+// zone's read, which today is judged in; (2) the customer on the
 // pool, its 404, and — answered there, before the actor costs a directory call
 // — a business, a customer that is not archived, and the day already
 // scheduled; a read-only customer's refusal is left to the lock, which words
@@ -120,7 +122,11 @@ func (s *server) PutCustomersByIdAnonymisation(ctx context.Context, req gen.PutC
 	if req.Body != nil {
 		raw = req.Body.AnonymiseOn
 	}
-	on, msg := validateAnonymiseOn(raw, s.deps.Clock())
+	today, err := s.businessToday(ctx)
+	if err != nil {
+		return nil, err
+	}
+	on, msg := validateAnonymiseOn(raw, today)
 	if msg != "" {
 		return gen.PutCustomersByIdAnonymisation400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid anonymisation",
 			map[string][]string{"anonymiseOn": {msg}})), nil
@@ -324,14 +330,15 @@ const anonymisationWriteAttempts = 3
 // after all. The actor is the system's, verbatim — a worker has no principal,
 // and resolving one would be a directory call for nothing. The transaction
 // opens on on — the worker's lease connection, never the pool (see
-// underLease).
-func (s *server) anonymiseCustomer(ctx context.Context, on db.TxBeginner, id int32) (bool, error) {
+// underLease). today is the business day the cycle read before it held that
+// connection, the day a customer's anonymiseOn is due by.
+func (s *server) anonymiseCustomer(ctx context.Context, on db.TxBeginner, id int32, today time.Time) (bool, error) {
 	now := s.deps.Clock()
 	var done bool
 	err := db.RetrySerializable(ctx, anonymisationWriteAttempts, func() error {
 		return db.WithTx(ctx, on, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			var err error
-			done, err = s.anonymiseInTx(ctx, tx, id, now)
+			done, err = s.anonymiseInTx(ctx, tx, id, now, today)
 			return err
 		})
 	})
@@ -352,7 +359,7 @@ func (s *server) anonymiseCustomer(ctx context.Context, on db.TxBeginner, id int
 // it once under the first lock is enough. A customer that was merged away after
 // it was scheduled takes its snapshot off its survivor's customer.merged entry,
 // and nothing else of the survivor's: the survivor is locked for that write.
-func (s *server) anonymiseInTx(ctx context.Context, tx pgx.Tx, id int32, now time.Time) (bool, error) {
+func (s *server) anonymiseInTx(ctx context.Context, tx pgx.Tx, id int32, now, today time.Time) (bool, error) {
 	txq := store.New(tx)
 	locked, err := txq.LockCustomer(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -361,7 +368,7 @@ func (s *server) anonymiseInTx(ctx context.Context, tx pgx.Tx, id int32, now tim
 	if err != nil {
 		return false, fmt.Errorf("lock customer %d: %w", id, err)
 	}
-	due := locked.AnonymiseOn.Valid && !locked.AnonymiseOn.Time.After(civilDate(now))
+	due := locked.AnonymiseOn.Valid && !locked.AnonymiseOn.Time.After(today)
 	if locked.AnonymisedAt != nil || !due || locked.Type != "person" || locked.Status != "archived" {
 		return false, nil
 	}

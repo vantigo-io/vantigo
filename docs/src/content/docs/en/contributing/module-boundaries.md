@@ -73,7 +73,8 @@ Communications' outbox is the working example.
    products), `Projects` (`contracts.ProjectDirectory`, projects), `Actuals`
    (`contracts.ProjectActuals`, time), `Expenses`
    (`contracts.ProjectExpenses`, expenses), `Receivables`
-   (`contracts.CustomerReceivables`, invoices), and the three line-level reads an
+   (`contracts.CustomerReceivables`, invoices — what a customer was invoiced and
+   owes, every state judged on the provider's own business day), and the three line-level reads an
    invoice is built from — `BillableHours` (`contracts.BillableHours`, time),
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
    `BillableMilestones` (`contracts.BillableMilestones`, projects). `module.Compose`

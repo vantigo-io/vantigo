@@ -167,10 +167,10 @@ export const CustomerPersonalDataMenu = ({ customer }: { customer: CustomerRespo
 
 /**
  * The day, chosen (GDPR design D4): no default — the modal says why, and says
- * that nothing brings the data back — and nothing before today in UTC, the
- * calendar the server counts the day in. A refusal the page could not have
- * known (archived no more, anonymised meanwhile, merged away from another tab)
- * is said in the modal in words, and the page refetches.
+ * that nothing brings the data back — and nothing before today in UTC
+ * (`utcToday`, which stands in for the server's business day). A refusal the
+ * page could not have known (archived no more, anonymised meanwhile, merged
+ * away from another tab) is said in the modal in words, and the page refetches.
  */
 const AnonymisationScheduleModal = ({
   customer,

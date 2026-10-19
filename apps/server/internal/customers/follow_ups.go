@@ -418,7 +418,9 @@ const (
 // followUpAttentionItems is the follow-up half of /stats/attention's pure work
 // (design D2). The query already narrowed to open follow-ups on non-archived
 // customers, assigned to the caller or nobody, due today or earlier; all that
-// is left is the one comparison that splits the two types.
+// is left is the one comparison that splits the two types: the due date, a
+// civil date compared as stored, against today, the business day the caller
+// read (time zones design D7).
 //
 // occurredAt is the DUE DATE at midnight UTC, not the moment the follow-up was
 // written — projects' own rule, which stats.go's attentionOccurredAt already
@@ -431,7 +433,7 @@ const (
 func followUpAttentionItems(rows []store.FollowUpAttentionCandidatesRow, today time.Time) []gen.CustomerStatsAttentionItem {
 	items := make([]gen.CustomerStatsAttentionItem, 0, len(rows))
 	for _, r := range rows {
-		due := civilDate(r.FollowUpOn.Time)
+		due := r.FollowUpOn.Time
 		typ := attentionFollowUpDue
 		if due.Before(today) {
 			typ = attentionFollowUpOverdue
@@ -556,7 +558,13 @@ func (s *server) GetCustomersFollowUps(ctx context.Context, req gen.GetCustomers
 		}
 	}
 
-	today := pgtype.Date{Time: civilDate(s.deps.Clock()), Valid: true}
+	// Today is the business day (time zones design D7): state=overdue turns at
+	// the business time zone's midnight, as the attention list's split does.
+	day, err := s.businessToday(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := pgtype.Date{Time: day, Valid: true}
 	q := store.New(s.deps.Pool)
 	total, err := q.CountCustomerFollowUps(ctx, store.CountCustomerFollowUpsParams{
 		FollowUpState: state, Today: today,

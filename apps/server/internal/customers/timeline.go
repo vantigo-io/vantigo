@@ -22,6 +22,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 )
 
 // This file is the customer timeline's read endpoints, manual entries and
@@ -69,11 +70,28 @@ func manualEventTypeAllowed(v string) bool {
 	return false
 }
 
-// civilDate truncates t to its UTC calendar date at midnight, the Go
-// equivalent of .NET's DateOnly.
-func civilDate(t time.Time) time.Time {
-	y, m, d := t.UTC().Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+// occurredAtDayMessage is the field error on occurredAt when it does not fall
+// on occurredOn in the business time zone.
+const occurredAtDayMessage = "OccurredAt must fall on occurredOn in the business time zone"
+
+// occurredAtOffDay is the rule that a manual entry's occurredAt falls on its
+// occurredOn: the business day of the instant (holidays.DayIn in the
+// workspace's business time zone, time zones design D7) is the date. It took
+// the UTC calendar day until the business time zone, so an entry written at
+// 23:30 UTC on 30 June is dated 1 July in Oslo and 30 June under UTC.
+func occurredAtOffDay(occurredOn, occurredAt time.Time, zone *time.Location) bool {
+	return !holidays.DayIn(occurredAt, zone).Equal(occurredOn)
+}
+
+// occurrenceUnchanged is whether a PUT re-sends the occurredOn and the
+// occurredAt the entry already carries, both of them. Such a pair is stored
+// state being re-rendered, not a change, and is not judged against the day
+// rule again (occurredAtOffDay): an entry written consistent on the UTC day
+// before the business time zone existed, or before the zone was changed,
+// stays editable — the same division the follow-up's assignee makes.
+func occurrenceUnchanged(entry store.CustomersCustomersTimelineEntry, parsed parsedManualTimeline) bool {
+	return parsed.OccurredAt != nil && entry.OccurredAt != nil &&
+		entry.OccurredAt.Equal(*parsed.OccurredAt) && entry.OccurredOn.Time.Equal(parsed.OccurredOn)
 }
 
 // parseISODate is DateOnly.TryParseExact(value, "yyyy-MM-dd", ...): a strict
@@ -115,7 +133,14 @@ type parsedManualTimeline struct {
 // customers inventory §2.3): every field is validated independently and every
 // error collected together, unlike Update/Attach's early-return style
 // elsewhere in this module.
-func validateManualTimelineRequest(body gen.TimelineManualTimelineRequest, now time.Time) (parsedManualTimeline, map[string][]string) {
+//
+// Today, the bound occurredOn may not pass, is the business day of now in
+// zone, the workspace's business time zone. judgeDay says whether the rule
+// that occurredAt falls on occurredOn (occurredAtOffDay) is judged here, with
+// every other field: a create judges it, and an update leaves it to its
+// handler, which judges it once the stored entry is read and only when the
+// pair changes (occurrenceUnchanged).
+func validateManualTimelineRequest(body gen.TimelineManualTimelineRequest, now time.Time, zone *time.Location, judgeDay bool) (parsedManualTimeline, map[string][]string) {
 	errs := map[string][]string{}
 
 	eventType := deref(body.EventType)
@@ -127,7 +152,7 @@ func validateManualTimelineRequest(body gen.TimelineManualTimelineRequest, now t
 	occurredOn, onErr := parseISODate(occurredOnStr)
 	if onErr != nil {
 		errs["occurredOn"] = []string{"OccurredOn must be an ISO date (yyyy-MM-dd)"}
-	} else if occurredOn.After(civilDate(now)) {
+	} else if occurredOn.After(holidays.DayIn(now, zone)) {
 		errs["occurredOn"] = []string{"An occurrence date cannot be in the future"}
 	}
 
@@ -147,8 +172,8 @@ func validateManualTimelineRequest(body gen.TimelineManualTimelineRequest, now t
 		switch {
 		case at.After(now.UTC()):
 			errs["occurredAt"] = []string{"An occurrence instant cannot be in the future"}
-		case !civilDate(at).Equal(occurredOn):
-			errs["occurredAt"] = []string{"OccurredAt must have the same UTC calendar date as occurredOn"}
+		case judgeDay && occurredAtOffDay(occurredOn, at, zone):
+			errs["occurredAt"] = []string{occurredAtDayMessage}
 		default:
 			occurredAt = &at
 		}
@@ -678,16 +703,23 @@ func (r createdTimelineResponse) VisitPostCustomersByIdTimelineResponse(w http.R
 //
 // Ordering follows TimelineEndpoints.Create (customers inventory §1.4): (1)
 // manual-entry validation, every field collected together, before any
-// database access; (2) customer existence, under the customer's lock; (3) a
-// customer merged away refuses (customer_merged).
+// database access but the business time zone's read, which the future-date
+// and day rules are judged in; (2) customer existence, under the customer's
+// lock; (3) a customer merged away refuses (customer_merged).
 func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCustomersByIdTimelineRequestObject) (gen.PostCustomersByIdTimelineResponseObject, error) {
 	body := gen.TimelineManualTimelineRequest{}
 	if req.Body != nil {
 		body = *req.Body
 	}
 
+	// The business time zone is read first, before the transaction opens: the
+	// calendar reads through a pool connection of its own.
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	now := s.deps.Clock()
-	parsed, errs := validateManualTimelineRequest(body, now)
+	parsed, errs := validateManualTimelineRequest(body, now, zone, true)
 	if errs != nil {
 		return gen.PostCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline entry", errs)), nil
 	}
@@ -810,8 +842,14 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 		body = *req.Body
 	}
 
+	// The business time zone is read first, before the transaction opens (see
+	// PostCustomersByIdTimeline).
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	now := s.deps.Clock()
-	parsed, errs := validateManualTimelineRequest(body, now)
+	parsed, errs := validateManualTimelineRequest(body, now, zone, false)
 	if errs != nil {
 		return gen.PutCustomersByIdTimelineByEntryId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline entry", errs)), nil
 	}
@@ -844,6 +882,17 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 		return gen.PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(timelineProblem(
 			timelineRevisionConflictTitle,
 			fmt.Sprintf("The timeline entry has revision %d; the supplied expectedRevision was %d.", entry.CurrentRevision, expectedRevision))), nil
+	}
+
+	// The day rule is judged once the entry itself has been accepted, against
+	// what it already carries: an occurredOn and occurredAt re-sent exactly as
+	// stored are not judged again (occurrenceUnchanged), so an entry that was
+	// consistent on the UTC day, or under a zone the workspace has since left,
+	// still takes an edit to its note. A changed pair is judged in the
+	// business time zone, as a create's is.
+	if parsed.OccurredAt != nil && !occurrenceUnchanged(entry, parsed) && occurredAtOffDay(parsed.OccurredOn, *parsed.OccurredAt, zone) {
+		return gen.PutCustomersByIdTimelineByEntryId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
+			"Invalid timeline entry", map[string][]string{"occurredAt": {occurredAtDayMessage}})), nil
 	}
 
 	// The assignee is checked only once the entry itself has been accepted:
