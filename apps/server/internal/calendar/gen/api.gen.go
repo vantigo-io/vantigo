@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -87,16 +88,16 @@ func (e AppointmentResponseWriteStatus) Valid() bool {
 
 // Defines values for AppointmentTransparency.
 const (
-	Busy AppointmentTransparency = "busy"
-	Free AppointmentTransparency = "free"
+	AppointmentTransparencyBusy AppointmentTransparency = "busy"
+	AppointmentTransparencyFree AppointmentTransparency = "free"
 )
 
 // Valid indicates whether the value is a known member of the AppointmentTransparency enum.
 func (e AppointmentTransparency) Valid() bool {
 	switch e {
-	case Busy:
+	case AppointmentTransparencyBusy:
 		return true
-	case Free:
+	case AppointmentTransparencyFree:
 		return true
 	default:
 		return false
@@ -115,6 +116,72 @@ func (e AppointmentVisibility) Valid() bool {
 	case Private:
 		return true
 	case Shared:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CalendarSubscriptionColour.
+const (
+	Blue   CalendarSubscriptionColour = "blue"
+	Cyan   CalendarSubscriptionColour = "cyan"
+	Grape  CalendarSubscriptionColour = "grape"
+	Green  CalendarSubscriptionColour = "green"
+	Indigo CalendarSubscriptionColour = "indigo"
+	Lime   CalendarSubscriptionColour = "lime"
+	Orange CalendarSubscriptionColour = "orange"
+	Pink   CalendarSubscriptionColour = "pink"
+	Red    CalendarSubscriptionColour = "red"
+	Teal   CalendarSubscriptionColour = "teal"
+	Violet CalendarSubscriptionColour = "violet"
+	Yellow CalendarSubscriptionColour = "yellow"
+)
+
+// Valid indicates whether the value is a known member of the CalendarSubscriptionColour enum.
+func (e CalendarSubscriptionColour) Valid() bool {
+	switch e {
+	case Blue:
+		return true
+	case Cyan:
+		return true
+	case Grape:
+		return true
+	case Green:
+		return true
+	case Indigo:
+		return true
+	case Lime:
+		return true
+	case Orange:
+		return true
+	case Pink:
+		return true
+	case Red:
+		return true
+	case Teal:
+		return true
+	case Violet:
+		return true
+	case Yellow:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FeedVariant.
+const (
+	FeedVariantBusy FeedVariant = "busy"
+	FeedVariantFull FeedVariant = "full"
+)
+
+// Valid indicates whether the value is a known member of the FeedVariant enum.
+func (e FeedVariant) Valid() bool {
+	switch e {
+	case FeedVariantBusy:
+		return true
+	case FeedVariantFull:
 		return true
 	default:
 		return false
@@ -380,32 +447,37 @@ type CalendarContact struct {
 	Name  string `json:"name"`
 }
 
-// CalendarItem One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set) or a row another module projects through its calendar source (with path set). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).
+// CalendarItem One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), or an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).
 type CalendarItem struct {
 	AllDay bool `json:"allDay"`
 
 	// Appointment What the view needs about the appointment behind an item.
 	Appointment *CalendarItemAppointment `json:"appointment,omitempty"`
 
-	// Done A follow-up done, a task done, an entry approved — rendered struck. Always false on an appointment.
+	// Done A follow-up done, a task done, an entry approved — rendered struck. Always false on an appointment and on a subscription's item.
 	Done    bool                `json:"done"`
 	EndDate *openapi_types.Date `json:"endDate,omitempty"`
 	EndsAt  *time.Time          `json:"endsAt,omitempty"`
 
-	// Id Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id.
+	// Id Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one).
 	Id string `json:"id"`
 
-	// Kind calendar.appointment, or one of the kinds in sources.
+	// Kind calendar.appointment, calendar.subscription, or one of the kinds in sources.
 	Kind string `json:"kind"`
 
-	// Path The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id.
+	// Path The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id, and on a subscription's item, which opens nothing — the event's own URL is the other calendar's and is not followed.
 	Path      *string             `json:"path,omitempty"`
 	StartDate *openapi_types.Date `json:"startDate,omitempty"`
 	StartsAt  *time.Time          `json:"startsAt,omitempty"`
 
-	// Subtitle One line — the customer's name, the project's code. Absent when empty.
+	// Subscription The subscription behind an item of kind calendar.subscription (calendar feed design D8): what the app draws it by — its colour and its name — and whether it is busy only, in which case the item's title is empty and the app labels it Busy.
+	Subscription *CalendarItemSubscription `json:"subscription,omitempty"`
+
+	// Subtitle One line — the customer's name, the project's code, the subscription's name. Absent when empty.
 	Subtitle *string `json:"subtitle,omitempty"`
-	Title    string  `json:"title"`
+
+	// Title Empty on a busy-only subscription's item, which the app labels Busy.
+	Title string `json:"title"`
 }
 
 // CalendarItemAppointment What the view needs about the appointment behind an item.
@@ -425,6 +497,16 @@ type CalendarItemAppointment struct {
 
 	// Visibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows with an empty title and nothing else, which the app labels Busy.
 	Visibility AppointmentVisibility `json:"visibility"`
+}
+
+// CalendarItemSubscription The subscription behind an item of kind calendar.subscription (calendar feed design D8): what the app draws it by — its colour and its name — and whether it is busy only, in which case the item's title is empty and the app labels it Busy.
+type CalendarItemSubscription struct {
+	BusyOnly bool `json:"busyOnly"`
+
+	// Colour The palette a subscription is drawn in (calendar feed design D9) — twelve Mantine hues, each a --vantigo-calendar-<name> variable in the app, so a subscription's items follow the colour scheme as a module's do.
+	Colour CalendarSubscriptionColour `json:"colour"`
+	Id     int64                      `json:"id"`
+	Name   string                     `json:"name"`
 }
 
 // CalendarItems One person's calendar in a window (calendar design D5), sorted by start, all-day first within a day, never paged.
@@ -449,7 +531,7 @@ type CalendarMeta struct {
 	// InvitationsAvailable Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent.
 	InvitationsAvailable bool `json:"invitationsAvailable"`
 
-	// Sources Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours.
+	// Sources Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — and calendar.subscription when the caller has at least one subscription.
 	Sources []CalendarSourceKind `json:"sources"`
 
 	// TimeZone The workspace's business time zone.
@@ -459,7 +541,7 @@ type CalendarMeta struct {
 	Today openapi_types.Date `json:"today"`
 }
 
-// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes) and invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
+// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent) and subscription_limit (409: the caller has ten subscriptions already). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
 type CalendarProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -482,11 +564,78 @@ type CalendarSourceKind struct {
 	Module string `json:"module"`
 }
 
+// CalendarSubscription A calendar from elsewhere the caller subscribes to (calendar feed design D6, D7): what they wrote, and the worker's record of the last fetch — fetchedAt, the last that answered a calendar or a 304; attemptedAt, the last tried, whatever it answered; error, why the last one failed, absent after one that did not. A failed fetch keeps the calendar last fetched, so its items still show, and the screen says both when it last worked and why it does not now.
+type CalendarSubscription struct {
+	// AttemptedAt The last fetch tried, whatever it answered. Absent before the first.
+	AttemptedAt *time.Time `json:"attemptedAt,omitempty"`
+
+	// BusyOnly Its items are shown with an empty title, which the app labels Busy.
+	BusyOnly bool `json:"busyOnly"`
+
+	// Colour The palette a subscription is drawn in (calendar feed design D9) — twelve Mantine hues, each a --vantigo-calendar-<name> variable in the app, so a subscription's items follow the colour scheme as a module's do.
+	Colour    CalendarSubscriptionColour `json:"colour"`
+	CreatedAt time.Time                  `json:"createdAt"`
+
+	// Error Why the last fetch failed, as one sentence — never the response's body or the address it resolved to. Absent after a fetch that did not fail.
+	Error *string `json:"error,omitempty"`
+
+	// FetchedAt The last fetch that answered a calendar or a 304. Absent while none has.
+	FetchedAt *time.Time `json:"fetchedAt,omitempty"`
+	Id        int64      `json:"id"`
+	Name      string     `json:"name"`
+	UpdatedAt time.Time  `json:"updatedAt"`
+
+	// Url The address as stored — webcal and webcals rewritten to https.
+	Url string `json:"url"`
+}
+
+// CalendarSubscriptionColour The palette a subscription is drawn in (calendar feed design D9) — twelve Mantine hues, each a --vantigo-calendar-<name> variable in the app, so a subscription's items follow the colour scheme as a module's do.
+type CalendarSubscriptionColour string
+
+// CalendarSubscriptionWrite A subscription as POST creates it and PUT replaces it whole (calendar feed design D6), each rule a field error: name 1 to 100 characters; url at most 2048 characters, absolute, with a scheme of https, http, webcal or webcals (the last two stored as https, since they are the same thing in a program's address bar), a host that is not empty and not an address Vantigo may not fetch, and no user name or password — they would be written to the row and the log; colour one of the palette's.
+type CalendarSubscriptionWrite struct {
+	BusyOnly bool `json:"busyOnly"`
+
+	// Colour The palette a subscription is drawn in (calendar feed design D9) — twelve Mantine hues, each a --vantigo-calendar-<name> variable in the app, so a subscription's items follow the colour scheme as a module's do.
+	Colour CalendarSubscriptionColour `json:"colour"`
+	Name   string                     `json:"name"`
+	Url    string                     `json:"url"`
+}
+
 // CalendarUserRef A user as the directory names them.
 type CalendarUserRef struct {
 	DisplayName string             `json:"displayName"`
 	Id          openapi_types.UUID `json:"id"`
 }
+
+// FeedAddress One of the caller's calendar addresses (calendar feed design D1): the address a calendar program subscribes to, in its https form and its webcal form — the same address, which Apple's and Outlook's programs subscribe to in one click; the server serves https alone. It is kept sealed and opened for its owner's screen only, so it can be shown again; a reset gives a new one and the old answers 404 from that moment.
+type FeedAddress struct {
+	// Address <base>/api/v1/calendar/feed/<token>.ics, the base PUBLIC_BASE_URL when it is set and APP_URL with APP_BASE_PATH otherwise.
+	Address string `json:"address"`
+
+	// CreatedAt When the address was created, or last reset.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// LastUsedAt The last request that answered 200 or 304. Absent while nothing has read the address.
+	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+
+	// Variant A calendar address's variant (calendar feed design D3): full is the person's calendar as they see it — never a colleague's appointment, a cancelled or a declined one, a subscription's item or a public holiday; busy is its busy spans and nothing else, each titled Busy.
+	Variant FeedVariant `json:"variant"`
+
+	// WebcalAddress The same address with webcal:// in place of https://.
+	WebcalAddress string `json:"webcalAddress"`
+}
+
+// FeedAddresses The caller's calendar addresses, full before busy; a variant without one is absent.
+type FeedAddresses struct {
+	Addresses []FeedAddress `json:"addresses"`
+
+	// Public Whether the addresses are on PUBLIC_BASE_URL, reachable from the internet. False is APP_URL, which may answer on the company's network only.
+	Public bool `json:"public"`
+}
+
+// FeedVariant A calendar address's variant (calendar feed design D3): full is the person's calendar as they see it — never a colleague's appointment, a cancelled or a declined one, a subscription's item or a public holiday; busy is its busy spans and nothing else, each titled Busy.
+type FeedVariant string
 
 // OccurrenceWrite One occurrence's exception: cancelled true, or a move — startsAt and endsAt for a timed series, startDate and endDate for an all-day one — never both. A moved occurrence keeps the day it came from as its identity.
 type OccurrenceWrite struct {
@@ -571,6 +720,12 @@ type GetCalendarContactsParams struct {
 	CustomerId int32 `form:"customerId" json:"customerId"`
 }
 
+// GetCalendarFeedByFileParams defines parameters for GetCalendarFeedByFile.
+type GetCalendarFeedByFileParams struct {
+	// IfNoneMatch An ETag this feed answered, or *. An unchanged calendar is 304.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
 // GetCalendarItemsParams defines parameters for GetCalendarItems.
 type GetCalendarItemsParams struct {
 	// From The window's first day, inclusive, within ten years of today.
@@ -613,6 +768,12 @@ type PostCalendarRsvpJSONRequestBody = RsvpWrite
 // PostCalendarRsvpReadJSONRequestBody defines body for PostCalendarRsvpRead for application/json ContentType.
 type PostCalendarRsvpReadJSONRequestBody = RsvpReadRequest
 
+// PostCalendarSubscriptionsJSONRequestBody defines body for PostCalendarSubscriptions for application/json ContentType.
+type PostCalendarSubscriptionsJSONRequestBody = CalendarSubscriptionWrite
+
+// PutCalendarSubscriptionsByIdJSONRequestBody defines body for PutCalendarSubscriptionsById for application/json ContentType.
+type PutCalendarSubscriptionsByIdJSONRequestBody = CalendarSubscriptionWrite
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// PostCalendarAppointments Create an appointment
@@ -645,6 +806,18 @@ type ServerInterface interface {
 	// GetCalendarContacts A customer's contacts
 	// (GET /api/v1/calendar/contacts)
 	GetCalendarContacts(w http.ResponseWriter, r *http.Request, params GetCalendarContactsParams)
+	// GetCalendarFeed The caller's calendar addresses
+	// (GET /api/v1/calendar/feed)
+	GetCalendarFeed(w http.ResponseWriter, r *http.Request)
+	// DeleteCalendarFeedByVariant Turn off a calendar address
+	// (DELETE /api/v1/calendar/feed/{file})
+	DeleteCalendarFeedByVariant(w http.ResponseWriter, r *http.Request, file FeedVariant)
+	// GetCalendarFeedByFile A calendar address's feed
+	// (GET /api/v1/calendar/feed/{file})
+	GetCalendarFeedByFile(w http.ResponseWriter, r *http.Request, file string, params GetCalendarFeedByFileParams)
+	// PostCalendarFeedByVariant Create or reset a calendar address
+	// (POST /api/v1/calendar/feed/{file})
+	PostCalendarFeedByVariant(w http.ResponseWriter, r *http.Request, file FeedVariant)
 	// GetCalendarItems The caller's calendar
 	// (GET /api/v1/calendar/items)
 	GetCalendarItems(w http.ResponseWriter, r *http.Request, params GetCalendarItemsParams)
@@ -657,6 +830,21 @@ type ServerInterface interface {
 	// PostCalendarRsvpRead Read an invitation for the RSVP page
 	// (POST /api/v1/calendar/rsvp/read)
 	PostCalendarRsvpRead(w http.ResponseWriter, r *http.Request)
+	// GetCalendarSubscriptions The caller's subscriptions
+	// (GET /api/v1/calendar/subscriptions)
+	GetCalendarSubscriptions(w http.ResponseWriter, r *http.Request)
+	// PostCalendarSubscriptions Subscribe to a calendar
+	// (POST /api/v1/calendar/subscriptions)
+	PostCalendarSubscriptions(w http.ResponseWriter, r *http.Request)
+	// DeleteCalendarSubscriptionsById Remove a subscription
+	// (DELETE /api/v1/calendar/subscriptions/{id})
+	DeleteCalendarSubscriptionsById(w http.ResponseWriter, r *http.Request, id int64)
+	// PutCalendarSubscriptionsById Change a subscription
+	// (PUT /api/v1/calendar/subscriptions/{id})
+	PutCalendarSubscriptionsById(w http.ResponseWriter, r *http.Request, id int64)
+	// PostCalendarSubscriptionsByIdRefresh Refresh a subscription
+	// (POST /api/v1/calendar/subscriptions/{id}/refresh)
+	PostCalendarSubscriptionsByIdRefresh(w http.ResponseWriter, r *http.Request, id int64)
 	// GetCalendarUsers Search colleagues
 	// (GET /api/v1/calendar/users)
 	GetCalendarUsers(w http.ResponseWriter, r *http.Request, params GetCalendarUsersParams)
@@ -1023,6 +1211,122 @@ func (siw *ServerInterfaceWrapper) GetCalendarContacts(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetCalendarFeed operation middleware
+func (siw *ServerInterfaceWrapper) GetCalendarFeed(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCalendarFeed(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCalendarFeedByVariant operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCalendarFeedByVariant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "file" -------------
+	var file FeedVariant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "file", r.PathValue("file"), &file, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "file", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCalendarFeedByVariant(w, r, file)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCalendarFeedByFile operation middleware
+func (siw *ServerInterfaceWrapper) GetCalendarFeedByFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "file" -------------
+	var file string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "file", r.PathValue("file"), &file, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "file", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCalendarFeedByFileParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCalendarFeedByFile(w, r, file, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCalendarFeedByVariant operation middleware
+func (siw *ServerInterfaceWrapper) PostCalendarFeedByVariant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "file" -------------
+	var file FeedVariant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "file", r.PathValue("file"), &file, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "file", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCalendarFeedByVariant(w, r, file)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCalendarItems operation middleware
 func (siw *ServerInterfaceWrapper) GetCalendarItems(w http.ResponseWriter, r *http.Request) {
 
@@ -1128,6 +1432,112 @@ func (siw *ServerInterfaceWrapper) PostCalendarRsvpRead(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostCalendarRsvpRead(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCalendarSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) GetCalendarSubscriptions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCalendarSubscriptions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCalendarSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) PostCalendarSubscriptions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCalendarSubscriptions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCalendarSubscriptionsById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCalendarSubscriptionsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCalendarSubscriptionsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCalendarSubscriptionsById operation middleware
+func (siw *ServerInterfaceWrapper) PutCalendarSubscriptionsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCalendarSubscriptionsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCalendarSubscriptionsByIdRefresh operation middleware
+func (siw *ServerInterfaceWrapper) PostCalendarSubscriptionsByIdRefresh(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCalendarSubscriptionsByIdRefresh(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1313,10 +1723,19 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/appointments/{id}/response", wrapper.PostCalendarAppointmentsByIdResponse)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/colleagues/{userId}/items", wrapper.GetCalendarColleaguesByUserIdItems)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/contacts", wrapper.GetCalendarContacts)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/feed", wrapper.GetCalendarFeed)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/calendar/feed/{file}", wrapper.DeleteCalendarFeedByVariant)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/feed/{file}", wrapper.GetCalendarFeedByFile)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/feed/{file}", wrapper.PostCalendarFeedByVariant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/items", wrapper.GetCalendarItems)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/meta", wrapper.GetCalendarMeta)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/rsvp", wrapper.PostCalendarRsvp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/rsvp/read", wrapper.PostCalendarRsvpRead)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/subscriptions", wrapper.GetCalendarSubscriptions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/subscriptions", wrapper.PostCalendarSubscriptions)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/calendar/subscriptions/{id}", wrapper.DeleteCalendarSubscriptionsById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/calendar/subscriptions/{id}", wrapper.PutCalendarSubscriptionsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/subscriptions/{id}/refresh", wrapper.PostCalendarSubscriptionsByIdRefresh)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/users", wrapper.GetCalendarUsers)
 
 	return m
@@ -2072,6 +2491,276 @@ func (response GetCalendarContacts404Response) VisitGetCalendarContactsResponse(
 	return nil
 }
 
+type GetCalendarFeedRequestObject struct {
+}
+
+type GetCalendarFeedResponseObject interface {
+	VisitGetCalendarFeedResponse(w http.ResponseWriter) error
+}
+
+type GetCalendarFeed200JSONResponse FeedAddresses
+
+func (response GetCalendarFeed200JSONResponse) VisitGetCalendarFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarFeed401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarFeed401JSONResponse) VisitGetCalendarFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarFeed403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarFeed403JSONResponse) VisitGetCalendarFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCalendarFeedByVariantRequestObject struct {
+	File FeedVariant `json:"file"`
+}
+
+type DeleteCalendarFeedByVariantResponseObject interface {
+	VisitDeleteCalendarFeedByVariantResponse(w http.ResponseWriter) error
+}
+
+type DeleteCalendarFeedByVariant204Response struct {
+}
+
+func (response DeleteCalendarFeedByVariant204Response) VisitDeleteCalendarFeedByVariantResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCalendarFeedByVariant401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCalendarFeedByVariant401JSONResponse) VisitDeleteCalendarFeedByVariantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCalendarFeedByVariant403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCalendarFeedByVariant403JSONResponse) VisitDeleteCalendarFeedByVariantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCalendarFeedByVariant404Response struct {
+}
+
+func (response DeleteCalendarFeedByVariant404Response) VisitDeleteCalendarFeedByVariantResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetCalendarFeedByFileRequestObject struct {
+	File   string `json:"file"`
+	Params GetCalendarFeedByFileParams
+}
+
+type GetCalendarFeedByFileResponseObject interface {
+	VisitGetCalendarFeedByFileResponse(w http.ResponseWriter) error
+}
+
+type GetCalendarFeedByFile200ResponseHeaders struct {
+	CacheControl       *string
+	ContentDisposition *string
+	ETag               *string
+}
+
+type GetCalendarFeedByFile200TextcalendarCharsetUtf8Response struct {
+	Body          io.Reader
+	Headers       GetCalendarFeedByFile200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetCalendarFeedByFile200TextcalendarCharsetUtf8Response) VisitGetCalendarFeedByFileResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetCalendarFeedByFile304ResponseHeaders struct {
+	CacheControl *string
+	ETag         *string
+}
+
+type GetCalendarFeedByFile304Response struct {
+	Headers GetCalendarFeedByFile304ResponseHeaders
+}
+
+func (response GetCalendarFeedByFile304Response) VisitGetCalendarFeedByFileResponse(w http.ResponseWriter) error {
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type GetCalendarFeedByFile404Response struct {
+}
+
+func (response GetCalendarFeedByFile404Response) VisitGetCalendarFeedByFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetCalendarFeedByFile429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetCalendarFeedByFile429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetCalendarFeedByFile429ResponseHeaders
+}
+
+func (response GetCalendarFeedByFile429JSONResponse) VisitGetCalendarFeedByFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarFeedByFile503ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response GetCalendarFeedByFile503ApplicationProblemPlusJSONResponse) VisitGetCalendarFeedByFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarFeedByVariantRequestObject struct {
+	File FeedVariant `json:"file"`
+}
+
+type PostCalendarFeedByVariantResponseObject interface {
+	VisitPostCalendarFeedByVariantResponse(w http.ResponseWriter) error
+}
+
+type PostCalendarFeedByVariant200JSONResponse FeedAddress
+
+func (response PostCalendarFeedByVariant200JSONResponse) VisitPostCalendarFeedByVariantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarFeedByVariant401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCalendarFeedByVariant401JSONResponse) VisitPostCalendarFeedByVariantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarFeedByVariant403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCalendarFeedByVariant403JSONResponse) VisitPostCalendarFeedByVariantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarFeedByVariant404Response struct {
+}
+
+func (response PostCalendarFeedByVariant404Response) VisitPostCalendarFeedByVariantResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetCalendarItemsRequestObject struct {
 	Params GetCalendarItemsParams
 }
@@ -2349,6 +3038,316 @@ func (response PostCalendarRsvpRead429JSONResponse) VisitPostCalendarRsvpReadRes
 	return err
 }
 
+type GetCalendarSubscriptionsRequestObject struct {
+}
+
+type GetCalendarSubscriptionsResponseObject interface {
+	VisitGetCalendarSubscriptionsResponse(w http.ResponseWriter) error
+}
+
+type GetCalendarSubscriptions200JSONResponse []CalendarSubscription
+
+func (response GetCalendarSubscriptions200JSONResponse) VisitGetCalendarSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarSubscriptions401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarSubscriptions401JSONResponse) VisitGetCalendarSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarSubscriptions403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarSubscriptions403JSONResponse) VisitGetCalendarSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarSubscriptionsRequestObject struct {
+	Body *PostCalendarSubscriptionsJSONRequestBody
+}
+
+type PostCalendarSubscriptionsResponseObject interface {
+	VisitPostCalendarSubscriptionsResponse(w http.ResponseWriter) error
+}
+
+type PostCalendarSubscriptions201JSONResponse CalendarSubscription
+
+func (response PostCalendarSubscriptions201JSONResponse) VisitPostCalendarSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarSubscriptions400ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response PostCalendarSubscriptions400ApplicationProblemPlusJSONResponse) VisitPostCalendarSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarSubscriptions401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCalendarSubscriptions401JSONResponse) VisitPostCalendarSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarSubscriptions403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCalendarSubscriptions403JSONResponse) VisitPostCalendarSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarSubscriptions409ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response PostCalendarSubscriptions409ApplicationProblemPlusJSONResponse) VisitPostCalendarSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCalendarSubscriptionsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteCalendarSubscriptionsByIdResponseObject interface {
+	VisitDeleteCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteCalendarSubscriptionsById204Response struct {
+}
+
+func (response DeleteCalendarSubscriptionsById204Response) VisitDeleteCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCalendarSubscriptionsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCalendarSubscriptionsById401JSONResponse) VisitDeleteCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCalendarSubscriptionsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCalendarSubscriptionsById403JSONResponse) VisitDeleteCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCalendarSubscriptionsById404Response struct {
+}
+
+func (response DeleteCalendarSubscriptionsById404Response) VisitDeleteCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCalendarSubscriptionsByIdRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutCalendarSubscriptionsByIdJSONRequestBody
+}
+
+type PutCalendarSubscriptionsByIdResponseObject interface {
+	VisitPutCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error
+}
+
+type PutCalendarSubscriptionsById200JSONResponse CalendarSubscription
+
+func (response PutCalendarSubscriptionsById200JSONResponse) VisitPutCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarSubscriptionsById400ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response PutCalendarSubscriptionsById400ApplicationProblemPlusJSONResponse) VisitPutCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarSubscriptionsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCalendarSubscriptionsById401JSONResponse) VisitPutCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarSubscriptionsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCalendarSubscriptionsById403JSONResponse) VisitPutCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarSubscriptionsById404Response struct {
+}
+
+func (response PutCalendarSubscriptionsById404Response) VisitPutCalendarSubscriptionsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCalendarSubscriptionsByIdRefreshRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostCalendarSubscriptionsByIdRefreshResponseObject interface {
+	VisitPostCalendarSubscriptionsByIdRefreshResponse(w http.ResponseWriter) error
+}
+
+type PostCalendarSubscriptionsByIdRefresh200JSONResponse CalendarSubscription
+
+func (response PostCalendarSubscriptionsByIdRefresh200JSONResponse) VisitPostCalendarSubscriptionsByIdRefreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarSubscriptionsByIdRefresh401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCalendarSubscriptionsByIdRefresh401JSONResponse) VisitPostCalendarSubscriptionsByIdRefreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarSubscriptionsByIdRefresh403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCalendarSubscriptionsByIdRefresh403JSONResponse) VisitPostCalendarSubscriptionsByIdRefreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarSubscriptionsByIdRefresh404Response struct {
+}
+
+func (response PostCalendarSubscriptionsByIdRefresh404Response) VisitPostCalendarSubscriptionsByIdRefreshResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetCalendarUsersRequestObject struct {
 	Params GetCalendarUsersParams
 }
@@ -2445,6 +3444,18 @@ type StrictServerInterface interface {
 	// GetCalendarContacts A customer's contacts
 	// (GET /api/v1/calendar/contacts)
 	GetCalendarContacts(ctx context.Context, request GetCalendarContactsRequestObject) (GetCalendarContactsResponseObject, error)
+	// GetCalendarFeed The caller's calendar addresses
+	// (GET /api/v1/calendar/feed)
+	GetCalendarFeed(ctx context.Context, request GetCalendarFeedRequestObject) (GetCalendarFeedResponseObject, error)
+	// DeleteCalendarFeedByVariant Turn off a calendar address
+	// (DELETE /api/v1/calendar/feed/{file})
+	DeleteCalendarFeedByVariant(ctx context.Context, request DeleteCalendarFeedByVariantRequestObject) (DeleteCalendarFeedByVariantResponseObject, error)
+	// GetCalendarFeedByFile A calendar address's feed
+	// (GET /api/v1/calendar/feed/{file})
+	GetCalendarFeedByFile(ctx context.Context, request GetCalendarFeedByFileRequestObject) (GetCalendarFeedByFileResponseObject, error)
+	// PostCalendarFeedByVariant Create or reset a calendar address
+	// (POST /api/v1/calendar/feed/{file})
+	PostCalendarFeedByVariant(ctx context.Context, request PostCalendarFeedByVariantRequestObject) (PostCalendarFeedByVariantResponseObject, error)
 	// GetCalendarItems The caller's calendar
 	// (GET /api/v1/calendar/items)
 	GetCalendarItems(ctx context.Context, request GetCalendarItemsRequestObject) (GetCalendarItemsResponseObject, error)
@@ -2457,6 +3468,21 @@ type StrictServerInterface interface {
 	// PostCalendarRsvpRead Read an invitation for the RSVP page
 	// (POST /api/v1/calendar/rsvp/read)
 	PostCalendarRsvpRead(ctx context.Context, request PostCalendarRsvpReadRequestObject) (PostCalendarRsvpReadResponseObject, error)
+	// GetCalendarSubscriptions The caller's subscriptions
+	// (GET /api/v1/calendar/subscriptions)
+	GetCalendarSubscriptions(ctx context.Context, request GetCalendarSubscriptionsRequestObject) (GetCalendarSubscriptionsResponseObject, error)
+	// PostCalendarSubscriptions Subscribe to a calendar
+	// (POST /api/v1/calendar/subscriptions)
+	PostCalendarSubscriptions(ctx context.Context, request PostCalendarSubscriptionsRequestObject) (PostCalendarSubscriptionsResponseObject, error)
+	// DeleteCalendarSubscriptionsById Remove a subscription
+	// (DELETE /api/v1/calendar/subscriptions/{id})
+	DeleteCalendarSubscriptionsById(ctx context.Context, request DeleteCalendarSubscriptionsByIdRequestObject) (DeleteCalendarSubscriptionsByIdResponseObject, error)
+	// PutCalendarSubscriptionsById Change a subscription
+	// (PUT /api/v1/calendar/subscriptions/{id})
+	PutCalendarSubscriptionsById(ctx context.Context, request PutCalendarSubscriptionsByIdRequestObject) (PutCalendarSubscriptionsByIdResponseObject, error)
+	// PostCalendarSubscriptionsByIdRefresh Refresh a subscription
+	// (POST /api/v1/calendar/subscriptions/{id}/refresh)
+	PostCalendarSubscriptionsByIdRefresh(ctx context.Context, request PostCalendarSubscriptionsByIdRefreshRequestObject) (PostCalendarSubscriptionsByIdRefreshResponseObject, error)
 	// GetCalendarUsers Search colleagues
 	// (GET /api/v1/calendar/users)
 	GetCalendarUsers(ctx context.Context, request GetCalendarUsersRequestObject) (GetCalendarUsersResponseObject, error)
@@ -2792,6 +3818,109 @@ func (sh *strictHandler) GetCalendarContacts(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// GetCalendarFeed operation middleware
+func (sh *strictHandler) GetCalendarFeed(w http.ResponseWriter, r *http.Request) {
+	var request GetCalendarFeedRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCalendarFeed(ctx, request.(GetCalendarFeedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCalendarFeed")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCalendarFeedResponseObject); ok {
+		if err := validResponse.VisitGetCalendarFeedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCalendarFeedByVariant operation middleware
+func (sh *strictHandler) DeleteCalendarFeedByVariant(w http.ResponseWriter, r *http.Request, file FeedVariant) {
+	var request DeleteCalendarFeedByVariantRequestObject
+
+	request.File = file
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCalendarFeedByVariant(ctx, request.(DeleteCalendarFeedByVariantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCalendarFeedByVariant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCalendarFeedByVariantResponseObject); ok {
+		if err := validResponse.VisitDeleteCalendarFeedByVariantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCalendarFeedByFile operation middleware
+func (sh *strictHandler) GetCalendarFeedByFile(w http.ResponseWriter, r *http.Request, file string, params GetCalendarFeedByFileParams) {
+	var request GetCalendarFeedByFileRequestObject
+
+	request.File = file
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCalendarFeedByFile(ctx, request.(GetCalendarFeedByFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCalendarFeedByFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCalendarFeedByFileResponseObject); ok {
+		if err := validResponse.VisitGetCalendarFeedByFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCalendarFeedByVariant operation middleware
+func (sh *strictHandler) PostCalendarFeedByVariant(w http.ResponseWriter, r *http.Request, file FeedVariant) {
+	var request PostCalendarFeedByVariantRequestObject
+
+	request.File = file
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCalendarFeedByVariant(ctx, request.(PostCalendarFeedByVariantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCalendarFeedByVariant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCalendarFeedByVariantResponseObject); ok {
+		if err := validResponse.VisitPostCalendarFeedByVariantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetCalendarItems operation middleware
 func (sh *strictHandler) GetCalendarItems(w http.ResponseWriter, r *http.Request, params GetCalendarItemsParams) {
 	var request GetCalendarItemsRequestObject
@@ -2897,6 +4026,146 @@ func (sh *strictHandler) PostCalendarRsvpRead(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostCalendarRsvpReadResponseObject); ok {
 		if err := validResponse.VisitPostCalendarRsvpReadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCalendarSubscriptions operation middleware
+func (sh *strictHandler) GetCalendarSubscriptions(w http.ResponseWriter, r *http.Request) {
+	var request GetCalendarSubscriptionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCalendarSubscriptions(ctx, request.(GetCalendarSubscriptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCalendarSubscriptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCalendarSubscriptionsResponseObject); ok {
+		if err := validResponse.VisitGetCalendarSubscriptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCalendarSubscriptions operation middleware
+func (sh *strictHandler) PostCalendarSubscriptions(w http.ResponseWriter, r *http.Request) {
+	var request PostCalendarSubscriptionsRequestObject
+
+	var body PostCalendarSubscriptionsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCalendarSubscriptions(ctx, request.(PostCalendarSubscriptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCalendarSubscriptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCalendarSubscriptionsResponseObject); ok {
+		if err := validResponse.VisitPostCalendarSubscriptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCalendarSubscriptionsById operation middleware
+func (sh *strictHandler) DeleteCalendarSubscriptionsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteCalendarSubscriptionsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCalendarSubscriptionsById(ctx, request.(DeleteCalendarSubscriptionsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCalendarSubscriptionsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCalendarSubscriptionsByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteCalendarSubscriptionsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCalendarSubscriptionsById operation middleware
+func (sh *strictHandler) PutCalendarSubscriptionsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutCalendarSubscriptionsByIdRequestObject
+
+	request.Id = id
+
+	var body PutCalendarSubscriptionsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCalendarSubscriptionsById(ctx, request.(PutCalendarSubscriptionsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCalendarSubscriptionsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCalendarSubscriptionsByIdResponseObject); ok {
+		if err := validResponse.VisitPutCalendarSubscriptionsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCalendarSubscriptionsByIdRefresh operation middleware
+func (sh *strictHandler) PostCalendarSubscriptionsByIdRefresh(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostCalendarSubscriptionsByIdRefreshRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCalendarSubscriptionsByIdRefresh(ctx, request.(PostCalendarSubscriptionsByIdRefreshRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCalendarSubscriptionsByIdRefresh")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCalendarSubscriptionsByIdRefreshResponseObject); ok {
+		if err := validResponse.VisitPostCalendarSubscriptionsByIdRefreshResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

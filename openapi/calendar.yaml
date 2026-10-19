@@ -338,14 +338,14 @@ components:
                 - email
             type: object
         CalendarItem:
-            description: 'One thing on a person''s calendar: an appointment''s occurrence (kind calendar.appointment, with appointment set) or a row another module projects through its calendar source (with path set). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).'
+            description: 'One thing on a person''s calendar: an appointment''s occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), or an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).'
             properties:
                 allDay:
                     type: boolean
                 appointment:
                     $ref: '#/components/schemas/CalendarItemAppointment'
                 done:
-                    description: A follow-up done, a task done, an entry approved — rendered struck. Always false on an appointment.
+                    description: A follow-up done, a task done, an entry approved — rendered struck. Always false on an appointment and on a subscription's item.
                     type: boolean
                 endDate:
                     format: date
@@ -354,13 +354,13 @@ components:
                     format: date-time
                     type: string
                 id:
-                    description: Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id.
+                    description: Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one).
                     type: string
                 kind:
-                    description: calendar.appointment, or one of the kinds in sources.
+                    description: calendar.appointment, calendar.subscription, or one of the kinds in sources.
                     type: string
                 path:
-                    description: The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id.
+                    description: The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id, and on a subscription's item, which opens nothing — the event's own URL is the other calendar's and is not followed.
                     type: string
                 startDate:
                     format: date
@@ -368,10 +368,13 @@ components:
                 startsAt:
                     format: date-time
                     type: string
+                subscription:
+                    $ref: '#/components/schemas/CalendarItemSubscription'
                 subtitle:
-                    description: One line — the customer's name, the project's code. Absent when empty.
+                    description: One line — the customer's name, the project's code, the subscription's name. Absent when empty.
                     type: string
                 title:
+                    description: Empty on a busy-only subscription's item, which the app labels Busy.
                     type: string
             required:
                 - kind
@@ -406,6 +409,24 @@ components:
                 - visibility
                 - transparency
                 - recurring
+            type: object
+        CalendarItemSubscription:
+            description: 'The subscription behind an item of kind calendar.subscription (calendar feed design D8): what the app draws it by — its colour and its name — and whether it is busy only, in which case the item''s title is empty and the app labels it Busy.'
+            properties:
+                busyOnly:
+                    type: boolean
+                colour:
+                    $ref: '#/components/schemas/CalendarSubscriptionColour'
+                id:
+                    format: int64
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+                - name
+                - colour
+                - busyOnly
             type: object
         CalendarItems:
             description: One person's calendar in a window (calendar design D5), sorted by start, all-day first within a day, never paged.
@@ -450,7 +471,7 @@ components:
                     description: Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent.
                     type: boolean
                 sources:
-                    description: Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours.
+                    description: Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — and calendar.subscription when the caller has at least one subscription.
                     items:
                         $ref: '#/components/schemas/CalendarSourceKind'
                     type: array
@@ -469,7 +490,7 @@ components:
                 - sources
             type: object
         CalendarProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series'' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes) and invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent). errors carries the field errors of a 400, keyed by the request''s camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series'' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent) and subscription_limit (409: the caller has ten subscriptions already). errors carries the field errors of a 400, keyed by the request''s camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -520,6 +541,81 @@ components:
                 - kind
                 - module
             type: object
+        CalendarSubscription:
+            description: 'A calendar from elsewhere the caller subscribes to (calendar feed design D6, D7): what they wrote, and the worker''s record of the last fetch — fetchedAt, the last that answered a calendar or a 304; attemptedAt, the last tried, whatever it answered; error, why the last one failed, absent after one that did not. A failed fetch keeps the calendar last fetched, so its items still show, and the screen says both when it last worked and why it does not now.'
+            properties:
+                attemptedAt:
+                    description: The last fetch tried, whatever it answered. Absent before the first.
+                    format: date-time
+                    type: string
+                busyOnly:
+                    description: Its items are shown with an empty title, which the app labels Busy.
+                    type: boolean
+                colour:
+                    $ref: '#/components/schemas/CalendarSubscriptionColour'
+                createdAt:
+                    format: date-time
+                    type: string
+                error:
+                    description: Why the last fetch failed, as one sentence — never the response's body or the address it resolved to. Absent after a fetch that did not fail.
+                    type: string
+                fetchedAt:
+                    description: The last fetch that answered a calendar or a 304. Absent while none has.
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                name:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                url:
+                    description: The address as stored — webcal and webcals rewritten to https.
+                    type: string
+            required:
+                - id
+                - name
+                - url
+                - colour
+                - busyOnly
+                - createdAt
+                - updatedAt
+            type: object
+        CalendarSubscriptionColour:
+            description: The palette a subscription is drawn in (calendar feed design D9) — twelve Mantine hues, each a --vantigo-calendar-<name> variable in the app, so a subscription's items follow the colour scheme as a module's do.
+            enum:
+                - blue
+                - cyan
+                - teal
+                - green
+                - lime
+                - yellow
+                - orange
+                - red
+                - pink
+                - grape
+                - violet
+                - indigo
+            type: string
+        CalendarSubscriptionWrite:
+            description: 'A subscription as POST creates it and PUT replaces it whole (calendar feed design D6), each rule a field error: name 1 to 100 characters; url at most 2048 characters, absolute, with a scheme of https, http, webcal or webcals (the last two stored as https, since they are the same thing in a program''s address bar), a host that is not empty and not an address Vantigo may not fetch, and no user name or password — they would be written to the row and the log; colour one of the palette''s.'
+            properties:
+                busyOnly:
+                    type: boolean
+                colour:
+                    $ref: '#/components/schemas/CalendarSubscriptionColour'
+                name:
+                    type: string
+                url:
+                    type: string
+            required:
+                - name
+                - url
+                - colour
+                - busyOnly
+            type: object
         CalendarUserRef:
             description: A user as the directory names them.
             properties:
@@ -532,6 +628,51 @@ components:
                 - id
                 - displayName
             type: object
+        FeedAddress:
+            description: 'One of the caller''s calendar addresses (calendar feed design D1): the address a calendar program subscribes to, in its https form and its webcal form — the same address, which Apple''s and Outlook''s programs subscribe to in one click; the server serves https alone. It is kept sealed and opened for its owner''s screen only, so it can be shown again; a reset gives a new one and the old answers 404 from that moment.'
+            properties:
+                address:
+                    description: <base>/api/v1/calendar/feed/<token>.ics, the base PUBLIC_BASE_URL when it is set and APP_URL with APP_BASE_PATH otherwise.
+                    type: string
+                createdAt:
+                    description: When the address was created, or last reset.
+                    format: date-time
+                    type: string
+                lastUsedAt:
+                    description: The last request that answered 200 or 304. Absent while nothing has read the address.
+                    format: date-time
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/FeedVariant'
+                webcalAddress:
+                    description: The same address with webcal:// in place of https://.
+                    type: string
+            required:
+                - variant
+                - address
+                - webcalAddress
+                - createdAt
+            type: object
+        FeedAddresses:
+            description: The caller's calendar addresses, full before busy; a variant without one is absent.
+            properties:
+                addresses:
+                    items:
+                        $ref: '#/components/schemas/FeedAddress'
+                    type: array
+                public:
+                    description: Whether the addresses are on PUBLIC_BASE_URL, reachable from the internet. False is APP_URL, which may answer on the company's network only.
+                    type: boolean
+            required:
+                - public
+                - addresses
+            type: object
+        FeedVariant:
+            description: 'A calendar address''s variant (calendar feed design D3): full is the person''s calendar as they see it — never a colleague''s appointment, a cancelled or a declined one, a subscription''s item or a public holiday; busy is its busy spans and nothing else, each titled Busy.'
+            enum:
+                - full
+                - busy
+            type: string
         OccurrenceWrite:
             description: 'One occurrence''s exception: cancelled true, or a move — startsAt and endsAt for a timed series, startDate and endDate for an all-day one — never both. A moved occurrence keeps the day it came from as its identity.'
             properties:
@@ -1126,9 +1267,172 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/feed:
+        get:
+            description: 'The caller''s calendar addresses (calendar feed design D1) — full before busy, a variant without one absent — each opened from its sealed copy for its owner alone, with when it was created or last reset and when it was last read, and whether they are on the public host. calendar:access''s, on the caller''s own rows.'
+            operationId: getCalendarFeed
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/FeedAddresses'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The caller's calendar addresses
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/feed/{file}:
+        delete:
+            description: Turns off the caller's address of one variant (calendar feed design D1); it answers 404 from this moment. The other variant's is untouched.
+            operationId: deleteCalendarFeedByVariant
+            parameters:
+                - description: The variant, full or busy; anything else is the 404 an address the caller does not have gets. The segment is named file because the feed's GET shares this path, where it is the token's file.
+                  in: path
+                  name: file
+                  required: true
+                  schema:
+                    $ref: '#/components/schemas/FeedVariant'
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the caller has no address of that variant, or the variant is neither full nor busy. The body is empty.
+            summary: Turn off a calendar address
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+        get:
+            description: 'A calendar address''s iCalendar feed (calendar feed design D2–D4), for a calendar program to subscribe to. It is the module''s one anonymous GET with its token in the path: Google, Apple, Outlook and Thunderbird take one address and ask it, with no header and no body of ours. It is held to its mitigations. The token is stored only as its SHA-256 and found by it, so a database read answers no address. It is per person and per variant, and a reset kills it at once. It is rate limited to 120 per client address per 10 minutes (calendar-feed). A token nobody holds is the bare 404, and so is a file without the .ics suffix. The feed carries nothing the person''s own calendar does not, and the busy variant nothing but spans. The path is logged as every path is, so the operator keeps the proxy''s access log to the path on the public host, or to nothing. A signed-in caller is answered alike, by the token and not the session. The calendar is today −3 months to today +12 months in the business time zone, series as rules, with no METHOD, ORGANIZER or ATTENDEE; its ETag is the SHA-256 of the calendar without its DTSTAMP lines, so an unchanged calendar keeps its tag, and an If-None-Match naming it, or *, is 304 with no body. A 200 or a 304 records when the address was last read.'
+            operationId: getCalendarFeedByFile
+            parameters:
+                - description: The token with the .ics suffix, as one segment — the address's last.
+                  in: path
+                  name: file
+                  required: true
+                  schema:
+                    type: string
+                - description: An ETag this feed answered, or *. An unchanged calendar is 304.
+                  in: header
+                  name: If-None-Match
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        text/calendar; charset=utf-8:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — the calendar.
+                    headers:
+                        Cache-Control:
+                            description: private, no-cache — a program may keep the calendar, and must ask again.
+                            schema:
+                                type: string
+                        Content-Disposition:
+                            description: inline; filename="vantigo.ics".
+                            schema:
+                                type: string
+                        ETag:
+                            description: The quoted hex SHA-256 of the calendar with every DTSTAMP line removed.
+                            schema:
+                                type: string
+                "304":
+                    description: Not Modified — If-None-Match named the calendar's ETag, or *. The body is empty.
+                    headers:
+                        Cache-Control:
+                            description: private, no-cache, as on the 200.
+                            schema:
+                                type: string
+                        ETag:
+                            description: The calendar's ETag, the one If-None-Match named.
+                            schema:
+                                type: string
+                "404":
+                    description: Not Found — no address holds that token, or the file does not end in .ics. The body is empty.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — calendar-feed's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Service Unavailable — a calendar source could not be read. The problem names no module.
+            summary: A calendar address's feed
+            tags:
+                - Calendar
+            x-vantigo-access: anonymous
+        post:
+            description: 'Creates the caller''s address of one variant (calendar feed design D1), or resets the one they have: a new token — 32 random bytes, stored only as its SHA-256 — and the whole address sealed, so the old address answers 404 from this moment and nothing has read the new one yet. Answers the address.'
+            operationId: postCalendarFeedByVariant
+            parameters:
+                - description: The variant, full or busy; anything else is the 404 an address the caller does not have gets. The segment is named file because the feed's GET shares this path, where it is the token's file.
+                  in: path
+                  name: file
+                  required: true
+                  schema:
+                    $ref: '#/components/schemas/FeedVariant'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/FeedAddress'
+                    description: OK — the address, new or reset.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the variant is neither full nor busy. The body is empty.
+            summary: Create or reset a calendar address
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
     /api/v1/calendar/items:
         get:
-            description: 'The caller''s calendar in a window (calendar design D5): their appointments — owned, or attended with any status — expanded in their own zones with their exceptions applied, then every enabled module''s calendar source in module order, each under its own permission, then the public holidays. A timed item is in the window when it overlaps from 00:00 to the end of to in timeZone; an all-day one when its dates overlap from..to.'
+            description: 'The caller''s calendar in a window (calendar design D5): their appointments — owned, or attended with any status — expanded in their own zones with their exceptions applied, then every enabled module''s calendar source in module order, each under its own permission, then the caller''s subscriptions'' events as last fetched (calendar feed design D8), then the public holidays. A timed item is in the window when it overlaps from 00:00 to the end of to in timeZone; an all-day one when its dates overlap from..to.'
             operationId: getCalendarItems
             parameters:
                 - description: The window's first day, inclusive, within ten years of today.
@@ -1301,6 +1605,194 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: anonymous
+    /api/v1/calendar/subscriptions:
+        get:
+            description: The caller's subscriptions (calendar feed design D6), by name, each with the worker's record of its last fetch. calendar:access's, on the caller's own rows.
+            operationId: getCalendarSubscriptions
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CalendarSubscription'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The caller's subscriptions
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+        post:
+            description: 'Subscribes the caller to a calendar from elsewhere (calendar feed design D6). The rules at write are field errors (CalendarSubscriptionWrite), and the eleventh is 409 subscription_limit: ten calendars beside one''s own is more than anyone reads, and each is a fetch every half hour. The address is fetched once before the answer, under a budget of twenty seconds and through the outbound guard — no private address, no redirect, at most 1 MiB — so a wrong one is seen at once and a right one shows its events at the next load; the row is created whatever the fetch answers, its error set when it failed, and the calendar-subscriptions worker fetches it from then on. 201 with the row as it stands.'
+            operationId: postCalendarSubscriptions
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CalendarSubscriptionWrite'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarSubscription'
+                    description: Created — the row as the fetch left it.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — field errors on the body.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — subscription_limit, the caller has ten subscriptions already.
+            summary: Subscribe to a calendar
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/subscriptions/{id}:
+        delete:
+            description: Removes one of the caller's subscriptions (calendar feed design D6); its events are gone from the next read. Another person's is the 404 an unknown id gets.
+            operationId: deleteCalendarSubscriptionsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription, or another person's. The body is empty.
+            summary: Remove a subscription
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+        put:
+            description: 'Replaces one of the caller''s subscriptions whole (calendar feed design D6), the rules at write as for POST. There is no revision and no If-Match: the row is the caller''s own, small, and last write wins. A new url forgets every fetch of the old one — its validators, its calendar and its record — and is fetched once before the answer, as POST fetches; a change of the rest fetches nothing. Another person''s is the 404 an unknown id gets.'
+            operationId: putCalendarSubscriptionsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CalendarSubscriptionWrite'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarSubscription'
+                    description: OK — the row as it now stands.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — field errors on the body.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription, or another person's. The body is empty.
+            summary: Change a subscription
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/subscriptions/{id}/refresh:
+        post:
+            description: 'Fetches one of the caller''s subscriptions now (calendar feed design D6) — the screen''s Refresh now — under the same budget and guard as POST /subscriptions, and answers the row as the fetch left it: fetchedAt on a calendar or a 304, error when it failed, which is not an error of this request. Another person''s is the 404 an unknown id gets.'
+            operationId: postCalendarSubscriptionsByIdRefresh
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarSubscription'
+                    description: OK — the row as the fetch left it.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such subscription, or another person's. The body is empty.
+            summary: Refresh a subscription
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
     /api/v1/calendar/users:
         get:
             description: Active users in the directory, ordered by display name, for the attendee picker and the colleague picker. Every calendar:access holder may search; what it answers — a colleague's id and display name — is what every appointment already shows its attendees.

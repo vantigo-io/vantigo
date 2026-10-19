@@ -1420,6 +1420,40 @@ func TestLoad_CalendarCancellationsWorker(t *testing.T) {
 	}
 }
 
+// The calendar subscriptions worker's two settings (calendar feed design D7,
+// D10): its switch, on unless turned off — a subscribed calendar that is never
+// fetched again shows its last read for ever — and the poll, how often each
+// subscription is fetched, half an hour by default and never under five
+// minutes, since the worker wakes every five minutes and a shorter poll would
+// promise what it cannot keep.
+func TestLoad_CalendarSubscriptionsWorker(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.CalendarSubscriptionsEnabled {
+		t.Error("CALENDAR_SUBSCRIPTIONS_ENABLED unset did not default to on")
+	}
+	if cfg.CalendarSubscriptionsPoll != 30*time.Minute {
+		t.Errorf("CalendarSubscriptionsPoll = %v, want 30m", cfg.CalendarSubscriptionsPoll)
+	}
+	tuned := mustLoad(t, with(validEnv(), "CALENDAR_SUBSCRIPTIONS_ENABLED", "0", "CALENDAR_SUBSCRIPTIONS_POLL", "5m"))
+	if tuned.CalendarSubscriptionsEnabled || tuned.CalendarSubscriptionsPoll != 5*time.Minute {
+		t.Errorf("tuned = %v/%v, want off and 5m", tuned.CalendarSubscriptionsEnabled, tuned.CalendarSubscriptionsPoll)
+	}
+	if msg := loadError(t, with(validEnv(), "CALENDAR_SUBSCRIPTIONS_ENABLED", "yes")); !strings.Contains(msg, `CALENDAR_SUBSCRIPTIONS_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for _, v := range []string{"0s", "soon", "-30m", "4m", "4m59s"} {
+		if msg := loadError(t, with(validEnv(), "CALENDAR_SUBSCRIPTIONS_POLL", v)); !strings.Contains(msg, "CALENDAR_SUBSCRIPTIONS_POLL: must be a duration of at least 5m, such as 30m") {
+			t.Errorf("%s: error = %q", v, msg)
+		}
+	}
+	// The two workers' polls are read independently: a refused cancellations
+	// poll does not leave the subscriptions' unread, and both are reported.
+	msg := loadError(t, with(validEnv(), "CALENDAR_WORKERS_POLL", "1s", "CALENDAR_SUBSCRIPTIONS_POLL", "1m"))
+	if !strings.Contains(msg, "CALENDAR_WORKERS_POLL") || !strings.Contains(msg, "CALENDAR_SUBSCRIPTIONS_POLL") {
+		t.Errorf("error = %q, want both polls refused", msg)
+	}
+}
+
 // PUBLIC_BASE_URL (payments port design D14): the https URL the pay page is
 // reachable at from the internet, unset by default. https only; an origin
 // plus APP_BASE_PATH and nothing else — no user, query or fragment, and the

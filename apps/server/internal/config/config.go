@@ -364,6 +364,22 @@ type Config struct {
 	// erase is idempotent and nothing waits on it, so an hourly poll is ample;
 	// a minute is the floor so a typo is not a hot loop against the database.
 	CalendarWorkersPoll time.Duration
+	// CalendarSubscriptionsEnabled is the on/off switch for the calendar
+	// module's subscriptions worker, calendar-subscriptions
+	// (CALENDAR_SUBSCRIPTIONS_ENABLED, calendar feed design D7). Default ON: a
+	// person who subscribed to a calendar expects it to follow its source, and
+	// an installation that says nothing must still fetch it. A 0 means the
+	// worker is never handed to the runner: every subscription shows its last
+	// read until it is on again, and a save or Refresh now still fetches once.
+	CalendarSubscriptionsEnabled bool
+	// CalendarSubscriptionsPoll is how often each subscription is fetched
+	// (CALENDAR_SUBSCRIPTIONS_POLL, default 30 minutes, never under five):
+	// after an attempt the next is due a poll later, or later still when the
+	// feed asks for it with its REFRESH-INTERVAL (capped at a day), plus a
+	// jitter of up to a tenth of the poll. The worker itself wakes every five
+	// minutes — a constant — so a shorter poll would promise what it cannot
+	// keep, and five minutes is the floor.
+	CalendarSubscriptionsPoll time.Duration
 
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
@@ -844,10 +860,20 @@ func staffWorkers(p *problems, env map[string]string, c *Config) {
 // calendarWorkersMinPoll is the shortest CALENDAR_WORKERS_POLL accepted.
 const calendarWorkersMinPoll = time.Minute
 
+// calendarSubscriptionsMinPoll is the shortest CALENDAR_SUBSCRIPTIONS_POLL
+// accepted: the subscriptions worker's own tick, below which a poll cannot be
+// kept.
+const calendarSubscriptionsMinPoll = 5 * time.Minute
+
 // calendarWorkers loads the calendar workers' settings (calendar invitations
-// design D6): the cancellations worker's switch, on by default, and the poll,
-// an hour by default and at least a minute. The batch — at most two hundred
-// appointments a cycle — is a constant in the worker, not a knob.
+// design D6, calendar feed design D7): the cancellations worker's switch, on
+// by default, and the poll, an hour by default and at least a minute; the
+// subscriptions worker's switch, on by default, and how often each
+// subscription is fetched, half an hour by default and at least five minutes.
+// The batches — at most two hundred appointments, and two hundred
+// subscriptions, a cycle — are constants in the workers, not knobs. Each poll
+// is read on its own, so one refused leaves the other read and both are
+// reported.
 func calendarWorkers(p *problems, env map[string]string, c *Config) {
 	c.CalendarCancellationsEnabled = boolean(p, env, "CALENDAR_CANCELLATIONS_ENABLED", true)
 	c.CalendarWorkersPoll = time.Hour
@@ -855,9 +881,19 @@ func calendarWorkers(p *problems, env map[string]string, c *Config) {
 		d, err := time.ParseDuration(v)
 		if err != nil || d < calendarWorkersMinPoll {
 			p.add("CALENDAR_WORKERS_POLL", "must be a duration of at least 1m, such as 1h")
-			return
+		} else {
+			c.CalendarWorkersPoll = d
 		}
-		c.CalendarWorkersPoll = d
+	}
+	c.CalendarSubscriptionsEnabled = boolean(p, env, "CALENDAR_SUBSCRIPTIONS_ENABLED", true)
+	c.CalendarSubscriptionsPoll = 30 * time.Minute
+	if v := env["CALENDAR_SUBSCRIPTIONS_POLL"]; v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < calendarSubscriptionsMinPoll {
+			p.add("CALENDAR_SUBSCRIPTIONS_POLL", "must be a duration of at least 5m, such as 30m")
+		} else {
+			c.CalendarSubscriptionsPoll = d
+		}
 	}
 }
 

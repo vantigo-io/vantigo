@@ -1,12 +1,14 @@
 package openapi_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -22,6 +24,10 @@ func (noopAccess) Check(*http.Request, contracts.Rule) (contracts.Principal, err
 }
 
 func (noopAccess) Reject(http.ResponseWriter, *http.Request, contracts.Rule, error) {}
+
+func (noopAccess) UserHolds(context.Context, uuid.UUID, ...string) (bool, error) {
+	return false, nil
+}
 
 // TestKnownServeMuxConflictsMountOnModuleRouter proves the precedence-aware
 // matcher internal/module/router.go builds resolves every pair

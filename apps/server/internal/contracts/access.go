@@ -62,12 +62,37 @@ func ResponseWriterFrom(ctx context.Context) (http.ResponseWriter, bool) {
 	return w, ok
 }
 
+// asUserContextKey is unexported so only this package can set or read the
+// AsUser mark.
+type asUserContextKey struct{}
+
+// AsUser is the context of a read on one user's behalf with no request behind
+// it: a Principal of that id alone — no session, no roles — and the mark
+// HasPermission reads. A module uses it for a background read whose caller is
+// a token it has already matched to the user, never to widen a request
+// (calendar feed design D5: the feed, once its token has named the person,
+// asks the calendar sources for them under each source's own gate).
+func AsUser(ctx context.Context, userID uuid.UUID) context.Context {
+	ctx = WithPrincipal(ctx, Principal{UserID: userID})
+	return context.WithValue(ctx, asUserContextKey{}, userID)
+}
+
+// AsUserFrom retrieves the user AsUser marked ctx as read on behalf of. A
+// Principal set by WithPrincipal alone carries no mark: only AsUser opens
+// HasPermission's second rule.
+func AsUserFrom(ctx context.Context) (uuid.UUID, bool) {
+	id, ok := ctx.Value(asUserContextKey{}).(uuid.UUID)
+	return id, ok
+}
+
 // HasPermission reports whether the caller of the request in ctx holds key,
 // evaluated by a the way the router evaluates an operation's
-// x-vantigo-access permission rule. Any failure — no request in ctx,
-// infrastructure errors included — reads as false, so a gate built on it
-// fails closed. It is for the handler-side checks the router cannot make:
-// a permission conditional on request-body content.
+// x-vantigo-access permission rule — or, with no request in ctx but the AsUser
+// mark, whether that user holds it (HasPermissions). Any failure — neither a
+// request nor the mark in ctx, infrastructure errors included — reads as
+// false, so a gate built on it fails closed. It is for the handler-side checks
+// the router cannot make: a permission conditional on request-body content,
+// and a calendar source's gate.
 func HasPermission(ctx context.Context, a Access, key string) bool {
 	return HasPermissions(ctx, a, key)
 }
@@ -80,6 +105,12 @@ func HasPermission(ctx context.Context, a Access, key string) bool {
 // a permission query, and a handler gating on two permissions together should
 // pay for one round of that rather than two.
 //
+// It has two rules, in order. A request in ctx is checked through Check, as
+// the router checks it, whatever else ctx carries. With no request but the
+// AsUser mark, the keys are asked of UserHolds for that user, in one question
+// as well: there is no session to check, and identity still answers whether
+// the user — active, not locked out — holds them. Anything else is false.
+//
 // It fails closed exactly as HasPermission does. Naming no key at all is false
 // too, and without asking Access: an empty Names list satisfies the AND
 // vacuously, which is never the gate a caller passing no keys meant to open.
@@ -87,12 +118,15 @@ func HasPermissions(ctx context.Context, a Access, keys ...string) bool {
 	if len(keys) == 0 {
 		return false
 	}
-	r, ok := RequestFrom(ctx)
-	if !ok {
-		return false
+	if r, ok := RequestFrom(ctx); ok {
+		_, err := a.Check(r, Rule{Kind: RulePermission, Names: keys})
+		return err == nil
 	}
-	_, err := a.Check(r, Rule{Kind: RulePermission, Names: keys})
-	return err == nil
+	if userID, ok := AsUserFrom(ctx); ok {
+		held, err := a.UserHolds(ctx, userID, keys...)
+		return err == nil && held
+	}
+	return false
 }
 
 var (
@@ -111,4 +145,9 @@ type Access interface {
 	Check(r *http.Request, rule Rule) (Principal, error)
 	// Reject writes the response for ErrUnauthenticated/ErrForbidden under rule.
 	Reject(w http.ResponseWriter, r *http.Request, rule Rule, err error)
+	// UserHolds reports whether userID — active, not locked out — holds every
+	// key: an owner holds all, anyone else each through an effective role. It
+	// is for a read made on a user's behalf where there is no request to
+	// check: the calendar feed. Any failure is an error, never a false.
+	UserHolds(ctx context.Context, userID uuid.UUID, keys ...string) (bool, error)
 }

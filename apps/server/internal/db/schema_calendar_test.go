@@ -33,7 +33,9 @@ func TestCalendarBaseline_AppliesAndIsIdempotent(t *testing.T) {
 
 	tables := staffCollect(t, ctx, pool, "calendar tables", `
 		SELECT table_name FROM information_schema.tables WHERE table_schema = 'calendar' ORDER BY table_name`)
-	if want := []string{"appointment_attendees", "appointment_exceptions", "appointments"}; !equalStrings(tables, want) {
+	// The two tables after A's three are 00057's, the feed addresses and the
+	// subscriptions, pinned by TestCalendarFeed_AppliesAndIsIdempotent.
+	if want := []string{"appointment_attendees", "appointment_exceptions", "appointments", "feed_tokens", "subscriptions"}; !equalStrings(tables, want) {
 		t.Errorf("calendar tables = %v, want %v", tables, want)
 	}
 

@@ -45,11 +45,14 @@ func (rt Route) matches(method, p string) bool {
 // pay page's three anonymous Invoices operations — the read is a POST, so the
 // token never travels in an API URL — the calendar's answer page and its two
 // anonymous operations on the same pattern (calendar invitations design D5),
-// and the health probes. No maintenance poll: the root layout makes none on
-// the pay page. No Vipps webhook path: webhooks are deferred (the plan's Task
-// 11) and nothing serves one. The list names only what is served. The paths
-// are base-relative: the gate runs after StripBasePath, so the list takes no
-// base path.
+// the calendar feed, and the health probes. The feed is the one anonymous GET
+// with its token in the path (calendar feed design D2): a calendar program
+// takes one address and asks it with nothing of ours, so it is admitted under
+// GET alone, as one segment, with no page beside it. No maintenance poll: the
+// root layout makes none on the pay page. No Vipps webhook path: webhooks are
+// deferred (the plan's Task 11) and nothing serves one. The list names only
+// what is served. The paths are base-relative: the gate runs after
+// StripBasePath, so the list takes no base path.
 func PayRoutes() []Route {
 	getHead := []string{http.MethodGet, http.MethodHead}
 	get := []string{http.MethodGet}
@@ -64,6 +67,7 @@ func PayRoutes() []Route {
 		{Methods: getHead, Path: "/rsvp"},
 		{Methods: post, Path: "/api/v1/calendar/rsvp/read"},
 		{Methods: post, Path: "/api/v1/calendar/rsvp"},
+		{Methods: get, Path: "/api/v1/calendar/feed/", OneSegment: true},
 		{Methods: getHead, Path: "/health/", Prefix: true},
 	}
 }

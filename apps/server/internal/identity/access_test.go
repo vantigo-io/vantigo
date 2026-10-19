@@ -331,6 +331,81 @@ func TestAccess_PermissionEffectiveRoles(t *testing.T) {
 	}
 }
 
+// TestAccess_UserHolds pins the read on a user's behalf with no request
+// behind it (calendar feed design D5): an Owner holds every key, MFA or not —
+// businessSatisfied is a rule about a session, and there is none — a user
+// holds a key through an effective role and every key of several or none, and
+// a disabled, a locked-out (an Owner too), a pending or an unknown user holds
+// nothing, with no error. contracts.HasPermission under contracts.AsUser
+// follows it, and a bare context is still false.
+func TestAccess_UserHolds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, withEnv("OWNERS_REQUIRE_MFA", "1"))
+	auditor := h.insertRole(t, "Auditor", "identity:manage")
+	reader := h.insertRole(t, "Reader", "identity:read")
+
+	users := map[string]uuid.UUID{
+		"owner":         h.insertUser(t, "owner@example.test", identity.RoleOwnerID),
+		"permitted":     h.insertUser(t, "permitted@example.test", identity.RoleUserID, auditor),
+		"bothRoles":     h.insertUser(t, "both@example.test", identity.RoleUserID, auditor, reader),
+		"unpermitted":   h.insertUser(t, "unpermitted@example.test", identity.RoleUserID),
+		"disabled":      h.insertUser(t, "disabled@example.test", identity.RoleUserID, auditor),
+		"lockedOut":     h.insertUser(t, "locked@example.test", identity.RoleUserID, auditor),
+		"lockedOwner":   h.insertUser(t, "lockedowner@example.test", identity.RoleOwnerID),
+		"disabledOwner": h.insertUser(t, "disabledowner@example.test", identity.RoleOwnerID),
+		"pending":       h.insertUser(t, "pending@example.test", identity.RoleUserID, auditor),
+		"unknown":       uuid.New(),
+	}
+	h.exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = ANY($1)`, []uuid.UUID{users["disabled"], users["disabledOwner"]})
+	h.exec(t, `UPDATE identity.users SET lockout_end = $2 WHERE id = ANY($1)`, []uuid.UUID{users["lockedOut"], users["lockedOwner"]}, h.now().Add(15*time.Minute))
+	h.exec(t, `UPDATE identity.users SET pending_since = $2 WHERE id = $1`, users["pending"], h.now())
+
+	const manage, read = "identity:manage", "identity:read"
+	cases := []struct {
+		user string
+		keys []string
+		want bool
+	}{
+		{"owner", []string{manage, read}, true},
+		{"permitted", []string{manage}, true},
+		{"permitted", []string{read}, false},
+		{"permitted", []string{manage, read}, false},
+		{"bothRoles", []string{manage, read}, true},
+		{"unpermitted", []string{manage}, false},
+		{"disabled", []string{manage}, false},
+		{"lockedOut", []string{manage}, false},
+		{"lockedOwner", []string{manage}, false},
+		{"disabledOwner", []string{manage}, false},
+		{"pending", []string{manage}, false},
+		{"unknown", []string{manage}, false},
+		{"owner", nil, false},
+	}
+	ctx := context.Background()
+	for _, c := range cases {
+		got, err := h.access.UserHolds(ctx, users[c.user], c.keys...)
+		if err != nil {
+			t.Errorf("%s %v: UserHolds error %v, want none", c.user, c.keys, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("%s %v: UserHolds = %v, want %v", c.user, c.keys, got, c.want)
+		}
+		if via := contracts.HasPermissions(contracts.AsUser(ctx, users[c.user]), h.access, c.keys...); via != c.want {
+			t.Errorf("%s %v: HasPermissions under AsUser = %v, want %v", c.user, c.keys, via, c.want)
+		}
+	}
+
+	// The lockout passes, and the user holds the key again.
+	h.advance(16 * time.Minute)
+	if got, err := h.access.UserHolds(ctx, users["lockedOut"], manage); err != nil || !got {
+		t.Errorf("lockedOut after the lockout: UserHolds = %v, %v; want true", got, err)
+	}
+
+	if contracts.HasPermission(ctx, h.access, manage) {
+		t.Error("HasPermission(bare context) = true, want false: neither a request nor AsUser")
+	}
+}
+
 // TestAccess_PrincipalCarriesTheSessionAndOrderedRoles proves the principal
 // handed to handlers: the session's user and id, MFA state, and roles in
 // orderRoles order.
