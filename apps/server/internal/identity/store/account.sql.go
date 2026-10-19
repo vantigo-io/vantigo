@@ -93,14 +93,18 @@ func (q *Queries) UpdateAccountPassword(ctx context.Context, arg UpdateAccountPa
 
 const updateAccountProfile = `-- name: UpdateAccountProfile :one
 UPDATE identity.users
-SET display_name = $1, preferred_language = $2, updated_at = $3::timestamptz
-WHERE id = $4
-RETURNING id, display_name, email, preferred_language
+SET display_name = $1, preferred_language = $2,
+    time_zone = CASE WHEN $3::boolean THEN $4::text ELSE time_zone END,
+    updated_at = $5::timestamptz
+WHERE id = $6
+RETURNING id, display_name, email, preferred_language, time_zone
 `
 
 type UpdateAccountProfileParams struct {
 	DisplayName       string
 	PreferredLanguage *string
+	SetTimeZone       bool
+	TimeZone          *string
 	Now               time.Time
 	ID                uuid.UUID
 }
@@ -110,16 +114,21 @@ type UpdateAccountProfileRow struct {
 	DisplayName       string
 	Email             string
 	PreferredLanguage *string
+	TimeZone          *string
 }
 
 // UpdateAccountProfile is the self-service profile edit
-// (EA/AccountSettingsEndpoints.cs:93-131): display name and preferred
-// language only. Unlike .NET's UpdateSecurityStampAsync, it deliberately
-// does not touch version or any session (spec *Sessions*, a divergence).
+// (EA/AccountSettingsEndpoints.cs:93-131): display name, preferred
+// language and, when set_time_zone says the request named it, the user's
+// own time zone (time zones design D5; NULL follows the workspace's). Unlike
+// .NET's UpdateSecurityStampAsync, it deliberately does not touch version or
+// any session (spec *Sessions*, a divergence).
 func (q *Queries) UpdateAccountProfile(ctx context.Context, arg UpdateAccountProfileParams) (UpdateAccountProfileRow, error) {
 	row := q.db.QueryRow(ctx, updateAccountProfile,
 		arg.DisplayName,
 		arg.PreferredLanguage,
+		arg.SetTimeZone,
+		arg.TimeZone,
 		arg.Now,
 		arg.ID,
 	)
@@ -129,6 +138,7 @@ func (q *Queries) UpdateAccountProfile(ctx context.Context, arg UpdateAccountPro
 		&i.DisplayName,
 		&i.Email,
 		&i.PreferredLanguage,
+		&i.TimeZone,
 	)
 	return i, err
 }
