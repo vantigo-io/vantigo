@@ -51,7 +51,7 @@ const maxProviderDisplayNameLength = 100
 // The refusals' fixed words.
 const (
 	ssoVersionMismatchMessage = "The single sign-on settings have been changed since they were read. Reload them and try again."
-	oidcLinksExistMessage     = "People are linked to the provider under its current authority, and each of them would be provisioned anew at their next sign-in. Confirm the change to make it."
+	oidcLinksExistMessage     = "People are linked to the provider under its current authority. The links are kept per authority, so their next sign-in under the new one is refused until a later release relinks them; they sign in with a local credential meanwhile. Confirm the change to make it."
 	ssoIfMatchMessage         = "If-Match is the version the settings were read at, such as 3."
 )
 
@@ -125,7 +125,6 @@ func (s *server) PutIdentityOwnerSsoOidc(ctx context.Context, req gen.PutIdentit
 		case !v.keepSecret:
 			p.OidcClientSecretSealed, p.OidcClientSecretSetAt = nil, nil
 		}
-		p.ImportedFromEnvironment = false
 		return p, true, nil
 	})
 	if err != nil {
@@ -319,7 +318,9 @@ func (s *server) changeSSOSettings(ctx context.Context, change ssoChange) (gen.S
 			answer = before
 			return nil
 		}
-		params.Now, params.UpdatedByUserID = now, &p.UserID
+		// Any change an Owner makes on the card ends the imported state: the
+		// row is theirs from then on, whichever part they touched.
+		params.Now, params.UpdatedByUserID, params.ImportedFromEnvironment = now, &p.UserID, false
 		if err := q.SaveSsoSettings(ctx, params); err != nil {
 			return fmt.Errorf("identity: save the single sign-on settings: %w", err)
 		}
