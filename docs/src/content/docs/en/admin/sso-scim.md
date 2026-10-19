@@ -38,10 +38,13 @@ Open the avatar menu, choose **Workspace admin**, and stay on **Overview**: the
 **Workspace** card among them. It holds:
 
 - **Provider** — **Off**, **Microsoft Entra ID** or **Google Workspace**.
-- **Authority**, **Client ID**, and the credential: for Entra a **Credential** choice
-  between **Client secret** and **Token file**; for Google always the **Client
-  secret**. The secret field is blank on every visit and reads "Set on _date_. Leave
-  it blank to keep it." once a secret is stored.
+- **Authority** — filled in as `https://accounts.google.com` when Google is chosen —
+  **Client ID**, and the credential: for Entra a **Credential** choice between
+  **Client secret** and **Token file**; for Google always the **Client secret**. The
+  secret field is blank on every visit. Once a secret is stored it reads "Set on
+  _date_. Leave it blank to keep it." for as long as the provider and the **Client
+  ID** are the ones it was saved for; otherwise "Sealed when saved and never shown
+  again.", and a secret or a token file must be given.
 - **Domains** (Google only) and the **Display name** of the sign-in button,
   `Workforce SSO` when left empty.
 - The **Callback URL**, with a copy button, shown before anything is set.
@@ -49,8 +52,11 @@ Open the avatar menu, choose **Workspace admin**, and stay on **Overview**: the
 - The SCIM block: the **Endpoint URL** to copy into the directory, **Token issued**,
   **New token**, **End overlap** while a rotation overlaps, **Turn off**, and **Last
   request**.
-- A notice, when the settings were imported from the environment, to remove the
-  variables (see [Before the card](#before-the-card-the-environment-variables)).
+- A notice, **Imported from the environment**, when the settings were imported from
+  the environment, to remove the variables (see
+  [Before the card](#before-the-card-the-environment-variables)). It stays until the
+  provider is next saved with **Save**; turning either part off or issuing a token
+  leaves it.
 
 Behind the card are six operations under `/api/v1/identity/owner/sso`, in the
 contract [`openapi/identity.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/identity.yaml):
@@ -67,10 +73,13 @@ contract [`openapi/identity.yaml`](https://github.com/vantigo-io/vantigo/blob/ma
 Every write holds the row in one transaction, moves its `version` on, answers the
 whole row with the new version, and is audited `sso-settings.changed` with the
 settings before and after — never the client secret and never a token or its digest.
-A save from a card opened before someone else's save is refused `412
+A **Turn off** or **End overlap** with nothing to clear writes nothing: it answers the
+row as it is, with the same version and no audit. **Save** alone carries the version:
+one from a card opened before someone else's write is refused `412
 version_mismatch`, and the card says "The settings have changed": choose **Reload**
-and save again. The operations are limited to 30
-requests a minute, like the rest of user management.
+and save again. The answer that carries a new SCIM token is sent with
+`Cache-Control: no-store`. The operations are limited to 30 requests a minute, like
+the rest of user management.
 
 ## Workforce OIDC
 
@@ -104,10 +113,12 @@ the card holds**:
 | **Client secret** | Client secret |
 | **Token file** | Workload identity (Entra only) |
 | Both in one save | **Refused** — they are mutually exclusive |
-| Neither, and none stored | **Refused** — one is required |
+| Neither, with a secret stored for the same provider and client ID | Client secret — the stored one is kept |
+| Neither, otherwise | **Refused** — one is required |
 
 Saving one clears the other: a token file clears the stored secret, a secret clears
-the token file. A save that changes the provider or the client ID must carry a
+the token file. Only a secret is kept by leaving it out; a token file is part of every
+save, and the card sends the path it shows each time. A save that changes the provider or the client ID must carry a
 credential, since the old application's secret is never carried over to a new one.
 The secret is sealed at rest under `APP_SECRET` and never shown again.
 
@@ -131,8 +142,10 @@ The secret is sealed at rest under `APP_SECRET` and never shown again.
    grants.
 5. On the **Single sign-on** card, choose **Microsoft Entra ID** as the provider, and
    fill in the **Authority** and the application (client) ID as **Client ID** (it
-   must be a GUID). Choose **Client secret** as the **Credential** and paste it. Give the button a **Display name** if `Workforce SSO`
-   is not what people should see (at most 100 characters). Choose **Save**.
+   must be a GUID). Choose **Client secret** as the **Credential** and paste it. Give
+   the button a **Display name** if `Workforce SSO` is not what people should see (at
+   most 100 characters, trimmed). Choose **Save**: the card says "OIDC settings
+   saved", or marks each field the save refused with the sentence saying why.
 
 Verify: within 20 seconds the sign-in page shows **Continue with** and the display
 name. Sign in with an ordinary test account, and check that the card's **Last
@@ -201,14 +214,15 @@ spec:
 
 Then, on the card: **Microsoft Entra ID**, the **Authority** and the **Client ID**;
 choose **Token file** as the **Credential** and enter the projected file's path.
-Choose **Save**. The
-process that saves checks that the path is absolute and a readable file, and refuses
-it on **Token file** otherwise; saving it clears any stored client secret.
+Choose **Save**. The process that saves checks, before it touches the row, that the
+path is absolute and names a regular file of at most 16 KiB that it can read, and
+refuses it on **Token file** otherwise; saving it clears any stored client secret.
 
 **Every replica must see the same file at the same path.** The save is checked by one
 process only; a replica that cannot read the file fails the sign-ins it completes with
 `/sign-in?error=oidc_remote_failure`. The assertion is read **fresh from the file for
-every authorization-code redemption** and sent with
+every authorization-code redemption** — only from a regular file, and no more than
+16 KiB of it — and sent with
 `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`.
 Rotate the projected token through the platform; Vantigo does not cache it.
 
@@ -217,8 +231,8 @@ Rotate the projected token through the platform; Vantigo does not cache it.
 1. Create a Google OAuth web client and copy its secret. Google is client-secret only
    — workload identity is not accepted.
 2. Register the card's **Callback URL** as an authorised redirect URI.
-3. On the card, choose **Google Workspace**, enter the exact issuer
-   `https://accounts.google.com` as **Authority**, a client ID ending in
+3. On the card, choose **Google Workspace**: **Authority** is filled in with the exact
+   issuer `https://accounts.google.com`. Enter a client ID ending in
    `.apps.googleusercontent.com` as **Client ID**, and the **Client secret**.
 4. List every permitted Workspace domain in **Domains** as a bare DNS name, such as
    `example.com`. **At least one is required for Google.** Each is trimmed,
@@ -235,19 +249,20 @@ accounts and unverified or mismatched-domain identities are rejected.
 People who have signed in through the provider are linked to it by the issuer — the
 authority — and their subject. A save that changes the **Authority** while anyone is
 linked under the current one asks for confirmation first — "Change the provider's
-authority?" — and is sent again with `confirmIssuerChange` only when you confirm (the
-request is refused `409 oidc_links_exist` without it). Confirm only when you mean to
+authority?" — and is sent again with `confirmIssuerChange` only when you choose
+**Change authority** (the request is refused `409 oidc_links_exist` without it). Confirm only when you mean to
 move to another tenant or provider: nobody linked under the old authority is
 recognised under the new one. Their next SSO sign-in finds no link, and because an
 address never links a new identity to an existing account, it is refused
 (`oidc_email_conflict`) while their user exists.
 
 **Turn off** in the provider's part of the card — or **Off** as the provider and
-**Save**, which does the same — asks first, then turns OIDC off and clears its
-settings, the stored secret included. While people are linked to the provider a
-second dialog says "People are linked to this provider", and only confirming it sends
-`?confirm=true` (without it the request is refused `409 oidc_links_exist`). Within 20 seconds the sign-in page
-offers no provider button and every process stops accepting the provider's callback.
+**Save**, which does the same — asks first, "Turn off SSO?", and on **Turn off**
+turns OIDC off and clears its settings, the stored secret included. While people are
+linked to the provider a second dialog says "People are linked to this provider",
+and only its **Turn off** sends `?confirm=true` (without it the request is refused
+`409 oidc_links_exist`). Within 20 seconds the sign-in page offers no provider button
+and every process stops accepting the provider's callback.
 
 ## SCIM
 
@@ -273,7 +288,7 @@ To turn SCIM on:
 2. Choose **New token**. The dialog shows the token; copy it straight into the
    directory's provisioning settings (in Entra, the enterprise application's
    **Provisioning** page: **Tenant URL** is the endpoint URL, **Secret Token** the
-   token) and close the dialog.
+   token) and close the dialog with **Done**. It does not close on a click beside it.
 3. Test the connection from the directory, and check that the SCIM block's **Last
    request** moves.
 
@@ -285,10 +300,11 @@ outside the provisioning system's reach.
 
 ### Token rotation with overlap
 
-1. Choose **New token**. Since a token exists, the card asks first how long to
-   "Accept the current token for": 1 to 24 hours, 24 by default (the request's
-   `previousExpiresAt`). The new token is then shown once, with the overlap's expiry:
-   the token it replaces is still accepted until then.
+1. Choose **New token**. Since a token exists, the card asks first, "Issue a new
+   token?", how long to "Accept the current token for (hours)": 1 to 24, 24 by
+   default (the request's `previousExpiresAt`; 24 sends none, so the server's own
+   default applies). Choose **Issue token**. The new token is then shown once, with
+   "The previous token is accepted until _date_."
 2. Put the new token into the directory and test the connection there.
 3. When every client has switched, choose **End overlap**: the old token stops being
    accepted now rather than at the expiry. Or let the overlap run out.
@@ -300,8 +316,8 @@ than 24 hours ahead is refused on `previousExpiresAt`.
 
 ### Turn SCIM off
 
-Choose **Turn off** in the SCIM block. The tokens are forgotten and, within 20 seconds, the endpoint
-refuses every request. The users, mappings and groups SCIM provisioned stay as they
+Choose **Turn off** in the SCIM block and confirm "Turn off SCIM?" with **Turn off**.
+The tokens are forgotten and, within 20 seconds, the endpoint refuses every request. The users, mappings and groups SCIM provisioned stay as they
 are, and a directory's deactivation of a user stops counting for who holds a
 permission. To turn it on again, issue a **New token** and give it to the directory.
 
@@ -335,24 +351,36 @@ Until the release that brought the card, the provider and the SCIM token were th
 them into the row once, by itself:
 
 - **The import.** The first process serving the API (`api` or `server`) that finds the
-  row never written, while any of `OIDC_PROVIDER`, `OIDC_AUTHORITY`,
-  `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE`,
-  `OIDC_ALLOWED_DOMAINS`, `OIDC_DISPLAY_NAME`, `SCIM_TOKEN`, `SCIM_PREVIOUS_TOKEN` or
-  `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` is set, imports them in one transaction holding the
-  row: the client secret sealed, `SCIM_TOKEN` and `SCIM_PREVIOUS_TOKEN` kept as their
-  digests with the overlap's expiry, no user behind it. The directory and the
+  row never written, while the environment configures a provider (`OIDC_PROVIDER`) or
+  SCIM (`SCIM_TOKEN`) — the two switches the loader reads the other variables by —
+  imports them in one transaction holding the row: the client secret sealed,
+  `SCIM_TOKEN` and `SCIM_PREVIOUS_TOKEN` kept as their digests with the overlap's
+  expiry, no user behind it. The same transaction records the
+  [authority mode](/en/admin/authentication/#the-authority-mode) the row derives, at
+  this start and every later one. The directory and the
   provider keep working with the credentials they already have. Replicas starting
   together import once: the second finds the row written. A worker never imports.
 - **The trail.** The import is audited `sso-settings.imported`, with no actor and the
-  **names** of the variables it found, never their values (a token file taken from
-  `AZURE_FEDERATED_TOKEN_FILE` is named `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE`). The log
-  says, as a warning, with the same names under `variables`:
-  `the OIDC and SCIM settings were imported from the environment into the database; the variables are now ignored and should be removed`.
+  **names** of the variables it found, never their values — of `OIDC_PROVIDER`,
+  `OIDC_AUTHORITY`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`,
+  `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` (also for a token file taken from
+  `AZURE_FEDERATED_TOKEN_FILE`), `OIDC_ALLOWED_DOMAINS`, `OIDC_DISPLAY_NAME` (unless it
+  is `Workforce SSO`), `SCIM_TOKEN`, `SCIM_PREVIOUS_TOKEN` and
+  `SCIM_PREVIOUS_TOKEN_EXPIRES_AT`. The log says, as a warning, with the same names
+  under `variables`:
+  `identity: the OIDC and SCIM settings were imported from the environment into the database; the variables are now ignored and should be removed`.
   The card shows the notice to remove them.
+- **A value too long for the row.** The import never fails on one. A display name
+  over 100 characters is imported cut to 100, with a warning naming
+  `OIDC_DISPLAY_NAME`. An `OIDC_AUTHORITY` or `OIDC_CLIENT_ID` over 200 characters,
+  or an `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` over 500, cannot be cut: the provider is
+  imported **off**, its secret with it, and a warning names the variable —
+  `identity: the OIDC provider was imported off, since <variable> is longer than the single sign-on settings hold; set the provider on the Single sign-on card`.
+  SCIM is imported as usual. Set the provider on the card.
 - **The row wins afterwards.** A process that finds the row written imports nothing,
   whatever the variables say — a later change to one has no effect — and names each
   still set in a warning at every start:
-  `these OIDC and SCIM variables are ignored, since the single sign-on settings are kept in the database; remove them`.
+  `identity: these OIDC and SCIM variables are ignored, since the single sign-on settings are kept in the database; remove them`.
   An Owner who turns the provider or SCIM off on the card is not overridden by them.
 - **They are still checked at startup in this release.** The loader still validates
   them, so a malformed value, a half-removed provider (`OIDC_PROVIDER` unset with
@@ -366,7 +394,7 @@ The procedure, once, on the upgrade to that release:
 2. Check the log for the import warning, or the audit trail for
    `sso-settings.imported`, and open the **Single sign-on** card: the provider, the
    authority, the client ID, "Set on" for the secret and **Token issued** for SCIM are
-   there, with the notice.
+   there, with the notice. It stays until the provider is next saved with **Save**.
 3. Remove every `OIDC_*` and `SCIM_*` variable from every API and worker container —
    `vantigo.env`, the secret store, the platform's environment — all together, and
    restart when convenient. `AZURE_FEDERATED_TOKEN_FILE`, which the workload identity
