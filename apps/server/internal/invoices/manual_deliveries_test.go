@@ -265,7 +265,7 @@ func TestDeliveries_TheEnginesFact(t *testing.T) {
 	day := func(d int) time.Time { return time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC) }
 	daysOf := func(id int64) []time.Time {
 		t.Helper()
-		days, err := invoices.DeliveriesOf(ctx, h.Pool(), id)
+		days, err := invoices.DeliveriesOf(ctx, h.Deps(), h.Pool(), id)
 		if err != nil {
 			t.Fatalf("deliveriesOf(%d): %v", id, err)
 		}

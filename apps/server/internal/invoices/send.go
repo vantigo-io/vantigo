@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
@@ -44,9 +45,10 @@ const (
 	warningBuyerNorwegianBusinessRequired = "buyer_norwegian_business_required"
 )
 
-// b2bDutyFrom is the Oslo business day the B2B e-invoicing duty starts (Lov
-// 19. juni 2026 nr. 39): from it a PDF by e-mail to a Norwegian business is
-// not a lawful e-invoice. A day as businessDay answers one.
+// b2bDutyFrom is the day the B2B e-invoicing duty starts (Lov 19. juni 2026
+// nr. 39): from it a PDF by e-mail to a Norwegian business is not a lawful
+// e-invoice. A day as holidays.DayIn answers one, judged against today's
+// business day.
 var b2bDutyFrom = time.Date(2027, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 // sendTimeout bounds the SMTP send alone: communications' send timeout.
@@ -75,7 +77,7 @@ var beforeDeliveryWrite func(ctx context.Context, invoiceID int64)
 // a Norwegian organisation number, whom the B2B e-invoicing duty covers from
 // 2027-01-01: buyer_norwegian_business before that day and
 // buyer_norwegian_business_required from it. The server judges the date on
-// today, the Oslo business day of its own clock — the browser has neither.
+// today, the business day of its own clock — the browser has neither.
 // profile is the customer's current billing profile, nil when the directory
 // knows none. canSendEhf is whether this document can go as EHF — the caller
 // may send as EHF on this installation (meta's capability) and the document's
@@ -133,8 +135,9 @@ func validRecipient(s string) (string, bool) {
 // With ehfPreference — GET /invoices/{id} — the same read also sets the ehf
 // block's preference and buyerPeppolId (EHF and KID design D10, reading 15),
 // on an installation that can send as EHF as well as on one that can mail:
-// an EHF-only installation has no SMTP.
-func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, canIssue, ehfPreference bool, resp *gen.InvoicesInvoiceResponse) error {
+// an EHF-only installation has no SMTP. today is the business day the
+// warnings are judged on.
+func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, canIssue, ehfPreference bool, today time.Time, resp *gen.InvoicesInvoiceResponse) error {
 	if inv.Status != statusIssued || !canIssue {
 		return nil
 	}
@@ -180,7 +183,6 @@ func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv sto
 	if !mail {
 		return nil
 	}
-	today := businessDay(s.deps.Clock())
 	// ehf_preferred only for a document that can go: one blocked — no
 	// Peppol id in its snapshot, no reference, already sent — keeps the
 	// warning that an e-mailed PDF does not meet the duty.
@@ -276,6 +278,13 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 		}
 	}
 
+	// The business time zone the response's days are judged in, read once
+	// and before any transaction of the send's.
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// 4a. A pay link, made now in a transaction of its own when pay links
 	// are available and the invoice has none (D15, I5), so the cover text
 	// carries it — a quick invoice's, or one issued before pay links.
@@ -352,11 +361,11 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	// cancels: a caller who went away gets the response without sendDefaults
 	// and the deliveries' recipients — it fails closed, and nobody reads it.
 	canIssue := s.has(ctx, "invoices:issue")
-	resp, err := s.renderInvoice(renderCtx, q, inv, nil, nil, &canIssue)
+	resp, err := s.renderInvoice(renderCtx, q, inv, nil, nil, &canIssue, loc)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.withSendDefaults(renderCtx, q, inv, profile, canIssue, false, &resp); err != nil {
+	if err := s.withSendDefaults(renderCtx, q, inv, profile, canIssue, false, holidays.DayIn(s.deps.Clock(), loc), &resp); err != nil {
 		return nil, err
 	}
 	return gen.PostInvoicesByIdSend200JSONResponse(resp), nil

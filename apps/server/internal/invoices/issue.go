@@ -13,6 +13,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -294,6 +295,12 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			return nil, err
 		}
 	}
+	// The business time zone the issue and due dates are taken in, read
+	// before the lock as every call out of the module is.
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if issueBeforeLock != nil {
 		issueBeforeLock(ctx, draft.ID)
 	}
@@ -312,7 +319,7 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			refusal = ptr(invoiceIssued())
 			return errRefused
 		}
-		issued, refusal, err = s.issueLocked(ctx, tx, txq, locked, draft, profile, work, req.Body.IssueDate, false)
+		issued, refusal, err = s.issueLocked(ctx, tx, txq, locked, draft, profile, work, req.Body.IssueDate, false, loc)
 		if err != nil {
 			return err
 		}
@@ -333,7 +340,7 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 	// After the commit, the PDF is stored once (D7). A failure there is
 	// logged and never fails the issue; pdfStored says so.
 	issued = s.storeAfterIssue(ctx, q, issued)
-	resp, err := s.invoiceResponse(ctx, q, issued, nil)
+	resp, err := s.invoiceResponse(ctx, q, issued, nil, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -350,8 +357,11 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 // transaction back, or an error. issueAfterAllocation runs here. Last, an
 // invoice gets its pay link when pay links are available (D15) — when
 // handedOver, the quick invoice's, only when on-site payment is too (I5).
+// loc is the business time zone, read before the transaction: the issue's
+// today is the day its clock read falls on there.
 func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries, locked store.InvoicesInvoice,
 	draft store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, work issueWork, issueDateReq *openapi_types.Date, handedOver bool,
+	loc *time.Location,
 ) (store.InvoicesInvoice, *gen.InvoicesConflictProblem, error) {
 	var refusal *gen.InvoicesConflictProblem
 	refused := func() (store.InvoicesInvoice, *gen.InvoicesConflictProblem, error) {
@@ -380,12 +390,12 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		}
 	}
 	// "Today" is read only now, after the counter: an issue that waited
-	// on it across Oslo midnight is dated the day it is issued, the day
+	// on it across midnight is dated the day it is issued, the day
 	// its issued_at falls on. The issue's clock is read here once: today,
 	// every stamp's time and the document's issued_at, so the issue date
 	// and issued_at never straddle midnight.
 	now := s.deps.Clock()
-	today := businessDay(now)
+	today := holidays.DayIn(now, loc)
 	issueDate := today
 	if issueDateReq != nil {
 		issueDate = utcDay(issueDateReq.Time)

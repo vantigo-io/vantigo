@@ -10,6 +10,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -178,7 +179,7 @@ func sellerResponse(inv store.InvoicesInvoice) *gen.InvoicesSeller {
 // credit notes credit and what is left uncredited, what its live payments
 // paid, what is open (gross − credited − paid, which a credit note after a
 // payment takes below zero), the refund due only then, its state through the
-// Go mirror with today the Oslo business day, and every payment, removed ones
+// Go mirror with today the business day, and every payment, removed ones
 // included with their removal (D2), each with its source and the bank line a
 // match or the queue took it from (payments and reminders design D2). Every
 // figure is exact until the wire.
@@ -233,15 +234,17 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 
 // invoiceResponse renders one document. profile is the billing profile the
 // caller already read for an invoice draft (for its current name and the
-// currency warning), nil otherwise; this function reads no directory itself.
-func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile) (gen.InvoicesInvoiceResponse, error) {
-	return s.renderInvoice(ctx, q, inv, profile, nil, nil)
+// currency warning), nil otherwise; loc is the business time zone the caller
+// read before its transaction (businessZone), which every day the response
+// judges is taken in. This function reads no directory itself.
+func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, loc *time.Location) (gen.InvoicesInvoiceResponse, error) {
+	return s.renderInvoice(ctx, q, inv, profile, nil, nil, loc)
 }
 
 // creditDraftResponse renders a credit-note draft with the credit book its
 // caller has read already, so a save reads its original's once.
-func (s *server) creditDraftResponse(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, book *creditBook) (gen.InvoicesInvoiceResponse, error) {
-	return s.renderInvoice(ctx, q, inv, nil, book, nil)
+func (s *server) creditDraftResponse(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, book *creditBook, loc *time.Location) (gen.InvoicesInvoiceResponse, error) {
+	return s.renderInvoice(ctx, q, inv, nil, book, nil, loc)
 }
 
 // renderInvoice is invoiceResponse, with book the credit book of a credit
@@ -249,7 +252,7 @@ func (s *server) creditDraftResponse(ctx context.Context, q *store.Queries, inv 
 // the caller holds invoices:issue when the handler has asked already — the
 // GET and the send ask once for the response and its sendDefaults — nil to
 // ask here, and only when there is a send to show.
-func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, book *creditBook, canIssue *bool) (gen.InvoicesInvoiceResponse, error) {
+func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, book *creditBook, canIssue *bool, loc *time.Location) (gen.InvoicesInvoiceResponse, error) {
 	stored, err := q.Lines(ctx, inv.ID)
 	if err != nil {
 		return gen.InvoicesInvoiceResponse{}, fmt.Errorf("invoices: read document %d's lines: %w", inv.ID, err)
@@ -313,7 +316,7 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		resp.CustomerName = &profile.Name
 	}
 
-	today := businessDay(s.deps.Clock())
+	today := holidays.DayIn(s.deps.Clock(), loc)
 	// A draft's and a credit note's state reads no money; an issued
 	// invoice's is settle's.
 	if inv.Kind != kindInvoice || inv.Status != statusIssued {
@@ -380,7 +383,7 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		// month (§ 5-1-3) is judged on the 14th.
 		issuedOn := inv.IssueDate.Time
 		if inv.IssuedAt != nil {
-			issuedOn = businessDay(*inv.IssuedAt)
+			issuedOn = holidays.DayIn(*inv.IssuedAt, loc)
 		}
 		if inv.Kind == kindInvoice {
 			if issuedLate(issuedOn, deliveryEndOf(inv)) {
@@ -397,7 +400,7 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			}
 			// Its letters, the interest accrued today and what the
 			// reminder engine says to do next (D8, D10, D12).
-			if err := s.withReminders(ctx, q, inv, today, &resp); err != nil {
+			if err := s.withReminders(ctx, q, inv, today, loc, &resp); err != nil {
 				return gen.InvoicesInvoiceResponse{}, err
 			}
 			// Its latest hold and hand-off, live or ended (D11).

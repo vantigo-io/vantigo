@@ -21,8 +21,9 @@ import (
 // posted re-judge read one invoice through ruleInputLocked, under its lock.
 //
 // The contract it keeps (reminderrules.Input; the tests run Validate on what
-// it reads): every day a UTC midnight of the Oslo calendar day — a date
-// column through utcDay, an instant through businessDay; every amount but a
+// it reads): every day a UTC midnight of the business calendar day — a date
+// column through utcDay, an instant through holidays.DayIn in the business
+// time zone the caller read before any transaction; every amount but a
 // letter's non-nil; no policy row is ModeNormal; Rates every row of every
 // kind; Payments, Credits and ChargePayments the live ones only.
 //
@@ -42,12 +43,13 @@ var ratesRead func(ctx context.Context)
 // that is not an issued invoice (a draft, a credit note, none) is absent
 // from the answer. Each statement reads every invoice at once
 // (ruleinput.sql), so the count is the same for one invoice as for
-// thousands. Exclude is zero.
-func (s *server) ruleInputs(ctx context.Context, on db.TxBeginner, ids []int64, L time.Time) (map[int64]reminderrules.Input, error) {
+// thousands. Exclude is zero. loc is the business time zone L was judged in,
+// read before this transaction opens.
+func (s *server) ruleInputs(ctx context.Context, on db.TxBeginner, ids []int64, L time.Time, loc *time.Location) (map[int64]reminderrules.Input, error) {
 	var out map[int64]reminderrules.Input
 	err := readTx(ctx, on, func(ctx context.Context, q *store.Queries) error {
 		var err error
-		out, err = s.readRuleInputs(ctx, q, ids, L)
+		out, err = s.readRuleInputs(ctx, q, ids, L, loc)
 		return err
 	})
 	if err != nil {
@@ -64,9 +66,10 @@ func (s *server) ruleInputs(ctx context.Context, on db.TxBeginner, ids []int64, 
 // is read too. exclude is the letter being dispatched or posted (zero for
 // none): it stays among the letters, and Input.Exclude names it so the
 // engine leaves it out of flight. An inv that is not an issued invoice is an
-// error: no caller judges one.
-func (s *server) ruleInputLocked(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, L time.Time, exclude int64) (reminderrules.Input, error) {
-	ins, err := s.readRuleInputs(ctx, txq, []int64{inv.ID}, L)
+// error: no caller judges one. loc is the business time zone L was judged
+// in, read before the caller's transaction opened.
+func (s *server) ruleInputLocked(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, L time.Time, loc *time.Location, exclude int64) (reminderrules.Input, error) {
+	ins, err := s.readRuleInputs(ctx, txq, []int64{inv.ID}, L, loc)
 	if err != nil {
 		return reminderrules.Input{}, err
 	}
@@ -81,7 +84,7 @@ func (s *server) ruleInputLocked(ctx context.Context, txq *store.Queries, inv st
 // readRuleInputs is both doors' read with q: the issued invoices among ids,
 // the settings and the rates, then every fact of every invoice, one
 // statement each.
-func (s *server) readRuleInputs(ctx context.Context, q *store.Queries, ids []int64, L time.Time) (map[int64]reminderrules.Input, error) {
+func (s *server) readRuleInputs(ctx context.Context, q *store.Queries, ids []int64, L time.Time, loc *time.Location) (map[int64]reminderrules.Input, error) {
 	out := map[int64]reminderrules.Input{}
 	if len(ids) == 0 {
 		return out, nil
@@ -128,7 +131,7 @@ func (s *server) readRuleInputs(ctx context.Context, q *store.Queries, ids []int
 		}
 		found = append(found, r.ID)
 	}
-	if err := readRuleFacts(ctx, q, found, ins); err != nil {
+	if err := readRuleFacts(ctx, q, found, ins, loc); err != nil {
 		return nil, err
 	}
 	for id, in := range ins {
@@ -153,8 +156,9 @@ func (ins ruleInputSet) of(id int64, what string) (*reminderrules.Input, error) 
 
 // readRuleFacts reads every invoice's credits, payments, deliveries, letters,
 // waivers, charge payments, holds, hand-offs, live Vipps reservations and
-// policy into ins, one statement each.
-func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins ruleInputSet) error {
+// policy into ins, one statement each, a delivery's instant taken as its
+// day in loc.
+func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins ruleInputSet, loc *time.Location) error {
 	credits, err := q.RuleCredits(ctx, ids)
 	if err != nil {
 		return fmt.Errorf("invoices: read the credit notes: %w", err)
@@ -196,7 +200,7 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins ruleI
 		if err != nil {
 			return err
 		}
-		day, err := deliveryDay(r.InvoiceID, r.Kind, r.At, r.DeliveredOn)
+		day, err := deliveryDay(r.InvoiceID, r.Kind, r.At, r.DeliveredOn, loc)
 		if err != nil {
 			return err
 		}

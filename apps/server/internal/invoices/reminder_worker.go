@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
@@ -44,7 +45,8 @@ import (
 //  2. the PDF rendered from the row and stored once under a key carrying
 //     its hash (plan reading 35), outside any lock, under its own timeout;
 //  3. the lease left judged — a claim with less of it than the send may take
-//     and a margin does not send — and the day: past Oslo midnight since the
+//     and a margin does not send — and the day: past midnight in the
+//     business time zone since the
 //     claim, the letter is put back uncounted, its facts cleared, to be
 //     judged again on the new day; then the mail, through the installation's
 //     SMTP seam under its own timeout, Reply-To the seller, the letter's
@@ -210,6 +212,13 @@ func (w *ReminderWorker) ProcessOne(ctx context.Context) (bool, error) {
 		return false, w.srvErr
 	}
 	now := w.now() // the claim's one clock read (D18)
+	// The business time zone, read once for the claim and before it, so a
+	// failed read leaves no letter leased; every day of the claim is taken
+	// in it.
+	loc, err := w.srv.businessZone(ctx)
+	if err != nil {
+		return false, err
+	}
 	lease := strings.ReplaceAll(uuid.NewString(), "-", "")
 	leaseUntil := now.Add(reminderLease)
 	row, err := store.New(w.deps.Pool).ClaimReminder(ctx, store.ClaimReminderParams{
@@ -221,12 +230,13 @@ func (w *ReminderWorker) ProcessOne(ctx context.Context) (bool, error) {
 	case err != nil:
 		return false, fmt.Errorf("invoices: claim a reminder letter: %w", err)
 	}
-	c := &reminderClaim{w: w, s: w.srv, row: row, lease: lease, leaseUntil: leaseUntil, now: now, today: businessDay(now)}
+	c := &reminderClaim{w: w, s: w.srv, row: row, lease: lease, leaseUntil: leaseUntil, now: now, today: holidays.DayIn(now, loc), loc: loc}
 	return true, c.dispatch(ctx)
 }
 
 // reminderClaim is one claimed letter: the row as the claim saw it, its
-// lease and the claim's time and day.
+// lease, the claim's time and day, and the business time zone the day was
+// taken in.
 type reminderClaim struct {
 	w          *ReminderWorker
 	s          *server
@@ -234,6 +244,7 @@ type reminderClaim struct {
 	lease      string
 	leaseUntil time.Time
 	now, today time.Time
+	loc        *time.Location
 	// first is the letter's first attempt once step 1 stamped it.
 	first *time.Time
 }
@@ -296,8 +307,8 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 	if c.leaseLeft() < reminderSendTimeout+reminderSendMargin {
 		return c.fail(ctx, reasonLetterOutOfTime)
 	}
-	if !businessDay(c.w.now()).Equal(c.today) {
-		// Oslo midnight passed since the claim judged the letter: its
+	if !holidays.DayIn(c.w.now(), c.loc).Equal(c.today) {
+		// Midnight passed since the claim judged the letter: its
 		// sent_on and deadline are yesterday's, which would leave the debtor
 		// a day short of the 14 (inkassoloven § 9). Judged again at once.
 		return c.rescheduleNewDay(ctx)
@@ -349,7 +360,7 @@ func (c *reminderClaim) judge(ctx context.Context) (judgement, store.InvoicesInv
 			j.outcome = judgedGone
 			return nil
 		}
-		if j, err = c.s.judgeAndWriteFacts(ctx, txq, inv, letter, c.today, c.now); err != nil {
+		if j, err = c.s.judgeAndWriteFacts(ctx, txq, inv, letter, c.today, c.now, c.loc); err != nil {
 			return err
 		}
 		var n int64
@@ -423,7 +434,10 @@ type judgement struct {
 // off, held, the policy none, another action) answers judgedWithdraw with
 // D10's reason; a rate missing or the regime unreviewed answers judgedHeld.
 // It never reschedules, withdraws or fails: the caller acts on the answer.
-func (s *server) judgeAndWriteFacts(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, letter store.InvoicesReminder, L, now time.Time) (judgement, error) {
+// loc is the business time zone L was taken in, read before the locks.
+func (s *server) judgeAndWriteFacts(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, letter store.InvoicesReminder, L, now time.Time,
+	loc *time.Location,
+) (judgement, error) {
 	erased, err := txq.CustomerErased(ctx, inv.CustomerID)
 	if err != nil {
 		return judgement{}, fmt.Errorf("invoices: read whether customer %d is anonymised: %w", inv.CustomerID, err)
@@ -431,7 +445,7 @@ func (s *server) judgeAndWriteFacts(ctx context.Context, txq *store.Queries, inv
 	if erased {
 		return judgement{outcome: judgedWithdraw, reason: withdrawnAnonymised}, nil
 	}
-	in, err := s.ruleInputLocked(ctx, txq, inv, L, letter.ID)
+	in, err := s.ruleInputLocked(ctx, txq, inv, L, loc, letter.ID)
 	if err != nil {
 		return judgement{}, err
 	}
@@ -574,7 +588,7 @@ func (c *reminderClaim) markSent(ctx context.Context) error {
 			moved = true
 			return nil
 		}
-		in, err := c.s.ruleInputLocked(ctx, txq, inv, c.today, letter.ID)
+		in, err := c.s.ruleInputLocked(ctx, txq, inv, c.today, c.loc, letter.ID)
 		if err != nil {
 			return err
 		}

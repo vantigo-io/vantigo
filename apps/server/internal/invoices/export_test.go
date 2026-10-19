@@ -410,12 +410,16 @@ func EngineSettingsForTest(ctx context.Context, db store.DBTX) (reminderrules.Se
 	return settings, rates, err
 }
 
-// DeliveriesOf is deliveriesOf over db (Task 7): the Oslo days of an
-// invoice's live deliveries — each e-mail, each delivered EHF transmission
-// and each manual delivery not removed — as the engine's delivery fact reads
-// them.
-func DeliveriesOf(ctx context.Context, db store.DBTX, invoiceID int64) ([]time.Time, error) {
-	return deliveriesOf(ctx, store.New(db), invoiceID)
+// DeliveriesOf is deliveriesOf over db (Task 7): the days of an invoice's
+// live deliveries in h's business time zone — each e-mail, each delivered EHF
+// transmission and each manual delivery not removed — as the engine's
+// delivery fact reads them.
+func DeliveriesOf(ctx context.Context, h module.Deps, db store.DBTX, invoiceID int64) ([]time.Time, error) {
+	loc, err := h.Calendar.Zone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return deliveriesOf(ctx, store.New(db), invoiceID, loc)
 }
 
 // countingDB is a store.DBTX that counts the statements it passes on, and
@@ -492,19 +496,27 @@ func RuleInputsForTest(ctx context.Context, h module.Deps, on store.DBTX, ids []
 	if !ok {
 		return nil, fmt.Errorf("invoices: %T opens no transaction", on)
 	}
-	return (&server{deps: h}).ruleInputs(ctx, beginner, ids, L)
+	loc, err := (&server{deps: h}).businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return (&server{deps: h}).ruleInputs(ctx, beginner, ids, L, loc)
 }
 
 // RuleInputLockedForTest is ruleInputLocked inside tx: invoice id locked
 // through lockInvoice first, as its callers do, then every fact read after
 // the lock, exclude left out of flight.
 func RuleInputLockedForTest(ctx context.Context, h module.Deps, tx pgx.Tx, id int64, L time.Time, exclude int64) (reminderrules.Input, error) {
+	loc, err := (&server{deps: h}).businessZone(ctx)
+	if err != nil {
+		return reminderrules.Input{}, err
+	}
 	txq := store.New(tx)
 	inv, err := lockInvoice(ctx, txq, id)
 	if err != nil {
 		return reminderrules.Input{}, err
 	}
-	return (&server{deps: h}).ruleInputLocked(ctx, txq, inv, L, exclude)
+	return (&server{deps: h}).ruleInputLocked(ctx, txq, inv, L, loc, exclude)
 }
 
 // SetMatchAfterLineLock installs a hook a bank line's match calls inside its

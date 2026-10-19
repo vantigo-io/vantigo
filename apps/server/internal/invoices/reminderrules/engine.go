@@ -161,7 +161,8 @@ type ChargePayment struct {
 // the pool for the list), and the day L it is asked about.
 //
 // The contract (Validate checks it in the tests): every day is UTC midnight of
-// an Oslo calendar day, as the module's businessDay gives it; every amount
+// a calendar day of the business time zone, as the module derives it
+// (holidays.DayIn); every amount
 // but a Letter's is non-nil, and a nil one is a programming error the engine
 // panics on; a Letter's nil amounts read as zero; a customer without a
 // policy row is ModeNormal; Rates is every row of every kind; Payments,

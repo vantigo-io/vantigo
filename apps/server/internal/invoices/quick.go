@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -86,8 +88,14 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 	if err != nil {
 		return nil, err
 	}
+	// The business time zone every day of this request is taken in, read
+	// once, before any transaction.
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if id := req.Body.RequestId; id != nil {
-		replay, refusal, err := s.quickReplay(ctx, q, *id, bodySHA)
+		replay, refusal, err := s.quickReplay(ctx, q, *id, bodySHA, loc)
 		if err != nil || refusal != nil || replay != nil {
 			return quickReplied(replay, refusal, err)
 		}
@@ -98,11 +106,11 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 	}
 	// The clock is read here once, for the draft's defaults (its delivery
 	// day and created_at), and once more by issueLocked after the counter,
-	// as the issue does: a quick invoice waiting there across Oslo midnight
+	// as the issue does: a quick invoice waiting there across midnight
 	// is issued, and handed over, the day it is issued, after the day its
 	// draft says it was delivered — never before it.
 	now := s.deps.Clock()
-	in, errs := parseDraft(quickDraft(*req.Body, wireDate(businessDay(now))), settings.DefaultCurrency)
+	in, errs := parseDraft(quickDraft(*req.Body, wireDate(holidays.DayIn(now, loc))), settings.DefaultCurrency)
 	switch n := len(req.Body.Lines); {
 	case n == 0:
 		errs = withFieldError(errs, "lines", "A quick invoice needs at least one line")
@@ -199,7 +207,7 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 		}
 		// 2. The issue's own body on the document held: the settings row,
 		// the number, the checks, the writes.
-		issued, refusal, err = s.issueLocked(ctx, tx, txq, draft, draft, profile, issueWork{}, nil, true)
+		issued, refusal, err = s.issueLocked(ctx, tx, txq, draft, draft, profile, issueWork{}, nil, true, loc)
 		if err != nil {
 			return err
 		}
@@ -219,7 +227,7 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 		return gen.PostInvoicesQuick409ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
 	if errors.Is(err, errQuickReplay) {
-		return quickReplied(s.quickReplay(ctx, q, *req.Body.RequestId, bodySHA))
+		return quickReplied(s.quickReplay(ctx, q, *req.Body.RequestId, bodySHA, loc))
 	}
 	if err != nil {
 		return nil, err
@@ -253,7 +261,7 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 			out.PaymentRequest = pr
 		}
 	}
-	if out.Invoice, err = s.invoiceResponse(ctx, q, issued, nil); err != nil {
+	if out.Invoice, err = s.invoiceResponse(ctx, q, issued, nil, loc); err != nil {
 		return nil, err
 	}
 	return gen.PostInvoicesQuick201JSONResponse(out), nil
@@ -343,7 +351,7 @@ func quickBodySHA(body gen.InvoicesQuickInvoiceRequest) (string, error) {
 // read as it stands, a merge the first missed followed, nothing else run
 // again, and no payment request made again — a live one reported; 409 request_id_reused for
 // another body, naming the invoice the id issued in invoiceId.
-func (s *server) quickReplay(ctx context.Context, q *store.Queries, id uuid.UUID, bodySHA string,
+func (s *server) quickReplay(ctx context.Context, q *store.Queries, id uuid.UUID, bodySHA string, loc *time.Location,
 ) (*gen.InvoicesQuickInvoiceResponse, *gen.InvoicesConflictProblem, error) {
 	kept, err := q.QuickRequest(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -365,7 +373,7 @@ func (s *server) quickReplay(ctx context.Context, q *store.Queries, id uuid.UUID
 		return nil, nil, fmt.Errorf("invoices: read quick invoice %d: %w", kept.InvoiceID, err)
 	}
 	inv = s.quickFollowMerge(context.WithoutCancel(ctx), inv)
-	resp, err := s.invoiceResponse(ctx, q, inv, nil)
+	resp, err := s.invoiceResponse(ctx, q, inv, nil, loc)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
@@ -90,13 +91,13 @@ type matchCounts struct {
 
 // matchFile runs D4 over file fileID's pending lines, in the order they were
 // stored, caller registering what is matched, now the request's one clock
-// read. Each line is its own transaction, so a line matched stays matched
+// read and loc its business time zone, read before any transaction. Each line is its own transaction, so a line matched stays matched
 // whatever happens to the next. Matching stops early at the first error — a
 // seam's, the database's — or when ctx ends: the line in hand rolls back and
 // stays pending with the rest, the stop is logged at warn with the file and
 // the line, and the counts say what was done; POST …/match finishes the
 // rest. The error answered is why it stopped, nil when it ran to the end.
-func (s *server) matchFile(ctx context.Context, fileID int64, caller uuid.UUID, now time.Time) (matchCounts, error) {
+func (s *server) matchFile(ctx context.Context, fileID int64, caller uuid.UUID, now time.Time, loc *time.Location) (matchCounts, error) {
 	counts := matchCounts{matchedAmount: new(big.Rat), exceptionsAmount: new(big.Rat)}
 	q := store.New(s.deps.Pool)
 	stopped := func(lineID int64, err error) (matchCounts, error) {
@@ -139,7 +140,7 @@ func (s *server) matchFile(ctx context.Context, fileID int64, caller uuid.UUID, 
 			}
 			outcome, err = s.queueOnPool(ctx, line, reason, invoiceID, caller, now)
 		} else {
-			outcome, err = s.matchLine(ctx, line.ID, invoiceID, caller, now)
+			outcome, err = s.matchLine(ctx, line.ID, invoiceID, caller, now, loc)
 		}
 		if err != nil {
 			return stopped(line.ID, err)
@@ -306,7 +307,7 @@ func queueLine(ctx context.Context, txq *store.Queries, lineID int64, reason str
 // the reason and its event in the same transaction; a match registers the
 // payment and the charge payment, marks the line matched with its event,
 // and waives what the payment shows was claimed after a met deadline.
-func (s *server) matchLine(ctx context.Context, lineID, invoiceID int64, caller uuid.UUID, now time.Time) (outcome string, err error) {
+func (s *server) matchLine(ctx context.Context, lineID, invoiceID int64, caller uuid.UUID, now time.Time, loc *time.Location) (outcome string, err error) {
 	outcome = outcomeNone
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		line, err := lockBankTransaction(ctx, txq, lineID)
@@ -343,7 +344,7 @@ func (s *server) matchLine(ctx context.Context, lineID, invoiceID int64, caller 
 		}
 		// Every matched line: a payment meets a deadline by its ordering
 		// day where the bank gives one, else by its booking day (reading 32).
-		in, err := s.ruleInputLocked(ctx, txq, inv, businessDay(now), 0)
+		in, err := s.ruleInputLocked(ctx, txq, inv, holidays.DayIn(now, loc), loc, 0)
 		if err != nil {
 			return err
 		}
@@ -509,7 +510,11 @@ func (s *server) PostInvoicesBankFilesByIdMatch(ctx context.Context, req gen.Pos
 	} else if err != nil {
 		return nil, fmt.Errorf("invoices: read bank file %d: %w", req.Id, err)
 	}
-	counts, _ := s.matchFile(ctx, req.Id, callerID(ctx), s.deps.Clock())
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	counts, _ := s.matchFile(ctx, req.Id, callerID(ctx), s.deps.Clock(), loc)
 	row, err := q.GetBankFile(ctx, req.Id)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read bank file %d: %w", req.Id, err)

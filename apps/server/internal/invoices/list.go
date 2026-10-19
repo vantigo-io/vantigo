@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -84,10 +85,14 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 	if len(errs) > 0 {
 		return gen.GetInvoices400ApplicationProblemPlusJSONResponse(apicommon.Problem(invalidQueryTitle, strings.Join(errs, " "))), nil
 	}
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	page, pageSize := pageParams(p.Page, p.PageSize)
 	params := store.ListInvoicesParams{
 		Status: p.Status, Kind: p.Kind, CustomerID: p.CustomerId, ProjectID: p.ProjectId, State: p.State,
-		Today:      pgDate(businessDay(s.deps.Clock())),
+		Today:      pgDate(holidays.DayIn(s.deps.Clock(), loc)),
 		PageOffset: (page - 1) * pageSize, PageSize: pageSize,
 	}
 	if p.From != nil {

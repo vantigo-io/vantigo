@@ -207,9 +207,10 @@ func clip(s string) string {
 // their effective rate, since a line has one unit price; expenses group by
 // their kind under every grouping but itemised; a milestone is always its own
 // line. Lines are ordered by the project's code, the kind (hours, expenses,
-// milestones) and the key. people names the users whose hours the work holds.
+// milestones) and the key. people names the users whose hours the work holds;
+// loc is the business time zone a milestone's day is taken in.
 func groupLines(language, grouping string, projects map[int32]contracts.ProjectEntry, people map[uuid.UUID]string,
-	sel workSelection, codes workVatCodes,
+	sel workSelection, codes workVatCodes, loc *time.Location,
 ) ([]draftLine, [][]heldSource, error) {
 	w := lineLanguages[language]
 	groups := map[string]*workGroup{}
@@ -345,7 +346,7 @@ func groupLines(language, grouping string, projects map[int32]contracts.ProjectE
 	}
 
 	for _, m := range sel.milestones {
-		src, err := milestoneSource(m)
+		src, err := milestoneSource(m, loc)
 		if err != nil {
 			return nil, nil, err
 		}

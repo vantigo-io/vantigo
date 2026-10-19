@@ -84,6 +84,10 @@ func (s *server) PostInvoicesByIdCredit(ctx context.Context, req gen.PostInvoice
 		return gen.PostInvoicesByIdCredit409ApplicationProblemPlusJSONResponse(conflict(codeInvoiceFullyCredited, cannotCreditTitle,
 			"This invoice is already credited in full.")), nil
 	}
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var created store.InvoicesInvoice
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		created, err = txq.InsertCreditDraft(ctx, store.InsertCreditDraftParams{
@@ -103,7 +107,7 @@ func (s *server) PostInvoicesByIdCredit(ctx context.Context, req gen.PostInvoice
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, q, created, nil)
+	resp, err := s.invoiceResponse(ctx, q, created, nil, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -873,6 +877,10 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	for i := range in.lines {
 		in.lines[i].amounts = t.amounts[i]
 	}
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	saved, err := s.saveDraft(ctx, current.ID, *body.Revision, in, t.totals)
 	if errors.Is(err, errDocumentGone) {
 		return gen.PutInvoicesById404Response{}, nil
@@ -886,7 +894,7 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	if saved.refusal != nil {
 		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*saved.refusal), nil
 	}
-	resp, err := s.creditDraftResponse(ctx, q, saved.doc, &book)
+	resp, err := s.creditDraftResponse(ctx, q, saved.doc, &book, loc)
 	if err != nil {
 		return nil, err
 	}
