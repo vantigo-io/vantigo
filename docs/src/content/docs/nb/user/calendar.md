@@ -188,7 +188,9 @@ lenke til avtalen.
   bortsett fra at en endring av stedet alene lar dem stå.
 - Flytter, avlyser eller legger du tilbake én forekomst av en gjentakende avtale, får
   alle den oppdaterte serien.
-- Legger du til noen, får bare de invitasjonen; tar du noen av, får de en avlysning.
+- Legger du til noen, får bare de invitasjonen; tar du noen av, får de en avlysning,
+  hvis de hadde fått en invitasjon. En adresse du skriver inn som alt står i listen som
+  kontaktperson, beholdes én gang, som kontaktpersonen.
 - Endrer du bare tittelen, beskrivelsen eller hvem som kan se den, sendes ingenting.
 
 ### Send en invitasjon på nytt
@@ -204,8 +206,9 @@ gikk.
 Så lenge ingen invitasjon har gått ut til noen utenfor bedriften, fjerner **Slett**
 avtalen som den alltid har gjort, og kollegene dine på den får beskjed på e-post om at
 den er avlyst. Når noen utenfra har fått en, **avlyser** slettingen
-den i stedet: hver av dem får **Avlyst: …**, som e-postprogrammet deres bruker til å ta
-den ut av kalenderen, og kollegene dine på den får beskjed på e-post. Avtalen forsvinner
+den i stedet: hver av dem som fikk en invitasjon, får **Avlyst: …**, som
+e-postprogrammet deres bruker til å ta den ut av kalenderen — den som aldri fikk
+invitasjonen sin, får ingenting — og kollegene dine på den får beskjed på e-post. Avtalen forsvinner
 fra alle kalendere i Vantigo, men du og deltakerne kan fortsatt åpne den fra en lenke:
 den åpnes skrivebeskyttet, med banneret **Avlyst 3. nov. 2026** og ingenting å endre. En tid
 etter den siste dagen fjernes den for godt.

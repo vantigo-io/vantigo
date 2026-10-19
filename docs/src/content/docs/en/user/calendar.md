@@ -188,7 +188,8 @@ accepted: …" — with a link to the appointment.
 - Moving, cancelling or putting back one occurrence of a repeating appointment sends
   everyone the updated series.
 - Adding someone sends the invitation to them alone; taking someone off sends them a
-  cancellation.
+  cancellation, if they had been sent an invitation. An address you type that is
+  already a contact on the list is kept once, as the contact.
 - Changing only the title, the description or who can see it sends nothing.
 
 ### Resend an invitation
@@ -203,8 +204,9 @@ notice, "Invitation sent", confirms it went.
 As long as no invitation has gone out to anyone outside the company, **Delete** removes
 the appointment as it always has, and your colleagues on it are told by mail that it was
 cancelled. Once someone outside has been sent one, deleting it
-**cancels** it instead: each of them is mailed **Cancelled: …**, which their mail
-program uses to take it off their calendar, and your colleagues on it are told by mail.
+**cancels** it instead: each of them who was sent an invitation is mailed
+**Cancelled: …**, which their mail program uses to take it off their calendar — someone
+whose invitation never went out is sent nothing — and your colleagues on it are told by mail.
 The appointment leaves every calendar in Vantigo, but you and your attendees can still
 open it from a link: it opens read-only, with the banner **Cancelled on 3 Nov 2026**
 and nothing to change. Some time after its last day it is removed for good.

@@ -137,10 +137,11 @@ uten adresse logges på info-nivå, `calendar: invitation not sent: the contact 
 address the directory answers`; en melding til en kollega som feiler,
 `calendar: a notice could not be sent`.
 Ingenting legges i kø og ingenting prøves på nytt av seg selv: arrangøren trykker
-**Send på nytt** når årsaken er rettet. Sendingene for én lagring går den ene etter den
-andre etter at den er lagret, innen tretti sekunder til sammen — de som ikke er nådd
-da, merkes **Sending mislyktes** — og selve lagringen feiler aldri på grunn av
-e-posten.
+**Send på nytt** når årsaken er rettet. E-postene for én lagring — invitasjoner og
+meldinger til kolleger — går den ene etter den andre etter at den er lagret, innen
+tretti sekunder til sammen; invitasjonene som ikke er nådd da, merkes
+**Sending mislyktes**, og selve lagringen feiler aldri på grunn av e-posten. En melding
+til arrangøren om et svar har ti sekunder.
 
 ## Avlysningsarbeideren
 
@@ -151,7 +152,8 @@ avlysningen kan si hva den avlyser, og en lenke som alt er sendt, fortsatt sier 
 `calendar-cancellations` sletter en slik avtale når den siste dagen er passert:
 
 - en enkeltavtale, etter at den er slutt;
-- en serie med en siste dag, etter den dagen;
+- en serie med en siste dag, etter den dagen — eller etter slutten på en forekomst som
+  er flyttet forbi den, det som kommer sist;
 - en serie som aldri slutter, nitti dager etter at den ble avlyst.
 
 Når den er slettet, sier mottakernes lenker **Denne lenken er ikke gyldig**.

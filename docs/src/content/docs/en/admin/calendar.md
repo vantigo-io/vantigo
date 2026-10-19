@@ -136,9 +136,10 @@ A failed send is in two places: on the attendee row, as **Sending failed**, with
 address is logged at info, `calendar: invitation not sent: the contact has no address
 the directory answers`; a colleague's notice that fails, `calendar: a notice could not be
 sent`. Nothing is queued and nothing retries by itself: the organiser presses
-**Resend** when the cause is fixed. The sends for one save run one after the other after
-it is saved, within thirty seconds together — the ones not reached by then are marked
-**Sending failed** — and the save itself never fails for the mail.
+**Resend** when the cause is fixed. The mails of one save — invitations and colleagues'
+notices — go one after the other after it is saved, within thirty seconds together; the
+invitations not reached by then are marked **Sending failed**, and the save itself never
+fails for the mail. An organiser's notice of an answer has ten seconds.
 
 ## The cancellations worker
 
@@ -149,7 +150,8 @@ says so ([cancellation](/en/reference/calendar/#cancellation)). The
 `calendar-cancellations` worker erases such an appointment once its last day has passed:
 
 - a single appointment, after its end;
-- a series with a last day, after that day;
+- a series with a last day, after that day — or after the end of an occurrence moved
+  past it, whichever is later;
 - a series that never ends, ninety days after it was cancelled.
 
 Once erased, its invitees' links say **This link is not valid**.
