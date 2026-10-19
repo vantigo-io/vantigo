@@ -249,14 +249,18 @@ detaljene; **Last inn flere** henter eldre hendelser. Lesing krever
 
 **Legg til hendelse** (`customers:timeline-manage`) registrerer et øyeblikk: **Type**
 (**Samtale**, **Møte**, **E-post**, **Notat**, **Annet** eller **Registerendring**),
-**Dato** (ikke i fremtiden), valgfri **Tid (UTC)**, en **Beskrivelse**, en valgfri
+**Dato** (ikke i fremtiden), valgfri **Tid**, en **Beskrivelse**, en valgfri
 **Kilde-URL** vist som **Åpne kilde** på hendelsen, og en oppfølging (neste avsnitt).
-Tiden du skriver er UTC, slik feltnavnet sier, og hendelsen viser den i nettleserens
-tidssone, uten sone etter. **Dato** må være dagen den tiden faller på i virksomhetens
-tidssone (satt under [Administrasjon av
-arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet)):
-23:30 UTC 30. juni er 1. juli i Oslo. En hendelse som er lagret fra før, blir stående
-som den er, og redigerer du bare beskrivelsen, kreves aldri en ny dato.
+Tiden du skriver er i din egen tidssone, som feltnavnet sier — **Tid (Europe/Oslo)** —
+og som du velger under [Velg tidssonen
+din](/nb/user/getting-started/#velg-tidssonen-din); hendelsen viser den for hver leser
+i deres sone, uten sone etter. **Dato**, og «ikke i fremtiden» den sjekkes mot, er
+virksomhetens tidssone (satt under [Administrasjon av
+arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet)),
+og datoen må være dagen tiden din faller på der: 23:30 30. juni i London er 1. juli i
+Oslo, så med et arbeidsområde i Oslo dateres den hendelsen 1. juli. En hendelse som er
+lagret fra før, blir stående som den er, og redigerer du bare beskrivelsen, kreves
+aldri en ny dato og flyttes aldri tiden, uansett hvilken sone du leser den i.
 Menyen på en manuell hendelse tilbyr **Rediger**, **Revisjonshistorikk** og **Slett**.
 Alle lagrede versjoner beholdes, og **Revisjonshistorikk** lister dem som **Revisjon
 1**, **Revisjon 2** og så videre, med hvem som endret og når. Er en hendelse endret

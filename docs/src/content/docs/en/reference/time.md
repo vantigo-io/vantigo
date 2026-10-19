@@ -326,7 +326,10 @@ the dashboard summary's `hoursThisWeek` and its delta, the current week the
 `weekUnsubmitted` attention items leave out because it is still being written, and the
 last week of the people overview's window. All three turn at the business time zone's
 midnight, together: at 00:30 on a Monday in Oslo the new week has begun, although the
-server's UTC clock still says Sunday.
+server's UTC clock still says Sunday. The Time app's own **today** — the week My week
+opens on, the day view's **Today** — is the same day: `today()` in `lib/week.ts` is the
+calendar date in the business time zone the session answers, held by the shell
+(`civilDateIn`), never the browser's or the reader's personal zone.
 
 The module keeps no zone of its own. It reads the zone through the platform's
 `contracts.BusinessCalendar` (`Deps.Calendar`) once per request, **before** the

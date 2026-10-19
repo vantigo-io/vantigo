@@ -27,7 +27,9 @@ et utkast eller en avvist føring; se
 prosjekt, hver linje og hver oppgave du fører timer på, og en kolonne for hver dag. Bruk
 pilene for å gå til **Forrige uke** eller **Neste uke**, og **Denne uken** for å komme
 tilbake; uken ligger også i adresselinjen, så en lenke til en hvilken som helst dato
-åpner uken den hører til.
+åpner uken den hører til. Denne uken, som **I dag** i dagsvisningen, regnes i
+virksomhetens tidssone, dagen Vantigo regner overalt, ikke din egen tidssone eller
+datamaskinens.
 
 En uke uten noe ført sier «Ingenting ført denne uken». Legg til en rad først:
 

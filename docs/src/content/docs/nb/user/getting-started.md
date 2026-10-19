@@ -110,7 +110,7 @@ installasjonen; se øktlevetid og tilbakekalling i
 ## Rediger profilen din
 
 Åpne avatar-menyen øverst til høyre og velg **Innstillinger**. Siden **Profil**
-("Navn, bilde og språk.") inneholder:
+("Navn, bilde, språk og tidssone.") inneholder:
 
 - **Profilbilde** — **Velg et bilde** (JPEG eller PNG, opptil 5 MB) og **Last opp
   bilde**. **Fjern** tar det bort igjen. Bildet vises i avatar-menyen og der kolleger
@@ -119,6 +119,7 @@ installasjonen; se øktlevetid og tilbakekalling i
 - **E-post** — vises, men kan ikke endres her: "E-postadressen din administreres av
   innloggingsleverandøren." En eier endrer den fra arbeidsområdets brukerliste.
 - **Foretrukket språk** — **Automatisk**, **Norsk** eller **Engelsk**.
+- **Tidssone** — **Samme som arbeidsområdet**, eller en egen sone (under).
 
 Velg **Lagre profil**. Språkvalget endrer hele grensesnittet med en gang, og datoer,
 tall og valuta følger det. **Automatisk** følger nettleserens språk. Valget lagres
@@ -128,6 +129,25 @@ fra en betalingslenke, er ikke innlogget og bruker det ikke: den bruker språket
 fakturaen oppgir, og kunden kan bytte. Den ber ikke Vantigo om noe fra en konto — ingen
 økt, ingen vedlikeholdsmelding — og sender ingen henvisning (referrer) til nettstedene
 den lenker til.
+
+### Velg tidssonen din
+
+Tidssonen din bestemmer to ting: klokkeslettene Vantigo viser deg — når en hendelse på
+tidslinjen skjedde, et tidsstempel i en liste — og hva et
+klokkeslett du skriver inn betyr, for eksempel tidspunktet for et kundemøte du
+registrerer. Den starter som **Samme som arbeidsområdet (Europe/Oslo)**, med
+arbeidsområdets forretningstidssone i parentes, og fortsetter å følge den sonen om en
+administrator senere endrer den. For å arbeide i en annen sone — du er på reise, eller
+du jobber fra et annet land — åpner du feltet **Tidssone** på siden **Profil**, søker
+etter sonen til byen din (for eksempel `America/New_York`) og velger **Lagre profil**.
+Alle klokkeslett på alle sider flytter seg dit med en gang, på alle enheter du logger
+inn fra. Velg **Samme som arbeidsområdet** igjen for å gå tilbake.
+
+Den flytter aldri en dato. I dag, en forfallsdato, en forfalt oppfølging, datoen på en
+faktura eller en timeføring er arbeidsområdets regnskapsdager, de samme for alle
+uansett egen sone, så en faktura utstedt den 1. i Oslo er den 1. for deg også, selv der
+klokken din fortsatt viser den 30. Godtar ikke Vantigo sonen du valgte, står årsaken
+under feltet, og ingenting lagres.
 
 ## Bytt passord
 
