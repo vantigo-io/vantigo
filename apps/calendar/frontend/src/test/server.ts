@@ -1,4 +1,5 @@
 import type { Appointment } from "../api/appointments";
+import type { CalendarContact } from "../api/contacts";
 import type { CalendarItem, CalendarItems } from "../api/items";
 import type { CalendarMeta } from "../api/meta";
 import type { CalendarUser } from "../api/users";
@@ -8,6 +9,9 @@ import { type StubbedFetch, stubFetch } from "./fetch";
 export const ME = "11111111-1111-4111-8111-111111111111";
 export const KARI = { id: "22222222-2222-4222-8222-222222222222", displayName: "Kari Nordmann" };
 export const OLA = { id: "33333333-3333-4333-8333-333333333333", displayName: "Ola Hansen" };
+
+export const SIRI: CalendarContact = { id: 7, name: "Siri Kunde", email: "siri@nordlys.example" };
+export const TORE: CalendarContact = { id: 8, name: "Tore Innkjøp", email: "tore@nordlys.example" };
 
 export const SOURCES = [
   { kind: "customers.follow-up", module: "customers" },
@@ -49,6 +53,8 @@ export interface CalendarServer {
   colleagueItems?: CalendarItem[];
   users?: CalendarUser[];
   appointments?: Appointment[];
+  /** What `/contacts` answers for any customer: the contacts, or a refusal. */
+  contacts?: CalendarContact[] | (() => Response);
   /** A response to a write, by method, instead of the default success. */
   refuse?: Partial<Record<"POST" | "PUT" | "DELETE", Response>>;
 }
@@ -97,6 +103,12 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
           ),
         );
       }
+      if (method === "GET" && path === "/contacts")
+        return Promise.resolve(
+          typeof server.contacts === "function"
+            ? server.contacts()
+            : jsonResponse(200, server.contacts ?? [SIRI, TORE]),
+        );
       const appointmentMatch = /^\/appointments\/(\d+)/.exec(path);
       const appointment = appointmentMatch
         ? (server.appointments ?? []).find((one) => one.id === Number(appointmentMatch[1]))
@@ -108,6 +120,18 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       if (method === "POST" && path === "/appointments")
         return Promise.resolve(jsonResponse(201, appointmentFixture({ ...body, id: 2001, attendees: [] })));
+      const resend = /\/attendees\/(\d+)\/resend$/.exec(path);
+      if (method === "POST" && resend && appointment)
+        return Promise.resolve(
+          jsonResponse(200, {
+            ...appointment,
+            attendees: appointment.attendees.map((attendee) =>
+              attendee.id === Number(resend[1])
+                ? { ...attendee, invitation: { sentAt: "2026-11-04T09:00:00Z", sequence: 0 } }
+                : attendee,
+            ),
+          }),
+        );
       if (method === "POST" && path.endsWith("/response"))
         return Promise.resolve(jsonResponse(200, { ...appointment, myStatus: body.status }));
       if (method === "PUT" && /\/occurrences\//.test(path))

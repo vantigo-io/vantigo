@@ -13,8 +13,10 @@ export const publicPaths = new Set([
   "/accept-invitation",
   "/invitations/accept",
   "/session-expired",
-  // The pay page (D15): anonymous, and the only page the public host serves.
+  // The pay page (D15) and the calendar's RSVP page (calendar invitations D5):
+  // anonymous, and the only pages the public host serves.
   "/pay",
+  "/rsvp",
 ]);
 
 /** A browser pathname with the runtime base path taken off: `/vantigo/pay` is `/pay` under `/vantigo/`. */
@@ -28,4 +30,4 @@ export const appPathname = (pathname: string): string => {
  * The paths the public host serves (D14): there not even the account's
  * language is asked for, since every request must be on the host's allowlist.
  */
-export const sessionlessPaths = new Set(["/pay"]);
+export const sessionlessPaths = new Set(["/pay", "/rsvp"]);

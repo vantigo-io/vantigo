@@ -7,3 +7,4 @@ export { calendarCatalog } from "./i18n";
 export { CALENDAR_ROUTE_PATH } from "./lib/routes";
 export { type CalendarSearch, type CalendarView, validateCalendarSearch } from "./lib/search";
 export { CalendarPage } from "./pages/calendar";
+export { RSVP_STORAGE_KEY, RsvpPage, type RsvpPageProps } from "./pages/rsvp";

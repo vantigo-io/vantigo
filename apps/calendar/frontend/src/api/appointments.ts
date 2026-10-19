@@ -9,6 +9,7 @@ export type Appointment = Schemas["Appointment"];
 export type AppointmentWrite = Schemas["AppointmentWrite"];
 export type AppointmentAttendee = Schemas["AppointmentAttendee"];
 export type AttendeeWrite = Schemas["AttendeeWrite"];
+export type AppointmentAttendeeKind = Schemas["AppointmentAttendeeKind"];
 export type OccurrenceWrite = Schemas["OccurrenceWrite"];
 export type AppointmentAttendeeStatus = Schemas["AppointmentAttendeeStatus"];
 export type AppointmentAnswer = Schemas["AppointmentResponseWrite"]["status"];
