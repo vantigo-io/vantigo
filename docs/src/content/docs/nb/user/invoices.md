@@ -514,6 +514,13 @@ eller et valg mellom i dag og siste dag i forrige måned når forskriften tillat
 tilbakedatering ([fakturadatoen](/en/reference/invoices/#the-law-in-one-page)). Klikk
 **Utsted**.
 
+«I dag» er dagen i virksomhetens tidssone, som settes under [Administrasjon av
+arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet),
+ikke i nettleseren din: en faktura utstedt klokken 00.30 dateres den dagen som har
+begynt der. Den samme dagen avgjør når en faktura regnes som forfalt, hvilke
+purringer som skal sendes, og den seneste dagen en betaling eller en levering kan
+registreres på.
+
 Utkastet blir **Faktura 1001** — neste nummer i den ene serien fakturaer og kreditnotaer
 deler — og en melding sier *Utstedt som nummer 1001*. Alt på det ligger nå fast: linjene,
 mva per sats med satsene på fakturadatoen, forfallsdatoen, og en kopi av kjøperen slik

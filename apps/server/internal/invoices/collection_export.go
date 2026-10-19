@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -81,7 +82,11 @@ func (s *server) GetInvoicesCollectionExportCsv(ctx context.Context, req gen.Get
 	case len(params.Ids) > collectionMaxRows:
 		return badCollectionQuery(fmt.Sprintf("At most %d invoices are exported at once.", collectionMaxRows)), nil
 	}
-	today := businessDay(s.deps.Clock())
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(s.deps.Clock(), loc)
 
 	selected, err := store.New(s.deps.Pool).CollectionExportRows(ctx, params)
 	if err != nil {
@@ -115,7 +120,7 @@ func (s *server) GetInvoicesCollectionExportCsv(ctx context.Context, req gen.Get
 				emails[r.CustomerID] = ""
 			}
 		}
-		ins, err := s.readRuleInputs(ctx, q, ids, today)
+		ins, err := s.readRuleInputs(ctx, q, ids, today, loc)
 		if err != nil {
 			return err
 		}
@@ -123,7 +128,7 @@ func (s *server) GetInvoicesCollectionExportCsv(ctx context.Context, req gen.Get
 		if err != nil {
 			return fmt.Errorf("invoices: read the collection export's deliveries: %w", err)
 		}
-		first, err := firstDeliveries(deliveries)
+		first, err := firstDeliveries(deliveries, loc)
 		if err != nil {
 			return err
 		}
@@ -203,11 +208,12 @@ type firstDelivery struct {
 // firstDeliveries is each invoice's first live delivery among rows — the
 // engine's own deliveries (RuleDeliveries), a manual record named by its
 // own kind, handed_over or posted — the earliest day first and, on one day,
-// the kind in name order.
-func firstDeliveries(rows []store.RuleDeliveriesRow) (map[int64]firstDelivery, error) {
+// the kind in name order. An instant's day is taken in loc, the business
+// time zone.
+func firstDeliveries(rows []store.RuleDeliveriesRow, loc *time.Location) (map[int64]firstDelivery, error) {
 	out := map[int64]firstDelivery{}
 	for _, r := range rows {
-		day, err := deliveryDay(r.InvoiceID, r.Kind, r.At, r.DeliveredOn)
+		day, err := deliveryDay(r.InvoiceID, r.Kind, r.At, r.DeliveredOn, loc)
 		if err != nil {
 			return nil, err
 		}

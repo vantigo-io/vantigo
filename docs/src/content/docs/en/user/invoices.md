@@ -506,6 +506,12 @@ choice between today and the last day of the previous month when the regulation 
 backdating ([the issue date](/en/reference/invoices/#the-law-in-one-page)). Click
 **Issue**.
 
+"Today" is the day in the workspace's business time zone, set under [Workspace
+administration](/en/user/workspace-administration/#workspace-settings), not in your
+browser: an invoice issued at 00:30 is dated the day that has begun there. The same day
+decides when an invoice falls overdue, which reminders are due and the latest day a
+payment or a delivery can be recorded on.
+
 The draft becomes **Invoice 1001** — the next number in the one series invoices and
 credit notes share — and a message says *Issued as number 1001*. Everything on it is now
 fixed: the lines, the VAT per rate at the issue date's rates, the due date, and a copy

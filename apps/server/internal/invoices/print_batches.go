@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -142,7 +143,11 @@ func (s *server) GetInvoicesReminderPrintBatches(ctx context.Context, req gen.Ge
 // (POST /api/v1/invoices/reminder-print-batches)
 func (s *server) PostInvoicesReminderPrintBatches(ctx context.Context, req gen.PostInvoicesReminderPrintBatchesRequestObject) (gen.PostInvoicesReminderPrintBatchesResponseObject, error) {
 	now := s.deps.Clock() // the batch's one clock read (D18)
-	today := businessDay(now)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(now, loc)
 	ids, postOn := req.Body.ReminderIds, utcDay(req.Body.PostOn.Time)
 	var errs map[string][]string
 	switch {
@@ -203,7 +208,7 @@ func (s *server) PostInvoicesReminderPrintBatches(ctx context.Context, req gen.P
 	leftOut := []gen.InvoicesPrintBatchLeftOut{}
 	var printed []int64
 	for _, l := range letters {
-		left, err := s.printLetter(ctx, batch.ID, l, postOn, now)
+		left, err := s.printLetter(ctx, batch.ID, l, postOn, now, loc)
 		if err != nil {
 			return nil, err
 		}
@@ -232,9 +237,9 @@ func (s *server) PostInvoicesReminderPrintBatches(ctx context.Context, req gen.P
 // again when a collection rate came into force on postOn under it
 // (errRatesMoved). It answers the letter left out, or nil when it was
 // printed.
-func (s *server) printLetter(ctx context.Context, batchID int64, letter store.InvoicesReminder, postOn, now time.Time) (*gen.InvoicesPrintBatchLeftOut, error) {
+func (s *server) printLetter(ctx context.Context, batchID int64, letter store.InvoicesReminder, postOn, now time.Time, loc *time.Location) (*gen.InvoicesPrintBatchLeftOut, error) {
 	for try := 1; ; try++ {
-		left, err := s.printLetterOnce(ctx, batchID, letter, postOn, now)
+		left, err := s.printLetterOnce(ctx, batchID, letter, postOn, now, loc)
 		if errors.Is(err, errRatesMoved) && try < printLetterTries {
 			continue
 		}
@@ -253,7 +258,7 @@ func (s *server) printLetter(ctx context.Context, batchID int64, letter store.In
 // engine no longer gives on postOn is withdrawn with the reason; every other
 // is printed in the batch, once the rates in force on postOn are read again
 // and found to be the ones shared — else errRatesMoved rolls it back.
-func (s *server) printLetterOnce(ctx context.Context, batchID int64, letter store.InvoicesReminder, postOn, now time.Time) (*gen.InvoicesPrintBatchLeftOut, error) {
+func (s *server) printLetterOnce(ctx context.Context, batchID int64, letter store.InvoicesReminder, postOn, now time.Time, loc *time.Location) (*gen.InvoicesPrintBatchLeftOut, error) {
 	var left *gen.InvoicesPrintBatchLeftOut
 	leave := func(reason string) {
 		left = &gen.InvoicesPrintBatchLeftOut{
@@ -287,7 +292,7 @@ func (s *server) printLetterOnce(ctx context.Context, batchID int64, letter stor
 		if err != nil {
 			return err
 		}
-		j, err := s.judgeAndWriteFacts(ctx, txq, inv, locked, postOn, now)
+		j, err := s.judgeAndWriteFacts(ctx, txq, inv, locked, postOn, now, loc)
 		if err != nil {
 			return err
 		}
@@ -509,7 +514,11 @@ func (s *server) GetInvoicesReminderPrintBatchesByIdPdf(ctx context.Context, req
 // letters, and sends every printed one.
 func (s *server) PostInvoicesReminderPrintBatchesByIdPosted(ctx context.Context, req gen.PostInvoicesReminderPrintBatchesByIdPostedRequestObject) (gen.PostInvoicesReminderPrintBatchesByIdPostedResponseObject, error) {
 	now := s.deps.Clock() // the confirmation's one clock read (D18)
-	today := businessDay(now)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(now, loc)
 	postedOn := utcDay(req.Body.PostedOn.Time)
 	if postedOn.After(today) {
 		return gen.PostInvoicesReminderPrintBatchesByIdPosted400ApplicationProblemPlusJSONResponse(invalid(invalidPostedTitle,
@@ -521,7 +530,7 @@ func (s *server) PostInvoicesReminderPrintBatchesByIdPosted(ctx context.Context,
 	skipped, waived := []int64{}, []gen.InvoicesPrintBatchWaiver{}
 	var refusal *gen.InvoicesConflictProblem
 	notFound := false
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		batch, err := lockPrintBatch(ctx, txq, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			notFound = true
@@ -581,7 +590,7 @@ func (s *server) PostInvoicesReminderPrintBatchesByIdPosted(ctx context.Context,
 			if i < 0 {
 				return fmt.Errorf("invoices: letter %d's document %d was not locked", locked.ID, locked.InvoiceID)
 			}
-			w, err := s.postLetter(ctx, txq, invs[i], locked, postOn, now, by)
+			w, err := s.postLetter(ctx, txq, invs[i], locked, postOn, now, by, loc)
 			if err != nil {
 				return err
 			}
@@ -629,13 +638,16 @@ func (s *server) PostInvoicesReminderPrintBatchesByIdPosted(ctx context.Context,
 // longer carries the fee or compensation it printed, those waived
 // claimed_in_error in the same transaction — after the status change, since
 // a waiver names a sent letter — by the person confirming the posting. It
-// answers the waiver, or nil.
-func (s *server) postLetter(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, letter store.InvoicesReminder, postOn, now time.Time, by uuid.UUID) (*gen.InvoicesPrintBatchWaiver, error) {
+// answers the waiver, or nil. loc is the business time zone, read before the
+// transaction.
+func (s *server) postLetter(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, letter store.InvoicesReminder, postOn, now time.Time, by uuid.UUID,
+	loc *time.Location,
+) (*gen.InvoicesPrintBatchWaiver, error) {
 	erased, err := txq.CustomerErased(ctx, inv.CustomerID)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read whether customer %d is anonymised: %w", inv.CustomerID, err)
 	}
-	in, err := s.ruleInputLocked(ctx, txq, inv, postOn, letter.ID)
+	in, err := s.ruleInputLocked(ctx, txq, inv, postOn, loc, letter.ID)
 	if err != nil {
 		return nil, err
 	}

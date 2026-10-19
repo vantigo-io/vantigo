@@ -21,6 +21,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/bankfile"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -134,10 +135,11 @@ func invalidBankFile(message string) gen.PostInvoicesBankFiles400ApplicationProb
 	return gen.PostInvoicesBankFiles400ApplicationProblemPlusJSONResponse(invalid(invalidBankFileTitle, fieldError(bankFileFormField, message)))
 }
 
-// bankFileDuplicate is the 409 naming the earlier import of the same file.
-func bankFileDuplicate(id int64, at time.Time, by uuid.UUID) gen.PostInvoicesBankFiles409ApplicationProblemPlusJSONResponse {
+// bankFileDuplicate is the 409 naming the earlier import of the same file,
+// its time told in loc, the business time zone.
+func bankFileDuplicate(id int64, at time.Time, by uuid.UUID, loc *time.Location) gen.PostInvoicesBankFiles409ApplicationProblemPlusJSONResponse {
 	c := conflict(codeBankFileDuplicate, bankFileDuplicateTitle,
-		fmt.Sprintf("This file was imported before, as bank file %d on %s. Nothing was imported again.", id, at.In(oslo).Format("2006-01-02 15:04")))
+		fmt.Sprintf("This file was imported before, as bank file %d on %s. Nothing was imported again.", id, at.In(loc).Format("2006-01-02 15:04")))
 	c.BankFileId, c.UploadedAt, c.UploadedBy = &id, &at, &by
 	return gen.PostInvoicesBankFiles409ApplicationProblemPlusJSONResponse(c)
 }
@@ -174,7 +176,11 @@ func earlierImport(ctx context.Context, q *store.Queries, sha string, f *bankfil
 // import itself stands.
 func (s *server) PostInvoicesBankFiles(ctx context.Context, req gen.PostInvoicesBankFilesRequestObject) (gen.PostInvoicesBankFilesResponseObject, error) {
 	now := s.deps.Clock()
-	today := businessDay(now)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(now, loc)
 	by := callerID(ctx)
 
 	body, ok := bankFilePart(req.Body)
@@ -208,7 +214,7 @@ func (s *server) PostInvoicesBankFiles(ctx context.Context, req gen.PostInvoices
 	if id, at, uploader, found, err := earlierImport(ctx, q, sha, file); err != nil {
 		return nil, err
 	} else if found {
-		return bankFileDuplicate(id, at, uploader), nil
+		return bankFileDuplicate(id, at, uploader, loc), nil
 	}
 
 	if !s.storageConfigured {
@@ -226,7 +232,7 @@ func (s *server) PostInvoicesBankFiles(ctx context.Context, req gen.PostInvoices
 			"The object store could not keep the bank file. Nothing was imported; try again.")), nil
 	}
 
-	result, refusal, err := s.importBankFile(ctx, file, sha, key, len(body), by, now)
+	result, refusal, err := s.importBankFile(ctx, file, sha, key, len(body), by, now, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +241,7 @@ func (s *server) PostInvoicesBankFiles(ctx context.Context, req gen.PostInvoices
 	}
 	// The stop, when matching stops early, is logged by matchFile; what it
 	// did not reach stays pending, and the 201 says so.
-	counts, _ := s.matchFile(ctx, result.file.ID, by, now)
+	counts, _ := s.matchFile(ctx, result.file.ID, by, now, loc)
 	result.matched, result.matchedAmount = counts.matched, counts.matchedAmount
 	result.exceptions, result.exceptionsAmount = counts.exceptions, counts.exceptionsAmount
 	result.pending -= counts.done
@@ -253,7 +259,7 @@ func (s *server) PostInvoicesBankFiles(ctx context.Context, req gen.PostInvoices
 // duplicate rows; the file's duplicates set. A unique violation on the
 // file's hash or identity is an import that committed after the pool read:
 // the same 409, naming it.
-func (s *server) importBankFile(ctx context.Context, file *bankfile.File, sha, key string, size int, by uuid.UUID, now time.Time) (
+func (s *server) importBankFile(ctx context.Context, file *bankfile.File, sha, key string, size int, by uuid.UUID, now time.Time, loc *time.Location) (
 	importResult, gen.PostInvoicesBankFilesResponseObject, error,
 ) {
 	ignoredKinds, err := json.Marshal(file.Ignored)
@@ -343,7 +349,7 @@ func (s *server) importBankFile(ctx context.Context, file *bankfile.File, sha, k
 		if !found {
 			return importResult{}, nil, fmt.Errorf("invoices: bank file %s collided with an import that cannot be read", sha)
 		}
-		return importResult{}, bankFileDuplicate(id, at, uploader), nil
+		return importResult{}, bankFileDuplicate(id, at, uploader, loc), nil
 	case errors.Is(err, errRefused):
 		return importResult{}, refusal, nil
 	case err != nil:

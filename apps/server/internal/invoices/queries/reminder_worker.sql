@@ -55,7 +55,7 @@ RETURNING *;
 -- RescheduleReminderUncounted puts a claimed letter back without counting
 -- the try (plan readings 17, 46): an hour out when its rates or regime
 -- review are missing, held_reason saying why, which attention reads; at
--- once, held_reason NULL, when Oslo midnight passed before its send, so its
+-- once, held_reason NULL, when midnight passed before its send, so its
 -- facts are judged again on the new day. Neither attempts nor
 -- first_attempt_at moves, so waiting never runs into the 48 hours. The lease
 -- and the facts are cleared.

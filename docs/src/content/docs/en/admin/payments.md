@@ -118,7 +118,8 @@ account with its format, the previous format and cutover, and its latest file.
 
 - **400 on the file.** It is not an OCR giro or camt.054 file, it is past 10 MiB or holds
   more than 5 000 payments, or it breaks its own rules — a control total that does not add
-  up, a booking day after today, an amount not in NOK. The message names the record or
+  up, a booking day after today (the day in the workspace's business time zone), an
+  amount not in NOK. The message names the record or
   the element. Nothing is imported: download the file again, and do not edit it by hand.
 - **`bank_account_unknown`**, **`bank_file_duplicate`**, **`bank_import_format_mismatch`**:
   above.
@@ -182,6 +183,13 @@ letters under a 60-second lease and never send one twice on purpose.
   would carry a fee past the regime review, is not attempted: it waits an hour at a time,
   its `heldReason` saying why, without ever failing. Add the rate, or review the regime,
   in the reminder settings, and it goes.
+- **The day is the workspace's.** A letter is judged on the day in the business time
+  zone set under [Workspace
+  administration](/en/user/workspace-administration/#workspace-settings), which the
+  worker reads from identity's system settings once for each letter it claims — a
+  changed zone applies from the next letter, with no restart. A letter claimed before
+  midnight there and not yet mailed after it is put back and judged again on the new
+  day, so its date and deadline are never yesterday's.
 - **At least once.** If the process stops between the mail server taking a letter and
   Vantigo marking it sent, the next claim sends it again, with the same Message-ID, so
   the customer's mail program can tell it is the same letter. If the process instead stalls past the
@@ -277,7 +285,9 @@ authorized and not captured. It runs while `INVOICES_VIPPS_ENABLED` is on, in th
 process or in the worker container ([Background workers and
 scaling](/en/admin/installation/#background-workers-and-scaling)), polls every second and
 handles every payment that is due in each cycle. The rules are in [the
-reference](/en/reference/invoices/#capture-and-the-reservation).
+reference](/en/reference/invoices/#capture-and-the-reservation). A captured payment is
+registered as paid on the day of Vipps' capture event in the workspace's business time
+zone, which the worker reads as it registers each payment.
 
 **Webhooks are not supported yet.** Vantigo follows every Vipps payment by reading it
 (polling); it registers no webhook with Vipps, and nothing needs to reach it from Vipps.

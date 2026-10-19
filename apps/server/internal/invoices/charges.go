@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -405,8 +406,12 @@ func (s *server) PostInvoicesByIdChargePayments(ctx context.Context, req gen.Pos
 	if inv == nil {
 		return gen.PostInvoicesByIdChargePayments404Response{}, nil
 	}
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	// The payment's own fields and rules (D2).
-	payment, errs, err := parsePayment(gen.InvoicesPaymentRequest(*req.Body), inv.IssueDate.Time, businessDay(s.deps.Clock()))
+	payment, errs, err := parsePayment(gen.InvoicesPaymentRequest(*req.Body), inv.IssueDate.Time, holidays.DayIn(s.deps.Clock(), loc))
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +462,7 @@ func (s *server) PostInvoicesByIdChargePayments(ctx context.Context, req gen.Pos
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, q, *inv, nil)
+	resp, err := s.invoiceResponse(ctx, q, *inv, nil, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -471,9 +476,13 @@ func (s *server) PostInvoicesByIdChargePaymentsByChargePaymentIdRemove(ctx conte
 	if errs != nil {
 		return gen.PostInvoicesByIdChargePaymentsByChargePaymentIdRemove400ApplicationProblemPlusJSONResponse(invalid(invalidRemovalTitle, errs)), nil
 	}
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var refusal *gen.InvoicesConflictProblem
 	var inv store.InvoicesInvoice
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		// The invoice first, the charge payment after the lock: two removals
 		// of one queue here, and the second reads the first's removal.
 		var err error
@@ -516,7 +525,7 @@ func (s *server) PostInvoicesByIdChargePaymentsByChargePaymentIdRemove(ctx conte
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), inv, nil)
+	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), inv, nil, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -572,6 +581,10 @@ func (s *server) PostInvoicesByIdChargesWaive(ctx context.Context, req gen.PostI
 	if inv == nil {
 		return gen.PostInvoicesByIdChargesWaive404Response{}, nil
 	}
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		locked, err := lockInvoice(ctx, txq, inv.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -599,7 +612,7 @@ func (s *server) PostInvoicesByIdChargesWaive(ctx context.Context, req gen.PostI
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, q, *inv, nil)
+	resp, err := s.invoiceResponse(ctx, q, *inv, nil, loc)
 	if err != nil {
 		return nil, err
 	}

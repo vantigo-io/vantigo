@@ -79,6 +79,40 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
   this phase issues in NOK and nothing else ("Only NOK in this phase"). The exchange
   rate columns exist, fixed at 1, dated at issue.
 
+## The business day
+
+Every day this module judges — today, an issue date and the due date counted from it,
+an invoice's state, the overdue list and a reminder's deadline, the latest day a payment
+may have arrived or a bank line been booked, a Vipps payment's `paid_on`, the day a
+milestone became ready — is a calendar day of the workspace's **business time zone**,
+`Europe/Oslo` until an Owner changes it under [Workspace
+administration](/en/user/workspace-administration/#workspace-settings)
+([time zones design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-19-time-zones-design.md),
+D2 and D7). The module keeps no zone of its own. It reads the zone through the
+platform's `contracts.BusinessCalendar` (`Deps.Calendar`) once per request — in the
+workers once per letter claimed and once per Vipps registration — **before** any of its
+transactions opens, since the read takes a pool connection of its own
+([module boundaries](/en/contributing/module-boundaries/), rule 7), and keeps it for the
+rest of the request, so every rule of one request judges the same day. The day an
+instant falls on is `holidays.DayIn(t, zone)`, a date at midnight UTC, the form every
+date column is compared at; PostgreSQL's `CURRENT_DATE`, which is UTC in the container,
+is never used. The tests hold the read to the lock rule: a calendar read made inside
+one of the module's transactions fails the test that made it.
+
+The foundation design's first decision said "this is Norwegian bookkeeping, so there is
+no setting". Its reason stands — bookkeeping has one calendar, and Invoices has no
+setting of its own — but that calendar is now the installation's rather than Norway's,
+which for a Norwegian installation is the same day. What stays Norwegian is the law's:
+the public holidays that move an effective due date and a letter's deadline ([The
+rules](#the-rules)), and the dates the law names, such as the B2B e-invoicing duty from
+2027-01-01.
+
+A changed zone changes what "today" is from the next request on, and which day an
+instant read after it falls on. A date already written — an issue date, a due date, a
+payment's `paid_on`, a letter's `sent_on` — never moves. Where an instant is told in
+words — the earlier import a `bank_file_duplicate` names, a Vipps payment's
+registration in the day's CSV — it is told in the business time zone too.
+
 ## The model
 
 | Table | What it holds |
@@ -346,12 +380,12 @@ effective `rate` — the bill rate times the multiplier, rounded half away from 
 four decimals, the unit price a line bills it at — and Time's exact `amount`; an
 expense its kind, description, supplier and supplier invoice number, net amount,
 markup, distance and rate per km, and `billAmount`; a milestone its name, planned date,
-`readyAt` and `date` (that instant's Oslo business day, the work's date) and its
+`readyAt` and `date` (that instant's [business day](#the-business-day), the work's date) and its
 effective `amount`.
 
 | Warning | Where | When |
 | --- | --- | --- |
-| `work_overdue_to_invoice` | the project | Its oldest selectable work is dated before the same day a calendar month back from today in Oslo — the month's last day when it is shorter, so 31 March looks back to 28 February — an hour's or an expense's date, a milestone's `readyAt` day: merverdiavgiftsforskriften § 5-2-2's "senest en måned etter levering", the discrete rule. The continuous-service rule (§ 5-2-4) is not applied: nothing tells Vantigo which projects are continuous. |
+| `work_overdue_to_invoice` | the project | Its oldest selectable work is dated before the same day a calendar month back from today's business day — the month's last day when it is shorter, so 31 March looks back to 28 February — an hour's or an expense's date, a milestone's `readyAt` day: merverdiavgiftsforskriften § 5-2-2's "senest en måned etter levering", the discrete rule. The continuous-service rule (§ 5-2-4) is not applied: nothing tells Vantigo which projects are continuous. |
 | `currency_not_nok` | the row | It is in another currency than NOK. |
 | `supplier_invoice_rebilled` | the row | A supplier invoice whose supplier (trimmed, case-folded) and number Expenses says another entry has already invoiced, or that another row of this answer repeats — both rows of the pair. Expenses allows the number twice. |
 | `work_truncated` | the answer | A billable read had more than 5 000 rows, or the customer has 2 000 projects, as many as the directory answers. |
@@ -1077,7 +1111,7 @@ creates an invoice and issues it **in one transaction** (payments and reminders 
 D17). The body is `{customerId, lines, deliveryDate?, paymentTermsDays?, yourReference?,
 note?, payOnSite?, requestId?}`, one to ten lines of `{description, quantity, unit?, unitPrice,
 discountPercent?, vatCodeId}`, every field by a draft's rules ([Drafts](#drafts)); the
-delivery date is today in Oslo when omitted, and the terms and the reference fall back
+delivery date is today's business day when omitted, and the terms and the reference fall back
 to the billing profile's and then the settings' as a create's do.
 
 **The request id.** `requestId`, a UUID the client makes, makes the request safe to send
@@ -1126,7 +1160,7 @@ anonymised customer does.
 
 **The clock** is read once before the transaction, for the draft's defaults — its
 delivery day and `created_at` — and once in the issue's body after the counter, as the
-issue does: a quick invoice that waits there across Oslo midnight is delivered the day it
+issue does: a quick invoice that waits there across midnight is delivered the day it
 began and issued, and handed over, the day it is issued.
 
 The PDF is stored after the commit, as an issue's is. The answer is 201
@@ -1313,7 +1347,7 @@ page, its preview and its issue always total it afresh.
 
 **A payment is a registration.** `POST /invoices/{id}/payments` records money received
 against an issued invoice: `paidOn`, the day it arrived — on or after the invoice's issue
-date and not after today (Oslo, from the server's clock) — `amount`, above 0 with at most
+date and not after today (the [business day](#the-business-day) of the server's clock) — `amount`, above 0 with at most
 two decimals and at most 99 999 999 999.99, and optionally `reference` (the bank's or
 the payer's, at most 100 characters) and `note` (at most 500), both trimmed. The
 currency is the invoice's, copied, never chosen. Every field that fails is named in one
@@ -1397,7 +1431,7 @@ after it, never keeps a staff note about the person. A CHECK holds the three rem
 reason non-empty, another the amount above 0, and the foreign key is `ON DELETE
 RESTRICT`. The API refuses first, with its own codes; the triggers are the floor.
 
-**The state is derived, never stored.** Judged against today in Oslo, with `credited`
+**The state is derived, never stored.** Judged against today's [business day](#the-business-day), with `credited`
 the issued credit notes' gross (0 for a credit note) and `paid` the live payments' sum,
 the first match wins:
 
@@ -1490,7 +1524,7 @@ note is never reminded of.
 registers money received against the charges: a payment's fields and rules
 ([Payments](#payments-and-the-state-of-an-invoice)) — 404; 409 `credit_note_no_payments`
 for a credit note, draft or issued, and `invoice_draft` for an invoice draft, judged
-before the body; 400 on `paidOn` (from the issue date to today, Oslo), `amount` (above 0,
+before the body; 400 on `paidOn` (from the issue date to today's business day), `amount` (above 0,
 two decimals, the document bound), `reference` or `note`. Then one transaction locks the
 invoice `FOR UPDATE` — the only row it locks — reads the sent letters, the waivers and
 the live charge payments after the lock and refuses 409 **`no_charges_outstanding`** when
@@ -1877,7 +1911,7 @@ cannot have issued (`seller_incomplete`), so the account is always there.
 
 **The warnings** are never refusals: a send is never refused for one. They are on
 `sendDefaults.warnings` and on the send's own response, and the server judges each
-against today in Oslo from its own clock — never the browser, which has neither, and a
+against today's business day from its own clock — never the browser, which has neither, and a
 code is what a test with a fixed clock can pin.
 
 | Warning | When |
@@ -2213,7 +2247,7 @@ as `Ntry[2]/NtryDtls/TxDtls[1]/Amt: …` for camt.054. Nothing is stored or writ
   is refused whole (research case m); an instructed, counter-value or remitted amount
   and a charge are not judged; an amount has at most two decimals. The ISO 20022 schemas
   are not validated at run time.
-- **Both**: every booking day on or before today (Oslo, the request's one clock read)
+- **Both**: every booking day on or before today (the request's business day, from its one clock read)
   and not before 2000-01-01; at most 5 000 transactions, since each is later matched in a
   transaction of its own.
 
@@ -2618,15 +2652,15 @@ rate the regulation did not set, and should check it.
 
 **Reading the rates.** `GET /invoices/collection-rates` (`invoices:access`) answers every
 row by kind and date, with `seeded`, `createdBy`, `releaseValue` and `releaseSourceRef`,
-`inForce` — the row in force today, Oslo's day from the server's clock, which moves at
-Oslo midnight — and `usable`, false once a printed or sent letter dated on or after the
+`inForce` — the row in force today, the business day of the server's clock, which moves
+at midnight in the business time zone — and `usable`, false once a printed or sent letter dated on or after the
 row's `valid_from` and before the next row of its kind has relied on it, and the list's
 `warnings`. A paper letter is printed for a posting date up to seven days ahead, so a
 row not yet in force can already be used.
 
 **Adding a rate.** `POST /invoices/collection-rates` (`invoices:manage`) takes `kind`,
 `validFrom`, `value` and `sourceRef`, the regulation. A rate is added ahead of a release,
-so `validFrom` is after today (Oslo), and after the date of the latest printed or sent
+so `validFrom` is after today's business day, and after the date of the latest printed or sent
 letter — a paper letter is printed for a posting date ahead of today, and a new row must
 never contradict a letter already printed or posted; a half-yearly kind starts on 1 January or 1 July;
 `value` has at most two decimals and is within its kind's bounds — late interest
@@ -2754,11 +2788,12 @@ data](#retention-and-personal-data)).
 An invoice that was not validly delivered does not fall due, and a reminder fee on it is
 invalid (Finansklagenemnda, FinKN 2017-492). **A charge — a fee, the compensation or
 interest — needs a recorded delivery on or before the due date**, and a delivery after
-the due date counts as none. Three kinds count, each by its day in Oslo:
+the due date counts as none. Three kinds count, each by its [business day](#the-business-day):
 
-- an **e-mail** that handed the invoice over (`invoices.deliveries`), by the Oslo day of
-  its `sent_at` — 23:30 in Oslo on the due date counts, 00:30 the day after does not;
-- an **EHF transmission** `delivered`, by the Oslo day of its `delivered_at`; a queued,
+- an **e-mail** that handed the invoice over (`invoices.deliveries`), by the business day
+  of its `sent_at` — with the zone `Europe/Oslo`, 23:30 in Oslo on the due date counts,
+  00:30 the day after does not;
+- an **EHF transmission** `delivered`, by the business day of its `delivered_at`; a queued,
   failed, unconfirmed or cancelled one is not a delivery;
 - a **manual delivery** not removed, by its `delivered_on`.
 
@@ -2770,7 +2805,7 @@ the hand-off `not_delivered` until a delivery is recorded.
 on paper or by hand. `POST /invoices/{id}/manual-deliveries` (`invoices:issue`) takes
 `{kind, deliveredOn, note?}`: 404; 409 `credit_note_no_reminders` for a credit note,
 draft or issued, and `invoice_draft` for an invoice draft; 400 on `kind` (`handed_over`
-or `posted`), `deliveredOn` (from the issue date to today, Oslo) and `note` (at most 500
+or `posted`), `deliveredOn` (from the issue date to today's business day) and `note` (at most 500
 characters, trimmed). One transaction locks the invoice and inserts the record with who
 and when. An issued invoice answers `manualDeliveries`, every one, removed ones included
 with their removal, the earliest first.
@@ -2814,7 +2849,8 @@ lock for one — and is:
   live charge payments ([Charges](#charges));
 - the reminder settings, the customer's policy, a live hold, whether a lifted hold barred
   charges, a live hand-off, every collection rate;
-- the day `L` it is asked about: today in Oslo, one clock read per request.
+- the day `L` it is asked about: today's [business day](#the-business-day), one clock read
+  and one read of the zone per request, both before any transaction.
 
 **Days.** Months are added clamped to the month's end — 31 August plus six months is
 28 February, or the 29th in a leap year, where a naive addition would give 3 March.
@@ -3135,7 +3171,8 @@ conditional `UPDATE` over a `FOR UPDATE SKIP LOCKED` pick, with a **60-second le
 two workers — two replicas — never take one letter; a lease is free again at exactly its
 end (`lease_until <= now`), the complement of "being sent", so no instant has a letter
 both claimable and unwithdrawable, or neither. The claim's one clock read is its time,
-and its Oslo day its `today`. Then four steps:
+and its day in the business time zone, read once for the claim and before it, its
+`today`. Then four steps:
 
 1. **One transaction, the invoice `FOR UPDATE`, then the letter `FOR NO KEY UPDATE`** —
    the order of every invoice-then-letter path (a run, a hold, a hand-off, the erase).
@@ -3169,8 +3206,9 @@ and its Oslo day its `today`. Then four steps:
 3. **The mail**, through the installation's SMTP settings, only **while the lease still
    covers it**: a claim with less than 30 seconds of its lease left — the send's
    20-second timeout and a 10-second margin for marking it sent — does not send, and the
-   attempt fails. Nor is it sent **past Oslo midnight**: when the clock read just before
-   the send is on a later Oslo day than the claim's `today`, the letter is put back, due
+   attempt fails. Nor is it sent **past midnight** in the business time zone: when the
+   clock read just before the send is on a later day there than the claim's `today`, the
+   letter is put back, due
    at once, its lease and facts cleared, `held_reason` empty and **the try not counted**,
    so the next claim judges it on the new day — a letter never leaves with a `sent_on`
    and a deadline counted from the day before it was mailed (inkassoloven § 9). The mail goes to the letter's recipient, from the seller's legal name,
@@ -3264,7 +3302,7 @@ either the posting — `posted_on`, `posted_by_user_id` and `posted_at`, set tog
 (`invoices:access` and `invoices:payments`):
 
 - `reminderIds` names 1 to 200 letters, each once and each a letter; `postOn` is today or
-  one of the next 7 days (Oslo) — each a 400 on its field. Without an object store, 503
+  one of the next 7 days, counted from today's business day — each a 400 on its field. Without an object store, 503
   `storage_unavailable`. Then every letter is read on the pool: one that is not
   `awaiting_print` is 409 **`reminder_not_awaiting_print`**, naming it. Nothing is
   written before these.
@@ -3428,7 +3466,7 @@ note?, acknowledgeNotDelivered?}` (`invoices:access` and `invoices:payments`) re
 the claim was handed to a collection agency — done outside Vantigo, recorded here.
 Refused in order:
 
-1. 400 on the fields: `handedOn` missing or after today (Oslo); `agency` blank or over
+1. 400 on the fields: `handedOn` missing or after today's business day; `agency` blank or over
    200 characters; `agencyReference` over 100; `note` over 500;
 2. 404; 409 `credit_note_no_reminders`, `invoice_draft`;
 3. 400 on `handedOn` before the invoice's issue date;
@@ -3877,7 +3915,7 @@ reserved amount under the key:
 any lock — the earliest successful `CAPTURED` — then, in one transaction, the attempt
 and then its invoice: a payment `source = vipps`, `payment_attempt_id` the attempt —
 unique, so a capture is registered once however many claims race — `amount` what Vipps
-captured, `paid_on` **the Oslo day of the capture event** (the claim's day when the log
+captured, `paid_on` **the business day of the capture event** (the claim's day when the log
 cannot be read), so a capture resolved weeks later does not overstate interest on a
 partly open invoice, `reference` the attempt's reference, and no registering person. In
 the same commit the attempt becomes `captured` with its reservation released, so the
@@ -3985,8 +4023,8 @@ nothing to acknowledge: the item is the stored refund on a payment still live.
 
 Every attempt records `authorized_at` and `captured_at`. `GET /vipps-payments?date=`
 (`invoices:access`) lists one day's Vipps payments — every registered Vipps payment
-**paid on** that day, oldest registration first. A Vipps payment's `paid_on` is the Oslo
-day of Vipps' capture event ([Capture and the reservation](#capture-and-the-reservation)),
+**paid on** that day, oldest registration first. A Vipps payment's `paid_on` is the
+[business day](#the-business-day) of Vipps' capture event ([Capture and the reservation](#capture-and-the-reservation)),
 the payment's day in the ledger and in the Vipps settlement, so a capture the payments
 worker learns of and registers after midnight, or days later, is listed on the day Vipps
 took the money — never on the day of its registration (`captured_at`). Each row: the
@@ -4003,7 +4041,7 @@ missing or impossible `date` is a 400. `GET /vipps-payments.csv?date=` is the sa
 as a file in the module's CSV form ([The CSV export](#the-csv-export)) — a byte order
 mark, semicolons, the decimal comma, CRLF, RFC 4180 quoting, the formula guard on the
 buyer and the reference — with the header `Paid on;Registered at;Invoice number;Buyer;Flow;Amount;Refunded;Reference`,
-the registration's time in Oslo, served as `vipps-payments-<date>.csv` and never
+the registration's time in the business time zone, served as `vipps-payments-<date>.csv` and never
 cached.
 
 **The reconciliation.** `POST /vipps-payments/reconciliations` (`invoices:payments`)
@@ -4012,7 +4050,7 @@ reconciled against the Vipps settlement: one insert sums the Vipps payments paid
 day as they stand — `payments`, `total`, `on_site_total`, `pay_link_total`, refunds not
 deducted — with the caller, the time and the
 note (trimmed, at most 500 characters). It takes no lock. 409 **`day_not_over`** for today
-or a later day in Oslo; 409 **`day_already_reconciled`** when the day has a record. The
+or a later business day; 409 **`day_already_reconciled`** when the day has a record. The
 record is immutable (a trigger refuses any update or delete): a capture Vipps made that
 day and the payments worker registers later changes the list, never the record, and the
 list shows both. It is
@@ -4119,17 +4157,18 @@ period as `from` and `to`, and:
 | `creditedCount`, `creditedGrossTotal` | the credit notes issued in the period |
 | `paidAmount`, `paidCount` | the live payments whose `paidOn` is in the period |
 
-"Now" is today in Oslo from the server's clock, judged through the same state function
+"Now" is today's [business day](#the-business-day) from the server's clock, judged through the same state function
 the list filters with. Every figure is NOK, the only currency in this phase.
 
-**From instants to Oslo days.** The period arrives as half-open instants `[from, to)`;
-issue dates and payment dates are Oslo calendar days. `fromDay` is the Oslo day `from`
-falls on; `toDayExclusive` is the Oslo day of the last instant inside the period (`to`
+**From instants to business days.** The period arrives as half-open instants `[from, to)`;
+issue dates and payment dates are calendar days of the business time zone. `fromDay` is
+the business day `from` falls on; `toDayExclusive` is the business day of the last
+instant inside the period (`to`
 less a nanosecond) **plus one day** — so a period ending now, or at the end of today,
 includes today, which a bare `< toDay` would drop from every dashboard preset. A document
 is in the period when `fromDay ≤ issue date < toDayExclusive`, a payment when its
 `paidOn` is. **The previous period is counted in days, not in duration**: the same number
-of Oslo days, `toDayExclusive − fromDay`, ending at `fromDay`. The platform's
+of days, `toDayExclusive − fromDay`, ending at `fromDay`. The platform's
 `previousFrom` is an absolute duration, a day off the current period's length across a
 daylight-saving change or for a default period that starts mid-day, and "the period of
 the same length just before" is what the delta compares against. There is no timeseries.
@@ -4144,7 +4183,7 @@ host translating the sentence from `type` (design D12, plan reading 29). It need
 only to a caller who also holds `invoices:payments`, and a caller without it is answered
 the first two — never a 403. Every item is derived from the rows as they are, so nothing
 is dismissed: each clears when what it is about is done. One clock read: "today" is the
-request's Oslo day.
+request's business day.
 
 | `type` | One item per | `entityId`, `title`, `occurredAt`, `count` | Clears when |
 | --- | --- | --- | --- |
@@ -4395,10 +4434,10 @@ panel. Decided in
 
 Two queries in `queries/receivables.sql` derive each issued document's state and open
 amount exactly as the list and the stats do — the two lateral joins and
-`invoices.document_state` on the Oslo business day of this module's clock
-(`businessDay`, never `CURRENT_DATE`) — so a customer page can never disagree with
+`invoices.document_state` on the business day of this module's clock, read through
+`contracts.BusinessCalendar` ([The business day](#the-business-day); never `CURRENT_DATE`) — so a customer page can never disagree with
 the list. The first groups the money by currency: the invoices and the credit notes
-issued in the current Oslo calendar year and in the year before, by issue date, and
+issued in the current calendar year of that day and in the year before, by issue date, and
 the open amounts of the outstanding (`open`, `partially_paid`, `overdue`) and the
 overdue invoices. The second counts across currencies: the outstanding and overdue
 invoices, those among the outstanding with a live hold or a live hand-off, the oldest

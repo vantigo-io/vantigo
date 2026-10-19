@@ -1,7 +1,7 @@
 -- name: InvoiceStatsNow :one
 -- InvoiceStatsNow is the summary's "now" (D7): every issued document with its
 -- derived state and open amount, from ListInvoices' own lateral joins and
--- with today the Oslo business day the caller passes — never CURRENT_DATE —
+-- with today the business day the caller passes — never CURRENT_DATE —
 -- then outstanding (open, partially paid or overdue, at the open amount) and
 -- overdue. A credit note's state is issued, a draft's draft: neither is ever
 -- outstanding. The CTE is there because an alias cannot be read in a FILTER
@@ -30,7 +30,7 @@ FROM d;
 -- InvoiceStatsPeriod is what was issued in the period (D7): the invoices and
 -- the credit notes whose issue date is in [from_day, to_day_exclusive), and
 -- the invoices' gross over the previous period, [previous_from_day, from_day).
--- The days are Oslo days computed by the caller; this compares dates only.
+-- The days are business days computed by the caller; this compares dates only.
 -- The WHERE bounds the whole span, [previous_from_day, to_day_exclusive) —
 -- previous_from_day is never after from_day — so ix_invoices_issue_date
 -- applies.

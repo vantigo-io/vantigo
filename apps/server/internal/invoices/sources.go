@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -391,7 +392,7 @@ func withReleased(released []sourceRef, resp *gen.InvoicesInvoiceResponse) {
 // hour's quantity is its hours and its amount the exact one Time answers; a
 // mileage line's its kilometres and its bill amount; an outlay's, a supplier
 // invoice's and a milestone's 1 and their amount. A milestone's date is the
-// Oslo business day it became ready (plan reading 13).
+// business day it became ready, its readyAt's day in loc (plan reading 13).
 
 func hourSource(h contracts.BillableHour) (heldSource, error) {
 	amount, err := billableAmount(h.Amount)
@@ -421,14 +422,14 @@ func expenseSource(e contracts.BillableExpense) (heldSource, error) {
 	}, nil
 }
 
-func milestoneSource(m contracts.BillableMilestone) (heldSource, error) {
+func milestoneSource(m contracts.BillableMilestone, loc *time.Location) (heldSource, error) {
 	amount, err := billableAmount(m.Amount)
 	if err != nil {
 		return heldSource{}, err
 	}
 	return heldSource{
 		kind: contracts.WorkSourceMilestone, id: m.ID, revision: m.Revision, projectID: m.ProjectID,
-		quantity: big.NewRat(1, 1), amount: amount, currency: m.Currency, date: businessDay(m.ReadyAt),
+		quantity: big.NewRat(1, 1), amount: amount, currency: m.Currency, date: holidays.DayIn(m.ReadyAt, loc),
 	}, nil
 }
 
@@ -448,7 +449,7 @@ func billableAmount(text string) (*big.Rat, error) {
 // 11) — and the hours as Time answered them, which a refresh writes the
 // timesheet from (D5). Each read names at most contracts.MaxBillableRows
 // ids, the bound a save's body keeps.
-func (s *server) billableNow(ctx context.Context, held []heldSource) (map[sourceRef]heldSource, map[contracts.WorkSourceKind]bool, []contracts.BillableHour, error) {
+func (s *server) billableNow(ctx context.Context, held []heldSource, loc *time.Location) (map[sourceRef]heldSource, map[contracts.WorkSourceKind]bool, []contracts.BillableHour, error) {
 	ids := map[contracts.WorkSourceKind][]int64{}
 	for _, h := range held {
 		ids[h.kind] = append(ids[h.kind], h.id)
@@ -469,7 +470,7 @@ func (s *server) billableNow(ctx context.Context, held []heldSource) (map[source
 			return nil, nil, nil, fmt.Errorf("invoices: read the billable milestones: %w", err)
 		}
 		for _, m := range page.Milestones {
-			if err := add(milestoneSource(m)); err != nil {
+			if err := add(milestoneSource(m, loc)); err != nil {
 				return nil, nil, nil, err
 			}
 		}
@@ -527,8 +528,8 @@ func staleness(h heldSource, now heldSource, found bool) string {
 // freshness is D2's GET-time judgment of a draft's held work: per source,
 // source_changed or source_not_invoiceable, nothing for a fresh source or one
 // whose kind's module is off.
-func (s *server) freshness(ctx context.Context, held []heldSource) (map[sourceRef]string, error) {
-	now, read, _, err := s.billableNow(ctx, held)
+func (s *server) freshness(ctx context.Context, held []heldSource, loc *time.Location) (map[sourceRef]string, error) {
+	now, read, _, err := s.billableNow(ctx, held, loc)
 	if err != nil {
 		return nil, err
 	}

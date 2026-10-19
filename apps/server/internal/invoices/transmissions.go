@@ -211,7 +211,11 @@ func (s *server) PostInvoicesByIdTransmissionsByTransmissionIdCancel(ctx context
 	}
 	s.deps.Logger.InfoContext(ctx, "invoices: an EHF transmission is cancelled", "invoice_id", inv.ID, "transmission_id", t.ID)
 	canIssue := true // the operation's own rule
-	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +261,11 @@ func (s *server) PostInvoicesByIdTransmissionsByTransmissionIdResolve(ctx contex
 	s.deps.Logger.InfoContext(ctx, "invoices: an unconfirmed EHF transmission is resolved", "invoice_id", inv.ID,
 		"transmission_id", t.ID, "outcome", string(req.Body.Outcome))
 	canIssue := true // the operation's own rule
-	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue, loc)
 	if err != nil {
 		return nil, err
 	}

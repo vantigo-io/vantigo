@@ -3,8 +3,9 @@
 // overdue list, the run's preview, the run and the letter's dispatch all call,
 // so the four never disagree.
 //
-// It reads no database and no clock: every day is an input, as the module's
-// businessDay gives it — UTC midnight of the Oslo calendar day — so day
+// It reads no database and no clock: every day is an input, as the module
+// derives it (holidays.DayIn in the workspace's business time zone) — UTC
+// midnight of that calendar day — so day
 // arithmetic never meets a daylight-saving shift; and every amount is an
 // exact decimal (*big.Rat), rounded only where the rules say: a fee to the
 // krone (.50 up), interest to the øre once, the half away from zero. A leaf:

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -30,7 +31,11 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 	if err != nil {
 		return nil, err
 	}
-	today := businessDay(s.deps.Clock())
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(s.deps.Clock(), loc)
 	codes, err := q.VatCodesInForce(ctx, pgDate(today))
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the VAT codes in force: %w", err)

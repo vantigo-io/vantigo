@@ -39,7 +39,7 @@ ORDER BY p.invoice_id, p.paid_on, p.id;
 -- fact reads (D8; plan reading 34) — the one definition of a qualifying
 -- delivery, which deliveriesOf reads too, for one invoice: each e-mail by
 -- when it was sent, each delivered EHF transmission by when it was delivered
--- — at, whose Oslo day the caller derives, never this statement — and each
+-- — at, whose business day the caller derives, never this statement — and each
 -- manual delivery not removed by its delivered_on. A failed, queued or
 -- cancelled transmission and a removed manual record are not deliveries.
 -- manual_kind is a manual record's own kind (handed_over or posted), which

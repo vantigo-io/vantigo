@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -48,19 +49,20 @@ const (
 
 // deliveriesOf is the engine's Deliveries (reminderrules.Input): the day of
 // every live delivery of an invoice, the earliest first — an e-mail by its
-// sent_at's Oslo day, a delivered EHF transmission by its delivered_at's, a
-// manual delivery not removed by its delivered_on (plan reading 34) — each a
-// UTC midnight, as businessDay answers. read with q, which holds the
-// invoice's lock, or a plain read. It is the rule-input loader's
-// RuleDeliveries for one invoice: one definition of a qualifying delivery.
-func deliveriesOf(ctx context.Context, q *store.Queries, invoiceID int64) ([]time.Time, error) {
+// sent_at's day in loc, the business time zone, a delivered EHF transmission
+// by its delivered_at's, a manual delivery not removed by its delivered_on
+// (plan reading 34) — each a UTC midnight, as holidays.DayIn answers. read
+// with q, which holds the invoice's lock, or a plain read. It is the
+// rule-input loader's RuleDeliveries for one invoice: one definition of a
+// qualifying delivery.
+func deliveriesOf(ctx context.Context, q *store.Queries, invoiceID int64, loc *time.Location) ([]time.Time, error) {
 	rows, err := q.RuleDeliveries(ctx, []int64{invoiceID})
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read document %d's deliveries: %w", invoiceID, err)
 	}
 	days := make([]time.Time, 0, len(rows))
 	for _, r := range rows {
-		day, err := deliveryDay(invoiceID, r.Kind, r.At, r.DeliveredOn)
+		day, err := deliveryDay(invoiceID, r.Kind, r.At, r.DeliveredOn, loc)
 		if err != nil {
 			return nil, err
 		}
@@ -72,13 +74,14 @@ func deliveriesOf(ctx context.Context, q *store.Queries, invoiceID int64) ([]tim
 
 // deliveryDay is one qualifying delivery's day (a RuleDeliveries row): a
 // manual delivery's delivered_on, an e-mail's or a delivered EHF
-// transmission's at by its Oslo day — a UTC midnight either way.
-func deliveryDay(invoiceID int64, kind string, at *time.Time, deliveredOn pgtype.Date) (time.Time, error) {
+// transmission's at by its day in loc, the business time zone — a UTC
+// midnight either way.
+func deliveryDay(invoiceID int64, kind string, at *time.Time, deliveredOn pgtype.Date, loc *time.Location) (time.Time, error) {
 	switch {
 	case kind == deliveryKindManual && deliveredOn.Valid:
 		return utcDay(deliveredOn.Time), nil
 	case (kind == deliveryKindEmail || kind == deliveryKindEhf) && at != nil:
-		return businessDay(*at), nil
+		return holidays.DayIn(*at, loc), nil
 	default:
 		return time.Time{}, fmt.Errorf("invoices: document %d has a %s delivery without its day", invoiceID, kind)
 	}
@@ -91,8 +94,8 @@ func deliveryDay(invoiceID int64, kind string, at *time.Time, deliveredOn pgtype
 // interest beyond what was waived, and no other delivery on or before the
 // due date would remain. A printed or in-flight letter counts as a sent one does: its
 // charges are on paper or on their way. Read with txq, which holds the
-// invoice's lock.
-func reliedOn(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, d store.InvoicesManualDelivery) (bool, error) {
+// invoice's lock; loc is the business time zone, read before it.
+func reliedOn(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, d store.InvoicesManualDelivery, loc *time.Location) (bool, error) {
 	due := utcDay(inv.DueDate.Time)
 	if utcDay(d.DeliveredOn.Time).After(due) {
 		// A delivery after the due date counts as none: nothing stands on it.
@@ -138,7 +141,7 @@ func reliedOn(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice
 	if !charged {
 		return false, nil
 	}
-	days, err := deliveriesOf(ctx, txq, inv.ID)
+	days, err := deliveriesOf(ctx, txq, inv.ID, loc)
 	if err != nil {
 		return false, err
 	}
@@ -174,7 +177,7 @@ func withManualDeliveries(ctx context.Context, q *store.Queries, invoiceID int64
 
 // parseManualDelivery judges a manual delivery's body, every failure
 // collected: a known kind, deliveredOn from the invoice's issue date to today
-// (the Oslo business day), a note within its column.
+// (the business day), a note within its column.
 func parseManualDelivery(body gen.InvoicesManualDeliveryRequest, issueDate, today time.Time) (store.InsertManualDeliveryParams, map[string][]string) {
 	var errs map[string][]string
 	if !body.Kind.Valid() {
@@ -212,7 +215,11 @@ func (s *server) PostInvoicesByIdManualDeliveries(ctx context.Context, req gen.P
 	if inv == nil {
 		return gen.PostInvoicesByIdManualDeliveries404Response{}, nil
 	}
-	delivery, errs := parseManualDelivery(*req.Body, inv.IssueDate.Time, businessDay(s.deps.Clock()))
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	delivery, errs := parseManualDelivery(*req.Body, inv.IssueDate.Time, holidays.DayIn(s.deps.Clock(), loc))
 	if errs != nil {
 		return gen.PostInvoicesByIdManualDeliveries400ApplicationProblemPlusJSONResponse(invalid(invalidDeliveryTitle, errs)), nil
 	}
@@ -236,7 +243,7 @@ func (s *server) PostInvoicesByIdManualDeliveries(ctx context.Context, req gen.P
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, q, *inv, nil)
+	resp, err := s.invoiceResponse(ctx, q, *inv, nil, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -250,9 +257,13 @@ func (s *server) PostInvoicesByIdManualDeliveriesByDeliveryIdRemove(ctx context.
 	if errs != nil {
 		return gen.PostInvoicesByIdManualDeliveriesByDeliveryIdRemove400ApplicationProblemPlusJSONResponse(invalid(invalidRemovalTitle, errs)), nil
 	}
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var refusal *gen.InvoicesConflictProblem
 	var inv store.InvoicesInvoice
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		// The invoice first, then the record, the letters, the waivers and
 		// the other deliveries, all read after the lock.
 		var err error
@@ -275,7 +286,7 @@ func (s *server) PostInvoicesByIdManualDeliveriesByDeliveryIdRemove(ctx context.
 				"This delivery record is already removed. A removal is never undone; record the delivery again."))
 			return errRefused
 		}
-		relied, err := reliedOn(ctx, txq, inv, d)
+		relied, err := reliedOn(ctx, txq, inv, d, loc)
 		if err != nil {
 			return err
 		}
@@ -305,7 +316,7 @@ func (s *server) PostInvoicesByIdManualDeliveriesByDeliveryIdRemove(ctx context.
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), inv, nil)
+	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), inv, nil, loc)
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -39,7 +40,11 @@ var heldCauses = map[string]string{
 // (GET /api/v1/invoices/stats/attention)
 func (s *server) GetInvoicesStatsAttention(ctx context.Context, _ gen.GetInvoicesStatsAttentionRequestObject) (gen.GetInvoicesStatsAttentionResponseObject, error) {
 	now := s.deps.Clock()
-	today := businessDay(now)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(now, loc)
 	q := store.New(s.deps.Pool)
 	items := []gen.InvoicesStatsAttentionItem{}
 	overdue, err := s.attentionOverdue(ctx, q, today)
@@ -47,7 +52,7 @@ func (s *server) GetInvoicesStatsAttention(ctx context.Context, _ gen.GetInvoice
 		return nil, err
 	}
 	items = append(items, overdue...)
-	refunds, err := s.attentionRefundDue(ctx, q, today)
+	refunds, err := s.attentionRefundDue(ctx, q, today, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +110,7 @@ func (s *server) attentionOverdue(ctx context.Context, q *store.Queries, today t
 // attentionRefundDue is invoiceRefundDue: every issued invoice whose open
 // amount is below zero, or whose charges' refund due — D9's formula, the
 // charges block's — is above zero, uncapped (D12, M16; plan reading 29).
-func (s *server) attentionRefundDue(ctx context.Context, q *store.Queries, today time.Time) ([]gen.InvoicesStatsAttentionItem, error) {
+func (s *server) attentionRefundDue(ctx context.Context, q *store.Queries, today time.Time, loc *time.Location) ([]gen.InvoicesStatsAttentionItem, error) {
 	rows, err := q.AttentionRefundDue(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the invoices with a refund due: %w", err)
@@ -118,7 +123,7 @@ func (s *server) attentionRefundDue(ctx context.Context, q *store.Queries, today
 	}
 	ins := map[int64]reminderrules.Input{}
 	if len(withCharges) > 0 {
-		if ins, err = s.ruleInputs(ctx, s.deps.Pool, withCharges, today); err != nil {
+		if ins, err = s.ruleInputs(ctx, s.deps.Pool, withCharges, today, loc); err != nil {
 			return nil, err
 		}
 	}

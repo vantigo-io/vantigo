@@ -354,7 +354,11 @@ func (s *server) PostInvoicesByIdPayLink(ctx context.Context, req gen.PostInvoic
 		return nil, err
 	}
 	canIssue := true
-	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue, loc)
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -71,7 +72,11 @@ func parseHandoff(body gen.InvoicesHandoffRequest, today time.Time) (handoffFiel
 // (POST /api/v1/invoices/{id}/collection)
 func (s *server) PostInvoicesByIdCollection(ctx context.Context, req gen.PostInvoicesByIdCollectionRequestObject) (gen.PostInvoicesByIdCollectionResponseObject, error) {
 	now := s.deps.Clock()
-	today := businessDay(now)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(now, loc)
 	f, errs := parseHandoff(*req.Body, today)
 	if errs != nil {
 		return gen.PostInvoicesByIdCollection400ApplicationProblemPlusJSONResponse(invalid(invalidHandoffTitle, errs)), nil
@@ -124,7 +129,7 @@ func (s *server) PostInvoicesByIdCollection(ctx context.Context, req gen.PostInv
 			return errRefused
 		}
 		if !f.acknowledgeNotDelivered {
-			days, err := deliveriesOf(ctx, txq, locked.ID)
+			days, err := deliveriesOf(ctx, txq, locked.ID, loc)
 			if err != nil {
 				return err
 			}
@@ -153,7 +158,7 @@ func (s *server) PostInvoicesByIdCollection(ctx context.Context, req gen.PostInv
 	case err != nil:
 		return nil, err
 	}
-	result, err := s.holdOrHandoffResult(ctx, locked, left)
+	result, err := s.holdOrHandoffResult(ctx, locked, left, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +173,11 @@ var errWithdrawnBeforeHandedOn = errors.New("invoices: a hand-off withdrawn befo
 // (POST /api/v1/invoices/{id}/collection/withdraw)
 func (s *server) PostInvoicesByIdCollectionWithdraw(ctx context.Context, req gen.PostInvoicesByIdCollectionWithdrawRequestObject) (gen.PostInvoicesByIdCollectionWithdrawResponseObject, error) {
 	now := s.deps.Clock()
-	today := businessDay(now)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(now, loc)
 	on := utcDay(req.Body.WithdrawnOn.Time)
 	var errs map[string][]string
 	switch {
@@ -190,7 +199,7 @@ func (s *server) PostInvoicesByIdCollectionWithdraw(ctx context.Context, req gen
 	var handedOn time.Time
 	var locked store.InvoicesInvoice
 	var left []store.InvoicesReminder
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		var err error
 		if locked, err = lockIssuedInvoice(ctx, txq, req.Id); err != nil {
 			return err
@@ -228,7 +237,7 @@ func (s *server) PostInvoicesByIdCollectionWithdraw(ctx context.Context, req gen
 	case err != nil:
 		return nil, err
 	}
-	result, err := s.holdOrHandoffResult(ctx, locked, left)
+	result, err := s.holdOrHandoffResult(ctx, locked, left, loc)
 	if err != nil {
 		return nil, err
 	}

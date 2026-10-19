@@ -85,7 +85,7 @@ type Error struct{ Where, Message string }
 func (e *Error) Error() string { return e.Where + ": " + e.Message }
 
 // Parse detects b's format and parses it under that format's rules; today
-// is the request's Oslo day, after which no booking date may lie.
+// is the request's business day, after which no booking date may lie.
 func Parse(b []byte, today time.Time) (*File, error) {
 	if len(b) > MaxBytes {
 		return nil, &Error{Where: "file", Message: tooLarge}
@@ -132,7 +132,7 @@ func (f *File) finish() {
 
 const tooLarge = "The file is larger than 10 MiB"
 
-// dateOf is t's calendar day at UTC midnight, as businessDay answers it.
+// dateOf is t's calendar day at UTC midnight, the form holidays.DayIn answers.
 func dateOf(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
@@ -141,7 +141,7 @@ func dateOf(t time.Time) time.Time {
 var earliest = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 // checkBooked is D3's rule on every booking date: on or before today, the
-// request's Oslo day, and not before 2000-01-01. It answers the refusal's
+// request's business day, and not before 2000-01-01. It answers the refusal's
 // words, or "".
 func checkBooked(d, today time.Time) string {
 	switch {
