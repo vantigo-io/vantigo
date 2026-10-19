@@ -5,7 +5,7 @@ Other modules add their own sections as their roadmaps solidify.
 
 ## Platform
 
-### Time zones (deliveries A, B, C and D done)
+### Time zones (deliveries A to E done)
 
 Decided in
 [`docs/superpowers/specs/2026-10-19-time-zones-design.md`](docs/superpowers/specs/2026-10-19-time-zones-design.md),
@@ -42,9 +42,17 @@ overview, is the business day; an entry's start and end times are documented as
 wall-clock times in the business zone, with no column changed; the contract's
 descriptions say so.
 
-*Still to land:* **E** Customers' follow-up day and timeline rendering, **F** the
-personal zone's setting and the shell's formatters. The calendar module depends on A
-and F.
+**Delivery E (done)** — Customers off the UTC day: a follow-up's overdue/due-today
+split, on the attention list and behind `state=overdue`, the bound on an entry's
+`occurredOn`, the earliest anonymisation day and the worker's due day, and the export
+file's name judge the business day; an entry's `occurredAt` must fall on its
+`occurredOn` in the business zone, checked on writes and, on a `PUT`, only when the
+pair changes; the timeline shows an entry's time without the literal "UTC"; the
+contract's descriptions say so.
+
+*Still to land:* **F** the personal zone's setting and the shell's formatters and
+pickers — with it the Customers pages' own "today" (`utcToday`) and the timeline
+form's UTC time field. The calendar module depends on A and F.
 
 ### Cross-module domain events (deferred until Orders)
 
