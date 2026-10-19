@@ -35,6 +35,7 @@ import { Route as TimeRouteImport } from './routes/time'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as CalendarIndexRouteImport } from './routes/calendar/index'
+import { Route as CalendarSettingsRouteImport } from './routes/calendar/settings'
 import { Route as CommunicationsIndexRouteImport } from './routes/communications/index'
 import { Route as CommunicationsChannelsRouteImport } from './routes/communications/channels'
 import { Route as CommunicationsInboxRouteImport } from './routes/communications/inbox'
@@ -236,6 +237,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const CalendarIndexRoute = CalendarIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => CalendarRoute,
+} as any)
+const CalendarSettingsRoute = CalendarSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => CalendarRoute,
 } as any)
 const CommunicationsIndexRoute = CommunicationsIndexRouteImport.update({
@@ -640,6 +646,7 @@ export interface FileRoutesByFullPath {
   '/staff': typeof StaffRouteWithChildren
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
+  '/calendar/settings': typeof CalendarSettingsRoute
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
@@ -727,6 +734,7 @@ export interface FileRoutesByTo {
   '/session-expired': typeof SessionExpiredRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/calendar/settings': typeof CalendarSettingsRoute
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
@@ -826,6 +834,7 @@ export interface FileRoutesById {
   '/staff': typeof StaffRouteWithChildren
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
+  '/calendar/settings': typeof CalendarSettingsRoute
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
@@ -928,6 +937,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/calendar/settings'
     | '/communications/channels'
     | '/communications/inbox'
     | '/communications/suppressions'
@@ -1015,6 +1025,7 @@ export interface FileRouteTypes {
     | '/session-expired'
     | '/setup'
     | '/sign-in'
+    | '/calendar/settings'
     | '/communications/channels'
     | '/communications/inbox'
     | '/communications/suppressions'
@@ -1113,6 +1124,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/calendar/settings'
     | '/communications/channels'
     | '/communications/inbox'
     | '/communications/suppressions'
@@ -1399,6 +1411,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/calendar/'
       preLoaderRoute: typeof CalendarIndexRouteImport
+      parentRoute: typeof CalendarRoute
+    }
+    '/calendar/settings': {
+      id: '/calendar/settings'
+      path: '/settings'
+      fullPath: '/calendar/settings'
+      preLoaderRoute: typeof CalendarSettingsRouteImport
       parentRoute: typeof CalendarRoute
     }
     '/communications/': {
@@ -1919,10 +1938,12 @@ const AdminRouteChildren: AdminRouteChildren = {
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface CalendarRouteChildren {
+  CalendarSettingsRoute: typeof CalendarSettingsRoute
   CalendarIndexRoute: typeof CalendarIndexRoute
 }
 
 const CalendarRouteChildren: CalendarRouteChildren = {
+  CalendarSettingsRoute: CalendarSettingsRoute,
   CalendarIndexRoute: CalendarIndexRoute,
 }
 

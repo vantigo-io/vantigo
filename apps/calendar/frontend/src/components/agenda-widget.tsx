@@ -37,8 +37,9 @@ const hrefOf = (item: CalendarItem, day: string): string => {
 
 /**
  * The dashboard's "Today and this week" (design D7): today's items in order
- * with their times, each a link to its record or its appointment, and the
- * next six days collapsed to a line each that opens on a click.
+ * with their times, each a link to its record or its appointment (a
+ * subscription's item to nothing), and the next six days collapsed to a line
+ * each that opens on a click.
  */
 export function AgendaWidget(): JSX.Element {
   const { t, timeZone, formatters } = useI18n("calendar");
@@ -101,7 +102,12 @@ export function AgendaWidget(): JSX.Element {
             </Text>
             <Stack gap={0} style={{ minWidth: 0 }}>
               <Text size="sm" td={item.done || item.appointment?.myStatus === "declined" ? "line-through" : undefined}>
-                <ItemLink href={hrefOf(item, day)}>{item.title || t("busy")}</ItemLink>
+                {/* A subscription's item is the other calendar's and leads nowhere (feed design D9). */}
+                {item.subscription ? (
+                  item.title || t("busy")
+                ) : (
+                  <ItemLink href={hrefOf(item, day)}>{item.title || t("busy")}</ItemLink>
+                )}
               </Text>
               {item.subtitle && (
                 <Text size="xs" c="dimmed" truncate>

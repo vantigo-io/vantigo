@@ -30,4 +30,25 @@ describe("the filter's memory", () => {
     await userEvent.click(screen.getByText("energy.reading"));
     expect(toggled).toEqual(["energy.reading"]);
   });
+
+  it("gives the subscriptions one grey chip with a swatch of its own, which hides them all", async () => {
+    const toggled: string[] = [];
+    renderWithProviders(
+      <SourceLegend
+        kinds={["calendar.appointment", "calendar.subscription", "holidays"]}
+        hidden={new Set()}
+        onToggle={(kind) => toggled.push(kind)}
+      />,
+    );
+    const chip = screen.getByRole("checkbox", { name: "Subscriptions" });
+    expect(chip).toBeChecked();
+    const swatch = document.querySelector('[data-swatch="calendar.subscription"]') as HTMLElement;
+    expect(swatch.style.border).toContain("var(--vantigo-calendar-gray)");
+    expect(swatch.style.background).toBe("");
+    // Not the appointments' colour, which the kind's module would otherwise give it.
+    const appointments = document.querySelector('[data-swatch="calendar.appointment"]') as HTMLElement;
+    expect(appointments.style.background).toBe("var(--vantigo-calendar-primary)");
+    await userEvent.click(screen.getByText("Subscriptions"));
+    expect(toggled).toEqual(["calendar.subscription"]);
+  });
 });

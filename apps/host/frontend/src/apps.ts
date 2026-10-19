@@ -133,6 +133,13 @@ export const apps: readonly AppDefinition[] = [
       icon: IconCalendar,
       requiredPermissions: ["calendar:access"],
     },
+    {
+      // The person's own calendar addresses and subscriptions (calendar feed design D9).
+      label: "navigation.myCalendar",
+      to: "/calendar/settings",
+      icon: IconAdjustments,
+      requiredPermissions: ["calendar:access"],
+    },
   ]),
   moduleApp("customers", "navigation.customers", IconUsers, "/customers", [
     {

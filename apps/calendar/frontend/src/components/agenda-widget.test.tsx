@@ -87,6 +87,42 @@ describe("AgendaWidget", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/customers/42"));
   });
 
+  it("lists a subscription's item without a link, a busy-only one as Busy", async () => {
+    stubCalendarServer({
+      items: [
+        {
+          kind: "calendar.subscription",
+          id: "1001:a",
+          title: "Training",
+          subtitle: "Football club",
+          allDay: false,
+          startsAt: at(0, "18:00"),
+          endsAt: at(0, "19:30"),
+          done: false,
+          subscription: { id: 1001, name: "Football club", colour: "teal", busyOnly: false },
+        },
+        {
+          kind: "calendar.subscription",
+          id: "1002:b",
+          title: "",
+          subtitle: "Partner",
+          allDay: false,
+          startsAt: at(0, "20:00"),
+          endsAt: at(0, "21:00"),
+          done: false,
+          subscription: { id: 1002, name: "Partner", colour: "grape", busyOnly: true },
+        },
+      ],
+    });
+    renderRoute("/", <AgendaWidget />);
+
+    const todaySection = await screen.findByRole("region", { name: "Today" });
+    expect(await within(todaySection).findByText("Training")).toBeInTheDocument();
+    expect(within(todaySection).getByText("Football club")).toBeInTheDocument();
+    expect(within(todaySection).getByText("Busy")).toBeInTheDocument();
+    expect(within(todaySection).queryAllByRole("link")).toHaveLength(0);
+  });
+
   it("says when the week is empty, and offers a new appointment", async () => {
     stubCalendarServer({ items: [] });
     const { router } = renderRoute("/", <AgendaWidget />);

@@ -2,7 +2,7 @@ import { Box, Chip, Group } from "@mantine/core";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { JSX } from "react";
 import "../i18n";
-import { colourForKind, kindLabelKey } from "../lib/colours";
+import { colourForKind, kindLabelKey, SUBSCRIPTION_KIND } from "../lib/colours";
 
 export interface SourceLegendProps {
   /** The kinds to offer, in order: appointments, the providers' from `/meta`, the holidays. */
@@ -14,7 +14,9 @@ export interface SourceLegendProps {
 /**
  * The legend and the filter in one (design D8): a chip per kind in its
  * module's colour, checked while the kind is shown. Unchecking hides it, and
- * the choice is remembered in this browser.
+ * the choice is remembered in this browser. The subscriptions share one chip
+ * (feed design D9), grey with a ring for a swatch: each subscription has a
+ * colour of its own, and a filled grey square is the holidays'.
  */
 export function SourceLegend({ kinds, hidden, onToggle }: SourceLegendProps): JSX.Element {
   const { t, i18n } = useI18n("calendar");
@@ -23,9 +25,26 @@ export function SourceLegend({ kinds, hidden, onToggle }: SourceLegendProps): JS
   return (
     <Group gap={6} role="group" aria-label={t("legend")}>
       {kinds.map((kind) => (
-        <Chip key={kind} size="xs" variant="outline" checked={!hidden.has(kind)} onChange={() => onToggle(kind)}>
+        <Chip
+          key={kind}
+          size="xs"
+          variant="outline"
+          color={kind === SUBSCRIPTION_KIND ? "gray" : undefined}
+          checked={!hidden.has(kind)}
+          onChange={() => onToggle(kind)}
+        >
           <Group gap={6} wrap="nowrap" component="span">
-            <Box component="span" w={10} h={10} style={{ borderRadius: 2, background: colourForKind(kind) }} />
+            <Box
+              component="span"
+              w={10}
+              h={10}
+              data-swatch={kind}
+              style={
+                kind === SUBSCRIPTION_KIND
+                  ? { borderRadius: "50%", border: "2px solid var(--vantigo-calendar-gray)" }
+                  : { borderRadius: 2, background: colourForKind(kind) }
+              }
+            />
             {label(kind)}
           </Group>
         </Chip>

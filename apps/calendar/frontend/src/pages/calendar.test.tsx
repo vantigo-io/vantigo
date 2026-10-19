@@ -165,6 +165,58 @@ describe("CalendarPage", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/customers/42"));
   });
 
+  it("draws a subscription's items in their colours, opens nothing on a click, and hides them with one chip", async () => {
+    const user = userEvent.setup();
+    const subscriptionItems: CalendarItem[] = [
+      {
+        kind: "calendar.subscription",
+        id: "1001:training",
+        title: "Training",
+        subtitle: "Football club",
+        allDay: false,
+        startsAt: at(0, "18:00"),
+        endsAt: at(0, "19:30"),
+        done: false,
+        subscription: { id: 1001, name: "Football club", colour: "lime", busyOnly: false },
+      },
+      {
+        kind: "calendar.subscription",
+        id: "1002:x",
+        title: "",
+        subtitle: "Partner",
+        allDay: true,
+        startDate: today(),
+        endDate: today(),
+        done: false,
+        subscription: { id: 1002, name: "Partner", colour: "indigo", busyOnly: true },
+      },
+    ];
+    stubCalendarServer({
+      meta: defaultMeta({
+        sources: [{ kind: "calendar.subscription", module: "calendar" }, ...defaultMeta().sources],
+      }),
+      items: [...items(), ...subscriptionItems],
+    });
+    const { router } = renderRoute("/calendar");
+
+    const training = (await screen.findByText("Training")).closest(".vantigo-calendar-item") as HTMLElement;
+    expect(training.getAttribute("style")).toContain("--vantigo-calendar-lime");
+    expect(training).toHaveAttribute("title", "Training · Football club");
+    const busy = screen.getByText("Busy").closest(".vantigo-calendar-item") as HTMLElement;
+    expect(busy.getAttribute("style")).toContain("--vantigo-calendar-indigo");
+
+    await user.click(screen.getByText("Training"));
+    expect(router.state.location.pathname).toBe("/calendar");
+    expect(router.state.location.search).not.toHaveProperty("appointment");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    const legend = screen.getByRole("group", { name: "Shown on the calendar" });
+    await user.click(within(legend).getByText("Subscriptions"));
+    await waitFor(() => expect(screen.queryByText("Training")).not.toBeInTheDocument());
+    expect(screen.queryByText("Busy")).not.toBeInTheDocument();
+    expect(screen.getByText("Kickoff with Nordlys AS")).toBeInTheDocument();
+  });
+
   it("opens the sheet of an appointment clicked on the grid", async () => {
     const user = userEvent.setup();
     stubCalendarServer({ items: items() });

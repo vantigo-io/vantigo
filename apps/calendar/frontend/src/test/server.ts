@@ -1,7 +1,9 @@
 import type { Appointment } from "../api/appointments";
 import type { CalendarContact } from "../api/contacts";
+import type { FeedAddress, FeedAddresses, FeedVariant } from "../api/feed";
 import type { CalendarItem, CalendarItems } from "../api/items";
 import type { CalendarMeta } from "../api/meta";
+import type { CalendarSubscription } from "../api/subscriptions";
 import type { CalendarUser } from "../api/users";
 import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
@@ -45,6 +47,27 @@ export const appointmentFixture = (overrides: Partial<Appointment> = {}): Appoin
   ...overrides,
 });
 
+export const feedAddressFixture = (variant: FeedVariant, overrides: Partial<FeedAddress> = {}): FeedAddress => ({
+  variant,
+  address: `https://vantigo.example/api/v1/calendar/feed/${variant}-token.ics`,
+  webcalAddress: `webcal://vantigo.example/api/v1/calendar/feed/${variant}-token.ics`,
+  createdAt: "2026-11-03T09:00:00Z",
+  ...overrides,
+});
+
+export const subscriptionFixture = (overrides: Partial<CalendarSubscription> = {}): CalendarSubscription => ({
+  id: 1001,
+  name: "Football club",
+  url: "https://club.example/calendar.ics",
+  colour: "teal",
+  busyOnly: false,
+  fetchedAt: "2026-11-03T09:00:00Z",
+  attemptedAt: "2026-11-03T09:00:00Z",
+  createdAt: "2026-11-01T09:00:00Z",
+  updatedAt: "2026-11-01T09:00:00Z",
+  ...overrides,
+});
+
 export interface CalendarServer {
   meta?: CalendarMeta;
   /** What `/items` answers, whatever the window; the window asked for is echoed back. */
@@ -55,6 +78,14 @@ export interface CalendarServer {
   appointments?: Appointment[];
   /** What `/contacts` answers for any customer: the contacts, or a refusal. */
   contacts?: CalendarContact[] | (() => Response);
+  /** What `/feed` answers at first; a POST puts a new address in, a DELETE takes it out. */
+  feed?: FeedAddresses;
+  /** What `/subscriptions` answers at first; the writes change it as the server would. */
+  subscriptions?: CalendarSubscription[];
+  /** What the inline fetch of a POST leaves the new row as, beside what was written. */
+  created?: Partial<CalendarSubscription>;
+  /** What a refresh leaves the row as; by default fetched now, without an error. */
+  refreshed?: Partial<CalendarSubscription>;
   /** A response to a write, by method, instead of the default success. */
   refuse?: Partial<Record<"POST" | "PUT" | "DELETE", Response>>;
 }
@@ -64,8 +95,11 @@ export interface CalendarServer {
  * answered with success (or the refusal the test asks for), every request
  * recorded on the returned mock.
  */
-export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
-  stubFetch(
+export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch => {
+  let feed: FeedAddresses = server.feed ?? { public: true, addresses: [] };
+  let subscriptions = [...(server.subscriptions ?? [])];
+  let resets = 0;
+  return stubFetch(
     (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://localhost");
       const method = init?.method ?? "GET";
@@ -103,6 +137,8 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
           ),
         );
       }
+      if (method === "GET" && path === "/feed") return Promise.resolve(jsonResponse(200, feed));
+      if (method === "GET" && path === "/subscriptions") return Promise.resolve(jsonResponse(200, subscriptions));
       if (method === "GET" && path === "/contacts")
         return Promise.resolve(
           typeof server.contacts === "function"
@@ -118,6 +154,50 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
       const refusal = server.refuse?.[method as "POST" | "PUT" | "DELETE"];
       if (refusal) return Promise.resolve(refusal);
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      const feedMatch = /^\/feed\/(full|busy)$/.exec(path);
+      if (method === "POST" && feedMatch) {
+        resets += 1;
+        const variant = feedMatch[1] as FeedVariant;
+        const address = feedAddressFixture(variant, {
+          address: `https://vantigo.example/api/v1/calendar/feed/${variant}-token-${resets}.ics`,
+          webcalAddress: `webcal://vantigo.example/api/v1/calendar/feed/${variant}-token-${resets}.ics`,
+        });
+        feed = { ...feed, addresses: [...feed.addresses.filter((one) => one.variant !== variant), address] };
+        return Promise.resolve(jsonResponse(200, address));
+      }
+      if (method === "DELETE" && feedMatch) {
+        feed = { ...feed, addresses: feed.addresses.filter((one) => one.variant !== feedMatch[1]) };
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      const subscriptionMatch = /^\/subscriptions\/(\d+)(\/refresh)?$/.exec(path);
+      const subscription = subscriptionMatch
+        ? subscriptions.find((one) => one.id === Number(subscriptionMatch[1]))
+        : undefined;
+      if (subscriptionMatch && !subscription) return Promise.resolve(new Response(null, { status: 404 }));
+      const replaceSubscription = (row: CalendarSubscription) => {
+        subscriptions = subscriptions.map((one) => (one.id === row.id ? row : one));
+        return Promise.resolve(jsonResponse(200, row));
+      };
+      if (method === "POST" && path === "/subscriptions") {
+        const row = subscriptionFixture({ ...body, id: 2001 + subscriptions.length, ...server.created });
+        subscriptions = [...subscriptions, row];
+        return Promise.resolve(jsonResponse(201, row));
+      }
+      if (method === "POST" && subscriptionMatch?.[2] && subscription) {
+        // A fetch that worked clears the last one's error.
+        return replaceSubscription({
+          ...subscription,
+          error: undefined,
+          fetchedAt: new Date().toISOString(),
+          ...server.refreshed,
+        });
+      }
+      if (method === "PUT" && subscriptionMatch && subscription)
+        return replaceSubscription({ ...subscription, ...body });
+      if (method === "DELETE" && subscriptionMatch) {
+        subscriptions = subscriptions.filter((one) => one.id !== subscription?.id);
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
       if (method === "POST" && path === "/appointments")
         return Promise.resolve(jsonResponse(201, appointmentFixture({ ...body, id: 2001, attendees: [] })));
       const resend = /\/attendees\/(\d+)\/resend$/.exec(path);
@@ -145,3 +225,4 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
     },
     { session: { user: { id: ME, displayName: "Test User", email: "test@example.com", roles: ["user"] } } },
   );
+};

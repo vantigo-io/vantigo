@@ -4,8 +4,10 @@ import "../styles/fullcalendar.css";
 import FullCalendar, {
   type DateSelectInfo,
   type DatesSetInfo,
+  type DidMountHandler,
   type EventApi,
   type EventClickInfo,
+  type EventDisplayInfo,
   type EventDropInfo,
   type EventResizeDoneInfo,
   useCalendarController,
@@ -57,6 +59,15 @@ const plugins = [breezyTheme, dayGridPlugin, timeGridPlugin, listPlugin, interac
 const locales = [nbLocale];
 /** "09:00", not "9a", in English as in Norwegian. */
 const timeFormat = { hour: "2-digit", minute: "2-digit", hour12: false } as const;
+
+/**
+ * The tooltip of a drawn item: its title, with its one line after it — the
+ * customer, the project, a subscription's name (feed design D9).
+ */
+const titleTooltip: DidMountHandler<EventDisplayInfo> = ({ el, event }) => {
+  const { item } = event.extendedProps as CalendarEventProps;
+  el.title = item?.subtitle ? `${event.title} · ${item.subtitle}` : event.title;
+};
 
 /** The longest window `/items` answers (design D5). */
 const MAX_WINDOW_DAYS = 93;
@@ -188,6 +199,7 @@ export function CalendarPage() {
       if (!colleague) openAppointment(item);
       return;
     }
+    // A subscription's item has no path: it is the other calendar's, and opens nothing.
     if (item.path) void navigate({ href: item.path });
   };
 
@@ -335,6 +347,7 @@ export function CalendarPage() {
           datesSet={onDatesSet}
           select={onSelect}
           eventClick={onEventClick}
+          eventDidMount={titleTooltip}
           eventDrop={onEventChange}
           eventResize={onEventChange}
         />
