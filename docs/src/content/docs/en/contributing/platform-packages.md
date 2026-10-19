@@ -52,13 +52,14 @@ A purpose is a constant the calling module owns, never input from a request, wri
 | `invoices/access-point-credential` | the e-invoicing access point's API key |
 | `calendar/rsvp-link` | an outside attendee's answer link, sealed so every later mail carries the same link ([the answer by link](/en/reference/calendar/#the-token-and-the-link)) |
 | `calendar/feed-address` | a person's calendar address, sealed so the settings screen can show it again; the request is matched by the token's plain hash ([the feed](/en/reference/calendar/#the-address-and-its-two-variants)) |
+| `calendar/feed-busy-uid` | the MAC of a person's id and a projected item's kind and id, cut to 32 hex digits, as that item's `UID` in the busy feed — opaque, stable per person and item, and never stored, so a rotation changes the `UID`s rather than orphaning anything ([the feed](/en/reference/calendar/#the-icalendar-object)) |
 | `staff/national-id` | a person's national identity number (sealed) |
 | `staff/national-id-index` | the MAC of a person's national identity number, in a unique column |
 | `staff/bank-account` | a person's bank account (sealed) |
 
 **A purpose either seals or MACs, never both**, so no key both encrypts and
-authenticates. A MAC purpose carries the suffix `-index`: a module that seals a value
-and indexes it uses two purposes, `module/purpose` for the sealed value and
+authenticates. A MAC purpose that indexes a value carries the suffix `-index`: a module
+that seals a value and indexes it uses two purposes, `module/purpose` for the sealed value and
 `module/purpose-index` for its MAC — `staff/national-id` and
 `staff/national-id-index` — and pins the two constants distinct in a test.
 When one MAC purpose covers values of several kinds, the caller separates them in the

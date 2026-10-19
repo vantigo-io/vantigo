@@ -1263,8 +1263,9 @@ with no session behind the request through `contracts.AsUser` and a new
 `Access.UserHolds`, each under its own gate; calendars from elsewhere subscribed to — at
 most ten, `webcal` taken as `https` — fetched once when added or when its address
 changes, on **Refresh now**, and by the `calendar-subscriptions` worker (`CALENDAR_SUBSCRIPTIONS_ENABLED`,
-`CALENDAR_SUBSCRIPTIONS_POLL`) through `netguard`, with no redirect, no proxy and at
-most 1 MiB, the last good copy kept through a failure and the reason shown on the row;
+`CALENDAR_SUBSCRIPTIONS_POLL`) through `netguard`, with no redirect, no proxy, at
+most 1 MiB and 10,000 events, and 30 inline fetches per client address per 10 minutes,
+the last good copy kept through a failure and the reason shown on the row;
 parsed on read into the kind `calendar.subscription`, drawn in the colour the person
 chose, busy-only when they ask, and never in their feed. One migration,
 `00057_calendar_feed.sql`.
@@ -1282,8 +1283,9 @@ Decisions taken while building it:
   and the router matches a parameter to a whole segment, so the handler takes
   `<token>.ics` as one and requires the suffix.
 - **The feed asks the providers through `AsUser` and `UserHolds`**: the gate stays the
-  provider's and identity still answers it — active, not locked out, not pending, an
-  Owner holding all, no MFA rule without a session — rather than a flag on the query the
+  provider's and identity still answers it — the session query's person checks through
+  one query, `UserMayAct`, not locked out, an Owner holding all, no MFA rule without a
+  session — rather than a flag on the query the
   providers would honour, which would have shown a person their tasks after
   `projects:access` was taken from them.
 - **The busy variant is spans alone**: busy appointments and the timed projected items,
@@ -1307,6 +1309,35 @@ Decisions taken while building it:
   failure waits the poll alone; no backoff, since a feed down for an hour costs two requests.
 - **`TZID` is resolved in a chain**: Go's tzdata, the `VTIMEZONE`'s `X-LIC-LOCATION`, the
   CLDR table of Windows names Outlook writes, the `STANDARD` offset, and UTC last.
+
+And after the review:
+
+- **A token answers nothing once its person may not act**: the feed asks `UserHolds`
+  for the token's person and `calendar:access` before it reads anything, and a person
+  disabled, locked out, pending, deactivated by the directory under SCIM, or without the
+  permission, gets the bare 404 an unknown token gets, with no `last_used_at` written.
+  `UserHolds` now applies the session query's person checks through `UserMayAct`, which
+  must agree with `GetSessionByTokenHash`: a token outlives nothing a session would not.
+  The subscriptions worker asks the same, once per person per cycle, and puts a departed
+  person's rows off by the poll rather than fetch for nobody.
+- **The parse on read is bounded**: one budget of 200,000 steps per subscription per
+  read shared by every event and rule, at most 10,000 `VEVENT`s read, a one-second
+  deadline, and a bounded heap keeping the 5,000 items nearest the window's start; a read
+  that reaches a bound answers what it has and logs it. At fetch, a calendar of more than
+  10,000 events is refused — "the calendar has more than 10,000 events" — since it would
+  be parsed on every load.
+- **The busy variant's projected `UID`s are opaque**: a MAC under
+  `calendar/feed-busy-uid` of the person's id and the item's kind and id, so a busy feed
+  names neither the module nor the row and two people's cannot be joined; points, which
+  are no span, are left out of it.
+- **The three inline fetches are rate limited together**: a save, a change and
+  **Refresh now** share `calendar-subscription-fetch`, 30 per client address per 10
+  minutes, since each is an outbound request of up to twenty seconds made on a click.
+- **The tenth subscription is taken under a per-person lock**, and **a fetch overtaken
+  by a change of address records nothing**: the record matches the address it was
+  fetched from, and a row deleted meanwhile is a 404.
+- **The guarded transport keeps no idle connection**, and **a parse error is logged
+  without the body's text**.
 
 *Unblocks:* the Vantigo calendar on a phone, and a person's other calendars beside it.
 

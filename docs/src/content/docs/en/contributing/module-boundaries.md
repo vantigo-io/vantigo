@@ -305,8 +305,10 @@ Communications' outbox is the working example.
     whose caller is a token the consumer has already matched to that user — the calendar
     feed: the consumer asks under `contracts.AsUser(ctx, userID)`, on a context that
     carries no request, and `HasPermission` answers through `Access.UserHolds` — whether
-    that user, active, not locked out and not pending, holds the keys, an Owner holding
-    all — so the provider's gate is still its own and still identity's to answer, with
+    that user may act at all, by the same person checks a session is resolved under (not
+    disabled, not pending, not deactivated by the directory while SCIM is configured
+    unless an Owner) and not locked out, and holds the keys, an Owner holding all — so the
+    provider's gate is still its own and still identity's to answer, with
     no change to the provider. `AsUser` never widens a request: a request in the context
     is always checked through `Check` first. A provider reads its own tables only
     ([Calendar](/en/reference/calendar/#the-sources-contract),

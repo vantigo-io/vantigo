@@ -170,6 +170,15 @@ Den står på listen til den offentlige verten ved siden av rutene til svarsiden
 med nøyaktig ett segment etter `/feed/`. Et token ingen har — aldri utstedt,
 tilbakestilt eller slått av — er en naken 404.
 
+Det er også tokenet til en person som ikke lenger kan bruke Kalender: **å deaktivere en
+bruker, eller ta `calendar:access` fra dem, gjør alle adressene deres døde med en
+gang**, uten noe steg å ta. Ved hver forespørsel spør strømmen identitetsmodulen om
+adressens person kan handle — ikke deaktivert, utestengt eller ventende, og, mens SCIM
+er konfigurert, ikke deaktivert av katalogen med mindre de er Owner — og har
+`calendar:access`, de samme kontrollene en økt holdes til
+([the feed](/en/reference/calendar/#the-one-anonymous-get)). Adressen slettes ikke: blir
+personen aktivert igjen, med rettigheten, oppdaterer mobilen deres igjen.
+
 ### Hva den trenger
 
 1. **Basen.** Adressen er `PUBLIC_BASE_URL/api/v1/calendar/feed/<token>.ics` når
@@ -262,6 +271,12 @@ skriver ned grunnen, og neste forfalte henting prøver igjen, uten å vente leng
 av hentes ingenting i bakgrunnen, og hvert abonnement viser det det sist leste; å lagre
 et, eller **Oppdater nå**, henter det likevel én gang.
 
+Arbeideren henter ingenting for en person som ikke lenger kan bruke Kalender —
+deaktivert, utestengt, ventende, deaktivert av katalogen, eller uten `calendar:access`.
+Den spør én gang per person per runde, og utsetter personens forfalte abonnementer med
+intervallet, pluss slingring, og lar den siste kopien og grunnen stå som de var; de hentes
+igjen når personen kan bruke Kalender igjen.
+
 ### Hva Vantigo henter fra internett
 
 Arbeideren, en lagring og **Oppdater nå** henter **adressene folk abonnerer på**, og
@@ -275,7 +290,17 @@ Vantigo-containeren, gjennom den samme adressevakten som e-post og Peppol-oppsla
 - **høyst 1 MiB** leses, og hentingen har **20 sekunder**;
 - det er **ingen utgående proxy**: en `HTTPS_PROXY` brukes ikke, siden en proxy ville
   sendt forespørselen til en adresse vakten aldri så. En installasjon der containerne
-  bare når internett gjennom en proxy, kan ikke hente abonnementer.
+  bare når internett gjennom en proxy, kan ikke hente abonnementer;
+- **ingen tilkobling holdes åpen** mellom hentinger: hver av dem kobler opp på nytt,
+  gjennom vakten;
+- en lagring, en endring og **Oppdater nå** deler én hastighetsgrense,
+  `calendar-subscription-fetch`, **30 forespørsler per klientadresse per 10 minutter**,
+  besvart med 429 og `Retry-After` — langt mer enn en person som steller sine egne
+  kalendere klikker, og langt mindre enn et skript som gjør serveren til en henter,
+  trenger. Den gjelder per klientadresse, så bak en proxy må `TRUSTED_PROXY_HOPS` og
+  `TRUSTED_PROXY_CIDRS` nevne den, ellers deler alle proxyens ene bøtte ([Videresendte
+  headere og HTTPS](/nb/admin/authentication/#videresendte-headere-og-https)).
+  Arbeideren er ikke begrenset.
 
 En adresse en person skriver inn, avvises ved lagring når verten er en adresse vakten
 forbyr, eller når den har med et brukernavn eller passord.
@@ -290,11 +315,18 @@ Grunnene er én setning hver, på engelsk:
 | --- | --- |
 | the address redirects; subscribe to the address it points at | nettstedet svarte 3xx; personen må bruke adressen den peker på |
 | the calendar is larger than 1 MiB | kalenderen er for stor til å beholdes; den siste gode kopien blir stående |
+| the calendar has more than 10,000 events | kalenderen leses hver gang personens kalender lastes, så en så stor beholdes ikke; den siste gode kopien blir stående |
 | the address did not answer a calendar | en 2xx som ikke er en iCalendar-fil — som regel en nettside |
 | the address answered <status> (som `404 Not Found`) | enhver annen status: 404 for en fjernet kalender, 401 eller 403 for en som krever en innlogging Vantigo ikke gjør |
 | the address is not one Vantigo may fetch | verten slås opp til en adresse vakten forbyr |
 | the address did not answer in time | ikke noe svar innen de 20 sekundene en henting har, eller ingen tilkobling innen 10 eller ingen headere innen 15 |
 | the address could not be reached | navnet kunne ikke slås opp, tilkoblingen ble avvist, eller det er ingen vei ut |
+
+Å lese en lagret kalender, hver gang personens kalender lastes, er også begrenset: per
+abonnement per lesing høyst 10 000 hendelser, 200 000 arbeidssteg og ett sekund, og de
+5 000 elementene nærmest starten av vinduet som vises, beholdes. En kalender som når en grense, viser det som
+var lest til da, og loggen sier det på info-nivå med abonnementets id. Ingenting må
+gjøres; personen kan be den som publiserer kalenderen, om en mindre en.
 
 | Variabel | Formål | Standard |
 | --- | --- | --- |
@@ -319,6 +351,12 @@ adresse virker fortsatt — en forespørsel matches mot tokenets vanlige hash, s
 trenger noen nøkkel — så mobilene fortsetter å oppdatere. En person som trenger å se
 adressen sin igjen, trykker **Lag adresse**, som skjermbildet viser i stedet: den
 tilbakestiller adressen, den gamle slutter å virke, og de gir programmene sine den nye.
+
+Hendelsene i adressen med bare opptatt har også identifikatorer avledet fra `APP_SECRET`
+(formålet `calendar/feed-busy-uid`), så de sier ingenting om posten bak dem. En rotasjon
+endrer hver av dem: et program som abonnerer på en adresse med bare opptatt, fjerner
+blokkene som kommer fra de andre appene, og legger dem til på nytt ved neste
+oppdatering — én gang, uten at noe går tapt. Avtaler beholder identifikatorene sine.
 
 ## Hva som kan gå galt
 
@@ -365,6 +403,9 @@ tilbakestiller adressen, den gamle slutter å virke, og de gir programmene sine 
   skjermbildet sier *«Denne adressen virker bare på bedriftens nettverk»*; sett opp den
   offentlige verten, og personen tilbakestiller adressen for å få en der. En 429 i loggen
   betyr at proxyen ikke er klarert, og at alle mobiler deler én bøtte.
+- **Å legge til et abonnement eller Oppdater nå avvises med 429.** Tretti på ti minutter
+  fra én klientadresse er grensen; bak en proxy som ikke er klarert
+  (`TRUSTED_PROXY_HOPS`, `TRUSTED_PROXY_CIDRS`), deler alle proxyens ene bøtte.
 - **En strøm svarer 503.** En av modulene som har elementer i den, kunne ikke leses;
   loggen nevner den. Strømmen serveres aldri med noe som mangler.
 - **En persons kalender er over 1 MiB.** Strømmen dropper de projiserte elementene

@@ -346,6 +346,10 @@ den hvis adressen har kommet på avveie. Skjermbildet spør først, siden mobile
 oppdatere til du gir den den nye adressen. **Slå av** fjerner adressen helt, også etter å
 ha spurt; det som abonnerte på den, slutter å oppdatere.
 
+En adresse virker bare så lenge eieren kan bruke Kalender. Når en kollega slutter og
+brukeren deres deaktiveres, eller `calendar:access` tas fra dem, slutter adressene deres å svare med en gang, og hver mobil eller hvert program som
+abonnerer på dem, slutter å oppdatere — ingen trenger å tilbakestille noe.
+
 ### Legg den til i kalenderprogrammet ditt
 
 - **iPhone eller iPad:** **Innstillinger → Kalender → Kontoer → Legg til konto → Annet →
@@ -370,8 +374,10 @@ Dette er ikke med: avtaler du har avslått, avlyste avtaler, kalenderne du abonn
 fra andre steder ([under](#kalendere-fra-andre-steder)) og helligdager — mobilen har sine
 egne. Den sier heller ikke hvem andre som er på en avtale; åpne den i Vantigo for det.
 Adressen **Bare opptatt** utelater også det som ikke gjør deg opptatt: avtaler vist som
-**Ledig**, og heldagselementene fra de andre appene, som en oppgave som forfaller, en
-oppfølging eller en fraværsdag.
+**Ledig**, heldagselementene fra de andre appene, som en oppgave som forfaller, en
+oppfølging eller en fraværsdag, og elementene som er et øyeblikk og ikke et tidsrom, som
+en kundeinteraksjon registrert på et klokkeslett. Hendelsene i den bærer ingenting som
+sier hvilken app eller hvilken post de kom fra.
 
 ## Kalendere fra andre steder
 
@@ -400,7 +406,9 @@ Tabellen lister hver kalender med fargen, navnet, nettstedet adressen er på, om
 bare opptatt, og når den sist ble oppdatert (**Oppdatert for 10 minutter siden**).
 Vantigo henter hver av dem igjen omtrent hver halvtime; **Oppdater nå** på raden henter
 den med en gang. **Rediger** endrer den, og **Fjern** tar den ut av kalenderen din. Du kan
-ha høyst ti.
+ha høyst ti. Å legge til, lagre en endring og **Oppdater nå** er begrenset til sammen:
+Vantigo henter høyst tretti ganger på ti minutter fra én adresse — datamaskinen din,
+eller kontornettet ditt — så hvis den avviser, vent noen minutter og prøv igjen.
 
 Når en henting feiler, vises grunnen i rødt under raden, og kalenderen fortsetter å vise
 det den sist leste. Grunnen står på engelsk, slik serveren skriver den:
@@ -413,8 +421,9 @@ det den sist leste. Grunnen står på engelsk, slik serveren skriver den:
   eller fjernet, eller adressen er skrevet feil;
 - **the address is not one Vantigo may fetch** — den er på et privat nettverk Vantigo ikke
   henter fra;
-- **the calendar is larger than 1 MiB**, eller **the address did not answer in time** —
-  kalenderen er for stor, eller nettstedet for tregt; spør den som publiserer den;
+- **the calendar is larger than 1 MiB**, **the calendar has more than 10,000 events**
+  eller **the address did not answer in time** — kalenderen er for stor, eller
+  nettstedet for tregt; spør den som publiserer den;
 - **the address could not be reached** — nettstedet svarer ikke, eller navnet finnes
   ikke; sjekk adressen.
 

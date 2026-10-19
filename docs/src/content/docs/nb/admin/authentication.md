@@ -521,6 +521,16 @@ Hver innlogging rydder også bort den brukerens døde økter (tilbakekalte, elle
 den standard absolutte levetiden), slik at tabellen holdes avgrenset til økter som
 fortsatt kan være gyldige.
 
+Det samme gjelder en lesing på vegne av en bruker uten noen økt bak — i dag en persons
+kalenderadresse, som en mobil leser med et token i stedet for en informasjonskapsel.
+Identitetsmodulen svarer på den gjennom `UserHolds`, der kontrollene av personen er én
+spørring, `UserMayAct`, som bruker øktspørringens egne: ikke deaktivert, ikke ventende,
+og mens SCIM er konfigurert ikke deaktivert av katalogen med mindre de er Owner — og
+ikke utestengt, som hver rettighetskontroll krever. De to spørringene holdes i takt, så
+en deaktivering, en utestengning, en deaktivering i katalogen eller en rolleendring
+stopper en slik lesing på aller neste forespørsel, slik den stopper en økt
+([Kalender → strømmen](/nb/admin/calendar/#kalenderstrømmen-på-den-offentlige-verten)).
+
 ## Hastighetsbegrensninger
 
 Autentiseringsendepunktene er hastighetsbegrenset av en begrenser med faste vinduer,

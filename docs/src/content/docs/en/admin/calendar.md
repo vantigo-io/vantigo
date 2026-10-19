@@ -166,6 +166,15 @@ It is on the public host's list beside the answer page's routes
 one segment after `/feed/`. A token nobody holds — never issued, reset or turned off — is
 a bare 404.
 
+So is the token of a person who may no longer use Calendar: **disabling a user, or
+taking `calendar:access` from them, kills every address of theirs at once**, with no
+step to take. At every request the feed asks identity whether the address's person may
+act — not disabled, locked out or pending, and, while SCIM is configured, not deactivated
+by the directory unless an Owner — and holds `calendar:access`, the same checks a
+session is held to ([the feed](/en/reference/calendar/#the-one-anonymous-get)). The
+address is not deleted: enabled again, with the permission, the person's phone updates
+again.
+
 ### What it needs
 
 1. **The base.** The address is `PUBLIC_BASE_URL/api/v1/calendar/feed/<token>.ics` when
@@ -255,6 +264,12 @@ reason, and the next due fetch tries again, with no backoff. Turned off, nothing
 fetched in the background and every subscription shows its last read; saving one, or
 **Refresh now**, still fetches it once.
 
+The worker fetches nothing for a person who may no longer use Calendar — disabled, locked
+out, pending, deactivated by the directory, or without `calendar:access`. It asks once
+per person per cycle, and puts that person's due subscriptions off by the poll, plus
+jitter, leaving their last copy and their reason as they were; they are fetched again
+once the person may use Calendar again.
+
 ### What Vantigo fetches from the internet
 
 The worker, a save and **Refresh now** fetch **the addresses people subscribe to**, and
@@ -268,7 +283,17 @@ Vantigo container, through the same address guard as mail and the Peppol lookup:
 - **at most 1 MiB** is read, and the fetch has **20 seconds**;
 - there is **no outbound proxy**: an `HTTPS_PROXY` is not used, since a proxy would send
   the request to an address the guard never saw. An installation whose containers reach
-  the internet only through a proxy cannot fetch subscriptions.
+  the internet only through a proxy cannot fetch subscriptions;
+- **no connection is kept open** between fetches: each one dials afresh, through the
+  guard;
+- a save, a change and **Refresh now** share one rate limit, `calendar-subscription-fetch`,
+  **30 requests per client address per 10 minutes**, answered 429 with `Retry-After` —
+  far more than a person managing their own calendars clicks, and far less than a script
+  turning the server into a fetcher would need. It is per client address, so behind a
+  proxy `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` must name it, or everyone shares
+  the proxy's one bucket ([Forwarded headers and
+  HTTPS](/en/admin/authentication/#forwarded-headers-and-https)). The worker is not
+  limited.
 
 An address a person types is refused at save when its host is an address the guard
 forbids, or when it carries a user name or password.
@@ -283,11 +308,18 @@ reasons are one sentence each:
 | --- | --- |
 | the address redirects; subscribe to the address it points at | the site answered 3xx; the person must use the address it points at |
 | the calendar is larger than 1 MiB | the calendar is too big to keep; the last good copy stays |
+| the calendar has more than 10,000 events | the calendar is read on every load of the person's calendar, so one this large is not kept; the last good copy stays |
 | the address did not answer a calendar | a 2xx that is not an iCalendar file — a web page, usually |
 | the address answered <status> (such as `404 Not Found`) | any other status: 404 for a removed calendar, 401 or 403 for one that needs a sign-in Vantigo does not do |
 | the address is not one Vantigo may fetch | the host resolves to an address the guard forbids |
 | the address did not answer in time | no answer within the 20 seconds a fetch has, or no connection within 10 or no headers within 15 |
 | the address could not be reached | the name did not resolve, the connection was refused, or there is no route out |
+
+Reading a stored calendar, at every load of the person's calendar, is bounded too: per
+subscription per read, at most 10,000 events, 200,000 steps of work and one second, and
+the 5,000 items nearest the start of the window shown kept. A calendar that reaches a bound shows what was
+read by then, and the log says so at info with the subscription's id. Nothing needs
+doing; the person can ask whoever publishes the calendar for a smaller one.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
@@ -311,6 +343,12 @@ address still works — a request is matched by the token's plain hash, which ne
 — so phones go on updating. A person who needs to see their address again presses
 **Create address**, which the screen shows in its place: it resets the address, the old one
 stops working, and they give their programs the new one.
+
+The busy-only address's events carry identifiers derived from `APP_SECRET` too (the
+purpose `calendar/feed-busy-uid`), so they say nothing of the record behind them. A
+rotation changes every one of them: a program subscribed to a busy-only address drops
+the blocks that come from the other apps and adds them anew at its next refresh — once,
+with nothing lost. Appointments keep their identifiers.
 
 ## What can go wrong
 
@@ -356,6 +394,9 @@ stops working, and they give their programs the new one.
   *"This address works on the company's network only"*; set up the public host, and the
   person resets the address to get one there. A 429 in the log means the proxy is not
   trusted and every phone shares one bucket.
+- **Adding a subscription or Refresh now is refused with 429.** Thirty in ten minutes
+  from one client address is the limit; behind a proxy that is not trusted
+  (`TRUSTED_PROXY_HOPS`, `TRUSTED_PROXY_CIDRS`), everyone shares the proxy's one bucket.
 - **A feed answers 503.** One of the modules whose items are in it could not be read;
   the log names it. The feed is never served with something missing.
 - **A person's calendar is over 1 MiB.** The feed drops the projected items farthest from
