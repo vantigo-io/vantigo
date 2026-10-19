@@ -203,6 +203,28 @@ type IdentitySession struct {
 	RevokedAt     *time.Time
 }
 
+type IdentitySsoSetting struct {
+	ID                      int16
+	Version                 int32
+	OidcEnabled             bool
+	OidcProvider            *string
+	OidcAuthority           *string
+	OidcClientID            *string
+	OidcClientSecretSealed  []byte
+	OidcClientSecretSetAt   *time.Time
+	OidcWorkloadTokenFile   *string
+	OidcAllowedDomains      []string
+	OidcDisplayName         *string
+	ScimEnabled             bool
+	ScimTokenSha256         []byte
+	ScimTokenSetAt          *time.Time
+	ScimPreviousTokenSha256 []byte
+	ScimPreviousExpiresAt   *time.Time
+	ImportedFromEnvironment bool
+	UpdatedAt               time.Time
+	UpdatedByUserID         *uuid.UUID
+}
+
 type IdentitySystemSetting struct {
 	ID                 int16
 	MaintenanceEnabled bool

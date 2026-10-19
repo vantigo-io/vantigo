@@ -88,8 +88,8 @@ Task 2 first; then 3 and 4 in sequence (4 writes what 3 reads); 5 and 6 in paral
   `POST /scim/token` generates (32 bytes, `base64.RawURLEncoding`), moves the current
   digest to the previous slot with `previousExpiresAt` (default now + 24 h, at most
   24 h, refused otherwise) when one exists, turns SCIM on, answers the token once;
-  `DELETE /scim/previous`; `DELETE /scim` clears the block. Every write: `If-Match`
-  (412 `version_mismatch`), one transaction holding the row, `version + 1`, audit
+  `DELETE /scim/previous`; `DELETE /scim` clears the block. The PUT: `If-Match`
+  (412 `version_mismatch`); every write: one transaction holding the row, `version + 1`, audit
   `sso-settings.changed` with before and after **minus** `clientSecret` and every
   digest (a test diffs the audit row for the words), `evict()` on the writing
   process's reader, `recordAuthorityMode` re-derived in the same transaction. `GET`
@@ -98,8 +98,8 @@ Task 2 first; then 3 and 4 in sequence (4 writes what 3 reads); 5 and 6 in paral
   `GetLastOperationalEvents`. The config loader: `oidc` and `scim` stay as they are
   for the import; `leftoverOIDCSettings` stays. Tests: every rule of the validation
   by table; the secret never in a `GET`; the token once; the rotation's overlap;
-  403 for a non-Owner, 401 for an Owner without MFA on the writes and 200 on the
-  `GET`; the audit's words.
+  403 for a non-Owner and for an Owner without MFA on every operation (`Owner` and
+  `OwnerManagement` are one check, `access.go:277`); the audit's words.
 - [ ] **5. The Single sign-on card, tests first.** `host/api/sso.ts` (the types from
   `api-schema.d.ts`, `fetchSsoSettings`, `updateOidcSettings`, `removeOidc`,
   `issueScimToken`, `endScimOverlap`, `removeScim`); `host/routes/workspace/-sso-settings.tsx`:
@@ -148,8 +148,11 @@ Task 2 first; then 3 and 4 in sequence (4 writes what 3 reads); 5 and 6 in paral
 
 ## Readings of the spec
 
-1. The `GET` is `policy:Owner` (no MFA, as the workspace's is) and every write
-   `policy:OwnerManagement`, since a credential is written.
+1. The `GET` is `policy:Owner` and every write `policy:Owner+OwnerManagement`, the
+   spelling every other `/owner/*` write uses; in code the two names are one check,
+   Owner plus MFA while `OWNERS_REQUIRE_MFA` holds, so the `GET` needs MFA too. Only
+   the PUT carries `If-Match`: the token issue and the deletes have no body to go stale.
+   The six operations answer 429 like every rate-limited identity operation.
 2. `GET /identity/providers` (the sign-in page's) reads the row, so the button appears
    within the TTL of a save; the SPA re-fetches it on the sign-in page's load as today.
 3. The user directory and the provisioning provider each keep their own cache rather
