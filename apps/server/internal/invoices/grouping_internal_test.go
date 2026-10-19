@@ -75,6 +75,16 @@ func september() workSelection {
 
 var groupingCodes = workVatCodes{hours: 1, expenses: 2, milestones: 3}
 
+// groupingZone is the business time zone a milestone's day is taken in: Oslo,
+// where Fase 1's readyAt, 22:30 UTC on 9 September, is 10 September.
+var groupingZone = func() *time.Location {
+	loc, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		panic(err)
+	}
+	return loc
+}()
+
 // lineSummary is one line as "description | unit | quantity × price | vat | sources".
 func lineSummary(l draftLine, rows []heldSource) string {
 	refs := make([]string, 0, len(rows))
@@ -88,7 +98,7 @@ func lineSummary(l draftLine, rows []heldSource) string {
 
 func groupedSummaries(t *testing.T, language, grouping string, sel workSelection) []string {
 	t.Helper()
-	lines, held, err := groupLines(language, grouping, groupingProjects(), groupingPeople(), sel, groupingCodes)
+	lines, held, err := groupLines(language, grouping, groupingProjects(), groupingPeople(), sel, groupingCodes, groupingZone)
 	if err != nil {
 		t.Fatalf("groupLines(%s, %s): %v", language, grouping, err)
 	}
@@ -235,7 +245,7 @@ func TestGroupLines_SplitByEffectiveRateAndTheFourDecimals(t *testing.T) {
 		{ID: 4, ProjectID: 41, UserID: ola, Date: groupingDay("2026-09-04"), HoursHundredths: 350, BillRate: "100.33",
 			BillMultiplierPercent: &multiplier, Currency: "NOK", Amount: "468.19496150"},
 	}}
-	lines, held, err := groupLines("nb", groupingProject, groupingProjects(), groupingPeople(), sel, groupingCodes)
+	lines, held, err := groupLines("nb", groupingProject, groupingProjects(), groupingPeople(), sel, groupingCodes, groupingZone)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +294,7 @@ func TestGroupLines_TheOrder(t *testing.T) {
 			{ID: 33, ProjectID: 42, UserID: kari, Date: groupingDay("2026-09-01"), HoursHundredths: 100, BillRate: "1000", Currency: "NOK", Amount: "1000"},
 		},
 	}
-	lines, held, err := groupLines("nb", groupingDate, groupingProjects(), groupingPeople(), sel, groupingCodes)
+	lines, held, err := groupLines("nb", groupingDate, groupingProjects(), groupingPeople(), sel, groupingCodes, groupingZone)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -47,7 +48,7 @@ var errNoSuchPayment = errors.New("invoices: no such payment on the invoice")
 
 // parsePayment runs D2's field rules over a registration body, every failure
 // collected: paidOn on or after the invoice's issue date and not after today
-// (the Oslo business day), the amount above 0 with at most two decimals and
+// (the business day), the amount above 0 with at most two decimals and
 // within the document bound, the reference and the note within their columns.
 // It answers the row less what the handler fills in — the invoice, the
 // currency, who and when.
@@ -124,7 +125,11 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 		return gen.PostInvoicesByIdPayments409ApplicationProblemPlusJSONResponse(conflict(codeInvoiceDraft, cannotRegisterTitle,
 			"A draft is not a sales document: issue it before registering a payment against it.")), nil
 	}
-	payment, errs, err := parsePayment(*req.Body, inv.IssueDate.Time, businessDay(s.deps.Clock()))
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	payment, errs, err := parsePayment(*req.Body, inv.IssueDate.Time, holidays.DayIn(s.deps.Clock(), loc))
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +194,7 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, q, inv, nil)
+	resp, err := s.invoiceResponse(ctx, q, inv, nil, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -209,10 +214,14 @@ func (s *server) PostInvoicesByIdPaymentsByPaymentIdRemove(ctx context.Context, 
 	if errs != nil {
 		return gen.PostInvoicesByIdPaymentsByPaymentIdRemove400ApplicationProblemPlusJSONResponse(invalid(invalidRemovalTitle, errs)), nil
 	}
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	var refusal *gen.InvoicesConflictProblem
 	var inv store.InvoicesInvoice
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		// The invoice first, the payment after the lock: two removals of one
 		// payment queue here, and the second reads the first's removal.
 		var err error
@@ -258,7 +267,7 @@ func (s *server) PostInvoicesByIdPaymentsByPaymentIdRemove(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), inv, nil)
+	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), inv, nil, loc)
 	if err != nil {
 		return nil, err
 	}

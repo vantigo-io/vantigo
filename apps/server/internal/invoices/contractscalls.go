@@ -23,7 +23,7 @@ import (
 
 // This file is the whole of this module's reach outside its own schema: the
 // customer, project and user directories (deps.Directory, deps.Projects,
-// deps.Users), the source modules' billable reads (deps.BillableHours,
+// deps.Users), the business calendar (deps.Calendar), the source modules' billable reads (deps.BillableHours,
 // BillableExpenses, BillableMilestones) and their invoiced-work holders
 // (deps.InvoicedWork), the object store (server.objects), the SMTP seam
 // (deps.SMTPSend), the Peppol network (server.peppolLookup), the access
@@ -117,6 +117,21 @@ func (s *server) userEntries(ctx context.Context, ids []uuid.UUID) ([]contracts.
 	}
 	noteContractCall(ctx, "Users.Users")
 	return s.deps.Users.Users(ctx, ids)
+}
+
+// businessZone is the workspace's business time zone (time zones design
+// D2), the calendar every day of this module is judged in: read once per
+// request or worker cycle, before any transaction opens — the read takes a
+// pool connection of its own — and kept for the rest of it, so every rule in
+// one request judges the same day. A stored name Go cannot load is answered
+// as UTC by the calendar itself; the setting's door refuses one.
+func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
+	noteContractCall(ctx, "Calendar.Zone")
+	loc, err := s.deps.Calendar.Zone(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the business time zone: %w", err)
+	}
+	return loc, nil
 }
 
 // markInvoiced and releaseInvoiced are a holder's two commands, run on the

@@ -16,6 +16,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -547,8 +548,14 @@ func (s *server) GetInvoicesByIdPreviewPdf(ctx context.Context, req gen.GetInvoi
 	}, nil
 }
 
-// renderPreview is a draft rendered as if issued today (D4's preview).
+// renderPreview is a draft rendered as if issued today (D4's preview), today
+// the business day. It runs on the pool, in no transaction, and reads the
+// business time zone itself, once.
 func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile) ([]byte, error) {
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	settings, err := q.GetSettings(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
@@ -557,7 +564,7 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read document %d's lines: %w", inv.ID, err)
 	}
-	today := businessDay(s.deps.Clock())
+	today := holidays.DayIn(s.deps.Clock(), loc)
 	codes, err := vatCodesOn(ctx, q, pgDate(today))
 	if err != nil {
 		return nil, err

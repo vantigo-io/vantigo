@@ -2,7 +2,7 @@
 -- this module's contracts.CustomerReceivables, read by the customers module
 -- for its overview. Both queries derive each issued document's state and
 -- open amount exactly as ListInvoices and InvoiceStatsNow do — the two
--- lateral joins and invoices.document_state on the Oslo day the caller
+-- lateral joins and invoices.document_state on the business day the caller
 -- passes as @today — so the figures a customer page shows can never
 -- disagree with the Invoices app's own list. Drafts are never read: a draft
 -- is not a sales document. Charges are never read either: the open amount is

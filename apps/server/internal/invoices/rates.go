@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -105,7 +106,11 @@ func differsFromRelease(r store.InvoicesCollectionRate) (bool, error) {
 // GetInvoicesCollectionRates List the collection rates
 // (GET /api/v1/invoices/collection-rates)
 func (s *server) GetInvoicesCollectionRates(ctx context.Context, _ gen.GetInvoicesCollectionRatesRequestObject) (gen.GetInvoicesCollectionRatesResponseObject, error) {
-	today := businessDay(s.deps.Clock())
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(s.deps.Clock(), loc)
 	rows, err := store.New(s.deps.Pool).ListCollectionRates(ctx, pgDate(today))
 	if err != nil {
 		return nil, fmt.Errorf("invoices: list the collection rates: %w", err)
@@ -192,12 +197,16 @@ func parseCollectionRate(body gen.InvoicesCollectionRateRequest, today time.Time
 // cannot both land.
 func (s *server) PostInvoicesCollectionRates(ctx context.Context, req gen.PostInvoicesCollectionRatesRequestObject) (gen.PostInvoicesCollectionRatesResponseObject, error) {
 	now := s.deps.Clock()
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	q := store.New(s.deps.Pool)
 	latest, err := q.LatestLetterDay(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the latest letter's date: %w", err)
 	}
-	params, errs := parseCollectionRate(*req.Body, businessDay(now), pgDateOf(latest))
+	params, errs := parseCollectionRate(*req.Body, holidays.DayIn(now, loc), pgDateOf(latest))
 	if errs != nil {
 		return gen.PostInvoicesCollectionRates400ApplicationProblemPlusJSONResponse(invalid(invalidCollectionRateTitle, errs)), nil
 	}
@@ -237,10 +246,14 @@ func (s *server) PostInvoicesCollectionRates(ctx context.Context, req gen.PostIn
 // interest letter.
 func (s *server) DeleteInvoicesCollectionRatesById(ctx context.Context, req gen.DeleteInvoicesCollectionRatesByIdRequestObject) (gen.DeleteInvoicesCollectionRatesByIdResponseObject, error) {
 	now := s.deps.Clock()
-	today := businessDay(now)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := holidays.DayIn(now, loc)
 	notFound := false
 	var refusal *gen.InvoicesConflictProblem
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		_, err := lockCollectionRate(ctx, txq, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			notFound = true

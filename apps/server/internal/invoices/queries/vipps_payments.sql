@@ -28,7 +28,7 @@ RETURNING *;
 
 -- name: VippsPaymentsOn :many
 -- VippsPaymentsOn is every registered Vipps payment paid on @day — the
--- Oslo day of Vipps' capture event, the payment's day in the ledger and in
+-- business day of Vipps' capture event, the payment's day in the ledger and in
 -- the Vipps settlement, however late the worker registered it — with its
 -- attempt, its invoice's number and buyer, oldest registration first.
 SELECT a.id, a.reference, a.flow, p.amount, p.paid_on, a.captured_at, a.refunded_amount,

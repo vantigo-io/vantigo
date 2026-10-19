@@ -116,7 +116,8 @@ konto med formatet, det forrige formatet og overgangsdagen, og den siste filen.
 
 - **400 på filen.** Den er ikke en OCR-giro- eller camt.054-fil, den er større enn 10 MiB
   eller har mer enn 5 000 innbetalinger, eller den bryter sine egne regler — en kontrollsum
-  som ikke stemmer, en bokføringsdag etter i dag, et beløp som ikke er i NOK. Meldingen
+  som ikke stemmer, en bokføringsdag etter i dag (dagen i virksomhetens tidssone), et
+  beløp som ikke er i NOK. Meldingen
   nevner posten eller elementet. Ingenting importeres: last ned filen på nytt, og ikke
   rediger den for hånd.
 - **`bank_account_unknown`**, **`bank_file_duplicate`**, **`bank_import_format_mismatch`**:
@@ -182,6 +183,13 @@ under en lås på 60 sekunder og sender aldri et brev to ganger med vilje.
   hatt et gebyr etter at regelordningen sist ble gjennomgått, forsøkes ikke: det venter
   en time om gangen, med `heldReason` som forklaring, uten noen gang å feile. Legg inn
   satsen, eller gjennomgå regelordningen, i purreinnstillingene, så går det.
+- **Dagen er arbeidsområdets.** Et brev vurderes på dagen i virksomhetens tidssone, som
+  settes under [Administrasjon av
+  arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet),
+  og som jobben leser fra identitetsmodulens systeminnstillinger én gang for hvert brev
+  den tar — en endret sone gjelder fra neste brev, uten omstart. Et brev som ble tatt før
+  midnatt der og ennå ikke er sendt etter, legges tilbake og vurderes på nytt den nye
+  dagen, så datoen og fristen aldri er gårsdagens.
 - **Minst én gang.** Stopper prosessen mellom e-postserveren tar imot et brev og Vantigo
   merker det sendt, sender neste forsøk det igjen, med samme Message-ID, så kundens
   e-postprogram kan se at det er det samme brevet. Henger prosessen i stedet lenger enn
@@ -277,7 +285,9 @@ reservert og ikke trukket. Den kjører når `INVOICES_VIPPS_ENABLED` er på, i A
 eller i worker-containeren ([Bakgrunnsjobber og
 skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering)), ser etter arbeid hvert
 sekund og behandler alle betalinger som er klare, i hver syklus. Reglene står i
-[referansen](/en/reference/invoices/#capture-and-the-reservation).
+[referansen](/en/reference/invoices/#capture-and-the-reservation). En trukket betaling
+registreres som betalt den dagen Vipps' trekk fant sted, regnet i virksomhetens
+tidssone, som jobben leser når den registrerer hver betaling.
 
 **Webhooks støttes ikke ennå.** Vantigo følger hver Vipps-betaling ved å lese den
 (polling); den registrerer ingen webhook hos Vipps, og ingenting fra Vipps trenger å nå

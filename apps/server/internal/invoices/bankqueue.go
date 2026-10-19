@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -724,10 +725,11 @@ func judgeApplicable(line store.InvoicesBankTransaction) *gen.InvoicesConflictPr
 // against what is left of the line. A refusal is answered before anything is
 // written, so the caller's rollback leaves nothing. Then each allocation
 // registers its payment and its charge payment as a match does, by caller at
-// now, with the deadline-met waiver; the line resolved, applied, note kept,
-// with its event.
+// now, with the deadline-met waiver judged on now's day in loc, the business
+// time zone read before the transaction; the line resolved, applied, note
+// kept, with its event.
 func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction, allocs []allocation, note string,
-	caller uuid.UUID, now time.Time,
+	caller uuid.UUID, now time.Time, loc *time.Location,
 ) (*gen.InvoicesConflictProblem, error) {
 	ids := make([]int64, 0, len(allocs))
 	for _, a := range allocs {
@@ -831,7 +833,7 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 				return nil, err
 			}
 		}
-		in, err := s.ruleInputLocked(ctx, txq, inv, businessDay(now), 0)
+		in, err := s.ruleInputLocked(ctx, txq, inv, holidays.DayIn(now, loc), loc, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -933,8 +935,12 @@ func (s *server) PostInvoicesBankTransactionsByIdApply(ctx context.Context, req 
 		return gen.PostInvoicesBankTransactionsByIdApply400ApplicationProblemPlusJSONResponse(invalid(invalidApplyTitle, errs)), nil
 	}
 	caller, now := callerID(ctx), s.deps.Clock()
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	refusal, err := s.queueAction(ctx, req.Id, judgeApplicable, func(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction) (*gen.InvoicesConflictProblem, error) {
-		return s.applyLocked(ctx, txq, line, allocs, note, caller, now)
+		return s.applyLocked(ctx, txq, line, allocs, note, caller, now, loc)
 	})
 	if resp, done, err := lineRefusal(refusal, err,
 		func() gen.PostInvoicesBankTransactionsByIdApplyResponseObject {

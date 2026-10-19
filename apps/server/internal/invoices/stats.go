@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -14,12 +15,13 @@ import (
 // This file is the dashboard's summary (D7), in the envelope every module's
 // /stats/summary shares: what is outstanding and overdue now, and what was
 // issued, credited and paid in the period. The period arrives as instants,
-// half-open [periodFrom, periodTo); this module's facts are Oslo calendar
-// dates (issue_date, paid_on), so the period becomes days here, in Go:
+// half-open [periodFrom, periodTo); this module's facts are calendar dates
+// of the business time zone (issue_date, paid_on), so the period becomes
+// days of that zone here, in Go:
 // fromDay is the day periodFrom falls on, toDayExclusive the day after the
 // one the last instant inside the period falls on — so a period ending now,
 // or at the end of today, includes today. The previous period is the same
-// number of Oslo days ending at fromDay, counted in days and never from
+// number of days ending at fromDay, counted in days and never from
 // NormalizePeriod's previousFrom: that is an absolute duration, a day off
 // across a daylight-saving change. The queries compare dates only.
 
@@ -31,13 +33,17 @@ func (s *server) GetInvoicesStatsSummary(ctx context.Context, req gen.GetInvoice
 	if !ok {
 		return gen.GetInvoicesStatsSummary400ApplicationProblemPlusJSONResponse(apicommon.InvalidPeriod()), nil
 	}
-	fromDay := businessDay(periodFrom)
-	toDayExclusive := businessDay(periodTo.Add(-time.Nanosecond)).AddDate(0, 0, 1)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	fromDay := holidays.DayIn(periodFrom, loc)
+	toDayExclusive := holidays.DayIn(periodTo.Add(-time.Nanosecond), loc).AddDate(0, 0, 1)
 	days := int(toDayExclusive.Sub(fromDay) / (24 * time.Hour)) // both UTC midnights, so exact
 	previousFromDay := fromDay.AddDate(0, 0, -days)
 
 	q := store.New(s.deps.Pool)
-	current, err := q.InvoiceStatsNow(ctx, pgDate(businessDay(now)))
+	current, err := q.InvoiceStatsNow(ctx, pgDate(holidays.DayIn(now, loc)))
 	if err != nil {
 		return nil, fmt.Errorf("invoices: stats now: %w", err)
 	}

@@ -7,12 +7,14 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -493,7 +495,11 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 		in.timesheet = *req.Body.Timesheet
 	}
 
-	codes, err := vatCodesOn(ctx, q, pgDate(businessDay(s.deps.Clock())))
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	codes, err := vatCodesOn(ctx, q, pgDate(holidays.DayIn(s.deps.Clock(), loc)))
 	if err != nil {
 		return nil, err
 	}
@@ -535,7 +541,7 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, q, created, profile)
+	resp, err := s.invoiceResponse(ctx, q, created, profile, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -585,7 +591,11 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if refusal := customerGate(profile); refusal != nil {
 		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
-	codes, err := vatCodesOn(ctx, q, pgDate(businessDay(s.deps.Clock())))
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	codes, err := vatCodesOn(ctx, q, pgDate(holidays.DayIn(s.deps.Clock(), loc)))
 	if err != nil {
 		return nil, err
 	}
@@ -616,7 +626,7 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	refresh := req.Body.RefreshSources != nil && *req.Body.RefreshSources
 	var hours []contracts.BillableHour
 	if refresh {
-		now, kinds, read, err := s.billableNow(ctx, held)
+		now, kinds, read, err := s.billableNow(ctx, held, loc)
 		if err != nil {
 			return nil, err
 		}
@@ -659,7 +669,7 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if saved.refusal != nil {
 		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*saved.refusal), nil
 	}
-	resp, err := s.invoiceResponse(ctx, q, saved.doc, profile)
+	resp, err := s.invoiceResponse(ctx, q, saved.doc, profile, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -861,18 +871,22 @@ func (s *server) GetInvoicesById(ctx context.Context, req gen.GetInvoicesByIdReq
 	if inv.Status == statusIssued {
 		canIssue = ptr(s.has(ctx, "invoices:issue"))
 	}
-	resp, err := s.renderInvoice(ctx, q, inv, profile, nil, canIssue)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.renderInvoice(ctx, q, inv, profile, nil, canIssue, loc)
 	if err != nil {
 		return nil, err
 	}
 	if inv.Status == statusDraft && inv.Kind == kindInvoice && s.has(ctx, "invoices:create") {
-		s.withDraftFreshness(ctx, q, inv.ID, &resp)
+		s.withDraftFreshness(ctx, q, inv.ID, loc, &resp)
 	}
 	// The one read besides the send that answers what a send would open with
 	// (payments and delivery design D4) — by e-mail and as EHF (EHF and KID
 	// design D10): no write adds a directory call.
 	if canIssue != nil {
-		if err := s.withSendDefaults(ctx, q, inv, nil, *canIssue, true, &resp); err != nil {
+		if err := s.withSendDefaults(ctx, q, inv, nil, *canIssue, true, holidays.DayIn(s.deps.Clock(), loc), &resp); err != nil {
 			return nil, err
 		}
 	}
@@ -885,11 +899,11 @@ func (s *server) GetInvoicesById(ctx context.Context, req gen.GetInvoicesByIdReq
 // (invoices:create), the one who can act on it. A read that fails is logged
 // and leaves the warnings out: a read of the draft is never refused for a
 // neighbour, and the issue judges the work again under its lock.
-func (s *server) withDraftFreshness(ctx context.Context, q *store.Queries, invoiceID int64, resp *gen.InvoicesInvoiceResponse) {
+func (s *server) withDraftFreshness(ctx context.Context, q *store.Queries, invoiceID int64, loc *time.Location, resp *gen.InvoicesInvoiceResponse) {
 	held, err := sourcesOf(ctx, q, invoiceID)
 	if err == nil && len(held) > 0 {
 		var verdicts map[sourceRef]string
-		if verdicts, err = s.freshness(ctx, held); err == nil {
+		if verdicts, err = s.freshness(ctx, held, loc); err == nil {
 			withFreshness(held, verdicts, resp)
 		}
 	}

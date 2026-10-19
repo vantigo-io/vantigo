@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -20,8 +21,8 @@ import (
 // This file is the day's Vipps payments and their reconciliation
 // (invoices payments and reminders design D17 rule 4, M15): one day's
 // Vipps payments — on site and by pay link, since Vantigo cannot know where
-// the customer stood — by the day they are paid on: the Oslo day of Vipps'
-// capture event, the payment's day in the ledger and in the Vipps
+// the customer stood — by the day they are paid on: the day of Vipps'
+// capture event in the business time zone, the payment's day in the ledger and in the Vipps
 // settlement, however late the payments worker registered it. As JSON and as a file in the module's CSV form
 // (csvfile.go), and an immutable record that the day was reconciled against
 // the Vipps settlement, bokføringsforskriften § 5-4-5's daily count, which
@@ -128,9 +129,14 @@ func (d csvDownload) VisitGetInvoicesVippsPaymentsCsvResponse(w http.ResponseWri
 // (GET /api/v1/invoices/vipps-payments.csv)
 //
 // The same rows as the JSON list, in the module's CSV form: the day paid
-// on, when it was registered in Oslo, the buyer guarded as typed text.
+// on, when it was registered in the business time zone, the buyer guarded as
+// typed text.
 func (s *server) GetInvoicesVippsPaymentsCsv(ctx context.Context, req gen.GetInvoicesVippsPaymentsCsvRequestObject) (gen.GetInvoicesVippsPaymentsCsvResponseObject, error) {
 	day := utcDay(req.Params.Date.Time)
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := vippsDayRows(ctx, store.New(s.deps.Pool), day)
 	if err != nil {
 		return nil, err
@@ -155,7 +161,7 @@ func (s *server) GetInvoicesVippsPaymentsCsv(ctx context.Context, req gen.GetInv
 		}
 		writeCSVRow(&b, []csvValue{
 			{text: utcDay(r.PaidOn.Time).Format(time.DateOnly)},
-			{text: derefTime(r.CapturedAt).In(oslo).Format(time.DateTime)},
+			{text: derefTime(r.CapturedAt).In(loc).Format(time.DateTime)},
 			{text: csvInt(r.InvoiceNumber)},
 			{text: csvText(r.BuyerName), guard: true},
 			{text: r.Flow},
@@ -172,11 +178,11 @@ func (s *server) GetInvoicesVippsPaymentsCsv(ctx context.Context, req gen.GetInv
 //
 // One insert sums the day's Vipps payments as they stand — refunds not
 // deducted — and records them with the caller, the time and the note,
-// once; no lock. The day must be over in Oslo.
+// once; no lock. The day must be over in the business time zone.
 func (s *server) PostInvoicesVippsPaymentsReconciliations(ctx context.Context, req gen.PostInvoicesVippsPaymentsReconciliationsRequestObject) (gen.PostInvoicesVippsPaymentsReconciliationsResponseObject, error) {
 	var errs map[string][]string
 	if req.Body.Day.IsZero() {
-		errs = withFieldError(errs, "day", "day is the Oslo day reconciled, YYYY-MM-DD")
+		errs = withFieldError(errs, "day", "day is the business day reconciled, YYYY-MM-DD")
 	}
 	note := ""
 	if req.Body.Note != nil {
@@ -189,8 +195,12 @@ func (s *server) PostInvoicesVippsPaymentsReconciliations(ctx context.Context, r
 		return gen.PostInvoicesVippsPaymentsReconciliations400ApplicationProblemPlusJSONResponse(invalid(invalidReconciliationTitle, errs)), nil
 	}
 	now := s.deps.Clock() // the request's one clock read
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
 	day := utcDay(req.Body.Day.Time)
-	if !day.Before(businessDay(now)) {
+	if !day.Before(holidays.DayIn(now, loc)) {
 		return gen.PostInvoicesVippsPaymentsReconciliations409ApplicationProblemPlusJSONResponse(conflict(codeDayNotOver, cannotReconcileTitle,
 			fmt.Sprintf("%s is not over yet: a day is reconciled from the day after.", day.Format(time.DateOnly)))), nil
 	}

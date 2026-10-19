@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -164,7 +165,11 @@ func (s *server) GetInvoicesSettingsReminders(ctx context.Context, _ gen.GetInvo
 // review's (D6).
 func (s *server) PutInvoicesSettingsReminders(ctx context.Context, req gen.PutInvoicesSettingsRemindersRequestObject) (gen.PutInvoicesSettingsRemindersResponseObject, error) {
 	now := s.deps.Clock()
-	params, errs := parseReminderSettings(*req.Body, businessDay(now))
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	params, errs := parseReminderSettings(*req.Body, holidays.DayIn(now, loc))
 	if errs != nil {
 		return gen.PutInvoicesSettingsReminders400ApplicationProblemPlusJSONResponse(invalid(invalidReminderSettingsTitle, errs)), nil
 	}
