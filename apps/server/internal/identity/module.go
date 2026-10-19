@@ -73,6 +73,12 @@ var limits = map[string]ratelimit.Policy{
 	"postIdentityOwnerUsersByIdUnmanage":      policyUserManagement,
 	"getIdentityOwnerProvisioningRoles":       policyUserManagement,
 	"putIdentityOwnerProvisioningRoles":       policyUserManagement,
+	"getIdentityOwnerSso":                     policyUserManagement,
+	"putIdentityOwnerSsoOidc":                 policyUserManagement,
+	"deleteIdentityOwnerSsoOidc":              policyUserManagement,
+	"postIdentityOwnerSsoScimToken":           policyUserManagement,
+	"deleteIdentityOwnerSsoScimPrevious":      policyUserManagement,
+	"deleteIdentityOwnerSsoScim":              policyUserManagement,
 
 	"getIdentityOwnerInvitations":            policyInvitations,
 	"postIdentityOwnerInvitations":           policyInvitations,

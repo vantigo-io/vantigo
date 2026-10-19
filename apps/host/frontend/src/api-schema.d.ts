@@ -814,6 +814,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/owner/sso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the single sign-on settings
+         * @description The installation's single sign-on settings: the workforce OpenID Connect provider and the SCIM credential, with the client secret and every token withheld, the redirect URI and the SCIM endpoint to register, and when each was last used. Sent whether or not either is on, so the screen can show what to register before anything is set.
+         */
+        get: operations["getIdentityOwnerSso"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/owner/sso/oidc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the workforce OIDC provider
+         * @description Replaces the workforce OpenID Connect provider whole and turns it on, under If-Match on the settings' version. The rules are the ones the OIDC_* environment variables were held to, each refusal a 400 with field errors under the request's field names. An absent clientSecret keeps the sealed one; a present one replaces it. A change of authority while people are linked under the current one is refused 409 oidc_links_exist unless confirmIssuerChange is true. Audited sso-settings.changed, without the secret; every process reads the change within 20 seconds.
+         */
+        put: operations["putIdentityOwnerSsoOidc"];
+        post?: never;
+        /**
+         * Turn the workforce OIDC provider off
+         * @description Turns the workforce OpenID Connect provider off and clears it, the sealed client secret included; every process stops offering it within 20 seconds. While people are linked to the provider it is refused 409 oidc_links_exist unless confirm is true. Audited sso-settings.changed, without the secret.
+         */
+        delete: operations["deleteIdentityOwnerSsoOidc"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/owner/sso/scim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Turn SCIM off
+         * @description Turns SCIM off and forgets its tokens, so the endpoint refuses every request within 20 seconds. The users, mappings and groups it provisioned stay as they are. Audited sso-settings.changed.
+         */
+        delete: operations["deleteIdentityOwnerSsoScim"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/owner/sso/scim/previous": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * End a SCIM token rotation's overlap
+         * @description Ends a rotation's overlap early: the token the current one replaced stops being accepted now rather than at previousExpiresAt. Audited sso-settings.changed.
+         */
+        delete: operations["deleteIdentityOwnerSsoScimPrevious"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/owner/sso/scim/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a SCIM token
+         * @description Generates a SCIM bearer token, turns SCIM on if it was off, and answers the token this once; only its SHA-256 is kept. When a token exists it is still accepted until previousExpiresAt — at most 24 hours ahead, 24 hours when absent — so the directory can be moved to the new one without a gap, and a previous token still overlapping stops being accepted at once. Audited sso-settings.changed, without either token.
+         */
+        post: operations["postIdentityOwnerSsoScimToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/owner/system-status": {
         parameters: {
             query?: never;
@@ -1921,6 +2025,114 @@ export interface components {
             revoked: boolean;
             /** Format: uuid */
             userId: string;
+        };
+        /** @description The workforce OpenID Connect provider people sign in through (Entra design D1 and D2), one per installation. While enabled is false the sign-in page offers no provider button and every field that may be absent is. The client secret is sealed at rest and never answered; clientSecretSetAt says when it was set. */
+        SsoOidcSettings: {
+            /** @description The email domains a Google sign-in is admitted from, as bare DNS names in ordinal order. Always empty for Entra, whose tenant is the boundary. */
+            allowedDomains: string[];
+            /** @description The provider's issuer — https://login.microsoftonline.com/<tenant-guid>/v2.0 for Entra, https://accounts.google.com for Google; absent while OIDC is off. */
+            authority?: string;
+            /** @description The redirect URI to register with the provider — this installation's origin and base path followed by /api/v1/identity/oidc/callback. Always sent, so it can be registered before the provider is set. */
+            callbackUrl: string;
+            /** @description The application's client id at the provider; absent while OIDC is off. */
+            clientId?: string;
+            /**
+             * Format: date-time
+             * @description When the client secret was last set; absent while there is none — OIDC is off, or the provider is Entra authenticating with workloadTokenFile.
+             */
+            clientSecretSetAt?: string;
+            /** @description The label of the sign-in page's provider button; absent while OIDC is off. */
+            displayName?: string;
+            /** @description Whether people may sign in through the provider. */
+            enabled: boolean;
+            /**
+             * @description entra or google; absent while OIDC is off.
+             * @enum {string}
+             */
+            provider?: "entra" | "google";
+            /** @description Entra only — the absolute path of the workload identity token file the server presents as a client assertion in place of a secret, read afresh at every sign-in; absent while a secret is used. */
+            workloadTokenFile?: string;
+        };
+        /** @description The workforce OpenID Connect provider, whole; a PUT replaces every field and turns OIDC on. The rules are the ones the OIDC_* environment variables were held to, now checked at the save, and each refusal is a field error under the request's own field name. */
+        SsoOidcSettingsRequest: {
+            /** @description Google only, where at least one is required — the email domains a sign-in is admitted from, as bare DNS names such as example.com. Each is trimmed, lower-cased and stripped of trailing dots, and duplicates are dropped; a URL, an address, a port or a single label is refused. Absent or empty for Entra. */
+            allowedDomains?: string[];
+            /** @description Exactly https://login.microsoftonline.com/<tenant-guid>/v2.0 for entra, exactly https://accounts.google.com for google. A change while people are linked to the provider under the current authority needs confirmIssuerChange. */
+            authority: string;
+            /** @description The application's client id — a GUID for entra, one ending .apps.googleusercontent.com for google. */
+            clientId: string;
+            /** @description The client secret, sealed at rest and never answered. Absent keeps the secret already set; present replaces it. A secret and workloadTokenFile are mutually exclusive, and one of the two is required. */
+            clientSecret?: string;
+            /** @description True to change the authority while people are linked to the provider under the current one. The links are keyed on the issuer, so each linked person is provisioned anew at their next sign-in; without it such a change is refused 409 oidc_links_exist. */
+            confirmIssuerChange?: boolean;
+            /** @description The label of the sign-in page's provider button, at most 100 characters; Workforce SSO when absent or empty. */
+            displayName?: string;
+            /**
+             * @description entra or google.
+             * @enum {string}
+             */
+            provider: "entra" | "google";
+            /** @description Entra only — the absolute path of a workload identity token file, presented as a client assertion in place of a secret. The process that saves it must be able to read it, and every replica must see the same file at the same path. */
+            workloadTokenFile?: string;
+        };
+        /** @description The SCIM credential a directory provisions users and groups with (Entra design D1 and D2). The token is generated by the server and answered once, when it is issued; only its SHA-256 is kept, so a lost token is replaced, never shown again. */
+        SsoScimSettings: {
+            /** @description Whether the SCIM endpoint accepts requests. */
+            enabled: boolean;
+            /** @description The SCIM base URL to give the directory — this installation's origin and base path followed by /api/v1/identity/scim/v2. Always sent. */
+            endpointUrl: string;
+            /**
+             * Format: date-time
+             * @description While a rotation overlaps, when the token it replaced stops being accepted; absent otherwise.
+             */
+            previousExpiresAt?: string;
+            /**
+             * Format: date-time
+             * @description When the current token was issued, or imported from SCIM_TOKEN; absent while there is none.
+             */
+            tokenSetAt?: string;
+        };
+        /** @description A newly issued SCIM token, answered this once and never again, since only its SHA-256 is kept. The directory presents it as its bearer token at endpointUrl. */
+        SsoScimToken: {
+            /** @description The SCIM base URL to give the directory with the token. */
+            endpointUrl: string;
+            /**
+             * Format: date-time
+             * @description When the token this one replaced stops being accepted; absent when there was none.
+             */
+            previousExpiresAt?: string;
+            /** @description The bearer token — 32 random bytes, base64url without padding. */
+            token: string;
+        };
+        /** @description How long the token being replaced is still accepted, so a directory can be moved to the new one without a gap. Ignored when there is no token yet. */
+        SsoScimTokenRequest: {
+            /**
+             * Format: date-time
+             * @description When the current token stops being accepted once the new one is issued — in the future and at most 24 hours ahead; 24 hours from now when absent.
+             */
+            previousExpiresAt?: string;
+        };
+        /** @description The installation's single sign-on settings (Entra design D1 and D2) — the workforce OpenID Connect provider and the SCIM credential — held in one row that an Owner edits and every process reads within 20 seconds of a save. The client secret and the SCIM tokens are never answered. */
+        SsoSettings: {
+            /** @description True when the settings were imported from the OIDC_* and SCIM_* environment variables, at the first API start that found them never written. The variables are ignored from then on and should be removed. */
+            importedFromEnvironment: boolean;
+            /**
+             * Format: date-time
+             * @description The last sign-in through the OIDC provider; absent while there has been none.
+             */
+            lastOidcSignInAt?: string;
+            /**
+             * Format: date-time
+             * @description The last SCIM request that presented a valid token; absent while there has been none.
+             */
+            lastScimRequestAt?: string;
+            oidc: components["schemas"]["SsoOidcSettings"];
+            scim: components["schemas"]["SsoScimSettings"];
+            /**
+             * Format: int32
+             * @description The settings' version, 0 while they were never written; every write moves it on. Send it back as If-Match on PUT /owner/sso/oidc.
+             */
+            version: number;
         };
         SystemMaintenanceRequest: {
             enabled?: boolean;
@@ -5799,6 +6011,347 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityOwnerSso: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityOwnerSsoOidc: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The version the settings were read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch. */
+                "If-Match": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SsoOidcSettingsRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoSettings"];
+                };
+            };
+            /** @description Bad Request — field errors on the body, or an If-Match that is not a version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — oidc_links_exist, the authority changes while people are linked under the current one and confirmIssuerChange is not true. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed — version_mismatch, the settings have been written since the If-Match version. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityOwnerSsoOidc: {
+        parameters: {
+            query?: {
+                /** @description True to turn the provider off while people are linked to it. */
+                confirm?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — oidc_links_exist, people are linked to the provider and confirm is not true. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityOwnerSsoScim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityOwnerSsoScimPrevious: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityOwnerSsoScimToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SsoScimTokenRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoScimToken"];
+                };
+            };
+            /** @description Bad Request — a previousExpiresAt not in the future or more than 24 hours ahead. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00002_identity_baseline.sql
       - ../db/migrations/00050_identity_accounts.sql
       - ../db/migrations/00052_identity_workspace_time_zone.sql
+      - ../db/migrations/00058_identity_sso_settings.sql
     queries: queries
     gen:
       go:

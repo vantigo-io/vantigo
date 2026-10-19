@@ -1809,6 +1809,162 @@ components:
                 - revoked
             type: object
             x-vantigo-source: Vantigo.Identity
+        SsoOidcSettings:
+            description: The workforce OpenID Connect provider people sign in through (Entra design D1 and D2), one per installation. While enabled is false the sign-in page offers no provider button and every field that may be absent is. The client secret is sealed at rest and never answered; clientSecretSetAt says when it was set.
+            properties:
+                allowedDomains:
+                    description: The email domains a Google sign-in is admitted from, as bare DNS names in ordinal order. Always empty for Entra, whose tenant is the boundary.
+                    items:
+                        type: string
+                    type: array
+                authority:
+                    description: The provider's issuer — https://login.microsoftonline.com/<tenant-guid>/v2.0 for Entra, https://accounts.google.com for Google; absent while OIDC is off.
+                    type: string
+                callbackUrl:
+                    description: The redirect URI to register with the provider — this installation's origin and base path followed by /api/v1/identity/oidc/callback. Always sent, so it can be registered before the provider is set.
+                    type: string
+                clientId:
+                    description: The application's client id at the provider; absent while OIDC is off.
+                    type: string
+                clientSecretSetAt:
+                    description: When the client secret was last set; absent while there is none — OIDC is off, or the provider is Entra authenticating with workloadTokenFile.
+                    format: date-time
+                    type: string
+                displayName:
+                    description: The label of the sign-in page's provider button; absent while OIDC is off.
+                    type: string
+                enabled:
+                    description: Whether people may sign in through the provider.
+                    type: boolean
+                provider:
+                    description: entra or google; absent while OIDC is off.
+                    enum:
+                        - entra
+                        - google
+                    type: string
+                workloadTokenFile:
+                    description: Entra only — the absolute path of the workload identity token file the server presents as a client assertion in place of a secret, read afresh at every sign-in; absent while a secret is used.
+                    type: string
+            required:
+                - enabled
+                - allowedDomains
+                - callbackUrl
+            type: object
+        SsoOidcSettingsRequest:
+            description: The workforce OpenID Connect provider, whole; a PUT replaces every field and turns OIDC on. The rules are the ones the OIDC_* environment variables were held to, now checked at the save, and each refusal is a field error under the request's own field name.
+            properties:
+                allowedDomains:
+                    description: Google only, where at least one is required — the email domains a sign-in is admitted from, as bare DNS names such as example.com. Each is trimmed, lower-cased and stripped of trailing dots, and duplicates are dropped; a URL, an address, a port or a single label is refused. Absent or empty for Entra.
+                    items:
+                        type: string
+                    type: array
+                authority:
+                    description: Exactly https://login.microsoftonline.com/<tenant-guid>/v2.0 for entra, exactly https://accounts.google.com for google. A change while people are linked to the provider under the current authority needs confirmIssuerChange.
+                    maxLength: 200
+                    type: string
+                clientId:
+                    description: The application's client id — a GUID for entra, one ending .apps.googleusercontent.com for google.
+                    maxLength: 200
+                    type: string
+                clientSecret:
+                    description: The client secret, sealed at rest and never answered. Absent keeps the secret already set; present replaces it. A secret and workloadTokenFile are mutually exclusive, and one of the two is required.
+                    type: string
+                confirmIssuerChange:
+                    description: True to change the authority while people are linked to the provider under the current one. The links are keyed on the issuer, so each linked person is provisioned anew at their next sign-in; without it such a change is refused 409 oidc_links_exist.
+                    type: boolean
+                displayName:
+                    description: The label of the sign-in page's provider button, at most 100 characters; Workforce SSO when absent or empty.
+                    maxLength: 100
+                    type: string
+                provider:
+                    description: entra or google.
+                    enum:
+                        - entra
+                        - google
+                    type: string
+                workloadTokenFile:
+                    description: Entra only — the absolute path of a workload identity token file, presented as a client assertion in place of a secret. The process that saves it must be able to read it, and every replica must see the same file at the same path.
+                    maxLength: 500
+                    type: string
+            required:
+                - provider
+                - authority
+                - clientId
+            type: object
+        SsoScimSettings:
+            description: The SCIM credential a directory provisions users and groups with (Entra design D1 and D2). The token is generated by the server and answered once, when it is issued; only its SHA-256 is kept, so a lost token is replaced, never shown again.
+            properties:
+                enabled:
+                    description: Whether the SCIM endpoint accepts requests.
+                    type: boolean
+                endpointUrl:
+                    description: The SCIM base URL to give the directory — this installation's origin and base path followed by /api/v1/identity/scim/v2. Always sent.
+                    type: string
+                previousExpiresAt:
+                    description: While a rotation overlaps, when the token it replaced stops being accepted; absent otherwise.
+                    format: date-time
+                    type: string
+                tokenSetAt:
+                    description: When the current token was issued, or imported from SCIM_TOKEN; absent while there is none.
+                    format: date-time
+                    type: string
+            required:
+                - enabled
+                - endpointUrl
+            type: object
+        SsoScimToken:
+            description: A newly issued SCIM token, answered this once and never again, since only its SHA-256 is kept. The directory presents it as its bearer token at endpointUrl.
+            properties:
+                endpointUrl:
+                    description: The SCIM base URL to give the directory with the token.
+                    type: string
+                previousExpiresAt:
+                    description: When the token this one replaced stops being accepted; absent when there was none.
+                    format: date-time
+                    type: string
+                token:
+                    description: The bearer token — 32 random bytes, base64url without padding.
+                    type: string
+            required:
+                - token
+                - endpointUrl
+            type: object
+        SsoScimTokenRequest:
+            description: How long the token being replaced is still accepted, so a directory can be moved to the new one without a gap. Ignored when there is no token yet.
+            properties:
+                previousExpiresAt:
+                    description: When the current token stops being accepted once the new one is issued — in the future and at most 24 hours ahead; 24 hours from now when absent.
+                    format: date-time
+                    type: string
+            type: object
+        SsoSettings:
+            description: The installation's single sign-on settings (Entra design D1 and D2) — the workforce OpenID Connect provider and the SCIM credential — held in one row that an Owner edits and every process reads within 20 seconds of a save. The client secret and the SCIM tokens are never answered.
+            properties:
+                importedFromEnvironment:
+                    description: True when the settings were imported from the OIDC_* and SCIM_* environment variables, at the first API start that found them never written. The variables are ignored from then on and should be removed.
+                    type: boolean
+                lastOidcSignInAt:
+                    description: The last sign-in through the OIDC provider; absent while there has been none.
+                    format: date-time
+                    type: string
+                lastScimRequestAt:
+                    description: The last SCIM request that presented a valid token; absent while there has been none.
+                    format: date-time
+                    type: string
+                oidc:
+                    $ref: '#/components/schemas/SsoOidcSettings'
+                scim:
+                    $ref: '#/components/schemas/SsoScimSettings'
+                version:
+                    description: The settings' version, 0 while they were never written; every write moves it on. Send it back as If-Match on PUT /owner/sso/oidc.
+                    format: int32
+                    type: integer
+            required:
+                - version
+                - oidc
+                - scim
+                - importedFromEnvironment
+            type: object
         SystemMaintenanceRequest:
             properties:
                 enabled:
@@ -4803,6 +4959,272 @@ paths:
                                 type: string
             tags:
                 - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/sso:
+        get:
+            description: 'The installation''s single sign-on settings: the workforce OpenID Connect provider and the SCIM credential, with the client secret and every token withheld, the redirect URI and the SCIM endpoint to register, and when each was last used. Sent whether or not either is on, so the screen can show what to register before anything is set.'
+            operationId: getIdentityOwnerSso
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SsoSettings'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Get the single sign-on settings
+            tags:
+                - Single sign-on
+            x-vantigo-access: policy:Owner
+    /api/v1/identity/owner/sso/oidc:
+        delete:
+            description: Turns the workforce OpenID Connect provider off and clears it, the sealed client secret included; every process stops offering it within 20 seconds. While people are linked to the provider it is refused 409 oidc_links_exist unless confirm is true. Audited sso-settings.changed, without the secret.
+            operationId: deleteIdentityOwnerSsoOidc
+            parameters:
+                - description: True to turn the provider off while people are linked to it.
+                  in: query
+                  name: confirm
+                  schema:
+                    type: boolean
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict — oidc_links_exist, people are linked to the provider and confirm is not true.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Turn the workforce OIDC provider off
+            tags:
+                - Single sign-on
+            x-vantigo-access: policy:Owner+OwnerManagement
+        put:
+            description: Replaces the workforce OpenID Connect provider whole and turns it on, under If-Match on the settings' version. The rules are the ones the OIDC_* environment variables were held to, each refusal a 400 with field errors under the request's field names. An absent clientSecret keeps the sealed one; a present one replaces it. A change of authority while people are linked under the current one is refused 409 oidc_links_exist unless confirmIssuerChange is true. Audited sso-settings.changed, without the secret; every process reads the change within 20 seconds.
+            operationId: putIdentityOwnerSsoOidc
+            parameters:
+                - description: The version the settings were read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/SsoOidcSettingsRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SsoSettings'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request — field errors on the body, or an If-Match that is not a version.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict — oidc_links_exist, the authority changes while people are linked under the current one and confirmIssuerChange is not true.
+                "412":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Precondition Failed — version_mismatch, the settings have been written since the If-Match version.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Set the workforce OIDC provider
+            tags:
+                - Single sign-on
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/sso/scim:
+        delete:
+            description: Turns SCIM off and forgets its tokens, so the endpoint refuses every request within 20 seconds. The users, mappings and groups it provisioned stay as they are. Audited sso-settings.changed.
+            operationId: deleteIdentityOwnerSsoScim
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Turn SCIM off
+            tags:
+                - Single sign-on
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/sso/scim/previous:
+        delete:
+            description: 'Ends a rotation''s overlap early: the token the current one replaced stops being accepted now rather than at previousExpiresAt. Audited sso-settings.changed.'
+            operationId: deleteIdentityOwnerSsoScimPrevious
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: End a SCIM token rotation's overlap
+            tags:
+                - Single sign-on
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/sso/scim/token:
+        post:
+            description: Generates a SCIM bearer token, turns SCIM on if it was off, and answers the token this once; only its SHA-256 is kept. When a token exists it is still accepted until previousExpiresAt — at most 24 hours ahead, 24 hours when absent — so the directory can be moved to the new one without a gap, and a previous token still overlapping stops being accepted at once. Audited sso-settings.changed, without either token.
+            operationId: postIdentityOwnerSsoScimToken
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/SsoScimTokenRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SsoScimToken'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request — a previousExpiresAt not in the future or more than 24 hours ahead.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Issue a SCIM token
+            tags:
+                - Single sign-on
             x-vantigo-access: policy:Owner+OwnerManagement
     /api/v1/identity/owner/system-status:
         get:
