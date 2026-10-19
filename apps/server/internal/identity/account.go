@@ -3,6 +3,7 @@ package identity
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -12,6 +13,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -68,8 +70,8 @@ var avatarBodyLimits = map[string]int64{
 
 // GetIdentityAccount describes the caller's own account
 // (EA/AccountSettingsEndpoints.cs:76-91): id, display name, email (null for
-// an OIDC synthetic address), preferred language, and the avatar URL when
-// one is stored.
+// an OIDC synthetic address), preferred language, the avatar URL when
+// one is stored, and the user's own time zone (null: the workspace's).
 func (s *server) GetIdentityAccount(ctx context.Context, _ gen.GetIdentityAccountRequestObject) (gen.GetIdentityAccountResponseObject, error) {
 	p, err := callerFrom(ctx)
 	if err != nil {
@@ -88,7 +90,7 @@ func (s *server) GetIdentityAccount(ctx context.Context, _ gen.GetIdentityAccoun
 	if err != nil {
 		return nil, fmt.Errorf("identity: account: %w", err)
 	}
-	return gen.GetIdentityAccount200JSONResponse(s.accountResponse(u.ID, u.DisplayName, u.Email, u.PreferredLanguage, hasAvatar)), nil
+	return gen.GetIdentityAccount200JSONResponse(s.accountResponse(u.ID, u.DisplayName, u.Email, u.PreferredLanguage, u.TimeZone, hasAvatar)), nil
 }
 
 // PutIdentityAccount, PutIdentityAccountProfile and PatchIdentityAccountProfile
@@ -155,10 +157,28 @@ type profileUpdateResult struct {
 // (EA/AccountSettingsEndpoints.cs:93-131, :905-917): displayName is
 // required and at most 200 characters (trimmed); preferredLanguage, when
 // non-blank and not "automatic", must be "en" or "nb" (case-insensitively);
-// anything else is 400 invalid_request. It deliberately does not rotate a
-// stamp or revoke sessions (spec *Sessions*, decision above).
+// timeZone, when named and neither null nor blank, must be a zone the server
+// and its database read alike (profileTimeZone); anything else is 400
+// invalid_request, every field's refusal in one answer. It deliberately does
+// not rotate a stamp or revoke sessions (spec *Sessions*, decision above).
 func (s *server) updateProfile(ctx context.Context, body *gen.AccountProfileRequest) (profileUpdateResult, error) {
-	if fields := validateProfile(body); fields != nil {
+	now := s.deps.Clock()
+	fields := validateProfile(body)
+	var rawZone json.RawMessage
+	if body != nil {
+		rawZone = body.TimeZone
+	}
+	setZone, zone, zoneMsg, err := s.profileTimeZone(ctx, rawZone, now)
+	if err != nil {
+		return profileUpdateResult{}, err
+	}
+	if zoneMsg != "" {
+		if fields == nil {
+			fields = map[string][]string{}
+		}
+		fields["timeZone"] = []string{zoneMsg}
+	}
+	if fields != nil {
 		return profileUpdateResult{status: http.StatusBadRequest, code: "invalid_request", message: profileInvalidMessage, fields: fields}, nil
 	}
 	p, err := callerFrom(ctx)
@@ -169,7 +189,9 @@ func (s *server) updateProfile(ctx context.Context, body *gen.AccountProfileRequ
 		ID:                p.UserID,
 		DisplayName:       strings.TrimSpace(deref(body.DisplayName)),
 		PreferredLanguage: normalizePreferredLanguage(body.PreferredLanguage),
-		Now:               s.deps.Clock(),
+		SetTimeZone:       setZone,
+		TimeZone:          zone,
+		Now:               now,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return profileUpdateResult{status: http.StatusUnauthorized, code: "unauthenticated", message: "The session is not authenticated."}, nil
@@ -183,8 +205,39 @@ func (s *server) updateProfile(ctx context.Context, body *gen.AccountProfileRequ
 	}
 	return profileUpdateResult{
 		status:  http.StatusOK,
-		account: s.accountResponse(row.ID, row.DisplayName, row.Email, row.PreferredLanguage, hasAvatar),
+		account: s.accountResponse(row.ID, row.DisplayName, row.Email, row.PreferredLanguage, row.TimeZone, hasAvatar),
 	}, nil
+}
+
+// profileTimeZone reads a profile request's timeZone (time zones design D5).
+// set is false when the request left it out, which keeps the stored choice —
+// on PUT as on PATCH, so a client that predates the field never clears it.
+// Null or a blank name sets it to nil: the user follows the workspace's
+// business time zone again. Any other value is the zone, trimmed, judged by
+// the same two checks as the workspace's own (zoneUnknownToGo,
+// zoneDisagreement), because a personal zone is handed to SQL too wherever a
+// query buckets by the viewer's day. msg is why it is refused, "" when it is
+// not.
+func (s *server) profileTimeZone(ctx context.Context, raw json.RawMessage, now time.Time) (set bool, zone *string, msg string, err error) {
+	if len(raw) == 0 {
+		return false, nil, "", nil
+	}
+	var value *string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false, nil, "A time zone is an IANA name, such as 'Europe/Oslo', or null to follow the workspace", nil
+	}
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return true, nil, "", nil
+	}
+	name := strings.TrimSpace(*value)
+	if msg := zoneUnknownToGo(name); msg != "" {
+		return false, nil, msg, nil
+	}
+	msg, err = zoneDisagreement(ctx, s.q, name, now)
+	if err != nil || msg != "" {
+		return false, nil, msg, err
+	}
+	return true, &name, "", nil
 }
 
 // profileInvalidMessage is .NET's UpdateProfile validation-failure message
@@ -232,8 +285,10 @@ func normalizePreferredLanguage(v *string) *string {
 }
 
 // accountResponse is a user as GET/PUT /account and PUT|PATCH
-// /account/profile show one (EA/AccountSettingsEndpoints.cs:699-701).
-func (s *server) accountResponse(id uuid.UUID, displayName, email string, preferredLanguage *string, hasAvatar bool) gen.AccountResponse {
+// /account/profile show one (EA/AccountSettingsEndpoints.cs:699-701), with
+// the stored time zone choice: nil when the user follows the workspace's.
+// The zone in effect is the session's (effectiveTimeZone).
+func (s *server) accountResponse(id uuid.UUID, displayName, email string, preferredLanguage, timeZone *string, hasAvatar bool) gen.AccountResponse {
 	var avatarURL *string
 	if hasAvatar {
 		u := s.deps.Config.BasePath + accountAvatarPath
@@ -245,6 +300,7 @@ func (s *server) accountResponse(id uuid.UUID, displayName, email string, prefer
 		Email:             publicEmail(email),
 		PreferredLanguage: preferredLanguage,
 		AvatarUrl:         avatarURL,
+		TimeZone:          timeZone,
 	}
 }
 
