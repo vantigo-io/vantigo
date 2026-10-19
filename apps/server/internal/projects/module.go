@@ -59,6 +59,9 @@ func Module() module.Module {
 		CustomerPersonalData: newCustomerPersonalData,
 		BillableMilestones:   newBillableMilestones,
 		InvoicedWork:         newInvoicedWorkHolder,
+		// CalendarSource is the caller's tasks on the calendar (calendar
+		// design D1, calendar_source.go).
+		CalendarSource: newCalendarSource,
 	}
 }
 

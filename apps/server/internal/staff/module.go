@@ -81,6 +81,9 @@ func Module() module.Module {
 		Permissions: permissions,
 		Mount:       mount,
 		Workers:     workers,
+		// CalendarSource is the caller's own absences on the calendar
+		// (calendar design D1, calendar_source.go).
+		CalendarSource: newCalendarSource,
 	}
 }
 

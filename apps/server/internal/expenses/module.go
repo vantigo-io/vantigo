@@ -114,6 +114,9 @@ func Module() module.Module {
 		Expenses:         newProjectExpenses,
 		BillableExpenses: newBillableExpenses,
 		InvoicedWork:     newInvoicedWorkHolder,
+		// CalendarSource is the caller's own travel claims on the calendar
+		// (calendar design D1, calendar_source.go).
+		CalendarSource: newCalendarSource,
 	}
 }
 

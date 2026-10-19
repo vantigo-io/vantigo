@@ -76,6 +76,9 @@ func Module() module.Module {
 		Mount:       mount,
 		Directory:   newDirectory,
 		Workers:     workers,
+		// CalendarSource is the follow-ups and interactions on the calendar
+		// (calendar design D1, calendar_source.go).
+		CalendarSource: newCalendarSource,
 	}
 }
 
