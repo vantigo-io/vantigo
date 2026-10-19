@@ -1,11 +1,14 @@
 -- name: DirectoryUser :one
-SELECT id, display_name, is_disabled FROM identity.users WHERE id = $1;
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+FROM identity.users WHERE id = $1;
 
 -- name: DirectoryUsers :many
-SELECT id, display_name, is_disabled FROM identity.users WHERE id = ANY($1::uuid[]);
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+FROM identity.users WHERE id = ANY($1::uuid[]);
 
 -- name: DirectorySearchUsers :many
-SELECT id, display_name, is_disabled FROM identity.users
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+FROM identity.users
 WHERE NOT is_disabled AND display_name ILIKE '%' || sqlc.arg(pattern)::text || '%' ESCAPE '\'
 ORDER BY display_name, id
 LIMIT sqlc.arg(max_rows);
@@ -53,3 +56,21 @@ WHERE NOT u.is_disabled
         )
   ))
 ORDER BY u.display_name, u.id;
+
+-- name: DirectoryUserForNotice :one
+-- DirectoryUserForNotice is contracts.UserDirectory.Notify's one read: the
+-- address and language of the user, when active as DirectoryPermissionHolders
+-- means it — not disabled, not pending, and, while SCIM is configured, not
+-- deactivated by the directory unless an Owner. No row for a user who is not.
+SELECT u.email, coalesce(u.preferred_language, '')::text AS preferred_language
+FROM identity.users u
+LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
+WHERE u.id = @id
+  AND NOT u.is_disabled
+  AND u.pending_since IS NULL
+  AND (NOT @scim_enabled::boolean OR m.upstream_active IS NOT FALSE OR EXISTS (
+      SELECT 1
+      FROM identity.user_roles ur
+      JOIN identity.roles r ON r.id = ur.role_id
+      WHERE ur.user_id = u.id AND r.name = 'Owner'
+  ));

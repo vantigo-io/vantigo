@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
@@ -24,14 +26,16 @@ const (
 
 // userDirectory is this module's contracts.UserDirectory, the one sanctioned
 // way another module reads identity's user data. It is read-only and holds
-// nothing but the queries and whether SCIM is configured: Compose builds it
-// once, before any module mounts, and hands it to every module including
-// this one.
+// nothing but the queries, whether SCIM is configured and the mail sender
+// Notify delivers through: Compose builds it once, before any module mounts,
+// and hands it to every module including this one.
 type userDirectory struct {
 	q *store.Queries
 	// scimEnabled is whether SCIM is configured, which makes a directory's
-	// deactivation of a non-Owner count against PermissionHolders.
+	// deactivation of a non-Owner count against PermissionHolders and Notify.
 	scimEnabled bool
+	// mail is the installation's mail driver, nil when none was composed.
+	mail mail.Sender
 }
 
 var _ contracts.UserDirectory = (*userDirectory)(nil)
@@ -39,7 +43,7 @@ var _ contracts.UserDirectory = (*userDirectory)(nil)
 // newUserDirectory is Module's Users: the constructor Compose calls with the
 // dependencies it was given.
 func newUserDirectory(d module.Deps) contracts.UserDirectory {
-	return &userDirectory{q: store.New(d.Pool), scimEnabled: d.Config != nil && d.Config.SCIM != nil}
+	return &userDirectory{q: store.New(d.Pool), scimEnabled: d.Config != nil && d.Config.SCIM != nil, mail: d.Mail}
 }
 
 // User looks up a user by id.
@@ -51,7 +55,7 @@ func (d *userDirectory) User(ctx context.Context, id uuid.UUID) (*contracts.User
 	if err != nil {
 		return nil, fmt.Errorf("identity: user directory user: %w", err)
 	}
-	entry := userEntry(row.ID, row.DisplayName, row.IsDisabled)
+	entry := userEntry(row.ID, row.DisplayName, row.IsDisabled, row.PreferredLanguage)
 	return &entry, nil
 }
 
@@ -69,7 +73,7 @@ func (d *userDirectory) Users(ctx context.Context, ids []uuid.UUID) ([]contracts
 	}
 	entries := make([]contracts.UserEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, userEntry(row.ID, row.DisplayName, row.IsDisabled))
+		entries = append(entries, userEntry(row.ID, row.DisplayName, row.IsDisabled, row.PreferredLanguage))
 	}
 	return entries, nil
 }
@@ -89,7 +93,7 @@ func (d *userDirectory) SearchUsers(ctx context.Context, query string, limit int
 	}
 	entries := make([]contracts.UserEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, userEntry(row.ID, row.DisplayName, row.IsDisabled))
+		entries = append(entries, userEntry(row.ID, row.DisplayName, row.IsDisabled, row.PreferredLanguage))
 	}
 	return entries, nil
 }
@@ -117,10 +121,59 @@ func (d *userDirectory) PermissionHolders(ctx context.Context, key string) ([]co
 	return holders, nil
 }
 
-// userEntry builds a contracts.UserEntry from the three columns User, Users
+// Notify mails the user one of n's texts (noticeText says which), at
+// identity's address for them, as a plain text mail from SMTP_FROM — the way
+// deliverInvitation sends. A user who is not active (DirectoryUserForNotice),
+// is unknown, or whose only address is a placeholder no mail reaches
+// (publicEmail), and a notice with no text, are not mailed and not an error;
+// nor is an installation composed without a mail sender. The log driver
+// counts as a sender: it records that a mail went. A failed send is an error
+// naming the user's id only, never the driver's own error, which can name the
+// recipient (go-mail lists the affected recipients).
+func (d *userDirectory) Notify(ctx context.Context, userID uuid.UUID, n contracts.Notice) error {
+	if d.mail == nil || len(n.Texts) == 0 {
+		return nil
+	}
+	row, err := d.q.DirectoryUserForNotice(ctx, store.DirectoryUserForNoticeParams{ID: userID, ScimEnabled: d.scimEnabled})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("identity: user directory notice for user %s: %w", userID, err)
+	}
+	to := publicEmail(row.Email)
+	if to == nil {
+		return nil
+	}
+	text := noticeText(n, row.PreferredLanguage)
+	if err := d.mail.Send(ctx, mail.Message{To: *to, Subject: text.Subject, TextBody: text.Body}); err != nil {
+		return fmt.Errorf("identity: notice to user %s could not be sent", userID)
+	}
+	return nil
+}
+
+// noticeText is the text of n Notify sends a user preferring language: that
+// language's, then English, then the first by language key, so the choice
+// among the rest is stable. n has at least one text.
+func noticeText(n contracts.Notice, language string) contracts.NoticeText {
+	if text, ok := n.Texts[language]; ok && language != "" {
+		return text
+	}
+	if text, ok := n.Texts["en"]; ok {
+		return text
+	}
+	keys := make([]string, 0, len(n.Texts))
+	for key := range n.Texts {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return n.Texts[keys[0]]
+}
+
+// userEntry builds a contracts.UserEntry from the four columns User, Users
 // and SearchUsers ever expose: they never see email, roles, or MFA state.
-func userEntry(id uuid.UUID, displayName string, isDisabled bool) contracts.UserEntry {
-	return contracts.UserEntry{ID: id, DisplayName: displayName, Active: !isDisabled}
+func userEntry(id uuid.UUID, displayName string, isDisabled bool, preferredLanguage string) contracts.UserEntry {
+	return contracts.UserEntry{ID: id, DisplayName: displayName, Active: !isDisabled, PreferredLanguage: preferredLanguage}
 }
 
 // clampSearchLimit keeps limit within [minSearchLimit, maxSearchLimit],

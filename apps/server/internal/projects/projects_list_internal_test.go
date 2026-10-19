@@ -46,6 +46,10 @@ func (d *countingDirectory) ContactsByEmail(context.Context, string) ([]contract
 	return nil, nil
 }
 
+func (d *countingDirectory) ContactsForCustomer(context.Context, int32) ([]contracts.ContactEntry, error) {
+	return nil, nil
+}
+
 func (*countingDirectory) CustomersByLegalID(context.Context, string, []string) (map[string][]contracts.CustomerEntry, error) {
 	return map[string][]contracts.CustomerEntry{}, nil
 }

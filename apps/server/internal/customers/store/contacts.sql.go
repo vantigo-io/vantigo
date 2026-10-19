@@ -135,6 +135,54 @@ func (q *Queries) DeleteContact(ctx context.Context, id int32) error {
 	return err
 }
 
+const directoryContactsForCustomer = `-- name: DirectoryContactsForCustomer :many
+SELECT c.id, c.first_name, c.last_name, c.email
+FROM customers.customers_contacts cc
+JOIN customers.contacts c ON c.id = cc.contact_id
+WHERE cc.customer_id = $1
+  AND c.email IS NOT NULL
+  AND btrim(c.email) <> ''
+ORDER BY c.last_name, c.first_name, c.id
+`
+
+type DirectoryContactsForCustomerRow struct {
+	ID        int32
+	FirstName string
+	LastName  string
+	Email     *string
+}
+
+// DirectoryContactsForCustomer is contracts.CustomerDirectory.
+// ContactsForCustomer's rows: the contacts associated with the customer that
+// have an address of their own, by last name, then first name. The address is
+// the contact's own, the one DirectoryContact answers — never the
+// association's customer-specific one — so what a caller picks here is what
+// it later resolves by the contact's id.
+func (q *Queries) DirectoryContactsForCustomer(ctx context.Context, customerID int32) ([]DirectoryContactsForCustomerRow, error) {
+	rows, err := q.db.Query(ctx, directoryContactsForCustomer, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryContactsForCustomerRow
+	for rows.Next() {
+		var i DirectoryContactsForCustomerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FirstName,
+			&i.LastName,
+			&i.Email,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAssociationWithContact = `-- name: GetAssociationWithContact :one
 SELECT cc.title, cc.phone AS association_phone, cc.email AS association_email,
        c.id, c.first_name, c.last_name, c.middle_name, c.prefix, c.suffix,

@@ -27,6 +27,25 @@ type Attachment struct {
 	Inline      bool
 }
 
+// CalendarPart is an iCalendar object an Outbound carries the iMIP way
+// (calendar invitations design D3): as the third alternative after the text
+// and the HTML, "text/calendar; method=<Method>" (go-mail completes it with
+// charset=UTF-8), and attached again as an application/ics file — invite.ics
+// for a REQUEST, cancel.ics for a CANCEL — which is the layout the mail
+// clients key on. Method is "REQUEST" or "CANCEL", the only two the calendar
+// sends, and must be the METHOD the Body itself declares; Body is the whole
+// VCALENDAR, CRLF line endings and all, carried as given.
+type CalendarPart struct {
+	Method string
+	Body   string
+}
+
+// calendarFileNames is the attachment's name per method CalendarPart admits.
+var calendarFileNames = map[string]string{
+	"REQUEST": "invite.ics",
+	"CANCEL":  "cancel.ics",
+}
+
 // Outbound is one full outbound message, as opposed to Message's three-field
 // application mail: several recipient classes, both body types, a caller-chosen
 // Message-ID, threading headers and attachments.
@@ -56,6 +75,9 @@ type Outbound struct {
 	InReplyTo   string
 	References  []string
 	Attachments []Attachment
+	// Calendar is the invitation or cancellation the message carries, nil
+	// for none (see CalendarPart).
+	Calendar *CalendarPart
 }
 
 // SendOutbound delivers out through the SMTP server cfg names, building the
@@ -160,6 +182,17 @@ func (o Outbound) message(from string) (*gomail.Msg, error) {
 		msg.SetBodyString(gomail.TypeTextHTML, o.HTMLBody)
 	default:
 		msg.SetBodyString(gomail.TypeTextPlain, o.TextBody)
+	}
+
+	if c := o.Calendar; c != nil {
+		name, ok := calendarFileNames[c.Method]
+		if !ok {
+			return nil, fmt.Errorf("mail: calendar method %q is neither REQUEST nor CANCEL", c.Method)
+		}
+		msg.AddAlternativeString(gomail.ContentType("text/calendar; method="+c.Method), c.Body)
+		if err := msg.AttachReader(name, strings.NewReader(c.Body), gomail.WithFileContentType("application/ics")); err != nil {
+			return nil, fmt.Errorf("mail: attaching %q: %w", name, err)
+		}
 	}
 
 	for _, a := range o.Attachments {

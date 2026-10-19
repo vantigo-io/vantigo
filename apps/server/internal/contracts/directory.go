@@ -200,6 +200,14 @@ type CustomerDirectory interface {
 	// together with the customers it is linked to. It returns an empty
 	// slice, not an error, when no contact matches.
 	ContactsByEmail(ctx context.Context, email string) ([]ContactMatch, error)
+	// ContactsForCustomer lists the contacts associated with the customer
+	// that have an address, ordered by last name, then first name: the
+	// people a caller may invite on the customer's behalf (calendar
+	// invitations design D2). Email is the contact's own address, never nil
+	// or blank here — the one Contact answers, so what a caller picks is what
+	// it later resolves. An unknown customer, or one with no such contact, is
+	// an empty, non-nil result, not an error.
+	ContactsForCustomer(ctx context.Context, customerID int32) ([]ContactEntry, error)
 	// BillingProfile is what an invoice needs to know about a customer, and
 	// the default bill rate Time's rate chain prices hours with, already
 	// resolved (see the rules above). It returns (nil, nil) if id does not

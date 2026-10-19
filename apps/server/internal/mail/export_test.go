@@ -1,6 +1,10 @@
 package mail
 
-import "crypto/x509"
+import (
+	"crypto/x509"
+
+	gomail "github.com/wneessen/go-mail"
+)
 
 // AllowLoopbackForTests lets the SMTP driver's own tests connect to an
 // in-process loopback listener despite the DNS-rebinding guard, and trust
@@ -12,4 +16,10 @@ func AllowLoopbackForTests(rootCAs *x509.CertPool) (restore func()) {
 	previousLoopback, previousCAs := allowLoopback, testRootCAs
 	allowLoopback, testRootCAs = true, rootCAs
 	return func() { allowLoopback, testRootCAs = previousLoopback, previousCAs }
+}
+
+// RenderOutboundForTests is Outbound.message, for a test of a rendering rule
+// that refuses before any connection is made.
+func RenderOutboundForTests(from string, out Outbound) (*gomail.Msg, error) {
+	return out.message(from)
 }

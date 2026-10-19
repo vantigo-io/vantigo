@@ -218,6 +218,10 @@ func (fakeCustomers) ContactsByEmail(context.Context, string) ([]contracts.Conta
 	return nil, nil
 }
 
+func (fakeCustomers) ContactsForCustomer(context.Context, int32) ([]contracts.ContactEntry, error) {
+	return nil, nil
+}
+
 func (fakeCustomers) CustomersByLegalID(context.Context, string, []string) (map[string][]contracts.CustomerEntry, error) {
 	return map[string][]contracts.CustomerEntry{}, nil
 }

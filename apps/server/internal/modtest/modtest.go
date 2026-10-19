@@ -115,6 +115,9 @@ type Harness struct {
 	clients atomic.Uint32
 	users   atomic.Uint32
 	roles   atomic.Uint32
+
+	// notices is every Notify a composed module made (Notices).
+	notices *noticeRecorder
 }
 
 // setup is what Options adjust: the environment the harness loads its
@@ -543,7 +546,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		t.Fatalf("modtest: %v", err)
 	}
 
-	h := &Harness{pool: pool, recorder: s.recorder, clock: Start, log: &syncBuffer{}}
+	h := &Harness{pool: pool, recorder: s.recorder, clock: Start, log: &syncBuffer{}, notices: &noticeRecorder{}}
 	logger := slog.New(slog.NewJSONHandler(h.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	// The limiter runs on the harness clock too, so a throttle window turns
 	// over when a test advances the clock and never mid-test on the wall clock.
@@ -591,6 +594,14 @@ func New(t *testing.T, opts ...Option) *Harness {
 	if s.wrapUsers != nil && identityModule.Users != nil {
 		users := identityModule.Users
 		identityModule.Users = func(d module.Deps) contracts.UserDirectory { return s.wrapUsers(users(d)) }
+	}
+	// Every Notify is recorded on its way through, outermost, so Notices
+	// sees what a module asked for even when WithUsers' wrapping refuses it.
+	if identityModule.Users != nil {
+		users := identityModule.Users
+		identityModule.Users = func(d module.Deps) contracts.UserDirectory {
+			return recordingUsers{UserDirectory: users(d), notices: h.notices}
+		}
 	}
 	// The business calendar is preset on the harness's own Deps, so a test
 	// that builds a worker from Deps() directly — the way the retention and
@@ -640,6 +651,13 @@ func New(t *testing.T, opts ...Option) *Harness {
 // so the rest of the answer survived, and was supposed to say so in the log.
 // A test that only wants "nothing was said about X" reads it the same way.
 func (h *Harness) Logs() string { return string(h.log.Bytes()) }
+
+// Notices is every contracts.UserDirectory.Notify call the composed modules
+// have made so far, in call order, whether or not identity then mailed
+// anyone: how a test asserts whom a module told and what it said, without the
+// address, which identity alone holds. Identity still delivers each through
+// Deps.Mail, as in production.
+func (h *Harness) Notices() []Notice { return h.notices.all() }
 
 // Now is the harness clock, the installation's Deps.Clock.
 func (h *Harness) Now() time.Time {

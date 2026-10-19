@@ -41,6 +41,8 @@ func (silentUsers) PermissionHolders(context.Context, string) ([]contracts.Holde
 	return nil, nil
 }
 
+func (silentUsers) Notify(context.Context, uuid.UUID, contracts.Notice) error { return nil }
+
 func silentMail(context.Context, config.MailConfig, mail.Outbound) error { return nil }
 
 // silentAccounts is contracts.AccountProvisioning answering nothing, and

@@ -94,7 +94,8 @@ func (q *Queries) DirectoryPermissionHolders(ctx context.Context, arg DirectoryP
 }
 
 const directorySearchUsers = `-- name: DirectorySearchUsers :many
-SELECT id, display_name, is_disabled FROM identity.users
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+FROM identity.users
 WHERE NOT is_disabled AND display_name ILIKE '%' || $1::text || '%' ESCAPE '\'
 ORDER BY display_name, id
 LIMIT $2
@@ -106,9 +107,10 @@ type DirectorySearchUsersParams struct {
 }
 
 type DirectorySearchUsersRow struct {
-	ID          uuid.UUID
-	DisplayName string
-	IsDisabled  bool
+	ID                uuid.UUID
+	DisplayName       string
+	IsDisabled        bool
+	PreferredLanguage string
 }
 
 func (q *Queries) DirectorySearchUsers(ctx context.Context, arg DirectorySearchUsersParams) ([]DirectorySearchUsersRow, error) {
@@ -120,7 +122,12 @@ func (q *Queries) DirectorySearchUsers(ctx context.Context, arg DirectorySearchU
 	var items []DirectorySearchUsersRow
 	for rows.Next() {
 		var i DirectorySearchUsersRow
-		if err := rows.Scan(&i.ID, &i.DisplayName, &i.IsDisabled); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.IsDisabled,
+			&i.PreferredLanguage,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -132,30 +139,75 @@ func (q *Queries) DirectorySearchUsers(ctx context.Context, arg DirectorySearchU
 }
 
 const directoryUser = `-- name: DirectoryUser :one
-SELECT id, display_name, is_disabled FROM identity.users WHERE id = $1
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+FROM identity.users WHERE id = $1
 `
 
 type DirectoryUserRow struct {
-	ID          uuid.UUID
-	DisplayName string
-	IsDisabled  bool
+	ID                uuid.UUID
+	DisplayName       string
+	IsDisabled        bool
+	PreferredLanguage string
 }
 
 func (q *Queries) DirectoryUser(ctx context.Context, id uuid.UUID) (DirectoryUserRow, error) {
 	row := q.db.QueryRow(ctx, directoryUser, id)
 	var i DirectoryUserRow
-	err := row.Scan(&i.ID, &i.DisplayName, &i.IsDisabled)
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.IsDisabled,
+		&i.PreferredLanguage,
+	)
+	return i, err
+}
+
+const directoryUserForNotice = `-- name: DirectoryUserForNotice :one
+SELECT u.email, coalesce(u.preferred_language, '')::text AS preferred_language
+FROM identity.users u
+LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
+WHERE u.id = $1
+  AND NOT u.is_disabled
+  AND u.pending_since IS NULL
+  AND (NOT $2::boolean OR m.upstream_active IS NOT FALSE OR EXISTS (
+      SELECT 1
+      FROM identity.user_roles ur
+      JOIN identity.roles r ON r.id = ur.role_id
+      WHERE ur.user_id = u.id AND r.name = 'Owner'
+  ))
+`
+
+type DirectoryUserForNoticeParams struct {
+	ID          uuid.UUID
+	ScimEnabled bool
+}
+
+type DirectoryUserForNoticeRow struct {
+	Email             string
+	PreferredLanguage string
+}
+
+// DirectoryUserForNotice is contracts.UserDirectory.Notify's one read: the
+// address and language of the user, when active as DirectoryPermissionHolders
+// means it — not disabled, not pending, and, while SCIM is configured, not
+// deactivated by the directory unless an Owner. No row for a user who is not.
+func (q *Queries) DirectoryUserForNotice(ctx context.Context, arg DirectoryUserForNoticeParams) (DirectoryUserForNoticeRow, error) {
+	row := q.db.QueryRow(ctx, directoryUserForNotice, arg.ID, arg.ScimEnabled)
+	var i DirectoryUserForNoticeRow
+	err := row.Scan(&i.Email, &i.PreferredLanguage)
 	return i, err
 }
 
 const directoryUsers = `-- name: DirectoryUsers :many
-SELECT id, display_name, is_disabled FROM identity.users WHERE id = ANY($1::uuid[])
+SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language
+FROM identity.users WHERE id = ANY($1::uuid[])
 `
 
 type DirectoryUsersRow struct {
-	ID          uuid.UUID
-	DisplayName string
-	IsDisabled  bool
+	ID                uuid.UUID
+	DisplayName       string
+	IsDisabled        bool
+	PreferredLanguage string
 }
 
 func (q *Queries) DirectoryUsers(ctx context.Context, dollar_1 []uuid.UUID) ([]DirectoryUsersRow, error) {
@@ -167,7 +219,12 @@ func (q *Queries) DirectoryUsers(ctx context.Context, dollar_1 []uuid.UUID) ([]D
 	var items []DirectoryUsersRow
 	for rows.Next() {
 		var i DirectoryUsersRow
-		if err := rows.Scan(&i.ID, &i.DisplayName, &i.IsDisabled); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.IsDisabled,
+			&i.PreferredLanguage,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

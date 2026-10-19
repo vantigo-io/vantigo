@@ -63,6 +63,10 @@ func (fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.Conta
 	return nil, nil
 }
 
+func (fakeDirectory) ContactsForCustomer(context.Context, int32) ([]contracts.ContactEntry, error) {
+	return nil, nil
+}
+
 func (fakeDirectory) CustomersByLegalID(context.Context, string, []string) (map[string][]contracts.CustomerEntry, error) {
 	return map[string][]contracts.CustomerEntry{}, nil
 }

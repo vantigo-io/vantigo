@@ -161,6 +161,25 @@ func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
+// ContactsForCustomer lists the customer's contacts that have an address of
+// their own, by last name then first name (DirectoryContactsForCustomer). The
+// address is the contact's own, the one Contact answers, never the
+// association's customer-specific one: a caller resolves what it picked here
+// by the contact's id later (the calendar reads Contact at send time), and
+// an address only the association carries would vanish between the two. An
+// unknown customer is simply one with no contacts.
+func (d *directory) ContactsForCustomer(ctx context.Context, customerID int32) ([]contracts.ContactEntry, error) {
+	rows, err := d.q.DirectoryContactsForCustomer(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("customers: directory contacts for customer: %w", err)
+	}
+	contacts := make([]contracts.ContactEntry, 0, len(rows))
+	for _, row := range rows {
+		contacts = append(contacts, contracts.ContactEntry{ID: row.ID, FirstName: row.FirstName, LastName: row.LastName, Email: row.Email})
+	}
+	return contacts, nil
+}
+
 // BillingProfile is what an invoice needs to know about a customer, already
 // resolved (contracts.CustomerDirectory's own doc comment): two queries —
 // the customer row with billing, identity and contact columns
