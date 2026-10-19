@@ -3,6 +3,7 @@ import type { CatalogResources } from "@vantigo/frontend-shell";
 const en = {
   "navigation.dashboard": "Dashboard",
   "navigation.home": "Home",
+  "navigation.calendar": "Calendar",
   "navigation.customers": "Customers",
   "navigation.contacts": "Contacts",
   "navigation.followUps": "Follow-ups",
@@ -67,6 +68,7 @@ const en = {
 const nb: { [Key in keyof typeof en]: string } = {
   "navigation.dashboard": "Kontrollpanel",
   "navigation.home": "Hjem",
+  "navigation.calendar": "Kalender",
   "navigation.customers": "Kunder",
   "navigation.contacts": "Kontakter",
   "navigation.followUps": "Oppfølginger",

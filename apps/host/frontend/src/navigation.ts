@@ -4,6 +4,7 @@ import type { ComponentType } from "react";
 // injected runtime config (see lib/enabled-modules.ts); which destinations
 // belong to which module is declared by the app registry (apps.ts).
 export const moduleKeys = [
+  "calendar",
   "communications",
   "customers",
   "energy",

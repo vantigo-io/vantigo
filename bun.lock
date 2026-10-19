@@ -10,6 +10,46 @@
         "openapi-typescript": "7.13.0",
       },
     },
+    "apps/calendar/frontend": {
+      "name": "@vantigo/calendar-ui",
+      "version": "0.0.0",
+      "dependencies": {
+        "@fullcalendar/react": "catalog:",
+        "@mantine/core": "catalog:",
+        "@mantine/dates": "catalog:",
+        "@mantine/form": "catalog:",
+        "@mantine/hooks": "catalog:",
+        "@mantine/modals": "catalog:",
+        "@mantine/notifications": "catalog:",
+        "@tabler/icons-react": "catalog:",
+        "@tanstack/react-query": "catalog:",
+        "@tanstack/react-router": "catalog:",
+        "@vantigo/frontend-api-client": "workspace:*",
+        "@vantigo/frontend-shell": "workspace:*",
+        "dayjs": "catalog:",
+        "react": "catalog:",
+        "react-dom": "catalog:",
+        "temporal-polyfill": "catalog:",
+      },
+      "devDependencies": {
+        "@eslint/js": "catalog:",
+        "@testing-library/jest-dom": "catalog:",
+        "@testing-library/react": "catalog:",
+        "@testing-library/user-event": "catalog:",
+        "@types/node": "catalog:",
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "eslint": "catalog:",
+        "eslint-plugin-react-hooks": "catalog:",
+        "eslint-plugin-react-refresh": "catalog:",
+        "globals": "catalog:",
+        "jsdom": "catalog:",
+        "typescript": "catalog:",
+        "typescript-eslint": "catalog:",
+        "vite": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "apps/communications/frontend": {
       "name": "@vantigo/communications-ui",
       "version": "0.0.0",
@@ -214,6 +254,7 @@
         "@tiptap/pm": "catalog:",
         "@tiptap/react": "catalog:",
         "@tiptap/starter-kit": "catalog:",
+        "@vantigo/calendar-ui": "workspace:*",
         "@vantigo/communications-ui": "workspace:*",
         "@vantigo/customers-ui": "workspace:*",
         "@vantigo/energy-ui": "workspace:*",
@@ -543,6 +584,7 @@
   },
   "catalog": {
     "@eslint/js": "^10.0.1",
+    "@fullcalendar/react": "7.1.3",
     "@mantine/charts": "^9.4.2",
     "@mantine/code-highlight": "^9.4.2",
     "@mantine/core": "^9.4.2",
@@ -584,6 +626,7 @@
     "react-dom": "^19.2.8",
     "react-i18next": "^16.0.1",
     "recharts": "^3.10.0",
+    "temporal-polyfill": "^1.0.6",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^8.1.5",
@@ -845,6 +888,12 @@
     "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.9", "", { "dependencies": { "@floating-ui/dom": "^1.8.0" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-JDjEFGCpImxDCA7JJKviA0M9+RtmJdj0m/NVU5IMgBK+AmZouAQQ7/+2GLH0GXXY0YMw9oXPB8hKdbPYg5QLYg=="],
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.12", "", {}, "sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww=="],
+
+    "@full-ui/headless-calendar": ["@full-ui/headless-calendar@7.1.3", "", { "peerDependencies": { "temporal-polyfill": "^1.0.1" } }, "sha512-CFomIp87osqY65Hlu2c0e2ZnofBe9tKOO8IoPzIfSPVDK/+aGz4Itj6mLu4xPjIvzRDQiopcVzYlip6u1bvYxw=="],
+
+    "@fullcalendar/core": ["@fullcalendar/core@7.1.3", "", { "peerDependencies": { "@full-ui/headless-calendar": "7.1.3", "temporal-polyfill": "^1.0.1" } }, "sha512-DLGXqX7CnuUQHH679FgE6+jc927wa708ydIcnfVx372IOK/OiDZjqc+IBwuKnu2EyqleCooDoAnUAcvXBhHosA=="],
+
+    "@fullcalendar/react": ["@fullcalendar/react@7.1.3", "", { "dependencies": { "@full-ui/headless-calendar": "7.1.3", "@fullcalendar/core": "7.1.3" }, "peerDependencies": { "react": "^17 || ^18 || ^19", "react-dom": "^17 || ^18 || ^19", "temporal-polyfill": "^1.0.1" } }, "sha512-tZNr0hylQwFy8bOEAiMRv6KCc0mVFlCFLDPdiSoo8IZz17WWe9feB0FnU902jKX/Gi7djDIzAhLCkDbgecCknw=="],
 
     "@humanfs/core": ["@humanfs/core@0.19.2", "", { "dependencies": { "@humanfs/types": "^0.15.0" } }, "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA=="],
 
@@ -1231,6 +1280,8 @@
     "@ungap/structured-clone": ["@ungap/structured-clone@1.4.0", "", {}, "sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ=="],
 
     "@vantigo/app": ["@vantigo/app@workspace:apps/host/frontend"],
+
+    "@vantigo/calendar-ui": ["@vantigo/calendar-ui@workspace:apps/calendar/frontend"],
 
     "@vantigo/communications-ui": ["@vantigo/communications-ui@workspace:apps/communications/frontend"],
 
@@ -2251,6 +2302,12 @@
     "tabbable": ["tabbable@6.5.0", "", {}, "sha512-wieBHXygIm7OyQOu5hQlkk62/WyCFYGlWg7L6/ZCUZwx0o398Zkn4pVmMyfYhfMG8kGrj/Krt8eIk6UKC6VzwA=="],
 
     "tagged-tag": ["tagged-tag@1.0.0", "", {}, "sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng=="],
+
+    "temporal-polyfill": ["temporal-polyfill@1.0.6", "", { "dependencies": { "temporal-spec": "1.0.1", "temporal-utils": "1.0.3" } }, "sha512-tYyEry1HLGUDbm2356W3iYD0OZdo7rlP7h98Zr/EnjqLZQwTAfcBDUvJnJbfA15v/vQad57hJZScG5O0W2oKEA=="],
+
+    "temporal-spec": ["temporal-spec@1.0.1", "", {}, "sha512-wxVoanmDeavXie1vu2JaQ3WIc3JZnWAOYFBsJyATaVsXsycKYUflGsyBmrRSnoCpZJpwPyr38VpgSUlQ8CbFxg=="],
+
+    "temporal-utils": ["temporal-utils@1.0.3", "", {}, "sha512-9jbTSX3HvkOWvDpNpFzwX/d1mkCrgQgwLmVTOEiuocZGKHsrQJtttGZFmybJ2zYP5zCSZuU5ZyeS8+eOEPABiQ=="],
 
     "terminal-link": ["terminal-link@5.0.0", "", { "dependencies": { "ansi-escapes": "^7.0.0", "supports-hyperlinks": "^4.1.0" } }, "sha512-qFAy10MTMwjzjU8U16YS4YoZD+NQLHzLssFMNqgravjbvIPNiqkGFR4yjhJfmY9R5OFU7+yHxc6y+uGHkKwLRA=="],
 

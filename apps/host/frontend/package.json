@@ -25,6 +25,7 @@
     "@tanstack/react-query-devtools": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-router-devtools": "catalog:",
+    "@vantigo/calendar-ui": "workspace:*",
     "@vantigo/communications-ui": "workspace:*",
     "@vantigo/customers-ui": "workspace:*",
     "@vantigo/energy-ui": "workspace:*",

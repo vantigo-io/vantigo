@@ -16,6 +16,7 @@ import {
 import { navigationCatalog } from "./catalogs/navigation";
 
 const allModules = [
+  "calendar",
   "communications",
   "customers",
   "energy",
@@ -33,6 +34,7 @@ describe("the app registry", () => {
     expect(apps[0]?.module).toBeUndefined();
     expect(apps.map((app) => app.key)).toEqual([
       "home",
+      "calendar",
       "customers",
       "projects",
       "time",
@@ -60,6 +62,7 @@ describe("the app registry", () => {
     const paths = allNavSections.flatMap((section) => section.items.map((item) => item.to));
     for (const path of paths) expect(path).toMatch(/^\/[a-z-]+(\/[a-z-]+)*$/);
     expect(paths).toEqual([
+      "/calendar",
       "/customers",
       "/customers/contacts",
       "/customers/follow-ups",
@@ -393,6 +396,7 @@ describe("the administration areas", () => {
     const tiles = switcherTiles(["*"], allModules, "settings");
     expect(tiles.map((tile) => tile.app.key)).toEqual([
       "home",
+      "calendar",
       "customers",
       "projects",
       "time",
@@ -485,6 +489,7 @@ describe("switcherTiles", () => {
     const tiles = switcherTiles(["*"], ["customers"], undefined);
     expect(tiles.map((tile) => [tile.app.key, tile.enabled])).toEqual([
       ["home", true],
+      ["calendar", false],
       ["customers", true],
       ["projects", false],
       ["time", false],
