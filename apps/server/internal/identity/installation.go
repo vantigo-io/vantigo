@@ -59,9 +59,15 @@ func ReadInstallationStatus(ctx context.Context, d module.Deps) (InstallationSta
 		}
 	}
 
+	// Read once, uncached: this runs outside any server, which holds no
+	// reader of the single sign-on settings.
+	sso, err := readSSOSettings(ctx, q, nil)
+	if err != nil {
+		return InstallationStatus{}, fmt.Errorf("identity: installation status: %w", err)
+	}
 	counts, err := q.GetOwnerSystemStatusCounts(ctx, store.GetOwnerSystemStatusCountsParams{
 		Now:         now,
-		ScimEnabled: d.Config.SCIM != nil,
+		ScimEnabled: sso.SCIM != nil,
 	})
 	if err != nil {
 		return InstallationStatus{}, fmt.Errorf("identity: installation status: %w", err)

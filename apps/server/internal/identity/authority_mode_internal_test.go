@@ -4,9 +4,6 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/vantigo-io/vantigo/server/internal/config"
-	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // recordedMode is system_settings' authority_mode and authority_mode_at.
@@ -19,16 +16,8 @@ func recordedMode(t *testing.T, srv *server) (mode string, at time.Time) {
 	return mode, at
 }
 
-// withConfig is d with a copy of its configuration changed by change.
-func withConfig(d module.Deps, change func(*config.Config)) module.Deps {
-	cfg := *d.Config
-	change(&cfg)
-	d.Config = &cfg
-	return d
-}
-
-// The API process records the mode it derives from its configuration —
-// federated with OIDC or SCIM configured, else local — with when; recording
+// The API process records the mode the single sign-on settings derive —
+// federated with OIDC or SCIM on, else local — with when; recording
 // the same mode again changes nothing, and a change is recorded and audited
 // authority-mode.changed with no actor, the modes before and after. The
 // maintenance settings the row also holds are left as they were.
@@ -36,17 +25,16 @@ func TestRecordAuthorityMode_RecordsTheDerivedModeAndAuditsAChange(t *testing.T)
 	t.Parallel()
 	srv, pool := newInternalServer(t)
 	ctx := context.Background()
-	local := srv.deps
-	federated := withConfig(local, func(c *config.Config) { c.SCIM = &config.SCIMConfig{} })
-	oidc := withConfig(local, func(c *config.Config) { c.OIDC = &config.OIDCConfig{} })
-	if got := deriveAuthorityMode(local.Config); got != "local" {
+	d := srv.deps
+	local, federated, oidc := ssoSettings{}, ssoSettings{SCIM: &scimSettings{}}, ssoSettings{OIDC: &oidcSettings{}}
+	if got := deriveAuthorityMode(local); got != "local" {
 		t.Errorf("derived without OIDC or SCIM = %q, want local", got)
 	}
-	if deriveAuthorityMode(federated.Config) != "federated" || deriveAuthorityMode(oidc.Config) != "federated" {
+	if deriveAuthorityMode(federated) != "federated" || deriveAuthorityMode(oidc) != "federated" {
 		t.Error("OIDC or SCIM does not derive federated")
 	}
 
-	if err := recordAuthorityMode(ctx, local); err != nil {
+	if err := recordAuthorityMode(ctx, d, local); err != nil {
 		t.Fatal(err)
 	}
 	if mode, at := recordedMode(t, srv); mode != "local" || !at.Equal(internalNow) {
@@ -62,15 +50,15 @@ func TestRecordAuthorityMode_RecordsTheDerivedModeAndAuditsAChange(t *testing.T)
 		t.Fatal(err)
 	}
 
-	later := withConfig(federated, func(*config.Config) {})
+	later := d
 	later.Clock = func() time.Time { return internalNow.Add(time.Hour) }
-	if err := recordAuthorityMode(ctx, local); err != nil {
+	if err := recordAuthorityMode(ctx, d, local); err != nil {
 		t.Fatal(err)
 	}
 	if _, at := recordedMode(t, srv); !at.Equal(internalNow) {
 		t.Errorf("the same mode recorded again moved its time to %v", at)
 	}
-	if err := recordAuthorityMode(ctx, later); err != nil {
+	if err := recordAuthorityMode(ctx, later, federated); err != nil {
 		t.Fatal(err)
 	}
 	if mode, at := recordedMode(t, srv); mode != "federated" || !at.Equal(internalNow.Add(time.Hour)) {

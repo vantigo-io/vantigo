@@ -1066,10 +1066,10 @@ func TestProvisioning_ActivateReenablesUnderAnInactiveDirectory(t *testing.T) {
 	}
 }
 
-// A leaver is disabled even when this process's configuration derives
-// another mode than the recorded one: Deactivate reads no mode. Every other
-// write still answers ErrModeMismatch.
-func TestProvisioning_DeactivateIgnoresAModeMismatch(t *testing.T) {
+// The recorded mode is the trail of changes, no longer a guard: a recorded
+// federated in an installation whose single sign-on settings derive local
+// changes nothing, and every write acts local, Deactivate included.
+func TestProvisioning_TheRecordedModeIsNoGuard(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	employeeRole(t, h)
@@ -1078,14 +1078,17 @@ func TestProvisioning_DeactivateIgnoresAModeMismatch(t *testing.T) {
 	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
 	h.exec(t, `UPDATE identity.system_settings SET authority_mode = 'federated'`)
 	ctx := context.Background()
-	_, err := p.Prepare(ctx, systemActor, spec("other@example.test", "M-8"))
-	wantErr(t, "Prepare", err, contracts.ErrModeMismatch)
-	_, err = p.Activate(ctx, systemActor, ref.UserID, contracts.ActivateOpts{})
-	wantErr(t, "Activate", err, contracts.ErrModeMismatch)
-	_, err = p.Update(ctx, systemActor, ref.UserID, spec("mismatch@example.test", "M-9"))
-	wantErr(t, "Update", err, contracts.ErrModeMismatch)
+	if other := mustPrepare(t, p, spec("other@example.test", "M-8")); !other.Created {
+		t.Errorf("Prepare under a recorded federated = %+v, want a local create", other)
+	}
+	if _, err := p.Activate(ctx, systemActor, ref.UserID, contracts.ActivateOpts{}); err != nil {
+		t.Errorf("Activate under a recorded federated: %v", err)
+	}
+	if _, err := p.Update(ctx, systemActor, ref.UserID, spec("mismatch@example.test", "M-9")); err != nil {
+		t.Errorf("Update under a recorded federated: %v", err)
+	}
 	if _, err := p.Deactivate(ctx, systemActor, ref.UserID); err != nil {
-		t.Fatalf("Deactivate under a mismatch: %v", err)
+		t.Fatalf("Deactivate under a recorded federated: %v", err)
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND is_disabled AND disabled_by = 'staff'`, ref.UserID); n != 1 {
 		t.Errorf("the leaver is not disabled: %s", userState(t, h, ref.UserID))
@@ -1146,44 +1149,34 @@ func TestProvisioning_FederatedLinksAndNeverCreates(t *testing.T) {
 	wantErr(t, "federated over an Owner's disable", err, contracts.ErrBlockedByOwner)
 }
 
-// Mode answers the recorded mode; when this process's own configuration
-// derives another, Mode and every write but Deactivate answer
-// ErrModeMismatch and nothing is written; with no mode recorded yet, the derivation. Nothing is cached:
-// the recorded value is read on every call, so two instances agree and see a
-// change at once.
-func TestProvisioning_ModeIsTheRecordedOne(t *testing.T) {
+// Mode answers the mode the single sign-on row derives, whatever
+// system_settings recorded, and never ErrModeMismatch. It reads the row on
+// every call, uncached, so two instances agree and see a change at once.
+func TestProvisioning_ModeIsTheRowsDerivation(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	employeeRole(t, h)
 	first, second := h.accounts(t), h.accounts(t)
 	ref := mustPrepare(t, first, spec("mode@example.test", "M-1"))
 	ctx := context.Background()
-	for _, p := range []contracts.AccountProvisioning{first, second} {
-		if mode, err := p.Mode(ctx); err != nil || mode != contracts.AccountModeLocal {
-			t.Errorf("Mode = %q, %v, want local", mode, err)
+	modes := func(want string) {
+		t.Helper()
+		for _, p := range []contracts.AccountProvisioning{first, second} {
+			if mode, err := p.Mode(ctx); err != nil || mode != want {
+				t.Errorf("Mode = %q, %v, want %s", mode, err, want)
+			}
 		}
 	}
+	modes(contracts.AccountModeLocal)
 
 	h.exec(t, `UPDATE identity.system_settings SET authority_mode = 'federated'`)
-	before := footprint(t, h)
-	for _, p := range []contracts.AccountProvisioning{first, second} {
-		_, err := p.Mode(ctx)
-		wantErr(t, "Mode", err, contracts.ErrModeMismatch)
-		_, err = p.Prepare(ctx, systemActor, spec("other@example.test", "M-2"))
-		wantErr(t, "Prepare", err, contracts.ErrModeMismatch)
-		_, err = p.Activate(ctx, systemActor, ref.UserID, contracts.ActivateOpts{})
-		wantErr(t, "Activate", err, contracts.ErrModeMismatch)
-		_, err = p.Update(ctx, systemActor, ref.UserID, spec("mode@example.test", "M-3"))
-		wantErr(t, "Update", err, contracts.ErrModeMismatch)
-	}
-	if after := footprint(t, h); after != before || len(h.mail.Messages()) != 0 {
-		t.Errorf("a mismatch wrote or mailed: %s → %s", before, after)
-	}
+	modes(contracts.AccountModeLocal)
+
+	h.exec(t, `UPDATE identity.sso_settings SET scim_enabled = true, version = version + 1`)
+	modes(contracts.AccountModeFederated)
 
 	h.exec(t, `UPDATE identity.system_settings SET authority_mode = NULL`)
-	if mode, err := second.Mode(ctx); err != nil || mode != contracts.AccountModeLocal {
-		t.Errorf("unrecorded Mode = %q, %v, want the derivation", mode, err)
-	}
+	modes(contracts.AccountModeFederated)
 	if a, b := accountOf(t, first, ref.UserID, "x@example.test"), accountOf(t, second, ref.UserID, "x@example.test"); a != b {
 		t.Errorf("two instances disagree: %+v and %+v", a, b)
 	}

@@ -23,15 +23,16 @@ import (
 // Every write names a Valid actor (ErrInvalidActor first, before anything
 // is read or written) and runs in one serializable transaction of its own on
 // identity's pool, retried from a fresh snapshot while it loses a race:
-// the recorded authority mode is read (ErrModeMismatch when this process's
-// configuration derives another; Deactivate alone reads none), then the owner lock is taken — any write
+// the authority mode is derived from the single sign-on row read in that
+// transaction (Deactivate alone reads none), then the owner lock is taken — any write
 // may meet an Owner, and taking it always keeps one lock order — then the
 // user's invitations FOR UPDATE, then the user FOR UPDATE, as acceptance
 // orders them. Mail is sent only after the commit. Each change is audited
 // with the actor: a user as actor_user_id, a system as a null actor with
 // details.actor and no correlation id. The provider holds no state of its
-// own — no cache, no memory of an earlier call — so any two instances, in an
-// API process or a worker, answer the same.
+// own but the single sign-on settings' 20-second cache, which only "is SCIM
+// on" is read through — no memory of an earlier call — so any two
+// instances, in an API process or a worker, answer the same within it.
 
 // maxProvisionedInvitations is how many delivered invitations one pending
 // spell gets before Activate stops issuing (InvitationExhausted).
@@ -44,17 +45,19 @@ var errInvalidSpec = errors.New("identity: the account spec is invalid")
 // provisioning is the provider. access is identity's own, whose catalog —
 // set at identity's mount, absent in a worker-only process — widens the
 // denied keys (provisioningDeniedKeys) and whose stamp rotation ends a
-// deactivated user's sessions.
+// deactivated user's sessions. sso is its own reader of the single sign-on
+// settings, which says whether SCIM is on.
 type provisioning struct {
 	access *Access
 	deps   module.Deps
+	sso    *ssoSettingsReader
 }
 
 var _ contracts.AccountProvisioning = (*provisioning)(nil)
 
 // newProvisioning is Module's Accounts over a and d.
 func newProvisioning(a *Access, d module.Deps) contracts.AccountProvisioning {
-	return &provisioning{access: a, deps: d}
+	return &provisioning{access: a, deps: d, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets)}
 }
 
 // provisionedUser is a user as the provider judges them: GetProvisioningUser
@@ -114,11 +117,15 @@ func (p *provisioning) write(ctx context.Context, actor contracts.Actor, fn func
 }
 
 // writeIn is write, reading the mode only when withMode: Deactivate reads
-// none, so a leaver is disabled even by a process whose configuration
-// disagrees with the recorded mode (fn is then given "").
+// none, so a leaver is disabled whatever the mode (fn is then given "").
 func (p *provisioning) writeIn(ctx context.Context, actor contracts.Actor, withMode bool, fn func(q *store.Queries, mode string, now time.Time) error) error {
 	if !actor.Valid() {
 		return contracts.ErrInvalidActor
+	}
+	// Warm the reader ref asks whether SCIM is on, before the transaction
+	// holds a connection, so ref answers from the cache inside it.
+	if _, err := p.sso.get(ctx); err != nil {
+		return err
 	}
 	return db.RetrySerializable(ctx, serializableAttempts, func() error {
 		return db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{IsoLevel: pgx.Serializable}, func(tx pgx.Tx) error {
@@ -126,7 +133,7 @@ func (p *provisioning) writeIn(ctx context.Context, actor contracts.Actor, withM
 			mode := ""
 			if withMode {
 				var err error
-				if mode, err = authorityMode(ctx, q, p.deps.Config); err != nil {
+				if mode, err = authorityMode(ctx, q); err != nil {
 					return err
 				}
 			}
@@ -151,17 +158,16 @@ func lockUser(ctx context.Context, q *store.Queries, id uuid.UUID) (provisionedU
 	return provisionedUser(u), err
 }
 
-// scimEnabled is whether a directory's deactivation counts.
-func (p *provisioning) scimEnabled() bool {
-	return p.deps.Config != nil && p.deps.Config.SCIM != nil
-}
-
 // directoryInactive reports whether the directory has deactivated u: SCIM
-// is configured, the directory reports them inactive, and they are no Owner
-// — no session of theirs is accepted, whatever identity's record says. The
-// ref reports it; the writes act on identity's record all the same.
-func (p *provisioning) directoryInactive(u provisionedUser) bool {
-	return p.scimEnabled() && u.ScimInactive && !u.IsOwner
+// is on, the directory reports them inactive, and they are no Owner — no
+// session of theirs is accepted, whatever identity's record says. The ref
+// reports it; the writes act on identity's record all the same. A failure
+// to read whether SCIM is on is an error.
+func (p *provisioning) directoryInactive(ctx context.Context, u provisionedUser) (bool, error) {
+	if !u.ScimInactive || u.IsOwner {
+		return false, nil
+	}
+	return p.sso.scimEnabled(ctx)
 }
 
 // spellStart is when u's current invitation spell began.
@@ -221,8 +227,12 @@ func (p *provisioning) ref(ctx context.Context, q *store.Queries, u provisionedU
 		HasCredential:  u.HasPassword || u.HasPasskey || u.HasOidcLink,
 		Invitation:     contracts.Invitation{State: contracts.InvitationNone},
 	}
+	inactive, err := p.directoryInactive(ctx, u)
+	if err != nil {
+		return contracts.AccountRef{}, err
+	}
 	switch {
-	case p.directoryInactive(u):
+	case inactive:
 		ref.State, ref.DisabledBy = contracts.AccountStateDisabled, contracts.DisabledByDirectory
 	case u.PendingSince != nil:
 		ref.State = contracts.AccountStatePending
@@ -276,9 +286,10 @@ func (p *provisioning) reread(ctx context.Context, q *store.Queries, id uuid.UUI
 	return p.ref(ctx, q, provisionedUser(u), "", now)
 }
 
-// Mode answers the recorded authority mode (authorityMode).
+// Mode answers the authority mode the single sign-on row derives
+// (authorityMode), read on every call.
 func (p *provisioning) Mode(ctx context.Context) (string, error) {
-	return authorityMode(ctx, store.New(p.deps.Pool), p.deps.Config)
+	return authorityMode(ctx, store.New(p.deps.Pool))
 }
 
 // replacedInvitation is one invitation a provider revoked replaced, as its

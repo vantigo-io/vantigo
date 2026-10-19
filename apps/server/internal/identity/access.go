@@ -37,6 +37,10 @@ type Access struct {
 	cfg *config.Config
 	q   *store.Queries
 	now func() time.Time
+	// sso is the single sign-on settings through their 20-second cache:
+	// whether SCIM is on, its token digests, and the OIDC provider. The
+	// server reads it too, and the import evicts it.
+	sso *ssoSettingsReader
 	// catalog is the composed permission catalog, which decides whether a
 	// delegation's keys may be delegated. Compose builds it before any
 	// module mounts, and identity's mount sets it here.
@@ -50,15 +54,15 @@ type Access struct {
 
 var _ contracts.Access = (*Access)(nil)
 
-// NewAccess returns identity's Access over d's configuration, pool and
-// clock. It is built from Deps and then put into them:
+// NewAccess returns identity's Access over d's configuration, pool, clock
+// and secrets box. It is built from Deps and then put into them:
 //
 //	deps := module.Deps{...}
 //	a := identity.NewAccess(deps)
 //	deps.Access = a
 //	handler, err := module.Compose(deps, identity.Module(a))
 func NewAccess(d module.Deps) *Access {
-	return &Access{cfg: d.Config, q: store.New(d.Pool), now: d.Clock}
+	return &Access{cfg: d.Config, q: store.New(d.Pool), now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets)}
 }
 
 // Check evaluates rule for r. The scim rule admits a request that presents
@@ -79,10 +83,18 @@ func NewAccess(d module.Deps) *Access {
 // policies succeeds.
 func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principal, error) {
 	if rule.Kind == contracts.RuleSCIM {
-		if token, ok := scimBearer(r); ok && a.scimTokenValid(token, a.now()) {
-			return contracts.Principal{SCIM: true}, nil
+		token, ok := scimBearer(r)
+		if !ok {
+			return contracts.Principal{}, contracts.ErrUnauthenticated
 		}
-		return contracts.Principal{}, contracts.ErrUnauthenticated
+		valid, err := a.scimTokenValid(r.Context(), token, a.now())
+		if err != nil {
+			return contracts.Principal{}, err
+		}
+		if !valid {
+			return contracts.Principal{}, contracts.ErrUnauthenticated
+		}
+		return contracts.Principal{SCIM: true}, nil
 	}
 
 	ctx := r.Context()
@@ -166,7 +178,7 @@ func (a *Access) Reject(w http.ResponseWriter, r *http.Request, rule contracts.R
 // person must be one who may act at all (UserMayAct): the user predicates a
 // session is resolved under — not disabled, not pending (invited and never
 // signed in, so nothing can have been handed a token on their behalf), and
-// while SCIM is configured not deactivated by the directory unless they hold
+// while SCIM is on not deactivated by the directory unless they hold
 // Owner — and not locked out, as permitted requires; a user who does not
 // exist may not. Then the Owner role, and EffectivePermissionForUser per key.
 // One query carries the person's predicates so they cannot drift from the
@@ -180,7 +192,11 @@ func (a *Access) UserHolds(ctx context.Context, userID uuid.UUID, keys ...string
 		return false, nil
 	}
 	now := a.now()
-	mayAct, err := a.q.UserMayAct(ctx, store.UserMayActParams{UserID: userID, Now: now, ScimEnabled: a.cfg.SCIM != nil})
+	sso, err := a.sso.get(ctx)
+	if err != nil {
+		return false, fmt.Errorf("identity: read whether the user may act: %w", err)
+	}
+	mayAct, err := a.q.UserMayAct(ctx, store.UserMayActParams{UserID: userID, Now: now, ScimEnabled: sso.SCIM != nil})
 	if err != nil {
 		return false, fmt.Errorf("identity: read whether the user may act: %w", err)
 	}
@@ -227,10 +243,14 @@ func (a *Access) authenticate(ctx context.Context, r *http.Request, now time.Tim
 		return none, false, nil
 	}
 
+	sso, err := a.sso.get(ctx)
+	if err != nil {
+		return none, false, fmt.Errorf("identity: resolve session: %w", err)
+	}
 	bounds := a.cfg.Sessions
 	s, err := a.q.GetSessionByTokenHash(ctx, store.GetSessionByTokenHashParams{
 		TokenHash:          hash,
-		ScimEnabled:        a.cfg.SCIM != nil,
+		ScimEnabled:        sso.SCIM != nil,
 		Now:                now,
 		Idle:               interval(bounds.Idle),
 		PrivilegedIdle:     interval(bounds.PrivilegedIdle),

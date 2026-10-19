@@ -7,8 +7,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/vantigo-io/vantigo/server/internal/config"
 )
 
 // The claim-policy fixtures: .NET's (TS/Endpoints/Auth/StaticOidcSecurityTests.cs).
@@ -20,18 +18,16 @@ const (
 )
 
 var (
-	entraPolicyConfig = &config.OIDCConfig{
-		Provider:     "entra",
-		Authority:    "https://login.microsoftonline.com/" + policyTenantID + "/v2.0",
-		ClientID:     policyClientID,
-		ClientSecret: "secret",
-		DisplayName:  "Entra",
+	entraPolicyConfig = &oidcSettings{
+		Provider:    "entra",
+		Authority:   "https://login.microsoftonline.com/" + policyTenantID + "/v2.0",
+		ClientID:    policyClientID,
+		DisplayName: "Entra",
 	}
-	googlePolicyConfig = &config.OIDCConfig{
+	googlePolicyConfig = &oidcSettings{
 		Provider:       "google",
 		Authority:      "https://accounts.google.com",
 		ClientID:       "client.apps.googleusercontent.com",
-		ClientSecret:   "secret",
 		AllowedDomains: []string{"example.com"},
 		DisplayName:    "Google",
 	}

@@ -7,28 +7,25 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
-// The authority mode (staff foundation design S23; staff accounts plan,
-// pre-flight I6): federated when an identity provider owns the accounts —
-// workforce OIDC or SCIM is configured — else local. The API process derives
-// it from its configuration and records it at identity's mount, so the
-// account provisioning provider of a worker-only process, which may have
-// been given other settings, reads the recorded value and stops on a
-// mismatch (contracts.ErrModeMismatch) instead of acting in a mode the API
-// does not.
+// The authority mode (staff foundation design S23; Entra design D1):
+// federated when an identity provider owns the accounts — workforce OIDC or
+// SCIM is on in identity.sso_settings — else local. Every process, the API
+// and a worker alike, derives it from that one row, so no two can disagree:
+// the value identity.system_settings records is the trail of changes, no
+// longer a guard (contracts.ErrModeMismatch has no sender).
 
 // recordModeTimeout bounds the mount's recording of the mode.
 const recordModeTimeout = 15 * time.Second
 
-// deriveAuthorityMode is the mode cfg's own settings derive.
-func deriveAuthorityMode(cfg *config.Config) string {
-	if cfg != nil && (cfg.OIDC != nil || cfg.SCIM != nil) {
+// deriveAuthorityMode is the mode settings derive.
+func deriveAuthorityMode(settings ssoSettings) string {
+	if settings.OIDC != nil || settings.SCIM != nil {
 		return contracts.AccountModeFederated
 	}
 	return contracts.AccountModeLocal
@@ -39,14 +36,14 @@ type authorityModeAudit struct {
 	Mode string `json:"mode"`
 }
 
-// recordAuthorityMode records d's derived mode in identity.system_settings
+// recordAuthorityMode records the mode settings derive in identity.system_settings
 // with when it was recorded, in one transaction holding the singleton row:
 // the same mode again changes nothing; a change from a recorded mode is
 // audited authority-mode.changed, with no actor and no request, the modes
 // before and after. The row's maintenance settings are left as they are,
 // and a missing row is created with maintenance off.
-func recordAuthorityMode(ctx context.Context, d module.Deps) error {
-	mode, now := deriveAuthorityMode(d.Config), d.Clock()
+func recordAuthorityMode(ctx context.Context, d module.Deps, settings ssoSettings) error {
+	mode, now := deriveAuthorityMode(settings), d.Clock()
 	err := db.WithTx(ctx, d.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if err := q.EnsureSystemSettings(ctx, now); err != nil {
@@ -77,21 +74,14 @@ func recordAuthorityMode(ctx context.Context, d module.Deps) error {
 	return nil
 }
 
-// authorityMode is the mode the provider acts in, read on q: the recorded
-// mode, or contracts.ErrModeMismatch when cfg derives another; cfg's own
-// derivation while none is recorded yet. Nothing is cached: every call reads
-// the row.
-func authorityMode(ctx context.Context, q *store.Queries, cfg *config.Config) (string, error) {
-	derived := deriveAuthorityMode(cfg)
-	recorded, err := q.GetAuthorityMode(ctx)
+// authorityMode is the mode the provider acts in: the derivation of the
+// single sign-on row read on q, uncached, so a provisioning write in its
+// transaction sees the committed row. It never answers
+// contracts.ErrModeMismatch.
+func authorityMode(ctx context.Context, q *store.Queries) (string, error) {
+	settings, err := readSSOSettings(ctx, q, nil)
 	if err != nil {
 		return "", fmt.Errorf("identity: read the authority mode: %w", err)
 	}
-	if recorded == nil {
-		return derived, nil
-	}
-	if *recorded != derived {
-		return "", contracts.ErrModeMismatch
-	}
-	return *recorded, nil
+	return deriveAuthorityMode(settings), nil
 }
