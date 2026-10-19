@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -154,9 +156,11 @@ func newOIDCRelyingParty(o *oidcSettings, redirectURL string, client *http.Clien
 // oidcRP is the relying party for the single sign-on settings as the
 // server's reader answers them, or nil while OIDC is off. The party last
 // built is kept with the settings version it was built for, under
-// oidcMu, and rebuilt when the version differs, so a change is in effect
-// within the reader's TTL with no restart; the rebuilt party discovers
-// lazily, as the first did.
+// oidcMu, and rebuilt when the settings carry a later version, so a change
+// is in effect within the reader's TTL with no restart; the rebuilt party
+// discovers lazily, as the first did. It never goes back: settings read
+// before the last build (a fetch that raced a save) answer the party
+// already built for the later version.
 func (s *server) oidcRP(ctx context.Context) (*oidcRelyingParty, error) {
 	settings, err := s.access.sso.get(ctx)
 	if err != nil {
@@ -164,7 +168,7 @@ func (s *server) oidcRP(ctx context.Context) (*oidcRelyingParty, error) {
 	}
 	s.oidcMu.Lock()
 	defer s.oidcMu.Unlock()
-	if s.oidcBuilt && s.oidcVersion == settings.Version {
+	if s.oidcBuilt && settings.Version <= s.oidcVersion {
 		return s.oidc, nil
 	}
 	redirectURL := s.deps.Config.AppOrigin + s.deps.Config.BasePath + oidcCallbackPath
@@ -743,15 +747,32 @@ func (s *server) provisionOIDCAccount(ctx context.Context, a externalAccount) (u
 	return userID, err
 }
 
+// maxAssertionBytes bounds the workload identity token file: a projected
+// service account token is a few KiB, and nothing longer is read.
+const maxAssertionBytes = 16 * 1024
+
 // readClientAssertion reads the workload identity token, as .NET's
 // WorkforceOidcClientAssertion.ReadFresh did (EA/WorkforceOidcClientAssertion.cs:11-30):
 // the file's content, trimmed, which must be non-empty and contain no
 // whitespace. It is read for every redemption, so a rotated projected
-// token is used as soon as it lands. Its errors never carry the content.
+// token is used as soon as it lands. Only a regular file is read, opened
+// without blocking and through a limit of maxAssertionBytes, and a longer
+// one is refused: a path saved before the save's own checks, or a file
+// replaced since, can neither block a sign-in nor make it read without end.
+// Its errors never carry the content.
 func readClientAssertion(path string) (string, error) {
-	b, err := os.ReadFile(path)
+	unreadable := errors.New("identity: the workload identity token file could not be read")
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return "", errors.New("identity: the workload identity token file could not be read")
+		return "", unreadable
+	}
+	defer func() { _ = f.Close() }()
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		return "", unreadable
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxAssertionBytes+1))
+	if err != nil || len(b) > maxAssertionBytes {
+		return "", unreadable
 	}
 	assertion := strings.TrimSpace(string(b))
 	if assertion == "" || hasWhitespace(assertion) {

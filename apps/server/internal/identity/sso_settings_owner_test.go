@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -99,6 +100,9 @@ func issueScimToken(t testing.TB, c *client, body any) scimTokenBody {
 	r := c.do(http.MethodPost, ssoScimTokenPath, body)
 	if r.status != http.StatusOK {
 		t.Fatalf("POST %s: status %d body %s", ssoScimTokenPath, r.status, r.body)
+	}
+	if r.header("Cache-Control") != "no-store" || r.header("Pragma") != "no-cache" {
+		t.Errorf("POST %s: Cache-Control %q Pragma %q, want no-store and no-cache", ssoScimTokenPath, r.header("Cache-Control"), r.header("Pragma"))
 	}
 	var b scimTokenBody
 	r.json(&b)
@@ -236,6 +240,14 @@ func TestSsoSettings_PutHoldsEveryRule(t *testing.T) {
 	if err := os.WriteFile(unreadable, []byte("x"), 0o000); err != nil {
 		t.Fatal(err)
 	}
+	fifo := filepath.Join(t.TempDir(), "fifo")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oversized := filepath.Join(t.TempDir(), "oversized")
+	if err := os.WriteFile(oversized, []byte(strings.Repeat("a", 16*1024+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	secret := map[string]any{"clientSecret": "a-client-secret"}
 	with := func(base map[string]any, extra map[string]any) map[string]any {
 		for k, v := range base {
@@ -278,6 +290,9 @@ func TestSsoSettings_PutHoldsEveryRule(t *testing.T) {
 		{"a relative token file", ssoRequest("entra", map[string]any{"workloadTokenFile": "azure-identity-token"}), "workloadTokenFile"},
 		{"a missing token file", ssoRequest("entra", map[string]any{"workloadTokenFile": filepath.Join(t.TempDir(), "missing")}), "workloadTokenFile"},
 		{"a directory for a token file", ssoRequest("entra", map[string]any{"workloadTokenFile": t.TempDir()}), "workloadTokenFile"},
+		{"a FIFO for a token file", ssoRequest("entra", map[string]any{"workloadTokenFile": fifo}), "workloadTokenFile"},
+		{"a device for a token file", ssoRequest("entra", map[string]any{"workloadTokenFile": "/dev/zero"}), "workloadTokenFile"},
+		{"a token file of 16 KiB and a byte", ssoRequest("entra", map[string]any{"workloadTokenFile": oversized}), "workloadTokenFile"},
 		{"a display name of 101 characters", ssoRequest("entra", with(secret, map[string]any{"displayName": strings.Repeat("å", 101)})), "displayName"},
 	} {
 		// A client of its own per case, each with its own address, so the
@@ -724,5 +739,49 @@ func TestSsoSettings_OnlyAnOwnerWithMFA(t *testing.T) {
 		if !e.MFA {
 			t.Error("an Owner's audited write is not marked MFA")
 		}
+	}
+}
+
+// A token file that has grown past maxAssertionBytes since it was saved
+// fails the sign-in as a remote failure, and nothing is sent to the
+// provider; the read is bounded, so a 1 MiB file is not read whole.
+func TestSsoSettings_AnOversizedTokenFileFailsTheSignIn(t *testing.T) {
+	t.Parallel()
+	f := newFakeOIDC(t)
+	f.update(func(f *fakeOIDC) { f.secret = "" })
+	path := tokenFile(t)
+	h := newHarness(t, append(f.options(), withEnv("OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", path))...)
+	if err := os.WriteFile(path, []byte(strings.Repeat("a", 1<<20)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertOIDCRedirect(t, h.oidcCallback(t, h.client(t), f), oidcErrorLocation("oidc_remote_failure"))
+	if n := len(f.redemptionForms()); n != 0 {
+		t.Errorf("%d redemptions, want none: nothing is sent without an assertion", n)
+	}
+}
+
+// The import never stops the API over a value longer than the row holds: a
+// display name is imported cut to 100 characters, with a warning naming the
+// variable.
+func TestSsoSettings_TheImportCutsALongDisplayName(t *testing.T) {
+	t.Parallel()
+	f := newFakeOIDC(t)
+	h := newHarness(t, append(f.options(), withEnv("OIDC_DISPLAY_NAME", strings.Repeat("å", 150)))...)
+	owner, _ := h.bootstrapOwner(t)
+	got := getSSO(t, owner)
+	if got.Version != 1 || !got.Oidc.Enabled || deref(got.Oidc.DisplayName) != strings.Repeat("å", 100) {
+		t.Errorf("the import = version %d enabled %v display %q, want the provider on, its name cut to 100", got.Version, got.Oidc.Enabled, deref(got.Oidc.DisplayName))
+	}
+	warned := false
+	for _, rec := range h.logRecords(t) {
+		if rec["level"] == "WARN" && rec["variable"] == "OIDC_DISPLAY_NAME" {
+			warned = true
+		}
+		if msg, _ := rec["msg"].(string); strings.Contains(msg, strings.Repeat("å", 101)) {
+			t.Errorf("a log line carries the whole name: %s", msg)
+		}
+	}
+	if !warned {
+		t.Error("no warning names OIDC_DISPLAY_NAME")
 	}
 }
