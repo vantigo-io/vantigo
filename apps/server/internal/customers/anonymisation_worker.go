@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
@@ -107,9 +108,18 @@ func (w *AnonymisationWorker) Run(ctx context.Context) error {
 // the due customers, at most anonymisationBatch, oldest day first, each in its
 // own transaction — all of it on the lease's connection.
 func (w *AnonymisationWorker) RunCycle(ctx context.Context) (bool, error) {
+	// The business time zone is read before the lease's connection is held:
+	// the calendar reads through the pool, and a cycle that held one
+	// connection while asking the pool for another would wait for itself on
+	// a pool of one (staff's retention cycle, the same rule). Today, the day
+	// an anonymiseOn is due by, is the business day of the worker's clock.
+	zone, err := w.srv.businessZone(ctx)
+	if err != nil {
+		return false, err
+	}
+	today := holidays.DayIn(w.now(), zone)
 	return w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
-		today := pgtype.Date{Time: civilDate(w.now()), Valid: true}
-		due, err := store.New(conn).DueAnonymisations(ctx, store.DueAnonymisationsParams{Today: today, RowLimit: anonymisationBatch})
+		due, err := store.New(conn).DueAnonymisations(ctx, store.DueAnonymisationsParams{Today: pgtype.Date{Time: today, Valid: true}, RowLimit: anonymisationBatch})
 		if err != nil {
 			return fmt.Errorf("customers: select the customers due for anonymisation: %w", err)
 		}
@@ -118,7 +128,7 @@ func (w *AnonymisationWorker) RunCycle(ctx context.Context) (bool, error) {
 			if ctx.Err() != nil {
 				return nil
 			}
-			done, err := w.anonymiseRecovering(ctx, conn, id)
+			done, err := w.anonymiseRecovering(ctx, conn, id, today)
 			if err != nil {
 				if ctx.Err() == nil {
 					w.logger().Error("customers: anonymising a customer failed; it is tried again next cycle",
@@ -149,13 +159,13 @@ func (w *AnonymisationWorker) RunLedger(ctx context.Context) (attempted, succeed
 // customer's error, the stack in it: the transaction's deferred rollback has
 // already run by the time the panic reaches here, so nothing of the customer
 // changed, and the cycle logs it and moves on like any other failure.
-func (w *AnonymisationWorker) anonymiseRecovering(ctx context.Context, conn *pgxpool.Conn, id int32) (done bool, err error) {
+func (w *AnonymisationWorker) anonymiseRecovering(ctx context.Context, conn *pgxpool.Conn, id int32, today time.Time) (done bool, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			done, err = false, fmt.Errorf("panic: %v\n%s", r, debug.Stack())
 		}
 	}()
-	return w.srv.anonymiseCustomer(ctx, conn, id)
+	return w.srv.anonymiseCustomer(ctx, conn, id, today)
 }
 
 // underLease is the registry workers' lease (peppol_recheck_worker.go, and

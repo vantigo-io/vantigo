@@ -159,9 +159,15 @@ func (s *server) GetCustomersExport(ctx context.Context, req gen.GetCustomersExp
 		}
 	}
 
+	// The file is named for today's business day (time zones design D2), the
+	// day a reader in the workspace's zone would write on it.
+	today, err := s.businessToday(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return csvDownload{
 		body:     customersCSV(exportColumns(filter.searchIdentity), rows, dec, profiles, addresses),
-		fileName: fmt.Sprintf("customers-%s.csv", s.deps.Clock().UTC().Format(time.DateOnly)),
+		fileName: fmt.Sprintf("customers-%s.csv", today.Format(time.DateOnly)),
 	}, nil
 }
 

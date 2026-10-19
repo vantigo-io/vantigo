@@ -391,8 +391,11 @@ export const CustomerTimeline = ({
       .map((value) => ({ value, label: t(typeKey[value]) })),
   ];
   const typeLabel = (type: string) => t(typeKey[type] ?? "timelineEvent");
+  // The day is the entry's civil occurredOn, shown zone-free; the time is the
+  // occurredAt instant in the reader's zone, through the shell's formatters
+  // (time zones design D8), with no zone named after it.
   const formatMoment = (date: string, time?: string | null) =>
-    `${formatDateOnly(formatters, date)}${time ? ` · ${formatters.formatDate(time, { timeStyle: "short", timeZone: "UTC" })} UTC` : ""}`;
+    `${formatDateOnly(formatters, date)}${time ? ` · ${formatters.formatDate(time, { timeStyle: "short" })}` : ""}`;
   const client = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TimelineEntry | null>(null);

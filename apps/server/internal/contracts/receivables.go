@@ -18,9 +18,9 @@ import "context"
 //
 // The provider owns "today". A document's state — open, partially paid,
 // overdue, paid, credited — is judged on a day, and the provider judges it on
-// the Oslo calendar day of its own clock, as every screen of the owning
-// module does; a consumer that passed a day of its own could show a state the
-// owning module's app does not. AsOf says which day it was.
+// the business day of its own clock (BusinessCalendar), as every screen of
+// the owning module does; a consumer that passed a day of its own could show
+// a state the owning module's app does not. AsOf says which day it was.
 //
 // It performs no authorization. The caller has already decided that whoever
 // is asking may see the customer and may see money at all.
@@ -76,7 +76,7 @@ type CustomerReceivableTotals struct {
 	// of any live payment against one of them. Each is YYYY-MM-DD, and nil
 	// when there is none.
 	LastIssuedOn, LastPaymentOn *string
-	// AsOf is the Oslo calendar day the states were judged on, as
+	// AsOf is the business day the states were judged on, as
 	// YYYY-MM-DD. Always set.
 	AsOf string
 }
@@ -88,7 +88,7 @@ type CurrencyReceivables struct {
 	// Currency is the ISO 4217 code.
 	Currency string
 	// IssuedThisYear and CreditedThisYear are the gross of the invoices and
-	// of the credit notes issued in the Oslo calendar year AsOf falls in;
+	// of the credit notes issued in the calendar year AsOf falls in;
 	// IssuedLastYear and CreditedLastYear the same for the year before. A
 	// credit note counts in the year it was issued, whatever year the invoice
 	// it credits was.

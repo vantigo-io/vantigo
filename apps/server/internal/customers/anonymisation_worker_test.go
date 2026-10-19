@@ -649,6 +649,8 @@ func TestAnonymisationWorker_ReleasesTheLeaseAfterEveryCycle(t *testing.T) {
 // held one and waited for a second, and nothing ever finished. On a pool of
 // one, a cycle that reached for a second connection would wait for itself; the
 // deadline turns that hang into this test's failure rather than a stuck run.
+// The business calendar is built on the same pool of one (h.DepsOn), so the
+// zone's read, made before the lease, is held to the rule too.
 func TestAnonymisationWorker_RunsTheCycleOnTheOneConnectionItHolds(t *testing.T) {
 	t.Parallel()
 	fake := &fakePersonalData{}
@@ -664,8 +666,7 @@ func TestAnonymisationWorker_RunsTheCycleOnTheOneConnectionItHolds(t *testing.T)
 		t.Fatalf("open a pool of one: %v", err)
 	}
 	defer one.Close()
-	deps := h.Deps()
-	deps.Pool = one
+	deps := h.DepsOn(one)
 
 	if ran, err := customers.NewAnonymisationWorker(deps).RunCycle(ctx); err != nil || !ran {
 		t.Fatalf("RunCycle on a pool of one = %v, %v; want true, nil", ran, err)
