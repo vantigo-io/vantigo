@@ -12,7 +12,8 @@ import (
 //
 // What the app needs before it asks for a window (calendar design D3): the
 // business zone and today in it, whether the caller may open a colleague's
-// calendar, and every kind the enabled modules' sources declare — for the
+// calendar, whether invitations are mailed (calendar invitations design D3:
+// the mail driver is smtp), and every kind the enabled modules' sources declare — for the
 // filter, the legend and the colours — which costs no provider a query.
 func (s *server) GetCalendarMeta(ctx context.Context, _ gen.GetCalendarMetaRequestObject) (gen.GetCalendarMetaResponseObject, error) {
 	c, err := s.callerFor(ctx)
@@ -28,10 +29,11 @@ func (s *server) GetCalendarMeta(ctx context.Context, _ gen.GetCalendarMetaReque
 		return nil, err
 	}
 	return gen.GetCalendarMeta200JSONResponse{
-		TimeZone:          c.zone().String(),
-		Today:             apiDate(today),
-		CanViewColleagues: c.CanViewColleagues,
-		Sources:           kinds,
+		TimeZone:             c.zone().String(),
+		Today:                apiDate(today),
+		CanViewColleagues:    c.CanViewColleagues,
+		InvitationsAvailable: s.mailAvailable(),
+		Sources:              kinds,
 	}, nil
 }
 

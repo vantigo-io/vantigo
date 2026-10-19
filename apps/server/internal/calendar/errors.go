@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
+	"github.com/vantigo-io/vantigo/server/internal/calendar/store"
 )
 
 // This module's refusals (calendar design D3) are RFC 9457 problems in one
@@ -14,17 +15,24 @@ import (
 // request's camelCase field — recurrence.rule for a nested one, attendees[2]
 // for an element of a list; a bare 404 for what the caller may not see, byte
 // for byte what an unknown id gets, so neither an appointment's existence nor
-// whose it is leaks; a 409 carrying one of the two codes below; and a 503
-// when a calendar source could not be read. The uniform 403 is the access
-// layer's own. A client keys off the status and the code, never the words.
+// whose it is leaks; a 409 carrying one of the codes below; and a 503 when a
+// calendar source could not be read or, on a resend, mail cannot be sent.
+// The uniform 403 is the access layer's own. A client keys off the status
+// and the code, never the words.
 
-// The refusal codes, each a 409.
+// The refusal codes: three 409s and a 503.
 const (
 	// codeRevisionMismatch is a PUT whose If-Match revision has moved on.
 	codeRevisionMismatch = "revision_mismatch"
 	// codeOccurrenceNotInSeries is an occurrence the series' rule never
 	// produces.
 	codeOccurrenceNotInSeries = "occurrence_not_in_series"
+	// codeAppointmentCancelled is any write to a cancelled appointment
+	// (calendar invitations design D6): nothing of it changes.
+	codeAppointmentCancelled = "appointment_cancelled"
+	// codeInvitationsUnavailable is a resend when the mail driver is not
+	// smtp (calendar invitations design D3), a 503.
+	codeInvitationsUnavailable = "invitations_unavailable"
 )
 
 // The titles this module's validation problems carry, one per thing a request
@@ -90,6 +98,28 @@ func revisionMismatch(current, supplied int32) gen.CalendarProblem {
 func occurrenceNotInSeries(date time.Time) gen.CalendarProblem {
 	return conflict(codeOccurrenceNotInSeries, "Not an occurrence",
 		fmt.Sprintf("The series has no occurrence on %s.", date.Format(time.DateOnly)))
+}
+
+// appointmentCancelled is the 409 every write to a cancelled appointment
+// answers.
+func appointmentCancelled(at time.Time) gen.CalendarProblem {
+	return conflict(codeAppointmentCancelled, "Appointment cancelled",
+		fmt.Sprintf("The appointment was cancelled on %s, and nothing of it changes.", at.UTC().Format(time.DateOnly)))
+}
+
+// errCancelled is the refusal of a write to the cancelled appointment a.
+func errCancelled(a store.CalendarAppointment) error {
+	return refuse(http.StatusConflict, appointmentCancelled(*a.CancelledAt))
+}
+
+// invitationsUnavailable is the 503 a resend answers when the mail driver is
+// not smtp: no invitation can be sent at all.
+func invitationsUnavailable() gen.CalendarProblem {
+	status := int32(http.StatusServiceUnavailable)
+	code := codeInvitationsUnavailable
+	title := "Invitations unavailable"
+	detail := "This installation does not send mail (the mail driver is not smtp), so no invitation can be sent."
+	return gen.CalendarProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
 }
 
 // sourceUnavailable is the 503 GET /items answers when a calendar source

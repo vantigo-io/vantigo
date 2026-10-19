@@ -7,7 +7,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
 )
 
 // This file is the whole of this module's reach into its neighbours: the
@@ -147,6 +149,60 @@ func (s *server) directoryCustomer(ctx context.Context, id int32) (*contracts.Cu
 		return nil, nil
 	}
 	return s.deps.Directory.Customer(ctx, id)
+}
+
+// directoryContact is one of a customer's contacts — an attendee of the
+// contact kind, named and addressed at read and at send time (calendar
+// invitations design D1) — nil when Customers is off or answers nothing for
+// the id, an erased contact included.
+func (s *server) directoryContact(ctx context.Context, id int32) (*contracts.ContactEntry, error) {
+	if err := noteContractCall(ctx, "Directory.Contact"); err != nil {
+		return nil, err
+	}
+	if s.deps.Directory == nil {
+		return nil, nil
+	}
+	return s.deps.Directory.Contact(ctx, id)
+}
+
+// directoryContactsFor is one customer's contacts with an address, for the
+// attendee picker (calendar invitations design D2); the caller has already
+// checked that Customers is on.
+func (s *server) directoryContactsFor(ctx context.Context, customerID int32) ([]contracts.ContactEntry, error) {
+	if err := noteContractCall(ctx, "Directory.ContactsForCustomer"); err != nil {
+		return nil, err
+	}
+	return s.deps.Directory.ContactsForCustomer(ctx, customerID)
+}
+
+// usersNotify mails a colleague through identity (calendar invitations
+// design D4), without this module ever holding their address.
+func (s *server) usersNotify(ctx context.Context, id uuid.UUID, n contracts.Notice) error {
+	if err := noteContractCall(ctx, "Users.Notify"); err != nil {
+		return err
+	}
+	return s.deps.Users.Notify(ctx, id, n)
+}
+
+// smtpSend hands one invitation to the installation's SMTP server:
+// Deps.SMTPSend when a harness set one, otherwise mail.SendOutbound, the
+// platform's guarded path — Staff's and Invoices' accessor. A caller asks
+// mailAvailable first.
+func (s *server) smtpSend(ctx context.Context, cfg config.MailConfig, out mail.Outbound) error {
+	if err := noteContractCall(ctx, "SMTPSend"); err != nil {
+		return err
+	}
+	if s.deps.SMTPSend != nil {
+		return s.deps.SMTPSend(ctx, cfg, out)
+	}
+	return mail.SendOutbound(ctx, cfg, out)
+}
+
+// mailAvailable is whether this installation sends invitations at all: its
+// mail driver is smtp (calendar invitations design D3). Otherwise outside
+// attendees are stored and left not sent, and GET /meta says so.
+func (s *server) mailAvailable() bool {
+	return s.deps.Config != nil && s.deps.Config.Mail.Driver == "smtp"
 }
 
 // projectsRole is the role userID holds on project id, "" for none or when

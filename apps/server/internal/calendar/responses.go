@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/jackc/pgx/v5"
 
@@ -18,7 +19,8 @@ import (
 // change at any time (calendar design D3). Anyone who is not an attendee gets
 // the 404 an unknown id gets, the owner included: their own status is
 // implicitly accepted and never stored, so there is nothing of theirs to
-// answer.
+// answer. An attendee's answer to a cancelled appointment is 409
+// appointment_cancelled (calendar invitations design D6).
 func (s *server) PostCalendarAppointmentsByIdResponse(ctx context.Context, req gen.PostCalendarAppointmentsByIdResponseRequestObject) (gen.PostCalendarAppointmentsByIdResponseResponseObject, error) {
 	var body gen.AppointmentResponseWrite
 	if req.Body != nil {
@@ -47,6 +49,16 @@ func (s *server) PostCalendarAppointmentsByIdResponse(ctx context.Context, req g
 		if err != nil {
 			return fmt.Errorf("calendar: lock appointment %d: %w", req.Id, err)
 		}
+		if row.CancelledAt != nil {
+			before, err := txq.ListAttendees(ctx, req.Id)
+			if err != nil {
+				return fmt.Errorf("calendar: read appointment %d's attendees: %w", req.Id, err)
+			}
+			if row.OwnerUserID == me || !mayRead(row, before, me) {
+				return errNotFound
+			}
+			return errCancelled(row)
+		}
 		_, err = txq.SetAttendeeStatus(ctx, store.SetAttendeeStatusParams{
 			AppointmentID: req.Id, UserID: me, Status: string(body.Status), Now: s.deps.Clock(),
 		})
@@ -62,7 +74,10 @@ func (s *server) PostCalendarAppointmentsByIdResponse(ctx context.Context, req g
 		excs, err = exceptionsOf(ctx, txq, row)
 		return err
 	})
-	if _, ok := asRefusal(err); ok {
+	if r, ok := asRefusal(err); ok {
+		if r.status == http.StatusConflict {
+			return gen.PostCalendarAppointmentsByIdResponse409ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
 		return gen.PostCalendarAppointmentsByIdResponse404Response{}, nil
 	}
 	if err != nil {
