@@ -110,7 +110,7 @@ at once. The exact limits are set by whoever runs the installation; see
 ## Edit your profile
 
 Open the avatar menu at the top right and choose **Settings**. The **Profile** page
-("Your name, photo and language.") holds:
+("Your name, photo, language and time zone.") holds:
 
 - **Profile photo** — **Choose a photo** (JPEG or PNG, up to 5 MB) and **Upload
   photo**. **Remove** takes it away again. The photo shows in the avatar menu and
@@ -119,6 +119,7 @@ Open the avatar menu at the top right and choose **Settings**. The **Profile** p
 - **Email** — shown but not editable here: "Your email is managed by your sign-in
   provider." An Owner changes it from the workspace's user list.
 - **Preferred language** — **Automatic**, **Norwegian** or **English**.
+- **Time zone** — **Same as the workspace**, or a zone of your own (below).
 
 Choose **Save profile**. The language setting changes the whole interface at once,
 and dates, numbers and currency follow it. **Automatic** follows your browser's
@@ -128,6 +129,24 @@ your customers open from a pay link is not signed in and does not use it: it spe
 language the invoice names, and the customer can switch. It asks Vantigo for nothing of
 an account — no session, no maintenance notice — and sends no referrer to the sites it
 links to.
+
+### Choose your time zone
+
+Your time zone decides two things: the clock times Vantigo shows you — when a timeline
+entry happened, a time stamp in a list — and what a time you
+type means, such as the time of a customer meeting you record. It starts as **Same as
+the workspace (Europe/Oslo)**, naming the workspace's business time zone, and keeps
+following that zone if an administrator later changes it. To work in another zone —
+you are travelling, or you work from another country — open the **Time zone** field on
+the **Profile** page, search for your city's zone (for example `America/New_York`),
+and choose **Save profile**. Every time on every page moves to it at once, on every
+device you sign in from. Choose **Same as the workspace** again to go back.
+
+It never moves a date. Today, a due date, an overdue follow-up, the date of an invoice
+or a time entry are the workspace's bookkeeping days, the same for everyone whatever
+their own zone, so an invoice issued on the 1st in Oslo is the 1st for you too, even
+where your clock still says the 30th. If Vantigo does not accept the zone you chose,
+the reason shows under the field and nothing is saved.
 
 ## Change your password
 

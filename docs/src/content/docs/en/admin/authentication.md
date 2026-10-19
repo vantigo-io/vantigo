@@ -237,9 +237,23 @@ server (`CET`), are refused. A change is audited
 `workspace.business_time_zone_changed` with the zone before and after, by the Owner
 who made it. Before this setting Staff and Expenses each held a zone of their own;
 an installation upgraded from there runs on `Europe/Oslo` until an Owner sets the
-workspace's, and the migration log warns when either module's value was another. A
-user's own `time_zone` column exists beside it, empty — "follow the workspace" — until
-a personal setting lands; the session answers both.
+workspace's, and the migration log warns when either module's value was another.
+
+Beside it, each user has a **personal time zone** (`identity.users.time_zone`): the
+zone instants are shown to that user in, and a time they type is read in. It is
+empty — "follow the workspace" — until the user picks one under **Personal settings**
+([Getting started](/en/user/getting-started/#choose-your-time-zone)), or a client sends
+`timeZone` to `PUT` or `PATCH /api/v1/identity/account/profile`. The name is held to the
+same two checks as the workspace's, refused on `timeZone` with `400 invalid_request`
+otherwise; `null` or a blank name empties it again, and a request that leaves
+`timeZone` out keeps it. `GET /api/v1/identity/account` answers the stored choice
+(`null` when the user follows the workspace), and `GET /api/v1/identity/session`
+answers the zone in effect as `timeZone`, where it came from as `timeZoneSource`
+(`personal` or `business`), and the workspace's as `businessTimeZone`. A personal zone
+never moves a bookkeeping day; an empty one follows a later change of the workspace's
+zone at once, since it is resolved when the session is read and not copied when the
+user is created. It is a preference, so changing it is not audited, and no Owner or
+directory sets it for the user: neither SCIM nor Staff's provisioning writes it.
 
 ### What Staff's provisioning does in identity
 

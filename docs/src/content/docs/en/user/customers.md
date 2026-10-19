@@ -247,14 +247,18 @@ the **Source** switch (**All**, **Manual**, **Automatic**), **Event types** and 
 
 **Add event** (`customers:timeline-manage`) records a moment: **Type** (**Call**,
 **Meeting**, **Email**, **Note**, **Other** or **Registry change**), **Date** (not in
-the future), an optional **Time (UTC)**, a **Description**, an optional **Source URL**
+the future), an optional **Time**, a **Description**, an optional **Source URL**
 shown as **Open source** on the entry, and a follow-up (next section). The time you
-type is UTC, as the label says, and the entry shows it in your browser's time zone,
-with no zone after it. The **Date** must be the day that time falls on in the
-business time zone (set under [Workspace
-administration](/en/user/workspace-administration/#workspace-settings)): 23:30 UTC on
-30 June is 1 July in Oslo. An entry saved before is left as it is, and editing only
-its description never asks for a new date. The menu on a
+type is in your own time zone, which the label names — **Time (Europe/Oslo)** — and
+which you choose under [Choose your time
+zone](/en/user/getting-started/#choose-your-time-zone); the entry shows it to each
+reader in theirs, with no zone after it. The **Date**, and the "not in the future"
+it is checked against, are the business time zone's (set under [Workspace
+administration](/en/user/workspace-administration/#workspace-settings)), and the date
+must be the day your time falls on there: 23:30 on 30 June in London is 1 July in
+Oslo, so with an Oslo workspace that entry is dated 1 July. An entry saved before is
+left as it is, and editing only its description never asks for a new date or moves
+its time, whatever zone you read it in. The menu on a
 manual entry offers **Edit**, **Revision history** and **Delete**. Every saved version
 is kept, and **Revision history** lists them as **Revision 1**, **Revision 2** and so
 on with who changed it and when. If an entry changed under you, the save is refused

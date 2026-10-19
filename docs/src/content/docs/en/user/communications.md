@@ -49,6 +49,8 @@ participants and the subject in the header, then the messages in order. Each mes
 is marked **You** for an email sent from Vantigo, **Internal note** for a note a
 colleague wrote, and the sender's name for a message from the customer. A message
 written as HTML is shown in a sandbox that blocks scripts, forms and network access.
+The time on each message, and on each conversation in the list, is in your own time
+zone ([Choose your time zone](/en/user/getting-started/#choose-your-time-zone)).
 
 An attachment appears as a link you can download; while it is waiting to be checked it
 is shown as **Scanning**, and one that cannot be served as **Attachment unavailable**.
