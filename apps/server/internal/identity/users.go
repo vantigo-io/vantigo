@@ -167,12 +167,9 @@ func (s *server) ownerUser(u store.ListManagedUsersRow, now time.Time) gen.Owner
 }
 
 // managedUser reads one user on q as ownerUser shows them: the answer of
-// every owner operation that returns the user it changed.
-func (s *server) managedUser(ctx context.Context, q *store.Queries, id uuid.UUID, now time.Time) (gen.OwnerUserResponse, error) {
-	issuer, err := s.oidcIssuer(ctx)
-	if err != nil {
-		return gen.OwnerUserResponse{}, err
-	}
+// every owner operation that returns the user it changed. issuer is
+// oidcIssuer's, which the caller reads before its transaction opens.
+func (s *server) managedUser(ctx context.Context, q *store.Queries, id uuid.UUID, now time.Time, issuer *string) (gen.OwnerUserResponse, error) {
 	rows, err := q.ListManagedUsers(ctx, store.ListManagedUsersParams{OidcIssuer: issuer, ID: &id})
 	if err != nil {
 		return gen.OwnerUserResponse{}, err
@@ -259,6 +256,12 @@ func (s *server) PostIdentityOwnerUsers(ctx context.Context, req gen.PostIdentit
 	email, displayName, role := strings.TrimSpace(*body.Email), strings.TrimSpace(*body.DisplayName), *body.Role
 	userID := uuid.New()
 	var created gen.OwnerUserResponse
+	// Read before the transaction, which then holds its connection
+	// without waiting for another.
+	issuer, err := s.oidcIssuer(ctx)
+	if err != nil {
+		return nil, err
+	}
 	err = s.serializable(ctx, userConflict, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if role == RoleOwner {
@@ -314,7 +317,7 @@ func (s *server) PostIdentityOwnerUsers(ctx context.Context, req gen.PostIdentit
 		}); err != nil {
 			return err
 		}
-		created, err = s.managedUser(ctx, q, userID, now)
+		created, err = s.managedUser(ctx, q, userID, now, issuer)
 		return err
 	})
 	if err != nil {
@@ -368,6 +371,12 @@ func (s *server) PutIdentityOwnerUsersById(ctx context.Context, req gen.PutIdent
 
 	email, displayName, role := strings.TrimSpace(*body.Email), strings.TrimSpace(*body.DisplayName), *body.Role
 	var updated gen.OwnerUserResponse
+	// Read before the transaction, which then holds its connection
+	// without waiting for another.
+	issuer, err := s.oidcIssuer(ctx)
+	if err != nil {
+		return nil, err
+	}
 	err = s.serializable(ctx, userConflict, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if err := lockOwners(ctx, q); err != nil {
@@ -441,7 +450,7 @@ func (s *server) PutIdentityOwnerUsersById(ctx context.Context, req gen.PutIdent
 				return err
 			}
 		}
-		updated, err = s.managedUser(ctx, q, target.ID, now)
+		updated, err = s.managedUser(ctx, q, target.ID, now, issuer)
 		return err
 	})
 	if err != nil {
@@ -526,6 +535,12 @@ func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled boo
 		return gen.OwnerUserResponse{}, err
 	}
 	var out gen.OwnerUserResponse
+	// Read before the transaction, which then holds its connection
+	// without waiting for another.
+	issuer, err := s.oidcIssuer(ctx)
+	if err != nil {
+		return gen.OwnerUserResponse{}, err
+	}
 	err = s.serializable(ctx, userConflict, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if err := lockOwners(ctx, q); err != nil {
@@ -592,7 +607,7 @@ func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled boo
 				}
 			}
 		}
-		out, err = s.managedUser(ctx, q, id, now)
+		out, err = s.managedUser(ctx, q, id, now, issuer)
 		return err
 	})
 	return out, err
