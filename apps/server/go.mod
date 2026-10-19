@@ -3,6 +3,7 @@ module github.com/vantigo-io/vantigo/server
 go 1.27.2
 
 require (
+	github.com/arran4/golang-ical v0.3.8
 	github.com/boombuler/barcode v1.1.0
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/exaring/otelpgx v0.12.0

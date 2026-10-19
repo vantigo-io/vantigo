@@ -136,6 +136,60 @@ func (d fakeDirectory) Customer(_ context.Context, id int32) (*contracts.Custome
 	return &contracts.CustomerEntry{ID: id, Name: name}, nil
 }
 
+// contactsDirectory is the customer directory for the invitations' tests:
+// Customer, Contact and ContactsForCustomer from maps a test can change
+// between requests (erase), under a lock because the server reads them from
+// its own goroutines. Every other method panics, as fakeDirectory's.
+type contactsDirectory struct {
+	contracts.CustomerDirectory
+	mu        sync.Mutex
+	customers map[int32]string
+	contacts  map[int32]contracts.ContactEntry
+	// of is each customer's contacts, in the order ContactsForCustomer
+	// answers them.
+	of map[int32][]int32
+}
+
+func (d *contactsDirectory) Customer(_ context.Context, id int32) (*contracts.CustomerEntry, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	name, ok := d.customers[id]
+	if !ok {
+		return nil, nil
+	}
+	return &contracts.CustomerEntry{ID: id, Name: name}, nil
+}
+
+func (d *contactsDirectory) Contact(_ context.Context, id int32) (*contracts.ContactEntry, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	c, ok := d.contacts[id]
+	if !ok {
+		return nil, nil
+	}
+	return &c, nil
+}
+
+func (d *contactsDirectory) ContactsForCustomer(_ context.Context, customerID int32) ([]contracts.ContactEntry, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := []contracts.ContactEntry{}
+	for _, id := range d.of[customerID] {
+		if c, ok := d.contacts[id]; ok && c.Email != nil {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// erase makes the directory answer nothing for contact id, as Customers does
+// for an anonymised one.
+func (d *contactsDirectory) erase(id int32) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.contacts, id)
+}
+
 // fakeProjects is the project directory as Projects would answer it, for
 // the two methods the calendar calls: Project, and Role — the role a user
 // holds on a project, "" for none, from roles keyed by project and user.

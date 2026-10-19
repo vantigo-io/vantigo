@@ -18,6 +18,8 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar"
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
+	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -27,11 +29,21 @@ import (
 // providers of delivery A as fakes in Deps.CalendarSources (fakes_test.go).
 //
 // The user directory is identity's own — modtest always composes identity —
-// so a test shapes what it answers through identity's tables (directoryUser).
+// so a test shapes what it answers through identity's tables (directoryUser),
+// and every Notify it is asked for is on h.Notices().
+//
+// MAIL_DRIVER is smtp, so invitations are available (mailAvailable) and every
+// one reaches the mailbox through Deps.SMTPSend rather than a server; a test
+// that wants the log driver sets MAIL_DRIVER=log with WithEnv.
 type harness struct {
 	*modtest.Harness
 	sources *fakeSources
+	mail    *mailbox
 }
+
+// smtpFrom is the harness installation's SMTP_FROM, the From and the
+// ORGANIZER of every invitation.
+const smtpFrom = "calendar@example.invalid"
 
 // newHarness is a calendar installation. Every harness carries the module's
 // lock rule out of its test: no call out of the module is made from inside one
@@ -39,13 +51,18 @@ type harness struct {
 func newHarness(t *testing.T, opts ...modtest.Option) *harness {
 	t.Helper()
 	sources := newFakeSources()
+	box := &mailbox{}
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(calendar.Module()),
 		modtest.WithCalendarSources(sources.slot()...),
+		modtest.WithSMTPSend(box.send),
+		modtest.WithEnv("MAIL_DRIVER", "smtp"),
+		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"),
+		modtest.WithEnv("SMTP_FROM", smtpFrom),
 	}
 	before := lockedContractCalls.count()
-	h := &harness{Harness: modtest.New(t, append(base, opts...)...), sources: sources}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), sources: sources, mail: box}
 	sources.wire(h.Deps().Access)
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
@@ -92,6 +109,50 @@ func (l *lockedCalls) since(n int) []string {
 	return slices.Clone(l.calls[n:])
 }
 
+// mailbox is the SMTP seam's fake, Staff's: every mail the module hands to
+// Deps.SMTPSend, kept in order — unless fail, when a test set it (failWith),
+// refuses the mail, which is then not kept. It is safe for concurrent use.
+type mailbox struct {
+	mu   sync.Mutex
+	sent []mail.Outbound
+	fail func(out mail.Outbound) error
+}
+
+func (m *mailbox) send(_ context.Context, _ config.MailConfig, out mail.Outbound) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.fail != nil {
+		if err := m.fail(out); err != nil {
+			return err
+		}
+	}
+	m.sent = append(m.sent, out)
+	return nil
+}
+
+// failWith makes the mailbox answer every send fn's error (nil delivers).
+func (m *mailbox) failWith(fn func(out mail.Outbound) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fail = fn
+}
+
+// messages is every mail kept so far, in order.
+func (m *mailbox) messages() []mail.Outbound {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.sent)
+}
+
+// take is every mail kept since the last take, and empties the mailbox.
+func (m *mailbox) take() []mail.Outbound {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := m.sent
+	m.sent = nil
+	return out
+}
+
 // The module's paths, so a typo is one compile error rather than a 404 a test
 // then explains to itself.
 const (
@@ -99,7 +160,14 @@ const (
 	itemsPath        = "/api/v1/calendar/items"
 	appointmentsPath = "/api/v1/calendar/appointments"
 	usersPath        = "/api/v1/calendar/users"
+	contactsPath     = "/api/v1/calendar/contacts"
+	rsvpReadPath     = "/api/v1/calendar/rsvp/read"
+	rsvpPath         = "/api/v1/calendar/rsvp"
 )
+
+func resendPath(id, attendeeID int64) string {
+	return appointmentPath(id) + "/attendees/" + strconv.FormatInt(attendeeID, 10) + "/resend"
+}
 
 func appointmentPath(id int64) string { return appointmentsPath + "/" + strconv.FormatInt(id, 10) }
 

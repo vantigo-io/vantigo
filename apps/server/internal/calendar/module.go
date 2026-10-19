@@ -14,16 +14,23 @@
 // sources), appointments.go, occurrences.go, responses.go, colleagues.go and
 // users.go, with recurrence.go for the rule, authorize.go for who the caller
 // is, contractscalls.go for every call out of the module, values.go for the
-// bounds and errors.go for the refusals.
+// bounds and errors.go for the refusals. The invitations (calendar
+// invitations design) are attendees.go (the three kinds), ics.go (the
+// iCalendar object), invitations.go (the mail and the resend), notices.go
+// (the colleagues' notices), words.go (both languages), contacts.go (the
+// picker), rsvp.go (the answer by link), cancellation.go (a delete that
+// becomes a cancellation) and cancellations_worker.go (its sweeper).
 package calendar
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
 // permissions is the module's permission catalog (calendar design D3). Every
@@ -44,15 +51,26 @@ var permissions = []contracts.Permission{
 	},
 }
 
+// limits maps each rate-limited operationId to its policy; the router hits
+// it per client address before access is checked. The RSVP page's two
+// anonymous operations (calendar invitations design D5), each a bucket of its
+// own: the read 60 and the answer 30 per client per 10 minutes.
+var limits = map[string]ratelimit.Policy{
+	"postCalendarRsvpRead": {Name: "calendar-rsvp-read", Limit: 60, Window: 10 * time.Minute},
+	"postCalendarRsvp":     {Name: "calendar-rsvp", Limit: 30, Window: 10 * time.Minute},
+}
+
 // Module is calendar as a platform module: its contract mounted under
-// /api/v1/calendar/ and its two permissions in the composed catalog. It
-// provides no contract to anyone; it reads Deps.CalendarSources, Deps.Users,
-// Deps.Calendar and, when wired, Deps.Directory and Deps.Projects.
+// /api/v1/calendar/, its two permissions in the composed catalog and the
+// calendar-cancellations worker. It provides no contract to anyone; it reads
+// Deps.CalendarSources, Deps.Users, Deps.Calendar and, when wired,
+// Deps.Directory and Deps.Projects, and mails through Deps.SMTPSend.
 func Module() module.Module {
 	return module.Module{
 		Name:        "calendar",
 		Permissions: permissions,
 		Mount:       mount,
+		Workers:     workers,
 	}
 }
 
@@ -66,6 +84,7 @@ func mount(d module.Deps) (http.Handler, error) {
 		Doc:     d.Doc,
 		Access:  d.Access,
 		Limiter: d.Limiter,
+		Limits:  limits,
 		Catalog: d.Catalog,
 	})
 	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{

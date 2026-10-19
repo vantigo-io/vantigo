@@ -1,0 +1,28 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Vantigo//Calendar//EN
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:all-day@vantigo
+DTSTAMP:20260912T120000Z
+SEQUENCE:2
+DTSTART;VALUE=DATE:20261102
+DTEND;VALUE=DATE:20261104
+SUMMARY:Offsite
+DESCRIPTION:Answer with the link below so the organiser sees it in
+  Vantigo:\nhttps://vantigo.example.com/rsvp?token=TOKEN
+URL:https://vantigo.example.com/rsvp?token=TOKEN
+STATUS:CONFIRMED
+CLASS:PRIVATE
+TRANSP:TRANSPARENT
+ORGANIZER;CN=Kari Nordmann:mailto:calendar@vantigo.example.com
+ATTENDEE;CN=Ola
+  Hansen;PARTSTAT=ACCEPTED;ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:ola@kunde.
+ example
+ATTENDEE;CN=O’Brien
+  Per;PARTSTAT=NEEDS-ACTION;ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:per@examp
+ le.com
+ATTENDEE;PARTSTAT=TENTATIVE;ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:anon@exam
+ ple.com
+END:VEVENT
+END:VCALENDAR
