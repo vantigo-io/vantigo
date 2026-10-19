@@ -121,7 +121,10 @@ describe("AppointmentSheet — a new appointment", () => {
     await save();
 
     await waitFor(() => expect(sent(fetchMock, "POST").body).toBeDefined());
-    expect(sent(fetchMock, "POST").body).toMatchObject({ customerId: 42, attendees: [KARI.id] });
+    expect(sent(fetchMock, "POST").body).toMatchObject({
+      customerId: 42,
+      attendees: [{ kind: "user", userId: KARI.id }],
+    });
   });
 
   it("puts the server's field errors on the fields they name", async () => {
@@ -290,7 +293,7 @@ describe("AppointmentSheet — an attendee", () => {
         appointmentFixture({
           owner: KARI,
           myStatus: "needs-action",
-          attendees: [{ user: { id: ME, displayName: "Test User" }, status: "needs-action" }],
+          attendees: [{ id: 1, kind: "user", user: { id: ME, displayName: "Test User" }, status: "needs-action" }],
         }),
       ],
     });

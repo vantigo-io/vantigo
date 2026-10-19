@@ -349,6 +349,22 @@ type Config struct {
 	// store about every due row.
 	StaffWorkersPoll time.Duration
 
+	// CalendarCancellationsEnabled is the on/off switch for the calendar
+	// module's cancellations worker, calendar-cancellations
+	// (CALENDAR_CANCELLATIONS_ENABLED, calendar invitations design D6).
+	// Default ON: a cancelled appointment is kept only so its CANCEL can name
+	// what it cancels, and an installation that says nothing must still erase
+	// it once its last day has passed. A 0 means the worker is never handed to
+	// the runner: cancelled appointments stay until it is on again.
+	CalendarCancellationsEnabled bool
+	// CalendarWorkersPoll is how often the calendar's workers run a cycle
+	// (CALENDAR_WORKERS_POLL, default 1 hour, never under a minute): each poll
+	// takes the cancellations lease and erases at most two hundred cancelled
+	// appointments whose last day has passed — a constant in the worker. The
+	// erase is idempotent and nothing waits on it, so an hourly poll is ample;
+	// a minute is the floor so a typo is not a hot loop against the database.
+	CalendarWorkersPoll time.Duration
+
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
 	// returns a store rather than failing to start; every operation on it
@@ -528,6 +544,7 @@ func Load(env map[string]string) (*Config, error) {
 	invoicesVipps(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
 	staffWorkers(&p, env, c)
+	calendarWorkers(&p, env, c)
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
@@ -821,6 +838,26 @@ func staffWorkers(p *problems, env map[string]string, c *Config) {
 			return
 		}
 		c.StaffWorkersPoll = d
+	}
+}
+
+// calendarWorkersMinPoll is the shortest CALENDAR_WORKERS_POLL accepted.
+const calendarWorkersMinPoll = time.Minute
+
+// calendarWorkers loads the calendar workers' settings (calendar invitations
+// design D6): the cancellations worker's switch, on by default, and the poll,
+// an hour by default and at least a minute. The batch — at most two hundred
+// appointments a cycle — is a constant in the worker, not a knob.
+func calendarWorkers(p *problems, env map[string]string, c *Config) {
+	c.CalendarCancellationsEnabled = boolean(p, env, "CALENDAR_CANCELLATIONS_ENABLED", true)
+	c.CalendarWorkersPoll = time.Hour
+	if v := env["CALENDAR_WORKERS_POLL"]; v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < calendarWorkersMinPoll {
+			p.add("CALENDAR_WORKERS_POLL", "must be a duration of at least 1m, such as 1h")
+			return
+		}
+		c.CalendarWorkersPoll = d
 	}
 }
 

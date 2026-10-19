@@ -184,7 +184,9 @@ const valuesOf = (span: Span, timeZone: string, appointment?: Appointment): Form
       appointment?.recurrence?.rule,
       appointment ? spanStartDate(spanOf(appointment), appointment.timeZone) : startDate,
     ),
-    attendees: appointment?.attendees.map((attendee) => attendee.user.id) ?? [],
+    // TODO(calendar invitations, Task 4): the contact and email adders; the
+    // form holds the colleagues' ids alone until then.
+    attendees: appointment?.attendees.flatMap((attendee) => (attendee.user ? [attendee.user.id] : [])) ?? [],
   };
 };
 
@@ -295,7 +297,7 @@ const AppointmentForm = ({
       ...(values.location.trim() ? { location: values.location.trim() } : {}),
       ...(values.description.trim() ? { description: values.description.trim() } : {}),
       ...(rule ? { recurrence: { rule } } : {}),
-      attendees: [...new Set(values.attendees)],
+      attendees: [...new Set(values.attendees)].map((userId) => ({ kind: "user" as const, userId })),
       ...(customer !== undefined ? { customerId: customer } : {}),
       ...(project !== undefined ? { projectId: project } : {}),
     };
@@ -451,7 +453,7 @@ const AppointmentForm = ({
           value={form.values.attendees}
           onChange={(attendees) => form.setFieldValue("attendees", attendees)}
           ownerId={appointment?.owner.id}
-          known={appointment?.attendees.map((attendee) => attendee.user) ?? []}
+          known={appointment?.attendees.flatMap((attendee) => (attendee.user ? [attendee.user] : [])) ?? []}
           error={typeof form.errors.attendees === "string" ? form.errors.attendees : undefined}
         />
         <Group justify="space-between">
@@ -652,8 +654,9 @@ const AttendeeView = ({ appointment, occurrenceSpan }: { appointment: Appointmen
           {t("attendees")}
         </Text>
         {appointment.attendees.map((attendee) => (
-          <Text size="sm" key={attendee.user.id}>
-            {attendee.user.displayName} · {t(statusKeys[attendee.status])}
+          <Text size="sm" key={attendee.id}>
+            {attendee.user?.displayName ?? attendee.contact?.name ?? attendee.name ?? attendee.email} ·{" "}
+            {t(statusKeys[attendee.status])}
           </Text>
         ))}
       </Stack>

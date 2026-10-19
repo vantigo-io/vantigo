@@ -13,6 +13,56 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelAppointment = `-- name: CancelAppointment :one
+UPDATE calendar.appointments SET
+    cancelled_at = $1::timestamptz,
+    sequence = sequence + 1,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE id = $2
+RETURNING id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at, cancelled_at
+`
+
+type CancelAppointmentParams struct {
+	CancelledAt time.Time
+	ID          int64
+}
+
+// CancelAppointment marks the appointment cancelled (calendar invitations
+// design D6) instead of deleting it, once someone outside has been sent an
+// invitation: the sequence moves on for the CANCEL that tells them, and the
+// revision, since every write to it from then on is refused.
+func (q *Queries) CancelAppointment(ctx context.Context, arg CancelAppointmentParams) (CalendarAppointment, error) {
+	row := q.db.QueryRow(ctx, cancelAppointment, arg.CancelledAt, arg.ID)
+	var i CalendarAppointment
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.Title,
+		&i.Description,
+		&i.Location,
+		&i.AllDay,
+		&i.StartDate,
+		&i.EndDate,
+		&i.StartsAt,
+		&i.EndsAt,
+		&i.TimeZone,
+		&i.Visibility,
+		&i.Transparency,
+		&i.Rrule,
+		&i.SeriesLastDate,
+		&i.CustomerID,
+		&i.ProjectID,
+		&i.IcalUid,
+		&i.Sequence,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CancelledAt,
+	)
+	return i, err
+}
+
 const deleteAppointment = `-- name: DeleteAppointment :execrows
 DELETE FROM calendar.appointments WHERE id = $1
 `
@@ -27,8 +77,23 @@ func (q *Queries) DeleteAppointment(ctx context.Context, id int64) (int64, error
 	return result.RowsAffected(), nil
 }
 
+const deleteCancelled = `-- name: DeleteCancelled :execrows
+DELETE FROM calendar.appointments WHERE id = ANY($1::bigint[]) AND cancelled_at IS NOT NULL
+`
+
+// DeleteCancelled erases the cancelled appointments in ids, their attendees
+// and exceptions with them (ON DELETE CASCADE). One that is not cancelled is
+// never erased here.
+func (q *Queries) DeleteCancelled(ctx context.Context, ids []int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCancelled, ids)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getAppointment = `-- name: GetAppointment :one
-SELECT id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at FROM calendar.appointments WHERE id = $1
+SELECT id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at, cancelled_at FROM calendar.appointments WHERE id = $1
 `
 
 func (q *Queries) GetAppointment(ctx context.Context, id int64) (CalendarAppointment, error) {
@@ -57,12 +122,13 @@ func (q *Queries) GetAppointment(ctx context.Context, id int64) (CalendarAppoint
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CancelledAt,
 	)
 	return i, err
 }
 
 const getAppointmentForUpdate = `-- name: GetAppointmentForUpdate :one
-SELECT id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at FROM calendar.appointments WHERE id = $1 FOR UPDATE
+SELECT id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at, cancelled_at FROM calendar.appointments WHERE id = $1 FOR UPDATE
 `
 
 // GetAppointmentForUpdate takes the appointment's row lock for a write of its
@@ -94,6 +160,7 @@ func (q *Queries) GetAppointmentForUpdate(ctx context.Context, id int64) (Calend
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CancelledAt,
 	)
 	return i, err
 }
@@ -111,7 +178,7 @@ INSERT INTO calendar.appointments (
     $11, $12, $13, $14,
     $15, $16, $17, $18::timestamptz, $18::timestamptz
 )
-RETURNING id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at
+RETURNING id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at, cancelled_at
 `
 
 type InsertAppointmentParams struct {
@@ -183,15 +250,17 @@ func (q *Queries) InsertAppointment(ctx context.Context, arg InsertAppointmentPa
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CancelledAt,
 	)
 	return i, err
 }
 
 const listAppointmentsInWindow = `-- name: ListAppointmentsInWindow :many
-SELECT a.id, a.owner_user_id, a.title, a.description, a.location, a.all_day, a.start_date, a.end_date, a.starts_at, a.ends_at, a.time_zone, a.visibility, a.transparency, a.rrule, a.series_last_date, a.customer_id, a.project_id, a.ical_uid, a.sequence, a.revision, a.created_at, a.updated_at, att.status AS my_status
+SELECT a.id, a.owner_user_id, a.title, a.description, a.location, a.all_day, a.start_date, a.end_date, a.starts_at, a.ends_at, a.time_zone, a.visibility, a.transparency, a.rrule, a.series_last_date, a.customer_id, a.project_id, a.ical_uid, a.sequence, a.revision, a.created_at, a.updated_at, a.cancelled_at, att.status AS my_status
 FROM calendar.appointments a
-LEFT JOIN calendar.appointment_attendees att ON att.appointment_id = a.id AND att.user_id = $1
+LEFT JOIN calendar.appointment_attendees att ON att.appointment_id = a.id AND att.user_id = $1::uuid
 WHERE (a.owner_user_id = $1 OR att.user_id IS NOT NULL)
+  AND a.cancelled_at IS NULL
   AND (
     (a.rrule IS NULL AND (
         (NOT a.all_day AND a.starts_at < $2::timestamptz AND a.ends_at > $3::timestamptz)
@@ -226,7 +295,7 @@ type ListAppointmentsInWindowRow struct {
 }
 
 // ListAppointmentsInWindow is the user's appointments — owned, or attended with
-// any status — that may have an occurrence in the window, each with the user's
+// any status, and not cancelled — that may have an occurrence in the window, each with the user's
 // own status (null when they own it). A single one is in when its instants
 // overlap [from_at, to_at) or its dates overlap [from_date, to_date]; a series
 // when it starts before the window ends and its last day, when it has one, is
@@ -271,6 +340,7 @@ func (q *Queries) ListAppointmentsInWindow(ctx context.Context, arg ListAppointm
 			&i.CalendarAppointment.Revision,
 			&i.CalendarAppointment.CreatedAt,
 			&i.CalendarAppointment.UpdatedAt,
+			&i.CalendarAppointment.CancelledAt,
 			&i.MyStatus,
 		); err != nil {
 			return nil, err
@@ -283,10 +353,59 @@ func (q *Queries) ListAppointmentsInWindow(ctx context.Context, arg ListAppointm
 	return items, nil
 }
 
+const listCancelledDue = `-- name: ListCancelledDue :many
+SELECT a.id
+FROM calendar.appointments a
+WHERE a.cancelled_at IS NOT NULL
+  AND (
+    (a.rrule IS NULL AND NOT a.all_day AND a.ends_at <= $1::timestamptz)
+    OR (a.rrule IS NULL AND a.all_day AND a.end_date < timezone(a.time_zone, $1::timestamptz)::date)
+    OR (a.rrule IS NOT NULL AND a.series_last_date IS NOT NULL
+        AND a.series_last_date < timezone(a.time_zone, $1::timestamptz)::date)
+    OR (a.rrule IS NOT NULL AND a.series_last_date IS NULL
+        AND a.cancelled_at < $2::timestamptz)
+  )
+ORDER BY a.cancelled_at, a.id
+LIMIT $3::integer
+`
+
+type ListCancelledDueParams struct {
+	Now                      time.Time
+	UnboundedCancelledBefore time.Time
+	RowLimit                 int32
+}
+
+// ListCancelledDue is the cancelled appointments whose last day has passed,
+// for the calendar-cancellations worker, oldest first and at most row_limit:
+// a single one when its end has (a timed one's instant, an all-day one's last
+// day before today in its own zone), a bounded series when its last
+// occurrence's day has, and an unbounded series when it was cancelled before
+// unbounded_cancelled_before (ninety days ago, the caller's constant).
+func (q *Queries) ListCancelledDue(ctx context.Context, arg ListCancelledDueParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listCancelledDue, arg.Now, arg.UnboundedCancelledBefore, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listColleagueBusyAppointmentsInWindow = `-- name: ListColleagueBusyAppointmentsInWindow :many
-SELECT a.id, a.owner_user_id, a.title, a.description, a.location, a.all_day, a.start_date, a.end_date, a.starts_at, a.ends_at, a.time_zone, a.visibility, a.transparency, a.rrule, a.series_last_date, a.customer_id, a.project_id, a.ical_uid, a.sequence, a.revision, a.created_at, a.updated_at
+SELECT a.id, a.owner_user_id, a.title, a.description, a.location, a.all_day, a.start_date, a.end_date, a.starts_at, a.ends_at, a.time_zone, a.visibility, a.transparency, a.rrule, a.series_last_date, a.customer_id, a.project_id, a.ical_uid, a.sequence, a.revision, a.created_at, a.updated_at, a.cancelled_at
 FROM calendar.appointments a
 WHERE a.transparency = 'busy'
+  AND a.cancelled_at IS NULL
   AND (
     a.owner_user_id = $1
     OR EXISTS (
@@ -324,7 +443,7 @@ type ListColleagueBusyAppointmentsInWindowParams struct {
 
 // ListColleagueBusyAppointmentsInWindow is a colleague's appointments that
 // block their time (calendar design D6): owned, or attended and accepted, with
-// transparency busy, in the window as ListAppointmentsInWindow judges it.
+// transparency busy and not cancelled, in the window as ListAppointmentsInWindow judges it.
 func (q *Queries) ListColleagueBusyAppointmentsInWindow(ctx context.Context, arg ListColleagueBusyAppointmentsInWindowParams) ([]CalendarAppointment, error) {
 	rows, err := q.db.Query(ctx, listColleagueBusyAppointmentsInWindow,
 		arg.UserID,
@@ -363,6 +482,7 @@ func (q *Queries) ListColleagueBusyAppointmentsInWindow(ctx context.Context, arg
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CancelledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -380,7 +500,7 @@ UPDATE calendar.appointments SET
     sequence = sequence + 1,
     updated_at = $1::timestamptz
 WHERE id = $2
-RETURNING id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at
+RETURNING id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at, cancelled_at
 `
 
 type TouchAppointmentWhenParams struct {
@@ -419,6 +539,7 @@ func (q *Queries) TouchAppointmentWhen(ctx context.Context, arg TouchAppointment
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CancelledAt,
 	)
 	return i, err
 }
@@ -444,7 +565,7 @@ UPDATE calendar.appointments SET
     revision = revision + 1,
     updated_at = $17::timestamptz
 WHERE id = $18
-RETURNING id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at
+RETURNING id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at, cancelled_at
 `
 
 type UpdateAppointmentParams struct {
@@ -516,6 +637,7 @@ func (q *Queries) UpdateAppointment(ctx context.Context, arg UpdateAppointmentPa
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CancelledAt,
 	)
 	return i, err
 }

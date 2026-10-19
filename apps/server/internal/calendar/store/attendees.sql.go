@@ -12,49 +12,303 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteAttendeesExcept = `-- name: DeleteAttendeesExcept :exec
+const deleteAttendeesNotIn = `-- name: DeleteAttendeesNotIn :many
 DELETE FROM calendar.appointment_attendees
-WHERE appointment_id = $1 AND NOT (user_id = ANY($2::uuid[]))
+WHERE appointment_id = $1 AND NOT (id = ANY($2::bigint[]))
+RETURNING id, appointment_id, user_id, status, responded_at, created_at, kind, contact_id, email, name, rsvp_token_sha256, rsvp_link_ciphertext, invited_at, invited_sequence, send_failed_at
 `
 
-type DeleteAttendeesExceptParams struct {
+type DeleteAttendeesNotInParams struct {
 	AppointmentID int64
-	UserIds       []uuid.UUID
+	Ids           []int64
 }
 
-// DeleteAttendeesExcept removes every attendee not in user_ids — all of them
-// when it is empty.
-func (q *Queries) DeleteAttendeesExcept(ctx context.Context, arg DeleteAttendeesExceptParams) error {
-	_, err := q.db.Exec(ctx, deleteAttendeesExcept, arg.AppointmentID, arg.UserIds)
-	return err
+// DeleteAttendeesNotIn removes every attendee of the appointment whose row id
+// is not in ids — all of them when it is empty — and answers the rows it
+// removed, so the dropped outside attendees can be told.
+func (q *Queries) DeleteAttendeesNotIn(ctx context.Context, arg DeleteAttendeesNotInParams) ([]CalendarAppointmentAttendee, error) {
+	rows, err := q.db.Query(ctx, deleteAttendeesNotIn, arg.AppointmentID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CalendarAppointmentAttendee
+	for rows.Next() {
+		var i CalendarAppointmentAttendee
+		if err := rows.Scan(
+			&i.ID,
+			&i.AppointmentID,
+			&i.UserID,
+			&i.Status,
+			&i.RespondedAt,
+			&i.CreatedAt,
+			&i.Kind,
+			&i.ContactID,
+			&i.Email,
+			&i.Name,
+			&i.RsvpTokenSha256,
+			&i.RsvpLinkCiphertext,
+			&i.InvitedAt,
+			&i.InvitedSequence,
+			&i.SendFailedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const insertAttendees = `-- name: InsertAttendees :exec
-
-INSERT INTO calendar.appointment_attendees (appointment_id, user_id, status, responded_at, created_at)
-SELECT $1::bigint, u, 'needs-action', NULL, $2::timestamptz
-FROM unnest($3::uuid[]) AS u
-ON CONFLICT (appointment_id, user_id) DO NOTHING
+const getAttendee = `-- name: GetAttendee :one
+SELECT id, appointment_id, user_id, status, responded_at, created_at, kind, contact_id, email, name, rsvp_token_sha256, rsvp_link_ciphertext, invited_at, invited_sequence, send_failed_at FROM calendar.appointment_attendees
+WHERE id = $1 AND appointment_id = $2
 `
 
-type InsertAttendeesParams struct {
+type GetAttendeeParams struct {
+	ID            int64
 	AppointmentID int64
+}
+
+// GetAttendee is one attendee of one appointment, by its row id.
+func (q *Queries) GetAttendee(ctx context.Context, arg GetAttendeeParams) (CalendarAppointmentAttendee, error) {
+	row := q.db.QueryRow(ctx, getAttendee, arg.ID, arg.AppointmentID)
+	var i CalendarAppointmentAttendee
+	err := row.Scan(
+		&i.ID,
+		&i.AppointmentID,
+		&i.UserID,
+		&i.Status,
+		&i.RespondedAt,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.ContactID,
+		&i.Email,
+		&i.Name,
+		&i.RsvpTokenSha256,
+		&i.RsvpLinkCiphertext,
+		&i.InvitedAt,
+		&i.InvitedSequence,
+		&i.SendFailedAt,
+	)
+	return i, err
+}
+
+const getAttendeeByRsvpToken = `-- name: GetAttendeeByRsvpToken :one
+SELECT att.id, att.appointment_id, att.user_id, att.status, att.responded_at, att.created_at, att.kind, att.contact_id, att.email, att.name, att.rsvp_token_sha256, att.rsvp_link_ciphertext, att.invited_at, att.invited_sequence, att.send_failed_at, a.id, a.owner_user_id, a.title, a.description, a.location, a.all_day, a.start_date, a.end_date, a.starts_at, a.ends_at, a.time_zone, a.visibility, a.transparency, a.rrule, a.series_last_date, a.customer_id, a.project_id, a.ical_uid, a.sequence, a.revision, a.created_at, a.updated_at, a.cancelled_at
+FROM calendar.appointment_attendees att
+JOIN calendar.appointments a ON a.id = att.appointment_id
+WHERE att.rsvp_token_sha256 = $1::char(64)
+`
+
+type GetAttendeeByRsvpTokenRow struct {
+	CalendarAppointmentAttendee CalendarAppointmentAttendee
+	CalendarAppointment         CalendarAppointment
+}
+
+// GetAttendeeByRsvpToken is the attendee whose RSVP token hashes to
+// token_sha256 (hex SHA-256), with its appointment — the RSVP page's lookup.
+// The token itself is never stored.
+func (q *Queries) GetAttendeeByRsvpToken(ctx context.Context, tokenSha256 string) (GetAttendeeByRsvpTokenRow, error) {
+	row := q.db.QueryRow(ctx, getAttendeeByRsvpToken, tokenSha256)
+	var i GetAttendeeByRsvpTokenRow
+	err := row.Scan(
+		&i.CalendarAppointmentAttendee.ID,
+		&i.CalendarAppointmentAttendee.AppointmentID,
+		&i.CalendarAppointmentAttendee.UserID,
+		&i.CalendarAppointmentAttendee.Status,
+		&i.CalendarAppointmentAttendee.RespondedAt,
+		&i.CalendarAppointmentAttendee.CreatedAt,
+		&i.CalendarAppointmentAttendee.Kind,
+		&i.CalendarAppointmentAttendee.ContactID,
+		&i.CalendarAppointmentAttendee.Email,
+		&i.CalendarAppointmentAttendee.Name,
+		&i.CalendarAppointmentAttendee.RsvpTokenSha256,
+		&i.CalendarAppointmentAttendee.RsvpLinkCiphertext,
+		&i.CalendarAppointmentAttendee.InvitedAt,
+		&i.CalendarAppointmentAttendee.InvitedSequence,
+		&i.CalendarAppointmentAttendee.SendFailedAt,
+		&i.CalendarAppointment.ID,
+		&i.CalendarAppointment.OwnerUserID,
+		&i.CalendarAppointment.Title,
+		&i.CalendarAppointment.Description,
+		&i.CalendarAppointment.Location,
+		&i.CalendarAppointment.AllDay,
+		&i.CalendarAppointment.StartDate,
+		&i.CalendarAppointment.EndDate,
+		&i.CalendarAppointment.StartsAt,
+		&i.CalendarAppointment.EndsAt,
+		&i.CalendarAppointment.TimeZone,
+		&i.CalendarAppointment.Visibility,
+		&i.CalendarAppointment.Transparency,
+		&i.CalendarAppointment.Rrule,
+		&i.CalendarAppointment.SeriesLastDate,
+		&i.CalendarAppointment.CustomerID,
+		&i.CalendarAppointment.ProjectID,
+		&i.CalendarAppointment.IcalUid,
+		&i.CalendarAppointment.Sequence,
+		&i.CalendarAppointment.Revision,
+		&i.CalendarAppointment.CreatedAt,
+		&i.CalendarAppointment.UpdatedAt,
+		&i.CalendarAppointment.CancelledAt,
+	)
+	return i, err
+}
+
+const insertContactAttendee = `-- name: InsertContactAttendee :one
+INSERT INTO calendar.appointment_attendees (
+    appointment_id, kind, contact_id, status, rsvp_token_sha256, rsvp_link_ciphertext, created_at
+) VALUES (
+    $1, 'contact', $2::integer, 'needs-action', $3::char(64), $4::text, $5::timestamptz
+)
+ON CONFLICT (appointment_id, contact_id) WHERE contact_id IS NOT NULL DO NOTHING
+RETURNING id, appointment_id, user_id, status, responded_at, created_at, kind, contact_id, email, name, rsvp_token_sha256, rsvp_link_ciphertext, invited_at, invited_sequence, send_failed_at
+`
+
+type InsertContactAttendeeParams struct {
+	AppointmentID      int64
+	ContactID          int32
+	RsvpTokenSha256    string
+	RsvpLinkCiphertext string
+	Now                time.Time
+}
+
+// InsertContactAttendee adds a customer's contact at needs-action with its
+// RSVP token's hash and sealed link. One already on the appointment keeps
+// their row, their answer and their token: nothing is inserted and no row is
+// returned.
+func (q *Queries) InsertContactAttendee(ctx context.Context, arg InsertContactAttendeeParams) (CalendarAppointmentAttendee, error) {
+	row := q.db.QueryRow(ctx, insertContactAttendee,
+		arg.AppointmentID,
+		arg.ContactID,
+		arg.RsvpTokenSha256,
+		arg.RsvpLinkCiphertext,
+		arg.Now,
+	)
+	var i CalendarAppointmentAttendee
+	err := row.Scan(
+		&i.ID,
+		&i.AppointmentID,
+		&i.UserID,
+		&i.Status,
+		&i.RespondedAt,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.ContactID,
+		&i.Email,
+		&i.Name,
+		&i.RsvpTokenSha256,
+		&i.RsvpLinkCiphertext,
+		&i.InvitedAt,
+		&i.InvitedSequence,
+		&i.SendFailedAt,
+	)
+	return i, err
+}
+
+const insertEmailAttendee = `-- name: InsertEmailAttendee :one
+INSERT INTO calendar.appointment_attendees (
+    appointment_id, kind, email, name, status, rsvp_token_sha256, rsvp_link_ciphertext, created_at
+) VALUES (
+    $1, 'email', $2::varchar, $3, 'needs-action', $4::char(64), $5::text, $6::timestamptz
+)
+ON CONFLICT (appointment_id, email) WHERE kind = 'email' DO NOTHING
+RETURNING id, appointment_id, user_id, status, responded_at, created_at, kind, contact_id, email, name, rsvp_token_sha256, rsvp_link_ciphertext, invited_at, invited_sequence, send_failed_at
+`
+
+type InsertEmailAttendeeParams struct {
+	AppointmentID      int64
+	Email              string
+	Name               *string
+	RsvpTokenSha256    string
+	RsvpLinkCiphertext string
+	Now                time.Time
+}
+
+// InsertEmailAttendee adds an address typed in, lower-cased by the caller,
+// with the name as typed, at needs-action with its RSVP token's hash and
+// sealed link. One already on the appointment keeps their row, their answer
+// and their token: nothing is inserted and no row is returned.
+func (q *Queries) InsertEmailAttendee(ctx context.Context, arg InsertEmailAttendeeParams) (CalendarAppointmentAttendee, error) {
+	row := q.db.QueryRow(ctx, insertEmailAttendee,
+		arg.AppointmentID,
+		arg.Email,
+		arg.Name,
+		arg.RsvpTokenSha256,
+		arg.RsvpLinkCiphertext,
+		arg.Now,
+	)
+	var i CalendarAppointmentAttendee
+	err := row.Scan(
+		&i.ID,
+		&i.AppointmentID,
+		&i.UserID,
+		&i.Status,
+		&i.RespondedAt,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.ContactID,
+		&i.Email,
+		&i.Name,
+		&i.RsvpTokenSha256,
+		&i.RsvpLinkCiphertext,
+		&i.InvitedAt,
+		&i.InvitedSequence,
+		&i.SendFailedAt,
+	)
+	return i, err
+}
+
+const insertUserAttendee = `-- name: InsertUserAttendee :one
+
+INSERT INTO calendar.appointment_attendees (appointment_id, kind, user_id, status, created_at)
+VALUES ($1, 'user', $2::uuid, 'needs-action', $3::timestamptz)
+ON CONFLICT (appointment_id, user_id) WHERE user_id IS NOT NULL DO NOTHING
+RETURNING id, appointment_id, user_id, status, responded_at, created_at, kind, contact_id, email, name, rsvp_token_sha256, rsvp_link_ciphertext, invited_at, invited_sequence, send_failed_at
+`
+
+type InsertUserAttendeeParams struct {
+	AppointmentID int64
+	UserID        uuid.UUID
 	Now           time.Time
-	UserIds       []uuid.UUID
 }
 
-// Attendees (calendar design D3): the colleagues on an appointment, the owner
-// never among them. Written under the appointment's row lock.
-// InsertAttendees adds each user not already on the appointment at
-// needs-action; one already there keeps their answer. With
-// DeleteAttendeesExcept it replaces the list.
-func (q *Queries) InsertAttendees(ctx context.Context, arg InsertAttendeesParams) error {
-	_, err := q.db.Exec(ctx, insertAttendees, arg.AppointmentID, arg.Now, arg.UserIds)
-	return err
+// Attendees (calendar design D3, calendar invitations design D1): the people
+// on an appointment, the owner never among them, each of one kind — a user, a
+// customer's contact (an opaque id, named through the directory) or an address
+// typed in. The two outside kinds carry the RSVP token's hash, the sealed link
+// and the record of their last invitation. Written under the appointment's row
+// lock.
+// InsertUserAttendee adds a colleague at needs-action. One already on the
+// appointment keeps their row and their answer: nothing is inserted and no
+// row is returned.
+func (q *Queries) InsertUserAttendee(ctx context.Context, arg InsertUserAttendeeParams) (CalendarAppointmentAttendee, error) {
+	row := q.db.QueryRow(ctx, insertUserAttendee, arg.AppointmentID, arg.UserID, arg.Now)
+	var i CalendarAppointmentAttendee
+	err := row.Scan(
+		&i.ID,
+		&i.AppointmentID,
+		&i.UserID,
+		&i.Status,
+		&i.RespondedAt,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.ContactID,
+		&i.Email,
+		&i.Name,
+		&i.RsvpTokenSha256,
+		&i.RsvpLinkCiphertext,
+		&i.InvitedAt,
+		&i.InvitedSequence,
+		&i.SendFailedAt,
+	)
+	return i, err
 }
 
 const listAttendees = `-- name: ListAttendees :many
-SELECT id, appointment_id, user_id, status, responded_at, created_at FROM calendar.appointment_attendees
+SELECT id, appointment_id, user_id, status, responded_at, created_at, kind, contact_id, email, name, rsvp_token_sha256, rsvp_link_ciphertext, invited_at, invited_sequence, send_failed_at FROM calendar.appointment_attendees
 WHERE appointment_id = $1
 ORDER BY id
 `
@@ -75,6 +329,15 @@ func (q *Queries) ListAttendees(ctx context.Context, appointmentID int64) ([]Cal
 			&i.Status,
 			&i.RespondedAt,
 			&i.CreatedAt,
+			&i.Kind,
+			&i.ContactID,
+			&i.Email,
+			&i.Name,
+			&i.RsvpTokenSha256,
+			&i.RsvpLinkCiphertext,
+			&i.InvitedAt,
+			&i.InvitedSequence,
+			&i.SendFailedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -84,6 +347,44 @@ func (q *Queries) ListAttendees(ctx context.Context, appointmentID int64) ([]Cal
 		return nil, err
 	}
 	return items, nil
+}
+
+const markInvited = `-- name: MarkInvited :exec
+UPDATE calendar.appointment_attendees SET
+    invited_at = $1::timestamptz,
+    invited_sequence = $2::integer,
+    send_failed_at = NULL
+WHERE id = $3
+`
+
+type MarkInvitedParams struct {
+	InvitedAt       time.Time
+	InvitedSequence int32
+	ID              int64
+}
+
+// MarkInvited records a send that succeeded — when, and the SEQUENCE it
+// carried — and clears a failure recorded before it.
+func (q *Queries) MarkInvited(ctx context.Context, arg MarkInvitedParams) error {
+	_, err := q.db.Exec(ctx, markInvited, arg.InvitedAt, arg.InvitedSequence, arg.ID)
+	return err
+}
+
+const markSendFailed = `-- name: MarkSendFailed :exec
+UPDATE calendar.appointment_attendees SET send_failed_at = $1::timestamptz
+WHERE id = $2
+`
+
+type MarkSendFailedParams struct {
+	At time.Time
+	ID int64
+}
+
+// MarkSendFailed records a send that failed, for the owner's Resend. The last
+// successful send stays recorded.
+func (q *Queries) MarkSendFailed(ctx context.Context, arg MarkSendFailedParams) error {
+	_, err := q.db.Exec(ctx, markSendFailed, arg.At, arg.ID)
+	return err
 }
 
 const resetAttendeeStatuses = `-- name: ResetAttendeeStatuses :exec
@@ -101,8 +402,8 @@ func (q *Queries) ResetAttendeeStatuses(ctx context.Context, appointmentID int64
 
 const setAttendeeStatus = `-- name: SetAttendeeStatus :one
 UPDATE calendar.appointment_attendees SET status = $1, responded_at = $2::timestamptz
-WHERE appointment_id = $3 AND user_id = $4
-RETURNING id, appointment_id, user_id, status, responded_at, created_at
+WHERE appointment_id = $3 AND user_id = $4::uuid
+RETURNING id, appointment_id, user_id, status, responded_at, created_at, kind, contact_id, email, name, rsvp_token_sha256, rsvp_link_ciphertext, invited_at, invited_sequence, send_failed_at
 `
 
 type SetAttendeeStatusParams struct {
@@ -112,7 +413,7 @@ type SetAttendeeStatusParams struct {
 	UserID        uuid.UUID
 }
 
-// SetAttendeeStatus records one attendee's answer.
+// SetAttendeeStatus records a colleague's answer, by their user id.
 func (q *Queries) SetAttendeeStatus(ctx context.Context, arg SetAttendeeStatusParams) (CalendarAppointmentAttendee, error) {
 	row := q.db.QueryRow(ctx, setAttendeeStatus,
 		arg.Status,
@@ -128,6 +429,52 @@ func (q *Queries) SetAttendeeStatus(ctx context.Context, arg SetAttendeeStatusPa
 		&i.Status,
 		&i.RespondedAt,
 		&i.CreatedAt,
+		&i.Kind,
+		&i.ContactID,
+		&i.Email,
+		&i.Name,
+		&i.RsvpTokenSha256,
+		&i.RsvpLinkCiphertext,
+		&i.InvitedAt,
+		&i.InvitedSequence,
+		&i.SendFailedAt,
+	)
+	return i, err
+}
+
+const setAttendeeStatusByID = `-- name: SetAttendeeStatusByID :one
+UPDATE calendar.appointment_attendees SET status = $1, responded_at = $2::timestamptz
+WHERE id = $3
+RETURNING id, appointment_id, user_id, status, responded_at, created_at, kind, contact_id, email, name, rsvp_token_sha256, rsvp_link_ciphertext, invited_at, invited_sequence, send_failed_at
+`
+
+type SetAttendeeStatusByIDParams struct {
+	Status string
+	Now    time.Time
+	ID     int64
+}
+
+// SetAttendeeStatusByID records an attendee's answer by their row id — an
+// outside attendee's, through the RSVP link.
+func (q *Queries) SetAttendeeStatusByID(ctx context.Context, arg SetAttendeeStatusByIDParams) (CalendarAppointmentAttendee, error) {
+	row := q.db.QueryRow(ctx, setAttendeeStatusByID, arg.Status, arg.Now, arg.ID)
+	var i CalendarAppointmentAttendee
+	err := row.Scan(
+		&i.ID,
+		&i.AppointmentID,
+		&i.UserID,
+		&i.Status,
+		&i.RespondedAt,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.ContactID,
+		&i.Email,
+		&i.Name,
+		&i.RsvpTokenSha256,
+		&i.RsvpLinkCiphertext,
+		&i.InvitedAt,
+		&i.InvitedSequence,
+		&i.SendFailedAt,
 	)
 	return i, err
 }

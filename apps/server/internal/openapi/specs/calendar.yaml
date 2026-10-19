@@ -6,10 +6,14 @@ components:
                 allDay:
                     type: boolean
                 attendees:
-                    description: The colleagues on it, the owner never among them, in the order they were added.
+                    description: The people on it — colleagues, a customer's contacts and addresses typed in — the owner never among them, in the order they were added.
                     items:
                         $ref: '#/components/schemas/AppointmentAttendee'
                     type: array
+                cancelledAt:
+                    description: When the appointment was cancelled (calendar invitations design D6) — deleted after someone outside the company had been sent an invitation. A cancelled appointment is read-only, every write answering 409 appointment_cancelled, and is on nobody's calendar. Absent on a live one.
+                    format: date-time
+                    type: string
                 createdAt:
                     format: date-time
                     type: string
@@ -82,8 +86,24 @@ components:
                 - updatedAt
             type: object
         AppointmentAttendee:
-            description: One colleague on an appointment and what they answered.
+            description: 'One person on an appointment and what they answered (calendar invitations design D1), by kind: a user carries user; a contact carries contact, its name read from the customer directory when the appointment is read and absent when the directory no longer answers it — its address is never on an appointment; an email attendee carries email and the name as typed. The two outside kinds carry invitation; a user never does.'
             properties:
+                contact:
+                    $ref: '#/components/schemas/AppointmentAttendeeContact'
+                email:
+                    description: An email attendee's address, lower-cased. Absent on the other kinds.
+                    type: string
+                id:
+                    description: The attendee row's id — what POST /appointments/{id}/attendees/{attendeeId}/resend names.
+                    format: int64
+                    type: integer
+                invitation:
+                    $ref: '#/components/schemas/AttendeeInvitation'
+                kind:
+                    $ref: '#/components/schemas/AppointmentAttendeeKind'
+                name:
+                    description: An email attendee's name, as typed. Absent when none was given, and on the other kinds.
+                    type: string
                 respondedAt:
                     description: When they last answered. Absent while the status is needs-action.
                     format: date-time
@@ -93,9 +113,28 @@ components:
                 user:
                     $ref: '#/components/schemas/CalendarUserRef'
             required:
-                - user
+                - id
+                - kind
                 - status
             type: object
+        AppointmentAttendeeContact:
+            description: A customer's contact on an appointment — an opaque link, its name resolved through the customer directory when the appointment is read, absent when the directory no longer answers it (an anonymised contact), which the app shows as "A contact".
+            properties:
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+            type: object
+        AppointmentAttendeeKind:
+            description: 'The kind of an attendee (calendar invitations design D1): user (a colleague, told through the app and by a notice from identity), contact (a customer''s contact, mailed an invitation at the address the customer directory holds) or email (an address typed in, mailed an invitation).'
+            enum:
+                - user
+                - contact
+                - email
+            type: string
         AppointmentAttendeeStatus:
             description: An attendee's answer. needs-action until they answer, and again after the owner changes when the appointment is; the owner's own is implicitly accepted and never stored.
             enum:
@@ -203,10 +242,9 @@ components:
                 allDay:
                     type: boolean
                 attendees:
-                    description: Active users in the directory, at most 50, the owner never among them. Absent means none.
+                    description: 'The people on it, at most 50 of all kinds together, the owner never among them; two naming the same user, contact or address are one. Absent means none. A PUT keeps an attendee still listed — their answer and their invitation with them — drops one who is not, and adds the new ones. Each refused element is a field error on attendees[i].'
                     items:
-                        format: uuid
-                        type: string
+                        $ref: '#/components/schemas/AttendeeWrite'
                     type: array
                 customerId:
                     description: The customer the appointment is made from. Opaque, and never refused for being unresolvable.
@@ -250,6 +288,54 @@ components:
                 - title
                 - allDay
                 - timeZone
+            type: object
+        AttendeeInvitation:
+            description: 'The invitation record of an outside attendee (calendar invitations design D3): sentAt and sequence, the last send that succeeded and the SEQUENCE it carried; failedAt, the last send that failed since then. All three absent is "Not sent" — the mail driver is not smtp, or nothing has been sent yet.'
+            properties:
+                failedAt:
+                    format: date-time
+                    type: string
+                sentAt:
+                    format: date-time
+                    type: string
+                sequence:
+                    format: int32
+                    type: integer
+            type: object
+        AttendeeWrite:
+            description: 'One attendee as a write names them (calendar invitations design D1), by kind: user with userId, an active user in the directory (or one already on the appointment); contact with contactId, a contact of a customer that the customer directory answers and that has an address — the writer must hold customers:contacts-view; email with email, an address net/mail accepts, stored lower-cased, and name, at most 200 characters, optional. The fields of another kind are refused.'
+            properties:
+                contactId:
+                    format: int32
+                    type: integer
+                email:
+                    description: At most 254 characters.
+                    type: string
+                kind:
+                    $ref: '#/components/schemas/AppointmentAttendeeKind'
+                name:
+                    description: An email attendee's name, at most 200 characters.
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - kind
+            type: object
+        CalendarContact:
+            description: A customer's contact with an address, for the attendee picker (calendar invitations design D2).
+            properties:
+                email:
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+                - name
+                - email
             type: object
         CalendarItem:
             description: 'One thing on a person''s calendar: an appointment''s occurrence (kind calendar.appointment, with appointment set) or a row another module projects through its calendar source (with path set). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).'
@@ -360,6 +446,9 @@ components:
                 canViewColleagues:
                     description: Whether the caller holds calendar:view-colleagues.
                     type: boolean
+                invitationsAvailable:
+                    description: Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent.
+                    type: boolean
                 sources:
                     description: Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours.
                     items:
@@ -376,10 +465,11 @@ components:
                 - timeZone
                 - today
                 - canViewColleagues
+                - invitationsAvailable
                 - sources
             type: object
         CalendarProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on) and occurrence_not_in_series (409: the series'' rule never produces that date). errors carries the field errors of a 400, keyed by the request''s camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series'' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes) and invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent). errors carries the field errors of a 400, keyed by the request''s camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -460,6 +550,86 @@ components:
                     format: date-time
                     type: string
             type: object
+        RsvpPage:
+            description: 'What the RSVP page shows an invitee (calendar invitations design D5) — what they need to decide and nothing more: no description, no other attendee, no address. A timed appointment carries startsAt and endsAt, an all-day one startDate and endDate (inclusive); a series answers its first occurrence. company is the workspace''s name, absent when it has none. language is the organiser''s, the one the invitation was written in.'
+            properties:
+                allDay:
+                    type: boolean
+                attendee:
+                    $ref: '#/components/schemas/RsvpPerson'
+                cancelled:
+                    type: boolean
+                company:
+                    type: string
+                endDate:
+                    format: date
+                    type: string
+                endsAt:
+                    format: date-time
+                    type: string
+                language:
+                    enum:
+                        - en
+                        - nb
+                    type: string
+                location:
+                    type: string
+                organiser:
+                    $ref: '#/components/schemas/RsvpPerson'
+                startDate:
+                    format: date
+                    type: string
+                startsAt:
+                    format: date-time
+                    type: string
+                status:
+                    $ref: '#/components/schemas/AppointmentAttendeeStatus'
+                timeZone:
+                    description: The IANA zone the appointment was made in.
+                    type: string
+                title:
+                    type: string
+            required:
+                - title
+                - allDay
+                - timeZone
+                - organiser
+                - attendee
+                - status
+                - cancelled
+                - language
+            type: object
+        RsvpPerson:
+            description: A person as the RSVP page names them — the organiser by their display name, the invitee by the name the appointment holds for them.
+            properties:
+                name:
+                    type: string
+            required:
+                - name
+            type: object
+        RsvpReadRequest:
+            description: 'POST /rsvp/read''s body: the RSVP link''s token, from the page''s own address — in the body, so it never travels in an API URL.'
+            properties:
+                token:
+                    type: string
+            required:
+                - token
+            type: object
+        RsvpWrite:
+            description: 'POST /rsvp''s body: the RSVP link''s token and the invitee''s answer. needs-action is not something a person sends.'
+            properties:
+                status:
+                    enum:
+                        - accepted
+                        - declined
+                        - tentative
+                    type: string
+                token:
+                    type: string
+            required:
+                - token
+                - status
+            type: object
 info:
     title: Vantigo Calendar API
     version: "1"
@@ -506,7 +676,7 @@ paths:
             x-vantigo-access: permission:calendar:access
     /api/v1/calendar/appointments/{id}:
         delete:
-            description: Removes the appointment — the whole series, with its attendees and exceptions. The owner only; anyone else gets the 404 an unknown id gets.
+            description: 'Deletes the appointment, the owner only; anyone else gets the 404 an unknown id gets (calendar invitations design D6). When no outside attendee has ever been sent an invitation, the row goes — the whole series, with its attendees and exceptions. Otherwise the appointment is cancelled: cancelledAt set, its sequence bumped, a CANCEL mailed to every outside attendee and the colleagues told; it stays, read-only, until the calendar-cancellations worker erases it after its last day. A cancelled appointment answers 409 appointment_cancelled.'
             operationId: deleteCalendarAppointmentsById
             parameters:
                 - in: path
@@ -532,12 +702,18 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found — no such appointment, or one the caller does not own. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — appointment_cancelled.
             summary: Delete an appointment
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
         get:
-            description: One appointment, to its owner or an attendee; anyone else gets the 404 an unknown id gets.
+            description: One appointment, to its owner or an attendee; anyone else gets the 404 an unknown id gets. A cancelled one is answered with cancelledAt until it is erased.
             operationId: getCalendarAppointmentsById
             parameters:
                 - in: path
@@ -625,8 +801,62 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CalendarProblem'
-                    description: Conflict — revision_mismatch.
+                    description: Conflict — revision_mismatch, or appointment_cancelled.
             summary: Change an appointment
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/appointments/{id}/attendees/{attendeeId}/resend:
+        post:
+            description: 'Sends one outside attendee their invitation again (calendar invitations design D3), the owner only — a REQUEST with the appointment''s current sequence and the same RSVP link the first carried. The send is made after the answer is decided and recorded on the attendee''s invitation: sentAt and sequence on success, failedAt on a failure, which is not an error of this request. 404 for an appointment the caller does not own, an attendee not on it, or a user attendee, who is never mailed an invitation; 409 appointment_cancelled for a cancelled appointment; 503 invitations_unavailable when the mail driver is not smtp.'
+            operationId: postCalendarAppointmentsByIdAttendeesByAttendeeIdResend
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: attendeeId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Appointment'
+                    description: OK — the appointment, with the attendee's invitation as the send left it.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such appointment, one the caller does not own, no such attendee on it, or a user attendee. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — appointment_cancelled.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Service Unavailable — invitations_unavailable, the mail driver is not smtp.
+            summary: Resend an invitation
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
@@ -665,6 +895,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found — no such appointment, or one the caller does not own. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — appointment_cancelled.
             summary: Restore an occurrence
             tags:
                 - Calendar
@@ -724,7 +960,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CalendarProblem'
-                    description: Conflict — occurrence_not_in_series.
+                    description: Conflict — occurrence_not_in_series, or appointment_cancelled.
             summary: Move or cancel an occurrence
             tags:
                 - Calendar
@@ -773,6 +1009,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found — no such appointment, or one the caller does not attend. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — appointment_cancelled.
             summary: Answer an appointment
             tags:
                 - Calendar
@@ -838,6 +1080,51 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access+calendar:view-colleagues
+    /api/v1/calendar/contacts:
+        get:
+            description: 'The contacts of one customer that have an address, ordered by name, for the attendee picker (calendar invitations design D2), through the customer directory. Besides calendar:access, which the contract checks, the module requires the pair Customers'' own contact list does — customers:contacts-view and customers:associations-view — and answers 403 without both: the address is on this answer because its caller holds the key that guards it in Customers. 400 without a customerId; 404 when the directory knows no such customer.'
+            operationId: getCalendarContacts
+            parameters:
+                - description: The customer whose contacts to list.
+                  in: query
+                  name: customerId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CalendarContact'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — no customerId, or one that is not a number.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller lacks calendar:access, customers:contacts-view or customers:associations-view.
+                "404":
+                    description: Not Found — the customer directory knows no such customer. The body is empty.
+            summary: A customer's contacts
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
     /api/v1/calendar/items:
         get:
             description: 'The caller''s calendar in a window (calendar design D5): their appointments — owned, or attended with any status — expanded in their own zones with their exceptions applied, then every enabled module''s calendar source in module order, each under its own permission, then the public holidays. A timed item is in the window when it overlaps from 00:00 to the end of to in timeZone; an all-day one when its dates overlap from..to.'
@@ -904,7 +1191,7 @@ paths:
             x-vantigo-access: permission:calendar:access
     /api/v1/calendar/meta:
         get:
-            description: The business time zone and today in it, whether the caller may see colleagues' calendars, and every kind the enabled modules' calendar sources declare.
+            description: The business time zone and today in it, whether the caller may see colleagues' calendars, whether invitations are mailed, and every kind the enabled modules' calendar sources declare.
             operationId: getCalendarMeta
             responses:
                 "200":
@@ -929,6 +1216,90 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/rsvp:
+        post:
+            description: 'An invitee''s answer through the RSVP link (calendar invitations design D5; a POST, so the token travels in the body and never in an API URL). Anonymous: no session is needed, and a signed-in caller is answered alike. The token is hashed and looked up; 404 with no body when no attendee holds it, an erased one included. The answer — accepted, declined or tentative — sets the attendee''s status and respondedAt, which they may change at any time, and the owner is told through identity; 409 appointment_cancelled when the appointment is cancelled. 200 with the page as it now stands. Rate limited to 30 per client address per 10 minutes (calendar-rsvp).'
+            operationId: postCalendarRsvp
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RsvpWrite'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RsvpPage'
+                    description: OK — the appointment as the RSVP page shows it, with the answer recorded.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — a body that does not decode, no token, or a status that is not an answer.
+                "404":
+                    description: Not Found — no attendee holds that token. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — appointment_cancelled.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — calendar-rsvp's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Answer an invitation
+            tags:
+                - Calendar
+            x-vantigo-access: anonymous
+    /api/v1/calendar/rsvp/read:
+        post:
+            description: 'The RSVP page''s read (calendar invitations design D5; a POST, so the token travels in the body and never in an API URL). Anonymous: no session is needed, and a signed-in caller is answered alike. The token is hashed and looked up; 404 with no body when no attendee holds it, an erased one included. 200 with what the page shows — the title, when, where, the organiser''s name, the workspace''s name, the invitee''s name and current answer, whether it is cancelled and the language — and never the description, another attendee or an address. Rate limited to 60 per client address per 10 minutes (calendar-rsvp-read).'
+            operationId: postCalendarRsvpRead
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RsvpReadRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RsvpPage'
+                    description: OK — the appointment as the RSVP page shows it.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — a body that does not decode, or no token.
+                "404":
+                    description: Not Found — no attendee holds that token. The body is empty.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — calendar-rsvp-read's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Read an invitation for the RSVP page
+            tags:
+                - Calendar
+            x-vantigo-access: anonymous
     /api/v1/calendar/users:
         get:
             description: Active users in the directory, ordered by display name, for the attendee picker and the colleague picker. Every calendar:access holder may search; what it answers — a colleague's id and display name — is what every appointment already shows its attendees.

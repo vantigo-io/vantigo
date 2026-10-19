@@ -23,7 +23,7 @@ func TestItems_AnswersOwnedAndAttendedAppointmentsSortedAllDayFirstWithinADay(t 
 	early := create(t, me, timed(t, "Early", "Europe/Oslo", "2026-11-03T08:00", "2026-11-03T09:00"))
 	whole := create(t, me, allDay("Conference", "Europe/Oslo", "2026-11-03", "2026-11-04"))
 	invited := create(t, colleague, with(timed(t, "Invited", "Europe/Oslo", "2026-11-02T12:00", "2026-11-02T13:00"),
-		"attendees", []string{meID.String()}))
+		"attendees", userAttendees(meID.String())))
 	create(t, stranger, timed(t, "Not mine", "Europe/Oslo", "2026-11-03T10:00", "2026-11-03T11:00"))
 	create(t, me, timed(t, "Outside", "Europe/Oslo", "2026-11-10T10:00", "2026-11-10T11:00"))
 

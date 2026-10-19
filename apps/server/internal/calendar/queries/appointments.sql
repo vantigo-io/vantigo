@@ -64,6 +64,46 @@ UPDATE calendar.appointments SET
 WHERE id = @id
 RETURNING *;
 
+-- name: CancelAppointment :one
+-- CancelAppointment marks the appointment cancelled (calendar invitations
+-- design D6) instead of deleting it, once someone outside has been sent an
+-- invitation: the sequence moves on for the CANCEL that tells them, and the
+-- revision, since every write to it from then on is refused.
+UPDATE calendar.appointments SET
+    cancelled_at = @cancelled_at::timestamptz,
+    sequence = sequence + 1,
+    revision = revision + 1,
+    updated_at = @cancelled_at::timestamptz
+WHERE id = @id
+RETURNING *;
+
+-- name: ListCancelledDue :many
+-- ListCancelledDue is the cancelled appointments whose last day has passed,
+-- for the calendar-cancellations worker, oldest first and at most row_limit:
+-- a single one when its end has (a timed one's instant, an all-day one's last
+-- day before today in its own zone), a bounded series when its last
+-- occurrence's day has, and an unbounded series when it was cancelled before
+-- unbounded_cancelled_before (ninety days ago, the caller's constant).
+SELECT a.id
+FROM calendar.appointments a
+WHERE a.cancelled_at IS NOT NULL
+  AND (
+    (a.rrule IS NULL AND NOT a.all_day AND a.ends_at <= @now::timestamptz)
+    OR (a.rrule IS NULL AND a.all_day AND a.end_date < timezone(a.time_zone, @now::timestamptz)::date)
+    OR (a.rrule IS NOT NULL AND a.series_last_date IS NOT NULL
+        AND a.series_last_date < timezone(a.time_zone, @now::timestamptz)::date)
+    OR (a.rrule IS NOT NULL AND a.series_last_date IS NULL
+        AND a.cancelled_at < @unbounded_cancelled_before::timestamptz)
+  )
+ORDER BY a.cancelled_at, a.id
+LIMIT @row_limit::integer;
+
+-- name: DeleteCancelled :execrows
+-- DeleteCancelled erases the cancelled appointments in ids, their attendees
+-- and exceptions with them (ON DELETE CASCADE). One that is not cancelled is
+-- never erased here.
+DELETE FROM calendar.appointments WHERE id = ANY(@ids::bigint[]) AND cancelled_at IS NOT NULL;
+
 -- name: DeleteAppointment :execrows
 -- DeleteAppointment removes the series; its attendees and exceptions go with
 -- it (ON DELETE CASCADE).
@@ -71,7 +111,7 @@ DELETE FROM calendar.appointments WHERE id = @id;
 
 -- name: ListAppointmentsInWindow :many
 -- ListAppointmentsInWindow is the user's appointments — owned, or attended with
--- any status — that may have an occurrence in the window, each with the user's
+-- any status, and not cancelled — that may have an occurrence in the window, each with the user's
 -- own status (null when they own it). A single one is in when its instants
 -- overlap [from_at, to_at) or its dates overlap [from_date, to_date]; a series
 -- when it starts before the window ends and its last day, when it has one, is
@@ -80,8 +120,9 @@ DELETE FROM calendar.appointments WHERE id = @id;
 -- cover the zones the series expand in and trims what the expansion yields.
 SELECT sqlc.embed(a), att.status AS my_status
 FROM calendar.appointments a
-LEFT JOIN calendar.appointment_attendees att ON att.appointment_id = a.id AND att.user_id = @user_id
+LEFT JOIN calendar.appointment_attendees att ON att.appointment_id = a.id AND att.user_id = @user_id::uuid
 WHERE (a.owner_user_id = @user_id OR att.user_id IS NOT NULL)
+  AND a.cancelled_at IS NULL
   AND (
     (a.rrule IS NULL AND (
         (NOT a.all_day AND a.starts_at < @to_at::timestamptz AND a.ends_at > @from_at::timestamptz)
@@ -104,10 +145,11 @@ ORDER BY a.id;
 -- name: ListColleagueBusyAppointmentsInWindow :many
 -- ListColleagueBusyAppointmentsInWindow is a colleague's appointments that
 -- block their time (calendar design D6): owned, or attended and accepted, with
--- transparency busy, in the window as ListAppointmentsInWindow judges it.
+-- transparency busy and not cancelled, in the window as ListAppointmentsInWindow judges it.
 SELECT a.*
 FROM calendar.appointments a
 WHERE a.transparency = 'busy'
+  AND a.cancelled_at IS NULL
   AND (
     a.owner_user_id = @user_id
     OR EXISTS (

@@ -9,7 +9,7 @@ describe("appointmentWriteOf", () => {
       location: "Bergen",
       recurrence: { rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=TU" },
       customer: { id: 42, name: "Nordlys AS" },
-      attendees: [{ user: { id: "kari", displayName: "Kari" }, status: "accepted" }],
+      attendees: [{ id: 1, kind: "user", user: { id: "kari", displayName: "Kari" }, status: "accepted" }],
     });
     expect(
       appointmentWriteOf(appointment, {
@@ -27,7 +27,7 @@ describe("appointmentWriteOf", () => {
       transparency: "busy",
       location: "Bergen",
       recurrence: { rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=TU" },
-      attendees: ["kari"],
+      attendees: [{ kind: "user", userId: "kari" }],
       customerId: 42,
     });
   });
