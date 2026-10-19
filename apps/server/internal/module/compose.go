@@ -28,7 +28,8 @@ import (
 // project expenses, billable hours, billable expenses or billable milestones
 // (naming both) — customer reference holders, customer personal-data providers
 // and invoiced-work holders, the three many-provider contract slots, are
-// collected from every module given instead, enabled or not — a source kind
+// collected from every module given instead, enabled or not, and calendar
+// sources, the fourth, from the enabled modules only — a source kind
 // two invoiced-work holders claim, or a nil Deps.Config:
 // enablement (which modules MODULES turns on) is meaningless without one, and
 // every real caller already loads one before composing.
@@ -336,6 +337,12 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if deps, err = withInvoicedWork(deps, given); err != nil {
 		return nil, err
 	}
+
+	// Calendar sources are the fourth many-provider slot (calendar design D1)
+	// and, unlike the three above, are collected from the enabled modules
+	// only, by the helper Workers uses too: a disabled module's gate could
+	// only fail closed.
+	deps = withCalendarSources(deps, mods)
 
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
@@ -703,4 +710,25 @@ func withInvoicedWork(deps Deps, mods []Module) (Deps, error) {
 	}
 	deps.InvoicedWork = holders
 	return deps, nil
+}
+
+// withCalendarSources is deps with every module's contracts.CalendarSource
+// appended to Deps.CalendarSources, in mods order, after whatever the caller
+// preset, in a new slice, so a harness's own slice is never written through.
+// mods is the enabled modules only (calendar design D1); a nil source is
+// dropped, so the calendar never calls a nil provider.
+func withCalendarSources(deps Deps, mods []Module) Deps {
+	var sources []contracts.CalendarSource
+	for _, mod := range mods {
+		if mod.CalendarSource == nil {
+			continue
+		}
+		if source := mod.CalendarSource(deps); source != nil {
+			sources = append(sources, source)
+		}
+	}
+	if len(sources) > 0 {
+		deps.CalendarSources = append(slices.Clone(deps.CalendarSources), sources...)
+	}
+	return deps
 }

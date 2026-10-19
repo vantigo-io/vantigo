@@ -22,7 +22,7 @@ import (
 
 // Modules are the contract files that carry paths; common.yaml only holds
 // shared components.
-var Modules = []string{"identity", "customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff"}
+var Modules = []string{"identity", "customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "calendar"}
 
 //go:embed specs/*.yaml
 var specs embed.FS

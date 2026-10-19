@@ -1,0 +1,927 @@
+components:
+    schemas:
+        Appointment:
+            description: 'One appointment (calendar design D2, D3): a timed one is two instants (startsAt, endsAt exclusive), an all-day one two civil dates (startDate, endDate inclusive), never both. timeZone is the TZID it was made in, and a recurring one expands in it. The caller is its owner or one of its attendees; anyone else gets the 404 an unknown id gets.'
+            properties:
+                allDay:
+                    type: boolean
+                attendees:
+                    description: The colleagues on it, the owner never among them, in the order they were added.
+                    items:
+                        $ref: '#/components/schemas/AppointmentAttendee'
+                    type: array
+                createdAt:
+                    format: date-time
+                    type: string
+                customer:
+                    $ref: '#/components/schemas/AppointmentCustomer'
+                description:
+                    type: string
+                endDate:
+                    description: An all-day appointment's last day, inclusive. Absent on a timed one.
+                    format: date
+                    type: string
+                endsAt:
+                    description: A timed appointment's end, exclusive. Absent on an all-day one.
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                location:
+                    type: string
+                myStatus:
+                    $ref: '#/components/schemas/AppointmentAttendeeStatus'
+                owner:
+                    $ref: '#/components/schemas/CalendarUserRef'
+                project:
+                    $ref: '#/components/schemas/AppointmentProject'
+                recurrence:
+                    $ref: '#/components/schemas/AppointmentRecurrence'
+                revision:
+                    description: Send it back as If-Match on PUT /appointments/{id}.
+                    format: int32
+                    type: integer
+                startDate:
+                    description: An all-day appointment's first day. Absent on a timed one.
+                    format: date
+                    type: string
+                startsAt:
+                    description: A timed appointment's start. Absent on an all-day one.
+                    format: date-time
+                    type: string
+                timeZone:
+                    description: The IANA zone the appointment was made in, the creator's effective zone at creation.
+                    type: string
+                title:
+                    type: string
+                transparency:
+                    $ref: '#/components/schemas/AppointmentTransparency'
+                updatedAt:
+                    format: date-time
+                    type: string
+                visibility:
+                    $ref: '#/components/schemas/AppointmentVisibility'
+            required:
+                - id
+                - title
+                - allDay
+                - timeZone
+                - visibility
+                - transparency
+                - owner
+                - attendees
+                - revision
+                - createdAt
+                - updatedAt
+            type: object
+        AppointmentAttendee:
+            description: One colleague on an appointment and what they answered.
+            properties:
+                respondedAt:
+                    description: When they last answered. Absent while the status is needs-action.
+                    format: date-time
+                    type: string
+                status:
+                    $ref: '#/components/schemas/AppointmentAttendeeStatus'
+                user:
+                    $ref: '#/components/schemas/CalendarUserRef'
+            required:
+                - user
+                - status
+            type: object
+        AppointmentAttendeeStatus:
+            description: An attendee's answer. needs-action until they answer, and again after the owner changes when the appointment is; the owner's own is implicitly accepted and never stored.
+            enum:
+                - needs-action
+                - accepted
+                - declined
+                - tentative
+            type: string
+        AppointmentCustomer:
+            description: The customer the appointment was made from — an opaque link, its name resolved through the customer directory when Customers is on, absent when not.
+            properties:
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+            type: object
+        AppointmentOccurrence:
+            description: 'One occurrence''s exception (calendar design D4): cancelled, or moved to the pair the series uses — startsAt and endsAt for a timed series, startDate and endDate for an all-day one. occurrenceDate is the day in the appointment''s zone the series put it on, and stays its identity wherever it moved.'
+            properties:
+                cancelled:
+                    type: boolean
+                endDate:
+                    format: date
+                    type: string
+                endsAt:
+                    format: date-time
+                    type: string
+                occurrenceDate:
+                    format: date
+                    type: string
+                startDate:
+                    format: date
+                    type: string
+                startsAt:
+                    format: date-time
+                    type: string
+            required:
+                - occurrenceDate
+                - cancelled
+            type: object
+        AppointmentProject:
+            description: The project the appointment was made from — an opaque link, its code and name resolved through the project directory when Projects is on, absent when not.
+            properties:
+                code:
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+            type: object
+        AppointmentRecurrence:
+            description: A recurring appointment's rule, as stored.
+            properties:
+                lastDate:
+                    description: The last occurrence's day in the appointment's zone, when the rule ends (COUNT or UNTIL). Absent when the series never ends.
+                    format: date
+                    type: string
+                rule:
+                    description: 'An RFC 5545 RRULE value without DTSTART, which is the appointment''s start, in its canonical form: FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE;COUNT=10.'
+                    type: string
+            required:
+                - rule
+            type: object
+        AppointmentRecurrenceWrite:
+            description: 'The rule to repeat by (calendar design D4): FREQ DAILY, WEEKLY or MONTHLY; INTERVAL 1 to 99; BYDAY plain weekdays for WEEKLY and one ordinal weekday (2TU, -1FR) for MONTHLY; BYMONTHDAY one day for MONTHLY; at most one of COUNT (up to 730) and UNTIL (a date at most five years after the start). Anything else is a field error on recurrence.rule. The server stores it re-serialised.'
+            properties:
+                rule:
+                    type: string
+            required:
+                - rule
+            type: object
+        AppointmentResponseWrite:
+            description: An attendee's answer. needs-action is not something a person sends.
+            properties:
+                status:
+                    enum:
+                        - accepted
+                        - declined
+                        - tentative
+                    type: string
+            required:
+                - status
+            type: object
+        AppointmentTransparency:
+            description: iCalendar's TRANSP in this module's words — busy (OPAQUE) blocks the time on a colleague's view, free (TRANSPARENT) does not show there.
+            enum:
+                - busy
+                - free
+            type: string
+        AppointmentVisibility:
+            description: iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows as Busy and nothing else.
+            enum:
+                - shared
+                - private
+            type: string
+        AppointmentWrite:
+            description: 'An appointment as POST creates it and PUT replaces it whole. Exactly one pair is set: startsAt and endsAt (endsAt after startsAt, at most 31 days) when allDay is false, startDate and endDate (endDate on or after startDate, at most 366 days) when it is true. A PUT that changes when, where or the rule bumps the sequence; one that changes when resets every attendee to needs-action; one that changes the rule or the start drops every exception.'
+            properties:
+                allDay:
+                    type: boolean
+                attendees:
+                    description: Active users in the directory, at most 50, the owner never among them. Absent means none.
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                customerId:
+                    description: The customer the appointment is made from. Opaque, and never refused for being unresolvable.
+                    format: int32
+                    type: integer
+                description:
+                    description: At most 10 000 characters.
+                    type: string
+                endDate:
+                    format: date
+                    type: string
+                endsAt:
+                    format: date-time
+                    type: string
+                location:
+                    description: At most 200 characters.
+                    type: string
+                projectId:
+                    description: The project the appointment is made from. Opaque, and never refused for being unresolvable.
+                    format: int32
+                    type: integer
+                recurrence:
+                    $ref: '#/components/schemas/AppointmentRecurrenceWrite'
+                startDate:
+                    format: date
+                    type: string
+                startsAt:
+                    format: date-time
+                    type: string
+                timeZone:
+                    description: The IANA zone the appointment is made in — the SPA sends the session's effective zone. On PUT, the zone a recurring series expands in from then on.
+                    type: string
+                title:
+                    description: 1 to 200 characters.
+                    type: string
+                transparency:
+                    $ref: '#/components/schemas/AppointmentTransparency'
+                visibility:
+                    $ref: '#/components/schemas/AppointmentVisibility'
+            required:
+                - title
+                - allDay
+                - timeZone
+            type: object
+        CalendarItem:
+            description: 'One thing on a person''s calendar: an appointment''s occurrence (kind calendar.appointment, with appointment set) or a row another module projects through its calendar source (with path set). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).'
+            properties:
+                allDay:
+                    type: boolean
+                appointment:
+                    $ref: '#/components/schemas/CalendarItemAppointment'
+                done:
+                    description: A follow-up done, a task done, an entry approved — rendered struck. Always false on an appointment.
+                    type: boolean
+                endDate:
+                    format: date
+                    type: string
+                endsAt:
+                    format: date-time
+                    type: string
+                id:
+                    description: Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id.
+                    type: string
+                kind:
+                    description: calendar.appointment, or one of the kinds in sources.
+                    type: string
+                path:
+                    description: The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id.
+                    type: string
+                startDate:
+                    format: date
+                    type: string
+                startsAt:
+                    format: date-time
+                    type: string
+                subtitle:
+                    description: One line — the customer's name, the project's code. Absent when empty.
+                    type: string
+                title:
+                    type: string
+            required:
+                - kind
+                - id
+                - title
+                - allDay
+                - done
+            type: object
+        CalendarItemAppointment:
+            description: What the view needs about the appointment behind an item.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                isOwner:
+                    type: boolean
+                myStatus:
+                    $ref: '#/components/schemas/AppointmentAttendeeStatus'
+                occurrenceDate:
+                    description: The occurrence's identity in its series — the day in the appointment's zone the series put it on. Absent on a single appointment.
+                    format: date
+                    type: string
+                recurring:
+                    type: boolean
+                transparency:
+                    $ref: '#/components/schemas/AppointmentTransparency'
+                visibility:
+                    $ref: '#/components/schemas/AppointmentVisibility'
+            required:
+                - id
+                - isOwner
+                - visibility
+                - transparency
+                - recurring
+            type: object
+        CalendarItems:
+            description: One person's calendar in a window (calendar design D5), sorted by start, all-day first within a day, never paged.
+            properties:
+                from:
+                    format: date
+                    type: string
+                items:
+                    items:
+                        $ref: '#/components/schemas/CalendarItem'
+                    type: array
+                publicHolidays:
+                    items:
+                        $ref: '#/components/schemas/CalendarPublicHoliday'
+                    type: array
+                sources:
+                    description: Every kind a wired provider declares, enabled modules only. Empty on a colleague's calendar.
+                    items:
+                        $ref: '#/components/schemas/CalendarSourceKind'
+                    type: array
+                timeZone:
+                    description: The zone the window was judged in.
+                    type: string
+                to:
+                    format: date
+                    type: string
+            required:
+                - from
+                - to
+                - timeZone
+                - sources
+                - publicHolidays
+                - items
+            type: object
+        CalendarMeta:
+            description: What the calendar app needs before it asks for a window.
+            properties:
+                canViewColleagues:
+                    description: Whether the caller holds calendar:view-colleagues.
+                    type: boolean
+                sources:
+                    description: Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours.
+                    items:
+                        $ref: '#/components/schemas/CalendarSourceKind'
+                    type: array
+                timeZone:
+                    description: The workspace's business time zone.
+                    type: string
+                today:
+                    description: Today in the business time zone.
+                    format: date
+                    type: string
+            required:
+                - timeZone
+                - today
+                - canViewColleagues
+                - sources
+            type: object
+        CalendarProblem:
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on) and occurrence_not_in_series (409: the series'' rule never produces that date). errors carries the field errors of a 400, keyed by the request''s camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.'
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        CalendarPublicHoliday:
+            description: A Norwegian public holiday in the window.
+            properties:
+                date:
+                    format: date
+                    type: string
+                name:
+                    type: string
+            required:
+                - date
+                - name
+            type: object
+        CalendarSourceKind:
+            description: 'One kind of item a module projects onto the calendar: a stable key, "<module>.<noun>", and the module it comes from.'
+            properties:
+                kind:
+                    type: string
+                module:
+                    type: string
+            required:
+                - kind
+                - module
+            type: object
+        CalendarUserRef:
+            description: A user as the directory names them.
+            properties:
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+            required:
+                - id
+                - displayName
+            type: object
+        OccurrenceWrite:
+            description: 'One occurrence''s exception: cancelled true, or a move — startsAt and endsAt for a timed series, startDate and endDate for an all-day one — never both. A moved occurrence keeps the day it came from as its identity.'
+            properties:
+                cancelled:
+                    type: boolean
+                endDate:
+                    format: date
+                    type: string
+                endsAt:
+                    format: date-time
+                    type: string
+                startDate:
+                    format: date
+                    type: string
+                startsAt:
+                    format: date-time
+                    type: string
+            type: object
+info:
+    title: Vantigo Calendar API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/calendar/appointments:
+        post:
+            description: Creates an appointment owned by the caller, its attendees at needs-action. visibility defaults to shared and transparency to busy. The rule, when given, is stored canonical with its last occurrence's day.
+            operationId: postCalendarAppointments
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AppointmentWrite'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Appointment'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — field errors on the body.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Create an appointment
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/appointments/{id}:
+        delete:
+            description: Removes the appointment — the whole series, with its attendees and exceptions. The owner only; anyone else gets the 404 an unknown id gets.
+            operationId: deleteCalendarAppointmentsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such appointment, or one the caller does not own. The body is empty.
+            summary: Delete an appointment
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+        get:
+            description: One appointment, to its owner or an attendee; anyone else gets the 404 an unknown id gets.
+            operationId: getCalendarAppointmentsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Appointment'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such appointment, or one the caller neither owns nor attends. The body is empty.
+            summary: Get an appointment
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+        put:
+            description: Replaces the appointment whole, the owner only. A change of when, where or the rule bumps its sequence; a change of when resets every attendee to needs-action; a change of the rule or the start drops every exception.
+            operationId: putCalendarAppointmentsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The revision the appointment was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AppointmentWrite'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Appointment'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — field errors on the body, or an If-Match that is not a revision.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such appointment, or one the caller does not own. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — revision_mismatch.
+            summary: Change an appointment
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/appointments/{id}/occurrences/{date}:
+        delete:
+            description: Removes one occurrence's exception, the owner only, so the series' own occurrence returns. A date with no exception is already that, and answers the same.
+            operationId: deleteCalendarAppointmentsByIdOccurrencesByDate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The occurrence's day in the appointment's zone, as the series made it.
+                  in: path
+                  name: date
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such appointment, or one the caller does not own. The body is empty.
+            summary: Restore an occurrence
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+        put:
+            description: Creates or replaces one occurrence's exception — cancelled, or moved — the owner only. The date must be one the series' rule produces.
+            operationId: putCalendarAppointmentsByIdOccurrencesByDate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The occurrence's day in the appointment's zone, as the series made it.
+                  in: path
+                  name: date
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OccurrenceWrite'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AppointmentOccurrence'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — field errors on the body, or an appointment that does not recur.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such appointment, or one the caller does not own. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — occurrence_not_in_series.
+            summary: Move or cancel an occurrence
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/appointments/{id}/response:
+        post:
+            description: An attendee's answer to an appointment — accepted, declined or tentative — which they may change at any time. Anyone who is not an attendee, the owner included, gets the 404 an unknown id gets.
+            operationId: postCalendarAppointmentsByIdResponse
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AppointmentResponseWrite'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Appointment'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — a status that is not an answer.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such appointment, or one the caller does not attend. The body is empty.
+            summary: Answer an appointment
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/colleagues/{userId}/items:
+        get:
+            description: 'A colleague''s calendar in a window (calendar design D6): their appointments — owned, or attended and accepted — that block time (transparency busy), expanded as GET /items does. A shared one carries its title and location; a private one is "Busy" with visibility private and nothing else. No provider is asked and sources is empty. The caller''s own id answers as their own calendar would, private titles included.'
+            operationId: getCalendarColleaguesByUserIdItems
+            parameters:
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The window's first day, inclusive.
+                  in: query
+                  name: from
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+                - description: The window's last day, inclusive, at most 93 days after from.
+                  in: query
+                  name: to
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+                - description: The viewer's IANA zone, in which the window's edges are judged. Absent means the business time zone.
+                  in: query
+                  name: timeZone
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarItems'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — to before from, a window over 93 days, or a time zone that is not one.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no active user has that id. The body is empty.
+            summary: A colleague's calendar
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access+calendar:view-colleagues
+    /api/v1/calendar/items:
+        get:
+            description: 'The caller''s calendar in a window (calendar design D5): their appointments — owned, or attended with any status — expanded in their own zones with their exceptions applied, then every enabled module''s calendar source in module order, each under its own permission, then the public holidays. A timed item is in the window when it overlaps from 00:00 to the end of to in timeZone; an all-day one when its dates overlap from..to.'
+            operationId: getCalendarItems
+            parameters:
+                - description: The window's first day, inclusive.
+                  in: query
+                  name: from
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+                - description: The window's last day, inclusive, at most 93 days after from.
+                  in: query
+                  name: to
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+                - description: The viewer's IANA zone, in which the window's edges are judged. Absent means the business time zone.
+                  in: query
+                  name: timeZone
+                  schema:
+                    type: string
+                - description: A comma-separated list of kinds to ask for (calendar.appointment, customers.follow-up, ...). Absent means every kind; a kind no source declares is ignored.
+                  in: query
+                  name: kinds
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarItems'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — to before from, a window over 93 days, or a time zone that is not one.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Service Unavailable — a calendar source could not be read. The problem names no module.
+            summary: The caller's calendar
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/meta:
+        get:
+            description: The business time zone and today in it, whether the caller may see colleagues' calendars, and every kind the enabled modules' calendar sources declare.
+            operationId: getCalendarMeta
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarMeta'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The calendar's settings
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+servers:
+    - url: /
