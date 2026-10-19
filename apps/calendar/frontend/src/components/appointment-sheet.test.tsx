@@ -220,6 +220,69 @@ describe("AppointmentSheet — an occurrence of a series", () => {
   });
 });
 
+describe("AppointmentSheet — the appointment's own zone", () => {
+  it("keeps the zone the appointment was made in when its title is changed from another zone", async () => {
+    // Made in Oslo; the owner's personal zone has since become Tokyo.
+    setTimeZones({ timeZone: "Asia/Tokyo", timeZoneSource: "personal", businessTimeZone: "Europe/Oslo" });
+    const fetchMock = stubCalendarServer({ appointments: [appointmentFixture({ timeZone: "Europe/Oslo" })] });
+    renderWithProviders(<AppointmentSheet opened onClose={() => undefined} appointmentId={1001} />);
+
+    const title = await screen.findByDisplayValue("Kickoff with Nordlys AS");
+    // Shown in the viewer's zone: 07:00Z is 16:00 in Tokyo.
+    expect(screen.getByLabelText(/^Start time/)).toHaveValue("16:00");
+    await userEvent.clear(title);
+    await userEvent.type(title, "Kickoff, moved room");
+    await save();
+
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({
+      title: "Kickoff, moved room",
+      timeZone: "Europe/Oslo",
+      startsAt: "2026-10-20T07:00:00.000Z",
+      endsAt: "2026-10-20T08:00:00.000Z",
+    });
+  });
+});
+
+describe("AppointmentSheet — a series' exceptions", () => {
+  const series = appointmentFixture({
+    startsAt: "2026-10-06T06:00:00Z",
+    endsAt: "2026-10-06T07:00:00Z",
+    recurrence: { rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=TU" },
+    exceptions: [
+      {
+        occurrenceDate: "2026-11-03",
+        cancelled: false,
+        startsAt: "2026-11-04T09:00:00Z",
+        endsAt: "2026-11-04T10:00:00Z",
+      },
+      { occurrenceDate: "2026-12-22", cancelled: true },
+    ],
+  });
+
+  it("lists the cancelled and moved occurrences, and puts one back", async () => {
+    const fetchMock = stubCalendarServer({ appointments: [series] });
+    renderWithProviders(<AppointmentSheet opened onClose={() => undefined} appointmentId={1001} />);
+
+    // In Oslo, winter time: 09:00Z is 10:00.
+    expect(await screen.findByText("Moved from Nov 3, 2026 to Nov 4, 2026 10:00")).toBeInTheDocument();
+    const cancelled = screen.getByText("Cancelled Dec 22, 2026");
+    const row = cancelled.closest("[data-testid='occurrence-exception']") as HTMLElement;
+    await userEvent.click(within(row).getByRole("button", { name: "Put back" }));
+
+    await waitFor(() => expect(sentAll(fetchMock, "DELETE")).toHaveLength(1));
+    expect(sent(fetchMock, "DELETE").url).toBe("/api/v1/calendar/appointments/1001/occurrences/2026-12-22");
+  });
+
+  it("shows no list when the series has no exceptions", async () => {
+    stubCalendarServer({ appointments: [{ ...series, exceptions: [] }] });
+    renderWithProviders(<AppointmentSheet opened onClose={() => undefined} appointmentId={1001} />);
+
+    await screen.findByDisplayValue("Kickoff with Nordlys AS");
+    expect(screen.queryByRole("button", { name: "Put back" })).not.toBeInTheDocument();
+  });
+});
+
 describe("AppointmentSheet — an attendee", () => {
   it("shows the appointment read-only and offers the three answers and nothing else", async () => {
     const fetchMock = stubCalendarServer({

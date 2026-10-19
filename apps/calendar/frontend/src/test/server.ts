@@ -33,6 +33,7 @@ export const appointmentFixture = (overrides: Partial<Appointment> = {}): Appoin
   transparency: "busy",
   owner: { id: ME, displayName: "Test User" },
   attendees: [],
+  exceptions: [],
   revision: 3,
   createdAt: "2026-10-01T10:00:00Z",
   updatedAt: "2026-10-01T10:00:00Z",
