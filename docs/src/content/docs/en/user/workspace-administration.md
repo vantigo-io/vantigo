@@ -413,7 +413,7 @@ When the settings were imported from the installation's environment, the card sa
 so — **Imported from the environment** — and asks for the variables to be removed;
 that is for whoever runs the installation
 ([Before the card](/en/admin/sso-scim/#before-the-card-the-environment-variables)).
-The notice stays until the provider is next saved with **Save**.
+The notice stays until the next change made on the card.
 Every change is recorded in the authorization audit trail as `sso-settings.changed`,
 never with the secret or a token.
 
