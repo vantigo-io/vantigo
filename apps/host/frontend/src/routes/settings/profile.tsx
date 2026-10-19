@@ -9,7 +9,11 @@ import { useEffect, useState } from "react";
 import "../../i18n";
 import { getProfile, profileQueryKey, removeProfilePhoto, updateProfile, uploadProfilePhoto } from "../../api/account";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
+import { timeZoneOptions } from "../../api/workspace";
 import { message, notify } from "./-helpers";
+
+/** The time zone select's first choice, which saves as null: follow the workspace's zone. */
+const followWorkspace = "workspace";
 
 function ProfileForm() {
   const { t } = useTranslation("settings");
@@ -18,24 +22,36 @@ function ProfileForm() {
   const userId = session.data?.user.id;
   const query = useQuery({ queryKey: profileQueryKey(userId ?? "unknown"), queryFn: getProfile, enabled: !!userId });
   const [file, setFile] = useState<File | null>(null);
-  const form = useForm<{ displayName: string; preferredLanguage: "auto" | "en" | "nb" }>({
-    initialValues: { displayName: "", preferredLanguage: "auto" },
+  const form = useForm<{ displayName: string; preferredLanguage: "auto" | "en" | "nb"; timeZone: string }>({
+    initialValues: { displayName: "", preferredLanguage: "auto", timeZone: followWorkspace },
     validate: { displayName: (v) => (v.trim() ? null : t("enterYourName")) },
   });
   useEffect(() => {
     if (query.data)
-      form.setValues({ displayName: query.data.displayName, preferredLanguage: query.data.preferredLanguage });
+      form.setValues({
+        displayName: query.data.displayName,
+        preferredLanguage: query.data.preferredLanguage,
+        timeZone: query.data.timeZone ?? followWorkspace,
+      });
   }, [query.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = useMutation({
-    mutationFn: updateProfile,
+    mutationFn: (v: typeof form.values) =>
+      updateProfile({ ...v, timeZone: v.timeZone === followWorkspace ? null : v.timeZone }),
     onSuccess: (v) => {
       if (userId) qc.setQueryData(profileQueryKey(userId), v);
+      // The session answers the zone in effect, which every formatter reads.
       void qc.invalidateQueries({ queryKey: sessionQueryKey });
       setLanguagePreference(v.preferredLanguage);
       notifications.show({ title: t("saved"), message: t("profileUpdated"), color: "teal" });
     },
-    onError: (e) => notify(t("profileCouldNotSave"), e, t("requestCouldNotComplete")),
+    onError: (e) => {
+      // A zone the server refuses (CET, say) is said on the field itself.
+      const onZone = (e as { fields?: Record<string, string[]> }).fields?.timeZone?.[0];
+      if (onZone) form.setFieldError("timeZone", onZone);
+      else notify(t("profileCouldNotSave"), e, t("requestCouldNotComplete"));
+    },
   });
+  const businessTimeZone = session.data?.businessTimeZone ?? "";
   const upload = useMutation({
     mutationFn: uploadProfilePhoto,
     onSuccess: () => {
@@ -111,6 +127,19 @@ function ProfileForm() {
               ]}
               {...form.getInputProps("preferredLanguage")}
               description={t("languageDescription")}
+            />
+            <Select
+              label={t("timeZone")}
+              description={t("timeZoneDescription")}
+              searchable
+              allowDeselect={false}
+              data={[
+                { value: followWorkspace, label: t("sameAsWorkspace", { zone: businessTimeZone }) },
+                ...timeZoneOptions(value.timeZone ?? businessTimeZone)
+                  .filter((zone) => zone !== "")
+                  .map((zone) => ({ value: zone, label: zone })),
+              ]}
+              {...form.getInputProps("timeZone")}
             />
             <Button type="submit" loading={save.isPending} w="fit-content">
               {t("saveProfile")}
