@@ -16,7 +16,9 @@ func TestParseRule_EveryRuleInTheSubsetRoundTripsToItsCanonicalForm(t *testing.T
 		{"FREQ=WEEKLY;BYDAY=WE,MO;COUNT=10;INTERVAL=1", "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE;COUNT=10"},
 		{"FREQ=WEEKLY;INTERVAL=2;BYDAY=SU,FR,TU;UNTIL=20271231", "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,FR,SU;UNTIL=20271231"},
 		{"FREQ=WEEKLY;UNTIL=20271231T225959Z", "FREQ=WEEKLY;INTERVAL=1;UNTIL=20271231"},
-		{"FREQ=WEEKLY;UNTIL=20271231T230000Z", "FREQ=WEEKLY;INTERVAL=1;UNTIL=20280101"},
+		// Midnight in the zone is the end of the day before, not the next one.
+		{"FREQ=WEEKLY;UNTIL=20271231T230000Z", "FREQ=WEEKLY;INTERVAL=1;UNTIL=20271231"},
+		{"FREQ=WEEKLY;UNTIL=20271231T230001Z", "FREQ=WEEKLY;INTERVAL=1;UNTIL=20280101"},
 		{"FREQ=MONTHLY", "FREQ=MONTHLY;INTERVAL=1"},
 		{"FREQ=MONTHLY;BYDAY=+2TU", "FREQ=MONTHLY;INTERVAL=1;BYDAY=2TU"},
 		{"FREQ=MONTHLY;BYDAY=-1FR;COUNT=12", "FREQ=MONTHLY;INTERVAL=1;BYDAY=-1FR;COUNT=12"},
@@ -129,5 +131,44 @@ func TestSeries_AWeeklyOsloSeriesKeepsItsWallClockAcrossTheOctoberClockChange(t 
 	}
 	if !sr.produces(time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)) || sr.produces(time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)) {
 		t.Error("produces disagrees with the expansion")
+	}
+}
+
+func TestParseRule_CapsItsLengthAndEchoesNoParserTextOrLongParts(t *testing.T) {
+	t.Parallel()
+	long := "FREQ=DAILY;" + strings.Repeat("X", 500)
+	if _, msg := parseRule(long, time.UTC); !strings.Contains(msg, "500") || strings.Contains(msg, "XXXX") {
+		t.Errorf("a %d-character rule: %q", len(long), msg)
+	}
+	part := strings.Repeat("Y", 100) + "=1"
+	if _, msg := parseRule("FREQ=DAILY;"+part, time.UTC); strings.Contains(msg, strings.Repeat("Y", 61)) || !strings.Contains(msg, strings.Repeat("Y", 57)) {
+		t.Errorf("a long unknown part is echoed as %q", msg)
+	}
+	// rrule-go's own words ("undefined frequency", "strconv.Atoi") never reach the client.
+	for _, in := range []string{"FREQ=SOMETIMES", "FREQ=DAILY;INTERVAL=two", "FREQ=WEEKLY;BYDAY=XX"} {
+		_, msg := parseRule(in, time.UTC)
+		if msg == "" || strings.Contains(msg, "undefined") || strings.Contains(msg, "strconv") || strings.Contains(msg, "invalid syntax") {
+			t.Errorf("parseRule(%q) = %q", in, msg)
+		}
+	}
+}
+
+func TestSeries_OnIsEmptyBeforeTheStartAndAfterTheLastDay(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+	r, _ := parseRule("FREQ=DAILY;COUNT=3", time.UTC)
+	sr, err := newSeries(r, span{allDay: true, startDate: start, endDate: start}, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sr.last = time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	if got := sr.on(time.Date(2016, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)); len(got) != 0 {
+		t.Errorf("before the start = %v", got)
+	}
+	if got := sr.on(time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC), time.Date(2036, 1, 1, 0, 0, 0, 0, time.UTC)); len(got) != 0 {
+		t.Errorf("after the last day = %v", got)
+	}
+	if got := sr.on(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)); len(got) != 3 {
+		t.Errorf("across the series = %v", got)
 	}
 }

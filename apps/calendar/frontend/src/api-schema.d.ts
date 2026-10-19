@@ -60,13 +60,13 @@ export interface paths {
         get?: never;
         /**
          * Move or cancel an occurrence
-         * @description Creates or replaces one occurrence's exception — cancelled, or moved — the owner only. The date must be one the series' rule produces.
+         * @description Creates or replaces one occurrence's exception — cancelled, or moved — the owner only. The date must be one the series' rule produces, within ten years of today. A change of when, it moves the appointment's revision and its sequence on.
          */
         put: operations["putCalendarAppointmentsByIdOccurrencesByDate"];
         post?: never;
         /**
          * Restore an occurrence
-         * @description Removes one occurrence's exception, the owner only, so the series' own occurrence returns. A date with no exception is already that, and answers the same.
+         * @description Removes one occurrence's exception, the owner only, so the series' own occurrence returns, moving the appointment's revision and its sequence on. A date with no exception is already that, and answers the same with nothing changed.
          */
         delete: operations["deleteCalendarAppointmentsByIdOccurrencesByDate"];
         options?: never;
@@ -85,7 +85,7 @@ export interface paths {
         put?: never;
         /**
          * Answer an appointment
-         * @description An attendee's answer to an appointment — accepted, declined or tentative — which they may change at any time. Anyone who is not an attendee, the owner included, gets the 404 an unknown id gets.
+         * @description An attendee's answer to an appointment — accepted, declined or tentative — which they may change at any time. An answer changes nothing of the appointment itself, so its revision stays and the owner's If-Match still holds. Anyone who is not an attendee, the owner included, gets the 404 an unknown id gets.
          */
         post: operations["postCalendarAppointmentsByIdResponse"];
         delete?: never;
@@ -197,6 +197,8 @@ export interface components {
              * @description A timed appointment's end, exclusive. Absent on an all-day one.
              */
             endsAt?: string;
+            /** @description A recurring appointment's cancelled and moved occurrences, by occurrenceDate — each one DELETE /appointments/{id}/occurrences/{date} puts back. Empty on a single appointment. */
+            exceptions: components["schemas"]["AppointmentOccurrence"][];
             /** Format: int64 */
             id: number;
             location?: string;
@@ -855,9 +857,9 @@ export interface operations {
     getCalendarColleaguesByUserIdItems: {
         parameters: {
             query: {
-                /** @description The window's first day, inclusive. */
+                /** @description The window's first day, inclusive, within ten years of today. */
                 from: string;
-                /** @description The window's last day, inclusive, at most 93 days after from. */
+                /** @description The window's last day, inclusive. The window is at most 93 days, both ends counted. */
                 to: string;
                 /** @description The viewer's IANA zone, in which the window's edges are judged. Absent means the business time zone. */
                 timeZone?: string;
@@ -918,9 +920,9 @@ export interface operations {
     getCalendarItems: {
         parameters: {
             query: {
-                /** @description The window's first day, inclusive. */
+                /** @description The window's first day, inclusive, within ten years of today. */
                 from: string;
-                /** @description The window's last day, inclusive, at most 93 days after from. */
+                /** @description The window's last day, inclusive. The window is at most 93 days, both ends counted. */
                 to: string;
                 /** @description The viewer's IANA zone, in which the window's edges are judged. Absent means the business time zone. */
                 timeZone?: string;

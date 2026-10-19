@@ -51,10 +51,16 @@ UPDATE calendar.appointments SET
 WHERE id = @id
 RETURNING *;
 
--- name: TouchAppointment :one
--- TouchAppointment moves the revision on after a write to the appointment's
--- attendees or exceptions alone, so an If-Match read before it is stale.
-UPDATE calendar.appointments SET revision = revision + 1, updated_at = @now::timestamptz
+-- name: TouchAppointmentWhen :one
+-- TouchAppointmentWhen moves the revision and the sequence on after a write
+-- to the appointment's exceptions alone: a moved, cancelled or restored
+-- occurrence is a change of when (calendar design D2), and an If-Match read
+-- before it is stale. An attendee's answer changes nothing of the
+-- appointment and touches neither.
+UPDATE calendar.appointments SET
+    revision = revision + 1,
+    sequence = sequence + 1,
+    updated_at = @now::timestamptz
 WHERE id = @id
 RETURNING *;
 
@@ -69,7 +75,8 @@ DELETE FROM calendar.appointments WHERE id = @id;
 -- own status (null when they own it). A single one is in when its instants
 -- overlap [from_at, to_at) or its dates overlap [from_date, to_date]; a series
 -- when it starts before the window ends and its last day, when it has one, is
--- no earlier than from_date. The caller widens from_date and to_date enough to
+-- no earlier than from_date; and any series with an occurrence moved into
+-- the window. The caller widens from_date and to_date enough to
 -- cover the zones the series expand in and trims what the expansion yields.
 SELECT sqlc.embed(a), att.status AS my_status
 FROM calendar.appointments a
@@ -83,6 +90,14 @@ WHERE (a.owner_user_id = @user_id OR att.user_id IS NOT NULL)
     OR (a.rrule IS NOT NULL
         AND (a.starts_at < @to_at::timestamptz OR a.start_date <= @to_date::date)
         AND (a.series_last_date IS NULL OR a.series_last_date >= @from_date::date))
+    -- An occurrence moved into the window from anywhere — before the series
+    -- starts, or past its last day.
+    OR EXISTS (
+        SELECT 1 FROM calendar.appointment_exceptions e
+        WHERE e.appointment_id = a.id AND NOT e.cancelled
+          AND ((e.starts_at < @to_at::timestamptz AND e.ends_at > @from_at::timestamptz)
+            OR (e.start_date <= @to_date::date AND e.end_date >= @from_date::date))
+    )
   )
 ORDER BY a.id;
 
@@ -108,5 +123,13 @@ WHERE a.transparency = 'busy'
     OR (a.rrule IS NOT NULL
         AND (a.starts_at < @to_at::timestamptz OR a.start_date <= @to_date::date)
         AND (a.series_last_date IS NULL OR a.series_last_date >= @from_date::date))
+    -- An occurrence moved into the window from anywhere — before the series
+    -- starts, or past its last day.
+    OR EXISTS (
+        SELECT 1 FROM calendar.appointment_exceptions e
+        WHERE e.appointment_id = a.id AND NOT e.cancelled
+          AND ((e.starts_at < @to_at::timestamptz AND e.ends_at > @from_at::timestamptz)
+            OR (e.start_date <= @to_date::date AND e.end_date >= @from_date::date))
+    )
   )
 ORDER BY a.id;

@@ -10,9 +10,11 @@
 // here imports another module — depguard enforces it, tests included — and no
 // SQL of this module crosses a schema.
 //
-// This is the module's skeleton: the contract, the schema, the queries and
-// the permissions, with every operation registered and answering 501 until the
-// handlers land.
+// Each area is a file of its own: meta.go, items.go (the window and the
+// sources), appointments.go, occurrences.go, responses.go, colleagues.go and
+// users.go, with recurrence.go for the rule, authorize.go for who the caller
+// is, contractscalls.go for every call out of the module, values.go for the
+// bounds and errors.go for the refusals.
 package calendar
 
 import (

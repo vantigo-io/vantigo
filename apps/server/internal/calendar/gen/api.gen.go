@@ -116,9 +116,12 @@ type Appointment struct {
 	EndDate *openapi_types.Date `json:"endDate,omitempty"`
 
 	// EndsAt A timed appointment's end, exclusive. Absent on an all-day one.
-	EndsAt   *time.Time `json:"endsAt,omitempty"`
-	Id       int64      `json:"id"`
-	Location *string    `json:"location,omitempty"`
+	EndsAt *time.Time `json:"endsAt,omitempty"`
+
+	// Exceptions A recurring appointment's cancelled and moved occurrences, by occurrenceDate — each one DELETE /appointments/{id}/occurrences/{date} puts back. Empty on a single appointment.
+	Exceptions []AppointmentOccurrence `json:"exceptions"`
+	Id         int64                   `json:"id"`
+	Location   *string                 `json:"location,omitempty"`
 
 	// MyStatus An attendee's answer. needs-action until they answer, and again after the owner changes when the appointment is; the owner's own is implicitly accepted and never stored.
 	MyStatus *AppointmentAttendeeStatus `json:"myStatus,omitempty"`
@@ -380,10 +383,10 @@ type PutCalendarAppointmentsByIdParams struct {
 
 // GetCalendarColleaguesByUserIdItemsParams defines parameters for GetCalendarColleaguesByUserIdItems.
 type GetCalendarColleaguesByUserIdItemsParams struct {
-	// From The window's first day, inclusive.
+	// From The window's first day, inclusive, within ten years of today.
 	From openapi_types.Date `form:"from" json:"from"`
 
-	// To The window's last day, inclusive, at most 93 days after from.
+	// To The window's last day, inclusive. The window is at most 93 days, both ends counted.
 	To openapi_types.Date `form:"to" json:"to"`
 
 	// TimeZone The viewer's IANA zone, in which the window's edges are judged. Absent means the business time zone.
@@ -392,10 +395,10 @@ type GetCalendarColleaguesByUserIdItemsParams struct {
 
 // GetCalendarItemsParams defines parameters for GetCalendarItems.
 type GetCalendarItemsParams struct {
-	// From The window's first day, inclusive.
+	// From The window's first day, inclusive, within ten years of today.
 	From openapi_types.Date `form:"from" json:"from"`
 
-	// To The window's last day, inclusive, at most 93 days after from.
+	// To The window's last day, inclusive. The window is at most 93 days, both ends counted.
 	To openapi_types.Date `form:"to" json:"to"`
 
 	// TimeZone The viewer's IANA zone, in which the window's edges are judged. Absent means the business time zone.

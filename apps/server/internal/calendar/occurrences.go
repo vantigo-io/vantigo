@@ -13,8 +13,9 @@ import (
 // This file is one occurrence's exception (calendar design D4): cancelled, or
 // moved to the pair the series uses, keyed by the day the series put it on —
 // which stays its identity wherever it moved. The owner alone writes one;
-// both endpoints move the appointment's revision on, so an If-Match read
-// before them is stale.
+// a move, a cancel and a restore are each a change of when, so each moves the
+// appointment's revision and its sequence on (calendar design D2), and an
+// If-Match read before them is stale.
 
 // PutCalendarAppointmentsByIdOccurrencesByDate Move or cancel an occurrence
 // (PUT /api/v1/calendar/appointments/{id}/occurrences/{date})
@@ -29,6 +30,11 @@ func (s *server) PutCalendarAppointmentsByIdOccurrencesByDate(ctx context.Contex
 	}
 	me := callerID(ctx)
 	date := civil(req.Date.Time)
+	if msg := s.yearsAway(date); msg != "" {
+		var f fieldErrors
+		f.add("date", msg)
+		return gen.PutCalendarAppointmentsByIdOccurrencesByDate400ApplicationProblemPlusJSONResponse(invalid(invalidOccurrenceTitle, f)), nil
+	}
 	var exc store.CalendarAppointmentException
 	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		cur, err := lockOwned(ctx, txq, req.Id, me)
@@ -69,15 +75,7 @@ func (s *server) PutCalendarAppointmentsByIdOccurrencesByDate(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	out := gen.AppointmentOccurrence{
-		OccurrenceDate: apiDate(date),
-		Cancelled:      exc.Cancelled,
-		StartDate:      apiDatePtr(exc.StartDate),
-		EndDate:        apiDatePtr(exc.EndDate),
-		StartsAt:       utcPtr(exc.StartsAt),
-		EndsAt:         utcPtr(exc.EndsAt),
-	}
-	return gen.PutCalendarAppointmentsByIdOccurrencesByDate200JSONResponse(out), nil
+	return gen.PutCalendarAppointmentsByIdOccurrencesByDate200JSONResponse(occurrenceOut(exc)), nil
 }
 
 // readOccurrence holds an exception's body to D4: cancelled, or a move by the
@@ -135,10 +133,10 @@ func (s *server) DeleteCalendarAppointmentsByIdOccurrencesByDate(ctx context.Con
 	return gen.DeleteCalendarAppointmentsByIdOccurrencesByDate204Response{}, nil
 }
 
-// touch moves the appointment's revision on after a write to its exceptions
-// or its attendees alone.
+// touch moves the appointment's revision and sequence on after a write to
+// its exceptions alone.
 func touch(ctx context.Context, txq *store.Queries, id int64, now time.Time) error {
-	if _, err := txq.TouchAppointment(ctx, store.TouchAppointmentParams{ID: id, Now: now}); err != nil {
+	if _, err := txq.TouchAppointmentWhen(ctx, store.TouchAppointmentWhenParams{ID: id, Now: now}); err != nil {
 		return fmt.Errorf("calendar: touch appointment %d: %w", id, err)
 	}
 	return nil

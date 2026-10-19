@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -159,15 +160,15 @@ func TestPutAppointment_MovingTheTimeResetsTheAnswersAndBumpsTheSequence(t *test
 	var moved gen.Appointment
 	do(t, owner, http.MethodPut, appointmentPath(a.Id),
 		with(body, "startsAt", at(t, "Europe/Oslo", "2026-11-02T10:00").UTC(), "endsAt", at(t, "Europe/Oslo", "2026-11-02T10:15").UTC()),
-		http.StatusOK, &moved, ifMatch(a.Revision+1))
+		http.StatusOK, &moved, ifMatch(a.Revision))
 	if moved.Attendees[0].Status != gen.AppointmentAttendeeStatusNeedsAction || moved.Attendees[0].RespondedAt != nil {
 		t.Errorf("after the move the attendee is %+v, want needs-action", moved.Attendees[0])
 	}
 	if seq := h.Count(t, `SELECT sequence FROM calendar.appointments WHERE id = $1`, a.Id); seq != 1 {
 		t.Errorf("sequence = %d, want 1", seq)
 	}
-	if moved.Revision != a.Revision+2 {
-		t.Errorf("revision = %d, want %d", moved.Revision, a.Revision+2)
+	if moved.Revision != a.Revision+1 {
+		t.Errorf("revision = %d, want %d", moved.Revision, a.Revision+1)
 	}
 }
 
@@ -292,7 +293,7 @@ func TestAppointment_NamesTheCustomerAndProjectWhenTheirModulesAreWired(t *testi
 	h := newHarness(t,
 		modtest.WithDirectory(fakeDirectory{customers: map[int32]string{42: "Fjord AS"}}),
 		modtest.WithProjects(fakeProjects{projects: map[int32][2]string{7: {"P-7", "Website"}}}))
-	c, _ := signIn(t, h)
+	c, _ := signIn(t, h, "customers:view", "projects:view-all")
 	a := create(t, c, with(timed(t, "Kickoff", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "customerId", 42, "projectId", 7))
 	if a.Customer == nil || a.Customer.Id != 42 || a.Customer.Name == nil || *a.Customer.Name != "Fjord AS" {
 		t.Errorf("customer = %+v", a.Customer)
@@ -347,5 +348,179 @@ func TestEveryOperationIs403WithoutCalendarAccess(t *testing.T) {
 		if r := c.Do(req.method, req.path, req.body, opts...); r.Status != http.StatusForbidden {
 			t.Errorf("%s %s: status %d body %s, want 403", req.method, req.path, r.Status, r.Body)
 		}
+	}
+}
+
+func TestAppointment_NamesTheLinksOnlyToAViewerWhoMaySeeThem(t *testing.T) {
+	t.Parallel()
+	projects := fakeProjects{projects: map[int32][2]string{7: {"P-7", "Website"}, 8: {"P-8", "Secret"}}, roles: map[int32]map[uuid.UUID]string{}}
+	h := newHarness(t,
+		modtest.WithDirectory(fakeDirectory{customers: map[int32]string{42: "Fjord AS"}}),
+		modtest.WithProjects(projects))
+	owner, _ := signIn(t, h, "customers:view", "projects:manage-all")
+	plain, plainID := signIn(t, h)
+	member, memberID := signIn(t, h)
+	projects.roles[7] = map[uuid.UUID]string{memberID: "member"}
+
+	// Probing ids through a create of one's own names nothing.
+	probe := create(t, plain, with(timed(t, "Probe", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "customerId", 42, "projectId", 8))
+	if probe.Customer == nil || probe.Customer.Name != nil || probe.Project == nil || probe.Project.Code != nil || probe.Project.Name != nil {
+		t.Errorf("a caller without the keys named %+v, %+v", probe.Customer, probe.Project)
+	}
+
+	a := create(t, owner, with(timed(t, "Kickoff", "Europe/Oslo", "2026-11-02T11:00", "2026-11-02T12:00"),
+		"customerId", 42, "projectId", 7, "attendees", []string{plainID.String(), memberID.String()}))
+	if a.Customer.Name == nil || a.Project.Code == nil {
+		t.Errorf("the owner with the keys sees %+v, %+v", a.Customer, a.Project)
+	}
+	var got gen.Appointment
+	do(t, plain, http.MethodGet, appointmentPath(a.Id), nil, http.StatusOK, &got)
+	if got.Customer == nil || got.Customer.Id != 42 || got.Customer.Name != nil || got.Project == nil || got.Project.Id != 7 || got.Project.Code != nil {
+		t.Errorf("an attendee without customers:view or a role sees %+v, %+v", got.Customer, got.Project)
+	}
+	do(t, member, http.MethodGet, appointmentPath(a.Id), nil, http.StatusOK, &got)
+	if got.Customer.Name != nil || got.Project.Code == nil || *got.Project.Code != "P-7" || *got.Project.Name != "Website" {
+		t.Errorf("an attendee with a role on the project sees %+v, %+v", got.Customer, got.Project)
+	}
+	do(t, member, http.MethodPost, responsePath(a.Id), map[string]any{"status": "accepted"}, http.StatusOK, &got)
+	if got.Customer.Name != nil || got.Project.Code == nil {
+		t.Errorf("the answer's response names %+v, %+v", got.Customer, got.Project)
+	}
+}
+
+func TestPutAppointment_ExtendingASeriesEndKeepsItsExceptions(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	attendee, attendeeID := signIn(t, h)
+	body := with(timed(t, "Weekly", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"),
+		"recurrence", map[string]any{"rule": "FREQ=WEEKLY"}, "attendees", []string{attendeeID.String()})
+	a := create(t, owner, body)
+	do(t, owner, http.MethodPut, occurrencePath(a.Id, "2026-11-09"), map[string]any{"cancelled": true}, http.StatusOK, nil)
+	var answered gen.Appointment
+	do(t, attendee, http.MethodPost, responsePath(a.Id), map[string]any{"status": "accepted"}, http.StatusOK, &answered)
+	seqBefore := h.Count(t, `SELECT sequence FROM calendar.appointments WHERE id = $1`, a.Id)
+
+	var longer gen.Appointment
+	do(t, owner, http.MethodPut, appointmentPath(a.Id), with(body, "endsAt", at(t, "Europe/Oslo", "2026-11-02T11:00").UTC()),
+		http.StatusOK, &longer, ifMatch(answered.Revision))
+	if n := h.Count(t, `SELECT count(*) FROM calendar.appointment_exceptions WHERE appointment_id = $1 AND cancelled`, a.Id); n != 1 {
+		t.Errorf("cancelled exceptions after the end moved = %d, want 1", n)
+	}
+	if got := ids(ofKind(items(t, owner, windowPath("2026-11-09", "2026-11-09")), "calendar.appointment")); len(got) != 0 {
+		t.Errorf("the cancelled occurrence came back: %v", got)
+	}
+	if longer.Attendees[0].Status != gen.AppointmentAttendeeStatusNeedsAction {
+		t.Errorf("a change of the end left the answer at %s, want needs-action", longer.Attendees[0].Status)
+	}
+	if seq := h.Count(t, `SELECT sequence FROM calendar.appointments WHERE id = $1`, a.Id); seq != seqBefore+1 {
+		t.Errorf("sequence = %d, want %d", seq, seqBefore+1)
+	}
+
+	// Moving the start drops them.
+	do(t, owner, http.MethodPut, appointmentPath(a.Id), with(body,
+		"startsAt", at(t, "Europe/Oslo", "2026-11-02T08:00").UTC(), "endsAt", at(t, "Europe/Oslo", "2026-11-02T11:00").UTC()),
+		http.StatusOK, nil, ifMatch(longer.Revision))
+	if n := h.Count(t, `SELECT count(*) FROM calendar.appointment_exceptions WHERE appointment_id = $1`, a.Id); n != 0 {
+		t.Errorf("exceptions after the start moved = %d, want 0", n)
+	}
+}
+
+func TestPutAppointment_AZoneOnlyChangeOfASingleTimedAppointmentIsNoChangeOfWhen(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	attendee, attendeeID := signIn(t, h)
+	body := with(timed(t, "Call", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "attendees", []string{attendeeID.String()})
+	a := create(t, owner, body)
+	var answered gen.Appointment
+	do(t, attendee, http.MethodPost, responsePath(a.Id), map[string]any{"status": "accepted"}, http.StatusOK, &answered)
+	var got gen.Appointment
+	do(t, owner, http.MethodPut, appointmentPath(a.Id), with(body, "timeZone", "America/New_York"), http.StatusOK, &got, ifMatch(answered.Revision))
+	if got.TimeZone != "America/New_York" || got.Attendees[0].Status != gen.AppointmentAttendeeStatusAccepted {
+		t.Errorf("after a zone-only change = %+v", got)
+	}
+	if seq := h.Count(t, `SELECT sequence FROM calendar.appointments WHERE id = $1`, a.Id); seq != 0 {
+		t.Errorf("sequence = %d, want 0", seq)
+	}
+}
+
+func TestPostAppointment_CountsTheFiftyAttendeeLimitAfterDeduplication(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h)
+	list := make([]string, 0, 51)
+	for i := 0; i < 50; i++ {
+		list = append(list, directoryUser(t, h, fmt.Sprintf("Colleague %d", i), true).String())
+	}
+	list = append(list, list[0])
+	a := create(t, c, with(timed(t, "All hands", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "attendees", list))
+	if len(a.Attendees) != 50 {
+		t.Errorf("attendees = %d, want 50", len(a.Attendees))
+	}
+}
+
+func TestPutAppointment_KeepsAnAttendeeWhoHasSinceBecomeInactive(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h)
+	ann := directoryUser(t, h, "Ann", true)
+	bob := directoryUser(t, h, "Bob", false)
+	body := with(timed(t, "Sync", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T09:30"), "attendees", []string{ann.String()})
+	a := create(t, c, body)
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, ann)
+
+	var got gen.Appointment
+	do(t, c, http.MethodPut, appointmentPath(a.Id), with(body, "title", "Sync, still"), http.StatusOK, &got, ifMatch(a.Revision))
+	if len(got.Attendees) != 1 || got.Attendees[0].User.Id != ann || got.Attendees[0].User.DisplayName != "Ann" {
+		t.Errorf("attendees = %+v, want Ann kept", got.Attendees)
+	}
+	// A newly added inactive user is still refused.
+	fieldRefused(t, c.Do(http.MethodPut, appointmentPath(a.Id), with(body, "attendees", []string{ann.String(), bob.String()}),
+		ifMatch(got.Revision)), "attendees[1]")
+}
+
+func TestResponse_AnAnswerLeavesTheRevisionSoTheOwnersIfMatchStillHolds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	attendee, attendeeID := signIn(t, h)
+	body := with(timed(t, "Review", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "attendees", []string{attendeeID.String()})
+	a := create(t, owner, body)
+	var answered gen.Appointment
+	do(t, attendee, http.MethodPost, responsePath(a.Id), map[string]any{"status": "accepted"}, http.StatusOK, &answered)
+	if answered.Revision != a.Revision || !answered.UpdatedAt.Equal(a.UpdatedAt) {
+		t.Errorf("after an answer revision %d updatedAt %s, want %d %s", answered.Revision, answered.UpdatedAt, a.Revision, a.UpdatedAt)
+	}
+	do(t, owner, http.MethodPut, appointmentPath(a.Id), with(body, "title", "Design review"), http.StatusOK, nil, ifMatch(a.Revision))
+}
+
+func TestAppointment_AnswersItsExceptionsInDateOrder(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h)
+	single := create(t, c, timed(t, "Once", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"))
+	if single.Exceptions == nil || len(single.Exceptions) != 0 {
+		t.Errorf("a single appointment's exceptions = %#v, want an empty list", single.Exceptions)
+	}
+	a := create(t, c, with(timed(t, "Weekly", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"),
+		"recurrence", map[string]any{"rule": "FREQ=WEEKLY"}))
+	moved := at(t, "Europe/Oslo", "2026-11-17T12:00")
+	do(t, c, http.MethodPut, occurrencePath(a.Id, "2026-11-16"),
+		map[string]any{"startsAt": moved.UTC(), "endsAt": moved.Add(time.Hour).UTC()}, http.StatusOK, nil)
+	do(t, c, http.MethodPut, occurrencePath(a.Id, "2026-11-09"), map[string]any{"cancelled": true}, http.StatusOK, nil)
+
+	var got gen.Appointment
+	do(t, c, http.MethodGet, appointmentPath(a.Id), nil, http.StatusOK, &got)
+	if len(got.Exceptions) != 2 || got.Exceptions[0].OccurrenceDate.String() != "2026-11-09" || !got.Exceptions[0].Cancelled ||
+		got.Exceptions[1].OccurrenceDate.String() != "2026-11-16" || got.Exceptions[1].Cancelled ||
+		got.Exceptions[1].StartsAt == nil || !got.Exceptions[1].StartsAt.Equal(moved) {
+		t.Errorf("exceptions = %+v", got.Exceptions)
+	}
+	var renamed gen.Appointment
+	do(t, c, http.MethodPut, appointmentPath(a.Id), with(timed(t, "Weekly sync", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"),
+		"recurrence", map[string]any{"rule": "FREQ=WEEKLY"}), http.StatusOK, &renamed, ifMatch(got.Revision))
+	if len(renamed.Exceptions) != 2 {
+		t.Errorf("the PUT's response carries %d exceptions, want 2", len(renamed.Exceptions))
 	}
 }

@@ -215,3 +215,20 @@ func TestItems_AnswersNorwaysPublicHolidaysWithTheirNames(t *testing.T) {
 
 // itemIDSingle is the id GET /items gives a single appointment.
 func itemIDSingle(id int64) string { return strconv.FormatInt(id, 10) }
+
+func TestItems_AProviderAnswersNothingToACallerMissingItsGateAlone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, id := signIn(t, h, "staff:access", "projects:access", "time:access", "expenses:access")
+	day := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
+	for _, f := range h.sources.all() {
+		f.give(id, contracts.CalendarItem{Kind: f.kinds[0].Key, ID: "1", Title: f.kinds[0].Key, AllDay: true, StartDate: day, EndDate: day})
+	}
+	got := items(t, c, windowPath("2026-11-02", "2026-11-08"))
+	if len(got.Items) != 4 || len(ofKind(got, "customers.follow-up")) != 0 {
+		t.Errorf("without customers:view = %v, want every source's row but the customers one", ids(got.Items))
+	}
+	if h.sources.customers.asked.Load() != 1 {
+		t.Error("the customers source was not asked: it is the one that decides")
+	}
+}

@@ -200,6 +200,14 @@ WHERE (a.owner_user_id = $1 OR att.user_id IS NOT NULL)
     OR (a.rrule IS NOT NULL
         AND (a.starts_at < $2::timestamptz OR a.start_date <= $4::date)
         AND (a.series_last_date IS NULL OR a.series_last_date >= $5::date))
+    -- An occurrence moved into the window from anywhere — before the series
+    -- starts, or past its last day.
+    OR EXISTS (
+        SELECT 1 FROM calendar.appointment_exceptions e
+        WHERE e.appointment_id = a.id AND NOT e.cancelled
+          AND ((e.starts_at < $2::timestamptz AND e.ends_at > $3::timestamptz)
+            OR (e.start_date <= $4::date AND e.end_date >= $5::date))
+    )
   )
 ORDER BY a.id
 `
@@ -222,7 +230,8 @@ type ListAppointmentsInWindowRow struct {
 // own status (null when they own it). A single one is in when its instants
 // overlap [from_at, to_at) or its dates overlap [from_date, to_date]; a series
 // when it starts before the window ends and its last day, when it has one, is
-// no earlier than from_date. The caller widens from_date and to_date enough to
+// no earlier than from_date; and any series with an occurrence moved into
+// the window. The caller widens from_date and to_date enough to
 // cover the zones the series expand in and trims what the expansion yields.
 func (q *Queries) ListAppointmentsInWindow(ctx context.Context, arg ListAppointmentsInWindowParams) ([]ListAppointmentsInWindowRow, error) {
 	rows, err := q.db.Query(ctx, listAppointmentsInWindow,
@@ -293,6 +302,14 @@ WHERE a.transparency = 'busy'
     OR (a.rrule IS NOT NULL
         AND (a.starts_at < $2::timestamptz OR a.start_date <= $4::date)
         AND (a.series_last_date IS NULL OR a.series_last_date >= $5::date))
+    -- An occurrence moved into the window from anywhere — before the series
+    -- starts, or past its last day.
+    OR EXISTS (
+        SELECT 1 FROM calendar.appointment_exceptions e
+        WHERE e.appointment_id = a.id AND NOT e.cancelled
+          AND ((e.starts_at < $2::timestamptz AND e.ends_at > $3::timestamptz)
+            OR (e.start_date <= $4::date AND e.end_date >= $5::date))
+    )
   )
 ORDER BY a.id
 `
@@ -357,21 +374,27 @@ func (q *Queries) ListColleagueBusyAppointmentsInWindow(ctx context.Context, arg
 	return items, nil
 }
 
-const touchAppointment = `-- name: TouchAppointment :one
-UPDATE calendar.appointments SET revision = revision + 1, updated_at = $1::timestamptz
+const touchAppointmentWhen = `-- name: TouchAppointmentWhen :one
+UPDATE calendar.appointments SET
+    revision = revision + 1,
+    sequence = sequence + 1,
+    updated_at = $1::timestamptz
 WHERE id = $2
 RETURNING id, owner_user_id, title, description, location, all_day, start_date, end_date, starts_at, ends_at, time_zone, visibility, transparency, rrule, series_last_date, customer_id, project_id, ical_uid, sequence, revision, created_at, updated_at
 `
 
-type TouchAppointmentParams struct {
+type TouchAppointmentWhenParams struct {
 	Now time.Time
 	ID  int64
 }
 
-// TouchAppointment moves the revision on after a write to the appointment's
-// attendees or exceptions alone, so an If-Match read before it is stale.
-func (q *Queries) TouchAppointment(ctx context.Context, arg TouchAppointmentParams) (CalendarAppointment, error) {
-	row := q.db.QueryRow(ctx, touchAppointment, arg.Now, arg.ID)
+// TouchAppointmentWhen moves the revision and the sequence on after a write
+// to the appointment's exceptions alone: a moved, cancelled or restored
+// occurrence is a change of when (calendar design D2), and an If-Match read
+// before it is stale. An attendee's answer changes nothing of the
+// appointment and touches neither.
+func (q *Queries) TouchAppointmentWhen(ctx context.Context, arg TouchAppointmentWhenParams) (CalendarAppointment, error) {
+	row := q.db.QueryRow(ctx, touchAppointmentWhen, arg.Now, arg.ID)
 	var i CalendarAppointment
 	err := row.Scan(
 		&i.ID,

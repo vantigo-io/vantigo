@@ -171,14 +171,34 @@ func TestCalendarSource_Interactions(t *testing.T) {
 // Without the timeline pair the source answers nothing, and no error.
 func TestCalendarSource_GateOff(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
-	ctx, me := calendarCaller(t, h, "customers:view")
-	live := insertCustomer(t, h, "Live Co", "active")
-	on := calDay(2026, 10, 2)
-	insertCalendarEntry(t, h, calendarEntry{customerID: live, eventType: "interaction.call", summary: "Mine",
-		occurredOn: on, actor: &me, followUpOn: &on, assignee: &me})
+	// The gate is the timeline pair: either key alone answers nothing.
+	for _, held := range [][]string{{"customers:view"}, {"customers:timeline-view"}} {
+		h := newHarness(t)
+		ctx, me := calendarCaller(t, h, held...)
+		live := insertCustomer(t, h, "Live Co", "active")
+		on := calDay(2026, 10, 2)
+		insertCalendarEntry(t, h, calendarEntry{customerID: live, eventType: "interaction.call", summary: "Mine",
+			occurredOn: on, actor: &me, followUpOn: &on, assignee: &me})
 
-	if items := calendarItems(t, h, ctx, me, calDay(2026, 10, 1), calDay(2026, 10, 31)); items != nil {
+		if items := calendarItems(t, h, ctx, me, calDay(2026, 10, 1), calDay(2026, 10, 31)); items != nil {
+			t.Fatalf("with %v held, items = %+v, want nothing", held, items)
+		}
+	}
+}
+
+// An anonymised customer's follow-ups are on nobody's calendar, as a merged-away
+// customer's are.
+func TestCalendarSource_AnonymisedCustomerAbsent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	ctx, me := calendarCaller(t, h, "customers:view", "customers:timeline-view")
+	gone := insertCustomer(t, h, "Gone Co", "archived")
+	h.Exec(t, `UPDATE customers.customers SET anonymised_at = now() WHERE id = $1`, gone)
+	on := calDay(2026, 10, 2)
+	insertCalendarEntry(t, h, calendarEntry{customerID: gone, eventType: "note", summary: "Anonymised",
+		occurredOn: calDay(2026, 9, 20), followUpOn: &on, assignee: &me})
+
+	if items := calendarItems(t, h, ctx, me, calDay(2026, 10, 1), calDay(2026, 10, 31)); len(items) != 0 {
 		t.Fatalf("items = %+v, want nothing", items)
 	}
 }

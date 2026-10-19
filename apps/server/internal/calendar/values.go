@@ -33,6 +33,10 @@ const (
 	// counted: the month grid's six weeks and a quarter's list both fit, and
 	// it is Staff's calendar limit too.
 	maxWindowDays = 93
+	// maxYearsAway is how far from today a window's edge or an occurrence's
+	// date may be: far enough for any plan, near enough that no request
+	// makes a rule step through centuries.
+	maxYearsAway = 10
 )
 
 // The vocabulary of visibility and transparency (calendar design D2):
@@ -230,6 +234,8 @@ type window struct {
 func (s *server) parseWindow(ctx context.Context, fromRaw, toRaw openapi_types.Date, zoneRaw *string, business *time.Location) (window, fieldErrors, error) {
 	from, to := civil(fromRaw.Time), civil(toRaw.Time)
 	var f fieldErrors
+	f.add("from", s.yearsAway(from))
+	f.add("to", s.yearsAway(to))
 	switch {
 	case to.Before(from):
 		f.add("to", "to cannot be before from")
@@ -253,6 +259,16 @@ func (s *server) parseWindow(ctx context.Context, fromRaw, toRaw openapi_types.D
 		fromAt: wallClock(from, loc),
 		toAt:   wallClock(addDays(to, 1), loc),
 	}, f, nil
+}
+
+// yearsAway is why the civil date d is too far from today, "" when it is
+// within maxYearsAway years either side.
+func (s *server) yearsAway(d time.Time) string {
+	today := civil(s.deps.Clock())
+	if d.Before(today.AddDate(-maxYearsAway, 0, 0)) || d.After(today.AddDate(maxYearsAway, 0, 0)) {
+		return fmt.Sprintf("A date is within %d years of today", maxYearsAway)
+	}
+	return ""
 }
 
 // wallClock is the instant midnight starts the civil date d in loc.

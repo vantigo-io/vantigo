@@ -96,7 +96,11 @@ func readSpan(allDay bool, startDate, endDate *openapi_types.Date, startsAt, end
 // database and the attendees from the directory, so it runs before any
 // transaction; it answers the input, the names of the owner and every
 // attendee for the response, and the field errors.
-func (s *server) readAppointment(ctx context.Context, body gen.AppointmentWrite, owner uuid.UUID) (appointmentInput, map[uuid.UUID]string, fieldErrors, error) {
+//
+// kept is the appointment's attendees as they stand, on a PUT by its owner:
+// one of them is accepted even if they have become inactive since, so a
+// colleague who left does not lock the owner out of their own appointment.
+func (s *server) readAppointment(ctx context.Context, body gen.AppointmentWrite, owner uuid.UUID, kept map[uuid.UUID]bool) (appointmentInput, map[uuid.UUID]string, fieldErrors, error) {
 	var f fieldErrors
 	in := appointmentInput{attendees: []uuid.UUID{}, customerID: body.CustomerId, projectID: body.ProjectId}
 
@@ -152,7 +156,7 @@ func (s *server) readAppointment(ctx context.Context, body gen.AppointmentWrite,
 		f.add("recurrence.rule", msg)
 	}
 
-	names, err := s.readAttendees(ctx, body.Attendees, owner, &in, &f)
+	names, err := s.readAttendees(ctx, body.Attendees, owner, kept, &in, &f)
 	if err != nil {
 		return in, nil, f, err
 	}
@@ -170,6 +174,9 @@ func (in *appointmentInput) seriesFrom(r rule, loc *time.Location) (string, erro
 	if msg := r.untilMessage(sr.startDay()); msg != "" {
 		return msg, nil
 	}
+	if !sr.produces(sr.startDay()) {
+		return "The rule must repeat on the day the appointment starts, which is its first occurrence", nil
+	}
 	if r.bounded() {
 		last, ok := sr.lastDate()
 		if !ok {
@@ -182,18 +189,15 @@ func (in *appointmentInput) seriesFrom(r rule, loc *time.Location) (string, erro
 	return "", nil
 }
 
-// readAttendees holds the attendee list to D3: at most 50, the owner never
-// among them, each an active user in the directory, a repeated id kept once.
-// An element is refused by its index in the request. It answers the names of
-// the owner and of every attendee, from one directory read.
-func (s *server) readAttendees(ctx context.Context, raw *[]openapi_types.UUID, owner uuid.UUID, in *appointmentInput, f *fieldErrors) (map[uuid.UUID]string, error) {
+// readAttendees holds the attendee list to D3: the owner never among them, a
+// repeated id kept once, at most 50 once de-duplicated, each an active user
+// in the directory — or one already on the appointment (kept). An element is
+// refused by its index in the request. It answers the names of the owner and
+// of every attendee, from one directory read.
+func (s *server) readAttendees(ctx context.Context, raw *[]openapi_types.UUID, owner uuid.UUID, kept map[uuid.UUID]bool, in *appointmentInput, f *fieldErrors) (map[uuid.UUID]string, error) {
 	var list []uuid.UUID
 	if raw != nil {
 		list = *raw
-	}
-	if len(list) > maxAttendees {
-		f.add("attendees", fmt.Sprintf("An appointment has at most %d attendees", maxAttendees))
-		list = nil
 	}
 	index := map[uuid.UUID]int{}
 	for i, id := range list {
@@ -206,6 +210,10 @@ func (s *server) readAttendees(ctx context.Context, raw *[]openapi_types.UUID, o
 			in.attendees = append(in.attendees, id)
 		}
 	}
+	if len(in.attendees) > maxAttendees {
+		f.add("attendees", fmt.Sprintf("An appointment has at most %d attendees", maxAttendees))
+		in.attendees = []uuid.UUID{}
+	}
 	found, err := s.usersBatch(ctx, append([]uuid.UUID{owner}, in.attendees...))
 	if err != nil {
 		return nil, fmt.Errorf("calendar: read the attendees: %w", err)
@@ -217,9 +225,10 @@ func (s *server) readAttendees(ctx context.Context, raw *[]openapi_types.UUID, o
 		active[u.ID] = u.Active
 	}
 	for _, id := range in.attendees {
-		if !active[id] {
-			f.add(fmt.Sprintf("attendees[%d]", index[id]), "No active user has this id")
+		if _, known := names[id]; known && (active[id] || kept[id]) {
+			continue
 		}
+		f.add(fmt.Sprintf("attendees[%d]", index[id]), "No active user has this id")
 	}
 	return names, nil
 }
@@ -231,33 +240,60 @@ type appointmentLinks struct {
 	project  *gen.AppointmentProject
 }
 
-// linksFor names the links through the customer and project directories —
-// before any transaction. An id neither resolves is answered bare: the link
+// linksFor names the links for the viewer in ctx through the customer and
+// project directories — before any transaction. Each name is answered only to
+// a viewer who may read it in its own module: the customer's to a holder of
+// customers:view, the project's code and name to a holder of
+// projects:view-all or projects:manage-all, or of a role on that project —
+// otherwise the bare id, so an appointment cannot be made to name what its
+// viewer may not see. An id neither resolves is answered bare too: the link
 // is a courtesy, never refused (calendar design D2). A directory that fails
 // fails the request, Customer 360's rule.
 func (s *server) linksFor(ctx context.Context, customerID, projectID *int32) (appointmentLinks, error) {
 	var out appointmentLinks
 	if customerID != nil {
 		out.customer = &gen.AppointmentCustomer{Id: *customerID}
-		c, err := s.directoryCustomer(ctx, *customerID)
-		if err != nil {
-			return out, fmt.Errorf("calendar: name customer %d: %w", *customerID, err)
-		}
-		if c != nil {
-			out.customer.Name = &c.Name
+		if s.has(ctx, "customers:view") {
+			c, err := s.directoryCustomer(ctx, *customerID)
+			if err != nil {
+				return out, fmt.Errorf("calendar: name customer %d: %w", *customerID, err)
+			}
+			if c != nil {
+				out.customer.Name = &c.Name
+			}
 		}
 	}
 	if projectID != nil {
 		out.project = &gen.AppointmentProject{Id: *projectID}
-		p, err := s.projectsProject(ctx, *projectID)
+		may, err := s.maySeeProject(ctx, *projectID)
 		if err != nil {
-			return out, fmt.Errorf("calendar: name project %d: %w", *projectID, err)
+			return out, err
 		}
-		if p != nil {
-			out.project.Code, out.project.Name = &p.Code, &p.Name
+		if may {
+			p, err := s.projectsProject(ctx, *projectID)
+			if err != nil {
+				return out, fmt.Errorf("calendar: name project %d: %w", *projectID, err)
+			}
+			if p != nil {
+				out.project.Code, out.project.Name = &p.Code, &p.Name
+			}
 		}
 	}
 	return out, nil
+}
+
+// maySeeProject is Projects' visibility rule for the viewer in ctx, asked
+// of its own contract: everyone's projects with projects:view-all or
+// projects:manage-all, otherwise the ones they hold a role on.
+func (s *server) maySeeProject(ctx context.Context, id int32) (bool, error) {
+	if s.has(ctx, "projects:view-all") || s.has(ctx, "projects:manage-all") {
+		return true, nil
+	}
+	role, err := s.projectsRole(ctx, id, callerID(ctx))
+	if err != nil {
+		return false, fmt.Errorf("calendar: read the caller's role on project %d: %w", id, err)
+	}
+	return role != "", nil
 }
 
 // namesFor is the display name of the owner and every attendee of an
@@ -280,7 +316,7 @@ func (s *server) namesFor(ctx context.Context, a store.CalendarAppointment, atts
 
 // respond is the appointment's response shape for me, with its people and
 // its links named outside any transaction.
-func (s *server) respond(ctx context.Context, a store.CalendarAppointment, atts []store.CalendarAppointmentAttendee, me uuid.UUID) (gen.Appointment, error) {
+func (s *server) respond(ctx context.Context, a store.CalendarAppointment, atts []store.CalendarAppointmentAttendee, excs []store.CalendarAppointmentException, me uuid.UUID) (gen.Appointment, error) {
 	names, err := s.namesFor(ctx, a, atts)
 	if err != nil {
 		return gen.Appointment{}, err
@@ -289,12 +325,38 @@ func (s *server) respond(ctx context.Context, a store.CalendarAppointment, atts 
 	if err != nil {
 		return gen.Appointment{}, err
 	}
-	return appointmentOut(a, atts, me, names, links), nil
+	return appointmentOut(a, atts, excs, me, names, links), nil
+}
+
+// exceptionsOf is a recurring appointment's exceptions by date, none for a
+// single one.
+func exceptionsOf(ctx context.Context, q *store.Queries, a store.CalendarAppointment) ([]store.CalendarAppointmentException, error) {
+	if a.Rrule == nil {
+		return nil, nil
+	}
+	excs, err := q.ListExceptions(ctx, []int64{a.ID})
+	if err != nil {
+		return nil, fmt.Errorf("calendar: read appointment %d's exceptions: %w", a.ID, err)
+	}
+	return excs, nil
+}
+
+// occurrenceOut is one exception on the wire.
+func occurrenceOut(e store.CalendarAppointmentException) gen.AppointmentOccurrence {
+	date, _ := fromPgDate(e.OccurrenceDate)
+	return gen.AppointmentOccurrence{
+		OccurrenceDate: apiDate(date),
+		Cancelled:      e.Cancelled,
+		StartDate:      apiDatePtr(e.StartDate),
+		EndDate:        apiDatePtr(e.EndDate),
+		StartsAt:       utcPtr(e.StartsAt),
+		EndsAt:         utcPtr(e.EndsAt),
+	}
 }
 
 // appointmentOut is an appointment on the wire, as me sees it: myStatus is
 // theirs when they attend it, absent when they own it.
-func appointmentOut(a store.CalendarAppointment, atts []store.CalendarAppointmentAttendee, me uuid.UUID, names map[uuid.UUID]string, links appointmentLinks) gen.Appointment {
+func appointmentOut(a store.CalendarAppointment, atts []store.CalendarAppointmentAttendee, excs []store.CalendarAppointmentException, me uuid.UUID, names map[uuid.UUID]string, links appointmentLinks) gen.Appointment {
 	out := gen.Appointment{
 		Id:           a.ID,
 		Title:        a.Title,
@@ -312,12 +374,16 @@ func appointmentOut(a store.CalendarAppointment, atts []store.CalendarAppointmen
 		Project:      links.project,
 		Owner:        gen.CalendarUserRef{Id: a.OwnerUserID, DisplayName: names[a.OwnerUserID]},
 		Attendees:    make([]gen.AppointmentAttendee, 0, len(atts)),
+		Exceptions:   make([]gen.AppointmentOccurrence, 0, len(excs)),
 		Revision:     a.Revision,
 		CreatedAt:    a.CreatedAt.UTC(),
 		UpdatedAt:    a.UpdatedAt.UTC(),
 	}
 	if a.Rrule != nil {
 		out.Recurrence = &gen.AppointmentRecurrence{Rule: *a.Rrule, LastDate: apiDatePtr(a.SeriesLastDate)}
+	}
+	for _, e := range excs {
+		out.Exceptions = append(out.Exceptions, occurrenceOut(e))
 	}
 	for _, at := range atts {
 		status := gen.AppointmentAttendeeStatus(at.Status)
@@ -356,7 +422,7 @@ func (s *server) PostCalendarAppointments(ctx context.Context, req gen.PostCalen
 		body = *req.Body
 	}
 	me := callerID(ctx)
-	in, names, f, err := s.readAppointment(ctx, body, me)
+	in, names, f, err := s.readAppointment(ctx, body, me, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +467,7 @@ func (s *server) PostCalendarAppointments(ctx context.Context, req gen.PostCalen
 	if err != nil {
 		return nil, err
 	}
-	return gen.PostCalendarAppointments201JSONResponse(appointmentOut(row, atts, me, names, links)), nil
+	return gen.PostCalendarAppointments201JSONResponse(appointmentOut(row, atts, nil, me, names, links)), nil
 }
 
 // GetCalendarAppointmentsById Get an appointment
@@ -423,7 +489,11 @@ func (s *server) GetCalendarAppointmentsById(ctx context.Context, req gen.GetCal
 	if !mayRead(row, atts, me) {
 		return gen.GetCalendarAppointmentsById404Response{}, nil
 	}
-	out, err := s.respond(ctx, row, atts, me)
+	excs, err := exceptionsOf(ctx, q, row)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.respond(ctx, row, atts, excs, me)
 	if err != nil {
 		return nil, err
 	}
@@ -446,11 +516,12 @@ func mayRead(a store.CalendarAppointment, atts []store.CalendarAppointmentAttend
 // PutCalendarAppointmentsById Change an appointment
 // (PUT /api/v1/calendar/appointments/{id})
 //
-// A change of when — the dates or instants, the rule or the zone — or of where
-// bumps the sequence, iCalendar's count of the changes an invitation must
-// carry. A change of when also puts every attendee back to needs-action, since
-// what they answered is no longer what is asked, and drops every exception,
-// since the days they named may no longer exist (calendar design D3, D4).
+// A change of when (changeOf) or of where bumps the sequence, iCalendar's
+// count of the changes an invitation must carry. A change of when also puts
+// every attendee back to needs-action, since what they answered is no longer
+// what is asked. A change of the start or the rule drops every exception,
+// since the days they named may no longer exist (calendar design D3, D4); a
+// change of the end alone keeps them.
 func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCalendarAppointmentsByIdRequestObject) (gen.PutCalendarAppointmentsByIdResponseObject, error) {
 	revision, ok := parseIfMatch(req.Params.IfMatch)
 	if !ok {
@@ -461,7 +532,11 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 		body = *req.Body
 	}
 	me := callerID(ctx)
-	in, names, f, err := s.readAppointment(ctx, body, me)
+	kept, err := s.keptAttendees(ctx, req.Id, me)
+	if err != nil {
+		return nil, err
+	}
+	in, names, f, err := s.readAppointment(ctx, body, me, kept)
 	if err != nil {
 		return nil, err
 	}
@@ -475,6 +550,7 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 	var (
 		row  store.CalendarAppointment
 		atts []store.CalendarAppointmentAttendee
+		excs []store.CalendarAppointmentException
 	)
 	now := s.deps.Clock()
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
@@ -485,8 +561,8 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 		if cur.Revision != revision {
 			return refuse(http.StatusConflict, revisionMismatch(cur.Revision, revision))
 		}
-		whenChanged := spanChanged(spanOf(cur), in.when) || !sameText(cur.Rrule, in.rule) || cur.TimeZone != in.zone
-		whereChanged := !sameText(cur.Location, in.location)
+		c := changeOf(cur, in)
+		whenChanged, whereChanged := c.when, c.where
 		row, err = txq.UpdateAppointment(ctx, store.UpdateAppointmentParams{
 			ID: cur.ID, Title: in.title, Description: in.description, Location: in.location,
 			AllDay: in.when.allDay, StartDate: spanStartDate(in.when), EndDate: spanEndDate(in.when),
@@ -502,6 +578,8 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 			if err := txq.ResetAttendeeStatuses(ctx, cur.ID); err != nil {
 				return fmt.Errorf("calendar: reset appointment %d's answers: %w", cur.ID, err)
 			}
+		}
+		if c.startOrRule {
 			if err := txq.DeleteExceptions(ctx, cur.ID); err != nil {
 				return fmt.Errorf("calendar: drop appointment %d's exceptions: %w", cur.ID, err)
 			}
@@ -518,7 +596,8 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 		if err != nil {
 			return fmt.Errorf("calendar: read appointment %d's attendees: %w", cur.ID, err)
 		}
-		return nil
+		excs, err = exceptionsOf(ctx, txq, row)
+		return err
 	})
 	if r, ok := asRefusal(err); ok {
 		if r.status == http.StatusConflict {
@@ -529,7 +608,7 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 	if err != nil {
 		return nil, err
 	}
-	return gen.PutCalendarAppointmentsById200JSONResponse(appointmentOut(row, atts, me, names, links)), nil
+	return gen.PutCalendarAppointmentsById200JSONResponse(appointmentOut(row, atts, excs, me, names, links)), nil
 }
 
 // DeleteCalendarAppointmentsById Delete an appointment
@@ -558,16 +637,61 @@ func (s *server) DeleteCalendarAppointmentsById(ctx context.Context, req gen.Del
 	return gen.DeleteCalendarAppointmentsById204Response{}, nil
 }
 
-// spanChanged reports whether two times differ — the kind, the dates or the
-// instants.
-func spanChanged(a, b span) bool {
-	if a.allDay != b.allDay {
-		return true
+// change is what a PUT changes of an appointment that matters beyond its
+// text.
+type change struct {
+	when        bool // the time, the rule, or the zone a series expands in
+	where       bool // the location
+	startOrRule bool // the start, the kind, the rule, or a series' zone
+}
+
+// changeOf is what in changes of cur. The zone is a change of when only for a
+// series, whose wall-clock expansion it decides: a single appointment's
+// instants or dates mean the same in any zone, so a zone-only change of one
+// moves nothing.
+func changeOf(cur store.CalendarAppointment, in appointmentInput) change {
+	was, is := spanOf(cur), in.when
+	ruleChanged := !sameText(cur.Rrule, in.rule)
+	seriesZone := in.rule != nil && cur.TimeZone != in.zone
+	var startMoved, endMoved bool
+	switch {
+	case was.allDay != is.allDay:
+		startMoved, endMoved = true, true
+	case is.allDay:
+		startMoved, endMoved = !was.startDate.Equal(is.startDate), !was.endDate.Equal(is.endDate)
+	default:
+		startMoved, endMoved = !was.startsAt.Equal(is.startsAt), !was.endsAt.Equal(is.endsAt)
 	}
-	if a.allDay {
-		return !a.startDate.Equal(b.startDate) || !a.endDate.Equal(b.endDate)
+	return change{
+		when:        startMoved || endMoved || ruleChanged || seriesZone,
+		where:       !sameText(cur.Location, in.location),
+		startOrRule: startMoved || ruleChanged || seriesZone,
 	}
-	return !a.startsAt.Equal(b.startsAt) || !a.endsAt.Equal(b.endsAt)
+}
+
+// keptAttendees is the appointment's attendees as they stand, read before a
+// PUT's transaction, when me owns it — for no one else, so a PUT cannot
+// probe who attends someone else's appointment. The owner's own row lock
+// later decides the write; this only relaxes the directory check for a
+// colleague already on it.
+func (s *server) keptAttendees(ctx context.Context, id int64, me uuid.UUID) (map[uuid.UUID]bool, error) {
+	q := s.queries()
+	a, err := q.GetAppointment(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && a.OwnerUserID != me) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("calendar: read appointment %d: %w", id, err)
+	}
+	atts, err := q.ListAttendees(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("calendar: read appointment %d's attendees: %w", id, err)
+	}
+	kept := make(map[uuid.UUID]bool, len(atts))
+	for _, at := range atts {
+		kept[at.UserID] = true
+	}
+	return kept, nil
 }
 
 // The columns a span fills: its dates when all-day, its instants when timed,
