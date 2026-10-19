@@ -154,6 +154,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search colleagues
+         * @description Active users in the directory, ordered by display name, for the attendee picker and the colleague picker. Every calendar:access holder may search; what it answers — a colleague's id and display name — is what every appointment already shows its attendees.
+         */
+        get: operations["getCalendarUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -976,6 +996,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarMeta"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getCalendarUsers: {
+        parameters: {
+            query?: {
+                /** @description Narrows the search by display name. Absent or blank lists the first page of active users. */
+                query?: string;
+                /** @description How many users to answer, 1 to 50. Defaults to 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarUserRef"][];
+                };
+            };
+            /** @description Bad Request — a limit out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
                 };
             };
             /** @description Unauthorized */
