@@ -35,8 +35,8 @@ kontoer og identitetsintegrasjoner":
   ikke-sensitiv identitetsaktivitet; legitimasjon og leverandørkonfigurasjon vises
   aldri.
 
-SSO og SCIM settes opp av den som drifter installasjonen, ikke fra dette
-skjermbildet; se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
+SSO og SCIM settes lenger ned på den samme oversikten, på kortet **Single sign-on**;
+se [Sett opp single sign-on](#sett-opp-single-sign-on).
 
 ## Finn en bruker
 
@@ -359,6 +359,62 @@ Hver endring føres i revisjonsloggen for autorisasjon som
 `workspace.business_time_zone_changed`, med sonen før og etter. Der en person ser et
 tidspunkt, ser de det i denne sonen også, til en egen personlig tidssone finnes.
 
+### Sett opp single sign-on
+
+Kortet **Single sign-on**, under **Arbeidsområde** på oversikten, kobler
+arbeidsområdet til en identitetsleverandør for arbeidsstyrken — Microsoft Entra ID
+eller Google Workspace — så folk logger inn med jobbkontoen sin, og gir en katalog
+tokenet den klargjør kontoer med (SCIM). Det krever eierrollen og, når installasjonen
+krever det, et andre trinn. Hva som skal gjøres hos leverandøren — appregistreringen,
+hemmeligheten, omdirigeringen — er beskrevet trinn for trinn i
+[SSO- og SCIM-drift](/nb/admin/sso-scim/).
+
+Slik lar du folk logge inn gjennom en leverandør:
+
+1. Kopier **Tilbakekalls-URL** og registrer den hos leverandøren.
+2. Velg **Leverandør**: Entra eller Google.
+3. Fyll inn **Autoritet**, leverandørens utstederadresse —
+   `https://login.microsoftonline.com/<tenant-guid>/v2.0` for Entra,
+   `https://accounts.google.com` for Google — og **Klient-ID**.
+4. Oppgi legitimasjonen: lim inn **Klienthemmelighet**, eller, for Entra på en
+   plattform som leverer en, stien til **Tokenfil**. Når en hemmelighet er lagret, er
+   feltet tomt og sier når den ble satt: la det stå tomt for å beholde den, og skriv
+   en ny bare for å erstatte den.
+5. For Google, list opp **Domener** folk kan logge inn fra.
+6. Gi eventuelt knappen på innloggingssiden et **Visningsnavn**; ellers er det
+   `Workforce SSO`.
+7. Velg **Lagre**. Et felt leverandøren ikke ville godta, merkes med formen det må
+   ha.
+
+Innen 20 sekunder tilbyr innloggingssiden **Fortsett med** og visningsnavnet, på hver
+server, uten omstart.
+
+Endrer du **Autoritet** mens folk allerede logger inn gjennom leverandøren, ber
+Vantigo deg bekrefte først: folk som er koblet under den gamle autoriteten, gjenkjennes
+ikke under den nye, så deres neste innlogging gjennom leverandøren avvises så lenge
+kontoen deres finnes. Bekreft bare når du flytter til en annen leietaker eller
+leverandør. Å slå leverandøren av mens folk er koblet til den, spør om det samme. Har
+noen andre lagret kortet etter at du åpnet det, sier lagringen det: last siden på nytt
+og gjør endringen igjen.
+
+Slik gir du en katalog SCIM-tokenet:
+
+1. Kopier **Endepunkt-URL** inn i katalogens klargjøringsinnstillinger.
+2. Velg **Nytt token**. Dialogen viser tokenet **én gang**: kopier det inn i
+   katalogen før du lukker den. Det kan ikke vises igjen; er det tapt, utsted et nytt.
+3. Fantes det allerede et token, viser dialogen også til når det gamle fortsatt
+   godtas — overlappet, høyst 24 timer — så katalogen kan bytte uten opphold. Velg
+   **Avslutt overlapp** når katalogen bruker det nye tokenet.
+
+**Slå av** stopper SCIM: innen 20 sekunder avvises katalogens forespørsler, og kontoene
+og gruppene den opprettet, blir som de er.
+
+Når innstillingene ble importert fra installasjonens miljø, sier kortet det og ber om
+at variablene fjernes; det er for den som drifter installasjonen
+([Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene)). Hver endring føres i
+revisjonsloggen for autorisasjon som `sso-settings.changed`, aldri med hemmeligheten
+eller et token.
+
 ## Systemadministrasjon
 
 Kontoen som ble opprettet ved oppsettet, er også installasjonens
@@ -389,5 +445,6 @@ det andre trinnet deres ligger hos leverandøren, og deres egen sikkerhetsside s
 og deaktiverer leverandøren kontoer og grupper selv, og en slik konto kan ikke
 slettes fra brukersiden — deaktiver den, eller la leverandøren avklargjøre den.
 Eierkontoer er beskyttet mot leverandøren: SCIM kan ikke endre eller fjerne dem, og
-en lokal eier med passord forblir veien inn om leverandøren er utilgjengelig.
-Konfigurasjonen og driftshåndboken finnes i [SSO- og SCIM-drift](/nb/admin/sso-scim/).
+en lokal eier med passord forblir veien inn om leverandøren er utilgjengelig — også
+til kortet **Single sign-on**, der en eier [setter opp begge](#sett-opp-single-sign-on).
+Driftshåndboken finnes i [SSO- og SCIM-drift](/nb/admin/sso-scim/).

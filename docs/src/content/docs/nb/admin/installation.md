@@ -147,9 +147,10 @@ Innstillingene ligger i to filer ved siden av `compose.yaml`:
 Hver nøkkel `vantigo.env` godtar er dokumentert i feltkommentarene i
 [apps/server/internal/config/config.go](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/config/config.go),
 den autoritative referansen, og oppsummert i
-[Identitet, autentisering og utrulling](/nb/admin/authentication/). For OIDC for
-arbeidsstyrken konfigurert ved oppstart, statisk SCIM-provisjonering og
-gjenopprettingsprosedyrer, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
+[Identitet, autentisering og utrulling](/nb/admin/authentication/). OIDC for
+arbeidsstyrken og SCIM-provisjonering er ikke blant dem: en Owner setter begge på
+kortet **Single sign-on**, og [SSO- og SCIM-drift](/nb/admin/sso-scim/) har
+prosedyrene og gjenopprettingen.
 
 ### Innstillingene du må ta stilling til
 
@@ -286,16 +287,11 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 2. Kjør én ekstra container fra det samme imaget med kommandoen `worker`. Den kjører
    alltid bakgrunnsjobbene uansett `WORKERS_IN_PROCESS`, og serverer bare
    `/health/live` og `/health/ready` for prober.
-3. Gi worker-containeren de samme innstillingene for `SCIM_TOKEN` og `OIDC_*` som
-   API-et. Hvem som har en tillatelse (en deaktivering i katalogen teller bare så lenge
-   SCIM er konfigurert) og kontomodusen (lokal eller føderert) følger begge disse, så
-   en worker uten dem ville vurdere annerledes enn API-et. API-et registrerer modusen
-   det utleder når det starter (se
-   [autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen)); en worker der
-   egne innstillinger gir en annen modus, klargjør, aktiverer og oppdaterer ingen
-   kontoer — Ansattes kontoer venter, rapportert som ulik modus — til innstillingene
-   stemmer med API-ets og den er startet på nytt; den deaktiverer fortsatt dem som
-   slutter.
+3. Workeren trenger ingen egne OIDC- eller SCIM-innstillinger. Hvem som har en
+   tillatelse (en deaktivering i katalogen teller bare så lenge SCIM er på) og
+   kontomodusen (lokal eller føderert) følger begge innstillingene for single sign-on i
+   databasen, som workeren leser slik API-et gjør, innen 20 sekunder etter en Owners
+   endring (se [autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen)).
 4. Hold klokkene på API- og worker-vertene synkronisert (NTP). Kontojobben i Ansatte
    tar koblinger med leieavtaler som hver prosess sammenligner med sin egen klokke, så
    en klokke som går for fort kan ta over en kobling en annen prosess fortsatt arbeider
@@ -488,18 +484,18 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   ([Ansatte](/nb/admin/staff/#oppbevaring)), og kontoarbeiderens
   `STAFF_ACCOUNTS_ENABLED` (standard på), som klargjør, aktiverer og deaktiverer brukerne
   kontoflagget ber om, på den samme kjøringsfrekvensen
-  ([Ansatte](/nb/admin/staff/#kontoarbeideren)). Arbeiderprosessen må ha de samme
-  `OIDC_*`- og `SCIM_*`-innstillingene som API-prosessen: der de er ulike, deaktiverer den
-  dem som slutter, og holder alle andre steg tilbake (`mode_mismatch`).
-- `vantigo.env.example` dokumenterer de statiske OIDC- og SCIM-innstillingene.
-  Konfigurasjonen er bundet til utrullingen, og endringer krever omstart. Ikke legg
-  leverandør- eller SCIM-hemmeligheter i filer under versjonskontroll — injiser
-  `OIDC_CLIENT_SECRET`, `SCIM_TOKEN`, `SCIM_PREVIOUS_TOKEN` og
-  `COMMUNICATIONS_AI_API_KEY` fra en hemmelighetsforvalter i stedet.
+  ([Ansatte](/nb/admin/staff/#kontoarbeideren)). Den leser kontomodusen fra
+  innstillingene for single sign-on i databasen, slik API-et gjør.
+- OIDC-leverandøren for arbeidsstyrken og SCIM-tokenet settes på kortet **Single
+  sign-on**, ikke i `vantigo.env`: `OIDC_*` og `SCIM_*` der importeres i databasen én
+  gang, ved første oppstart av utgivelsen som kom med kortet, og varsles deretter bare
+  om til du fjerner dem
+  ([Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene)). Ikke legg
+  hemmeligheter i filer under versjonskontroll — injiser `COMMUNICATIONS_AI_API_KEY`
+  fra en hemmelighetsforvalter i stedet.
 - SCIM bruker `/api/v1/identity/scim/v2`, bearer-tokener og `application/scim+json`.
-  Sett `SCIM_TOKEN`; under rotasjon kan du valgfritt sette `SCIM_PREVIOUS_TOKEN`
-  sammen med `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` (fram i tid, og ikke mer enn 24 timer
-  etter oppstart). Se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
+  En Owner utsteder tokenet med **Nytt token** på kortet, og roterer det der med en
+  overlapping på høyst 24 timer. Se [SSO- og SCIM-drift](/nb/admin/sso-scim/#scim).
 - `MANAGEMENT_PORT` og `MANAGEMENT_TOKEN` aktiverer et privat statusendepunkt for et
   kontrollplan; se [management-lytteren](/nb/admin/management-listener/).
   Compose-stacken publiserer bevisst ikke den porten: nå den fra en annen container
@@ -624,6 +620,16 @@ en ventende bruker Ansatte laget, ser etterpå ut som en vanlig deaktivert bruke
 rulle fram igjen etterlater dem foreldreløse — styrt av ingen, aldri invitert. Før du
 ruller den tilbake, lar du en Owner slutte å styre og slette de ventende brukerne på
 siden **Brukere**.
+
+**Utgivelsen med kortet Single sign-on.** Den har identitys
+`00058_identity_sso_settings.sql`, raden OIDC-leverandøren for arbeidsstyrken og
+SCIM-legitimasjonen ligger i fra nå av. La `OIDC_*` og `SCIM_*` stå til den første
+oppstarten: API-et importerer dem i raden, revisjonslogger `sso-settings.imported` med
+navnene deres og logger en advarsel; fjern dem deretter fra hver container. En worker
+trenger dem ikke lenger. Å rulle migreringen tilbake dropper raden med den forseglede
+klienthemmeligheten og tokensammendragene, så sett variablene igjen først, med et nytt
+`SCIM_TOKEN` når kortet utstedte det nåværende. Prosedyren står i
+[Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene).
 
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
