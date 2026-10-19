@@ -73,7 +73,10 @@ creates the address, or **resets** it when one exists — a new token, the old a
 dead from that moment — and answers the address; `GET /feed` answers both variants'
 addresses, with `createdAt` and `lastUsedAt`, for the ones that exist; `DELETE
 /feed/{variant}` turns one off. All three are `calendar:access`'s and act on the
-caller's own rows only.
+caller's own rows only. On the wire the three share the anonymous `GET`'s path
+template, `/feed/{file}` (D2): OpenAPI refuses two paths that differ only in a
+parameter's name, so the `POST` and the `DELETE` take the variant in the segment the
+`GET` takes the token in, and an unknown variant is 404.
 
 The address is `<base>/api/v1/calendar/feed/<token>.ics`, where `<base>` is
 `PUBLIC_BASE_URL` when set and `APP_URL` with `APP_BASE_PATH` otherwise — B's rule for
@@ -115,7 +118,8 @@ segment and nothing else, so `{token}.ics` cannot be a pattern, and the handler 
 the segment and requires the suffix (404 without it). The route joins
 `security.PayRoutes()` as `GET /api/v1/calendar/feed/` with `OneSegment`, the pay
 attempts' shape, and `TestPublicHostGate` admits it and refuses it with a segment too
-many, under `POST`, and without a segment. No page accompanies it: the address is pasted
+many, under `POST` and `HEAD`, and without a segment. The 200 and the 304 both carry
+`Cache-Control`; a provider that fails makes the feed 503, as it makes `GET /items`. No page accompanies it: the address is pasted
 into a calendar program, not opened in a browser. The operation's access rule is
 `anonymous`; a signed-in caller is answered alike, by the token and not the session. A
 request that answers 200 or 304 writes `last_used_at`.
@@ -220,9 +224,9 @@ func AsUser(ctx context.Context, userID uuid.UUID) context.Context
 `Check`, as today — and gains a second: no request but the `AsUser` mark, and the keys
 are asked of `UserHolds` for that id; anything else is false, as before. Identity
 implements `UserHolds` over the same tables `permitted` reads — the user's `is_disabled`
-and `lockout_end`, the owner role, `EffectivePermissionForUser` per key — and the
-MFA-for-owners rule `businessSatisfied` enforces on a session is not applied: it is a
-rule about a session, and there is none. The feed handler, once the token has named
+and `lockout_end`, a pending user answered false, the owner role,
+`EffectivePermissionForUser` per key — and the MFA-for-owners rule `businessSatisfied`
+enforces on a session is not applied: it is a rule about a session, and there is none. The feed handler, once the token has named
 the user, builds `AsUser(ctx, userID)` and asks `sourceItemsIn` with it, through the
 same accessor and under the same budget `GET /items` uses; `sourceItems`' check that the
 principal is the user the query names holds as it did. The module's test fakes
