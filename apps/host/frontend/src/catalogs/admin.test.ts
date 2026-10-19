@@ -148,6 +148,34 @@ describe("the admin permission catalog", () => {
     );
   });
 
+  // Hand-kept in step with `apps/server/internal/calendar/module.go` (`var
+  // permissions`), for the same reason as the lists above.
+  it("names the two calendar permissions in English and Norwegian, the English the server's own", () => {
+    for (const key of ["calendar:access", "calendar:view-colleagues"] as const) {
+      const translation = hostPermissionTranslationKeys[key];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      expect(translation.moduleKey).toBe("admin.permission.module.calendar");
+      expect(translation.categoryKey).toBe("admin.permission.category.calendar");
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+        expect(catalog[translation.moduleKey], `${key} module (${lng})`).toBeTruthy();
+        expect(catalog[translation.categoryKey], `${key} category (${lng})`).toBeTruthy();
+      }
+    }
+    const en = adminCatalog.en as Record<string, string>;
+    expect(en["admin.permission.category.calendar"]).toBe("Calendar");
+    expect(en["admin.permission.calendarAccess"]).toBe("Use Calendar");
+    expect(en["admin.permission.calendarAccessDescription"]).toBe(
+      "Use the Calendar app: your own calendar, your appointments and your answers to them, and the dashboard's agenda.",
+    );
+    expect(en["admin.permission.calendarViewColleagues"]).toBe("See colleagues' calendars");
+    expect(en["admin.permission.calendarViewColleaguesDescription"]).toBe(
+      "See a colleague's appointments as busy or free, with the title when it is shared.",
+    );
+  });
+
   // The English text is pinned verbatim against the server's own strings
   // (`apps/server/internal/expenses/module.go`), the way a translation catalog
   // should track its source of truth rather than paraphrase it.

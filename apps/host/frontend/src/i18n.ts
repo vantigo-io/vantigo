@@ -2,6 +2,7 @@ import { type CatalogResources, registerCatalog } from "@vantigo/frontend-shell"
 // Each module package registers its own catalog when its i18n entry loads;
 // the host only has to load them, through the package's public subpath,
 // never through its source tree.
+import "@vantigo/calendar-ui/i18n";
 import "@vantigo/communications-ui/i18n";
 import "@vantigo/customers-ui/i18n";
 import "@vantigo/energy-ui/i18n";

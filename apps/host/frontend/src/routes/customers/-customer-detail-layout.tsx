@@ -2,6 +2,7 @@ import { Button } from "@mantine/core";
 import { IconBolt, IconBriefcase, IconFileInvoice, IconLayoutDashboard, IconMessages } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
+import { NewAppointmentButton } from "@vantigo/calendar-ui/components/new-appointment-button";
 import { CustomerDetailHeader } from "@vantigo/customers-ui/pages/customers.$customerId";
 import { PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
@@ -68,10 +69,14 @@ export const customerDetailTabs: CustomerDetailTab[] = [
 /**
  * Header actions that lead out of the customer page. Correspondence lives in
  * the Communications inbox, so it is an action here rather than a tab: a tab
- * that leaves the page could never be the active one.
+ * that leaves the page could never be the active one. A new appointment is the
+ * person's, not the customer's record (calendar design D7), so it too is an
+ * action — on the Overview — that opens the calendar's sheet with the customer
+ * set, rather than a tab listing appointments.
  */
 export const customerDetailActions = {
   correspondence: { module: "communications", requiredPermissions: ["communications:conversations-view"] },
+  newAppointment: { module: "calendar", requiredPermissions: ["calendar:access"] },
 } as const satisfies Record<string, CustomerDetailGate>;
 
 const passesGate = (
@@ -93,6 +98,12 @@ export const showCorrespondenceAction = (
   enabledModules: readonly ModuleKey[] | undefined,
   permissions: string[] | undefined,
 ) => passesGate(customerDetailActions.correspondence, enabledModules, permissions);
+
+/** Whether the "New appointment" action shows, under the same rules as a tab. */
+export const showNewAppointmentAction = (
+  enabledModules: readonly ModuleKey[] | undefined,
+  permissions: string[] | undefined,
+) => passesGate(customerDetailActions.newAppointment, enabledModules, permissions);
 
 /** The tab the matched child route belongs to; anything else is the overview. */
 export const activeCustomerDetailTab = (routeIds: readonly string[]): CustomerDetailView =>
@@ -124,6 +135,7 @@ export const CustomerDetailLayout = () => {
   const permissions = authorization.data?.permissions;
   const visibleTabs = visibleCustomerDetailTabs(enabledModules, permissions);
   const activeTab = activeCustomerDetailTab(matches.map((match) => match.routeId));
+  const showNewAppointment = activeTab === "overview" && showNewAppointmentAction(enabledModules, permissions);
 
   return (
     <>
@@ -134,29 +146,32 @@ export const CustomerDetailLayout = () => {
         canMerge={hasPermissions(permissions, ["customers:merge"])}
         canManagePersonalData={hasPermissions(permissions, ["customers:personal-data"])}
         actions={
-          showCorrespondenceAction(enabledModules, permissions) ? (
-            <Button
-              variant="default"
-              leftSection={<IconMessages size={16} />}
-              // renderRoot keeps the route-typed Link (search is validated by
-              // the inbox route); `component={Link}` would erase that typing.
-              renderRoot={(props) => (
-                <Link
-                  to="/communications/inbox"
-                  search={{
-                    customerId,
-                    conversationId: undefined,
-                    status: undefined,
-                    tagId: undefined,
-                    unreadOnly: undefined,
-                  }}
-                  {...props}
-                />
-              )}
-            >
-              {t("customer.openInInbox")}
-            </Button>
-          ) : undefined
+          <>
+            {showNewAppointment && <NewAppointmentButton customerId={customerId} variant="light" />}
+            {showCorrespondenceAction(enabledModules, permissions) && (
+              <Button
+                variant="default"
+                leftSection={<IconMessages size={16} />}
+                // renderRoot keeps the route-typed Link (search is validated by
+                // the inbox route); `component={Link}` would erase that typing.
+                renderRoot={(props) => (
+                  <Link
+                    to="/communications/inbox"
+                    search={{
+                      customerId,
+                      conversationId: undefined,
+                      status: undefined,
+                      tagId: undefined,
+                      unreadOnly: undefined,
+                    }}
+                    {...props}
+                  />
+                )}
+              >
+                {t("customer.openInInbox")}
+              </Button>
+            )}
+          </>
         }
       />
       {visibleTabs.length > 1 && (

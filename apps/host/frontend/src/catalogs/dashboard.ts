@@ -14,6 +14,8 @@ const en = {
   "dashboard.manageProjects": "Manage projects, people and billing.",
   "dashboard.time": "Time",
   "dashboard.manageTime": "Log hours, submit weeks and approve them.",
+  "dashboard.calendar": "Calendar",
+  "dashboard.manageCalendar": "Plan appointments and see your week in one place.",
   "dashboard.expenses": "Expenses",
   "dashboard.manageExpenses": "Record expenses, approve them and pay them back.",
   "dashboard.invoices": "Invoices",
@@ -189,6 +191,7 @@ const en = {
   "dashboard.newTravelClaim": "New travel claim",
   "dashboard.newPerson": "New person",
   "dashboard.requestAbsence": "Request absence",
+  "dashboard.newAppointment": "New appointment",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -205,6 +208,8 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.manageProjects": "Administrer prosjekter, personer og fakturering.",
   "dashboard.time": "Timer",
   "dashboard.manageTime": "Før timer, lever uker og godkjenn dem.",
+  "dashboard.calendar": "Kalender",
+  "dashboard.manageCalendar": "Planlegg avtaler og se uken din samlet.",
   "dashboard.expenses": "Utlegg",
   "dashboard.manageExpenses": "Før utlegg, godkjenn dem og betal dem tilbake.",
   "dashboard.invoices": "Fakturaer",
@@ -377,6 +382,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.newTravelClaim": "Ny reiseregning",
   "dashboard.newPerson": "Ny person",
   "dashboard.requestAbsence": "Be om fravær",
+  "dashboard.newAppointment": "Ny avtale",
 };
 
 export const dashboardCatalog = { en, nb } as const satisfies CatalogResources;
