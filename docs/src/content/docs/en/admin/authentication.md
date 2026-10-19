@@ -1,6 +1,6 @@
 ---
 title: "Identity, authentication and deployment"
-description: "Local accounts, users Staff manages and the roles it may give, the environment-configured OIDC provider, email, proxy trust, APP_SECRET-derived key material and migrations."
+description: "Local accounts, users Staff manages and the roles it may give, the workforce OIDC provider and SCIM, email, proxy trust, APP_SECRET-derived key material and migrations."
 sidebar:
   order: 20
 sources:
@@ -26,8 +26,9 @@ but it must preserve the `Host` header: `X-Forwarded-Host` is never honoured, an
 host filtering is derived from `APP_URL`. Cross-origin SPA/API hosting is not a
 supported deployment shape.
 
-For static workforce OIDC, SCIM 2.0, provider setup and the operator recovery
-runbook, see [SSO and SCIM operations](/en/admin/sso-scim/).
+The workforce OIDC provider and SCIM 2.0 are set by an Owner on the **Single sign-on**
+card, not in the environment; for provider setup and the operator recovery runbook,
+see [SSO and SCIM operations](/en/admin/sso-scim/).
 
 Every setting this document names is read by
 [`apps/server/internal/config/config.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/config/config.go),
@@ -211,20 +212,22 @@ every deleted user.
 Staff's provisioning acts in one of two modes. **Local**: identity holds the
 credentials, so it creates the users Staff asks for, enables them and invites them to
 choose a password. **Federated**: an identity provider owns the accounts — workforce
-OIDC (`OIDC_*`) or SCIM (`SCIM_TOKEN`) is configured — so it only finds a user by
+OIDC or SCIM is on in the [single sign-on settings](/en/admin/sso-scim/#the-single-sign-on-card)
+— so it only finds a user by
 employee number, re-enables a user Staff disabled and disables; it never creates or
 invites (see [SSO and SCIM operations](/en/admin/sso-scim/#staff-in-a-federated-installation)).
 
-The mode is derived from the configuration of the process serving the API and recorded
-when identity starts there (`identity.system_settings.authority_mode`, with
-`authority_mode_at`). A worker-only process reads the recorded mode instead of trusting
-its own settings: when its own `OIDC_*` and `SCIM_TOKEN` derive another, provisioning
-prepares, activates and updates nothing until the two agree — it still deactivates, so
-a leaver never keeps access over a misconfigured worker (see
-[Installation](/en/admin/installation/#background-workers-and-scaling)). Turning OIDC
-or SCIM on or off therefore changes the mode at the API's next start; the change is
-audited `authority-mode.changed` with the modes before and after, no actor and no
-correlation id. Starting with the same mode changes nothing.
+The mode is derived from `identity.sso_settings` by every process — the API and the
+workers alike — so none can disagree, and a worker needs no OIDC or SCIM settings of
+its own. Turning SSO or SCIM on or off on the card changes the mode everywhere within
+20 seconds, with no restart. The mode is also recorded, as the trail of its changes,
+in `identity.system_settings.authority_mode` with `authority_mode_at`: by an Owner's
+save on the card that changes it, in the save's own transaction, and at every API
+start — the first after the upgrade records the mode the
+[imported settings](/en/admin/sso-scim/#before-the-card-the-environment-variables)
+derive. A change is audited `authority-mode.changed` with the modes before and after,
+no actor and no correlation id. A save or a start with the same mode changes
+nothing.
 
 The same row holds the **workspace's business time zone**
 (`identity.system_settings.business_time_zone`, `Europe/Oslo` by default): the one
@@ -261,9 +264,9 @@ Staff reaches identity's users only through identity's provisioning, which runs 
 change in a transaction of its own — under the owner lock, then the user's
 invitations, then the user — audits it with its actor (the person who pressed a button
 in Staff, or `system:staff-accounts`), and sends mail only once the change is
-committed. It refuses anything with no valid actor, and while the
-[authority mode](#the-authority-mode) the process derives differs from the recorded
-one it does nothing but deactivate.
+committed. It refuses anything with no valid actor, and acts in the
+[authority mode](#the-authority-mode) the single sign-on settings derive, read in the
+change's own transaction.
 
 | Step | Local mode | Federated mode | Audited |
 | --- | --- | --- | --- |
@@ -310,7 +313,7 @@ out and Staff reports their account disabled by the directory. What it refuses:
 | Address taken | Another user holds the person's address, or an Owner has invited someone to become an Owner at it and the invitation is still open | Give the person another address in Staff, or resolve the other account or the invitation |
 | Employee number taken | A user Staff does not manage holds the number | Adopt that user, or correct the number in Staff |
 | Not found | Federated mode: no Staff-managed user holds the number yet | Let the identity provider create the account, then adopt it |
-| Mode mismatch | This process's `OIDC_*`/`SCIM_TOKEN` derive another mode than the API recorded (refused for every step but deactivation) | Give the worker the API's settings ([Installation](/en/admin/installation/#background-workers-and-scaling)) |
+| Mode mismatch | Reported only by a worker still on the release before the Single sign-on card, during a rolling upgrade (refused for every step but deactivation) | Finish the upgrade |
 
 ### Adopt an existing user for Staff
 
@@ -614,9 +617,10 @@ Communications API and sealed at rest, never environment variables. See
 `APP_SECRET` is the process-wide key material: at least 32 bytes, from which every
 key the process uses is derived with HKDF-SHA256 — one derived key per purpose —
 and used as AES-256-GCM (CSRF and cookie sealing, OIDC state, TOTP secret
-encryption, Communications channel passwords). The purpose string is bound in as
-additional authenticated data, so a value sealed for one purpose cannot be opened
-under another, and a key-id byte leaves room for a future rotation scheme.
+encryption, the OIDC client secret, Communications channel passwords). The purpose
+string is bound in as additional authenticated data, so a value sealed for one purpose
+cannot be opened under another, and a key-id byte leaves room for a future rotation
+scheme.
 
 **There is no persisted key ring, no key-wrapping service and no external key
 vault.** Nothing needs provisioning beyond the variable itself. Two consequences
@@ -625,8 +629,10 @@ matter operationally:
 - **All replicas must share the same `APP_SECRET`** (and the same database), or
   sessions issued by one replica are unreadable by another.
 - **Losing or rotating it is equivalent to losing a signing key**: every open
-  session, every OIDC flow in progress, every stored TOTP secret and every sealed
-  channel credential becomes unrecoverable. Rotate only with a migration plan.
+  session, every OIDC flow in progress, every stored TOTP secret, the sealed OIDC
+  client secret and every sealed channel credential becomes unrecoverable. Rotate
+  only with a migration plan, and save the client secret on the Single sign-on card
+  again afterwards.
 
 ## Configuration reference
 
@@ -679,19 +685,29 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 
 ### Workforce OIDC and SCIM
 
-| Variable | Purpose | Default |
+**These variables are read for one import, and no longer configure anything.** The
+provider and the SCIM credential are kept in `identity.sso_settings` and set on the
+[Single sign-on card](/en/admin/sso-scim/#the-single-sign-on-card). The first process
+serving the API that finds that row never written imports whichever of these is set
+into it, audited `sso-settings.imported` with their names; once the row is written
+they are ignored, and each one still set is named in a warning at every start. This
+release still validates them at startup, so remove them after the import; the next
+release refuses them at startup. See
+[Before the card](/en/admin/sso-scim/#before-the-card-the-environment-variables).
+
+| Variable | Imported as | Default |
 | --- | --- | --- |
-| `OIDC_PROVIDER` | `entra` or `google`; unset disables OIDC | unset |
+| `OIDC_PROVIDER` | `entra` or `google`; unset, OIDC stays off | unset |
 | `OIDC_AUTHORITY` | Exact issuer for the provider | unset |
 | `OIDC_CLIENT_ID` | Entra GUID, or a `.apps.googleusercontent.com` client ID | unset |
-| `OIDC_CLIENT_SECRET` | Client secret | unset |
+| `OIDC_CLIENT_SECRET` | Client secret, sealed | unset |
 | `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolute, readable assertion file (Entra only) | unset |
 | `AZURE_FEDERATED_TOKEN_FILE` | Platform-supplied fallback for the above | unset |
 | `OIDC_ALLOWED_DOMAINS` | Comma list of bare DNS names (Google only, required there) | unset |
 | `OIDC_DISPLAY_NAME` | Sign-in button label | `Workforce SSO` |
-| `SCIM_TOKEN` | Static SCIM bearer token; unset disables SCIM | unset |
-| `SCIM_PREVIOUS_TOKEN` | Prior token during a rotation overlap | unset |
-| `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` | RFC 3339, in the future, ≤ 24h ahead | unset |
+| `SCIM_TOKEN` | The SCIM bearer token, kept as its digest; unset, SCIM stays off | unset |
+| `SCIM_PREVIOUS_TOKEN` | Prior token during a rotation overlap, kept as its digest | unset |
+| `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` | The overlap's end; RFC 3339, in the future, ≤ 24h ahead | unset |
 
 ### Transport, storage and modules
 
@@ -755,17 +771,22 @@ Communications' own settings (`COMMUNICATIONS_*`) are documented in
 
 ## Workforce OIDC
 
-At most one workforce OpenID Connect provider is configured, at startup, from the
-environment; nothing about it is persisted or editable through an API. `OIDC_PROVIDER`
-is the on/off switch — with it unset, leaving any other `OIDC_*` variable set fails
-startup naming the leftovers, so a half-removed provider cannot look disabled while
-carrying live credentials.
+At most one workforce OpenID Connect provider is configured. It is a block of the
+row `identity.sso_settings` — the provider, the authority, the client ID, the client
+secret sealed under `APP_SECRET` or a token file, the allowed domains and the display
+name — which an Owner sets on the **Single sign-on** card (`PUT
+/api/v1/identity/owner/sso/oidc`, `policy:Owner+OwnerManagement`: an Owner, with MFA
+while `OWNERS_REQUIRE_MFA` is on) and every process reads
+through a 20-second cache, so a save is in effect within 20 seconds with no restart.
+The rules are the ones the `OIDC_*` variables were held to, checked at the save; a
+refusal is a `400` with field errors. The relying party is rebuilt when the row's
+version moves.
 
 **The client-authentication mode is inferred, not configured.** There is no
-`ClientAuthentication` setting: set `OIDC_CLIENT_SECRET` for client-secret
-authentication, or `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` (or let the platform supply
-`AZURE_FEDERATED_TOKEN_FILE`) for workload identity. Setting both is a configuration
-error, and so is setting neither. Workload identity is Entra-only; Google is
+`ClientAuthentication` setting: the card's **Client secret** means client-secret
+authentication, its **Token file** (an absolute path the saving process can read)
+workload identity. Saving both at once is refused, and so is saving neither while none
+is stored; saving one clears the other. Workload identity is Entra-only; Google is
 client-secret-only.
 
 The flow is authorization code plus PKCE with a nonce. Provider metadata, issuer,
@@ -780,7 +801,7 @@ Provider-specific checks then apply: Entra requires a `tid` matching the tenant 
 in the configured authority and an `oid` GUID, and requires `azp` to equal the
 client ID when the token carries multiple audiences; Google requires
 `email_verified`, a valid email, and a non-empty `hd` that matches the email domain
-and appears in `OIDC_ALLOWED_DOMAINS`.
+and appears in the allowed domains.
 
 New identities are provisioned just in time as local `User` accounts, keyed by the
 validated issuer and case-sensitive `sub`. Provider email is informational: an email
@@ -788,7 +809,8 @@ collision **fails rather than auto-linking**. OIDC claims never grant local role
 never satisfy the local MFA requirement.
 
 `GET /api/v1/identity/providers` is anonymous and reports the configured sign-in
-providers to the SPA.
+providers to the SPA, read from the row, so the button appears within 20 seconds of a
+save.
 
 ### Required callback URI
 
@@ -799,16 +821,21 @@ when one is configured:
 https://vantigo.example.com/api/v1/identity/oidc/callback
 ```
 
-The callback path is fixed and is not a deployment setting. The public origin, the
-forwarded scheme and the provider registration must agree.
+The callback path is fixed and is not a deployment setting; the **Single sign-on**
+card shows the whole URL as **Callback URL**. The public origin, the forwarded scheme
+and the provider registration must agree.
 
 ## SCIM
 
-SCIM 2.0 is served at `/api/v1/identity/scim/v2` and authenticated by the static
-bearer token in `SCIM_TOKEN`; unset disables it. The token must not contain
-whitespace. **There is no file-based token variant** — inject the value from a
-secret manager. Rotation with a bounded overlap is described in
-[SSO and SCIM operations](/en/admin/sso-scim/).
+SCIM 2.0 is served at `/api/v1/identity/scim/v2` and authenticated by a bearer token
+an Owner issues with **New token** on the **Single sign-on** card (`POST
+/api/v1/identity/owner/sso/scim/token`): generated by the server, answered once, and
+kept in `identity.sso_settings` as its SHA-256 alone. SCIM is on while a token exists,
+and **Turn off** clears it. A rotation keeps the token it replaces for an overlap of at
+most 24 hours, which **End overlap** ends early; both digests are compared, the
+previous one only until its expiry. Every process reads the row through a 20-second
+cache. The procedures are in
+[SSO and SCIM operations](/en/admin/sso-scim/#scim).
 
 ## Forwarded headers and HTTPS
 
