@@ -21,13 +21,13 @@ func TestColleague_ShowsSharedTitlesBusyForPrivateAndNothingForFree(t *testing.T
 		"visibility", "private", "location", "Clinic"))
 	create(t, colleague, with(timed(t, "Focus time", "Europe/Oslo", "2026-11-03T14:00", "2026-11-03T15:00"), "transparency", "free"))
 	accepted := create(t, organiser, with(timed(t, "Accepted invite", "Europe/Oslo", "2026-11-04T09:00", "2026-11-04T10:00"),
-		"attendees", []string{colleagueID.String()}))
+		"attendees", userAttendees(colleagueID.String())))
 	create(t, organiser, with(timed(t, "Unanswered invite", "Europe/Oslo", "2026-11-04T11:00", "2026-11-04T12:00"),
-		"attendees", []string{colleagueID.String()}))
+		"attendees", userAttendees(colleagueID.String())))
 	declined := create(t, organiser, with(timed(t, "Declined invite", "Europe/Oslo", "2026-11-05T09:00", "2026-11-05T10:00"),
-		"attendees", []string{colleagueID.String()}))
+		"attendees", userAttendees(colleagueID.String())))
 	tentative := create(t, organiser, with(timed(t, "Tentative invite", "Europe/Oslo", "2026-11-05T11:00", "2026-11-05T12:00"),
-		"attendees", []string{colleagueID.String()}))
+		"attendees", userAttendees(colleagueID.String())))
 	do(t, colleague, http.MethodPost, responsePath(accepted.Id), map[string]any{"status": "accepted"}, http.StatusOK, nil)
 	do(t, colleague, http.MethodPost, responsePath(declined.Id), map[string]any{"status": "declined"}, http.StatusOK, nil)
 	do(t, colleague, http.MethodPost, responsePath(tentative.Id), map[string]any{"status": "tentative"}, http.StatusOK, nil)

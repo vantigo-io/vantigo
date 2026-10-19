@@ -7,6 +7,8 @@ type Schemas = components["schemas"];
 export type AppointmentOccurrence = Schemas["AppointmentOccurrence"];
 export type Appointment = Schemas["Appointment"];
 export type AppointmentWrite = Schemas["AppointmentWrite"];
+export type AppointmentAttendee = Schemas["AppointmentAttendee"];
+export type AttendeeWrite = Schemas["AttendeeWrite"];
 export type OccurrenceWrite = Schemas["OccurrenceWrite"];
 export type AppointmentAttendeeStatus = Schemas["AppointmentAttendeeStatus"];
 export type AppointmentAnswer = Schemas["AppointmentResponseWrite"]["status"];
@@ -16,6 +18,18 @@ export type CalendarProblem = Schemas["CalendarProblem"];
 
 /** The refusal code of a PUT whose If-Match revision has moved on. */
 export const REVISION_MISMATCH = "revision_mismatch";
+
+/** An attendee as a write names them again: by their kind's own identifier. */
+export const attendeeWriteOf = (attendee: AppointmentAttendee): AttendeeWrite => {
+  switch (attendee.kind) {
+    case "user":
+      return { kind: "user", userId: attendee.user?.id };
+    case "contact":
+      return { kind: "contact", contactId: attendee.contact?.id };
+    case "email":
+      return { kind: "email", email: attendee.email, ...(attendee.name ? { name: attendee.name } : {}) };
+  }
+};
 
 const appointmentPath = (id: number) => `/api/v1/calendar/appointments/${id}`;
 
@@ -70,7 +84,7 @@ export const appointmentWriteOf = (
   ...(appointment.location ? { location: appointment.location } : {}),
   ...(appointment.description ? { description: appointment.description } : {}),
   ...(appointment.recurrence ? { recurrence: { rule: appointment.recurrence.rule } } : {}),
-  attendees: appointment.attendees.map((attendee) => attendee.user.id),
+  attendees: appointment.attendees.map(attendeeWriteOf),
   ...(appointment.customer ? { customerId: appointment.customer.id } : {}),
   ...(appointment.project ? { projectId: appointment.project.id } : {}),
 });

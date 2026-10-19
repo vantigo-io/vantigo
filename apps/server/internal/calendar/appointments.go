@@ -194,13 +194,24 @@ func (in *appointmentInput) seriesFrom(r rule, loc *time.Location) (string, erro
 // in the directory — or one already on the appointment (kept). An element is
 // refused by its index in the request. It answers the names of the owner and
 // of every attendee, from one directory read.
-func (s *server) readAttendees(ctx context.Context, raw *[]openapi_types.UUID, owner uuid.UUID, kept map[uuid.UUID]bool, in *appointmentInput, f *fieldErrors) (map[uuid.UUID]string, error) {
-	var list []uuid.UUID
+func (s *server) readAttendees(ctx context.Context, raw *[]gen.AttendeeWrite, owner uuid.UUID, kept map[uuid.UUID]bool, in *appointmentInput, f *fieldErrors) (map[uuid.UUID]string, error) {
+	var list []gen.AttendeeWrite
 	if raw != nil {
 		list = *raw
 	}
 	index := map[uuid.UUID]int{}
-	for i, id := range list {
+	for i, a := range list {
+		// TODO(calendar invitations, Task 3): the contact and email kinds
+		// (calendar invitations design D1). Until then only a user is taken.
+		if a.Kind != gen.User {
+			f.add(fmt.Sprintf("attendees[%d]", i), "Only a colleague can be an attendee yet")
+			continue
+		}
+		if a.UserId == nil {
+			f.add(fmt.Sprintf("attendees[%d]", i), "userId is required")
+			continue
+		}
+		id := *a.UserId
 		if id == owner {
 			f.add(fmt.Sprintf("attendees[%d]", i), "The owner is not one of the attendees")
 			continue
@@ -301,7 +312,9 @@ func (s *server) maySeeProject(ctx context.Context, id int32) (bool, error) {
 func (s *server) namesFor(ctx context.Context, a store.CalendarAppointment, atts []store.CalendarAppointmentAttendee) (map[uuid.UUID]string, error) {
 	ids := []uuid.UUID{a.OwnerUserID}
 	for _, at := range atts {
-		ids = append(ids, at.UserID)
+		if at.UserID != nil {
+			ids = append(ids, *at.UserID)
+		}
 	}
 	found, err := s.usersBatch(ctx, ids)
 	if err != nil {
@@ -387,14 +400,24 @@ func appointmentOut(a store.CalendarAppointment, atts []store.CalendarAppointmen
 	}
 	for _, at := range atts {
 		status := gen.AppointmentAttendeeStatus(at.Status)
-		out.Attendees = append(out.Attendees, gen.AppointmentAttendee{
-			User:        gen.CalendarUserRef{Id: at.UserID, DisplayName: names[at.UserID]},
+		att := gen.AppointmentAttendee{
+			Id:          at.ID,
+			Kind:        gen.AppointmentAttendeeKind(at.Kind),
+			Email:       at.Email,
+			Name:        at.Name,
 			Status:      status,
 			RespondedAt: utcPtr(at.RespondedAt),
-		})
-		if at.UserID == me {
-			out.MyStatus = &status
 		}
+		if at.ContactID != nil {
+			att.Contact = &gen.AppointmentAttendeeContact{Id: *at.ContactID}
+		}
+		if at.UserID != nil {
+			att.User = &gen.CalendarUserRef{Id: *at.UserID, DisplayName: names[*at.UserID]}
+			if *at.UserID == me {
+				out.MyStatus = &status
+			}
+		}
+		out.Attendees = append(out.Attendees, att)
 	}
 	return out
 }
@@ -453,10 +476,8 @@ func (s *server) PostCalendarAppointments(ctx context.Context, req gen.PostCalen
 		if err != nil {
 			return fmt.Errorf("calendar: insert an appointment: %w", err)
 		}
-		if len(in.attendees) > 0 {
-			if err := txq.InsertAttendees(ctx, store.InsertAttendeesParams{AppointmentID: row.ID, Now: now, UserIds: in.attendees}); err != nil {
-				return fmt.Errorf("calendar: insert appointment %d's attendees: %w", row.ID, err)
-			}
+		if err := insertUserAttendees(ctx, txq, row.ID, in.attendees, now); err != nil {
+			return err
 		}
 		atts, err = txq.ListAttendees(ctx, row.ID)
 		if err != nil {
@@ -506,7 +527,7 @@ func mayRead(a store.CalendarAppointment, atts []store.CalendarAppointmentAttend
 		return true
 	}
 	for _, at := range atts {
-		if at.UserID == me {
+		if at.UserID != nil && *at.UserID == me {
 			return true
 		}
 	}
@@ -584,13 +605,11 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 				return fmt.Errorf("calendar: drop appointment %d's exceptions: %w", cur.ID, err)
 			}
 		}
-		if err := txq.DeleteAttendeesExcept(ctx, store.DeleteAttendeesExceptParams{AppointmentID: cur.ID, UserIds: in.attendees}); err != nil {
-			return fmt.Errorf("calendar: remove appointment %d's attendees: %w", cur.ID, err)
+		if err := keepUserAttendees(ctx, txq, cur.ID, in.attendees); err != nil {
+			return err
 		}
-		if len(in.attendees) > 0 {
-			if err := txq.InsertAttendees(ctx, store.InsertAttendeesParams{AppointmentID: cur.ID, Now: now, UserIds: in.attendees}); err != nil {
-				return fmt.Errorf("calendar: add appointment %d's attendees: %w", cur.ID, err)
-			}
+		if err := insertUserAttendees(ctx, txq, cur.ID, in.attendees, now); err != nil {
+			return err
 		}
 		atts, err = txq.ListAttendees(ctx, cur.ID)
 		if err != nil {
@@ -689,9 +708,46 @@ func (s *server) keptAttendees(ctx context.Context, id int64, me uuid.UUID) (map
 	}
 	kept := make(map[uuid.UUID]bool, len(atts))
 	for _, at := range atts {
-		kept[at.UserID] = true
+		if at.UserID != nil {
+			kept[*at.UserID] = true
+		}
 	}
 	return kept, nil
+}
+
+// insertUserAttendees adds each user not already on the appointment at
+// needs-action; one already there keeps their row and their answer.
+func insertUserAttendees(ctx context.Context, txq *store.Queries, id int64, users []uuid.UUID, now time.Time) error {
+	for _, u := range users {
+		_, err := txq.InsertUserAttendee(ctx, store.InsertUserAttendeeParams{AppointmentID: id, UserID: u, Now: now})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("calendar: add appointment %d's attendees: %w", id, err)
+		}
+	}
+	return nil
+}
+
+// keepUserAttendees removes every attendee of the appointment who is not one
+// of users — all of them when it is empty.
+func keepUserAttendees(ctx context.Context, txq *store.Queries, id int64, users []uuid.UUID) error {
+	atts, err := txq.ListAttendees(ctx, id)
+	if err != nil {
+		return fmt.Errorf("calendar: read appointment %d's attendees: %w", id, err)
+	}
+	listed := make(map[uuid.UUID]bool, len(users))
+	for _, u := range users {
+		listed[u] = true
+	}
+	keep := []int64{}
+	for _, at := range atts {
+		if at.UserID != nil && listed[*at.UserID] {
+			keep = append(keep, at.ID)
+		}
+	}
+	if _, err := txq.DeleteAttendeesNotIn(ctx, store.DeleteAttendeesNotInParams{AppointmentID: id, Ids: keep}); err != nil {
+		return fmt.Errorf("calendar: remove appointment %d's attendees: %w", id, err)
+	}
+	return nil
 }
 
 // The columns a span fills: its dates when all-day, its instants when timed,

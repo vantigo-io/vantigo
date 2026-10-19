@@ -16,7 +16,7 @@ import (
 // server implements gen.StrictServerInterface, the module's contract
 // operations. Each area implements its operations in its own file:
 // meta.go, items.go, appointments.go, occurrences.go, responses.go,
-// colleagues.go and users.go.
+// colleagues.go, users.go, contacts.go, invitations.go and rsvp.go.
 type server struct {
 	deps module.Deps
 }

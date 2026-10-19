@@ -77,10 +77,10 @@ func TestPostAppointment_RefusesEachShapeRuleOnItsField(t *testing.T) {
 		{"no zone", with(base, "timeZone", ""), "timeZone"},
 		{"a visibility outside the vocabulary", with(base, "visibility", "secret"), "visibility"},
 		{"a transparency outside the vocabulary", with(base, "transparency", "maybe"), "transparency"},
-		{"a 51st attendee", with(base, "attendees", many), "attendees"},
-		{"an inactive attendee", with(base, "attendees", []string{inactive.String()}), "attendees[0]"},
-		{"an unknown attendee", with(base, "attendees", []string{many[0], uuid.NewString()}), "attendees[1]"},
-		{"the owner as attendee", with(base, "attendees", []string{me.String()}), "attendees[0]"},
+		{"a 51st attendee", with(base, "attendees", userAttendees(many...)), "attendees"},
+		{"an inactive attendee", with(base, "attendees", userAttendees(inactive.String())), "attendees[0]"},
+		{"an unknown attendee", with(base, "attendees", userAttendees(many[0], uuid.NewString())), "attendees[1]"},
+		{"the owner as attendee", with(base, "attendees", userAttendees(me.String())), "attendees[0]"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fieldRefused(t, c.Do(http.MethodPost, appointmentsPath, tc.body), tc.field)
@@ -98,7 +98,7 @@ func TestPostAppointment_AttendeesAreDeduplicatedAtNeedsActionWithTheirNames(t *
 	ann := directoryUser(t, h, "Ann Berg", true)
 	bob := directoryUser(t, h, "Bob Dahl", true)
 	a := create(t, c, with(timed(t, "Planning", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"),
-		"attendees", []string{ann.String(), bob.String(), ann.String()},
+		"attendees", userAttendees(ann.String(), bob.String(), ann.String()),
 		"visibility", "private", "transparency", "free", "location", " Room 4 ", "description", "Agenda"))
 	if len(a.Attendees) != 2 || a.Attendees[0].User.Id != ann || a.Attendees[0].User.DisplayName != "Ann Berg" ||
 		a.Attendees[1].User.DisplayName != "Bob Dahl" {
@@ -124,7 +124,7 @@ func TestGetAppointment_TheOwnerAndAnAttendeeReadItAndAnyoneElseGets404(t *testi
 	attendee, attendeeID := signIn(t, h)
 	stranger, _ := signIn(t, h)
 	a := create(t, owner, with(timed(t, "1:1", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T09:30"),
-		"attendees", []string{attendeeID.String()}))
+		"attendees", userAttendees(attendeeID.String())))
 
 	var got gen.Appointment
 	do(t, owner, http.MethodGet, appointmentPath(a.Id), nil, http.StatusOK, &got)
@@ -153,7 +153,7 @@ func TestPutAppointment_MovingTheTimeResetsTheAnswersAndBumpsTheSequence(t *test
 	h := newHarness(t)
 	owner, _ := signIn(t, h)
 	attendee, attendeeID := signIn(t, h)
-	body := with(timed(t, "Standup", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T09:15"), "attendees", []string{attendeeID.String()})
+	body := with(timed(t, "Standup", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T09:15"), "attendees", userAttendees(attendeeID.String()))
 	a := create(t, owner, body)
 	do(t, attendee, http.MethodPost, responsePath(a.Id), map[string]any{"status": "accepted"}, http.StatusOK, nil)
 
@@ -177,7 +177,7 @@ func TestPutAppointment_ChangingTheTitleNeitherResetsTheAnswersNorBumpsTheSequen
 	h := newHarness(t)
 	owner, _ := signIn(t, h)
 	attendee, attendeeID := signIn(t, h)
-	body := with(timed(t, "Standup", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T09:15"), "attendees", []string{attendeeID.String()})
+	body := with(timed(t, "Standup", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T09:15"), "attendees", userAttendees(attendeeID.String()))
 	a := create(t, owner, body)
 	var answered gen.Appointment
 	do(t, attendee, http.MethodPost, responsePath(a.Id), map[string]any{"status": "tentative"}, http.StatusOK, &answered)
@@ -226,9 +226,9 @@ func TestPutAppointment_ReplacesTheAttendeeList(t *testing.T) {
 	ann := directoryUser(t, h, "Ann", true)
 	bob := directoryUser(t, h, "Bob", true)
 	body := timed(t, "Sync", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T09:30")
-	a := create(t, c, with(body, "attendees", []string{ann.String()}))
+	a := create(t, c, with(body, "attendees", userAttendees(ann.String())))
 	var got gen.Appointment
-	do(t, c, http.MethodPut, appointmentPath(a.Id), with(body, "attendees", []string{bob.String()}), http.StatusOK, &got, ifMatch(a.Revision))
+	do(t, c, http.MethodPut, appointmentPath(a.Id), with(body, "attendees", userAttendees(bob.String())), http.StatusOK, &got, ifMatch(a.Revision))
 	if len(got.Attendees) != 1 || got.Attendees[0].User.Id != bob {
 		t.Errorf("attendees = %+v, want Bob alone", got.Attendees)
 	}
@@ -240,7 +240,7 @@ func TestDeleteAppointment_RemovesItWithItsAttendeesAndExceptions(t *testing.T) 
 	c, _ := signIn(t, h)
 	ann := directoryUser(t, h, "Ann", true)
 	a := create(t, c, with(timed(t, "Weekly", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"),
-		"attendees", []string{ann.String()}, "recurrence", map[string]any{"rule": "FREQ=WEEKLY"}))
+		"attendees", userAttendees(ann.String()), "recurrence", map[string]any{"rule": "FREQ=WEEKLY"}))
 	do(t, c, http.MethodPut, occurrencePath(a.Id, "2026-11-09"), map[string]any{"cancelled": true}, http.StatusOK, nil)
 
 	do(t, c, http.MethodDelete, appointmentPath(a.Id), nil, http.StatusNoContent, nil)
@@ -261,7 +261,7 @@ func TestResponse_FromANonAttendeeOrTheOwnerIs404AndFromAnAttendeeLandsInMyStatu
 	attendee, attendeeID := signIn(t, h)
 	stranger, _ := signIn(t, h)
 	a := create(t, owner, with(timed(t, "Demo", "Europe/Oslo", "2026-11-02T13:00", "2026-11-02T14:00"),
-		"attendees", []string{attendeeID.String()}))
+		"attendees", userAttendees(attendeeID.String())))
 
 	for name, c := range map[string]*modtest.Client{"a stranger": stranger, "the owner": owner} {
 		if r := c.Do(http.MethodPost, responsePath(a.Id), map[string]any{"status": "accepted"}); r.Status != http.StatusNotFound || len(r.Body) != 0 {
@@ -369,7 +369,7 @@ func TestAppointment_NamesTheLinksOnlyToAViewerWhoMaySeeThem(t *testing.T) {
 	}
 
 	a := create(t, owner, with(timed(t, "Kickoff", "Europe/Oslo", "2026-11-02T11:00", "2026-11-02T12:00"),
-		"customerId", 42, "projectId", 7, "attendees", []string{plainID.String(), memberID.String()}))
+		"customerId", 42, "projectId", 7, "attendees", userAttendees(plainID.String(), memberID.String())))
 	if a.Customer.Name == nil || a.Project.Code == nil {
 		t.Errorf("the owner with the keys sees %+v, %+v", a.Customer, a.Project)
 	}
@@ -394,7 +394,7 @@ func TestPutAppointment_ExtendingASeriesEndKeepsItsExceptions(t *testing.T) {
 	owner, _ := signIn(t, h)
 	attendee, attendeeID := signIn(t, h)
 	body := with(timed(t, "Weekly", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"),
-		"recurrence", map[string]any{"rule": "FREQ=WEEKLY"}, "attendees", []string{attendeeID.String()})
+		"recurrence", map[string]any{"rule": "FREQ=WEEKLY"}, "attendees", userAttendees(attendeeID.String()))
 	a := create(t, owner, body)
 	do(t, owner, http.MethodPut, occurrencePath(a.Id, "2026-11-09"), map[string]any{"cancelled": true}, http.StatusOK, nil)
 	var answered gen.Appointment
@@ -431,7 +431,7 @@ func TestPutAppointment_AZoneOnlyChangeOfASingleTimedAppointmentIsNoChangeOfWhen
 	h := newHarness(t)
 	owner, _ := signIn(t, h)
 	attendee, attendeeID := signIn(t, h)
-	body := with(timed(t, "Call", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "attendees", []string{attendeeID.String()})
+	body := with(timed(t, "Call", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "attendees", userAttendees(attendeeID.String()))
 	a := create(t, owner, body)
 	var answered gen.Appointment
 	do(t, attendee, http.MethodPost, responsePath(a.Id), map[string]any{"status": "accepted"}, http.StatusOK, &answered)
@@ -454,7 +454,7 @@ func TestPostAppointment_CountsTheFiftyAttendeeLimitAfterDeduplication(t *testin
 		list = append(list, directoryUser(t, h, fmt.Sprintf("Colleague %d", i), true).String())
 	}
 	list = append(list, list[0])
-	a := create(t, c, with(timed(t, "All hands", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "attendees", list))
+	a := create(t, c, with(timed(t, "All hands", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "attendees", userAttendees(list...)))
 	if len(a.Attendees) != 50 {
 		t.Errorf("attendees = %d, want 50", len(a.Attendees))
 	}
@@ -466,7 +466,7 @@ func TestPutAppointment_KeepsAnAttendeeWhoHasSinceBecomeInactive(t *testing.T) {
 	c, _ := signIn(t, h)
 	ann := directoryUser(t, h, "Ann", true)
 	bob := directoryUser(t, h, "Bob", false)
-	body := with(timed(t, "Sync", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T09:30"), "attendees", []string{ann.String()})
+	body := with(timed(t, "Sync", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T09:30"), "attendees", userAttendees(ann.String()))
 	a := create(t, c, body)
 	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, ann)
 
@@ -476,7 +476,7 @@ func TestPutAppointment_KeepsAnAttendeeWhoHasSinceBecomeInactive(t *testing.T) {
 		t.Errorf("attendees = %+v, want Ann kept", got.Attendees)
 	}
 	// A newly added inactive user is still refused.
-	fieldRefused(t, c.Do(http.MethodPut, appointmentPath(a.Id), with(body, "attendees", []string{ann.String(), bob.String()}),
+	fieldRefused(t, c.Do(http.MethodPut, appointmentPath(a.Id), with(body, "attendees", userAttendees(ann.String(), bob.String())),
 		ifMatch(got.Revision)), "attendees[1]")
 }
 
@@ -485,7 +485,7 @@ func TestResponse_AnAnswerLeavesTheRevisionSoTheOwnersIfMatchStillHolds(t *testi
 	h := newHarness(t)
 	owner, _ := signIn(t, h)
 	attendee, attendeeID := signIn(t, h)
-	body := with(timed(t, "Review", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "attendees", []string{attendeeID.String()})
+	body := with(timed(t, "Review", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "attendees", userAttendees(attendeeID.String()))
 	a := create(t, owner, body)
 	var answered gen.Appointment
 	do(t, attendee, http.MethodPost, responsePath(a.Id), map[string]any{"status": "accepted"}, http.StatusOK, &answered)

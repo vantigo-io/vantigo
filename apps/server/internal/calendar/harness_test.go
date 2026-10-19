@@ -237,6 +237,15 @@ func with(body map[string]any, kv ...any) map[string]any {
 	return out
 }
 
+// userAttendees is an AppointmentWrite's attendees naming each user id.
+func userAttendees(ids ...string) []map[string]any {
+	out := make([]map[string]any, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, map[string]any{"kind": "user", "userId": id})
+	}
+	return out
+}
+
 // create posts body as c and answers the appointment, failing unless 201.
 func create(t *testing.T, c *modtest.Client, body map[string]any) gen.Appointment {
 	t.Helper()

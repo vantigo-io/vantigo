@@ -34,15 +34,25 @@ type CalendarAppointment struct {
 	Revision       int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	CancelledAt    *time.Time
 }
 
 type CalendarAppointmentAttendee struct {
-	ID            int64
-	AppointmentID int64
-	UserID        uuid.UUID
-	Status        string
-	RespondedAt   *time.Time
-	CreatedAt     time.Time
+	ID                 int64
+	AppointmentID      int64
+	UserID             *uuid.UUID
+	Status             string
+	RespondedAt        *time.Time
+	CreatedAt          time.Time
+	Kind               string
+	ContactID          *int32
+	Email              *string
+	Name               *string
+	RsvpTokenSha256    *string
+	RsvpLinkCiphertext *string
+	InvitedAt          *time.Time
+	InvitedSequence    *int32
+	SendFailedAt       *time.Time
 }
 
 type CalendarAppointmentException struct {

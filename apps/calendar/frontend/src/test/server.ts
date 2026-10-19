@@ -18,6 +18,7 @@ export const defaultMeta = (overrides: Partial<CalendarMeta> = {}): CalendarMeta
   timeZone: "Europe/Oslo",
   today: "2026-10-19",
   canViewColleagues: false,
+  invitationsAvailable: true,
   sources: SOURCES,
   ...overrides,
 });

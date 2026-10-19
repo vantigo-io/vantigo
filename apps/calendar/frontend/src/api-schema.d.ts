@@ -31,7 +31,7 @@ export interface paths {
         };
         /**
          * Get an appointment
-         * @description One appointment, to its owner or an attendee; anyone else gets the 404 an unknown id gets.
+         * @description One appointment, to its owner or an attendee; anyone else gets the 404 an unknown id gets. A cancelled one is answered with cancelledAt until it is erased.
          */
         get: operations["getCalendarAppointmentsById"];
         /**
@@ -42,9 +42,29 @@ export interface paths {
         post?: never;
         /**
          * Delete an appointment
-         * @description Removes the appointment — the whole series, with its attendees and exceptions. The owner only; anyone else gets the 404 an unknown id gets.
+         * @description Deletes the appointment, the owner only; anyone else gets the 404 an unknown id gets (calendar invitations design D6). When no outside attendee has ever been sent an invitation, the row goes — the whole series, with its attendees and exceptions. Otherwise the appointment is cancelled: cancelledAt set, its sequence bumped, a CANCEL mailed to every outside attendee and the colleagues told; it stays, read-only, until the calendar-cancellations worker erases it after its last day. A cancelled appointment answers 409 appointment_cancelled.
          */
         delete: operations["deleteCalendarAppointmentsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/appointments/{id}/attendees/{attendeeId}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend an invitation
+         * @description Sends one outside attendee their invitation again (calendar invitations design D3), the owner only — a REQUEST with the appointment's current sequence and the same RSVP link the first carried. The send is made after the answer is decided and recorded on the attendee's invitation: sentAt and sequence on success, failedAt on a failure, which is not an error of this request. 404 for an appointment the caller does not own, an attendee not on it, or a user attendee, who is never mailed an invitation; 409 appointment_cancelled for a cancelled appointment; 503 invitations_unavailable when the mail driver is not smtp.
+         */
+        post: operations["postCalendarAppointmentsByIdAttendeesByAttendeeIdResend"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -114,6 +134,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A customer's contacts
+         * @description The contacts of one customer that have an address, ordered by name, for the attendee picker (calendar invitations design D2), through the customer directory. Besides calendar:access, which the contract checks, the module requires the pair Customers' own contact list does — customers:contacts-view and customers:associations-view — and answers 403 without both: the address is on this answer because its caller holds the key that guards it in Customers. 400 without a customerId; 404 when the directory knows no such customer.
+         */
+        get: operations["getCalendarContacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/items": {
         parameters: {
             query?: never;
@@ -143,11 +183,51 @@ export interface paths {
         };
         /**
          * The calendar's settings
-         * @description The business time zone and today in it, whether the caller may see colleagues' calendars, and every kind the enabled modules' calendar sources declare.
+         * @description The business time zone and today in it, whether the caller may see colleagues' calendars, whether invitations are mailed, and every kind the enabled modules' calendar sources declare.
          */
         get: operations["getCalendarMeta"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/rsvp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer an invitation
+         * @description An invitee's answer through the RSVP link (calendar invitations design D5; a POST, so the token travels in the body and never in an API URL). Anonymous: no session is needed, and a signed-in caller is answered alike. The token is hashed and looked up; 404 with no body when no attendee holds it, an erased one included. The answer — accepted, declined or tentative — sets the attendee's status and respondedAt, which they may change at any time, and the owner is told through identity; 409 appointment_cancelled when the appointment is cancelled. 200 with the page as it now stands. Rate limited to 30 per client address per 10 minutes (calendar-rsvp).
+         */
+        post: operations["postCalendarRsvp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/rsvp/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read an invitation for the RSVP page
+         * @description The RSVP page's read (calendar invitations design D5; a POST, so the token travels in the body and never in an API URL). Anonymous: no session is needed, and a signed-in caller is answered alike. The token is hashed and looked up; 404 with no body when no attendee holds it, an erased one included. 200 with what the page shows — the title, when, where, the organiser's name, the workspace's name, the invitee's name and current answer, whether it is cancelled and the language — and never the description, another attendee or an address. Rate limited to 60 per client address per 10 minutes (calendar-rsvp-read).
+         */
+        post: operations["postCalendarRsvpRead"];
         delete?: never;
         options?: never;
         head?: never;
@@ -181,8 +261,13 @@ export interface components {
         /** @description One appointment (calendar design D2, D3): a timed one is two instants (startsAt, endsAt exclusive), an all-day one two civil dates (startDate, endDate inclusive), never both. timeZone is the TZID it was made in, and a recurring one expands in it. The caller is its owner or one of its attendees; anyone else gets the 404 an unknown id gets. */
         Appointment: {
             allDay: boolean;
-            /** @description The colleagues on it, the owner never among them, in the order they were added. */
+            /** @description The people on it — colleagues, a customer's contacts and addresses typed in — the owner never among them, in the order they were added. */
             attendees: components["schemas"]["AppointmentAttendee"][];
+            /**
+             * Format: date-time
+             * @description When the appointment was cancelled (calendar invitations design D6) — deleted after someone outside the company had been sent an invitation. A cancelled appointment is read-only, every write answering 409 appointment_cancelled, and is on nobody's calendar. Absent on a live one.
+             */
+            cancelledAt?: string;
             /** Format: date-time */
             createdAt: string;
             customer?: components["schemas"]["AppointmentCustomer"];
@@ -229,16 +314,39 @@ export interface components {
             updatedAt: string;
             visibility: components["schemas"]["AppointmentVisibility"];
         };
-        /** @description One colleague on an appointment and what they answered. */
+        /** @description One person on an appointment and what they answered (calendar invitations design D1), by kind: a user carries user; a contact carries contact, its name read from the customer directory when the appointment is read and absent when the directory no longer answers it — its address is never on an appointment; an email attendee carries email and the name as typed. The two outside kinds carry invitation; a user never does. */
         AppointmentAttendee: {
+            contact?: components["schemas"]["AppointmentAttendeeContact"];
+            /** @description An email attendee's address, lower-cased. Absent on the other kinds. */
+            email?: string;
+            /**
+             * Format: int64
+             * @description The attendee row's id — what POST /appointments/{id}/attendees/{attendeeId}/resend names.
+             */
+            id: number;
+            invitation?: components["schemas"]["AttendeeInvitation"];
+            kind: components["schemas"]["AppointmentAttendeeKind"];
+            /** @description An email attendee's name, as typed. Absent when none was given, and on the other kinds. */
+            name?: string;
             /**
              * Format: date-time
              * @description When they last answered. Absent while the status is needs-action.
              */
             respondedAt?: string;
             status: components["schemas"]["AppointmentAttendeeStatus"];
-            user: components["schemas"]["CalendarUserRef"];
+            user?: components["schemas"]["CalendarUserRef"];
         };
+        /** @description A customer's contact on an appointment — an opaque link, its name resolved through the customer directory when the appointment is read, absent when the directory no longer answers it (an anonymised contact), which the app shows as "A contact". */
+        AppointmentAttendeeContact: {
+            /** Format: int32 */
+            id: number;
+            name?: string;
+        };
+        /**
+         * @description The kind of an attendee (calendar invitations design D1): user (a colleague, told through the app and by a notice from identity), contact (a customer's contact, mailed an invitation at the address the customer directory holds) or email (an address typed in, mailed an invitation).
+         * @enum {string}
+         */
+        AppointmentAttendeeKind: "user" | "contact" | "email";
         /**
          * @description An attendee's answer. needs-action until they answer, and again after the owner changes when the appointment is; the owner's own is implicitly accepted and never stored.
          * @enum {string}
@@ -303,8 +411,8 @@ export interface components {
         /** @description An appointment as POST creates it and PUT replaces it whole. Exactly one pair is set: startsAt and endsAt (endsAt after startsAt, at most 31 days) when allDay is false, startDate and endDate (endDate on or after startDate, at most 366 days) when it is true. A PUT that changes when, where or the rule bumps the sequence; one that changes when resets every attendee to needs-action; one that changes the rule or the start drops every exception. */
         AppointmentWrite: {
             allDay: boolean;
-            /** @description Active users in the directory, at most 50, the owner never among them. Absent means none. */
-            attendees?: string[];
+            /** @description The people on it, at most 50 of all kinds together, the owner never among them; two naming the same user, contact or address are one. Absent means none. A PUT keeps an attendee still listed — their answer and their invitation with them — drops one who is not, and adds the new ones. Each refused element is a field error on attendees[i]. */
+            attendees?: components["schemas"]["AttendeeWrite"][];
             /**
              * Format: int32
              * @description The customer the appointment is made from. Opaque, and never refused for being unresolvable.
@@ -334,6 +442,34 @@ export interface components {
             title: string;
             transparency?: components["schemas"]["AppointmentTransparency"];
             visibility?: components["schemas"]["AppointmentVisibility"];
+        };
+        /** @description The invitation record of an outside attendee (calendar invitations design D3): sentAt and sequence, the last send that succeeded and the SEQUENCE it carried; failedAt, the last send that failed since then. All three absent is "Not sent" — the mail driver is not smtp, or nothing has been sent yet. */
+        AttendeeInvitation: {
+            /** Format: date-time */
+            failedAt?: string;
+            /** Format: date-time */
+            sentAt?: string;
+            /** Format: int32 */
+            sequence?: number;
+        };
+        /** @description One attendee as a write names them (calendar invitations design D1), by kind: user with userId, an active user in the directory (or one already on the appointment); contact with contactId, a contact of a customer that the customer directory answers and that has an address — the writer must hold customers:contacts-view; email with email, an address net/mail accepts, stored lower-cased, and name, at most 200 characters, optional. The fields of another kind are refused. */
+        AttendeeWrite: {
+            /** Format: int32 */
+            contactId?: number;
+            /** @description At most 254 characters. */
+            email?: string;
+            kind: components["schemas"]["AppointmentAttendeeKind"];
+            /** @description An email attendee's name, at most 200 characters. */
+            name?: string;
+            /** Format: uuid */
+            userId?: string;
+        };
+        /** @description A customer's contact with an address, for the attendee picker (calendar invitations design D2). */
+        CalendarContact: {
+            email: string;
+            /** Format: int32 */
+            id: number;
+            name: string;
         };
         /** @description One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set) or a row another module projects through its calendar source (with path set). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length). */
         CalendarItem: {
@@ -391,6 +527,8 @@ export interface components {
         CalendarMeta: {
             /** @description Whether the caller holds calendar:view-colleagues. */
             canViewColleagues: boolean;
+            /** @description Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent. */
+            invitationsAvailable: boolean;
             /** @description Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours. */
             sources: components["schemas"]["CalendarSourceKind"][];
             /** @description The workspace's business time zone. */
@@ -401,7 +539,7 @@ export interface components {
              */
             today: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on) and occurrence_not_in_series (409: the series' rule never produces that date). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes) and invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
         CalendarProblem: {
             code?: string | null;
             detail?: string | null;
@@ -442,6 +580,43 @@ export interface components {
             startDate?: string;
             /** Format: date-time */
             startsAt?: string;
+        };
+        /** @description What the RSVP page shows an invitee (calendar invitations design D5) — what they need to decide and nothing more: no description, no other attendee, no address. A timed appointment carries startsAt and endsAt, an all-day one startDate and endDate (inclusive); a series answers its first occurrence. company is the workspace's name, absent when it has none. language is the organiser's, the one the invitation was written in. */
+        RsvpPage: {
+            allDay: boolean;
+            attendee: components["schemas"]["RsvpPerson"];
+            cancelled: boolean;
+            company?: string;
+            /** Format: date */
+            endDate?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            /** @enum {string} */
+            language: "en" | "nb";
+            location?: string;
+            organiser: components["schemas"]["RsvpPerson"];
+            /** Format: date */
+            startDate?: string;
+            /** Format: date-time */
+            startsAt?: string;
+            status: components["schemas"]["AppointmentAttendeeStatus"];
+            /** @description The IANA zone the appointment was made in. */
+            timeZone: string;
+            title: string;
+        };
+        /** @description A person as the RSVP page names them — the organiser by their display name, the invitee by the name the appointment holds for them. */
+        RsvpPerson: {
+            name: string;
+        };
+        /** @description POST /rsvp/read's body: the RSVP link's token, from the page's own address — in the body, so it never travels in an API URL. */
+        RsvpReadRequest: {
+            token: string;
+        };
+        /** @description POST /rsvp's body: the RSVP link's token and the invitee's answer. needs-action is not something a person sends. */
+        RsvpWrite: {
+            /** @enum {string} */
+            status: "accepted" | "declined" | "tentative";
+            token: string;
         };
         AuthErrorResponse: {
             error: {
@@ -620,7 +795,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_mismatch. */
+            /** @description Conflict — revision_mismatch, or appointment_cancelled. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -673,6 +848,81 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — appointment_cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+        };
+    };
+    postCalendarAppointmentsByIdAttendeesByAttendeeIdResend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                attendeeId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the appointment, with the attendee's invitation as the send left it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such appointment, one the caller does not own, no such attendee on it, or a user attendee. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — appointment_cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Service Unavailable — invitations_unavailable, the mail driver is not smtp. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
             };
         };
     };
@@ -736,7 +986,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — occurrence_not_in_series. */
+            /** @description Conflict — occurrence_not_in_series, or appointment_cancelled. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -791,6 +1041,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — appointment_cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
             };
         };
     };
@@ -852,6 +1111,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict — appointment_cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
         };
     };
     getCalendarColleaguesByUserIdItems: {
@@ -909,6 +1177,63 @@ export interface operations {
                 };
             };
             /** @description Not Found — no active user has that id. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getCalendarContacts: {
+        parameters: {
+            query: {
+                /** @description The customer whose contacts to list. */
+                customerId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarContact"][];
+                };
+            };
+            /** @description Bad Request — no customerId, or one that is not a number. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks calendar:access, customers:contacts-view or customers:associations-view. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the customer directory knows no such customer. The body is empty. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1012,6 +1337,115 @@ export interface operations {
             /** @description Forbidden */
             403: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postCalendarRsvp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RsvpWrite"];
+            };
+        };
+        responses: {
+            /** @description OK — the appointment as the RSVP page shows it, with the answer recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RsvpPage"];
+                };
+            };
+            /** @description Bad Request — a body that does not decode, no token, or a status that is not an answer. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Not Found — no attendee holds that token. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — appointment_cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Too Many Requests — calendar-rsvp's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postCalendarRsvpRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RsvpReadRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the appointment as the RSVP page shows it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RsvpPage"];
+                };
+            };
+            /** @description Bad Request — a body that does not decode, or no token. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Not Found — no attendee holds that token. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests — calendar-rsvp-read's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {

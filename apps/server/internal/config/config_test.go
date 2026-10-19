@@ -1393,6 +1393,33 @@ func TestLoad_StaffAccountsWorker(t *testing.T) {
 	}
 }
 
+// The calendar cancellations worker's two settings (calendar invitations
+// design D6): its switch, on unless turned off — a cancelled appointment is
+// kept only until its last day, and an installation that says nothing must
+// still erase it — and its poll, an hour by default and never under a
+// minute, so a cadence of seconds is not a hot loop against the database.
+func TestLoad_CalendarCancellationsWorker(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.CalendarCancellationsEnabled {
+		t.Error("CALENDAR_CANCELLATIONS_ENABLED unset did not default to on")
+	}
+	if cfg.CalendarWorkersPoll != time.Hour {
+		t.Errorf("CalendarWorkersPoll = %v, want 1h", cfg.CalendarWorkersPoll)
+	}
+	tuned := mustLoad(t, with(validEnv(), "CALENDAR_CANCELLATIONS_ENABLED", "0", "CALENDAR_WORKERS_POLL", "1m"))
+	if tuned.CalendarCancellationsEnabled || tuned.CalendarWorkersPoll != time.Minute {
+		t.Errorf("tuned = %v/%v, want off and 1m", tuned.CalendarCancellationsEnabled, tuned.CalendarWorkersPoll)
+	}
+	if msg := loadError(t, with(validEnv(), "CALENDAR_CANCELLATIONS_ENABLED", "yes")); !strings.Contains(msg, `CALENDAR_CANCELLATIONS_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for _, v := range []string{"0s", "soon", "-1h", "59s"} {
+		if msg := loadError(t, with(validEnv(), "CALENDAR_WORKERS_POLL", v)); !strings.Contains(msg, "CALENDAR_WORKERS_POLL: must be a duration of at least 1m") {
+			t.Errorf("%s: error = %q", v, msg)
+		}
+	}
+}
+
 // PUBLIC_BASE_URL (payments port design D14): the https URL the pay page is
 // reachable at from the internet, unset by default. https only; an origin
 // plus APP_BASE_PATH and nothing else — no user, query or fragment, and the

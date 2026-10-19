@@ -21,5 +21,12 @@ func TestMain(m *testing.M) {
 	// harness to fail on (newHarness). Installing it per harness would race
 	// with the parallel tests already making requests.
 	calendar.SetContractCallHook(lockedContractCalls.note)
-	os.Exit(contracttest.RequireCoverage(m, recorder))
+	// The invitations' four operations are built by the calendar invitations
+	// plan's Task 3, which takes them off this list.
+	os.Exit(contracttest.RequireCoverage(m, recorder,
+		"getCalendarContacts",
+		"postCalendarAppointmentsByIdAttendeesByAttendeeIdResend",
+		"postCalendarRsvp",
+		"postCalendarRsvpRead",
+	))
 }

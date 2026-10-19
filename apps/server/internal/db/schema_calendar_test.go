@@ -15,10 +15,11 @@ const calendarBaselineVersion = 55
 // TestCalendarBaseline_AppliesAndIsIdempotent proves the calendar baseline
 // applies, rolls back and re-applies cleanly, and pins what the module's
 // queries rest on: the three tables, the unique indexes its writes key on
-// (one ical_uid per appointment, one attendee row per user, one exception per
-// occurrence day), the two indexes its window reads go through, and the
-// cascades that make deleting an appointment take its attendees and
-// exceptions with it.
+// (one ical_uid per appointment, one exception per occurrence day — the one
+// attendee row per user is 00056's, pinned by
+// TestCalendarInvitations_AppliesAndIsIdempotent), the two indexes its window
+// reads go through, and the cascades that make deleting an appointment take
+// its attendees and exceptions with it.
 func TestCalendarBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, calendarBaselineVersion)
@@ -42,7 +43,6 @@ func TestCalendarBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	}{
 		{"ux_appointments_ical_uid", []string{"ical_uid"}},
 		{"ix_appointments_owner_window", []string{"owner_user_id", "starts_at", "start_date"}},
-		{"ux_appointment_attendees", []string{"appointment_id", "user_id"}},
 		{"ix_appointment_attendees_user", []string{"user_id"}},
 		{"ux_appointment_exceptions", []string{"appointment_id", "occurrence_date"}},
 	} {
