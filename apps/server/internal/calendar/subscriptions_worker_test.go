@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/calendar"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -126,6 +128,47 @@ func TestSubscriptionsWorker_AFailedAttemptKeepsTheBodyAndRecordsTheError(t *tes
 	do(t, c, http.MethodGet, subscriptionsPath, nil, http.StatusOK, &list)
 	if len(list) != 1 || list[0]["error"] != got || list[0]["fetchedAt"] == nil {
 		t.Errorf("the screen reads %+v", list)
+	}
+}
+
+// TestSubscriptionsWorker_DefersThoseOfAPersonWhoMayNoLongerUseCalendar: a
+// person disabled, or without calendar:access, is asked about once a cycle,
+// and their subscriptions are neither fetched nor read again every tick —
+// each is put off by the poll — while everyone else's are fetched as ever.
+func TestSubscriptionsWorker_DefersThoseOfAPersonWhoMayNoLongerUseCalendar(t *testing.T) {
+	t.Parallel()
+	h, f := newSubscribing(t)
+	f.serveCalendar("/active.ics", matchCalendar, "")
+	f.serveCalendar("/disabled.ics", matchCalendar, "")
+	f.serveCalendar("/revoked.ics", matchCalendar, "")
+	active := insertDue(t, h, "/active.ics")
+	disabled := insertDue(t, h, "/disabled.ics")
+	revoked := insertDue(t, h, "/revoked.ics")
+	owner := func(id int64) uuid.UUID {
+		return modtest.One[uuid.UUID](t, h.Harness, `SELECT user_id FROM calendar.subscriptions WHERE id = $1`, id)
+	}
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, owner(disabled))
+	h.Exec(t, `DELETE FROM identity.role_permissions WHERE permission_key = 'calendar:access'
+	           AND role_id IN (SELECT role_id FROM identity.user_roles WHERE user_id = $1)`, owner(revoked))
+
+	w := calendar.NewSubscriptionsWorker(h.Deps())
+	if n := cycle(t, w); n != 1 || !slices.Equal(f.paths(), []string{"/active.ics"}) {
+		t.Errorf("the cycle fetched %d: %v, want the active person's alone", n, f.paths())
+	}
+	poll := 30 * time.Minute
+	for _, id := range []int64{disabled, revoked} {
+		if next := nextFetch(t, h, id); next.Before(h.Now().Add(poll)) || !next.Before(h.Now().Add(poll+poll/10)) {
+			t.Errorf("subscription %d's next_fetch_at = %v, want put off by the poll", id, next)
+		}
+		if n := h.Count(t, `SELECT count(*) FROM calendar.subscriptions WHERE id = $1 AND attempted_at IS NULL AND body IS NULL AND error IS NULL`, id); n != 1 {
+			t.Errorf("subscription %d was recorded as attempted", id)
+		}
+	}
+	if body := storedBody(t, h, active); body != matchCalendar {
+		t.Errorf("the active person's subscription stored %q", body)
+	}
+	if n := cycle(t, w); n != 0 || len(f.requests()) != 1 {
+		t.Errorf("the next tick fetched %d: %v", n, f.paths())
 	}
 }
 

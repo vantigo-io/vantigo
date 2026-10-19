@@ -1,6 +1,8 @@
 package calendar
 
 import (
+	"container/heap"
+	"context"
 	"errors"
 	"log/slog"
 	"sort"
@@ -35,7 +37,9 @@ import (
 // subscriptionKind is the kind of a subscribed calendar's item.
 const subscriptionKind = "calendar.subscription"
 
-// The bounds of one read.
+// The bounds of one read. The body is what a stranger's server answered, and
+// it is parsed on every load of the calendar, so every part of the work is
+// bounded: the events read, the steps taken, and the items kept.
 const (
 	// maxSubscriptionTitle is the most of a SUMMARY an item carries — the
 	// same width as an appointment's title.
@@ -45,11 +49,159 @@ const (
 	// are dropped with a log line.
 	maxRuleOccurrences   = 1000
 	maxSubscriptionItems = 5000
-	// maxRuleSteps bounds how far one rule is iterated to reach the window
-	// at all: a rule stepping by the minute from years ago would otherwise
-	// be walked to the window one step at a time.
-	maxRuleSteps = 100_000
+	// maxSubscriptionEvents is the most VEVENTs one read takes from a body;
+	// the rest are ignored. The fetch refuses to store a body with more
+	// (fetchTooManyEvents), so only a body stored before the rule meets it.
+	maxSubscriptionEvents = 10_000
+	// maxSubscriptionSteps is one read's whole budget of work, shared by
+	// every event and every rule of one subscription: an event read, an item
+	// offered and a rule's step each spend one. A rule stepping by the second
+	// from years ago would otherwise be walked to the window one step at a
+	// time, and two thousand such rules two thousand times over. Once the
+	// budget is spent the read answers what it has.
+	maxSubscriptionSteps = 200_000
+	// readContextEvery is how many steps go by between two looks at the
+	// context, so a request that went away stops the read within a few
+	// thousand steps.
+	readContextEvery = 4096
+	// maxSubscriptionReadTime is one read's deadline. The step budget cannot
+	// see inside one step: a rule no date satisfies (the 30th of February)
+	// costs rrule-go a walk to the year 9999 before its first answer, a
+	// tenth of a second spent in one step. The deadline, looked at before
+	// every rule as well as every readContextEvery steps, bounds a calendar
+	// of such rules; a calendar read in good faith takes a few milliseconds.
+	maxSubscriptionReadTime = time.Second
 )
+
+// readBudget is one subscription's read budget: maxSubscriptionSteps, spent
+// a step at a time, and the read's context, looked at every
+// readContextEvery steps. Once either runs out it stays out.
+type readBudget struct {
+	ctx       context.Context
+	used      int
+	spent     bool
+	cancelled bool
+}
+
+// alive reports whether the read may go on, looking at the context now: the
+// check before a rule, whose first step may be a long one.
+func (b *readBudget) alive() bool {
+	if !b.spent && !b.cancelled && b.ctx.Err() != nil {
+		b.cancelled = true
+	}
+	return !b.spent && !b.cancelled
+}
+
+// step spends one step and reports whether the read may go on.
+func (b *readBudget) step() bool {
+	switch {
+	case b.spent || b.cancelled:
+		return false
+	case b.used >= maxSubscriptionSteps:
+		b.spent = true
+		return false
+	case b.used%readContextEvery == 0 && b.ctx.Err() != nil:
+		b.cancelled = true
+		return false
+	}
+	b.used++
+	return true
+}
+
+// nearestItems is the items one read keeps: every one offered while there is
+// room under maxSubscriptionItems, and past that the nearest to the window's
+// start, the farthest given up as a nearer one comes — a heap of the cap's
+// size, farthest on top, so memory is bounded by the cap however many items
+// a calendar offers and the choice of which to keep does not depend on the
+// order the calendar wrote them in. Among equals the one offered first is
+// kept, as a stable sort would keep it.
+type nearestItems struct {
+	fromAt  time.Time
+	loc     *time.Location
+	list    farthestFirst
+	offered int
+	heaped  bool
+}
+
+// nearItem is one kept item with its distance from the window's start and
+// the order it was offered in.
+type nearItem struct {
+	it   gen.CalendarItem
+	dist time.Duration
+	seq  int
+}
+
+// farthestFirst is a heap.Interface over the kept items, the farthest — and
+// among equals the last offered — on top.
+type farthestFirst []nearItem
+
+func (h farthestFirst) Len() int { return len(h) }
+func (h farthestFirst) Less(i, j int) bool {
+	if h[i].dist != h[j].dist {
+		return h[i].dist > h[j].dist
+	}
+	return h[i].seq > h[j].seq
+}
+func (h farthestFirst) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+func (h *farthestFirst) Push(x any)   { *h = append(*h, x.(nearItem)) }
+func (h *farthestFirst) Pop() any {
+	old := *h
+	x := old[len(old)-1]
+	*h = old[:len(old)-1]
+	return x
+}
+
+// distance is how far sp starts from the window's start, either side.
+func (n *nearestItems) distance(sp span) time.Duration {
+	at := sp.startsAt
+	if sp.allDay {
+		at = wallClock(sp.startDate, n.loc)
+	}
+	if d := at.Sub(n.fromAt); d >= 0 {
+		return d
+	}
+	return n.fromAt.Sub(at)
+}
+
+// offer keeps the item build makes for sp if there is room, or if it is
+// nearer than the farthest kept; build is not called for one that is not
+// kept.
+func (n *nearestItems) offer(sp span, build func() gen.CalendarItem) {
+	seq := n.offered
+	n.offered++
+	if len(n.list) < maxSubscriptionItems {
+		n.list = append(n.list, nearItem{it: build(), dist: n.distance(sp), seq: seq})
+		return
+	}
+	if !n.heaped {
+		heap.Init(&n.list)
+		n.heaped = true
+	}
+	d := n.distance(sp)
+	if d >= n.list[0].dist {
+		return
+	}
+	n.list[0] = nearItem{it: build(), dist: d, seq: seq}
+	heap.Fix(&n.list, 0)
+}
+
+// items is what was kept: in the order offered when everything fit, and
+// otherwise nearest the window's start first, as the drop chose them.
+func (n *nearestItems) items() []gen.CalendarItem {
+	if n.heaped {
+		sort.Slice(n.list, func(i, j int) bool {
+			if n.list[i].dist != n.list[j].dist {
+				return n.list[i].dist < n.list[j].dist
+			}
+			return n.list[i].seq < n.list[j].seq
+		})
+	}
+	out := make([]gen.CalendarItem, len(n.list))
+	for i, k := range n.list {
+		out[i] = k.it
+	}
+	return out
+}
 
 // errNotACalendar is a body that does not begin, after blank lines, with
 // BEGIN:VCALENDAR.
@@ -79,20 +231,42 @@ type subscriptionSource struct {
 // sub, titled in lang. A body that does not parse contributes nothing: the
 // worker refuses to store one, so it is a body stored before a rule
 // changed, and the next fetch replaces it. log may be nil.
-func parseSubscriptionItems(body string, sub subscriptionSource, w window, lang string, log *slog.Logger) []gen.CalendarItem {
+//
+// The read is bounded (maxSubscriptionEvents, maxSubscriptionSteps,
+// maxSubscriptionItems, maxSubscriptionReadTime) and stops when ctx is done;
+// either way it answers what it had. The item cap keeps the items nearest the window's start
+// (nearestItems), whatever order the calendar wrote them in; the step
+// budget is first come, first served — events and rules are expanded in the
+// calendar's order until it is spent, and what comes after contributes
+// nothing.
+func parseSubscriptionItems(ctx context.Context, body string, sub subscriptionSource, w window, lang string, log *slog.Logger) []gen.CalendarItem {
 	cal, err := parseCalendarBody(body)
 	if err != nil {
+		// The parser's error may quote the body, a stranger's text, so the
+		// log carries a fixed reason and never it.
 		logDebug(log, "calendar: a subscription's calendar could not be parsed; it contributes nothing",
-			"subscription_id", sub.id, "error", err.Error())
+			"subscription_id", sub.id)
 		return nil
 	}
 	zones := newZoneResolver(cal)
 	wd := wordsFor(lang)
+	ctx, cancel := context.WithTimeout(ctx, maxSubscriptionReadTime)
+	defer cancel()
+	budget := &readBudget{ctx: ctx}
 
+	evs := cal.Events()
+	if len(evs) > maxSubscriptionEvents {
+		logDebug(log, "calendar: a subscription's calendar has more events than a read takes; the rest are ignored",
+			"subscription_id", sub.id, "events", len(evs), "taken", maxSubscriptionEvents)
+		evs = evs[:maxSubscriptionEvents]
+	}
 	masters := map[string][]subEvent{}
 	overrides := map[string][]subEvent{}
 	var order []string
-	for i, ev := range cal.Events() {
+	for i, ev := range evs {
+		if !budget.step() {
+			break
+		}
 		e, ok := readEvent(&ev.ComponentBase, zones, w.loc)
 		if !ok {
 			continue
@@ -112,26 +286,31 @@ func parseSubscriptionItems(body string, sub subscriptionSource, w window, lang 
 		}
 	}
 
-	var out []gen.CalendarItem
+	kept := &nearestItems{fromAt: w.fromAt, loc: w.loc}
 	emit := func(e subEvent, stamp string, sp span) {
-		if e.cancelled || !overlaps(sp, w) {
+		if e.cancelled || !overlaps(sp, w) || !budget.step() {
 			return
 		}
-		id := strconv.FormatInt(sub.id, 10) + ":" + e.uid
-		if stamp != "" {
-			id += ":" + stamp
-		}
-		it := gen.CalendarItem{
-			Kind: subscriptionKind, Id: id, Title: subscriptionTitle(e, sub.busyOnly, wd), AllDay: sp.allDay,
-			Subtitle: &sub.name,
-			Subscription: &gen.CalendarItemSubscription{
-				Id: sub.id, Name: sub.name, Colour: gen.CalendarSubscriptionColour(sub.colour), BusyOnly: sub.busyOnly,
-			},
-		}
-		setSpan(&it, sp)
-		out = append(out, it)
+		kept.offer(sp, func() gen.CalendarItem {
+			id := strconv.FormatInt(sub.id, 10) + ":" + e.uid
+			if stamp != "" {
+				id += ":" + stamp
+			}
+			it := gen.CalendarItem{
+				Kind: subscriptionKind, Id: id, Title: subscriptionTitle(e, sub.busyOnly, wd), AllDay: sp.allDay,
+				Subtitle: &sub.name,
+				Subscription: &gen.CalendarItemSubscription{
+					Id: sub.id, Name: sub.name, Colour: gen.CalendarSubscriptionColour(sub.colour), BusyOnly: sub.busyOnly,
+				},
+			}
+			setSpan(&it, sp)
+			return it
+		})
 	}
 	for _, uid := range order {
+		if budget.spent || budget.cancelled {
+			break
+		}
 		moved := map[time.Time]bool{}
 		for _, o := range overrides[uid] {
 			moved[o.recurrenceID.key()] = true
@@ -145,7 +324,7 @@ func parseSubscriptionItems(body string, sub subscriptionSource, w window, lang 
 				emit(m, "", m.span(m.start.t))
 				continue
 			}
-			starts, capped, ok := m.expand(w)
+			starts, capped, ok := m.expand(w, budget)
 			if !ok {
 				logDebug(log, "calendar: a subscribed event's rule could not be read; it is shown once at its start",
 					"subscription_id", sub.id)
@@ -165,23 +344,20 @@ func parseSubscriptionItems(body string, sub subscriptionSource, w window, lang 
 			}
 		}
 	}
-	if len(out) > maxSubscriptionItems {
-		distance := func(it gen.CalendarItem) time.Duration {
-			at := w.fromAt
-			if it.StartsAt != nil {
-				at = *it.StartsAt
-			} else if it.StartDate != nil {
-				at = wallClock(it.StartDate.Time, w.loc)
-			}
-			if d := at.Sub(w.fromAt); d >= 0 {
-				return d
-			}
-			return w.fromAt.Sub(at)
-		}
-		sort.SliceStable(out, func(i, j int) bool { return distance(out[i]) < distance(out[j]) })
-		logInfo(log, "calendar: a subscription has more items in the window than are taken; the rest are dropped",
-			"subscription_id", sub.id, "items", len(out), "taken", maxSubscriptionItems)
-		out = out[:maxSubscriptionItems]
+	switch {
+	case budget.cancelled && errors.Is(ctx.Err(), context.DeadlineExceeded):
+		logInfo(log, "calendar: a subscription's calendar took longer than a read is given; the rest is left out",
+			"subscription_id", sub.id, "deadline", maxSubscriptionReadTime.String())
+	case budget.cancelled:
+		logDebug(log, "calendar: a subscription's read was stopped; it answers what it had",
+			"subscription_id", sub.id)
+	case budget.spent:
+		logInfo(log, "calendar: a subscription's calendar took more work than a read is given; the rest is left out",
+			"subscription_id", sub.id, "steps", maxSubscriptionSteps)
+	}
+	if dropped := kept.offered - len(kept.list); dropped > 0 {
+		logInfo(log, "calendar: a subscription has more items in the window than are taken; the farthest are dropped",
+			"subscription_id", sub.id, "items", kept.offered, "taken", maxSubscriptionItems)
 	}
 	if len(zones.fallbacks) > 0 {
 		args := []any{"subscription_id", sub.id}
@@ -190,7 +366,7 @@ func parseSubscriptionItems(body string, sub subscriptionSource, w window, lang 
 		}
 		logDebug(log, "calendar: a subscription's TZIDs were resolved by a fallback", args...)
 	}
-	return out
+	return kept.items()
 }
 
 // subscriptionTitle is an event's title on the wire: empty for a busy-only
@@ -335,12 +511,16 @@ func (e subEvent) excluded(occ icsTime) bool {
 // expand is the starts of the event's rule that may overlap w — instants for
 // a timed event, civil dates for an all-day one — in order, at most
 // maxRuleOccurrences (capped reports a drop); ok is false for a rule
-// rrule-go refuses.
+// rrule-go refuses. Every step of the rule spends one of the read's budget,
+// and the rule stops where the budget does.
 //
 // The rule is stepped over floating wall-clock in the start's zone, as A's
 // series are, and widened back from the window by the event's own length,
 // since an occurrence that began before the window may still cover it.
-func (e subEvent) expand(w window) (starts []time.Time, capped, ok bool) {
+func (e subEvent) expand(w window, budget *readBudget) (starts []time.Time, capped, ok bool) {
+	if !budget.alive() {
+		return nil, false, true
+	}
 	raw := strings.TrimPrefix(strings.ToUpper(e.rule), "RRULE:")
 	opt, err := rrule.StrToROptionInLocation(raw, time.UTC)
 	if err != nil {
@@ -365,7 +545,7 @@ func (e subEvent) expand(w window) (starts []time.Time, capped, ok bool) {
 	from := floating(w.fromAt, loc).Add(-reach)
 	to := floating(w.toAt, loc).Add(24 * time.Hour)
 	next := rr.Iterator()
-	for step := 0; step < maxRuleSteps; step++ {
+	for budget.step() {
 		f, more := next()
 		if !more || f.After(to) {
 			break

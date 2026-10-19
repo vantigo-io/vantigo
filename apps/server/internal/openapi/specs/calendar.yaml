@@ -1635,7 +1635,7 @@ paths:
                 - Calendar
             x-vantigo-access: permission:calendar:access
         post:
-            description: 'Subscribes the caller to a calendar from elsewhere (calendar feed design D6). The rules at write are field errors (CalendarSubscriptionWrite), and the eleventh is 409 subscription_limit: ten calendars beside one''s own is more than anyone reads, and each is a fetch every half hour. The address is fetched once before the answer, under a budget of twenty seconds and through the outbound guard — no private address, no redirect, at most 1 MiB — so a wrong one is seen at once and a right one shows its events at the next load; the row is created whatever the fetch answers, its error set when it failed, and the calendar-subscriptions worker fetches it from then on. 201 with the row as it stands.'
+            description: 'Subscribes the caller to a calendar from elsewhere (calendar feed design D6). The rules at write are field errors (CalendarSubscriptionWrite), and the eleventh is 409 subscription_limit: ten calendars beside one''s own is more than anyone reads, and each is a fetch every half hour. The address is fetched once before the answer, under a budget of twenty seconds and through the outbound guard — no private address, no redirect, at most 1 MiB — so a wrong one is seen at once and a right one shows its events at the next load; the row is created whatever the fetch answers, its error set when it failed, and the calendar-subscriptions worker fetches it from then on. The count and the insert are one step under the caller''s lock, so two saves at nine cannot both be the tenth. 201 with the row as it stands. Rate limited, with PUT /subscriptions/{id} and POST /subscriptions/{id}/refresh, to 30 per client address per 10 minutes (calendar-subscription-fetch).'
             operationId: postCalendarSubscriptions
             requestBody:
                 content:
@@ -1674,6 +1674,16 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CalendarProblem'
                     description: Conflict — subscription_limit, the caller has ten subscriptions already.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — calendar-subscription-fetch's limit for this client address, shared with PUT /subscriptions/{id} and POST /subscriptions/{id}/refresh.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             summary: Subscribe to a calendar
             tags:
                 - Calendar
@@ -1711,7 +1721,7 @@ paths:
                 - Calendar
             x-vantigo-access: permission:calendar:access
         put:
-            description: 'Replaces one of the caller''s subscriptions whole (calendar feed design D6), the rules at write as for POST. There is no revision and no If-Match: the row is the caller''s own, small, and last write wins. A new url forgets every fetch of the old one — its validators, its calendar and its record — and is fetched once before the answer, as POST fetches; a change of the rest fetches nothing. Another person''s is the 404 an unknown id gets.'
+            description: 'Replaces one of the caller''s subscriptions whole (calendar feed design D6), the rules at write as for POST. There is no revision and no If-Match: the row is the caller''s own, small, and last write wins. A new url forgets every fetch of the old one — its validators, its calendar and its record — and is fetched once before the answer, as POST fetches; a change of the rest fetches nothing. Another person''s is the 404 an unknown id gets. Rate limited, with POST /subscriptions and POST /subscriptions/{id}/refresh, to 30 per client address per 10 minutes (calendar-subscription-fetch), whether or not the url changes.'
             operationId: putCalendarSubscriptionsById
             parameters:
                 - in: path
@@ -1753,13 +1763,23 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found — no such subscription, or another person's. The body is empty.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — calendar-subscription-fetch's limit for this client address, shared with POST /subscriptions and POST /subscriptions/{id}/refresh.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             summary: Change a subscription
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
     /api/v1/calendar/subscriptions/{id}/refresh:
         post:
-            description: 'Fetches one of the caller''s subscriptions now (calendar feed design D6) — the screen''s Refresh now — under the same budget and guard as POST /subscriptions, and answers the row as the fetch left it: fetchedAt on a calendar or a 304, error when it failed, which is not an error of this request. Another person''s is the 404 an unknown id gets.'
+            description: 'Fetches one of the caller''s subscriptions now (calendar feed design D6) — the screen''s Refresh now — under the same budget and guard as POST /subscriptions, and answers the row as the fetch left it: fetchedAt on a calendar or a 304, error when it failed, which is not an error of this request. Another person''s is the 404 an unknown id gets. Rate limited, with POST /subscriptions and PUT /subscriptions/{id}, to 30 per client address per 10 minutes (calendar-subscription-fetch).'
             operationId: postCalendarSubscriptionsByIdRefresh
             parameters:
                 - in: path
@@ -1789,6 +1809,16 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found — no such subscription, or another person's. The body is empty.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — calendar-subscription-fetch's limit for this client address, shared with POST /subscriptions and PUT /subscriptions/{id}.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             summary: Refresh a subscription
             tags:
                 - Calendar

@@ -10,6 +10,9 @@
 -- parameter, the caller's clock, never the database's: a session is rejected once
 -- now - last_seen_at >= idle or now - created_at >= absolute
 -- (SV/SessionValidationService.cs:83-93).
+-- UserMayAct repeats this query's user predicates for a read on a user's
+-- behalf with no session (Access.UserHolds); the two must agree, so a change
+-- to one is a change to the other.
 SELECT s.id, s.user_id, s.persistent, s.mfa_verified_at, s.created_at, s.last_seen_at,
        u.is_disabled, u.lockout_end,
        r.role_names, r.privileged,
@@ -34,6 +37,32 @@ WHERE s.token_hash = @token_hash
   -- looser than -, which would swallow the whole subtraction.
   AND s.last_seen_at > sqlc.arg(now)::timestamptz - CASE WHEN r.privileged THEN sqlc.arg(privileged_idle)::interval ELSE sqlc.arg(idle)::interval END
   AND s.created_at > sqlc.arg(now)::timestamptz - CASE WHEN r.privileged THEN sqlc.arg(privileged_absolute)::interval ELSE sqlc.arg(absolute)::interval END;
+
+-- name: UserMayAct :one
+-- UserMayAct reports whether user_id may act at all at now, for a read made on
+-- their behalf with no request behind it (Access.UserHolds, the calendar
+-- feed). It applies GetSessionByTokenHash's user predicates, which must agree
+-- with these — not disabled, not pending, and while SCIM is configured not
+-- deactivated by the directory unless they hold Owner — and lockout besides,
+-- which permitted applies to a session's permission check: a feed is
+-- permission-gated, so a locked-out user holds nothing there either. A user
+-- who does not exist may not act.
+SELECT EXISTS (
+    SELECT 1
+    FROM identity.users u
+    CROSS JOIN LATERAL (
+        SELECT coalesce(bool_or(ro.name = 'Owner'), false)::boolean AS is_owner
+        FROM identity.user_roles ur
+        JOIN identity.roles ro ON ro.id = ur.role_id
+        WHERE ur.user_id = u.id
+    ) r
+    LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
+    WHERE u.id = @user_id
+      AND NOT u.is_disabled
+      AND u.pending_since IS NULL
+      AND (u.lockout_end IS NULL OR u.lockout_end <= @now::timestamptz)
+      AND (NOT @scim_enabled::boolean OR m.upstream_active IS NOT FALSE OR r.is_owner)
+)::boolean AS may_act;
 
 -- name: TouchSession :exec
 -- TouchSession slides a session's idle window to now. It never moves

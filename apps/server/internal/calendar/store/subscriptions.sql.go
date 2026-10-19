@@ -26,6 +26,25 @@ func (q *Queries) CountSubscriptions(ctx context.Context, userID uuid.UUID) (int
 	return count, err
 }
 
+const deferSubscriptionFetch = `-- name: DeferSubscriptionFetch :exec
+UPDATE calendar.subscriptions SET next_fetch_at = $1::timestamptz
+WHERE id = $2
+`
+
+type DeferSubscriptionFetchParams struct {
+	NextFetchAt time.Time
+	ID          int64
+}
+
+// DeferSubscriptionFetch puts a subscription off until next_fetch_at without
+// fetching it: its person may no longer use Calendar, so it is not fetched,
+// and not read again every tick either. Nothing of the last fetch's record
+// changes, since nothing was attempted.
+func (q *Queries) DeferSubscriptionFetch(ctx context.Context, arg DeferSubscriptionFetchParams) error {
+	_, err := q.db.Exec(ctx, deferSubscriptionFetch, arg.NextFetchAt, arg.ID)
+	return err
+}
+
 const deleteSubscription = `-- name: DeleteSubscription :execrows
 DELETE FROM calendar.subscriptions
 WHERE id = $1 AND user_id = $2
@@ -59,6 +78,37 @@ type GetSubscriptionParams struct {
 // GetSubscription is one of the person's subscriptions.
 func (q *Queries) GetSubscription(ctx context.Context, arg GetSubscriptionParams) (CalendarSubscription, error) {
 	row := q.db.QueryRow(ctx, getSubscription, arg.ID, arg.UserID)
+	var i CalendarSubscription
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Url,
+		&i.Colour,
+		&i.BusyOnly,
+		&i.Etag,
+		&i.LastModified,
+		&i.Body,
+		&i.FetchedAt,
+		&i.AttemptedAt,
+		&i.NextFetchAt,
+		&i.Error,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getSubscriptionByID = `-- name: GetSubscriptionByID :one
+SELECT id, user_id, name, url, colour, busy_only, etag, last_modified, body, fetched_at, attempted_at, next_fetch_at, error, created_at, updated_at FROM calendar.subscriptions
+WHERE id = $1
+`
+
+// GetSubscriptionByID is a subscription by its id alone: the row as it now
+// stands, for a fetch that was overtaken to answer, its owner already
+// checked by the caller.
+func (q *Queries) GetSubscriptionByID(ctx context.Context, id int64) (CalendarSubscription, error) {
+	row := q.db.QueryRow(ctx, getSubscriptionByID, id)
 	var i CalendarSubscription
 	err := row.Scan(
 		&i.ID,
@@ -273,12 +323,26 @@ func (q *Queries) ListSubscriptionsDue(ctx context.Context, arg ListSubscription
 	return items, nil
 }
 
+const lockSubscriptionsOfUser = `-- name: LockSubscriptionsOfUser :exec
+SELECT pg_advisory_xact_lock(hashtextextended('calendar.subscriptions:' || $1::uuid::text, 0))
+`
+
+// LockSubscriptionsOfUser takes the person's subscriptions lock for the rest
+// of the transaction, so a count and the insert it allows are one step: two
+// POSTs at nine cannot both see nine and both insert. The key is the
+// person's id under this table's own prefix, so it shares no key with
+// another lock keyed on a user.
+func (q *Queries) LockSubscriptionsOfUser(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockSubscriptionsOfUser, userID)
+	return err
+}
+
 const recordSubscriptionFailed = `-- name: RecordSubscriptionFailed :one
 UPDATE calendar.subscriptions SET
     attempted_at = $1::timestamptz,
     next_fetch_at = $2::timestamptz,
     error = $3::varchar
-WHERE id = $4
+WHERE id = $4 AND url = $5
 RETURNING id, user_id, name, url, colour, busy_only, etag, last_modified, body, fetched_at, attempted_at, next_fetch_at, error, created_at, updated_at
 `
 
@@ -287,6 +351,7 @@ type RecordSubscriptionFailedParams struct {
 	NextFetchAt time.Time
 	Error       string
 	ID          int64
+	Url         string
 }
 
 // RecordSubscriptionFailed records a fetch that failed and why. The body, the
@@ -298,6 +363,7 @@ func (q *Queries) RecordSubscriptionFailed(ctx context.Context, arg RecordSubscr
 		arg.NextFetchAt,
 		arg.Error,
 		arg.ID,
+		arg.Url,
 	)
 	var i CalendarSubscription
 	err := row.Scan(
@@ -321,6 +387,7 @@ func (q *Queries) RecordSubscriptionFailed(ctx context.Context, arg RecordSubscr
 }
 
 const recordSubscriptionFetched = `-- name: RecordSubscriptionFetched :one
+
 UPDATE calendar.subscriptions SET
     etag = $1,
     last_modified = $2,
@@ -329,7 +396,7 @@ UPDATE calendar.subscriptions SET
     attempted_at = $4::timestamptz,
     next_fetch_at = $5::timestamptz,
     error = NULL
-WHERE id = $6
+WHERE id = $6 AND url = $7
 RETURNING id, user_id, name, url, colour, busy_only, etag, last_modified, body, fetched_at, attempted_at, next_fetch_at, error, created_at, updated_at
 `
 
@@ -340,8 +407,13 @@ type RecordSubscriptionFetchedParams struct {
 	Now          time.Time
 	NextFetchAt  time.Time
 	ID           int64
+	Url          string
 }
 
+// The three records of a fetch each match the url the fetch was made to as
+// well as the id: a PUT that changed the address while the fetch was out
+// has made it a fetch of an address the row no longer names, and it writes
+// nothing — no row, which the caller reads as overtaken.
 // RecordSubscriptionFetched records a fetch that answered a calendar: its
 // validators (null when it sent none), its body, and when the next is due,
 // with the error of an earlier failure cleared.
@@ -353,6 +425,7 @@ func (q *Queries) RecordSubscriptionFetched(ctx context.Context, arg RecordSubsc
 		arg.Now,
 		arg.NextFetchAt,
 		arg.ID,
+		arg.Url,
 	)
 	var i CalendarSubscription
 	err := row.Scan(
@@ -381,7 +454,7 @@ UPDATE calendar.subscriptions SET
     attempted_at = $1::timestamptz,
     next_fetch_at = $2::timestamptz,
     error = NULL
-WHERE id = $3
+WHERE id = $3 AND url = $4
 RETURNING id, user_id, name, url, colour, busy_only, etag, last_modified, body, fetched_at, attempted_at, next_fetch_at, error, created_at, updated_at
 `
 
@@ -389,12 +462,18 @@ type RecordSubscriptionNotModifiedParams struct {
 	Now         time.Time
 	NextFetchAt time.Time
 	ID          int64
+	Url         string
 }
 
 // RecordSubscriptionNotModified records a fetch answered 304: the body and
 // the validators stand, it worked now, and the next is due at next_fetch_at.
 func (q *Queries) RecordSubscriptionNotModified(ctx context.Context, arg RecordSubscriptionNotModifiedParams) (CalendarSubscription, error) {
-	row := q.db.QueryRow(ctx, recordSubscriptionNotModified, arg.Now, arg.NextFetchAt, arg.ID)
+	row := q.db.QueryRow(ctx, recordSubscriptionNotModified,
+		arg.Now,
+		arg.NextFetchAt,
+		arg.ID,
+		arg.Url,
+	)
 	var i CalendarSubscription
 	err := row.Scan(
 		&i.ID,

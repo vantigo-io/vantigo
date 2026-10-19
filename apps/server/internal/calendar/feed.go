@@ -51,8 +51,13 @@ const (
 //
 // file is the token with the .ics suffix, one path segment (D2): without the
 // suffix, or with nothing before it, it is the 404 a token nobody holds
-// gets. A request that answers 200 or 304 writes last_used_at; If-None-Match
-// naming the calendar's ETag, or *, is the 304.
+// gets. A token held by a person who may no longer use Calendar — disabled,
+// locked out, pending, deactivated by the directory, or without
+// calendar:access — is that same bare 404, so the answer never says the
+// token was right, and the address records no read: the token is a
+// session's stand-in, and it outlives nothing a session would not. A
+// request that answers 200 or 304 writes last_used_at; If-None-Match naming
+// the calendar's ETag, or *, is the 304.
 func (s *server) GetCalendarFeedByFile(ctx context.Context, req gen.GetCalendarFeedByFileRequestObject) (gen.GetCalendarFeedByFileResponseObject, error) {
 	token, ok := strings.CutSuffix(req.File, feedSuffix)
 	if !ok || token == "" {
@@ -65,6 +70,13 @@ func (s *server) GetCalendarFeedByFile(ctx context.Context, req gen.GetCalendarF
 	}
 	if err != nil {
 		return nil, fmt.Errorf("calendar: find a calendar address: %w", err)
+	}
+	holds, err := s.accessUserHolds(ctx, row.UserID, "calendar:access")
+	if err != nil {
+		return nil, fmt.Errorf("calendar: check a calendar address's owner: %w", err)
+	}
+	if !holds {
+		return gen.GetCalendarFeedByFile404Response{}, nil
 	}
 	now := s.deps.Clock()
 	body, err := s.feedBody(ctx, row, now)
@@ -108,7 +120,7 @@ func (s *server) feedBody(ctx context.Context, row store.CalendarFeedToken, now 
 	}
 	from, to := civil(today).AddDate(0, -feedMonthsBack, 0), civil(today).AddDate(0, feedMonthsAhead, 0)
 	w := window{from: from, to: to, loc: loc, fromAt: wallClock(from, loc), toAt: wallClock(addDays(to, 1), loc)}
-	in := feedInput{busy: row.Variant == string(gen.FeedVariantBusy), lang: langEnglish, loc: loc, now: now}
+	in := feedInput{userID: row.UserID, busy: row.Variant == string(gen.FeedVariantBusy), lang: langEnglish, loc: loc, now: now}
 
 	in.appts, err = s.feedAppointments(ctx, row.UserID, w, in.busy)
 	if err != nil {

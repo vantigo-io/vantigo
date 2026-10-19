@@ -2,9 +2,12 @@ package calendar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -21,7 +24,12 @@ import (
 // another replica holding the lease means this one skips the cycle. The due
 // list is read in a short transaction of its own and committed before the
 // first fetch, so no row lock is held for the minutes a cycle may take; the
-// lease is what keeps two replicas from fetching the same row.
+// lease is what keeps two replicas from fetching the same row. A person who
+// may no longer use Calendar — disabled, locked out, deactivated by the
+// directory, or without calendar:access — is asked about once a cycle
+// (Access.UserHolds), and their subscriptions are not fetched but put off by
+// the poll, so a departed person's calendars are neither fetched for nobody
+// nor read again every tick.
 
 const (
 	// subscriptionsWorkerName is what the runner logs this worker as.
@@ -133,12 +141,31 @@ func (w *SubscriptionsWorker) RunCycle(ctx context.Context) (bool, int, error) {
 
 	q := store.New(conn)
 	fetched := 0
+	mayFetch := map[uuid.UUID]bool{}
 	for _, d := range due {
 		if ctx.Err() != nil {
 			break
 		}
+		holds, asked := mayFetch[d.UserID]
+		if !asked {
+			if holds, err = w.srv.accessUserHolds(ctx, d.UserID, "calendar:access"); err != nil {
+				return true, fetched, fmt.Errorf("calendar: check a subscription's owner: %w", err)
+			}
+			mayFetch[d.UserID] = holds
+		}
+		if !holds {
+			now := w.deps.Clock()
+			if err := q.DeferSubscriptionFetch(ctx, store.DeferSubscriptionFetchParams{
+				NextFetchAt: nextFetchAt(now, w.srv.subscriptionsPoll(), 0), ID: d.ID,
+			}); err != nil {
+				return true, fetched, fmt.Errorf("calendar: put off subscription %d: %w", d.ID, err)
+			}
+			w.deps.Logger.DebugContext(ctx, "calendar: a subscription's person may no longer use Calendar; it is put off",
+				"worker", subscriptionsWorkerName, "subscription_id", d.ID)
+			continue
+		}
 		t := fetchTarget{id: d.ID, url: d.Url, etag: d.Etag, lastModified: d.LastModified}
-		if _, err := w.srv.refreshSubscription(ctx, q, t); err != nil {
+		if _, err := w.srv.refreshSubscription(ctx, q, t); err != nil && !errors.Is(err, errSubscriptionGone) {
 			if ctx.Err() != nil {
 				break
 			}

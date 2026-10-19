@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	ics "github.com/arran4/golang-ical"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar/store"
 	"github.com/vantigo-io/vantigo/server/internal/netguard"
@@ -26,8 +27,10 @@ import (
 // connection made to the address that was checked, no proxy and no redirect
 // followed; a conditional request from the row's validators; a body of at
 // most 1 MiB that must be a calendar; and the outcome written to the row in
-// one of three ways. The same function serves the worker, with no request
-// behind it, and the handlers that fetch inline — a save and Refresh now.
+// one of three ways. A calendar of more than 10,000 events is refused too,
+// since every load of the calendar parses what is stored. The same function
+// serves the worker, with no request behind it, and the handlers that fetch
+// inline — a save and Refresh now.
 // The error a row carries is one of the sentences below, never the
 // response's body or the address the host resolved to.
 
@@ -65,6 +68,10 @@ const (
 	fetchDisallowed  = "the address is not one Vantigo may fetch"
 	fetchTimedOut    = "the address did not answer in time"
 	fetchUnreachable = "the address could not be reached"
+	// fetchTooManyEvents is a calendar of more VEVENTs than a read takes
+	// (maxSubscriptionEvents): it is parsed on every load, so it is never
+	// stored.
+	fetchTooManyEvents = "the calendar has more than 10,000 events"
 )
 
 // subscriptionTransport is the production transport, built once for the
@@ -88,9 +95,15 @@ var subscriptionTransport = sync.OnceValue(func() *http.Transport {
 // guard being safe: http.Transport derives the TLS ServerName from the URL's
 // host, not from the address it dialled, so a certificate issued to somebody
 // else is rejected even though the connection went to an IP literal.
+//
+// Keep-alives are off: a subscription is fetched once every half hour, so a
+// kept connection is never reused in time and only sits open to a stranger's
+// server — by the hundred, one per host a cycle reached. Every fetch dials
+// afresh, through the guard, and closes when it is read.
 func guardedTransport(resolver netguard.Resolver, dial func(ctx context.Context, network, address string) (net.Conn, error)) *http.Transport {
 	return &http.Transport{
 		Proxy:                  nil,
+		DisableKeepAlives:      true,
 		DialContext:            netguard.DialContext(resolver, dial),
 		ForceAttemptHTTP2:      true,
 		TLSHandshakeTimeout:    subscriptionTLSHandshakeTimeout,
@@ -185,6 +198,9 @@ func (s *server) fetchSubscription(ctx context.Context, t fetchTarget) fetchOutc
 	if err != nil {
 		return fetchOutcome{failure: fetchNotCalendar}
 	}
+	if len(cal.Events()) > maxSubscriptionEvents {
+		return fetchOutcome{failure: fetchTooManyEvents}
+	}
 	out := fetchOutcome{body: body, refresh: refreshInterval(cal.CalendarProperties)}
 	out.etag = validator(resp.Header.Get("ETag"), maxSubscriptionETag)
 	out.lastModified = validator(resp.Header.Get("Last-Modified"), maxSubscriptionLastModified)
@@ -264,6 +280,11 @@ func nextFetchAt(now time.Time, poll, refresh time.Duration) time.Time {
 	return now.Add(wait)
 }
 
+// errSubscriptionGone is a subscription deleted while its fetch was out: the
+// handlers answer it as the 404 an unknown id gets, and the worker passes
+// over it.
+var errSubscriptionGone = errors.New("calendar: the subscription was deleted while it was fetched")
+
 // refreshSubscription fetches t under the fetch budget and writes the
 // outcome through q — the pool's queries from a handler, the lease
 // connection's from the worker — answering the row as it then stands. A
@@ -271,6 +292,12 @@ func nextFetchAt(now time.Time, poll, refresh time.Duration) time.Time {
 // request) records nothing: that is no failure of the address. The write
 // itself is not cancelled with the caller, so a fetch that answered is
 // recorded.
+//
+// The record names t's url as well as its id, so a fetch overtaken by a PUT
+// that changed the address writes nothing over the new address's row — its
+// calendar, its validators and its due time are the old address's — and is
+// logged at debug, no error: the row is read as it stands and answered, and
+// one deleted meanwhile is errSubscriptionGone.
 func (s *server) refreshSubscription(ctx context.Context, q *store.Queries, t fetchTarget) (store.CalendarSubscription, error) {
 	budget, cancel := context.WithTimeout(ctx, subscriptionFetchBudget)
 	o := s.fetchSubscription(budget, t)
@@ -288,17 +315,25 @@ func (s *server) refreshSubscription(ctx context.Context, q *store.Queries, t fe
 		s.deps.Logger.WarnContext(ctx, "calendar: a subscription could not be fetched",
 			"subscription_id", t.id, "host", hostOf(t.url), "error", o.failure)
 		row, err = q.RecordSubscriptionFailed(write, store.RecordSubscriptionFailedParams{
-			Now: now, NextFetchAt: nextFetchAt(now, poll, 0), Error: clipRunes(o.failure, maxSubscriptionError), ID: t.id,
+			Now: now, NextFetchAt: nextFetchAt(now, poll, 0), Error: clipRunes(o.failure, maxSubscriptionError), ID: t.id, Url: t.url,
 		})
 	case o.notModified:
 		row, err = q.RecordSubscriptionNotModified(write, store.RecordSubscriptionNotModifiedParams{
-			Now: now, NextFetchAt: nextFetchAt(now, poll, 0), ID: t.id,
+			Now: now, NextFetchAt: nextFetchAt(now, poll, 0), ID: t.id, Url: t.url,
 		})
 	default:
 		row, err = q.RecordSubscriptionFetched(write, store.RecordSubscriptionFetchedParams{
 			Etag: o.etag, LastModified: o.lastModified, Body: o.body,
-			Now: now, NextFetchAt: nextFetchAt(now, poll, o.refresh), ID: t.id,
+			Now: now, NextFetchAt: nextFetchAt(now, poll, o.refresh), ID: t.id, Url: t.url,
 		})
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.deps.Logger.DebugContext(ctx, "calendar: a subscription's address changed while it was fetched; the fetch is not recorded",
+			"subscription_id", t.id, "host", hostOf(t.url))
+		row, err = q.GetSubscriptionByID(write, t.id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return store.CalendarSubscription{}, errSubscriptionGone
+		}
 	}
 	if err != nil {
 		return store.CalendarSubscription{}, fmt.Errorf("calendar: record subscription %d's fetch: %w", t.id, err)

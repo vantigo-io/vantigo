@@ -1,6 +1,9 @@
 package calendar_test
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -9,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -264,6 +269,88 @@ func TestSubscriptions_TheEleventhIsRefusedWithSubscriptionLimit(t *testing.T) {
 	subscribe(t, other, subscriptionBody("Someone else's first", feedURL("/x.ics"), "blue", false))
 }
 
+// secondClient is another browser signed in as userID: a client of its own
+// address carrying a session of its own, as identity mints one.
+func secondClient(t *testing.T, h *harness, userID uuid.UUID) *modtest.Client {
+	t.Helper()
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(raw)
+	h.Exec(t, `INSERT INTO identity.sessions (id, user_id, token_hash, persistent, created_at, last_seen_at)
+	           VALUES ($1, $2, $3, false, $4, $4)`, uuid.New(), userID, hash[:], h.Now())
+	c := h.Client(t)
+	c.SetCookie("vantigo.session", base64.RawURLEncoding.EncodeToString(raw))
+	return c
+}
+
+// TestSubscriptions_TwoPostsAtNineCannotBothBeTheTenth races two browsers of
+// one person, each subscribing with nine already there: the count and the
+// insert are one transaction under the person's lock, so one is the tenth and
+// the other the 409, never eleven. Several rounds, since a race that is not
+// guarded is lost only sometimes.
+func TestSubscriptions_TwoPostsAtNineCannotBothBeTheTenth(t *testing.T) {
+	t.Parallel()
+	h, f := newSubscribing(t)
+	f.serveCalendar("/x.ics", matchCalendar, "")
+	for round := range 8 {
+		first, userID := signIn(t, h)
+		second := secondClient(t, h, userID)
+		for i := range 9 {
+			h.Exec(t, `INSERT INTO calendar.subscriptions (user_id, name, url, colour, busy_only, created_at, updated_at)
+			           VALUES ($1, $2, $3, 'blue', false, $4, $4)`, userID, "Calendar "+strconv.Itoa(i), feedURL("/c.ics"), h.Now())
+		}
+		var wg sync.WaitGroup
+		statuses := make([]int, 2)
+		for i, c := range []*modtest.Client{first, second} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				statuses[i] = c.Do(http.MethodPost, subscriptionsPath, subscriptionBody("Tenth", feedURL("/x.ics"), "blue", false)).Status
+			}()
+		}
+		wg.Wait()
+		slices.Sort(statuses)
+		if !slices.Equal(statuses, []int{http.StatusCreated, http.StatusConflict}) {
+			t.Errorf("round %d: the two POSTs answered %v, want one 201 and one 409", round, statuses)
+		}
+		if n := h.Count(t, `SELECT count(*) FROM calendar.subscriptions WHERE user_id = $1`, userID); n != 10 {
+			t.Errorf("round %d: the person has %d subscriptions, want 10", round, n)
+		}
+	}
+}
+
+// TestSubscriptions_TheThirtyFirstFetchInTenMinutesIs429: a save and Refresh
+// now fetch inline, so the three operations share one bucket per client
+// address, calendar-subscription-fetch, thirty per ten minutes.
+func TestSubscriptions_TheThirtyFirstFetchInTenMinutesIs429(t *testing.T) {
+	t.Parallel()
+	h, f := newSubscribing(t)
+	c, userID := signIn(t, h)
+	f.serveCalendar("/team.ics", matchCalendar, "")
+	f.serveCalendar("/other.ics", matchCalendar, "")
+	s := subscribe(t, c, subscriptionBody("Team", feedURL("/team.ics"), "blue", false))
+	do(t, c, http.MethodPut, subscriptionPath(s.Id), subscriptionBody("Team", feedURL("/other.ics"), "blue", false), http.StatusOK, nil)
+	for range 28 {
+		do(t, c, http.MethodPost, refreshPath(s.Id), nil, http.StatusOK, nil)
+	}
+	for _, r := range []*modtest.Response{
+		c.Do(http.MethodPost, refreshPath(s.Id), nil),
+		c.Do(http.MethodPost, subscriptionsPath, subscriptionBody("More", feedURL("/team.ics"), "blue", false)),
+		c.Do(http.MethodPut, subscriptionPath(s.Id), subscriptionBody("Team", feedURL("/team.ics"), "blue", false)),
+	} {
+		if r.Status != http.StatusTooManyRequests || r.Header("Retry-After") == "" {
+			t.Errorf("past thirty fetches: status %d, Retry-After %q; want 429 with Retry-After", r.Status, r.Header("Retry-After"))
+		}
+	}
+	if n := len(f.requests()); n != 30 {
+		t.Errorf("%d fetches were made, want 30", n)
+	}
+	// Another address has a bucket of its own.
+	do(t, secondClient(t, h, userID), http.MethodPost, refreshPath(s.Id), nil, http.StatusOK, nil)
+}
+
 func TestSubscriptions_AnotherPersonsSubscriptionIsTheNotFoundOfEveryOperation(t *testing.T) {
 	t.Parallel()
 	h, f := newSubscribing(t)
@@ -431,5 +518,50 @@ func TestSubscriptions_APutWithANewAddressForgetsTheOldFetchAndFetchesTheNew(t *
 	got := ofKind(items(t, c, windowPath("2026-09-14", "2026-09-20")), "calendar.subscription")
 	if len(got) != 1 || got[0].Title != "Practice" || !got[0].AllDay {
 		t.Errorf("after the move the items = %+v", got)
+	}
+}
+
+// TestSubscriptions_AFetchOvertakenByANewAddressRecordsNothing: a fetch of the
+// old address that answers after a PUT changed it — here the PUT lands while
+// the calendar elsewhere is answering — writes nothing over the new address's
+// row, whichever of the three outcomes it had: its calendar is the old
+// address's, and the new one is due at once. The request answers the row as
+// it now stands.
+func TestSubscriptions_AFetchOvertakenByANewAddressRecordsNothing(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		answer func(w http.ResponseWriter)
+	}{
+		{"a calendar", func(w http.ResponseWriter) { _, _ = w.Write([]byte(matchCalendar)) }},
+		{"a 304", func(w http.ResponseWriter) { w.WriteHeader(http.StatusNotModified) }},
+		{"a failure", func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h, f := newSubscribing(t)
+			c, _ := signIn(t, h)
+			f.serveCalendar("/old.ics", matchCalendar, `"v1"`)
+			s := subscribe(t, c, subscriptionBody("Moving", feedURL("/old.ics"), "blue", false))
+			f.serve("/old.ics", func(w http.ResponseWriter, _ *http.Request) {
+				// What a PUT with a new url does to the row (UpdateSubscription,
+				// then ResetSubscriptionFetch), between this fetch's start and
+				// its record.
+				h.Exec(t, `UPDATE calendar.subscriptions SET url = $2, etag = NULL, last_modified = NULL, body = NULL,
+				           fetched_at = NULL, attempted_at = NULL, next_fetch_at = NULL, error = NULL WHERE id = $1`, s.Id, feedURL("/new.ics"))
+				tc.answer(w)
+			})
+			var got gen.CalendarSubscription
+			do(t, c, http.MethodPost, refreshPath(s.Id), nil, http.StatusOK, &got)
+			if got.Url != feedURL("/new.ics") || got.FetchedAt != nil || got.AttemptedAt != nil || got.Error != nil {
+				t.Errorf("the refresh answered %+v, want the new address's row untouched", got)
+			}
+			if body := storedBody(t, h, s.Id); body != "" {
+				t.Errorf("the old address's calendar was stored over the new one's row: %d bytes", len(body))
+			}
+			if n := h.Count(t, `SELECT count(*) FROM calendar.subscriptions WHERE id = $1 AND next_fetch_at IS NULL`, s.Id); n != 1 {
+				t.Error("the stale fetch set when the new address is due")
+			}
+		})
 	}
 }

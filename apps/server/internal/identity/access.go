@@ -162,28 +162,29 @@ func (a *Access) Reject(w http.ResponseWriter, r *http.Request, rule contracts.R
 
 // UserHolds reports whether userID holds every key at the clock's now, for a
 // read made on the user's behalf with no request behind it — the calendar
-// feed, whose token has named the person (calendar feed design D5). It reads
-// what permitted reads: the user's is_disabled and lockout_end (isActive), the
-// Owner role, and EffectivePermissionForUser per key. A user who does not
-// exist, or is pending — invited and never signed in, so nothing can have been
-// handed a token on their behalf — holds nothing. businessSatisfied is not
-// applied: holding an Owner to MFA is a rule about a session, which signed in
-// with a second factor or did not, and here there is none. No key at all is
-// false, as an empty permission rule is for Check. Any failure to read is an
-// error, never a false.
+// feed, whose token has named the person (calendar feed design D5). First the
+// person must be one who may act at all (UserMayAct): the user predicates a
+// session is resolved under — not disabled, not pending (invited and never
+// signed in, so nothing can have been handed a token on their behalf), and
+// while SCIM is configured not deactivated by the directory unless they hold
+// Owner — and not locked out, as permitted requires; a user who does not
+// exist may not. Then the Owner role, and EffectivePermissionForUser per key.
+// One query carries the person's predicates so they cannot drift from the
+// session's: a token outlives nothing a session would not. businessSatisfied
+// is not applied: holding an Owner to MFA is a rule about a session, which
+// signed in with a second factor or did not, and here there is none. No key
+// at all is false, as an empty permission rule is for Check. Any failure to
+// read is an error, never a false.
 func (a *Access) UserHolds(ctx context.Context, userID uuid.UUID, keys ...string) (bool, error) {
 	if len(keys) == 0 {
 		return false, nil
 	}
 	now := a.now()
-	u, err := a.q.GetUserByID(ctx, userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
+	mayAct, err := a.q.UserMayAct(ctx, store.UserMayActParams{UserID: userID, Now: now, ScimEnabled: a.cfg.SCIM != nil})
 	if err != nil {
-		return false, fmt.Errorf("identity: read user for permissions: %w", err)
+		return false, fmt.Errorf("identity: read whether the user may act: %w", err)
 	}
-	if !isActive(u.IsDisabled, u.LockoutEnd, now) || u.PendingSince != nil {
+	if !mayAct {
 		return false, nil
 	}
 	owner, err := a.q.UserHasRoleByName(ctx, store.UserHasRoleByNameParams{UserID: userID, Name: RoleOwner})

@@ -297,7 +297,7 @@ export interface paths {
         put?: never;
         /**
          * Subscribe to a calendar
-         * @description Subscribes the caller to a calendar from elsewhere (calendar feed design D6). The rules at write are field errors (CalendarSubscriptionWrite), and the eleventh is 409 subscription_limit: ten calendars beside one's own is more than anyone reads, and each is a fetch every half hour. The address is fetched once before the answer, under a budget of twenty seconds and through the outbound guard — no private address, no redirect, at most 1 MiB — so a wrong one is seen at once and a right one shows its events at the next load; the row is created whatever the fetch answers, its error set when it failed, and the calendar-subscriptions worker fetches it from then on. 201 with the row as it stands.
+         * @description Subscribes the caller to a calendar from elsewhere (calendar feed design D6). The rules at write are field errors (CalendarSubscriptionWrite), and the eleventh is 409 subscription_limit: ten calendars beside one's own is more than anyone reads, and each is a fetch every half hour. The address is fetched once before the answer, under a budget of twenty seconds and through the outbound guard — no private address, no redirect, at most 1 MiB — so a wrong one is seen at once and a right one shows its events at the next load; the row is created whatever the fetch answers, its error set when it failed, and the calendar-subscriptions worker fetches it from then on. The count and the insert are one step under the caller's lock, so two saves at nine cannot both be the tenth. 201 with the row as it stands. Rate limited, with PUT /subscriptions/{id} and POST /subscriptions/{id}/refresh, to 30 per client address per 10 minutes (calendar-subscription-fetch).
          */
         post: operations["postCalendarSubscriptions"];
         delete?: never;
@@ -316,7 +316,7 @@ export interface paths {
         get?: never;
         /**
          * Change a subscription
-         * @description Replaces one of the caller's subscriptions whole (calendar feed design D6), the rules at write as for POST. There is no revision and no If-Match: the row is the caller's own, small, and last write wins. A new url forgets every fetch of the old one — its validators, its calendar and its record — and is fetched once before the answer, as POST fetches; a change of the rest fetches nothing. Another person's is the 404 an unknown id gets.
+         * @description Replaces one of the caller's subscriptions whole (calendar feed design D6), the rules at write as for POST. There is no revision and no If-Match: the row is the caller's own, small, and last write wins. A new url forgets every fetch of the old one — its validators, its calendar and its record — and is fetched once before the answer, as POST fetches; a change of the rest fetches nothing. Another person's is the 404 an unknown id gets. Rate limited, with POST /subscriptions and POST /subscriptions/{id}/refresh, to 30 per client address per 10 minutes (calendar-subscription-fetch), whether or not the url changes.
          */
         put: operations["putCalendarSubscriptionsById"];
         post?: never;
@@ -341,7 +341,7 @@ export interface paths {
         put?: never;
         /**
          * Refresh a subscription
-         * @description Fetches one of the caller's subscriptions now (calendar feed design D6) — the screen's Refresh now — under the same budget and guard as POST /subscriptions, and answers the row as the fetch left it: fetchedAt on a calendar or a 304, error when it failed, which is not an error of this request. Another person's is the 404 an unknown id gets.
+         * @description Fetches one of the caller's subscriptions now (calendar feed design D6) — the screen's Refresh now — under the same budget and guard as POST /subscriptions, and answers the row as the fetch left it: fetchedAt on a calendar or a 304, error when it failed, which is not an error of this request. Another person's is the 404 an unknown id gets. Rate limited, with POST /subscriptions and PUT /subscriptions/{id}, to 30 per client address per 10 minutes (calendar-subscription-fetch).
          */
         post: operations["postCalendarSubscriptionsByIdRefresh"];
         delete?: never;
@@ -1946,6 +1946,16 @@ export interface operations {
                     "application/problem+json": components["schemas"]["CalendarProblem"];
                 };
             };
+            /** @description Too Many Requests — calendar-subscription-fetch's limit for this client address, shared with PUT /subscriptions/{id} and POST /subscriptions/{id}/refresh. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
         };
     };
     putCalendarSubscriptionsById: {
@@ -2005,6 +2015,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Too Many Requests — calendar-subscription-fetch's limit for this client address, shared with POST /subscriptions and POST /subscriptions/{id}/refresh. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
             };
         };
     };
@@ -2097,6 +2117,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Too Many Requests — calendar-subscription-fetch's limit for this client address, shared with POST /subscriptions and PUT /subscriptions/{id}. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
             };
         };
     };
