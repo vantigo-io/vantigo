@@ -23,7 +23,8 @@ import (
 // order — the caller's appointments, owned or attended with any status,
 // expanded in their own zones with their exceptions applied; then every
 // enabled module's calendar source, concurrently, in module order; then the
-// public holidays beside them — and sorted by start, all-day first within a
+// caller's subscriptions, parsed from their last fetch (calendar feed design
+// D8); then the public holidays beside them — and sorted by start, all-day first within a
 // day. Nothing is paged: 93 days of one person's calendar is hundreds of rows.
 
 // sourcesBudget is how long the providers have, all of them together.
@@ -69,6 +70,11 @@ func (s *server) GetCalendarItems(ctx context.Context, req gen.GetCalendarItemsR
 		return nil, err
 	}
 	list = append(list, projected...)
+	subscribed, err := s.subscriptionItems(ctx, c.UserID, w, kinds)
+	if err != nil {
+		return nil, err
+	}
+	list = append(list, subscribed...)
 	sources, err := s.sourceKinds(ctx)
 	if err != nil {
 		return nil, err
@@ -327,6 +333,39 @@ func (s *server) sourceItemsIn(ctx context.Context, userID uuid.UUID, w window, 
 			}
 			out = append(out, projectedItem(p))
 		}
+	}
+	return out, nil
+}
+
+// subscriptionItems is userID's subscribed calendars' events in the window,
+// each parsed from the body the worker last fetched — when kinds is nil or
+// names calendar.subscription. It is apart from sourceItemsIn on purpose:
+// the feed reads the providers through that, and a subscription's items are
+// never in the feed (calendar feed design D8). A colleague's calendar asks
+// none, as it asks no provider. The caller's language, for the title of an
+// event without one, is read only when there is something to parse; a
+// directory that cannot say is English, not a calendar that fails.
+func (s *server) subscriptionItems(ctx context.Context, userID uuid.UUID, w window, kinds map[string]bool) ([]gen.CalendarItem, error) {
+	if kinds != nil && !kinds[subscriptionKind] {
+		return nil, nil
+	}
+	rows, err := s.queries().ListSubscriptionBodies(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("calendar: read the subscriptions' calendars: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	lang := langEnglish
+	if u, err := s.usersUser(ctx, userID); err != nil {
+		s.deps.Logger.WarnContext(ctx, "calendar: the caller's language could not be read; subscriptions are titled in English", "error", err)
+	} else if u != nil {
+		lang = languageOf(u.PreferredLanguage)
+	}
+	var out []gen.CalendarItem
+	for _, r := range rows {
+		sub := subscriptionSource{id: r.ID, name: r.Name, colour: r.Colour, busyOnly: r.BusyOnly}
+		out = append(out, parseSubscriptionItems(r.Body, sub, w, lang, s.deps.Logger)...)
 	}
 	return out, nil
 }

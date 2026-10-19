@@ -47,6 +47,10 @@ type words struct {
 	noticeInvited, noticeChanged, noticeCancelled, noticeRemoved string
 	answerAccepted, answerDeclined, answerTentative              string
 	anInvitee, aContact, openInVantigo                           string
+
+	// untitled is a subscribed event's title when it has no SUMMARY
+	// (calendar feed design D8).
+	untitled string
 }
 
 var english = words{
@@ -75,6 +79,8 @@ var english = words{
 	anInvitee:       "An invitee",
 	aContact:        "A contact",
 	openInVantigo:   "Open it in Vantigo:",
+
+	untitled: "(untitled)",
 }
 
 var norwegian = words{
@@ -103,6 +109,8 @@ var norwegian = words{
 	anInvitee:       "En invitert",
 	aContact:        "En kontakt",
 	openInVantigo:   "Åpne den i Vantigo:",
+
+	untitled: "(uten tittel)",
 }
 
 // wordsFor is lang's sentences, English for anything but nb.

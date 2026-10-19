@@ -205,7 +205,8 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			var opts []modtest.Option
+			// The subscriptions worker is subscriptions_worker_test.go's.
+			opts := []modtest.Option{modtest.WithEnv("CALENDAR_SUBSCRIPTIONS_ENABLED", "0")}
 			for k, v := range tc.env {
 				opts = append(opts, modtest.WithEnv(k, v))
 			}
