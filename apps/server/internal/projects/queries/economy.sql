@@ -140,8 +140,8 @@ ORDER BY occurred_at, m.id;
 -- milestone still planned whose day has passed, on an active project the
 -- caller manages. 'ready' is deliberately not here — a ready milestone is
 -- already somebody's milestoneReady item, and telling them twice about the
--- same milestone is noise. The date is a plain calendar date in UTC, as
--- everywhere else in this module.
+-- same milestone is noise. The planned date is a civil date, compared as-is
+-- with today, the business day the caller passes — never CURRENT_DATE.
 SELECT m.id, m.project_id, m.name, m.planned_date
 FROM projects.billing_milestones m
 JOIN projects.projects p ON p.id = m.project_id

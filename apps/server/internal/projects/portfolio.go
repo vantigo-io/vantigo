@@ -339,7 +339,10 @@ func (s *server) portfolioRows(
 	for _, m := range milestones {
 		open[m.ProjectID] = append(open[m.ProjectID], m)
 	}
-	now := s.deps.Clock()
+	today, err := s.businessToday(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]portfolioRow, 0, len(projects))
 	for _, project := range projects {
 		// A project with nothing recorded is absent from the expenses
@@ -347,7 +350,7 @@ func (s *server) portfolioRows(
 		// recorded, which is not the same as the installation having no
 		// expenses module — that is what expenseTracking says.
 		row, err := s.portfolioRowFor(ctx, project, logged[project.ID], spent[project.ID],
-			open[project.ID], timeTracking, expenseTracking, now)
+			open[project.ID], timeTracking, expenseTracking, today)
 		if err != nil {
 			return nil, err
 		}
@@ -368,7 +371,7 @@ func (s *server) portfolioRowFor(
 	open []store.ProjectsBillingMilestone,
 	timeTracking bool,
 	expenseTracking bool,
-	now time.Time,
+	today time.Time,
 ) (portfolioRow, error) {
 	seesAmounts := project.Currency != nil
 	basis, err := projectBudgetBasis(project, seesAmounts)
@@ -426,7 +429,7 @@ func (s *server) portfolioRowFor(
 				Status:          m.Status,
 				PlannedDate:     dateFromPgtype(m.PlannedDate),
 				EffectiveAmount: amount,
-				Overdue:         milestoneOverdue(m, now),
+				Overdue:         milestoneOverdue(m, today),
 			}
 		}
 		if !ready {

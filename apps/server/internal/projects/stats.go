@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
@@ -182,9 +183,15 @@ func (s *server) GetProjectsStatsTimeseries(ctx context.Context, req gen.GetProj
 // overdue items promised on their own.
 func (s *server) GetProjectsStatsAttention(ctx context.Context, _ gen.GetProjectsStatsAttentionRequestObject) (gen.GetProjectsStatsAttentionResponseObject, error) {
 	now := s.deps.Clock()
-	// Truncate on a UTC instant is midnight UTC, which is the calendar day a
-	// date column is compared against.
-	today := pgtype.Date{Time: now.UTC().Truncate(24 * time.Hour), Valid: true}
+	// Today is the business day (time zones design D6): the day now falls on
+	// in the workspace's business time zone, as the UTC midnight a date column
+	// is compared against. The zone is read once, before any query here.
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	businessDay := holidays.DayIn(now, zone)
+	today := pgtype.Date{Time: businessDay, Valid: true}
 
 	v := s.visibilityFor(ctx)
 	f := s.financialVisibilityFor(ctx)
@@ -208,7 +215,7 @@ func (s *server) GetProjectsStatsAttention(ctx context.Context, _ gen.GetProject
 	if err != nil {
 		return nil, fmt.Errorf("projects: read the overdue milestones: %w", err)
 	}
-	budget, err := s.budgetAttention(ctx, q, f.UserID, now)
+	budget, err := s.budgetAttention(ctx, q, f.UserID, now, businessDay)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +277,7 @@ func milestoneEntityID(projectID, milestoneID int32) string {
 // A manager always has financial rights on their own project, so the amount
 // bases apply and the alert is about money whenever the project has a
 // currency.
-func (s *server) budgetAttention(ctx context.Context, q *store.Queries, userID uuid.UUID, now time.Time) ([]gen.ProjectStatsAttentionItem, error) {
+func (s *server) budgetAttention(ctx context.Context, q *store.Queries, userID uuid.UUID, now, today time.Time) ([]gen.ProjectStatsAttentionItem, error) {
 	if s.deps.Actuals == nil {
 		return nil, nil
 	}
@@ -319,7 +326,7 @@ func (s *server) budgetAttention(ctx context.Context, q *store.Queries, userID u
 			continue
 		}
 		items = append(items, attentionItem(kind,
-			strconv.FormatInt(int64(project.ID), 10), project.Name, budgetOccurredAt(work, now)))
+			strconv.FormatInt(int64(project.ID), 10), project.Name, budgetOccurredAt(work, now, today)))
 	}
 	return items, nil
 }
@@ -329,15 +336,16 @@ func (s *server) budgetAttention(ctx context.Context, q *store.Queries, userID u
 // project that has a budget and nothing logged — which cannot raise an alert
 // today, but would read as 1 January year one if it ever did.
 //
-// It is clamped to now, which is a deliberate narrowing of "the day work was
-// last logged". Nothing stops somebody logging work against a future date, and
-// the dashboard both sorts on this field and prints it as "3 days ago": an
-// alert dated next Friday would sort to the bottom of the merged list — the
+// A date after today — the business day, a UTC midnight like the entry's
+// date — answers the present moment instead, which is a deliberate narrowing
+// of "the day work was last logged". Nothing stops somebody logging work against a future date, and the
+// dashboard both sorts on this field and prints it as "3 days ago": an alert
+// dated next Friday would sort to the bottom of the merged list — the
 // opposite of urgent — and read as "in 3 days" about something that is true
 // today.
-func budgetOccurredAt(w loggedWork, now time.Time) time.Time {
+func budgetOccurredAt(w loggedWork, now, today time.Time) time.Time {
 	if w.LastEntryDate != nil {
-		if day, err := time.Parse(time.DateOnly, *w.LastEntryDate); err == nil && !day.After(now) {
+		if day, err := time.Parse(time.DateOnly, *w.LastEntryDate); err == nil && !day.After(today) {
 			return day
 		}
 	}
