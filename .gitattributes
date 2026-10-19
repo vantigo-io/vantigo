@@ -1,0 +1,2 @@
+# iCalendar goldens are compared byte for byte, CRLF included (RFC 5545).
+apps/server/internal/calendar/testdata/invite/*.ics -text
