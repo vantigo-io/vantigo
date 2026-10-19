@@ -92,8 +92,8 @@ Every key `vantigo.env` accepts is documented in
 `apps/server/internal/config/config.go`'s field comments — the authoritative
 reference — and summarized in
 [docs/src/content/docs/en/admin/authentication.md](../../docs/src/content/docs/en/admin/authentication.md).
-For startup-configured workforce OIDC, static SCIM provisioning, and recovery
-procedures, see the
+For the workforce OIDC provider and SCIM provisioning — set on the Single sign-on
+card, not in this file — and the recovery procedures, see the
 [SSO and SCIM operations guide](../../docs/src/content/docs/en/admin/sso-scim.md).
 
 Pin a specific release with `VANTIGO_TAG=0.16.1` in `.env` — published image
@@ -288,7 +288,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   password-reset bearer links in the clear. See
   [transport security](../../docs/src/content/docs/en/admin/transport-security.md).
 - Set `APP_URL` to the public `https://` origin; mailed links, the accepted
-  `Host` header values, the cookie `Secure` attribute and the static OIDC
+  `Host` header values, the cookie `Secure` attribute and the OIDC
   callback are all derived from it. The callback is fixed at
   `/api/v1/identity/oidc/callback`.
 - The bundled PostgreSQL is reached over the private compose network with no
@@ -298,15 +298,17 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `verify-ca` when the server certificate does not name the host) on both
   the `vantigo-migrate` and `vantigo` services — edit `compose.yaml`, not
   `vantigo.env`, since `compose.yaml` is what builds the connection URL.
-- The `vantigo.env.example` file documents the static OIDC and SCIM
-  settings. Configuration is deployment-bound and changes require a restart.
-  Do not put provider or SCIM secrets in source-controlled files — inject
-  `OIDC_CLIENT_SECRET`, `SCIM_TOKEN`, `SCIM_PREVIOUS_TOKEN` and
-  `COMMUNICATIONS_AI_API_KEY` from a secret store instead.
+- The workforce OIDC provider and the SCIM token are set by an Owner on the
+  **Single sign-on** card under Workspace administration and kept in the
+  database; they need no restart ([SSO and SCIM operations](../../docs/src/content/docs/en/admin/sso-scim.md)).
+  The `OIDC_*` and `SCIM_*` lines in `vantigo.env.example` exist only so an
+  installation upgraded from an earlier release imports them at its first
+  start; remove them afterwards. Do not put secrets in source-controlled
+  files — inject `COMMUNICATIONS_AI_API_KEY` (and, for that one import,
+  `OIDC_CLIENT_SECRET` and the SCIM tokens) from a secret store instead.
 - SCIM uses `/api/v1/identity/scim/v2`, bearer tokens, and
-  `application/scim+json`. Set `SCIM_TOKEN`; during rotation, optionally set
-  `SCIM_PREVIOUS_TOKEN` together with `SCIM_PREVIOUS_TOKEN_EXPIRES_AT`
-  (future, and no more than 24 hours after startup).
+  `application/scim+json`; the token is generated on the card, shown once, and
+  rotated there with an overlap of at most 24 hours.
 - `MANAGEMENT_PORT` and `MANAGEMENT_TOKEN` enable a private status endpoint
   for a control plane ([docs/src/content/docs/en/admin/management-listener.md](../../docs/src/content/docs/en/admin/management-listener.md)). The
   Compose stack deliberately does **not** publish that port: reach it from
