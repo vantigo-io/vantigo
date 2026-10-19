@@ -17,17 +17,21 @@ export {
 export { AppShellLayout, type AppShellLayoutProps, SupportContactLine } from "./app-shell-layout";
 export { AppSwitcher, type SwitcherApp } from "./app-switcher";
 export {
+  browserTimeZone,
   type CatalogLoader,
   type CatalogResources,
+  civilDateIn,
   createLocaleFormatters,
   formatCurrency,
   formatDate,
   formatNumber,
   getLanguagePreference,
   getLocale,
+  getTimeZones,
   I18nProvider,
   type I18nProviderProps,
   i18n,
+  instantFromWallClock,
   type LanguagePreference,
   type LocaleFormatters,
   loadCatalog,
@@ -37,9 +41,14 @@ export {
   resolveLocale,
   type SupportedLocale,
   setLanguagePreference,
+  setTimeZones,
+  type TimeZoneSource,
+  type TimeZones,
   useI18n,
   useLocale,
+  useTimeZones,
   useTranslation,
+  wallClockIn,
 } from "./i18n";
 export { type ShellLinkComponent, ShellLinkProvider, useShellLink } from "./link-context";
 export { vantigoLogo } from "./logo";

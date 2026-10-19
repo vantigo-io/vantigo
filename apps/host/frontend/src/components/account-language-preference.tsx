@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { setLanguagePreference } from "@vantigo/frontend-shell";
+import { setLanguagePreference, setTimeZones } from "@vantigo/frontend-shell";
 import { useLayoutEffect, useRef } from "react";
 import { getProfile, profileQueryKey } from "../api/account";
 import { fetchSession, sessionQueryKey } from "../api/auth";
@@ -22,6 +22,18 @@ export const AccountLanguagePreference = () => {
   });
   const previousUserId = useRef<string | undefined>(undefined);
   const hadProfile = useRef(false);
+
+  // The session's time zones (time zones design D4, D8) reach the shell the
+  // same way the language does: every formatter shows instants in the
+  // effective zone, and module screens judge "today" in the business zone.
+  // No session (signed out, /pay) puts both back on the browser's zone.
+  const timeZone = session.data?.timeZone;
+  const timeZoneSource = session.data?.timeZoneSource;
+  const businessTimeZone = session.data?.businessTimeZone;
+  const hasSession = !!session.data;
+  useLayoutEffect(() => {
+    setTimeZones(hasSession ? { timeZone, timeZoneSource, businessTimeZone } : null);
+  }, [hasSession, timeZone, timeZoneSource, businessTimeZone]);
 
   useLayoutEffect(() => {
     if (!userId) {

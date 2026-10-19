@@ -73,7 +73,7 @@ export interface CustomerContactInfo {
 }
 
 /**
- * A private person's anonymisation (customers GDPR design D4): the UTC day it
+ * A private person's anonymisation (customers GDPR design D4): the business day it
  * is scheduled for, and — once the worker has run — when it ran. Null until
  * then; the wire omits it.
  */
