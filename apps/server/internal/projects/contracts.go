@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,8 +13,9 @@ import (
 // This file is the whole of this module's reach into its neighbours. Every
 // call into contracts.ProductCatalog (deps.Products), contracts.UserDirectory
 // (deps.Users), contracts.CustomerDirectory (deps.Directory),
-// contracts.ProjectActuals (deps.Actuals) and contracts.ProjectExpenses
-// (deps.Expenses) is made through one of the thin
+// contracts.ProjectActuals (deps.Actuals), contracts.ProjectExpenses
+// (deps.Expenses) and contracts.BusinessCalendar (deps.Calendar) is made
+// through one of the thin
 // accessors below and through nowhere else, which is what makes "what does
 // Projects ask of another module, and when" a question with one place to read
 // the answer — and one place to check it from.
@@ -124,4 +126,19 @@ func (s *server) actualsForProjects(ctx context.Context, reqs []contracts.Actual
 func (s *server) expensesForProjects(ctx context.Context, projectIDs []int32) (map[int32]contracts.ProjectExpenseTotals, error) {
 	noteContractCall(ctx, "Expenses.ExpensesForProjects")
 	return s.deps.Expenses.ExpensesForProjects(ctx, projectIDs)
+}
+
+// businessZone is the workspace's business time zone (time zones design D2),
+// the calendar every day this module derives from an instant is judged in:
+// the dashboard's "today", a milestone's overdue flag. It is read once per
+// request and kept for the rest of it, and — like every call here — never
+// inside withProjectLock, since the read takes a pool connection of its own.
+// A stored name Go cannot load is answered as UTC by the calendar itself.
+func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
+	noteContractCall(ctx, "Calendar.Zone")
+	zone, err := s.deps.Calendar.Zone(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("projects: read the business time zone: %w", err)
+	}
+	return zone, nil
 }

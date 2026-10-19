@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
@@ -352,14 +353,17 @@ func (s *server) milestonePlanResponse(ctx context.Context, project store.Projec
 	if err != nil {
 		return gen.BillingMilestonePlanResponse{}, err
 	}
-	now := s.deps.Clock()
+	today, err := s.businessToday(ctx)
+	if err != nil {
+		return gen.BillingMilestonePlanResponse{}, err
+	}
 	effective, totals, err := s.milestonePlanTotals(ctx, project, rows)
 	if err != nil {
 		return gen.BillingMilestonePlanResponse{}, err
 	}
 	data := make([]gen.BillingMilestoneResponse, 0, len(rows))
 	for i, row := range rows {
-		milestone, err := milestoneResponse(row, project, a, people, now, effective[i])
+		milestone, err := milestoneResponse(row, project, a, people, today, effective[i])
 		if err != nil {
 			return gen.BillingMilestonePlanResponse{}, err
 		}
@@ -415,7 +419,22 @@ func (s *server) milestoneResponseFor(ctx context.Context, project store.Project
 	if err != nil {
 		return gen.BillingMilestoneResponse{}, err
 	}
-	return milestoneResponse(row, project, a, people, s.deps.Clock(), effective)
+	today, err := s.businessToday(ctx)
+	if err != nil {
+		return gen.BillingMilestoneResponse{}, err
+	}
+	return milestoneResponse(row, project, a, people, today, effective)
+}
+
+// businessToday is the business day of the server's clock: today in the
+// workspace's business time zone, as the UTC midnight a date column is
+// compared at (holidays.DayIn).
+func (s *server) businessToday(ctx context.Context) (time.Time, error) {
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return holidays.DayIn(s.deps.Clock(), zone), nil
 }
 
 // milestoneEffective is one milestone's effective amount as every surface
@@ -464,8 +483,8 @@ func (s *server) milestonePeople(ctx context.Context, rows []store.ProjectsBilli
 // rather than stored: the effective amount — which is what makes an open
 // percent milestone follow the project's fixed price (design §3.2), and which
 // is passed in rather than computed here so that a row carries exactly the
-// number milestonePlanTotals summed — and overdue, which is the server's own
-// date against the planned one.
+// number milestonePlanTotals summed — and overdue, which is today, the
+// business day, against the planned one.
 //
 // currency is the milestone's own when it carries a flat amount — the one it
 // was entered in, which a cancelled milestone can carry past a change to the
@@ -473,7 +492,7 @@ func (s *server) milestonePeople(ctx context.Context, rows []store.ProjectsBilli
 // a percent resolves against a fixed price that is always in that currency.
 // It is absent only for a percent milestone on a project that has no currency
 // at all, which again only a cancelled one can outlive.
-func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsProject, a access, people map[uuid.UUID]contracts.UserEntry, now time.Time, effective *float64) (gen.BillingMilestoneResponse, error) {
+func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsProject, a access, people map[uuid.UUID]contracts.UserEntry, today time.Time, effective *float64) (gen.BillingMilestoneResponse, error) {
 	amount, err := floatPtrFromNumeric(m.Amount)
 	if err != nil {
 		return gen.BillingMilestoneResponse{}, err
@@ -494,7 +513,7 @@ func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsP
 		Currency:          milestoneCurrency(m, project),
 		Status:            m.Status,
 		Position:          m.Position,
-		Overdue:           milestoneOverdue(m, now),
+		Overdue:           milestoneOverdue(m, today),
 		ReadyAt:           m.ReadyAt,
 		ReadyBy:           milestonePerson(m.ReadyByUserID, people),
 		InvoicedAt:        m.InvoicedAt,

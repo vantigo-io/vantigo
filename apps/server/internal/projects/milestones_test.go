@@ -676,9 +676,10 @@ func TestPutProjectsMilestonesByMilestoneIdPosition_PastTheEnd_IsTheEnd(t *testi
 	}
 }
 
-// `overdue` is the server's own clock against the planned date, as plain UTC
-// dates (§3.2): a milestone still waiting to be billed after the day it was
-// planned for is overdue, and one already invoiced or cancelled never is.
+// `overdue` is the server's own clock against the planned date, today taken
+// as the business day (§3.2; business_zone_test.go holds the zone's part): a
+// milestone still waiting to be billed after the day it was planned for is
+// overdue, and one already invoiced or cancelled never is.
 func TestGetProjectsByIdMilestones_Overdue_IsTheServerClockAgainstThePlannedDate(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

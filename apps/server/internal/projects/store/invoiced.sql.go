@@ -23,14 +23,15 @@ JOIN projects.projects p ON p.id = m.project_id
 WHERE m.id = ANY($1::integer[])
   AND m.status = 'ready'
   AND ($2::date IS NULL
-       OR (COALESCE(m.ready_at, m.updated_at) AT TIME ZONE 'Europe/Oslo')::date <= $2::date)
+       OR (COALESCE(m.ready_at, m.updated_at) AT TIME ZONE $3::text)::date <= $2::date)
 ORDER BY m.project_id, m.position, m.id
-LIMIT $3
+LIMIT $4
 `
 
 type BillableMilestonesByIDsParams struct {
 	Ids      []int32
 	Until    pgtype.Date
+	TimeZone string
 	RowLimit int32
 }
 
@@ -54,7 +55,12 @@ type BillableMilestonesByIDsRow struct {
 // given milestones — a held source's freshness: one since invoiced, or no
 // longer ready, is simply absent.
 func (q *Queries) BillableMilestonesByIDs(ctx context.Context, arg BillableMilestonesByIDsParams) ([]BillableMilestonesByIDsRow, error) {
-	rows, err := q.db.Query(ctx, billableMilestonesByIDs, arg.Ids, arg.Until, arg.RowLimit)
+	rows, err := q.db.Query(ctx, billableMilestonesByIDs,
+		arg.Ids,
+		arg.Until,
+		arg.TimeZone,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -98,14 +104,15 @@ JOIN projects.projects p ON p.id = m.project_id
 WHERE m.project_id = ANY($1::integer[])
   AND m.status = 'ready'
   AND ($2::date IS NULL
-       OR (COALESCE(m.ready_at, m.updated_at) AT TIME ZONE 'Europe/Oslo')::date <= $2::date)
+       OR (COALESCE(m.ready_at, m.updated_at) AT TIME ZONE $3::text)::date <= $2::date)
 ORDER BY m.project_id, m.position, m.id
-LIMIT $3
+LIMIT $4
 `
 
 type BillableMilestonesForProjectsParams struct {
 	ProjectIds []int32
 	Until      pgtype.Date
+	TimeZone   string
 	RowLimit   int32
 }
 
@@ -136,12 +143,20 @@ type BillableMilestonesForProjectsRow struct {
 // milestone is not. The project's currency and fixed price ride along, read
 // from this module's own projects table, because a percent milestone's amount
 // is a share of that price and its currency is the project's. until bounds the
-// milestones by the Oslo business day they became ready (the day Invoices
-// dates a milestone by); NULL is no bound. The plan's own order within each
+// milestones by the business day they became ready (the day Invoices dates a
+// milestone by): the instant read in time_zone, the workspace's business time
+// zone the caller resolved through contracts.BusinessCalendar — never a
+// literal, so Go and the database judge the same day. NULL is no bound. The
+// plan's own order within each
 // project, and one row past the limit the caller asks for, so it can say there
 // was more.
 func (q *Queries) BillableMilestonesForProjects(ctx context.Context, arg BillableMilestonesForProjectsParams) ([]BillableMilestonesForProjectsRow, error) {
-	rows, err := q.db.Query(ctx, billableMilestonesForProjects, arg.ProjectIds, arg.Until, arg.RowLimit)
+	rows, err := q.db.Query(ctx, billableMilestonesForProjects,
+		arg.ProjectIds,
+		arg.Until,
+		arg.TimeZone,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

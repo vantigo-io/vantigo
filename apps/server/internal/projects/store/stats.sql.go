@@ -39,7 +39,8 @@ type OverdueActiveProjectsRow struct {
 // same date finished late, which is history rather than something to act on,
 // and a project with no end date can never be overdue. Oldest first, so the
 // one that has been overdue longest is the one that surfaces when the
-// dashboard takes the top of the list.
+// dashboard takes the top of the list. today is the business day the caller
+// passes, never CURRENT_DATE.
 func (q *Queries) OverdueActiveProjects(ctx context.Context, arg OverdueActiveProjectsParams) ([]OverdueActiveProjectsRow, error) {
 	rows, err := q.db.Query(ctx, overdueActiveProjects, arg.UserID, arg.SeeAll, arg.Today)
 	if err != nil {
