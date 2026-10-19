@@ -158,6 +158,9 @@ type AccountPasswordRequest struct {
 type AccountProfileRequest struct {
 	DisplayName       *string `json:"displayName"`
 	PreferredLanguage *string `json:"preferredLanguage,omitempty"`
+
+	// TimeZone The zone instants are shown to this user in (time zones design D5), an IANA name such as Europe/Oslo that the server and its database read the same way — 'CET', 'Local' or a name either does not know is a 400 invalid_request on timeZone. Null, or a blank name, clears it, so the user follows the workspace's business time zone again. Omitted, on any of the three operations, leaves it as it is, so a client that predates it does not clear it. It never moves a bookkeeping day, which is always the business day.
+	TimeZone json.RawMessage `json:"timeZone,omitempty"`
 }
 
 // AccountResponse defines model for AccountResponse.
@@ -167,6 +170,9 @@ type AccountResponse struct {
 	Email             *string            `json:"email"`
 	Id                openapi_types.UUID `json:"id"`
 	PreferredLanguage *string            `json:"preferredLanguage"`
+
+	// TimeZone The user's own time zone (time zones design D5), an IANA name, or null when they follow the workspace's business time zone. The zone in effect, whichever it is, is the session's timeZone. Always answered; optional in the schema only because the recorded exchanges predate it.
+	TimeZone *string `json:"timeZone"`
 }
 
 // AdministrationScopeResponse defines model for AdministrationScopeResponse.
