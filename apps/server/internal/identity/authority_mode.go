@@ -37,41 +37,47 @@ type authorityModeAudit struct {
 }
 
 // recordAuthorityMode records the mode settings derive in identity.system_settings
-// with when it was recorded, in one transaction holding the singleton row:
-// the same mode again changes nothing; a change from a recorded mode is
-// audited authority-mode.changed, with no actor and no request, the modes
-// before and after. The row's maintenance settings are left as they are,
-// and a missing row is created with maintenance off.
+// with when it was recorded, in a transaction of its own (recordAuthorityModeIn).
 func recordAuthorityMode(ctx context.Context, d module.Deps, settings ssoSettings) error {
 	mode, now := deriveAuthorityMode(settings), d.Clock()
 	err := db.WithTx(ctx, d.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		q := store.New(tx)
-		if err := q.EnsureSystemSettings(ctx, now); err != nil {
-			return err
-		}
-		recorded, err := q.LockAuthorityMode(ctx)
-		if err != nil {
-			return err
-		}
-		if recorded != nil && *recorded == mode {
-			return nil
-		}
-		if err := q.SetAuthorityMode(ctx, store.SetAuthorityModeParams{AuthorityMode: mode, Now: now}); err != nil {
-			return err
-		}
-		if recorded == nil {
-			return nil
-		}
-		return writeAudit(ctx, q, nil, now, auditEvent{
-			action: "authority-mode.changed",
-			before: authorityModeAudit{Mode: *recorded},
-			after:  authorityModeAudit{Mode: mode},
-		})
+		return recordAuthorityModeIn(ctx, store.New(tx), mode, now)
 	})
 	if err != nil {
 		return fmt.Errorf("identity: record the authority mode: %w", err)
 	}
 	return nil
+}
+
+// recordAuthorityModeIn records mode at now on q, the caller's transaction,
+// holding the singleton row: the same mode again changes nothing; a change
+// from a recorded mode is audited authority-mode.changed, with no actor and
+// no request, the modes before and after. The row's maintenance settings
+// are left as they are, and a missing row is created with maintenance off.
+// An Owner's save of the single sign-on settings calls it in the save's
+// own transaction, so the trail commits with the change that moved it.
+func recordAuthorityModeIn(ctx context.Context, q *store.Queries, mode string, now time.Time) error {
+	if err := q.EnsureSystemSettings(ctx, now); err != nil {
+		return err
+	}
+	recorded, err := q.LockAuthorityMode(ctx)
+	if err != nil {
+		return err
+	}
+	if recorded != nil && *recorded == mode {
+		return nil
+	}
+	if err := q.SetAuthorityMode(ctx, store.SetAuthorityModeParams{AuthorityMode: mode, Now: now}); err != nil {
+		return err
+	}
+	if recorded == nil {
+		return nil
+	}
+	return writeAudit(ctx, q, nil, now, auditEvent{
+		action: "authority-mode.changed",
+		before: authorityModeAudit{Mode: *recorded},
+		after:  authorityModeAudit{Mode: mode},
+	})
 }
 
 // authorityMode is the mode the provider acts in: the derivation of the
