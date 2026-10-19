@@ -84,6 +84,11 @@ start and end times and notes, a **Day total**, and arrows for the **Previous da
 | **Note** | Free text, at most 2000 characters. |
 | **Billable** | Shown only on a project that bills; on by default for a new entry. |
 
+The start and end are the time of day at work, as a clock in the workspace's business
+time zone shows it (set under [Workspace
+administration](/en/user/workspace-administration/#workspace-settings)), and are
+never shifted to another time zone.
+
 **Save** stores the entry and shows "Time saved". A refusal the server ties to a field
 — a work type that is no longer active, a day over 24 hours — lands on that field;
 anything else shows as "Could not save the time".
