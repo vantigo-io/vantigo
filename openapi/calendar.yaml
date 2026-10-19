@@ -923,5 +923,52 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/users:
+        get:
+            description: Active users in the directory, ordered by display name, for the attendee picker and the colleague picker. Every calendar:access holder may search; what it answers — a colleague's id and display name — is what every appointment already shows its attendees.
+            operationId: getCalendarUsers
+            parameters:
+                - description: Narrows the search by display name. Absent or blank lists the first page of active users.
+                  in: query
+                  name: query
+                  schema:
+                    type: string
+                - description: How many users to answer, 1 to 50. Defaults to 20.
+                  in: query
+                  name: limit
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CalendarUserRef'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — a limit out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Search colleagues
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
 servers:
     - url: /

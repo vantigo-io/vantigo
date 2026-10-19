@@ -121,31 +121,32 @@ type Harness struct {
 // configuration from, the modules it composes beside identity, and the
 // Recorder its clients validate through.
 type setup struct {
-	env          map[string]string
-	modules      []module.Module
-	recorder     *contracttest.Recorder
-	transport    http.RoundTripper
-	backoff      func(int) time.Duration
-	directory    contracts.CustomerDirectory
-	products     contracts.ProductCatalog
-	projects     contracts.ProjectDirectory
-	actuals      contracts.ProjectActuals
-	expenses     contracts.ProjectExpenses
-	receivables  contracts.CustomerReceivables
-	holders      []contracts.CustomerReferenceHolder
-	personalData []contracts.CustomerPersonalDataHolder
-	invoicedWork []contracts.InvoicedWorkHolder
-	hours        contracts.BillableHours
-	billExpenses contracts.BillableExpenses
-	milestones   contracts.BillableMilestones
-	smtpVerify   func(ctx context.Context, cfg config.MailConfig) error
-	smtpSend     func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
-	objectStore  storage.ObjectStore
-	peppolLookup func(ctx context.Context, participant string) (peppol.Result, error)
-	poolMaxConns int32
-	accounts     contracts.AccountProvisioning
-	noAccounts   bool
-	wrapUsers    func(contracts.UserDirectory) contracts.UserDirectory
+	env             map[string]string
+	modules         []module.Module
+	recorder        *contracttest.Recorder
+	transport       http.RoundTripper
+	backoff         func(int) time.Duration
+	directory       contracts.CustomerDirectory
+	products        contracts.ProductCatalog
+	projects        contracts.ProjectDirectory
+	actuals         contracts.ProjectActuals
+	expenses        contracts.ProjectExpenses
+	receivables     contracts.CustomerReceivables
+	holders         []contracts.CustomerReferenceHolder
+	personalData    []contracts.CustomerPersonalDataHolder
+	invoicedWork    []contracts.InvoicedWorkHolder
+	calendarSources []contracts.CalendarSource
+	hours           contracts.BillableHours
+	billExpenses    contracts.BillableExpenses
+	milestones      contracts.BillableMilestones
+	smtpVerify      func(ctx context.Context, cfg config.MailConfig) error
+	smtpSend        func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
+	objectStore     storage.ObjectStore
+	peppolLookup    func(ctx context.Context, participant string) (peppol.Result, error)
+	poolMaxConns    int32
+	accounts        contracts.AccountProvisioning
+	noAccounts      bool
+	wrapUsers       func(contracts.UserDirectory) contracts.UserDirectory
 }
 
 // Option adjusts a harness before it is built.
@@ -305,6 +306,16 @@ func WithCustomerPersonalData(holders ...contracts.CustomerPersonalDataHolder) O
 // here survives both; given more than once, the holders accumulate in order.
 func WithInvoicedWork(holders ...contracts.InvoicedWorkHolder) Option {
 	return func(s *setup) { s.invoicedWork = append(s.invoicedWork, holders...) }
+}
+
+// WithCalendarSources adds sources to Deps.CalendarSources, for the calendar
+// module to be tested against fake providers — kinds and items a test sets,
+// or a failure — without composing the five modules that provide the slot:
+// depguard keeps those out of calendar's tests. module.Compose appends the
+// enabled modules' own after these (calendar design D1), so a value set here
+// survives; given more than once, the sources accumulate in order.
+func WithCalendarSources(sources ...contracts.CalendarSource) Option {
+	return func(s *setup) { s.calendarSources = append(s.calendarSources, sources...) }
 }
 
 // WithBillableHours sets Deps.BillableHours directly to p, for a module under
@@ -555,6 +566,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		CustomerReferenceHolders: s.holders,
 		CustomerPersonalData:     s.personalData,
 		InvoicedWork:             s.invoicedWork,
+		CalendarSources:          s.calendarSources,
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,
 		BillableMilestones:       s.milestones,

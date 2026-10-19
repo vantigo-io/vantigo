@@ -405,6 +405,15 @@ type GetCalendarItemsParams struct {
 	Kinds *string `form:"kinds,omitempty" json:"kinds,omitempty"`
 }
 
+// GetCalendarUsersParams defines parameters for GetCalendarUsers.
+type GetCalendarUsersParams struct {
+	// Query Narrows the search by display name. Absent or blank lists the first page of active users.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// Limit How many users to answer, 1 to 50. Defaults to 20.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // PostCalendarAppointmentsJSONRequestBody defines body for PostCalendarAppointments for application/json ContentType.
 type PostCalendarAppointmentsJSONRequestBody = AppointmentWrite
 
@@ -449,6 +458,9 @@ type ServerInterface interface {
 	// GetCalendarMeta The calendar's settings
 	// (GET /api/v1/calendar/meta)
 	GetCalendarMeta(w http.ResponseWriter, r *http.Request)
+	// GetCalendarUsers Search colleagues
+	// (GET /api/v1/calendar/users)
+	GetCalendarUsers(w http.ResponseWriter, r *http.Request, params GetCalendarUsersParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -830,6 +842,52 @@ func (siw *ServerInterfaceWrapper) GetCalendarMeta(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetCalendarUsers operation middleware
+func (siw *ServerInterfaceWrapper) GetCalendarUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCalendarUsersParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCalendarUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -960,6 +1018,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/colleagues/{userId}/items", wrapper.GetCalendarColleaguesByUserIdItems)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/items", wrapper.GetCalendarItems)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/meta", wrapper.GetCalendarMeta)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/users", wrapper.GetCalendarUsers)
 
 	return m
 }
@@ -1640,6 +1699,70 @@ func (response GetCalendarMeta403JSONResponse) VisitGetCalendarMetaResponse(w ht
 	return err
 }
 
+type GetCalendarUsersRequestObject struct {
+	Params GetCalendarUsersParams
+}
+
+type GetCalendarUsersResponseObject interface {
+	VisitGetCalendarUsersResponse(w http.ResponseWriter) error
+}
+
+type GetCalendarUsers200JSONResponse []CalendarUserRef
+
+func (response GetCalendarUsers200JSONResponse) VisitGetCalendarUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarUsers400ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response GetCalendarUsers400ApplicationProblemPlusJSONResponse) VisitGetCalendarUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarUsers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarUsers401JSONResponse) VisitGetCalendarUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarUsers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarUsers403JSONResponse) VisitGetCalendarUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// PostCalendarAppointments Create an appointment
@@ -1672,6 +1795,9 @@ type StrictServerInterface interface {
 	// GetCalendarMeta The calendar's settings
 	// (GET /api/v1/calendar/meta)
 	GetCalendarMeta(ctx context.Context, request GetCalendarMetaRequestObject) (GetCalendarMetaResponseObject, error)
+	// GetCalendarUsers Search colleagues
+	// (GET /api/v1/calendar/users)
+	GetCalendarUsers(ctx context.Context, request GetCalendarUsersRequestObject) (GetCalendarUsersResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1994,6 +2120,32 @@ func (sh *strictHandler) GetCalendarMeta(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCalendarMetaResponseObject); ok {
 		if err := validResponse.VisitGetCalendarMetaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCalendarUsers operation middleware
+func (sh *strictHandler) GetCalendarUsers(w http.ResponseWriter, r *http.Request, params GetCalendarUsersParams) {
+	var request GetCalendarUsersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCalendarUsers(ctx, request.(GetCalendarUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCalendarUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCalendarUsersResponseObject); ok {
+		if err := validResponse.VisitGetCalendarUsersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
