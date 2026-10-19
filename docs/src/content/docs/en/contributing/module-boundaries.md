@@ -242,7 +242,9 @@ Communications' outbox is the working example.
     Staff-managed user (`Prepare`), enables it (`Activate`), disables it
     (`Deactivate`), updates it (`Update`), reads it (`Account`) and reads the roles an
     Owner named for Staff to give (`ProvisioningRoles`); `Mode` says whether identity
-    holds the credentials (`local`) or an identity provider does (`federated`). Unlike
+    holds the credentials (`local`) or an identity provider does (`federated`), derived
+    by every process from `identity.sso_settings`, the row the Single sign-on card
+    writes, so an API process and a worker never disagree. Unlike
     rules 8–10 it is **not** a holder that runs on the caller's transaction: every
     method runs on identity's own pool, in identity's own transactions, and mails after
     its own commit. So the rule every locked transaction keeps is strict here — **a
@@ -275,15 +277,15 @@ Communications' outbox is the working example.
     only a user it created, never one it found.
     A directory-deactivated non-Owner reads `disabled` by `directory`
     (`contracts.DisabledByDirectory`) while SCIM is configured; the writes still act
-    on identity's record of such a user, and `Deactivate` — which alone reads no
-    authority mode, so it never answers `ErrModeMismatch` — disables a leaver
-    whatever the directory says. Each refusal is a
+    on identity's record of such a user, and `Deactivate` — which reads no
+    authority mode — disables a leaver whatever the directory says. Each refusal is a
     sentinel error (`ErrAccountNotManaged`, `ErrAccountPrivileged`,
     `ErrBlockedByOwner`, `ErrAccountEmailTaken`, `ErrEmployeeNumberTaken`,
     `ErrInvalidActor`, `ErrEmployeeRoleMissing`, `ErrEmployeeRoleUnsafe` (a role in
     the set has come to carry an administrative key), `ErrAccountNotFound`,
-    `ErrUserGone`, `ErrModeMismatch`, `ErrLastOwner`); anything else is a failure to
-    retry. The provider is stateless — api mode with `WORKERS_IN_PROCESS` builds it
+    `ErrUserGone`, `ErrLastOwner`; `ErrModeMismatch` is declared but answered by
+    nobody since the settings moved into the database, and goes next release);
+    anything else is a failure to retry. The provider is stateless — api mode with `WORKERS_IN_PROCESS` builds it
     twice, once for Compose and once for Workers, and identity's tests pin that two
     instances answer the same and that `module.Workers` hands a worker identity's own
     provider. With no provider `Deps.Accounts` is nil, which a
