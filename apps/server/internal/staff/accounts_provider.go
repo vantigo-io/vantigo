@@ -35,6 +35,12 @@ const (
 	reasonExternalSyncedOnPremises = "external_synced_on_premises"
 	reasonExternalPrivileged       = "external_privileged"
 	reasonExternalEnabled          = "external_enabled"
+	// reasonExternalUnconfirmed: the directory holds an account under the
+	// person's employee number the provider did not create, and nobody with
+	// the provider's permission has confirmed its adoption; the provider
+	// writes nothing to it until one does. The link is blocked and claimed
+	// again on its schedule, a confirmation picked up then (or by Run now).
+	reasonExternalUnconfirmed = "external_unconfirmed"
 )
 
 // codeManagerNotInEntra is the code Staff itself records on a provider link's

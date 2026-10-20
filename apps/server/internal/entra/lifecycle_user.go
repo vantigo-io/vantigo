@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/entra/store"
 )
 
@@ -432,11 +433,15 @@ func trusted(row store.EntraAccount) bool {
 // adoptionJudges is the code an unconfirmed adoption's answer judges.
 func adoptionJudges(c string) bool { return c == reportedAdoptionUnconfirmed }
 
-// unconfirmed answers u, an adopted user nobody has confirmed, as the tenant
-// has it: nothing written there, adoption_unconfirmed reported on the row,
-// and the write's event with codes and the code. A leaver's safety does not
-// reach a user the module never owned: Deactivate answers it so too.
-func (p *provisioner) unconfirmed(ctx context.Context, s session, actor contracts.Actor, action string, id uuid.UUID, u graphUser, row store.EntraAccount, codes ...string) (contracts.ExternalAccount, error) {
+// unconfirmed refuses a write to u, an adopted user nobody has confirmed
+// (plan reading 8), with contracts.ErrExternalUnconfirmed: nothing written
+// to the tenant; the row keeps the state Graph answers and
+// adoption_unconfirmed among its codes, for the Status card, its last error
+// as it was; the write's event carries codes and
+// refused:adoption_unconfirmed. A leaver's safety does not reach a user the
+// module never owned: Deactivate and Delete are refused so too, and the
+// caller, told so, keeps trying until the adoption is confirmed.
+func (p *provisioner) unconfirmed(ctx context.Context, s session, actor contracts.Actor, action string, id uuid.UUID, u graphUser, row store.EntraAccount, codes ...string) error {
 	state := stateDisabled
 	if u.AccountEnabled {
 		state = stateEnabled
@@ -445,20 +450,22 @@ func (p *provisioner) unconfirmed(ctx context.Context, s session, actor contract
 		state = stateDeleted
 	}
 	reported := mergeCodes(row.Reported, adoptionJudges, []string{reportedAdoptionUnconfirmed})
-	row, err := p.settle(ctx, s, actor, action, id, u.UserPrincipalName, state, reported, append(codes, reportedAdoptionUnconfirmed))
+	now := p.client.now()
+	err := db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		_, err := q.SetAccountState(ctx, store.SetAccountStateParams{
+			State: state, Reported: orEmpty(reported), LastError: row.LastError, Now: now, ObjectID: id,
+		})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			// No row: a user the module keeps none for, the event alone.
+			return fmt.Errorf("entra: record the account: %w", err)
+		}
+		return recordEvent(ctx, q, now, actor, action, &id, u.UserPrincipalName, append(codes, "refused:"+reportedAdoptionUnconfirmed))
+	})
 	if err != nil {
-		return contracts.ExternalAccount{}, err
+		return err
 	}
-	return account(u, &row, p.client.now()), nil
-}
-
-// adoptionRefusal is Delete's answer for an unconfirmed adoption: the
-// contract's Delete answers no account to carry the code, so it is a
-// refusal — ErrExternalEnabled, the sentinel that leaves Staff's link as it
-// was and tries again the next day — with adoption_unconfirmed reported on
-// the row.
-func adoptionRefusal() *refusedError {
-	return &refusedError{code: reportedAdoptionUnconfirmed, report: true, sentinel: contracts.ErrExternalEnabled}
+	return contracts.ErrExternalUnconfirmed
 }
 
 // codeSuffix is what may follow a code's colon (Staff's bound).

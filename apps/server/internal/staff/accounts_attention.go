@@ -83,6 +83,7 @@ var accountReasonItems = map[string]gen.StaffStatsAttentionItemType{
 	reasonExternalAddressTaken:     gen.AccountAddressTakenInEntra,
 	reasonExternalSyncedOnPremises: gen.AccountSyncedOnPremises,
 	reasonExternalPrivileged:       gen.AccountPrivilegedInEntra,
+	reasonExternalUnconfirmed:      gen.AccountUnconfirmedInEntra,
 	reasonExternalEnabled:          gen.AccountFailing,
 }
 

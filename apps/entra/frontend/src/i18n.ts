@@ -254,6 +254,8 @@ export const entraCatalog = {
     "code.pass_forbidden": "the tenant refused to issue a Temporary Access Pass to this account",
     "code.adoption_unconfirmed":
       "found in the tenant, not created: nothing is written to it until its adoption is confirmed",
+    "code.refused_adoption_unconfirmed":
+      "refused: the account was found in the tenant, not created, and its adoption is not yet confirmed",
   },
   nb: {
     entra: "Microsoft Entra ID",
@@ -508,6 +510,8 @@ export const entraCatalog = {
     "code.pass_forbidden": "leietakeren nektet å utstede et midlertidig tilgangspass til denne kontoen",
     "code.adoption_unconfirmed":
       "funnet i leietakeren, ikke opprettet: ingenting skrives til den før overtakelsen er bekreftet",
+    "code.refused_adoption_unconfirmed":
+      "avvist: kontoen ble funnet i leietakeren, ikke opprettet, og overtakelsen er ikke bekreftet ennå",
   },
 } satisfies CatalogResources;
 

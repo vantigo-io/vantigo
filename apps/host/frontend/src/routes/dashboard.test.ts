@@ -812,6 +812,16 @@ describe("the dashboard's staff account attention items", () => {
     );
   });
 
+  it("opens the Microsoft Entra ID page for an adoption nobody confirmed, and words it with the name", () => {
+    expect(attentionHref({ module: "staff", type: "accountUnconfirmedInEntra", entityId: "1042" })).toBe("/entra");
+    const key = attentionTitleKey({ module: "staff", type: "accountUnconfirmedInEntra" }) as string;
+    for (const lng of ["en", "nb"]) {
+      const sentence = i18n.t(key, { ns: "host", lng, name: "Kari Nordmann" });
+      expect(sentence, lng).not.toBe(key);
+      expect(sentence, lng).toContain("Kari Nordmann");
+    }
+  });
+
   it("opens Staff's Settings for the installation's items", () => {
     for (const type of installationTypes) {
       expect(attentionHref({ module: "staff", type, entityId: "settings" }), type).toBe("/staff/settings");

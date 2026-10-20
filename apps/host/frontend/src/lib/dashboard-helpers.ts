@@ -300,7 +300,9 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     // account item its Account tab, the sole personal-data holder's own
     // HR-only approval its Absence tab; the requests waiting a decision open
     // the Absence page's approvals; the deletion ledger, the thresholds and
-    // the accounts' installation items are dealt with in Settings.
+    // the accounts' installation items are dealt with in Settings. An
+    // adoption nobody confirmed is confirmed on the Microsoft Entra ID page.
+    if (item.type === "accountUnconfirmedInEntra") return "/entra";
     const person = `/staff/people/${encodeURIComponent(item.entityId)}`;
     if (staffPersonAttentionTypes.includes(item.type)) return person;
     if (staffAccountAttentionTypes.includes(item.type)) return `${person}?tab=account`;
@@ -384,6 +386,7 @@ const staffAttentionTitleKeys: Record<string, string> = {
   accountNotArrived: "dashboard.staffAccountNotArrived",
   accountAmbiguousInEntra: "dashboard.staffAccountAmbiguousInEntra",
   accountAddressTakenInEntra: "dashboard.staffAccountAddressTakenInEntra",
+  accountUnconfirmedInEntra: "dashboard.staffAccountUnconfirmedInEntra",
   accountSyncedOnPremises: "dashboard.staffAccountSyncedOnPremises",
   accountPrivilegedInEntra: "dashboard.staffAccountPrivilegedInEntra",
   hireDateNotWritten: "dashboard.staffHireDateNotWritten",

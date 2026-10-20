@@ -198,6 +198,42 @@ func TestFakeIdentityProvisioner_DeleteAndGone(t *testing.T) {
 	}
 }
 
+// An account SetUnconfirmed marks answers ErrExternalUnconfirmed to every
+// write, recorded, and is left as it was; cleared, its writes act again.
+func TestFakeIdentityProvisioner_AnUnconfirmedAdoptionRefusesEveryWrite(t *testing.T) {
+	ctx := context.Background()
+	f, _ := newTestProvisioner()
+	spec := contracts.ExternalSpec{EmployeeNumber: "E-1", GivenName: "Kari", FamilyName: "Nordmann"}
+	held := f.SetAccount("E-1", contracts.ExternalAccount{UserPrincipalName: "kari@fake.example", Email: "kari@fake.example", State: "enabled"})
+	f.SetUnconfirmed("e-1", true)
+	if _, err := f.Prepare(ctx, fakeWorker, spec); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+		t.Errorf("Prepare = %v, want ErrExternalUnconfirmed", err)
+	}
+	for name, call := range map[string]func() error{
+		"Activate":   func() error { _, err := f.Activate(ctx, fakeWorker, held.ExternalID, spec); return err },
+		"Deactivate": func() error { _, err := f.Deactivate(ctx, fakeWorker, held.ExternalID, spec); return err },
+		"Update":     func() error { _, err := f.Update(ctx, fakeWorker, held.ExternalID, spec); return err },
+		"Delete":     func() error { return f.Delete(ctx, fakeWorker, held.ExternalID) },
+	} {
+		if err := call(); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+			t.Errorf("%s = %v, want ErrExternalUnconfirmed", name, err)
+		}
+	}
+	if acc, _ := f.ByNumber("E-1"); acc.State != "enabled" {
+		t.Errorf("the unconfirmed account = %+v, want it left enabled", acc)
+	}
+	if _, written := f.LastSpec("E-1"); written {
+		t.Error("a spec was written to the unconfirmed account")
+	}
+	if n := len(f.Calls()); n != 5 {
+		t.Errorf("%d calls recorded, want the five refused", n)
+	}
+	f.SetUnconfirmed("E-1", false)
+	if acc, err := f.Deactivate(ctx, fakeWorker, held.ExternalID, spec); err != nil || acc.State != "disabled" {
+		t.Errorf("Deactivate once confirmed = %+v, %v; want it disabled", acc, err)
+	}
+}
+
 // Not connected, every write but Deactivate answers ErrProviderUnavailable
 // (recorded); Deactivate runs. An invalid actor is refused unrecorded; a
 // failure a test shaped is answered; reported codes travel on every answer.

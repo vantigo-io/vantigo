@@ -623,6 +623,17 @@ export const staffCatalog = {
     accountReason_external_privileged:
       "The account holds an administrative role in the directory, which an administrator handles by hand.",
     accountReason_external_enabled: "The account was not deleted: it is still enabled in the directory.",
+    accountReason_external_unconfirmed:
+      "The directory holds an account under the person's employee number that Vantigo did not create. Staff writes nothing to it until someone who manages Microsoft Entra ID confirms the adoption on the Microsoft Entra ID page.",
+    accountReason_leaver_step_failed: "A leaver step in the directory was not finished.",
+    accountReason_adoption_unconfirmed: "Vantigo did not create this account, and its adoption is not yet confirmed.",
+    accountReason_pass_forbidden:
+      "The directory refused the Temporary Access Pass; the account is enabled without one.",
+    accountReason_leaver_step_failed_step: "A leaver step in the directory was not finished: {{step}}.",
+    leaverStep_revoke_sessions: "signing the person out everywhere",
+    leaverStep_leave_date: "writing the leave date",
+    leaverStep_strip_licences: "removing the licences",
+    leaverStep_remove_groups: "removing the person from groups",
     accountReason_manager_not_in_entra:
       "The person's manager has no account in the directory, so the account carries no manager.",
     accountReason_hire_date_not_written: "The directory refused the hire date.",
@@ -2174,6 +2185,16 @@ export const staffCatalog = {
     accountReason_external_privileged:
       "Kontoen har en administratorrolle i katalogen, og en administrator tar seg av den for hånd.",
     accountReason_external_enabled: "Kontoen ble ikke slettet: den er fortsatt aktivert i katalogen.",
+    accountReason_external_unconfirmed:
+      "Katalogen har en konto under personens ansattnummer som Vantigo ikke opprettet. Ansatte skriver ingenting til den før noen som administrerer Microsoft Entra ID, bekrefter overtakelsen på siden for Microsoft Entra ID.",
+    accountReason_leaver_step_failed: "Et avslutningssteg i katalogen ble ikke fullført.",
+    accountReason_adoption_unconfirmed: "Vantigo opprettet ikke denne kontoen, og overtakelsen er ikke bekreftet ennå.",
+    accountReason_pass_forbidden: "Katalogen avviste det midlertidige tilgangspasset; kontoen er aktivert uten et.",
+    accountReason_leaver_step_failed_step: "Et avslutningssteg i katalogen ble ikke fullført: {{step}}.",
+    leaverStep_revoke_sessions: "å logge personen ut overalt",
+    leaverStep_leave_date: "å skrive sluttdatoen",
+    leaverStep_strip_licences: "å fjerne lisensene",
+    leaverStep_remove_groups: "å fjerne personen fra grupper",
     accountReason_manager_not_in_entra: "Personens leder har ingen konto i katalogen, så kontoen har ingen leder.",
     accountReason_hire_date_not_written: "Katalogen avviste ansettelsesdatoen.",
     accountReason_licence_unavailable: "En lisens fra personens grupper kunne ikke tildeles: det er ingen igjen.",

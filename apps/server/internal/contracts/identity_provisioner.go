@@ -38,23 +38,30 @@ type IdentityProvisioner interface {
 	// existing account is updated to the spec and answered.
 	// ErrExternalAmbiguous (two accounts hold the number),
 	// ErrExternalAddressTaken (the address is another account's),
-	// ErrExternalSyncedOnPremises, ErrExternalPrivileged, ErrProviderUnavailable.
+	// ErrExternalSyncedOnPremises, ErrExternalPrivileged,
+	// ErrExternalUnconfirmed (an account the provider did not create holds
+	// the number: linked, nothing written, until its adoption is
+	// confirmed), ErrProviderUnavailable.
 	Prepare(ctx context.Context, actor Actor, spec ExternalSpec) (ExternalAccount, error)
 	// Activate enables the account, writes the hire date, assigns the
 	// licences of the groups the person is in (spec.Licences) and, when the
 	// account had no pass yet in this activation, issues a Temporary Access
 	// Pass the provider keeps sealed (RevealPass). Idempotent.
+	// ErrExternalUnconfirmed: an adopted account not yet confirmed.
 	Activate(ctx context.Context, actor Actor, externalID string, spec ExternalSpec) (ExternalAccount, error)
 	// Deactivate disables the account, revokes its sessions, writes the
 	// leave date, strips the direct licences, and removes it from the
 	// groups the provider manages and, when the connection says so, every
 	// other group it may. Idempotent; runs whatever Provider's status says,
-	// as long as a credential works.
+	// as long as a credential works. ErrExternalUnconfirmed: an adopted
+	// account not yet confirmed, left as it is.
 	Deactivate(ctx context.Context, actor Actor, externalID string, spec ExternalSpec) (ExternalAccount, error)
 	// Update writes the mapped attributes and the manager (the mover).
+	// ErrExternalUnconfirmed: an adopted account not yet confirmed.
 	Update(ctx context.Context, actor Actor, externalID string, spec ExternalSpec) (ExternalAccount, error)
 	// Delete soft-deletes the account (restorable by an administrator for
-	// thirty days). ErrExternalEnabled when it is not disabled.
+	// thirty days). ErrExternalEnabled when it is not disabled;
+	// ErrExternalUnconfirmed for an adopted account not yet confirmed.
 	Delete(ctx context.Context, actor Actor, externalID string) error
 	// Account reads the account, or (nil, nil) when the directory has none.
 	Account(ctx context.Context, externalID string) (*ExternalAccount, error)
@@ -229,6 +236,13 @@ var (
 	// ErrExternalPrivileged: the account holds an administrative role in
 	// the directory, which the provider does not write to.
 	ErrExternalPrivileged = errors.New("contracts: the external account is privileged")
+	// ErrExternalUnconfirmed: the provider found an account it did not
+	// create holding the employee number, and adopted it untrusted: a holder
+	// of the provider's permission must confirm the adoption before the
+	// provider writes to it. Prepare links the account and answers this all
+	// the same; every write to it answers this, nothing written, until the
+	// confirmation.
+	ErrExternalUnconfirmed = errors.New("contracts: the external account was adopted and is not yet confirmed")
 	// ErrExternalEnabled: Delete was asked of an account that is not
 	// disabled.
 	ErrExternalEnabled = errors.New("contracts: the external account is enabled")

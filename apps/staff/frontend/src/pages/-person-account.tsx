@@ -73,6 +73,12 @@ const reasonWords = (t: Translate, code: string, provider = false) => {
         ? `accountReason_${bare}`
         : undefined;
   if (!key) return t("accountReasonUnknown", { code });
+  // A leaver's step that failed names the step in words, or by its code
+  // when a later server names one this catalogue does not know.
+  if (bare === "leaver_step_failed" && detail)
+    return t("accountReason_leaver_step_failed_step", {
+      step: `leaverStep_${detail}` in staffCatalog.en ? t(`leaverStep_${detail}`) : detail,
+    });
   return detail ? `${t(key)} (${detail})` : t(key);
 };
 

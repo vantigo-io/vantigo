@@ -40,7 +40,7 @@ const (
 // Temporary Access Pass over a working account would be a way into it. A
 // 403 on the pass alone is reported pass_forbidden, the user enabled all the
 // same. Idempotent: an enabled user with nothing missing is answered as it
-// is. An unconfirmed adoption is answered as it is, nothing written.
+// is. An unconfirmed adoption is ErrExternalUnconfirmed, nothing written.
 func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
 	if !actor.Valid() {
 		return contracts.ExternalAccount{}, contracts.ErrInvalidActor
@@ -56,7 +56,7 @@ func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, exter
 		return refuse(syncedRefusal())
 	}
 	if !trusted(row) {
-		return p.unconfirmed(ctx, s, actor, actionUserActivated, id, u, row)
+		return contracts.ExternalAccount{}, p.unconfirmed(ctx, s, actor, actionUserActivated, id, u, row)
 	}
 	wasEnabled := u.AccountEnabled
 	var reported, codes []string

@@ -88,6 +88,8 @@ const en = {
   "dashboard.staffAccountNotArrived": "{{name}}'s account was announced 90 days ago and has not arrived",
   "dashboard.staffAccountAmbiguousInEntra": "Two accounts in Microsoft Entra ID hold {{name}}'s employee number",
   "dashboard.staffAccountAddressTakenInEntra": "{{name}}'s work email is another account's in Microsoft Entra ID",
+  "dashboard.staffAccountUnconfirmedInEntra":
+    "Microsoft Entra ID holds an account under {{name}}'s employee number that Vantigo did not create; confirm it on the Microsoft Entra ID page",
   "dashboard.staffAccountSyncedOnPremises":
     "{{name}}'s account is synchronised from an on-premises directory, which Staff cannot write",
   "dashboard.staffAccountPrivilegedInEntra":
@@ -303,6 +305,8 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.staffAccountAmbiguousInEntra": "To kontoer i Microsoft Entra ID har ansattnummeret til {{name}}",
   "dashboard.staffAccountAddressTakenInEntra":
     "Jobb-e-posten til {{name}} tilhører en annen konto i Microsoft Entra ID",
+  "dashboard.staffAccountUnconfirmedInEntra":
+    "Microsoft Entra ID har en konto under ansattnummeret til {{name}} som Vantigo ikke opprettet; bekreft den på siden for Microsoft Entra ID",
   "dashboard.staffAccountSyncedOnPremises":
     "Kontoen til {{name}} synkroniseres fra en lokal katalog, som Ansatte ikke kan skrive til",
   "dashboard.staffAccountPrivilegedInEntra":

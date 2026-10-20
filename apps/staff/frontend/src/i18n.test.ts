@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import staffYaml from "../../../../openapi/staff.yaml?raw";
 import identityProvisionerGo from "../../../server/internal/contracts/identity_provisioner.go?raw";
+import entraDeactivateGo from "../../../server/internal/entra/lifecycle_deactivate.go?raw";
+import entraUserGo from "../../../server/internal/entra/lifecycle_user.go?raw";
 import accountFlagGo from "../../../server/internal/staff/account_flag.go?raw";
 import accountsDecideGo from "../../../server/internal/staff/accounts_decide.go?raw";
 import accountsProviderGo from "../../../server/internal/staff/accounts_provider.go?raw";
@@ -161,6 +163,20 @@ describe("the staff catalog", () => {
         expect((catalog as Record<string, string>)[`accountKind_${kind}`], `${language} ${kind}`).toBeDefined();
       for (const kind of ["local", "external", "entra"])
         expect((catalog as Record<string, string>)[`accountKindChoice_${kind}`], `${language} ${kind}`).toBeDefined();
+    }
+  });
+
+  it("words every code Microsoft Entra ID reports beside the contract's, and each leaver step, in both languages", () => {
+    const reported = [...entraUserGo.matchAll(/^\s*reported\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]);
+    expect(reported.sort()).toEqual(["adoption_unconfirmed", "leaver_step_failed", "pass_forbidden"]);
+    const steps = [...entraDeactivateGo.matchAll(/^\s*step\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]);
+    expect(steps.sort()).toEqual(["leave_date", "remove_groups", "revoke_sessions", "strip_licences"]);
+    for (const [language, catalog] of Object.entries(staffCatalog)) {
+      const words = catalog as Record<string, string>;
+      for (const code of reported)
+        expect(words[`accountReason_${code}`], `${language} accountReason_${code}`).toBeDefined();
+      expect(words.accountReason_leaver_step_failed_step, `${language} the named step`).toContain("{{step}}");
+      for (const step of steps) expect(words[`leaverStep_${step}`], `${language} leaverStep_${step}`).toBeDefined();
     }
   });
 

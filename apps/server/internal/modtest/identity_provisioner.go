@@ -33,6 +33,8 @@ import (
 // creates it disabled; Activate enables it and issues a pass; Deactivate
 // disables it and clears the pass; Update records the spec; Delete refuses
 // an enabled account and marks it deleted; RevealPass answers a pass once.
+// An account SetUnconfirmed marks is an adoption nobody confirmed: every
+// write to it answers ErrExternalUnconfirmed and changes nothing.
 // A write names a valid actor (contracts.ErrInvalidActor otherwise), and
 // while the status is not connected every write but Deactivate answers
 // ErrProviderUnavailable — Deactivate runs whatever the status says, as the
@@ -64,9 +66,10 @@ type ProvisionerCall struct {
 
 // fakeExternalAccount is one account of the fake's directory.
 type fakeExternalAccount struct {
-	account contracts.ExternalAccount
-	spec    *contracts.ExternalSpec // the spec last written, nil before any
-	pass    *fakePass
+	account     contracts.ExternalAccount
+	spec        *contracts.ExternalSpec // the spec last written, nil before any
+	pass        *fakePass
+	unconfirmed bool // SetUnconfirmed: its writes answer ErrExternalUnconfirmed
 }
 
 // fakePass is an issued pass: its value, when it expires, and whether it was
@@ -146,6 +149,18 @@ func (f *FakeIdentityProvisioner) ReportWith(number string, codes ...string) {
 	defer f.mu.Unlock()
 	for _, a := range f.accounts[contracts.NormalizeEmployeeNumber(number)] {
 		a.account.Reported = slices.Clone(codes)
+	}
+}
+
+// SetUnconfirmed marks every account holding number as an adoption nobody
+// has confirmed — Prepare, Activate, Deactivate, Update and Delete answer
+// ErrExternalUnconfirmed for it, recorded, and change nothing — or, with
+// unconfirmed false, as confirmed: its writes act again.
+func (f *FakeIdentityProvisioner) SetUnconfirmed(number string, unconfirmed bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, a := range f.accounts[contracts.NormalizeEmployeeNumber(number)] {
+		a.unconfirmed = unconfirmed
 	}
 }
 
@@ -246,6 +261,8 @@ func (f *FakeIdentityProvisioner) Prepare(_ context.Context, actor contracts.Act
 	switch {
 	case len(held) > 1:
 		return contracts.ExternalAccount{}, contracts.ErrExternalAmbiguous
+	case len(held) == 1 && held[0].unconfirmed:
+		return contracts.ExternalAccount{}, contracts.ErrExternalUnconfirmed
 	case len(held) == 1:
 		if f.addressTaken(spec.WorkEmail, held[0]) {
 			return contracts.ExternalAccount{}, contracts.ErrExternalAddressTaken
@@ -282,8 +299,11 @@ func (f *FakeIdentityProvisioner) Activate(_ context.Context, actor contracts.Ac
 		return contracts.ExternalAccount{}, err
 	}
 	held := f.byID(externalID)
-	if held == nil {
+	switch {
+	case held == nil:
 		return contracts.ExternalAccount{}, errFakeNoSuchAccount
+	case held.unconfirmed:
+		return contracts.ExternalAccount{}, contracts.ErrExternalUnconfirmed
 	}
 	wasEnabled := held.account.State == "enabled"
 	held.account.State = "enabled"
@@ -303,8 +323,11 @@ func (f *FakeIdentityProvisioner) Deactivate(_ context.Context, actor contracts.
 		return contracts.ExternalAccount{}, err
 	}
 	held := f.byID(externalID)
-	if held == nil {
+	switch {
+	case held == nil:
 		return contracts.ExternalAccount{}, errFakeNoSuchAccount
+	case held.unconfirmed:
+		return contracts.ExternalAccount{}, contracts.ErrExternalUnconfirmed
 	}
 	if held.account.State != "deleted" {
 		held.account.State = "disabled"
@@ -322,8 +345,11 @@ func (f *FakeIdentityProvisioner) Update(_ context.Context, actor contracts.Acto
 		return contracts.ExternalAccount{}, err
 	}
 	held := f.byID(externalID)
-	if held == nil {
+	switch {
+	case held == nil:
 		return contracts.ExternalAccount{}, errFakeNoSuchAccount
+	case held.unconfirmed:
+		return contracts.ExternalAccount{}, contracts.ErrExternalUnconfirmed
 	}
 	held.write(spec)
 	return f.answer(held), nil
@@ -341,6 +367,8 @@ func (f *FakeIdentityProvisioner) Delete(_ context.Context, actor contracts.Acto
 	switch {
 	case held == nil:
 		return errFakeNoSuchAccount
+	case held.unconfirmed:
+		return contracts.ErrExternalUnconfirmed
 	case held.account.State == "enabled":
 		return contracts.ErrExternalEnabled
 	}

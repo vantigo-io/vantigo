@@ -752,6 +752,16 @@ describe("Person page — the two links", () => {
       /administrative role in the directory, which/,
     ],
     ["external_enabled", { state: "disabled", reason: "external_enabled" }, /still enabled in the directory/],
+    [
+      "external_unconfirmed",
+      { state: "blocked", reason: "external_unconfirmed" },
+      /Vantigo did not create\. Staff writes nothing to it until/,
+    ],
+    [
+      "leaver_step_failed",
+      { state: "disabled", reportedCodes: ["leaver_step_failed:revoke_sessions"] },
+      /A leaver step in the directory was not finished: signing the person out everywhere\./,
+    ],
     ["user_gone", { state: "failed", reason: "user_gone" }, /The account is gone from the directory/],
     ["hire_date_not_written", { reportedCodes: ["hire_date_not_written"] }, /refused the hire date/],
     ["licence_unavailable", { reportedCodes: ["licence_unavailable:SPE_E3"] }, /none is left\. \(SPE_E3\)/],

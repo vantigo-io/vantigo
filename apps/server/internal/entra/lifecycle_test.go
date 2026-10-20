@@ -383,10 +383,12 @@ func TestPrepare_AWorkEmailHeldByAnotherIsAddressTaken(t *testing.T) {
 }
 
 // TestPrepare_AFoundUserIsAdoptedUntrustedUntilConfirmed is plan reading 8
-// (review M1): a user Prepare finds by employee id is linked and reported
-// adoption_unconfirmed, and nothing is written to it — no spec, no enable,
+// (review M1): a user Prepare finds by employee id is linked, reported
+// adoption_unconfirmed on its row and answered ErrExternalUnconfirmed, and
+// every write to it — Prepare, Activate, Update, Deactivate, Delete —
+// answers ErrExternalUnconfirmed and writes nothing — no spec, no enable,
 // no pass, no disable, no delete — until entra:manage confirms it; the
-// next Prepare then brings it to the spec.
+// next Prepare then brings it to the spec and answers it.
 func TestPrepare_AFoundUserIsAdoptedUntrustedUntilConfirmed(t *testing.T) {
 	t.Parallel()
 	l := newLifecycle(t)
@@ -398,32 +400,45 @@ func TestPrepare_AFoundUserIsAdoptedUntrustedUntilConfirmed(t *testing.T) {
 	mark := len(l.g.Calls())
 	spec := joiner("E-4")
 	spec.Fields = map[string]string{"jobTitle": "Konsulent"}
-	acc := l.prepare(t, spec)
-	if acc.Created || acc.ExternalID != seeded.ID || acc.State != "disabled" || acc.UserPrincipalName != "kari@nordlys.no" ||
-		acc.Email != "kari.n@nordlys.no" || !hasCode(acc.Reported, "adoption_unconfirmed") {
-		t.Errorf("the found user: %+v, want it linked and adoption_unconfirmed reported", acc)
+	if acc, err := l.p.Prepare(ctx, staffActor, spec); !errors.Is(err, contracts.ErrExternalUnconfirmed) || acc.ExternalID != "" {
+		t.Errorf("Prepare of the found user: %+v %v, want ErrExternalUnconfirmed and no account", acc, err)
 	}
 	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND NOT created_by_us AND state = 'disabled'
-	    AND adoption_confirmed_at IS NULL AND 'adoption_unconfirmed' = ANY(reported)`, seeded.ID); n != 1 {
-		t.Errorf("the found user's row: %d rows match", n)
+	    AND adoption_confirmed_at IS NULL AND 'adoption_unconfirmed' = ANY(reported) AND last_error IS NULL`, seeded.ID); n != 1 {
+		t.Errorf("the found user's row: %d rows match, want it linked and adoption_unconfirmed reported", n)
+	}
+	if _, err := l.p.Prepare(ctx, staffActor, spec); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+		t.Errorf("Prepare again: %v, want ErrExternalUnconfirmed", err)
 	}
 
-	// Every write answers the user as it is and writes nothing to it.
-	if acc := l.activate(t, seeded.ID, spec); acc.State != "disabled" || acc.HasPass || !hasCode(acc.Reported, "adoption_unconfirmed") {
-		t.Errorf("Activate of an unconfirmed adoption: %+v", acc)
+	// Every write refuses the user and writes nothing to it.
+	if _, err := l.p.Activate(ctx, staffActor, seeded.ID, spec); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+		t.Errorf("Activate of an unconfirmed adoption: %v, want ErrExternalUnconfirmed", err)
 	}
 	fresh := spec
 	fresh.Flags.Fresh = true
-	l.activate(t, seeded.ID, fresh)
-	if acc, err := l.p.Update(ctx, staffActor, seeded.ID, spec); err != nil || !hasCode(acc.Reported, "adoption_unconfirmed") {
-		t.Errorf("Update of an unconfirmed adoption: %+v %v", acc, err)
+	if _, err := l.p.Activate(ctx, staffActor, seeded.ID, fresh); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+		t.Errorf("Activate with a fresh pass of an unconfirmed adoption: %v, want ErrExternalUnconfirmed", err)
 	}
-	if err := l.p.Delete(ctx, staffActor, seeded.ID); !errors.Is(err, contracts.ErrExternalEnabled) {
-		t.Errorf("Delete of an unconfirmed adoption: %v, want the refusal", err)
+	if _, err := l.p.Update(ctx, staffActor, seeded.ID, spec); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+		t.Errorf("Update of an unconfirmed adoption: %v, want ErrExternalUnconfirmed", err)
+	}
+	if err := l.p.Delete(ctx, staffActor, seeded.ID); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+		t.Errorf("Delete of an unconfirmed adoption: %v, want ErrExternalUnconfirmed", err)
 	}
 	l.g.EditUser(seeded.ID, func(u *graphtest.User) { u.AccountEnabled = true })
-	if acc := l.deactivate(t, seeded.ID, leaver(spec)); acc.State != "enabled" || !hasCode(acc.Reported, "adoption_unconfirmed") {
-		t.Errorf("Deactivate of an unconfirmed adoption: %+v, want it answered enabled, untouched", acc)
+	if _, err := l.p.Deactivate(ctx, staffActor, seeded.ID, leaver(spec)); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+		t.Errorf("Deactivate of an unconfirmed adoption: %v, want ErrExternalUnconfirmed", err)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND state = 'enabled'
+	    AND 'adoption_unconfirmed' = ANY(reported)`, seeded.ID); n != 1 {
+		t.Error("the refused Deactivate did not keep the row enabled and adoption_unconfirmed")
+	}
+	for _, action := range []string{"entra.user.prepared", "entra.user.activated", "entra.user.updated", "entra.user.deactivated", "entra.user.deleted"} {
+		if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = $1 AND object_id = $2
+		    AND 'refused:adoption_unconfirmed' = ANY(codes)`, action, seeded.ID); n == 0 {
+			t.Errorf("no %s event refused:adoption_unconfirmed", action)
+		}
 	}
 	if w := writes(l.graphCalls(mark)); len(w) != 0 {
 		t.Errorf("writes to an unconfirmed adoption: %v", w)
@@ -446,7 +461,7 @@ func TestPrepare_AFoundUserIsAdoptedUntrustedUntilConfirmed(t *testing.T) {
 		t.Fatalf("confirm: %d %s", r.Status, r.Body)
 	}
 	l.g.EditUser(seeded.ID, func(u *graphtest.User) { u.AccountEnabled = false })
-	acc = l.prepare(t, spec)
+	acc := l.prepare(t, spec)
 	if acc.ExternalID != seeded.ID || hasCode(acc.Reported, "adoption_unconfirmed") {
 		t.Errorf("Prepare after the confirmation: %+v", acc)
 	}
@@ -474,7 +489,9 @@ func TestConfirm_TheAdoptionOnce(t *testing.T) {
 	l := newLifecycle(t)
 	seeded := l.g.AddUser(graphtest.User{DisplayName: "Ola", MailNickname: "ola", UserPrincipalName: "ola@nordlys.no", EmployeeID: "E-5"})
 	spec := joiner("E-5")
-	l.prepare(t, spec)
+	if _, err := l.p.Prepare(context.Background(), staffActor, spec); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+		t.Fatalf("Prepare of the found user: %v, want ErrExternalUnconfirmed", err)
+	}
 	created := l.prepare(t, joiner("E-6")).ExternalID
 
 	nobody := l.h.SignIn(t, "staff:manage")
@@ -523,9 +540,13 @@ func TestPrepare_TheFilterEscapesTheEmployeeNumber(t *testing.T) {
 	mark := len(l.g.Calls())
 	spec := joiner("O'B-1")
 	spec.Fields = nil
-	acc := l.prepare(t, spec)
-	if acc.ExternalID != seeded.ID || acc.Created {
-		t.Errorf("O'B-1: %+v, want the seeded user found", acc)
+	// The found user is adopted untrusted: linked, and answered
+	// ErrExternalUnconfirmed.
+	if _, err := l.p.Prepare(context.Background(), staffActor, spec); !errors.Is(err, contracts.ErrExternalUnconfirmed) {
+		t.Errorf("O'B-1: %v, want the seeded user found (ErrExternalUnconfirmed)", err)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND employee_number = 'O''B-1'`, seeded.ID); n != 1 {
+		t.Errorf("O'B-1: %d rows link the seeded user, want one", n)
 	}
 	var filters []string
 	for _, c := range l.graphCalls(mark) {

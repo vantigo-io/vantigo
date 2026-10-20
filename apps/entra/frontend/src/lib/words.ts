@@ -59,8 +59,13 @@ export const reasonText = (reason: string, t: Translate): string =>
 export const actionText = (action: string, t: Translate): string =>
   known(`action.${action}`) ? t(`action.${action}`) : action;
 
-/** A reported code in words; `licence_unavailable:ENTERPRISEPACK` names the part number. */
+/**
+ * A reported code in words; `licence_unavailable:ENTERPRISEPACK` names the
+ * part number, and an event's refusal (`refused:adoption_unconfirmed`) is
+ * worded when the catalogue has it.
+ */
 export const codeText = (code: string, t: Translate): string => {
   const [name, ...rest] = code.split(":");
+  if (name === "refused" && known(`code.refused_${rest.join(":")}`)) return t(`code.refused_${rest.join(":")}`);
   return known(`code.${name}`) ? t(`code.${name}`, { detail: rest.join(":") }) : code;
 };
