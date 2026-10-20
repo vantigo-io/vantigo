@@ -144,6 +144,23 @@ describe("My page — my own record", () => {
   });
 });
 
+describe("My page — your groups", () => {
+  it("names the groups I am in, by name alone", async () => {
+    const fetchMock = stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me");
+    const groups = await region("Your groups");
+    expect(await within(groups).findByText("Engineering")).toBeInTheDocument();
+    expect(within(groups).getByText("Engineering department")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([url]) => String(url).endsWith("/staff/me/groups"))).toBe(true);
+  });
+
+  it("says I am in no group when I am in none", async () => {
+    stubStaffApi({ role: "access", me: 101, myGroups: [] });
+    renderRoute("/staff/me");
+    expect(await within(await region("Your groups")).findByText("You are not in any group.")).toBeInTheDocument();
+  });
+});
+
 describe("My page — my documents and my data", () => {
   it("shows a placeholder while my documents are on their way", async () => {
     stubStaffApi({

@@ -81,7 +81,7 @@ export const StatusCard = ({ connection, owner }: { connection: EntraConnection;
           {reasonText(connection.statusReason, t)}
         </Alert>
       )}
-      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+      <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
         <Fact label={t("organisation")} value={connection.organisationName ?? t("notReadYet")} />
         <Fact
           label={t("lastChecked")}
@@ -96,6 +96,7 @@ export const StatusCard = ({ connection, owner }: { connection: EntraConnection;
             deleted: connection.accounts.deleted,
           })}
         />
+        <Fact label={t("groups")} value={t("groupsCount", { count: connection.groups.count })} />
       </SimpleGrid>
 
       <Subheading>{t("permissions")}</Subheading>

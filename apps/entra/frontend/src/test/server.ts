@@ -4,6 +4,7 @@ import type {
   EntraConnectionTest,
   EntraCredential,
   EntraEvent,
+  EntraGroup,
   EntraSettings,
   EntraSku,
 } from "../api/connection";
@@ -78,6 +79,8 @@ export interface EntraServer {
   skus?: EntraSku[] | Response;
   events?: EntraEvent[];
   accounts?: EntraAccount[];
+  /** What `GET /groups` answers: the module's groups, deleted ones included. None by default. */
+  groups?: EntraGroup[];
   /** Answers a request instead of the fake's own; undefined falls through to it. */
   handle?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -119,6 +122,7 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
     if (method === "GET" && path === "/api/v1/entra/connection") return jsonResponse(200, c);
     if (method === "GET" && path.startsWith("/api/v1/entra/events")) return jsonResponse(200, server.events ?? []);
     if (method === "GET" && path === "/api/v1/entra/accounts") return jsonResponse(200, state.accounts);
+    if (method === "GET" && path === "/api/v1/entra/groups") return jsonResponse(200, server.groups ?? []);
     const confirm = method === "POST" && path.match(/^\/api\/v1\/entra\/accounts\/([^/]+)\/confirm$/);
     if (confirm) {
       const target = state.accounts.find((one) => one.objectId === confirm[1]);
@@ -230,3 +234,19 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
   stub.state = state;
   return stub;
 };
+
+/** One group the module keeps, a security group it made, present, its members reconciled. */
+export const entraGroup = (overrides: Partial<EntraGroup> = {}): EntraGroup => ({
+  objectId: "33333333-3333-4333-8333-333333333333",
+  groupId: "1001",
+  key: "engineering",
+  displayName: "Engineering",
+  mailNickname: "engineering",
+  type: "security",
+  team: false,
+  state: "present",
+  createdByUs: true,
+  lastMembersAt: "2026-10-20T06:00:00Z",
+  createdAt: "2026-10-19T08:00:00Z",
+  ...overrides,
+});

@@ -121,6 +121,7 @@ const staffNavPresentation: Record<StaffNavItem["key"], Pick<NavItem, "label" | 
   myPage: { label: "navigation.staffMyPage", icon: IconId },
   people: { label: "navigation.staffPeople", icon: IconUsersGroup },
   absence: { label: "navigation.staffAbsence", icon: IconCalendarEvent },
+  groups: { label: "navigation.staffGroups", icon: IconUsers },
   settings: { label: "navigation.staffSettings", icon: IconAdjustments },
 };
 

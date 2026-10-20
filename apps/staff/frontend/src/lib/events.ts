@@ -67,6 +67,11 @@ export const eventKinds = [
   "account_external_failed",
   "work_email_set_by_provider",
   "pass_revealed",
+  // A group joined or left (Entra delivery D, `groups_members.go`): HR's
+  // write of a listed group's members, or the rule's materialisation,
+  // naming the group and how the person came in or went (groupLine).
+  "group_joined",
+  "group_left",
 ] as const;
 
 /**
@@ -273,9 +278,17 @@ const accountLines = (payload: Record<string, unknown>, f: EventFormatting): str
   return lines;
 };
 
+/** A group event's one line: the group by name, and whether HR listed the person or the rule did. */
+const groupLine = (payload: Record<string, unknown>, f: EventFormatting): string =>
+  f.t("groupEventLine", {
+    name: payload.groupName,
+    source: typeof payload.source === "string" ? coded("groupSource_", payload.source, f) : "—",
+  });
+
 /** The lines an event's payload says, one per field, in the order the payload names them. */
 export const eventLines = (payload: Record<string, unknown>, f: EventFormatting): string[] => {
   if (typeof payload.step === "string") return accountLines(payload, f);
+  if (typeof payload.groupName === "string") return [groupLine(payload, f)];
   const fields = payload.fields;
   if (!fields || typeof fields !== "object") return [];
   return Object.entries(fields as Record<string, FieldChange>).map(([field, change]) => {

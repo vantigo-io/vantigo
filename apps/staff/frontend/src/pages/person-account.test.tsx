@@ -46,6 +46,57 @@ const typeDate = async (field: HTMLElement, text: string) => {
   await userEvent.tab();
 };
 
+describe("Person page — the Account tab's Groups card", () => {
+  it("lists the groups the person is in, how each came in and since when, each opening its page for HR", async () => {
+    stubStaffApi({
+      accounts: {
+        101: account({
+          link: managed(),
+          groups: [
+            { id: 1001, name: "Engineering", key: "engineering", source: "listed", since: "2026-09-01" },
+            {
+              id: 1002,
+              name: "Engineering department",
+              key: "engineering-dept",
+              source: "derived",
+              since: "2026-10-11",
+            },
+          ],
+        }),
+      },
+    });
+    await openTab();
+    const card = await region("Groups");
+    expect(within(card).getByRole("link", { name: "Engineering" })).toHaveAttribute("href", "/staff/groups/1001");
+    const derived = within(card).getByRole("row", { name: /Engineering department/ });
+    expect(within(derived).getByText("The rule")).toBeInTheDocument();
+    expect(within(derived).getByText("Oct 11, 2026")).toBeInTheDocument();
+    expect(within(card).getByText("Listed")).toBeInTheDocument();
+  });
+
+  it("says the person is in no group when the answer lists none", async () => {
+    stubStaffApi({ accounts: { 101: account({ link: managed(), groups: [] }) } });
+    await openTab();
+    expect(within(await region("Groups")).getByText("Not in any group.")).toBeInTheDocument();
+  });
+
+  it("names the groups without a link for the person reading their own", async () => {
+    stubStaffApi({
+      role: "access",
+      me: 101,
+      accounts: {
+        101: account({
+          groups: [{ id: 1001, name: "Engineering", key: "engineering", source: "listed", since: "2026-09-01" }],
+        }),
+      },
+    });
+    renderRoute("/staff/me?tab=account");
+    const card = await region("Groups");
+    expect(within(card).getByText("Engineering")).toBeInTheDocument();
+    expect(within(card).queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
 describe("Person page — the Account tab", () => {
   it("opens from ?tab=account, the dashboard's link, for HR", async () => {
     stubStaffApi({ accounts: { 101: account({ link: managed() }) } });

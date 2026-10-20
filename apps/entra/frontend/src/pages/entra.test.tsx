@@ -9,6 +9,7 @@ import {
   connected,
   credential,
   type EntraServer,
+  entraGroup,
   stubEntraApi,
   TENANT_ID,
   unconfigured,
@@ -443,5 +444,54 @@ describe("EntraPage — for an entra:manage holder who is not an Owner", () => {
     ).toBeInTheDocument();
     expect(signIn).not.toHaveBeenCalled();
     expect(provisioning).not.toHaveBeenCalled();
+  });
+});
+
+describe("EntraPage — the Groups table", () => {
+  it("lists the module's groups under the Status card: name, type, team, state and the last members sync", async () => {
+    await openPage({
+      connection: connected({ groups: { count: 1 } }),
+      groups: [
+        entraGroup(),
+        entraGroup({
+          objectId: "44444444-4444-4444-8444-444444444444",
+          groupId: "1003",
+          key: "old-project",
+          displayName: "Old project (archived)",
+          mailNickname: "old-project",
+          type: "microsoft365",
+          team: true,
+          state: "deleted",
+          createdByUs: false,
+          lastMembersAt: undefined,
+        }),
+      ],
+    });
+    expect(within(region("Status")).getByText("1 kept")).toBeInTheDocument();
+    const table = await within(region("Groups")).findByRole("table", { name: "Groups" });
+    const made = within(table).getByRole("row", { name: /^Engineering/ });
+    expect(within(made).getByText("Security")).toBeInTheDocument();
+    expect(within(made).getByText("No")).toBeInTheDocument();
+    expect(within(made).getByText("Present")).toBeInTheDocument();
+    const old = within(table).getByRole("row", { name: /Old project \(archived\)/ });
+    expect(within(old).getByText("Microsoft 365")).toBeInTheDocument();
+    expect(within(old).getByText("Yes")).toBeInTheDocument();
+    expect(within(old).getByText("Deleted")).toBeInTheDocument();
+    expect(within(old).getByText("Found in the tenant and adopted")).toBeInTheDocument();
+    expect(within(old).getByText("Never")).toBeInTheDocument();
+    // The Groups card follows the Status card.
+    const sections = screen.getAllByRole("region").map((section) => section.getAttribute("aria-labelledby"));
+    const status = sections.indexOf(region("Status").getAttribute("aria-labelledby"));
+    expect(sections[status + 1]).toBe(region("Groups").getAttribute("aria-labelledby"));
+  });
+
+  it("says there are none yet", async () => {
+    await openPage({ connection: connected() });
+    expect(await within(region("Groups")).findByText(/No groups yet/)).toBeInTheDocument();
+  });
+
+  it("is not drawn for an unconfigured connection", async () => {
+    await openPage({ connection: unconfigured() });
+    expect(screen.queryByRole("region", { name: "Groups" })).not.toBeInTheDocument();
   });
 });

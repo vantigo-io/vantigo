@@ -13,9 +13,18 @@ export const PERSON_ROUTE_PATH = "/staff/people/$id";
 export const STAFF_SETTINGS_ROUTE_PATH = "/staff/settings";
 /** The absence calendar and the approvals inbox; the dashboard's approval items open it. */
 export const ABSENCE_ROUTE_PATH = "/staff/absence";
+/** The groups (Entra delivery D), HR's; the dashboard's `groupSyncFailed` item opens one group. */
+export const GROUPS_ROUTE_PATH = "/staff/groups";
+export const GROUP_ROUTE_PATH = "/staff/groups/$id";
 
 /** What `navigate` and `Link` take to reach one person. */
 export const personLinkOptions = (personId: number) => ({
   to: PERSON_ROUTE_PATH,
   params: { id: String(personId) },
+});
+
+/** What `navigate` and `Link` take to reach one group. */
+export const groupLinkOptions = (groupId: number) => ({
+  to: GROUP_ROUTE_PATH,
+  params: { id: String(groupId) },
 });

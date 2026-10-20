@@ -105,6 +105,8 @@ import { Route as ProjectsProjectIdInvoicingRouteImport } from './routes/project
 import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$projectId.people'
 import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$projectId.tasks'
 import { Route as ProjectsProjectIdTimeRouteImport } from './routes/projects/$projectId.time'
+import { Route as StaffGroupsIndexRouteImport } from './routes/staff/groups.index'
+import { Route as StaffGroupsIdRouteImport } from './routes/staff/groups.$id'
 import { Route as StaffPeopleIndexRouteImport } from './routes/staff/people.index'
 import { Route as StaffPeopleIdRouteImport } from './routes/staff/people.$id'
 import { Route as EnergyMeteringPointsImportIndexRouteImport } from './routes/energy/metering-points/import.index'
@@ -604,6 +606,16 @@ const ProjectsProjectIdTimeRoute = ProjectsProjectIdTimeRouteImport.update({
   path: '/time',
   getParentRoute: () => ProjectsProjectIdRoute,
 } as any)
+const StaffGroupsIndexRoute = StaffGroupsIndexRouteImport.update({
+  id: '/groups/',
+  path: '/groups/',
+  getParentRoute: () => StaffRoute,
+} as any)
+const StaffGroupsIdRoute = StaffGroupsIdRouteImport.update({
+  id: '/groups/$id',
+  path: '/groups/$id',
+  getParentRoute: () => StaffRoute,
+} as any)
 const StaffPeopleIndexRoute = StaffPeopleIndexRouteImport.update({
   id: '/people/',
   path: '/people/',
@@ -724,6 +736,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
+  '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
@@ -731,6 +744,7 @@ export interface FileRoutesByFullPath {
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
@@ -811,6 +825,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
+  '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
@@ -818,6 +833,7 @@ export interface FileRoutesByTo {
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
+  '/staff/groups': typeof StaffGroupsIndexRoute
   '/staff/people': typeof StaffPeopleIndexRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
@@ -915,6 +931,7 @@ export interface FileRoutesById {
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
+  '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
@@ -922,6 +939,7 @@ export interface FileRoutesById {
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
@@ -1020,6 +1038,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
+    | '/staff/groups/$id'
     | '/staff/people/$id'
     | '/customers/$customerId/'
     | '/customers/contacts/'
@@ -1027,6 +1046,7 @@ export interface FileRouteTypes {
     | '/energy/metering-points/'
     | '/invoices/payments/'
     | '/projects/$projectId/'
+    | '/staff/groups/'
     | '/staff/people/'
     | '/energy/metering-points/import/$importId'
     | '/invoices/payments/files/$bankFileId'
@@ -1107,6 +1127,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
+    | '/staff/groups/$id'
     | '/staff/people/$id'
     | '/customers/$customerId'
     | '/customers/contacts'
@@ -1114,6 +1135,7 @@ export interface FileRouteTypes {
     | '/energy/metering-points'
     | '/invoices/payments'
     | '/projects/$projectId'
+    | '/staff/groups'
     | '/staff/people'
     | '/energy/metering-points/import/$importId'
     | '/invoices/payments/files/$bankFileId'
@@ -1210,6 +1232,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
+    | '/staff/groups/$id'
     | '/staff/people/$id'
     | '/customers/$customerId/'
     | '/customers/contacts/'
@@ -1217,6 +1240,7 @@ export interface FileRouteTypes {
     | '/energy/metering-points/'
     | '/invoices/payments/'
     | '/projects/$projectId/'
+    | '/staff/groups/'
     | '/staff/people/'
     | '/energy/metering-points/import/$importId'
     | '/invoices/payments/files/$bankFileId'
@@ -1926,6 +1950,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdTimeRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/staff/groups/': {
+      id: '/staff/groups/'
+      path: '/groups'
+      fullPath: '/staff/groups/'
+      preLoaderRoute: typeof StaffGroupsIndexRouteImport
+      parentRoute: typeof StaffRoute
+    }
+    '/staff/groups/$id': {
+      id: '/staff/groups/$id'
+      path: '/groups/$id'
+      fullPath: '/staff/groups/$id'
+      preLoaderRoute: typeof StaffGroupsIdRouteImport
+      parentRoute: typeof StaffRoute
+    }
     '/staff/people/': {
       id: '/staff/people/'
       path: '/people'
@@ -2212,7 +2250,9 @@ interface StaffRouteChildren {
   StaffMeRoute: typeof StaffMeRoute
   StaffSettingsRoute: typeof StaffSettingsRoute
   StaffIndexRoute: typeof StaffIndexRoute
+  StaffGroupsIdRoute: typeof StaffGroupsIdRoute
   StaffPeopleIdRoute: typeof StaffPeopleIdRoute
+  StaffGroupsIndexRoute: typeof StaffGroupsIndexRoute
   StaffPeopleIndexRoute: typeof StaffPeopleIndexRoute
 }
 
@@ -2221,7 +2261,9 @@ const StaffRouteChildren: StaffRouteChildren = {
   StaffMeRoute: StaffMeRoute,
   StaffSettingsRoute: StaffSettingsRoute,
   StaffIndexRoute: StaffIndexRoute,
+  StaffGroupsIdRoute: StaffGroupsIdRoute,
   StaffPeopleIdRoute: StaffPeopleIdRoute,
+  StaffGroupsIndexRoute: StaffGroupsIndexRoute,
   StaffPeopleIndexRoute: StaffPeopleIndexRoute,
 }
 

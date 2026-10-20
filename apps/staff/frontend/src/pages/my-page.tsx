@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Modal, SimpleGrid, Stack, Tabs, Text, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, Group, Modal, SimpleGrid, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
@@ -8,6 +8,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { downloadMyData, myDocumentsQueryOptions, saveFile } from "../api/documents";
+import { myGroupsQueryOptions } from "../api/groups";
 import { meQueryOptions, myEventsQueryOptions, updateMe } from "../api/me";
 import { staffMetaQueryOptions } from "../api/meta";
 import { nextOfKinQueryOptions, type StaffNextOfKin, type StaffPerson } from "../api/people";
@@ -93,15 +94,18 @@ export const MyPage = () => {
         onChange={(next) => navigate({ search: { tab: next === "profile" ? undefined : next }, replace: true })}
       >
         <Tabs.Panel value="profile" pt="lg">
-          <PersonProfile
-            person={person}
-            canOpenPeople={meta.data.capabilities.canViewDirectory || meta.data.capabilities.canEdit}
-            privateActions={
-              <Button variant="light" leftSection={<IconPencil size={16} />} onClick={() => setEditing(true)}>
-                {t("editMyDetails")}
-              </Button>
-            }
-          />
+          <Stack gap="lg">
+            <PersonProfile
+              person={person}
+              canOpenPeople={meta.data.capabilities.canViewDirectory || meta.data.capabilities.canEdit}
+              privateActions={
+                <Button variant="light" leftSection={<IconPencil size={16} />} onClick={() => setEditing(true)}>
+                  {t("editMyDetails")}
+                </Button>
+              }
+            />
+            {current === "profile" && <MyGroups />}
+          </Stack>
         </Tabs.Panel>
         <Tabs.Panel value="employments" pt="lg">
           <PersonEmployments person={person} today={meta.data.today} structure={meta.data.structure} asSelf />
@@ -137,6 +141,36 @@ export const MyPage = () => {
       </PageTabs>
       <MyDetailsModal person={person} opened={editing} onClose={() => setEditing(false)} />
     </Stack>
+  );
+};
+
+/** The groups I am in, by name (`GET /me/groups`, Entra design D9). */
+const MyGroups = () => {
+  const { t } = useI18n("staff");
+  const groups = useQuery(myGroupsQueryOptions());
+  return (
+    <FieldGroup title={t("myGroups")} description={t("myGroupsDescription")}>
+      {groups.isError && (
+        <Text size="sm" c="red">
+          {t("failedToLoadMyGroups")}
+        </Text>
+      )}
+      {groups.isPending && <ContentSkeleton rows={1} rowHeight={28} />}
+      {groups.data?.length === 0 && (
+        <Text size="sm" c="dimmed">
+          {t("myNoGroups")}
+        </Text>
+      )}
+      {groups.data && groups.data.length > 0 && (
+        <Group gap="xs" component="ul" aria-label={t("myGroups")} style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          {groups.data.map((group) => (
+            <Badge key={group.id} component="li" variant="light" size="lg" tt="none">
+              {group.name}
+            </Badge>
+          ))}
+        </Group>
+      )}
+    </FieldGroup>
   );
 };
 

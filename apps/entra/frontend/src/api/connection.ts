@@ -16,6 +16,7 @@ export type EntraSku = Schemas["EntraSku"];
 export type EntraEvent = Schemas["EntraEvent"];
 export type EntraAccount = Schemas["EntraAccount"];
 export type EntraProblem = Schemas["EntraProblem"];
+export type EntraGroup = Schemas["EntraGroup"];
 
 /**
  * The eight application permissions the module needs (research §3.6), in the
@@ -81,4 +82,11 @@ export const accountsQueryOptions = () =>
   queryOptions({
     queryKey: [ENTRA_QUERY_KEY, "accounts"],
     queryFn: ({ signal }) => request<EntraAccount[]>(`${base}/accounts`, { signal }),
+  });
+
+/** The groups the module keeps in the tenant for Staff's groups, deleted ones included (Entra design D14). */
+export const groupsQueryOptions = () =>
+  queryOptions({
+    queryKey: [ENTRA_QUERY_KEY, "groups"],
+    queryFn: ({ signal }) => request<EntraGroup[]>(`${base}/groups`, { signal }),
   });

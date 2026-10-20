@@ -2,6 +2,8 @@ import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, isNotFound, isRedirect } from "@tanstack/react-router";
 import {
   ABSENCE_ROUTE_PATH,
+  GROUP_ROUTE_PATH,
+  GROUPS_ROUTE_PATH,
   MY_PAGE_ROUTE_PATH,
   PEOPLE_ROUTE_PATH,
   PERSON_ROUTE_PATH,
@@ -18,6 +20,7 @@ import { routeTree } from "../routeTree.gen";
 import { attentionHref } from "./dashboard";
 import { Route as StaffRoute } from "./staff";
 import { Route as StaffAbsenceRoute } from "./staff/absence";
+import { Route as StaffGroupRoute } from "./staff/groups.$id";
 import { Route as StaffIndexRoute } from "./staff/index";
 import { Route as StaffMeRoute } from "./staff/me";
 import { Route as StaffPersonRoute } from "./staff/people.$id";
@@ -79,6 +82,30 @@ describe("the staff routes", () => {
     for (const type of ["absenceAwaitingDecision", "hrOnlyAwaitingDecision"])
       expect(attentionHref({ module: "staff", type, entityId: "approvals" })).toBe(ABSENCE_ROUTE_PATH);
     expect(StaffAbsenceRoute.options.validateSearch).toBe(validateAbsenceSearch);
+  });
+
+  // The groups (Entra delivery D): the list and one group are siblings, as
+  // People and a person are, and the dashboard's groupSyncFailed item opens one.
+  it("mounts the groups and one group, the page the dashboard's group item links to", () => {
+    expect(matchedRouteIds(GROUPS_ROUTE_PATH)).toContain(GROUPS_ROUTE_PATH);
+    expect(matchedRouteIds("/staff/groups/1001")).toContain(GROUP_ROUTE_PATH);
+    expect(matchedRouteIds("/staff/groups/1001")).not.toContain(GROUPS_ROUTE_PATH);
+    expect(attentionHref({ module: "staff", type: "groupSyncFailed", entityId: "1001" })).toBe("/staff/groups/1001");
+    expect(matchedRouteIds(GROUPS_ROUTE_PATH)).toContain(STAFF_HOME_PATH);
+  });
+
+  it("refuses a group id that is not a positive whole number", () => {
+    const guard = StaffGroupRoute.options.beforeLoad as (context: { params: { id: string } }) => void;
+    expect(() => guard({ params: { id: "1001" } })).not.toThrow();
+    for (const id of ["0", "-3", "abc", "1.5", ""]) {
+      let thrown: unknown;
+      try {
+        guard({ params: { id } });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(isNotFound(thrown), `id ${JSON.stringify(id)}`).toBe(true);
+    }
   });
 
   it("sits under the staff layout, which carries the app and its module gate", () => {
