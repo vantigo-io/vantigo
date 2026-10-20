@@ -8,7 +8,8 @@ sources:
   - apps/server/internal/entra/graph.go
   - apps/server/internal/entra/credentials.go
   - apps/server/internal/entra/status.go
-  - apps/server/internal/entra/lifecycle.go
+  - apps/server/internal/entra/lifecycle_activate.go
+  - apps/server/internal/entra/lifecycle_deactivate.go
   - apps/server/internal/entra/tenant_test.go
 ---
 
@@ -28,8 +29,9 @@ guide](/en/user/entra/).
   grant admin consent to Microsoft Graph's application permissions and assign a
   directory role — a Global Administrator or a Privileged Role Administrator.
 - **An Owner** in Vantigo, signed in with a second factor while `OWNERS_REQUIRE_MFA` is
-  on. The registration, the secrets and the connection test are an Owner's alone; a
-  person with `entra:manage` sees them read-only.
+  on — without it an Owner is refused 403 like anyone else. The registration, the
+  secrets, the connection test and the last two steps are an Owner's alone; a person
+  with `entra:manage` sees them read-only.
 - **Staff on.** The module is Staff's provider and does nothing without it: `MODULES`
   refuses `entra` without `staff` at startup (`entra requires staff`).
 - **The Single sign-on card**, under Workspace administration, for the last two steps:
@@ -61,10 +63,10 @@ The module has no worker of its own: Staff's accounts worker, `staff-accounts`, 
 
 Open **Microsoft Entra ID** from the app switcher. The page is the wizard: six steps,
 each a card with the portal path, what to copy, and *Done* once Vantigo has what it
-needs; a **Status** card sits above them once the connection is tested. Work through
-them in order, the portal in another tab.
+needs (*Optional* on the last two); a **Status** card sits above them once the
+connection has been tested. Work through them in order, the portal in another tab.
 
-### 1. Register
+### 1. Register the application
 
 1. In the **Microsoft Entra admin center**, open **App registrations** › **New
    registration**.
@@ -77,18 +79,19 @@ them in order, the portal in another tab.
 One registration can serve both Vantigo's Graph connection and the sign-in (step 5);
 you may use two if you prefer.
 
-### 2. A secret
+### 2. Add a client secret
 
 1. In the registration, open **Certificates & secrets** › **Client secrets** › **New
    client secret**. Give it a description and an expiry: at most 24 months, and
    Microsoft recommends less than 12.
 2. Copy the secret's **Value** at once — not the **Secret ID**. The portal shows it only
    now.
-3. In step 2, choose **Add a secret**: a label (the description you gave it), the value,
-   and the expiry date the portal shows. Choose **Save**. Vantigo seals the value at once
-   and never shows it again.
+3. In step 2's **Add a secret** form, fill in **Description** (the description you gave
+   it, optional), **Expires** (the day the portal shows — Vantigo takes the start of
+   that day in your browser's time zone) and **Value**, and choose **Add the secret**.
+   Vantigo seals the value at once and never shows it again.
 
-### 3. Permissions and the role
+### 3. Grant the permissions and the role
 
 1. In the registration, open **API permissions** › **Add a permission** › **Microsoft
    Graph** › **Application permissions**, and add these eight — the wizard lists them to
@@ -107,28 +110,32 @@ you may use two if you prefer.
    admins** › **User Administrator** › **Add assignments**, and select the
    application by its name (its service principal, listed under enterprise
    applications). Without the role, Graph refuses to enable, disable or delete an
-   account even with the permissions — the step a half-done setup fails on at the
-   first person's first day.
-4. In step 3, choose **Test connection**. Vantigo fetches a token with the secret, reads
-   the organisation and its verified domains, and compares the token's permissions with
-   the eight.
+   account, or to issue a Temporary Access Pass, even with the permissions — the step a
+   half-done setup fails on at the first person's first day.
+4. In step 3, choose **Test connection**. Vantigo fetches a fresh token with the secret,
+   reads the organisation and its verified domains, and compares the token's
+   permissions with the eight.
 
-Verify: the test says the connection works, names the organisation, and lists no
-permission as missing. A missing one is named: add it, grant consent again, and test
-again. The test cannot see the directory role — Vantigo cannot read it without a
-further permission — so check the assignment yourself under **Roles & admins**.
+Verify: the test says *Connected to* the organisation, lists the verified domains, and
+says *Every permission the module needs is granted.*; each permission in the list is
+marked granted. A missing one is named: add it, grant consent again, and test again.
+The test cannot see the directory role — Vantigo cannot read it without a further
+permission — so check the assignment yourself under **Roles & admins**.
 
-### 4. Accounts
+### 4. Set the account rules
 
 The account rules, which a holder of `entra:manage` may set as well as an Owner:
 
 - **The domain** the user principal names are made under, chosen from the tenant's
-  verified domains (the test reads them).
+  verified domains once the test has read them (typed before that). The form asks for
+  one; were it unset, the module would use the first verified domain not ending in
+  `.onmicrosoft.com`.
 - **The pattern** for a person whose work email cannot be their user principal name —
   `given.family`, `g.family` or `given`. A work email on a verified domain is used as it
   is.
-- **The usage location**, the country written when Staff has none for the person (`NO`
-  unless changed). Microsoft refuses a licence to a user without one.
+- **The usage location**, the country written when Staff has no work country for the
+  person, or one that is not a two-letter country code (`NO` unless changed). Microsoft
+  refuses a licence to a user without one.
 - **The leaver's steps** — revoke the sessions, write the leave date, remove the
   licences, and which groups to leave — and whether to write the hire date; each is on
   unless you turn it off ([what they do](#what-a-leavers-steps-do)).
@@ -137,7 +144,9 @@ The account rules, which a holder of `entra:manage` may set as well as an Owner:
   person's Account tab in Staff; the hand-over setting is stored for a later release
   and does not yet send the manager anything.
 
-Choose **Save**.
+Choose **Save the account rules**. Once the connection is connected, the card also
+lists **The tenant's licences**, each with its seats assigned and bought — the part
+numbers a Staff group's licences can name.
 
 **The pass needs the tenant's policy.** Vantigo can create a pass for any user, but the
 person can sign in with it only if the tenant's **authentication methods policy**
@@ -145,13 +154,15 @@ enables it for them: in the **Microsoft Entra admin center**, open **Authenticat
 methods** › **Policies** › **Temporary Access Pass**, turn it on, and target all users
 or a group the new people are in. The policy has its own maximum lifetime (eight hours
 by default): keep the module's lifetime within it. Without the policy, Graph refuses the
-pass and the person's Account tab in Staff says *a pass not allowed*.
+pass and the person's Account tab in Staff says *The directory does not allow a
+Temporary Access Pass for this account.*
 
 ### 5. Sign-in
 
-Optional. The wizard embeds the **Single sign-on** card's provider form, filled in with
-the tenant's authority (`https://login.microsoftonline.com/<tenant id>/v2.0`) and the
-client id, for people to sign in to Vantigo with their Microsoft account:
+Optional, and an Owner's. The wizard embeds the **Single sign-on** card's provider
+form — once step 1 is saved — filled in with the tenant's authority
+(`https://login.microsoftonline.com/<tenant id>/v2.0`) and the client id when the form
+holds nothing yet, for people to sign in to Vantigo with their Microsoft account:
 
 1. In the registration, open **Authentication** › **Add a platform** › **Web**, and
    paste the **Callback URL** the form shows.
@@ -165,7 +176,8 @@ with them.
 
 ### 6. Provisioning
 
-Optional. The wizard embeds the card's SCIM block: choose **New token**, and in the
+Optional, and an Owner's. The wizard embeds the card's SCIM block: choose **New
+token**, and in the
 portal open **Enterprise applications** › your application › **Provisioning**, set
 **Provisioning Mode** to **Automatic**, paste the **Endpoint URL** as **Tenant URL** and
 the token as **Secret Token**, test, and save
@@ -177,14 +189,14 @@ Without it, a person's Vantigo user appears at their first sign-in rather than w
 Entra's provisioning cycle after the account is enabled. Either way, the user that
 arrives is adopted for Staff as the account Staff announced.
 
-The step also offers a link to Staff's settings, where **Default account kind** can be
+The step also offers **Open Staff's settings**, where **Default account kind** can be
 set to **Microsoft Entra ID** for new people ([Accounts](/en/user/staff/#accounts)). The
 module never sets it itself.
 
 ### Verify the connection
 
-- The **Status** card reads connected, with the organisation, no permission missing,
-  the secret in use and its expiry.
+- The **Status** card reads **Connected**, with the organisation, *Every permission the
+  module needs is granted.*, and the secret **In use** with its expiry.
 - Staff's settings, **Accounts**, read *Microsoft Entra ID: connected.*
 - Give one test person the **Microsoft Entra ID** kind and their account flag, and
   choose **Run now** on their Account tab: the **Microsoft Entra ID** card shows the
@@ -194,18 +206,25 @@ module never sets it itself.
 ## What a leaver's steps do
 
 The day after a person's last employment ends, Staff has the module disable the
-account. In this order, each but the first switched in step 4:
+account, whatever the connection's status as long as a secret works. In this order,
+each but the first switched in step 4:
 
 | Step | What happens in the tenant |
 | --- | --- |
 | Disable | Always, first: the account can no longer sign in. Apps that support continuous access evaluation react within minutes. |
 | Revoke the sessions | Every refresh token and browser session ends within a few minutes; an access token already issued lives out its hour. |
-| Write the leave date | `employeeLeaveDateTime` is set to the last day at 23:00 in the business time zone — what a Lifecycle Workflows leaver trigger reads. |
+| Write the leave date | `employeeLeaveDateTime` is set to the last day at 23:00 in the business time zone — what a Lifecycle Workflows leaver trigger reads. Skipped when Staff sends no end day. |
 | Remove the licences | Every licence assigned to the person directly is removed and its seat freed. A licence that comes from a group goes with the group. |
-| Leave the groups | **All**: every group except dynamic, role-assignable and mail-only ones, groups Vantigo never made included. **Managed**: Vantigo's own groups only. **None**: every membership stays. |
+| Leave the groups | **All**: every group except dynamic, role-assignable and mail-only (distribution) ones, groups Vantigo never made included. **Managed**: Vantigo's own groups only — none until groups land. **None**: every membership stays. |
 
-A step that fails is tried again on the next cycle; the account is disabled first
-whatever else fails. Any pass not yet shown is discarded.
+The account is disabled first whatever else fails, and any pass not yet shown is
+discarded at once. A step that fails stops the steps after it and is reported as
+`leaver_step_failed:` and the step's name (`revoke_sessions`, `leave_date`,
+`strip_licences`, `remove_groups`), which the person's Account tab in Staff shows by its
+code, *Blocked (leaver_step_failed:revoke_sessions)*. The module would run the steps again
+on another disable, but Staff disables only an account that is still enabled, so
+nothing retries them on its own: finish the step named, and those after it, in the
+portal.
 
 **Deleting** comes later, when Staff's **Delete an external account (days after the
 end)** says, and never while the account is enabled or the person is under a legal
@@ -219,31 +238,38 @@ gets a new account.
 ## Rotate a secret
 
 1. In the registration, add a new client secret, and copy its value.
-2. In step 2, **Add a secret** with it. The newest valid secret is the one used, so the
-   new one takes over at once; **In use** moves to it.
+2. In step 2, fill in **Add a secret** with it and choose **Add the secret**. The newest
+   valid secret is tried first, so the new one takes over at once; **In use** moves to
+   it.
 3. Choose **Revoke** on the old one, then delete it in the portal. Vantigo refuses to
    revoke the only valid secret while it keeps accounts (`credential_in_use`), since
    nothing could then disable a leaver.
 
-Thirty days before the newest valid secret ends, Staff's dashboard shows
-`secretExpiring`; once it has ended, `secretExpired`, and the connection is failing:
-Staff then writes nothing to the tenant until a new secret is added — not even a
-leaver's disable. A secret the tenant refuses (`invalid_client`, for instance one
-deleted in the portal) is marked failed and the next valid one is tried.
+Thirty days before the last valid secret to expire ends, Staff's dashboard shows
+`secretExpiring`; once every secret has ended, `secretExpired`, and the connection is
+failing: Staff then writes nothing to the tenant until a new secret is added — not even
+a leaver's disable. A secret the tenant refuses (`invalid_client`, for instance one
+deleted in the portal) is marked failed — the table says *Refused by the tenant* and
+the date — and tried after the others until it fetches a token again. **Last used** is
+when a secret last fetched a token.
 
 ## Change the tenant or the application
 
 Step 1's **Save** with another tenant or client id sends the connection back to *not
-connected* until it is tested again. While the module keeps accounts, Vantigo asks
-first (`connection_in_use`): the accounts were made in the old tenant, and the module
-will look for people in the new one. Nothing is deleted in either tenant.
+connected* — the **Status** card is gone and Staff's settings say *Microsoft Entra ID:
+not connected yet.* — until it is tested again; the verified domains and the
+organisation are forgotten with it. The same ids again change nothing. While the module
+keeps accounts, Vantigo asks first, **Change the tenant or the application?**
+(`connection_in_use`), and **Change it** saves: the accounts were made in the old
+tenant, and the module will look for people in the new one. Nothing is deleted in
+either tenant.
 
 ## The tagged test
 
 For a contributor: the module's tests run against a fake Graph, and one tagged test
 runs the real thing against a dedicated tenant, to settle what the fake cannot know —
-whether an application may write `employeeHireDate`, the pass's permission, and which
-properties a user synchronised from on-premises refuses.
+whether an application may write `employeeHireDate`, whether the pass is issued with
+its permission, and what the module answers for a user synchronised from on-premises.
 
 **The tenant needs:**
 
@@ -255,7 +281,8 @@ properties a user synchronised from on-premises refuses.
 - The Temporary Access Pass enabled in the authentication methods policy for all users.
 - A client secret, the tenant id, the client id and a verified domain
   (`<name>.onmicrosoft.com` is fine).
-- For the third fact, a user synchronised from on-premises, by object id.
+- For the third fact, a user synchronised from on-premises: its object id and its
+  employee number (the module finds a user by the employee number).
 
 **Run it** from `apps/server`:
 
@@ -264,15 +291,21 @@ ENTRA_TEST_TENANT_ID=<tenant id> \
 ENTRA_TEST_CLIENT_ID=<client id> \
 ENTRA_TEST_CLIENT_SECRET=<secret value> \
 ENTRA_TEST_DOMAIN=<verified domain> \
-go test -tags entra -run TestEntraTenant ./internal/entra/
+go test -tags entra -run TestEntraTenant -v ./internal/entra/
 ```
 
-`ENTRA_TEST_SYNCED_USER_ID` adds the synchronised user's check. Without the four
-variables the test is skipped. It creates a user prefixed `vantigo-test-`, enables it
-with the hire date, issues a pass, updates it, disables it with the leave date and
-deletes it, and creates and deletes a prefixed group; it logs what Graph answered for
-the three facts, and removes everything it made when it ends. It goes through the same
-guarded transport as production. Keep the secret out of your shell history.
+`ENTRA_TEST_SYNCED_USER_ID` and `ENTRA_TEST_SYNCED_EMPLOYEE_NUMBER` together add the
+synchronised user's check, which writes nothing to that user. Without the four
+variables the test is skipped, naming the one missing. It tests the connection, sets
+the account rules, then prepares one user — employee number `VT-` and six random
+characters, given name `Vantigo`, family name `Test` and the same characters, so its
+user principal name starts `vantigo.test` — enables it with the hire date and a pass,
+reveals the pass once, updates it, disables it with the leave date and soft-deletes it.
+It logs what Graph answered for the three facts (`UNCERTAIN FACT 1` to `3`) and the
+module's events, never the secret or a pass. When a step fails first, its cleanup
+disables and deletes the user it made; a deleted user stays restorable under
+**Deleted users** for 30 days. Groups are not tested until they land. It goes through
+the same guarded transport as production. Keep the secret out of your shell history.
 
 ## What can go wrong
 
@@ -281,12 +314,12 @@ Staff's words.
 
 | Reason | Means | Do |
 | --- | --- | --- |
-| `credential_invalid` | No secret fetched a token: the value was mistyped, the secret was deleted in the portal, or the client id is wrong. | Add the right secret (step 2), check the ids (step 1), and test again. |
+| `credential_invalid` | No secret fetched a token: the value was mistyped, the secret was deleted in the portal, the client id is wrong, or `APP_SECRET` changed and the stored secrets can no longer be opened. | Add the right secret (step 2), check the ids (step 1), and test again. |
 | `tenant_unreachable` | The tenant did not answer. | Check outbound https to `login.microsoftonline.com` and `graph.microsoft.com` from every process, then test again. |
-| `consent_missing` | The token carries no permission: admin consent was never granted, or was withdrawn. | **Grant admin consent** (step 3) and test again. |
+| `consent_missing` | The token carries no permission — admin consent was never granted, or was withdrawn — or Graph refused to read the organisation. | **Grant admin consent** (step 3) and test again. |
 | `secret_expired` | Every secret has ended. | Add a new one (step 2). |
-| `secret_expiring` | The newest valid secret ends within 30 days. | [Rotate](#rotate-a-secret). |
-| `role_missing` | Three enables, disables, passes or deletes in a row were refused, none succeeding since: the User Administrator role is most likely not assigned. | Assign the role (step 3), then **Run now** on one of the people held up; a success clears it. |
+| `secret_expiring` | The last valid secret to expire ends within 30 days. | [Rotate](#rotate-a-secret). |
+| `role_missing` | Three creates, enables, disables, passes, phone changes or deletes in a row were refused, none succeeding since: the User Administrator role is most likely not assigned. | Assign the role (step 3), then **Run now** on one of the people held up; a success clears it. |
 | Permissions missing | The test's token lacks one or more of the eight. | Add them, grant consent again, test again. |
 
 On a person's Account tab in Staff, the **Microsoft Entra ID** card says what the
@@ -300,5 +333,6 @@ tenant reported for them:
 | An administrative role in Entra | The user holds a role (or is in a role-assignable group) the application may not touch — or the application lacks the role. | An administrator handles the account by hand; see `role_missing` above. |
 | The hire date not written | Graph refused `employeeHireDate`. | Nothing is needed for sign-in; turn **Write the hire date** off if it keeps failing. |
 | No licence left (the licence named) | No seat was free. | Buy seats or free one, then **Run now**. |
-| A pass not allowed | The tenant's authentication methods policy does not enable the pass for the person. | [Enable the policy](#4-accounts) for them, then **Run now (new pass)**. |
+| A pass not allowed | The tenant's authentication methods policy does not enable the pass for the person. | [Enable the policy](#4-set-the-account-rules) for them, then **Run now (new pass)**. |
 | The manager's account not found | The manager has no account in the tenant. | Give the manager the Microsoft Entra ID kind, or accept it. |
+| *Blocked (leaver_step_failed:…)* | A leaver's step after the disable failed, and the steps after it were not tried; the account is disabled. | Check the module's recent events and the log, then do that step and the ones after it in the portal: Staff does not disable the account again. |

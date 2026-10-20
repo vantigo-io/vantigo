@@ -22,41 +22,48 @@ reference](/en/reference/entra/).
 
 | What | Who |
 | --- | --- |
-| The **Microsoft Entra ID** tile, the page, the **Status** card and the recent events | `entra:manage` |
-| Steps **1 Register**, **2 A secret** and **3 Permissions and the role** — saving the tenant, adding and revoking secrets, **Test connection** | an **Owner**, signed in with a second factor; to anyone else with `entra:manage` they are shown read-only |
-| Step **4 Accounts** — the account rules | `entra:manage` |
-| Steps **5 Sign-in** and **6 Provisioning** | an **Owner**: they are the **Single sign-on** card's forms |
+| The **Microsoft Entra ID** tile, the page, the **Status** card, the accounts and the recent events | `entra:manage` |
+| Steps **1 Register the application**, **2 Add a client secret** and **3 Grant the permissions and the role** — **Save**, **Add the secret**, **Revoke**, **Test connection** | an **Owner**, signed in with a second factor; to anyone else with `entra:manage` they are shown read-only, with *An Owner does this step. You can see what is set, but not change it.* |
+| Step **4 Set the account rules** — **Save the account rules** | `entra:manage` |
+| Steps **5 Sign-in** and **6 Provisioning** | an **Owner**: they are the **Single sign-on** card's forms; anyone else reads the step without them |
 
 `entra:manage` is in the category Administration and cannot be delegated: only an Owner
-gives it to a role. The Owner holds it already.
+gives it to a role. The Owner holds it already. An Owner who signed in without a second
+factor while Owners must use one sees the forms, but saving them is refused.
 
 ## The page
 
 Open **Microsoft Entra ID** from the app switcher. The page is a wizard of six steps,
 one card each, in the order you do them. Each card says where to go in the Microsoft
-Entra admin center, what to copy, and carries a *Done* mark once Vantigo has what the
-step needs — the mark comes from what Vantigo has stored, so it is right however the
-step was done. Keep the portal open in another tab and work down the page.
+Entra admin center, what to copy, and carries a mark: *Done* once Vantigo has what the
+step needs, *Not done* until then, and *Optional* on the last two steps — the mark comes
+from what Vantigo has stored, so it is right however the step was done. Keep the portal
+open in another tab and work down the page.
 
 ### The Status card
 
-Once the connection has been tested, a **Status** card sits above the steps:
+Once the connection has been tested, a **Status** card sits above the steps; before
+that, and again after step 1 changes, it is not shown:
 
-- whether the connection works — connected, failing, or not connected yet — and, when
-  there is one, the reason in a sentence: a secret refused, the tenant not answering,
-  no consent granted, the secrets expired, a secret expiring within 30 days, or the
-  User Administrator role apparently missing;
-- the organisation's name, as the tenant gives it;
-- the permissions the connection has, and each one still missing, by name;
-- the secrets, with their labels, when each expires and was last used, which one is
-  **In use**, and **Revoke** (an Owner);
-- when the connection was last tested;
-- how many accounts Vantigo keeps in the tenant — enabled, disabled and deleted;
-- the recent events: what Vantigo did in the tenant or to the connection, when, by whom
-  (a person, or Staff's accounts worker), with the user principal name and what was
-  reported. Never a secret, a password or a pass.
+- **Connected** or **Failing**, and, when there is one, the reason in a sentence: a
+  secret refused, the tenant not answering, no consent granted, the secrets expired, a
+  secret expiring within 30 days, or the User Administrator role apparently missing;
+- **Organisation**, as the tenant gives it; **Last checked**, when the connection was
+  last tested; and **Accounts**, how many Vantigo keeps in the tenant — enabled,
+  disabled and deleted;
+- **Permissions**: *Every permission the module needs is granted.*, or each one still
+  missing by name, and the ones granted;
+- **Client secrets**: each by its **Description**, with **Added**, **Expires**, **Last
+  used** (when it last fetched a token) and its **State** — **In use** for the one
+  tried first, *Revoked* and the date, and *Refused by the tenant* and the date for one
+  the tenant turned down — and **Revoke** (an Owner);
+- **The module's accounts**, once there are any: each **User principal name**, its
+  **State** and what was **Reported** for it;
+- **Recent events**: what Vantigo did in the tenant or to the connection, when, the
+  user principal name, *by Staff's accounts run* when Staff's worker did it, and what
+  was reported. Never a secret, a password or a pass.
 
-### 1 Register
+### 1 Register the application
 
 Register an application for Vantigo in the portal (**App registrations** › **New
 registration**, *Accounts in this organizational directory only*), then copy its
@@ -64,86 +71,98 @@ registration**, *Accounts in this organizational directory only*), then copy its
 **Save**. Both are GUIDs, as the registration's **Overview** shows them.
 
 *Done* once both are saved. Saving another tenant or client later sends the connection
-back to not connected until it is tested again; while Vantigo keeps accounts in the
-tenant, it asks you to confirm first, since the accounts were made in the old one.
-Nothing is deleted in either tenant.
+back to not connected until it is tested again. While Vantigo keeps accounts in the
+tenant, it asks first — **Change the tenant or the application?** — and **Change it**
+saves, since the accounts were made in the old one. Nothing is deleted in either
+tenant.
 
-### 2 A secret
+### 2 Add a client secret
 
 Make a client secret in the portal (**Certificates & secrets** › **New client
-secret**), copy its **Value** at once, then choose **Add a secret**: a label to tell it
-apart, the value, and the expiry date the portal showed — in the future, at most 24
-months ahead. Choose **Save**. The value is a password field and is **never shown
+secret**) and copy its **Value** at once. Then fill in **Add a secret**: **Description**
+to tell it apart (optional), **Expires**, the day the portal showed — in the future, at
+most 24 months ahead; Vantigo takes the start of that day where you are — and **Value**,
+and choose **Add the secret**. The value is a password field and is **never shown
 again**, here or anywhere: Vantigo seals it as it arrives.
 
-The list below shows each secret with its label and dates. The newest one that has not
-expired or been revoked is the one in use. To rotate, add the new secret first, then
-choose **Revoke** on the old one; Vantigo refuses to revoke the only working secret
-while it keeps accounts, because nothing could then disable a leaver. Revoking only
-stops Vantigo using it: delete it in the portal yourself.
+The list above the form shows each secret with its description and dates. The newest
+one that has not expired or been revoked is tried first and marked **In use**; one the
+tenant refused is tried after the others. To rotate, add the new secret first, then
+choose **Revoke** on the old one and confirm; Vantigo refuses to revoke the only
+working secret while it keeps accounts, because nothing could then disable a leaver.
+Revoking only stops Vantigo using it: delete it in the portal yourself.
 
 *Done* once a secret is in use.
 
-### 3 Permissions and the role
+### 3 Grant the permissions and the role
 
 The card lists the eight Microsoft Graph **application** permissions to add under **API
 permissions**, each ready to copy, then **Grant admin consent**. It also says the step
 no other product asks for: assign the **User Administrator** role to the application
-under **Roles & admins** — without it, Microsoft refuses to enable or disable an
-account even with every permission.
+under **Roles & admins** — without it, Microsoft refuses to enable, disable or delete
+an account and to issue a Temporary Access Pass, even with every permission.
 
 Choose **Test connection**. Vantigo fetches a token with the secret, reads the
 organisation and its verified domains, and compares the token's permissions with the
-eight. The card then says whether the connection works, names the organisation, and
-names each permission still missing; when it fails, it says why. The role cannot be
-checked from here — check it in the portal; if it is missing, the first account
-Vantigo tries to enable is refused, and the **Status** card says so.
+eight. The card then says *Connected to* the organisation and lists its verified
+domains, or *The connection failed* and why; it names each permission still missing,
+and marks each in the list granted or missing. The role cannot be checked from here —
+check it in the portal; if it is missing, the first account Vantigo tries to enable is
+refused and reports it, and after three such refusals in a row the **Status** card
+says the role is most likely missing.
 
 *Done* once the last test connected with no permission missing.
 
-### 4 Accounts
+### 4 Set the account rules
 
 The rules every account follows, which anyone with `entra:manage` may change:
 
-- the **domain** the accounts' user principal names end in, chosen from the verified
-  domains the test read — a person whose work email is on one of them keeps it as
-  their user principal name;
-- the **pattern** for everyone else: `given.family`, `g.family` or `given`, with
+- the **Domain for user principal names**, chosen from the verified domains the test
+  read (typed before the first test) — a person whose work email is on one of them
+  keeps it as their user principal name;
+- the **Name pattern** for everyone else: `given.family`, `g.family` or `given`, with
   Norwegian letters folded (`Ørjan Åsmundsen` becomes `orjan.asmundsen`) and a number
   added when the name is taken;
-- the **usage location**, the country written when Staff has none for the person —
-  Microsoft gives no licence without one;
-- whether to write the **hire date**, and the **leaver's steps**: revoke the sessions,
-  write the leave date, remove the directly assigned licences, and which groups a
-  leaver leaves — all, Vantigo's own, or none;
-- the **Temporary Access Pass**: how long it works (10 minutes to 30 days), whether it
-  works for one sign-in only, and who hands it over. The card says, with the path, that
-  the tenant's authentication methods policy must enable the pass for the users, or
-  Microsoft refuses it.
+- the **Default usage location**, the country written when Staff has none for the
+  person — Microsoft gives no licence without one;
+- **When someone leaves** — the account is always disabled first — **Sign them out
+  everywhere**, **Write the leave date**, **Remove directly assigned licences**, and
+  **Remove from groups**: every group they can be removed from, only the groups Vantigo
+  manages, or no group;
+- **When someone starts**: **Write the hire date**, the **Temporary Access Pass
+  lifetime (minutes)** (10 to 43,200), whether **The pass can be used once only**, and
+  **Who hands over the pass**. The card says, with the path, that the tenant's
+  authentication methods policy must enable the pass for the users, or Microsoft
+  refuses it.
 
-Choose **Save**. A value outside its rule is marked on its field with the reason. If
-someone else saved the rules since you opened the page, reload and save again.
+Choose **Save the account rules**. A value outside its rule is marked on its field with
+the reason. If someone else saved the connection since you opened the page, the page
+says so and reloads it: check what is there now and make your change again.
 
-*Done* once the rules are saved with a domain.
+Once the connection is connected, the card also lists **The tenant's licences**, each
+with its seats assigned and bought — what a Staff group's licences can name.
+
+*Done* once a domain is saved.
 
 ### 5 Sign-in
 
 Optional: lets people sign in to Vantigo with their Microsoft account. The card is the
-**Single sign-on** card's provider form, already filled in with your tenant's address
-and the client id from step 1, with the **Callback URL** to paste into the
-registration's **Authentication** › **Web** platform. Complete it and choose **Save**.
-Without it, Staff still makes the Microsoft accounts, and nobody signs in to Vantigo
-with them.
+**Single sign-on** card's provider form — for an Owner, once step 1 is saved (*Register
+the application in step 1 first.* until then) — filled in with your tenant's address
+and the client id from step 1 when it holds nothing yet, with the **Callback URL** to
+paste into the registration's **Authentication** › **Web** platform. Complete it and
+choose **Save**. Without it, Staff still makes the Microsoft accounts, but nobody signs
+in to Vantigo with them.
 
 ### 6 Provisioning
 
 Optional: has Entra create each person's Vantigo user as soon as their account is
-enabled. The card is the **Single sign-on** card's SCIM block: **New token**, the
+enabled. The card is, for an Owner, the **Single sign-on** card's SCIM block: **New token**, the
 **Endpoint URL**, and where to paste both in the portal (**Enterprise applications** ›
 the app › **Provisioning**). Without it, a person's Vantigo user appears at their
 first sign-in instead.
 
-The card also links to Staff's settings, where **Default account kind** can be set to
+The card also offers **Open Staff's settings**, where **Default account kind** can be set to
 **Microsoft Entra ID** for the people registered from now on
 ([Accounts](/en/user/staff/#accounts)). People already registered keep their kind until
 HR changes it on their Account tab.

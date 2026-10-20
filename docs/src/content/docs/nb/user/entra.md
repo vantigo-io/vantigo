@@ -22,41 +22,49 @@ står i [referansen](/en/reference/entra/).
 
 | Hva | Hvem |
 | --- | --- |
-| Flisen **Microsoft Entra ID**, siden, kortet **Status** og de siste hendelsene | `entra:manage` |
-| Stegene **1 Registrer**, **2 En hemmelighet** og **3 Tillatelser og rollen** — lagre leietakeren, legge til og tilbakekalle hemmeligheter, **Test tilkoblingen** | en **eier**, innlogget med en andre faktor; for alle andre med `entra:manage` vises de skrivebeskyttet |
-| Steg **4 Kontoer** — kontoreglene | `entra:manage` |
-| Stegene **5 Innlogging** og **6 Provisjonering** | en **eier**: de er skjemaene fra kortet **Single sign-on** |
+| Flisen **Microsoft Entra ID**, siden, kortet **Status**, kontoene og de siste hendelsene | `entra:manage` |
+| Stegene **1 Registrer applikasjonen**, **2 Legg til en klienthemmelighet** og **3 Gi tillatelsene og rollen** — **Lagre**, **Legg til hemmeligheten**, **Trekk tilbake**, **Test tilkoblingen** | en **eier**, innlogget med en andre faktor; for alle andre med `entra:manage` vises de skrivebeskyttet, med *En eier gjør dette steget. Du ser hva som er satt, men kan ikke endre det.* |
+| Steg **4 Sett kontoreglene** — **Lagre kontoreglene** | `entra:manage` |
+| Stegene **5 Innlogging** og **6 Klargjøring** | en **eier**: de er skjemaene fra kortet **Single sign-on**; alle andre leser steget uten dem |
 
 `entra:manage` hører til kategorien Administrasjon og kan ikke delegeres: bare en eier
-gir den til en rolle. Eieren har den allerede.
+gir den til en rolle. Eieren har den allerede. En eier som logget inn uten en andre
+faktor mens eiere må bruke en, ser skjemaene, men lagringen avvises.
 
 ## Siden
 
 Åpne **Microsoft Entra ID** fra appvelgeren. Siden er en veiviser med seks steg, ett
 kort hvert, i den rekkefølgen du gjør dem. Hvert kort sier hvor du går i Microsoft
-Entra admin center, hva du skal kopiere, og får et *Ferdig*-merke når Vantigo har det
-steget trenger — merket kommer fra det Vantigo har lagret, så det stemmer uansett
-hvordan steget ble gjort. Ha portalen åpen i en annen fane og arbeid deg nedover siden.
+Entra admin center, hva du skal kopiere, og får et merke: *Ferdig* når Vantigo har det
+steget trenger, *Ikke gjort* til da, og *Valgfritt* på de to siste stegene — merket
+kommer fra det Vantigo har lagret, så det stemmer uansett hvordan steget ble gjort. Ha
+portalen åpen i en annen fane og arbeid deg nedover siden.
 
 ### Kortet Status
 
-Når tilkoblingen er testet, står et kort **Status** over stegene:
+Når tilkoblingen er testet, står et kort **Status** over stegene; før det, og igjen
+etter at steg 1 endres, vises det ikke:
 
-- om tilkoblingen virker — tilkoblet, feiler eller ikke tilkoblet ennå — og, når det
-  finnes en, årsaken i en setning: en hemmelighet avvist, leietakeren svarer ikke,
-  samtykke ikke gitt, hemmelighetene utløpt, en hemmelighet som utløper innen 30
-  dager, eller rollen User Administrator som ser ut til å mangle;
-- organisasjonens navn, slik leietakeren oppgir det;
-- tillatelsene tilkoblingen har, og hver som fortsatt mangler, ved navn;
-- hemmelighetene, med etiketten, når hver utløper og sist ble brukt, hvilken som er
-  **I bruk**, og **Tilbakekall** (en eier);
-- når tilkoblingen sist ble testet;
-- hvor mange kontoer Vantigo holder i leietakeren — aktiverte, deaktiverte og slettede;
-- de siste hendelsene: hva Vantigo gjorde i leietakeren eller med tilkoblingen, når,
-  av hvem (en person, eller kontoarbeideren i Ansatte), med brukerhovednavnet og hva
-  som ble meldt. Aldri en hemmelighet, et passord eller et pass.
+- **Tilkoblet** eller **Feiler**, og, når det finnes en, årsaken i en setning: en
+  hemmelighet avvist, leietakeren svarer ikke, samtykke ikke gitt, hemmelighetene
+  utløpt, en hemmelighet som utløper innen 30 dager, eller rollen User Administrator
+  som ser ut til å mangle;
+- **Organisasjon**, slik leietakeren oppgir den; **Sist testet**, når tilkoblingen sist
+  ble testet; og **Kontoer**, hvor mange Vantigo holder i leietakeren — aktiverte,
+  deaktiverte og slettede;
+- **Tillatelser**: *Alle tillatelsene modulen trenger, er gitt.*, eller hver som
+  fortsatt mangler, ved navn, og de som er gitt;
+- **Klienthemmeligheter**: hver med **Beskrivelse**, **Lagt til**, **Utløper**, **Sist
+  brukt** (når den sist hentet et token) og **Tilstand** — **I bruk** for den som
+  prøves først, *Trukket tilbake* og datoen, og *Avvist av leietakeren* og datoen for
+  en leietakeren har avvist — og **Trekk tilbake** (en eier);
+- **Modulens kontoer**, når det finnes noen: hvert **Brukerhovednavn**, **Tilstand** og
+  hva som ble **Rapportert** for det;
+- **Siste hendelser**: hva Vantigo gjorde i leietakeren eller med tilkoblingen, når,
+  brukerhovednavnet, *av Ansattes kontokjøring* når Ansattes kontojobb gjorde det, og
+  hva som ble meldt. Aldri en hemmelighet, et passord eller et pass.
 
-### 1 Registrer
+### 1 Registrer applikasjonen
 
 Registrer en applikasjon for Vantigo i portalen (**App registrations** › **New
 registration**, *Accounts in this organizational directory only*), kopier så
@@ -64,87 +72,98 @@ registration**, *Accounts in this organizational directory only*), kopier så
 **Lagre**. Begge er GUID-er, slik registreringens **Overview** viser dem.
 
 *Ferdig* når begge er lagret. Lagrer du en annen leietaker eller klient senere, går
-tilkoblingen tilbake til ikke tilkoblet til den er testet igjen; mens Vantigo holder
-kontoer i leietakeren, ber den deg bekrefte først, siden kontoene ble laget i den
-gamle. Ingenting slettes i noen av leietakerne.
+tilkoblingen tilbake til ikke tilkoblet til den er testet igjen. Mens Vantigo holder
+kontoer i leietakeren, spør den først — **Bytte leietaker eller applikasjon?** — og
+**Bytt** lagrer, siden kontoene ble laget i den gamle. Ingenting slettes i noen av
+leietakerne.
 
-### 2 En hemmelighet
+### 2 Legg til en klienthemmelighet
 
 Lag en klienthemmelighet i portalen (**Certificates & secrets** › **New client
-secret**), kopier **Value** med en gang, og velg så **Legg til en hemmelighet**: en
-etikett som skiller den fra andre, verdien, og utløpsdatoen portalen viste — fram i
-tid, høyst 24 måneder fram. Velg **Lagre**. Verdien er et passordfelt og **vises aldri
-igjen**, her eller noe annet sted: Vantigo forsegler den når den kommer.
+secret**), og kopier **Value** med en gang. Fyll så ut **Legg til en hemmelighet**:
+**Beskrivelse** som skiller den fra andre (valgfri), **Utløper**, dagen portalen viste —
+fram i tid, høyst 24 måneder fram; Vantigo tar starten av den dagen der du er — og
+**Verdi**, og velg **Legg til hemmeligheten**. Verdien er et passordfelt og **vises
+aldri igjen**, her eller noe annet sted: Vantigo forsegler den når den kommer.
 
-Listen under viser hver hemmelighet med etikett og datoer. Den nyeste som ikke har
-utløpt eller er tilbakekalt, er den som er i bruk. For å rotere, legg til den nye
-hemmeligheten først, og velg så **Tilbakekall** på den gamle; Vantigo nekter å
-tilbakekalle den eneste hemmeligheten som virker mens den holder kontoer, fordi ingenting
-da kunne deaktivere en som slutter. Å tilbakekalle stopper bare Vantigo fra å bruke
-den: slett den i portalen selv.
+Listen over skjemaet viser hver hemmelighet med beskrivelse og datoer. Den nyeste som
+ikke har utløpt eller er trukket tilbake, prøves først og er merket **I bruk**; en som
+leietakeren har avvist, prøves etter de andre. For å rotere, legg til den nye
+hemmeligheten først, og velg så **Trekk tilbake** på den gamle og bekreft; Vantigo
+nekter å trekke tilbake den eneste hemmeligheten som virker mens den holder kontoer,
+fordi ingenting da kunne deaktivere en som slutter. Å trekke den tilbake stopper bare
+Vantigo fra å bruke den: slett den i portalen selv.
 
 *Ferdig* når en hemmelighet er i bruk.
 
-### 3 Tillatelser og rollen
+### 3 Gi tillatelsene og rollen
 
 Kortet lister de åtte **applikasjonstillatelsene** for Microsoft Graph som skal legges
 til under **API permissions**, hver klar til å kopieres, og så **Grant admin consent**.
 Det sier også steget ingen andre produkter ber om: tildel rollen **User Administrator**
-til applikasjonen under **Roles & admins** — uten den nekter Microsoft å aktivere eller
-deaktivere en konto, selv med alle tillatelsene.
+til applikasjonen under **Roles & admins** — uten den nekter Microsoft å aktivere,
+deaktivere eller slette en konto og å utstede et midlertidig tilgangspass, selv med
+alle tillatelsene.
 
 Velg **Test tilkoblingen**. Vantigo henter et token med hemmeligheten, leser
 organisasjonen og de verifiserte domenene, og sammenligner tokenets tillatelser med de
-åtte. Kortet sier så om tilkoblingen virker, navngir organisasjonen og hver tillatelse
-som fortsatt mangler; når den feiler, sier det hvorfor. Rollen kan ikke sjekkes herfra —
-sjekk den i portalen; mangler den, avvises den første kontoen Vantigo prøver å aktivere,
-og kortet **Status** sier fra.
+åtte. Kortet sier så *Tilkoblet* organisasjonen og viser de verifiserte domenene, eller
+*Tilkoblingen feilet* og hvorfor; det navngir hver tillatelse som fortsatt mangler, og
+merker hver i listen gitt eller mangler. Rollen kan ikke sjekkes herfra — sjekk den i
+portalen; mangler den, avvises den første kontoen Vantigo prøver å aktivere, og den
+melder det, og etter tre slike avvisninger på rad sier kortet **Status** at rollen mest
+sannsynlig mangler.
 
 *Ferdig* når siste test var tilkoblet uten noen manglende tillatelse.
 
-### 4 Kontoer
+### 4 Sett kontoreglene
 
 Reglene hver konto følger, som alle med `entra:manage` kan endre:
 
-- **domenet** kontoenes brukerhovednavn slutter på, valgt blant de verifiserte
-  domenene testen leste — en person med e-post på jobb på et av dem, beholder den som
-  brukerhovednavn;
-- **mønsteret** for alle andre: `given.family`, `g.family` eller `given`, med norske
+- **Domene for brukerhovednavn**, valgt blant de verifiserte domenene testen leste
+  (skrevet inn før første test) — en person med e-post på jobb på et av dem, beholder
+  den som brukerhovednavn;
+- **Navnemønster** for alle andre: `given.family`, `g.family` eller `given`, med norske
   bokstaver gjort om (`Ørjan Åsmundsen` blir `orjan.asmundsen`) og et tall lagt til når
   navnet er tatt;
-- **bruksstedet**, landet som skrives når Ansatte ikke har noe for personen — Microsoft
-  gir ingen lisens uten;
-- om **ansettelsesdatoen** skal skrives, og **stegene for en som slutter**: tilbakekall
-  øktene, skriv sluttdatoen, fjern de direkte tildelte lisensene, og hvilke grupper en
-  som slutter forlater — alle, Vantigos egne eller ingen;
-- **det midlertidige tilgangspasset**: hvor lenge det virker (10 minutter til 30
-  dager), om det bare virker for én innlogging, og hvem som gir det videre. Kortet sier,
-  med stien, at leietakerens policy for autentiseringsmetoder må slå på passet for
-  brukerne, ellers avviser Microsoft det.
+- **Standard bruksland**, landet som skrives når Ansatte ikke har noe for personen —
+  Microsoft gir ingen lisens uten;
+- **Når noen slutter** — kontoen deaktiveres alltid først — **Logg dem ut overalt**,
+  **Skriv sluttdatoen**, **Fjern direkte tildelte lisenser**, og **Fjern fra grupper**:
+  alle grupper de kan fjernes fra, bare gruppene Vantigo forvalter, eller ingen grupper;
+- **Når noen begynner**: **Skriv ansettelsesdatoen**, **Levetid for midlertidig
+  tilgangspass (minutter)** (10 til 43 200), om **Passet kan bare brukes én gang**, og
+  **Hvem som overleverer passet**. Kortet sier, med stien, at leietakerens policy for
+  autentiseringsmetoder må slå på passet for brukerne, ellers avviser Microsoft det.
 
-Velg **Lagre**. En verdi utenfor regelen merkes på feltet med årsaken. Har noen andre
-lagret reglene siden du åpnet siden, last inn på nytt og lagre igjen.
+Velg **Lagre kontoreglene**. En verdi utenfor regelen merkes på feltet med årsaken. Har
+noen andre lagret tilkoblingen siden du åpnet siden, sier siden fra og laster den inn på
+nytt: se hva som står der nå, og gjør endringen din på nytt.
 
-*Ferdig* når reglene er lagret med et domene.
+Når tilkoblingen er tilkoblet, viser kortet også **Leietakerens lisenser**, hver med
+setene som er tildelt og kjøpt — det en Ansatte-gruppes lisenser kan peke på.
+
+*Ferdig* når et domene er lagret.
 
 ### 5 Innlogging
 
 Valgfritt: lar folk logge inn i Vantigo med Microsoft-kontoen sin. Kortet er
-leverandørskjemaet fra kortet **Single sign-on**, allerede fylt ut med leietakerens
-adresse og klient-ID-en fra steg 1, med **Tilbakekalls-URL** som skal limes inn i
-registreringens **Authentication** › plattformen **Web**. Fyll det ut og velg
-**Lagre**. Uten dette lager Ansatte fortsatt Microsoft-kontoene, og ingen logger inn i
-Vantigo med dem.
+leverandørskjemaet fra kortet **Single sign-on** — for en eier, når steg 1 er lagret
+(*Registrer applikasjonen i steg 1 først.* til da) — fylt ut med leietakerens adresse
+og klient-ID-en fra steg 1 når det ennå er tomt, med **Tilbakekalls-URL** som skal
+limes inn i registreringens **Authentication** › plattformen **Web**. Fyll det ut og
+velg **Lagre**. Uten dette lager Ansatte fortsatt Microsoft-kontoene, men ingen logger
+inn i Vantigo med dem.
 
-### 6 Provisjonering
+### 6 Klargjøring
 
 Valgfritt: får Entra til å opprette hver persons Vantigo-bruker så snart kontoen er
-aktivert. Kortet er SCIM-delen fra kortet **Single sign-on**: **Nytt token**,
+aktivert. Kortet er, for en eier, SCIM-delen fra kortet **Single sign-on**: **Nytt token**,
 **Endepunkt-URL**, og hvor begge limes inn i portalen (**Enterprise applications** ›
 appen › **Provisioning**). Uten dette dukker personens Vantigo-bruker opp ved første
 innlogging i stedet.
 
-Kortet lenker også til Ansatteinnstillinger, der **Standard kontotype** kan settes til
+Kortet tilbyr også **Åpne innstillingene til Ansatte**, der **Standard kontotype** kan settes til
 **Microsoft Entra ID** for personene som registreres fra nå av
 ([Kontoer](/nb/user/staff/#kontoer)). Personer som allerede er registrert, beholder
 kontotypen sin til HR endrer den på fanen Konto.

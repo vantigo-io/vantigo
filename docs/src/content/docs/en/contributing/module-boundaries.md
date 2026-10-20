@@ -376,15 +376,17 @@ Communications' outbox is the working example.
     transport's place, so the module's real client runs against it — kept under the module's own package rather
     than in `modtest`, because it is Entra's shape alone: only the module's tests import
     it (depguard lets a module import its own subpackages, and no other module's). Its
-    `Provider` reads the module's own row and makes no network call, since Staff asks it
-    on every `GET /meta`. Staff is the authority: it
+    `Provider` reads the module's own rows and makes no network call, since Staff asks it
+    on every `GET /meta`, and neither does `RevealPass`, which takes the sealed pass
+    from the module's own row. Staff is the authority: it
     decides what exists and when, from the register, and the provider executes against
     its directory and answers what it did — `Prepare` finds the account holding the
     employee number or creates it disabled, `Activate`, `Deactivate`, `Update`,
-    `Delete` (a soft delete; `ErrExternalEnabled` on an enabled account), `Account`,
-    `RevealPass` (once, then `ErrPassGone`), and the group calls a later delivery uses;
+    `Delete` (a soft delete; `ErrExternalEnabled` on an enabled account), `Account`
+    (a read that writes nothing), `RevealPass` (once, then `ErrPassGone`), and the
+    group calls a later delivery uses;
     `Provider` names its key — never a reserved one (rule 5) — display name and status
-    (`unconfigured`, `connected`, `failing`). It is held to rule 11's lock discipline: every call reaches the network
+    (`unconfigured`, `connected`, `failing`). It is held to rule 11's lock discipline: every other call reaches the network
     on the provider's own pool, so **Staff never calls it inside a transaction or
     holding a connection**, only through accessors in its `contractscalls.go` that
     refuse such a call, keyed by the provider. Every write names its `Actor` and is
@@ -399,8 +401,10 @@ Communications' outbox is the working example.
     `ErrExternalSyncedOnPremises`, `ErrExternalPrivileged`, `ErrExternalEnabled`,
     `ErrPassGone`, `ErrProviderUnavailable`, `ErrGroupNotManageable`) and a reported
     fact a code that never carries an address; anything else is a failure to retry.
-    `Deactivate` runs whatever `Provider`'s status says, as long as a credential works,
-    so Staff writes nothing but a `Deactivate` to a provider that is not `connected`.
+    `Deactivate` — and the `Account` read Staff makes before it — runs whatever
+    `Provider`'s status says, as long as a credential works, while the other writes
+    answer `ErrProviderUnavailable` unless the status is `connected`; so Staff writes
+    nothing but a `Deactivate` to a provider that is not `connected`.
     Staff writes the provider first and identity second, under the one claim it holds
     on the person's identity link — the provider link is never claimed itself — so the
     account is announced (rule 11's `Expect`) before it arrives
@@ -819,8 +823,8 @@ checks are the router's — and writes nothing outside the `entra` schema. It fi
 slot, `IdentityProvisioner` (rule 13), and has no worker: Staff's accounts worker calls
 it, in the API and in worker mode alike, never inside a transaction. It reaches the
 network in one place, its Graph client, through `internal/netguard` with no proxy and
-no redirect, to two fixed hosts no setting changes; the client's transport is built
-once per process, and `Deps.HTTPTransport` is the test seam. See [Microsoft Entra
+no redirect, to two fixed hosts no setting changes; the client's transport and its
+token cache are built once per process, and `Deps.HTTPTransport` is the test seam. See [Microsoft Entra
 ID](/en/reference/entra/#the-graph-client).
 
 ## Adding a module

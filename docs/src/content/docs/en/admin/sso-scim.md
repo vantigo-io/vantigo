@@ -62,7 +62,7 @@ Open the avatar menu, choose **Workspace admin**, and stay on **Overview**: the
 **With the Microsoft Entra ID module** the card's two parts are also the last two
 steps of the module's wizard: step 5, **Sign-in**, is the provider form, filled in
 with the tenant's authority and the client id the wizard registered (on an empty form
-only), and step 6, **Provisioning**, is the SCIM block. They are the same forms over
+only), and step 6, **Provisioning**, is the SCIM block. Both are an Owner's alone. They are the same forms over
 the same row and the same operations; save in either place
 ([Microsoft Entra ID](/en/admin/entra/#5-sign-in)).
 
