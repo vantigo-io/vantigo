@@ -86,6 +86,25 @@ const draftFrom = (oidc: SsoOidcSettings): OidcDraft => ({
   displayName: oidc.displayName ?? "",
 });
 
+/** What a page embedding the card may pre-fill the OIDC form with — the Entra wizard's tenant and client. */
+export interface SsoDefaults {
+  provider: SsoProvider;
+  authority: string;
+  clientId: string;
+}
+
+/** The card's two halves; a page embedding it may show one. */
+export type SsoSection = "oidc" | "scim";
+
+/**
+ * The defaults applied to a form that holds nothing yet — OIDC off, with no
+ * authority and no client id saved — and never over a saved value.
+ */
+const draftWithDefaults = (saved: OidcDraft, defaults: SsoDefaults | undefined): OidcDraft =>
+  defaults && saved.provider === "off" && !saved.authority && !saved.clientId
+    ? { ...saved, provider: defaults.provider, authority: defaults.authority, clientId: defaults.clientId }
+    : saved;
+
 const sameDraft = (a: OidcDraft, b: OidcDraft) =>
   (Object.keys(a) as Array<keyof OidcDraft>).every((key) => a[key] === b[key]);
 
@@ -154,8 +173,18 @@ const CopyField = ({ label, description, value }: { label: string; description?:
  * and the SCIM credential, held in one row every server reads within 20 seconds of a
  * save. Every write answers the whole row with its new version, and the card keeps
  * that answer, so the next save is checked against the version it really holds.
+ *
+ * The Entra wizard embeds it twice (Entra design D15): its step 5 shows the OIDC half
+ * alone with `defaults` — the tenant's authority and the client id, applied to an empty
+ * form only — and its step 6 the SCIM half alone.
  */
-export const SsoSettingsCard = () => {
+export const SsoSettingsCard = ({
+  defaults,
+  sections = ["oidc", "scim"],
+}: {
+  defaults?: SsoDefaults;
+  sections?: readonly SsoSection[];
+} = {}) => {
   const { t } = useI18n("host");
   const settings = useQuery({ queryKey: ssoSettingsQueryKey, queryFn: fetchSsoSettings });
 
@@ -185,12 +214,29 @@ export const SsoSettingsCard = () => {
           </Button>
         </Alert>
       )}
-      {settings.data && <SsoSettingsForms settings={settings.data} reload={() => void settings.refetch()} />}
+      {settings.data && (
+        <SsoSettingsForms
+          settings={settings.data}
+          reload={() => void settings.refetch()}
+          defaults={defaults}
+          sections={sections}
+        />
+      )}
     </Card>
   );
 };
 
-const SsoSettingsForms = ({ settings, reload }: { settings: SsoSettings; reload: () => void }) => {
+const SsoSettingsForms = ({
+  settings,
+  reload,
+  defaults,
+  sections,
+}: {
+  settings: SsoSettings;
+  reload: () => void;
+  defaults: SsoDefaults | undefined;
+  sections: readonly SsoSection[];
+}) => {
   const { t } = useI18n("host");
   const [stale, setStale] = useState(false);
   // A new draft for every version reloaded after a 412, so the form starts from the row it is saved against.
@@ -219,22 +265,32 @@ const SsoSettingsForms = ({ settings, reload }: { settings: SsoSettings; reload:
           </Stack>
         </Alert>
       )}
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
-        <OidcSection key={generation} settings={settings} onStale={onStale} />
-        <ScimSection settings={settings} />
+      <SimpleGrid cols={{ base: 1, md: sections.length > 1 ? 2 : 1 }} spacing="xl">
+        {sections.includes("oidc") && (
+          <OidcSection key={generation} settings={settings} onStale={onStale} defaults={defaults} />
+        )}
+        {sections.includes("scim") && <ScimSection settings={settings} />}
       </SimpleGrid>
     </Stack>
   );
 };
 
-const OidcSection = ({ settings, onStale }: { settings: SsoSettings; onStale: () => void }) => {
+const OidcSection = ({
+  settings,
+  onStale,
+  defaults,
+}: {
+  settings: SsoSettings;
+  onStale: () => void;
+  defaults: SsoDefaults | undefined;
+}) => {
   const { t, formatters } = useI18n("host");
   const queryClient = useQueryClient();
   const date = (value: string) => formatters.formatDate(new Date(value), { dateStyle: "medium", timeStyle: "short" });
   const oidc = settings.oidc;
   const saved = draftFrom(oidc);
   const [draft, setDraft] = useState<OidcDraft>();
-  const form = draft ?? saved;
+  const form = draft ?? draftWithDefaults(saved, defaults);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string>();
   const changed = !sameDraft(form, saved);

@@ -1,0 +1,163 @@
+import { Alert, Badge, Group, List, SimpleGrid, Stack, Table, Text, Title } from "@mantine/core";
+import { useQuery } from "@tanstack/react-query";
+import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
+import { accountsQueryOptions, type EntraConnection, eventsQueryOptions } from "../api/connection";
+import { actionText, codeText, reasonText } from "../lib/words";
+import { CredentialList } from "./credentials";
+import { SectionCard } from "./step-card";
+
+const Fact = ({ label, value }: { label: string; value: string }) => (
+  <Stack gap={0}>
+    <Text size="xs" c="dimmed">
+      {label}
+    </Text>
+    <Text size="sm">{value}</Text>
+  </Stack>
+);
+
+const Subheading = ({ children }: { children: string }) => (
+  <Title order={4} fz="h6" mt="xs">
+    {children}
+  </Title>
+);
+
+/**
+ * The **Status** card (Entra design D15), shown once the connection is more
+ * than unconfigured: the organisation, the permissions by name, the secrets,
+ * the last check, the accounts the module keeps and its recent events.
+ */
+export const StatusCard = ({ connection, owner }: { connection: EntraConnection; owner: boolean }) => {
+  const { t, formatters } = useI18n("entra");
+  const events = useQuery(eventsQueryOptions());
+  const accounts = useQuery({ ...accountsQueryOptions(), enabled: connection.accounts.count > 0 });
+  const dateTime = (value: string) =>
+    formatters.formatDate(new Date(value), { dateStyle: "medium", timeStyle: "short" });
+  const connected = connection.status === "connected";
+
+  return (
+    <SectionCard
+      title={t("status")}
+      badge={
+        <Badge color={connected ? "teal" : "red"} size="lg">
+          {connected ? t("statusConnected") : t("statusFailing")}
+        </Badge>
+      }
+    >
+      {connection.statusReason && (
+        <Alert color={connected ? "yellow" : "red"} variant="light">
+          {reasonText(connection.statusReason, t)}
+        </Alert>
+      )}
+      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <Fact label={t("organisation")} value={connection.organisationName ?? t("notReadYet")} />
+        <Fact
+          label={t("lastChecked")}
+          value={connection.lastCheckedAt ? dateTime(connection.lastCheckedAt) : t("notTestedYet")}
+        />
+        <Fact
+          label={t("accounts")}
+          value={t("accountCounts", {
+            count: connection.accounts.count,
+            enabled: connection.accounts.enabled,
+            disabled: connection.accounts.disabled,
+            deleted: connection.accounts.deleted,
+          })}
+        />
+      </SimpleGrid>
+
+      <Subheading>{t("permissions")}</Subheading>
+      {connection.permissionsMissing.length === 0 ? (
+        <Text size="sm">{t("permissionsAllPresent")}</Text>
+      ) : (
+        <Stack gap={4}>
+          <Text size="sm" c="red">
+            {t("permissionsMissingList", { count: connection.permissionsMissing.length })}
+          </Text>
+          <List size="sm" aria-label={t("permissionsMissing")}>
+            {connection.permissionsMissing.map((name) => (
+              <List.Item key={name}>{name}</List.Item>
+            ))}
+          </List>
+        </Stack>
+      )}
+      {connection.permissionsPresent.length > 0 && (
+        <Text size="sm" c="dimmed">
+          {t("permissionsPresentList", { names: connection.permissionsPresent.join(", ") })}
+        </Text>
+      )}
+
+      <Subheading>{t("secrets")}</Subheading>
+      <CredentialList credentials={connection.credentials} owner={owner} />
+
+      {connection.accounts.count > 0 && (
+        <>
+          <Subheading>{t("accountsList")}</Subheading>
+          {accounts.isPending && <ContentSkeleton rows={2} rowHeight={24} />}
+          {accounts.data && (
+            <Table.ScrollContainer minWidth={480}>
+              <Table verticalSpacing={4} aria-label={t("accountsList")}>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("accountUpn")}</Table.Th>
+                    <Table.Th>{t("accountState")}</Table.Th>
+                    <Table.Th>{t("accountReported")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {accounts.data.map((account) => (
+                    <Table.Tr key={account.objectId}>
+                      <Table.Td>{account.userPrincipalName}</Table.Td>
+                      <Table.Td>{t(`accountState_${account.state}`)}</Table.Td>
+                      <Table.Td>{account.reported.map((code) => codeText(code, t)).join("; ")}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+        </>
+      )}
+
+      <Subheading>{t("recentEvents")}</Subheading>
+      {events.isPending && <ContentSkeleton rows={2} rowHeight={24} />}
+      {events.isError && (
+        <Text size="sm" c="red">
+          {t("eventsFailed")}
+        </Text>
+      )}
+      {events.data && events.data.length === 0 && (
+        <Text size="sm" c="dimmed">
+          {t("noEvents")}
+        </Text>
+      )}
+      {events.data && events.data.length > 0 && (
+        <Stack
+          gap={6}
+          component="ul"
+          aria-label={t("recentEvents")}
+          style={{ listStyle: "none", padding: 0, margin: 0 }}
+        >
+          {events.data.map((event) => (
+            <Group key={event.id} component="li" gap="xs" wrap="nowrap" align="flex-start">
+              <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                {dateTime(event.at)}
+              </Text>
+              <Stack gap={0}>
+                <Text size="sm">
+                  {actionText(event.action, t)}
+                  {event.upn ? ` · ${event.upn}` : ""}
+                  {event.actor.startsWith("system:") ? ` · ${t("bySystem")}` : ""}
+                </Text>
+                {event.codes.length > 0 && (
+                  <Text size="xs" c="orange">
+                    {event.codes.map((code) => codeText(code, t)).join("; ")}
+                  </Text>
+                )}
+              </Stack>
+            </Group>
+          ))}
+        </Stack>
+      )}
+    </SectionCard>
+  );
+};

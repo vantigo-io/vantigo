@@ -1,6 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { formatDate } from "@vantigo/frontend-shell";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { SsoSettings } from "../../api/sso";
 import { stubFetch } from "../../test/fetch";
@@ -42,8 +43,31 @@ const refusal = (status: number, code: string, fields?: Record<string, string[]>
 
 type Handler = (method: string, url: string, init: RequestInit | undefined) => Response | undefined;
 
+/** Nothing set yet: OIDC off with no authority or client id, SCIM off, as a fresh installation answers. */
+const empty = (): SsoSettings => ({
+  version: 0,
+  oidc: {
+    enabled: false,
+    allowedDomains: [],
+    callbackUrl: "https://vantigo.example.com/api/v1/identity/oidc/callback",
+  },
+  scim: { enabled: false, endpointUrl: "https://vantigo.example.com/api/v1/identity/scim/v2" },
+  importedFromEnvironment: false,
+});
+
+const entraDefaults = {
+  provider: "entra" as const,
+  authority: otherAuthority,
+  clientId: "44444444-4444-4444-4444-444444444444",
+};
+
 /** A fake identity API: GET /owner/sso answers the row, every other request goes to `handle`. */
-const renderCard = async (handle: Handler = () => undefined, row = entraWithOverlap()) => {
+const renderCard = async (
+  handle: Handler = () => undefined,
+  row = entraWithOverlap(),
+  Card: () => ReactNode = SsoSettingsCard,
+  shown: string = row.oidc.callbackUrl,
+) => {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -52,8 +76,8 @@ const renderCard = async (handle: Handler = () => undefined, row = entraWithOver
   });
   stubFetch(fetchMock);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await renderRoute("/workspace/overview", SsoSettingsCard, queryClient);
-  await screen.findByDisplayValue(row.oidc.callbackUrl);
+  await renderRoute("/workspace/overview", Card, queryClient);
+  await screen.findByDisplayValue(shown);
   return fetchMock;
 };
 
@@ -242,5 +266,55 @@ describe("the Single sign-on card", () => {
 
     expect(await screen.findByText("The settings have changed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+  });
+
+  it("pre-fills an empty OIDC form with the defaults it is given, and sends them on Save", async () => {
+    const fetchMock = await renderCard(
+      (method) => (method === "PUT" ? json({ ...empty(), version: 1 }) : undefined),
+      empty(),
+      () => <SsoSettingsCard sections={["oidc"]} defaults={entraDefaults} />,
+    );
+
+    expect(screen.getByDisplayValue("Microsoft Entra ID")).toBeInTheDocument();
+    expect(screen.getByLabelText("Authority")).toHaveValue(otherAuthority);
+    expect(screen.getByLabelText("Client ID")).toHaveValue(entraDefaults.clientId);
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+    type("Client secret", "s3cret");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(writes(fetchMock)).toHaveLength(1));
+    expect(writes(fetchMock)[0].body).toEqual({
+      provider: "entra",
+      authority: otherAuthority,
+      clientId: entraDefaults.clientId,
+      clientSecret: "s3cret",
+    });
+  });
+
+  it("never puts the defaults over saved values", async () => {
+    await renderCard(undefined, entraWithOverlap(), () => (
+      <SsoSettingsCard sections={["oidc"]} defaults={entraDefaults} />
+    ));
+
+    expect(screen.getByLabelText("Authority")).toHaveValue(authority);
+    expect(screen.getByLabelText("Client ID")).toHaveValue("22222222-2222-2222-2222-222222222222");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("shows only the sections it is asked for", async () => {
+    await renderCard(undefined, entraWithOverlap(), () => <SsoSettingsCard sections={["oidc"]} />);
+    expect(screen.getByText("OIDC")).toBeInTheDocument();
+    expect(screen.queryByText("SCIM")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New token" })).not.toBeInTheDocument();
+  });
+
+  it("shows the SCIM half alone", async () => {
+    const row = entraWithOverlap();
+    await renderCard(undefined, row, () => <SsoSettingsCard sections={["scim"]} />, row.scim.endpointUrl);
+    expect(screen.getByText("SCIM")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New token" })).toBeInTheDocument();
+    expect(screen.queryByText("OIDC")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Authority")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue(row.oidc.callbackUrl)).not.toBeInTheDocument();
   });
 });
