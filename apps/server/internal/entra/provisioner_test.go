@@ -4,18 +4,18 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/entra"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
-// TestStub_Provisioner is the skeleton's provider (plan task 2): it claims
-// the key "entra", names itself unconfigured, writes nothing — every write
-// answers ErrProviderUnavailable, which Staff retries — and leaves the
-// groups to delivery D. Tasks 3 and 4 replace it with the provider's own
-// tests.
-func TestStub_Provisioner(t *testing.T) {
+// TestProvisioner_WritesAwaitTheLifecycle is the provider before task 4: it
+// claims the key "entra", writes nothing — every write answers
+// ErrProviderUnavailable, which Staff retries — and leaves the groups to
+// delivery D. Task 4 replaces the writes' half with the lifecycle's tests.
+func TestProvisioner_WritesAwaitTheLifecycle(t *testing.T) {
 	t.Parallel()
 	build := entra.Module().IdentityProvisioner
 	if build == nil {
@@ -26,11 +26,6 @@ func TestStub_Provisioner(t *testing.T) {
 		t.Errorf("Key() = %q, want entra", p.Key())
 	}
 	ctx := context.Background()
-	info, err := p.Provider(ctx)
-	if err != nil || info != (contracts.ProviderInfo{Key: "entra", Name: "Microsoft Entra ID", Status: contracts.ProviderUnconfigured}) {
-		t.Errorf("Provider() = %+v, %v; want entra, Microsoft Entra ID, unconfigured", info, err)
-	}
-
 	user := contracts.Actor{System: contracts.SystemActorStaffAccounts}
 	spec := contracts.ExternalSpec{EmployeeNumber: "E-1"}
 	_, prepare := p.Prepare(ctx, user, spec)
@@ -56,4 +51,50 @@ func TestStub_Provisioner(t *testing.T) {
 			t.Errorf("%s: %v, want ErrGroupNotManageable", name, err)
 		}
 	}
+}
+
+// TestProvider_ReadsTheConnectionWithoutTheNetwork follows the provider's
+// status from a fresh installation to connected, and checks that asking it
+// costs no call to the tenant (plan reading 2: Staff's GET /meta asks it on
+// every request).
+func TestProvider_ReadsTheConnectionWithoutTheNetwork(t *testing.T) {
+	t.Parallel()
+	h, g := newTenantHarness(t)
+	p := provider(h)
+	ctx := context.Background()
+	want := func(status, reason string) {
+		t.Helper()
+		info, err := p.Provider(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Key != "entra" || info.Name != "Microsoft Entra ID" || info.Status != status || info.Reason != reason {
+			t.Errorf("Provider() = %+v, want %s/%s", info, status, reason)
+		}
+	}
+
+	want(contracts.ProviderUnconfigured, "")
+	o, _ := owner(t, h)
+	register(t, o)
+	want(contracts.ProviderUnconfigured, "")
+	addSecret(t, o, secretValue, "Vantigo", h.Now().AddDate(1, 0, 0))
+	want(contracts.ProviderUnconfigured, "") // registered, never tested
+	testConnection(t, o)
+	calls := len(g.Calls())
+	want(contracts.ProviderConnected, "")
+	if n := len(g.Calls()); n != calls {
+		t.Errorf("Provider() made %d calls to the tenant", n-calls)
+	}
+
+	// Three sensitive writes refused in a row read as role_missing.
+	h.Exec(t, `UPDATE entra.connection SET sensitive_denied_streak = 3`)
+	want(contracts.ProviderConnected, "role_missing")
+	h.Exec(t, `UPDATE entra.connection SET sensitive_denied_streak = 0`)
+
+	// Within thirty days of the last secret's end, secret_expiring; past it,
+	// secret_expired.
+	h.Advance(340 * 24 * time.Hour)
+	want(contracts.ProviderConnected, "secret_expiring")
+	h.Advance(30 * 24 * time.Hour)
+	want(contracts.ProviderFailing, "secret_expired")
 }
