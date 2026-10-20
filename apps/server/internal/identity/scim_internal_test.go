@@ -38,6 +38,7 @@ func scimErrorOf(t *testing.T, err error) string {
 // New: .NET's filter grammar (SV/SCIM:1059-1079), its regex exactly,
 // including the keep-the-first-and-last-clause quirk and .NET's \s.
 func TestScimFilter(t *testing.T) {
+	enterprise := []string{"userName", "externalId", scimEnterpriseEmployeeNumber}
 	const pattern = `400 invalidFilter: Only field eq "value" filters joined by and are supported.`
 	const field = "400 invalidFilter: The filter field or value is invalid."
 	padding := strings.Repeat("a", 512-len(`userName eq ""`))
@@ -83,6 +84,13 @@ func TestScimFilter(t *testing.T) {
 		{"a surrogate pair", `userName eq "\ud83d\ude00"`, nil, "userName=\U0001F600"},
 		{"a surrogate pair in upper case", `userName eq "\uD83D\uDE00!"`, nil, "userName=\U0001F600!"},
 		{"an escaped backslash before u", `userName eq "a\\ud800"`, nil, `userName=a\ud800`},
+		{"the enterprise employeeNumber", `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber eq "E-1"`, enterprise, scimEnterpriseEmployeeNumber + "=E-1"},
+		{"the enterprise attribute in any case", `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:EMPLOYEENUMBER eq "E-1"`, enterprise, scimEnterpriseEmployeeNumber + "=E-1"},
+		{"the enterprise URN is exact", `URN:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber eq "E-1"`, enterprise, pattern},
+		{"the enterprise employeeNumber beside userName", `userName eq "a" and urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber eq "E-1"`, enterprise, "userName=a " + scimEnterpriseEmployeeNumber + "=E-1"},
+		{"another enterprise attribute", `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department eq "x"`, enterprise, field},
+		{"employeeNumber without its URN", `employeeNumber eq "E-1"`, enterprise, field},
+		{"the enterprise employeeNumber on Groups", `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber eq "E-1"`, []string{"displayName", "externalId"}, field},
 	}
 	for _, c := range cases {
 		allowed := c.allowed
@@ -162,6 +170,8 @@ func describeUserActions(actions []scimUserAction) string {
 			out = append(out, fmt.Sprintf("%s=%t", a.field, *a.active))
 		case a.value != nil:
 			out = append(out, a.field+"="+*a.value)
+		case a.manager != nil:
+			out = append(out, fmt.Sprintf("%s={%s,%s}", a.field, *a.manager.Value, deref(a.manager.DisplayName)))
 		default:
 			out = append(out, a.field+"?")
 		}
@@ -240,7 +250,32 @@ func TestScimUserPatch(t *testing.T) {
 		{"a pathless removal of the emails", patchBody(`{"op":"remove","value":{"emails":[]}}`), "email-"},
 		{"pathless emails not an array", patchBody(`{"op":"replace","value":{"emails":{}}}`), "400 invalidValue: emails must be an array."},
 		{"pathless two work emails", patchBody(`{"op":"replace","value":{"emails":[{"type":"work","value":"a@x.test"},{"type":"WORK","value":"b@x.test"}]}}`), "400 invalidValue: Only one primary work email is supported."},
-		{"a pathless extension attribute", patchBody(`{"op":"replace","value":{"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User":{"department":"x"}}}`), unsupported},
+		{"a pathless extension object", patchBody(`{"op":"replace","value":{"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User":{"department":" x ","manager":{"value":"m-1"}}}}`),
+			"enterprise.department=x enterprise.manager={m-1,}"},
+		{"a pathless extension attribute key", patchBody(`{"op":"replace","value":{"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:costCenter":"C"}}`), "enterprise.costCenter=C"},
+		{"a pathless extension with an unknown attribute", patchBody(`{"op":"replace","value":{"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User":{"title":"x"}}}`), unsupported},
+		{"a pathless extension not an object", patchBody(`{"op":"replace","value":{"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User":"x"}}`), unsupported},
+		{"the enterprise department", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department","value":" Sales "}`), "enterprise.department=Sales"},
+		{"the enterprise attribute in any case", patchBody(`{"op":"add","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:EMPLOYEENUMBER","value":"E-1"}`), "enterprise.employeeNumber=E-1"},
+		{"each enterprise string", patchBody(
+			`{"op":"add","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:costCenter","value":"c"}`,
+			`{"op":"add","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:organization","value":"o"}`,
+			`{"op":"add","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:division","value":"d"}`),
+			"enterprise.costCenter=c enterprise.organization=o enterprise.division=d"},
+		{"the enterprise URN is exact", patchBody(`{"op":"replace","path":"URN:ietf:params:scim:schemas:extension:enterprise:2.0:User:department","value":"x"}`), unsupported},
+		{"an unknown enterprise attribute", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:unknown","value":"x"}`), unsupported},
+		{"the enterprise URN alone", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User","value":{"department":"x"}}`), unsupported},
+		{"remove an enterprise attribute", patchBody(`{"op":"remove","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department"}`), "enterprise.department-"},
+		{"an enterprise value not a string", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department","value":5}`), "400 invalidValue: An enterprise extension value is invalid."},
+		{"a blank enterprise value", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department","value":" "}`), "400 invalidValue: An enterprise extension value is invalid."},
+		{"an enterprise value over 256", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department","value":"` + strings.Repeat("x", 257) + `"}`), "400 invalidValue: An enterprise extension value is invalid."},
+		{"the manager object", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:manager","value":{"value":"m-1","displayName":"Boss"}}`), "enterprise.manager={m-1,Boss}"},
+		{"the manager as its id", patchBody(`{"op":"add","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:manager","value":"m-1"}`), "enterprise.manager={m-1,}"},
+		{"a manager without a value", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:manager","value":{"displayName":"Boss"}}`), "400 invalidValue: manager must be an object with a string value."},
+		{"a manager not an object", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:manager","value":5}`), "400 invalidValue: manager must be an object with a string value."},
+		{"the manager's value", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:manager.value","value":"m-2"}`), "enterprise.manager.value=m-2"},
+		{"the manager's display name in any case", patchBody(`{"op":"replace","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:Manager.DisplayName","value":"B"}`), "enterprise.manager.displayName=B"},
+		{"remove the manager", patchBody(`{"op":"remove","path":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:manager"}`), "enterprise.manager-"},
 		{"the first refusal wins", patchBody(`{"op":"replace","path":"active","value":true}`, `{"op":"replace","path":"title","value":"x"}`), unsupported},
 		{"several operations in order", patchBody(`{"op":"replace","path":"active","value":true}`, `{"op":"replace","path":"displayName","value":"D"}`), "active=true displayName=D"},
 		{"a long s in the email path", patchBody(`{"op":"replace","path":"email\u017f.value","value":"a@b.example"}`), unsupported},
@@ -381,6 +416,7 @@ func TestScimReadResources(t *testing.T) {
 		{`{"userName":"bob","displayName":7,"externalId":7}`, "bob|-|-|-|-|-|-"},
 		{`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:Group"],"userName":"bob"}`, "400 invalidValue: The resource schema is not supported."},
 		{`{"userName":"a","userName":"b"}`, "a|-|-|-|-|-|-"},
+		{`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User","urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"],"userName":"bob"}`, "bob|-|-|-|-|-|-"},
 	}
 	for _, c := range userCases {
 		if got := user(c.body); got != c.want {
@@ -694,7 +730,15 @@ func TestScimDiscoveryDocuments(t *testing.T) {
 		attr(false, false, rw, "active", false, "", "boolean", ""),
 		attr(false, true, rw, "members", false, attr(false, false, rw, "value", true, "", "string", "")+","+attr(false, false, "readOnly", "$ref", false, "", "reference", "")+","+attr(false, false, rw, "type", false, "", "string", ""), "complex", ""),
 	}, ",") + `],"description":"SCIM Group","id":"urn:ietf:params:scim:schemas:core:2.0:Group","name":"Group"}`
-	want = `{"resources":[` + user + "," + group + `],"schemas":["urn:ietf:params:scim:api:messages:2.0:ListResponse"],"totalResults":2}`
+	enterprise := `{"attributes":[` + strings.Join([]string{
+		attr(false, false, rw, "employeeNumber", false, "", "string", ""),
+		attr(false, false, rw, "costCenter", false, "", "string", ""),
+		attr(false, false, rw, "organization", false, "", "string", ""),
+		attr(false, false, rw, "division", false, "", "string", ""),
+		attr(false, false, rw, "department", false, "", "string", ""),
+		attr(false, false, rw, "manager", false, attr(false, false, rw, "value", false, "", "string", "")+","+attr(false, false, "readOnly", "$ref", false, "", "reference", "")+","+attr(false, false, rw, "displayName", false, "", "string", ""), "complex", ""),
+	}, ",") + `],"description":"Enterprise User","id":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User","name":"EnterpriseUser"}`
+	want = `{"resources":[` + user + "," + group + "," + enterprise + `],"schemas":["urn:ietf:params:scim:api:messages:2.0:ListResponse"],"totalResults":3}`
 	if string(b) != want {
 		t.Errorf("Schemas\n got %s\nwant %s", b, want)
 	}
@@ -704,10 +748,104 @@ func TestScimDiscoveryDocuments(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ = json.Marshal(types)
-	want = `{"resources":[{"description":"SCIM User","endpoint":"/api/v1/identity/scim/v2/Users","id":"User","name":"User","schema":"urn:ietf:params:scim:schemas:core:2.0:User"},` +
+	want = `{"resources":[{"description":"SCIM User","endpoint":"/api/v1/identity/scim/v2/Users","id":"User","name":"User","schema":"urn:ietf:params:scim:schemas:core:2.0:User",` +
+		`"schemaExtensions":[{"required":false,"schema":"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"}]},` +
 		`{"description":"SCIM Group","endpoint":"/api/v1/identity/scim/v2/Groups","id":"Group","name":"Group","schema":"urn:ietf:params:scim:schemas:core:2.0:Group"}],` +
 		`"schemas":["urn:ietf:params:scim:schemas:core:2.0:ResourceType"],"totalResults":2}`
 	if string(b) != want {
 		t.Errorf("ResourceTypes\n got %s\nwant %s", b, want)
+	}
+}
+
+// New: the enterprise extension's block as a User resource carries it
+// (Entra design D3): under its URN exactly, an object; each value a string,
+// trimmed and safe; manager an object with a string value; a block that
+// sets nothing is none.
+func TestScimReadEnterprise(t *testing.T) {
+	const urn = `"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"`
+	block := func(body string) string {
+		in, err := readScimUser([]byte(`{"userName":"bob",` + body + `}`))
+		if err != nil {
+			return scimErrorOf(t, err)
+		}
+		e := in.enterprise
+		if e == nil {
+			return "none"
+		}
+		manager := "-"
+		if e.Manager != nil {
+			manager = deref(e.Manager.Value) + "/" + deref(e.Manager.DisplayName)
+		}
+		parts := []string{}
+		for _, f := range e.stringFields() {
+			parts = append(parts, f.name+"="+deref(*f.value))
+		}
+		return strings.Join(append(parts, "manager="+manager), " ")
+	}
+	const invalid = "400 invalidValue: An enterprise extension value is invalid."
+	cases := []struct{ body, want string }{
+		{`"x":1`, "none"},
+		{urn + `:{}`, "none"},
+		{urn + `:{"department":null}`, "none"},
+		{urn + `:{"employeeNumber":" E-1 ","costCenter":"C","organization":"O","division":"D","department":"Dep","manager":{"value":" m-1 ","displayName":"Boss"}}`,
+			"employeeNumber=E-1 costCenter=C organization=O division=D department=Dep manager=m-1/Boss"},
+		{urn + `:{"EmployeeNumber":"E-2"}`, "employeeNumber=E-2 costCenter= organization= division= department= manager=-"},
+		{`"URN:ietf:params:scim:schemas:extension:enterprise:2.0:User":{"employeeNumber":"E-3"}`, "none"},
+		{urn + `:"x"`, "400 invalidValue: The enterprise extension must be an object."},
+		{urn + `:null`, "400 invalidValue: The enterprise extension must be an object."},
+		{urn + `:{"employeeNumber":5}`, invalid},
+		{urn + `:{"department":" "}`, invalid},
+		{urn + `:{"department":"a\u0007"}`, invalid},
+		{urn + `:{"department":"` + strings.Repeat("x", 257) + `"}`, invalid},
+		{urn + `:{"department":"` + strings.Repeat("x", 256) + `"}`, "employeeNumber= costCenter= organization= division= department=" + strings.Repeat("x", 256) + " manager=-"},
+		{urn + `:{"manager":{"displayName":"Boss"}}`, "400 invalidValue: manager must be an object with a string value."},
+		{urn + `:{"manager":{"value":5}}`, "400 invalidValue: manager must be an object with a string value."},
+		{urn + `:{"manager":{"value":"m","displayName":5}}`, invalid},
+		{urn + `:{"manager":5}`, "400 invalidValue: manager must be an object with a string value."},
+		{urn + `:{"manager":null}`, "none"},
+	}
+	for _, c := range cases {
+		if got := block(c.body); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.body, got, c.want)
+		}
+	}
+}
+
+// New: a replace sets the enterprise block whole, a create merges it, and
+// each PATCH action changes one attribute; a block emptied is none.
+func TestScimEnterpriseApply(t *testing.T) {
+	str := func(s string) *string { return &s }
+	st := scimUserState{profile: scimStoredProfile{Enterprise: &scimEnterprise{Department: str("A"), CostCenter: str("C")}}}
+	in := scimUserInput{userName: str("u"), externalID: str("e"), enterprise: &scimEnterprise{Department: str("B")}}
+	merged := st
+	merged.apply(in, false)
+	if e := merged.profile.Enterprise; e == nil || deref(e.Department) != "B" || deref(e.CostCenter) != "C" {
+		t.Errorf("a create's merge: %+v", e)
+	}
+	replaced := st
+	replaced.apply(in, true)
+	if e := replaced.profile.Enterprise; e == nil || deref(e.Department) != "B" || e.CostCenter != nil {
+		t.Errorf("a replace: %+v", e)
+	}
+	in.enterprise = nil
+	cleared := st
+	cleared.apply(in, true)
+	if cleared.profile.Enterprise != nil {
+		t.Errorf("a replace without the block: %+v", cleared.profile.Enterprise)
+	}
+
+	patched := st
+	patched.applyAction(scimUserAction{field: "enterprise.manager.value", value: str("m-1")})
+	patched.applyAction(scimUserAction{field: "enterprise.department", remove: true})
+	if e := patched.profile.Enterprise; e == nil || e.Department != nil || e.Manager == nil || deref(e.Manager.Value) != "m-1" {
+		t.Errorf("patched: %+v", e)
+	}
+	patched.applyAction(scimUserAction{field: "enterprise.manager", remove: true})
+	patched.applyAction(scimUserAction{field: "enterprise.costCenter", remove: true})
+	if patched.profile.Enterprise != nil {
+		t.Errorf("every attribute removed: %+v", patched.profile.Enterprise)
+	}
+	if st.profile.Enterprise.Department == nil || deref(st.profile.Enterprise.Department) != "A" {
+		t.Errorf("the state applied from changed: %+v", st.profile.Enterprise)
 	}
 }

@@ -47,6 +47,16 @@ const (
 	scimMaxFilterLength = 512
 )
 
+// The enterprise extension (RFC 7643 §4.3; Entra design D3): its schema
+// URN, which a resource names its block by, a PATCH path and a filter
+// prefix their attribute with — exactly, the attribute after it in any
+// ASCII case — and the longest value of it a mapping keeps.
+const (
+	scimEnterpriseSchema         = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"
+	scimEnterpriseEmployeeNumber = scimEnterpriseSchema + ":employeeNumber"
+	scimEnterpriseValueLength    = 256
+)
+
 // maxGroupExternalIDLength is identity.access_groups.external_id's bound,
 // .NET's column (AccessGroupEntityTypeConfiguration.cs:16). .NET validated a
 // group's externalId against 512 characters (SV/SCIM:752) and its database
@@ -488,7 +498,9 @@ func withSubAttributes(a gen.ScimSchemaAttribute, sub ...gen.ScimSchemaAttribute
 }
 
 // GetIdentityScimV2Schemas is SchemasAsync (SV/SCIM:81-92) with .NET's two
-// schema documents (:1010-1038).
+// schema documents (:1010-1038), and the enterprise extension's (RFC 7643
+// §4.3, Entra design D3): its attributes as a mapping keeps them, manager's
+// $ref this server's path for the provider's id.
 func (s *server) GetIdentityScimV2Schemas(context.Context, gen.GetIdentityScimV2SchemasRequestObject) (gen.GetIdentityScimV2SchemasResponseObject, error) {
 	ref := scimAttribute("$ref", "reference", false, false)
 	ref.Mutability = "readOnly"
@@ -524,23 +536,45 @@ func (s *server) GetIdentityScimV2Schemas(context.Context, gen.GetIdentityScimV2
 				scimAttribute("type", "string", false, false)),
 		},
 	}
+	managerRef := scimAttribute("$ref", "reference", false, false)
+	managerRef.Mutability = "readOnly"
+	enterprise := gen.ScimSchemaDocument{
+		Id:          scimEnterpriseSchema,
+		Name:        "EnterpriseUser",
+		Description: "Enterprise User",
+		Attributes: []gen.ScimSchemaAttribute{
+			scimAttribute("employeeNumber", "string", false, false),
+			scimAttribute("costCenter", "string", false, false),
+			scimAttribute("organization", "string", false, false),
+			scimAttribute("division", "string", false, false),
+			scimAttribute("department", "string", false, false),
+			withSubAttributes(scimAttribute("manager", "complex", false, false),
+				scimAttribute("value", "string", false, false),
+				managerRef,
+				scimAttribute("displayName", "string", false, false)),
+		},
+	}
 	return gen.GetIdentityScimV2Schemas200ApplicationScimPlusJSONResponse{
 		Schemas:      []string{scimListSchema},
-		TotalResults: 2,
-		Resources:    []gen.ScimSchemaDocument{user, group},
+		TotalResults: 3,
+		Resources:    []gen.ScimSchemaDocument{user, group, enterprise},
 	}, nil
 }
 
 // GetIdentityScimV2ResourceTypes is ResourceTypesAsync (SV/SCIM:94-109).
 // The endpoints carry the installation's base path, as every location here
-// does.
+// does. User admits the enterprise extension, not required (Entra design
+// D3).
 func (s *server) GetIdentityScimV2ResourceTypes(context.Context, gen.GetIdentityScimV2ResourceTypesRequestObject) (gen.GetIdentityScimV2ResourceTypesResponseObject, error) {
 	base := s.deps.Config.BasePath + scimBasePath
 	return gen.GetIdentityScimV2ResourceTypes200ApplicationScimPlusJSONResponse{
 		Schemas:      []string{"urn:ietf:params:scim:schemas:core:2.0:ResourceType"},
 		TotalResults: 2,
 		Resources: []gen.ScimResourceType{
-			{Id: "User", Name: "User", Endpoint: base + "/Users", Description: "SCIM User", Schema: scimUserSchema},
+			{
+				Id: "User", Name: "User", Endpoint: base + "/Users", Description: "SCIM User", Schema: scimUserSchema,
+				SchemaExtensions: &[]gen.ScimSchemaExtension{{Schema: scimEnterpriseSchema, Required: false}},
+			},
 			{Id: "Group", Name: "Group", Endpoint: base + "/Groups", Description: "SCIM Group", Schema: scimGroupSchema},
 		},
 	}, nil

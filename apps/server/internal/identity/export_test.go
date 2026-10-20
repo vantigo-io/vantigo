@@ -33,6 +33,9 @@ var RoleMutationLockKey = roleMutationLockKey
 // to make SCIM writes queue behind it.
 const ScimLockKey = scimLockKey
 
+// ErrInvalidSpec is the provider's refusal of a spec identity cannot store.
+var ErrInvalidSpec = errInvalidSpec
+
 // ScimConnectionID is the one static SCIM connection the audit facts name.
 var ScimConnectionID = scimConnectionID
 

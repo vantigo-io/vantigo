@@ -280,7 +280,9 @@ func scimUserID(id string) (uuid.UUID, bool) {
 
 // readSchemas is TryReadSchemas (:1081-1090): a resource may leave schemas
 // out, as older Entra payloads did; when present they must be strings, and
-// one of them expected.
+// one of them expected. Any other name beside it is tolerated, so a User
+// naming the enterprise extension's URN beside the core schema, as Entra's
+// does once it sends the block, is read.
 func readSchemas(root json.RawMessage, expected string) error {
 	schemas, ok := jsonProperty(root, "schemas")
 	if !ok {
@@ -359,11 +361,13 @@ func readWorkEmail(emails json.RawMessage) (*string, error) {
 }
 
 // scimUserInput is ScimUserInput (:1212): a User resource as POST and PUT
-// read it.
+// read it. enterprise is the enterprise extension's block (Entra design
+// D3), nil when the resource carries none or an empty one.
 type scimUserInput struct {
 	userName, externalID, displayName *string
 	active                            *bool
 	profile                           scimProfile
+	enterprise                        *scimEnterprise
 }
 
 // readScimUser is TryReadUser (:698-724), with userName required, as both
@@ -392,11 +396,115 @@ func readScimUser(body []byte) (scimUserInput, error) {
 	if err != nil {
 		return in, err
 	}
+	enterprise, err := readEnterprise(root)
+	if err != nil {
+		return in, err
+	}
 	in.userName = trimmed(userName)
 	in.externalID = normalizeExternalID(jsonReadString(root, "externalId"))
 	in.displayName = trimmed(jsonReadString(root, "displayName"))
 	in.profile = profile
+	in.enterprise = enterprise
 	return in, nil
+}
+
+// The enterprise extension's refusals.
+const (
+	enterpriseObjectDetail = "The enterprise extension must be an object."
+	enterpriseValueDetail  = "An enterprise extension value is invalid."
+	enterpriseManagerText  = "manager must be an object with a string value."
+)
+
+// readEnterprise reads the enterprise extension's block from a User
+// resource's root, under the URN exactly (Entra design D3): absent is nil;
+// anything but an object is invalidValue. Its attributes are read in any
+// ASCII case, as the core ones are: each of the five strings, when present
+// and not null, must be a string, kept trimmed, a safe value of at most
+// scimEnterpriseValueLength; manager, when present and not null, an object
+// whose value is such a string and whose displayName, when present, is too.
+// A block that sets nothing is nil.
+func readEnterprise(root json.RawMessage) (*scimEnterprise, error) {
+	var block json.RawMessage
+	found := false
+	for _, m := range jsonMembers(root) {
+		if m.name == scimEnterpriseSchema {
+			block, found = m.value, true
+			break
+		}
+	}
+	if !found {
+		return nil, nil
+	}
+	if jsonKindOf(block) != jsonObject {
+		return nil, scimInvalidValue(enterpriseObjectDetail)
+	}
+	var e scimEnterprise
+	for _, f := range e.stringFields() {
+		v, ok := jsonProperty(block, f.name)
+		if !ok || jsonKindOf(v) == jsonNull {
+			continue
+		}
+		value, err := enterpriseString(v)
+		if err != nil {
+			return nil, err
+		}
+		*f.value = value
+	}
+	if v, ok := jsonProperty(block, "manager"); ok && jsonKindOf(v) != jsonNull {
+		m, err := readManager(v)
+		if err != nil {
+			return nil, err
+		}
+		e.Manager = m
+	}
+	return e.orNil(), nil
+}
+
+// enterpriseString is an enterprise extension's string value: a JSON
+// string, trimmed, a safe value of at most scimEnterpriseValueLength, or
+// invalidValue.
+func enterpriseString(v json.RawMessage) (*string, error) {
+	s, ok := jsonStringOf(v)
+	if !ok {
+		return nil, scimInvalidValue(enterpriseValueDetail)
+	}
+	t := trimmed(&s)
+	if !isSafeValue(t, scimEnterpriseValueLength) {
+		return nil, scimInvalidValue(enterpriseValueDetail)
+	}
+	return t, nil
+}
+
+// readManager is the manager attribute: an object whose value is an
+// enterprise string and whose displayName, when present and not null, is
+// one too. A bare string is taken as the manager's value, as Microsoft's
+// provisioning service sends a manager in a PatchOp.
+func readManager(v json.RawMessage) (*scimManager, error) {
+	if jsonKindOf(v) == jsonString {
+		value, err := enterpriseString(v)
+		if err != nil {
+			return nil, err
+		}
+		return &scimManager{Value: value}, nil
+	}
+	if jsonKindOf(v) != jsonObject {
+		return nil, scimInvalidValue(enterpriseManagerText)
+	}
+	raw, ok := jsonProperty(v, "value")
+	if !ok || jsonKindOf(raw) != jsonString {
+		return nil, scimInvalidValue(enterpriseManagerText)
+	}
+	value, err := enterpriseString(raw)
+	if err != nil {
+		return nil, err
+	}
+	m := &scimManager{Value: value}
+	if name, ok := jsonProperty(v, "displayName"); ok && jsonKindOf(name) != jsonNull {
+		if m.DisplayName, err = enterpriseString(name); err != nil {
+			return nil, err
+		}
+	}
+	return m, nil
 }
 
 // scimGroupInput is ScimGroupInput (:1213).
@@ -498,13 +606,65 @@ func scimOp(op string) (string, error) {
 
 // scimUserAction is ScimUserAction (:1215): one validated change to a User.
 // field is userName, externalId, active, displayName, email, givenName or
-// familyName; value is the text set (nil for a removal and for active);
-// active is the state an active operation carried.
+// familyName, or an enterprise extension attribute as enterprisePrefix
+// followed by its name (enterpriseAttributes); value is the text set (nil
+// for a removal and for active); active is the state an active operation
+// carried; manager is the object an enterprise manager operation set.
 type scimUserAction struct {
-	field  string
-	value  *string
-	active *bool
-	remove bool
+	field   string
+	value   *string
+	active  *bool
+	remove  bool
+	manager *scimManager
+}
+
+// enterprisePrefix marks an enterprise extension attribute's action field.
+const enterprisePrefix = "enterprise."
+
+// enterpriseAttributes are the enterprise extension's PATCH paths after the
+// URN and its colon, as the action names them.
+var enterpriseAttributes = []string{
+	"employeeNumber", "costCenter", "organization", "division", "department",
+	"manager", "manager.value", "manager.displayName",
+}
+
+// scimEnterprisePath reports whether path names the enterprise extension —
+// the URN exactly, then a colon — and the attribute after it, matched in
+// any ASCII case (enterpriseAttributes' spelling, or "" for one it does not
+// list).
+func scimEnterprisePath(path string) (attribute string, enterprise bool) {
+	rest, ok := strings.CutPrefix(path, scimEnterpriseSchema+":")
+	if !ok {
+		return "", false
+	}
+	for _, a := range enterpriseAttributes {
+		if equalOrdinalIgnoreCase(a, rest) {
+			return a, true
+		}
+	}
+	return "", true
+}
+
+// scimEnterpriseAction is one validated operation on an enterprise
+// extension attribute (Entra design D3): remove clears it; otherwise
+// manager takes an object (readManager) and every other attribute a string
+// (enterpriseString). An attribute the extension has no path for is
+// invalidPath, as every other path is.
+func scimEnterpriseAction(attribute string, raw json.RawMessage, op string) (scimUserAction, error) {
+	if attribute == "" {
+		return scimUserAction{}, scimInvalidPath("The PatchOp path is not supported.")
+	}
+	action := scimUserAction{field: enterprisePrefix + attribute, remove: op == "remove"}
+	if action.remove {
+		return action, nil
+	}
+	var err error
+	if attribute == "manager" {
+		action.manager, err = readManager(raw)
+	} else {
+		action.value, err = enterpriseString(raw)
+	}
+	return action, err
 }
 
 const nameComponentsDetail = "Only name.givenName and name.familyName are supported."
@@ -519,8 +679,10 @@ var emailPathPattern = regexp.MustCompile(`^[eE][mM][aA][iI][lL][sS](?:\[.*?\])?
 // scimUserActions is TryValidateUserOperations (:774-828): every operation
 // validated into actions, or the first refusal. Entra sends a pathless
 // object (:784-786); each of its properties becomes the operation its name
-// is the path of, a name object one per part and emails its work email, so
-// the request stays atomic.
+// is the path of, a name object one per part, the enterprise extension's
+// object (under its URN) one per attribute, and emails its work email, so
+// the request stays atomic. A path under the enterprise extension's URN is
+// scimEnterpriseAction's.
 func scimUserActions(ops []scimPatchOp) ([]scimUserAction, error) {
 	var actions []scimUserAction
 	for _, operation := range ops {
@@ -538,6 +700,10 @@ func scimUserActions(ops []scimPatchOp) ([]scimUserAction, error) {
 							return nil, scimInvalidPath(nameComponentsDetail)
 						}
 						expanded = append(expanded, scimPatchOp{op: operation.op, path: apicommon.Ptr("name." + part.name), value: part.value})
+					}
+				case p.name == scimEnterpriseSchema && jsonKindOf(p.value) == jsonObject:
+					for _, attribute := range jsonMembers(p.value) {
+						expanded = append(expanded, scimPatchOp{op: operation.op, path: apicommon.Ptr(scimEnterpriseSchema + ":" + attribute.name), value: attribute.value})
 					}
 				case equalOrdinalIgnoreCase(p.name, "emails"):
 					email, err := readWorkEmail(p.value)
@@ -561,6 +727,16 @@ func scimUserActions(ops []scimPatchOp) ([]scimUserAction, error) {
 			continue
 		}
 
+		if operation.path != nil {
+			if attribute, ok := scimEnterprisePath(dotnetTrim(*operation.path)); ok {
+				action, err := scimEnterpriseAction(attribute, operation.value, op)
+				if err != nil {
+					return nil, err
+				}
+				actions = append(actions, action)
+				continue
+			}
+		}
 		field, value, remove, err := scimUserPath(operation.path, operation.value, op)
 		if err != nil {
 			return nil, err
@@ -881,12 +1057,18 @@ func dotnetIntParses(s string) bool {
 // with \s spelled as .NET means it and its case-insensitivity spelled
 // letter by letter (see emailPathPattern): attr eq "json-string", joined by
 // and. An attribute is ASCII letters and digits, as .NET's [A-Za-z] was:
-// uſerName does not match. Like .NET's, a repeated group captures only its
+// uſerName does not match; it may carry the enterprise extension's URN
+// (scimFilterAttribute). Like .NET's, a repeated group captures only its
 // last repetition: of three or more clauses, the first and the last are
 // read, and the ones between are matched but ignored, attribute and all.
-var scimFilterPattern = regexp.MustCompile(strings.ReplaceAll(
-	`^\s*([A-Za-z][A-Za-z0-9]*)\s+[eE][qQ]\s+("(?:\\.|[^"\\])*")(?:\s+[aA][nN][dD]\s+([A-Za-z][A-Za-z0-9]*)\s+[eE][qQ]\s+("(?:\\.|[^"\\])*"))*\s*$`,
-	`\s`, dotnetSpace))
+var scimFilterPattern = regexp.MustCompile(strings.NewReplacer(`\s`, dotnetSpace, `ATTR`, scimFilterAttribute).Replace(
+	`^\s*(ATTR)\s+[eE][qQ]\s+("(?:\\.|[^"\\])*")(?:\s+[aA][nN][dD]\s+(ATTR)\s+[eE][qQ]\s+("(?:\\.|[^"\\])*"))*\s*$`))
+
+// scimFilterAttribute is a filter's attribute: .NET's, ASCII letters and
+// digits, optionally after the enterprise extension's URN and a colon,
+// spelled exactly (Entra design D3), so its employeeNumber can be filtered
+// on.
+var scimFilterAttribute = `(?:` + regexp.QuoteMeta(scimEnterpriseSchema+":") + `)?[A-Za-z][A-Za-z0-9]*`
 
 // scimFilterClause is ScimFilter (:1217): attribute equals value.
 type scimFilterClause struct {
@@ -929,7 +1111,7 @@ func scimFilter(raw string, allowed ...string) ([]scimFilterClause, error) {
 // U+FFFD, so escapes are checked first (pairedSurrogateEscapes).
 func scimFilterClauseOf(attribute, quoted string, allowed []string) (scimFilterClause, error) {
 	for _, a := range allowed {
-		if !equalOrdinalIgnoreCase(a, attribute) {
+		if !scimAttributeIs(a, attribute) {
 			continue
 		}
 		var value string
@@ -986,18 +1168,33 @@ func hexUnit(s string, at int) (uint64, bool) {
 	return unit, err == nil
 }
 
-// scimFilterValues splits clauses into the values each of the two
-// attributes must equal.
-func scimFilterValues(clauses []scimFilterClause, first string) (firsts, externalIDs []string) {
-	firsts, externalIDs = []string{}, []string{}
+// scimAttributeIs reports whether a filter's attribute is the allowed one:
+// ignoring ASCII case, but for the enterprise extension's URN, which must
+// be spelled exactly.
+func scimAttributeIs(allowed, attribute string) bool {
+	if rest, ok := strings.CutPrefix(allowed, scimEnterpriseSchema+":"); ok {
+		got, ok := strings.CutPrefix(attribute, scimEnterpriseSchema+":")
+		return ok && equalOrdinalIgnoreCase(rest, got)
+	}
+	return equalOrdinalIgnoreCase(allowed, attribute)
+}
+
+// scimFilterValues splits clauses into the values each attribute must
+// equal: first's, the enterprise extension's employeeNumber's, and
+// externalId's (every other clause).
+func scimFilterValues(clauses []scimFilterClause, first string) (firsts, externalIDs, employeeNumbers []string) {
+	firsts, externalIDs, employeeNumbers = []string{}, []string{}, []string{}
 	for _, c := range clauses {
-		if c.attribute == first {
+		switch c.attribute {
+		case first:
 			firsts = append(firsts, c.value)
-		} else {
+		case scimEnterpriseEmployeeNumber:
+			employeeNumbers = append(employeeNumbers, c.value)
+		default:
 			externalIDs = append(externalIDs, c.value)
 		}
 	}
-	return firsts, externalIDs
+	return firsts, externalIDs, employeeNumbers
 }
 
 // scimMembersExcluded is IsMembersExcluded (:1166): excludedAttributes lists

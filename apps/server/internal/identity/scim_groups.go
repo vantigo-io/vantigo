@@ -265,7 +265,7 @@ func (s *server) GetIdentityScimV2Groups(ctx context.Context, _ gen.GetIdentityS
 	if err != nil {
 		return scimOr[gen.GetIdentityScimV2GroupsResponseObject](err)
 	}
-	displayNames, externalIDs := scimFilterValues(clauses, "displayName")
+	displayNames, externalIDs, _ := scimFilterValues(clauses, "displayName")
 	total, err := s.q.CountScimGroups(ctx, store.CountScimGroupsParams{DisplayNames: displayNames, ExternalIds: externalIDs})
 	if err != nil {
 		return nil, fmt.Errorf("identity: count SCIM groups: %w", err)

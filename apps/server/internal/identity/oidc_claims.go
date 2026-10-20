@@ -243,6 +243,10 @@ type externalAccount struct {
 	email         string // "" when the provider sent no usable one
 	emailVerified bool
 	displayName   string
+	// objectID is the oid claim normalised as SCIM's externalId is
+	// (normalizeExternalID), what an announced account is matched on
+	// (Entra design D4); "" when the token carries none.
+	objectID string
 }
 
 // maxSubjectLength is the longest subject .NET linked
@@ -254,12 +258,16 @@ const maxSubjectLength = 512
 // subject must be non-empty, without whitespace and at most 512
 // characters; it is kept exactly, case included. The email and display
 // name are read leniently: a claim that does not qualify is dropped, not
-// fatal.
+// fatal. The object id is kept normalised, when there is one.
 func readExternalAccount(c oidcClaims, configuredIssuer string) (externalAccount, bool) {
 	issuer, ok := normalizeIssuer(c.Issuer)
 	if !ok || issuer != configuredIssuer || c.Subject == "" || hasWhitespace(c.Subject) ||
 		utf16Length(c.Subject) > maxSubjectLength {
 		return externalAccount{}, false
+	}
+	objectID := ""
+	if strings.TrimSpace(c.ObjectID) != "" {
+		objectID = *normalizeExternalID(&c.ObjectID)
 	}
 	return externalAccount{
 		issuer:        issuer,
@@ -267,6 +275,7 @@ func readExternalAccount(c oidcClaims, configuredIssuer string) (externalAccount
 		email:         readEmail(c.Email),
 		emailVerified: bool(c.EmailVerified),
 		displayName:   readDisplayName(c),
+		objectID:      objectID,
 	}, true
 }
 
