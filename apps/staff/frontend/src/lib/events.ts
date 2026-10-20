@@ -53,6 +53,20 @@ export const eventKinds = [
   "account_blocked",
   "account_failed",
   "account_mismatched",
+  // The provider link (Entra delivery B, `accounts_provider.go`): the
+  // announcement and the provider's steps, by their codes (accountLines),
+  // the address a provider made — never the address itself — and a pass
+  // shown, naming the viewer and never the pass.
+  "account_announced",
+  "account_external_prepared",
+  "account_external_activated",
+  "account_external_deactivated",
+  "account_external_updated",
+  "account_external_deleted",
+  "account_external_blocked",
+  "account_external_failed",
+  "work_email_set_by_provider",
+  "pass_revealed",
 ] as const;
 
 /**
@@ -73,6 +87,8 @@ const fieldLabelOverrides: Record<string, string> = {
   bankAccount: "bankAccount",
   nextOfKin: "nextOfKin",
   roles: "roles",
+  // The select's label, whose values are the kinds' short names.
+  accountKind: "accountKindChoice",
 };
 
 export const eventFieldLabelKey = (field: string): string => fieldLabelOverrides[field] ?? field;
@@ -156,6 +172,8 @@ export const eventFields = [
   "provisionAccount",
   "provisionFrom",
   "accountEmailKind",
+  // The person's account kind (Entra delivery B), a change of the flag's.
+  "accountKind",
 ] as const;
 
 /** What one field of a payload says: its values before and after, or only that it changed. */
@@ -226,8 +244,9 @@ const coded = (prefix: string, code: string, f: EventFormatting) =>
 
 /**
  * An accounts worker's event (delivery C) names no field: its step, the
- * link's state after it, the reason or failure code, the invitation and
- * whether the flag was turned off meanwhile — each said in words.
+ * link's state after it, the reason or failure code, the provider's
+ * reported codes, the invitation and whether the flag was turned off
+ * meanwhile — each said in words.
  */
 const accountLines = (payload: Record<string, unknown>, f: EventFormatting): string[] => {
   const lines: string[] = [];
@@ -236,6 +255,11 @@ const accountLines = (payload: Record<string, unknown>, f: EventFormatting): str
   if (typeof payload.state === "string" && payload.state)
     lines.push(f.t("accountEventState", { state: coded("accountLinkState_", payload.state, f) }));
   if (typeof payload.code === "string" && payload.code) lines.push(coded("accountReason_", payload.code, f));
+  // A provider link's reported codes (Entra delivery B), each in words; a
+  // licence's code carries the SKU after a colon, which the words leave out.
+  if (Array.isArray(payload.codes))
+    for (const code of payload.codes)
+      if (typeof code === "string" && code) lines.push(coded("accountReason_", code.split(":")[0], f));
   const invitation = payload.invitation as { state?: unknown; issued?: unknown } | undefined;
   if (invitation && typeof invitation.state === "string")
     lines.push(

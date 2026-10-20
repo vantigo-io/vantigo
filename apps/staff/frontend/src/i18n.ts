@@ -407,6 +407,12 @@ export const staffCatalog = {
       "The account flag is off, but the user was not disabled: they are an Owner or a system administrator. An Owner disables them on the Users page; Staff tries again daily.",
     "refusal.account_mismatch":
       "The account flag is off, but the user was not disabled: the account carries another employee number — someone else's account. It is disabled once the number is right.",
+    "refusal.account_kind_locked":
+      "The account kind cannot leave Microsoft Entra ID while the person's account there is enabled or disabled. The person leaves the directory by Disable now or by the end of their employment.",
+    "refusal.provider_missing": "No enabled module offers this identity provider, so it cannot be chosen.",
+    "refusal.pass_gone":
+      "The pass was shown already, has expired, or none was issued. Run now (new pass) issues a new one.",
+    "refusal.provider_refused": "The identity provider refused the step; nothing more was done there.",
 
     // The Account tab (delivery C)
     tab_account: "Account",
@@ -418,6 +424,16 @@ export const staffCatalog = {
     event_account_blocked: "Account held up",
     event_account_failed: "Account step failed",
     event_account_mismatched: "Account belongs to another employee number",
+    event_account_announced: "Account announced to identity",
+    event_account_external_prepared: "Directory account prepared",
+    event_account_external_activated: "Directory account enabled",
+    event_account_external_deactivated: "Directory account disabled",
+    event_account_external_updated: "Directory account brought in line",
+    event_account_external_deleted: "Directory account deleted",
+    event_account_external_blocked: "Directory account held up",
+    event_account_external_failed: "Directory account step failed",
+    event_work_email_set_by_provider: "Work email set by the identity provider",
+    event_pass_revealed: "Pass shown",
     provisionFrom: "Account from",
     accountEmailKind: "Address",
     accountStep_none: "Nothing to do",
@@ -426,6 +442,9 @@ export const staffCatalog = {
     accountStep_deactivate: "Disable the user",
     accountStep_update: "Bring the user in line with the record",
     accountStep_report: "Report why the account is held up",
+    accountStep_delete: "Delete the account in the directory",
+    accountStep_announce: "Announce the account to identity",
+    accountStep_unexpect: "Withdraw the announcement",
     accountReason_accounts_unavailable: "Identity could not be reached; the worker tries again.",
     accountEventStep: "Step: {{step}}",
     accountEventState: "State: {{state}}",
@@ -455,10 +474,12 @@ export const staffCatalog = {
     saveAccountFlag: "Save the account flag",
     accountFlagSaved: "The account flag is saved",
     userAccount: "User account",
-    accountMode_local: "Local accounts — Staff creates the user and invites the person to choose a password.",
-    accountMode_federated:
-      "Federated — the identity provider owns the accounts: Staff finds the user by the employee number, enables what it disabled and disables; it never creates a user or invites.",
-    accountMode_unavailable:
+    accountKind_local: "Local account — Staff creates the user and invites the person to choose a password.",
+    accountKind_external:
+      "External identity provider — the provider owns the account: Staff finds the user by the employee number, enables what it disabled and disables; it never creates a user or invites.",
+    accountKind_entra:
+      "Microsoft Entra ID — Staff creates the person's account in the directory, enables and disables it, and the user arrives in Vantigo managed by Staff, with no Owner in between.",
+    accountKind_unavailable:
       "Accounts are unavailable — no module provides them, or this server's configuration disagrees with the mode identity recorded. Nothing is run until that is fixed.",
     accountNoUser: "No user yet: Staff has not created or found one for this person.",
     accountState: "State",
@@ -470,6 +491,8 @@ export const staffCatalog = {
     accountLinkState_disabledByOwner: "Disabled by an Owner",
     accountLinkState_failed: "Failed",
     accountLinkState_blocked: "Blocked",
+    accountLinkState_enabled: "Enabled",
+    accountLinkState_deleted: "Deleted in the directory",
     managedByStaff: "Managed by Staff",
     accountInvitation: "Invitation",
     accountInvitation_none: "None open, or none needed",
@@ -493,7 +516,7 @@ export const staffCatalog = {
     accountReason_mismatch:
       "The account belongs to another employee number — someone else's account; nothing is done to it.",
     accountReason_mode_changed:
-      "The pending user was created for local accounts, but the installation is now federated and never invites.",
+      "The pending user was created for a local account, but the person's account kind is now one that never invites.",
     accountReason_email_differs:
       "The user's address in identity differs from the person's chosen address since their invitation was sent; an Owner changes it in identity.",
     accountReason_invitation_revoked: "An Owner revoked the invitation; Run now sends a fresh one.",
@@ -535,7 +558,7 @@ export const staffCatalog = {
     // The account settings (delivery C)
     accountSettings: "Accounts",
     accountSettingsDescription:
-      "How Staff gives people accounts: the mode identity records, the roles an Owner names for Staff to give, and when an account is prepared.",
+      "How Staff gives people accounts: the kind a new person takes, the identity providers, the roles an Owner names for Staff to give, and when an account is prepared.",
     accountRolesSet: "An Owner has named the roles Staff may give.",
     accountRolesMissing:
       "No Owner has named the roles Staff may give, so no local account can be enabled. An Owner names them under Roles Staff may give, on the Roles & access page.",
@@ -544,7 +567,7 @@ export const staffCatalog = {
     createBeforeDaysInvalid: "0 to 90 days",
     deleteExternalAfterDays: "Delete an external account (days after the end)",
     deleteExternalAfterDaysDescription:
-      "Used by the Entra module, which is not installed yet: nothing reads it. 1 to 3650 days after the last employment ended; empty for never.",
+      "How long after the last employment ended Staff deletes the person's account in an identity provider's directory — restorable there for thirty days — once it is disabled and no legal hold is on the person: 1 to 3650 days; empty for never.",
     deleteExternalAfterDaysInvalid: "1 to 3650 days, or empty for never",
     saveAccountSettings: "Save the account settings",
     accountSettingsSaved: "The account settings are saved",
@@ -554,6 +577,102 @@ export const staffCatalog = {
     runAccountsResult:
       "Accounts worked: {{attempted}}. Done: {{done}}. Failed, retried by the worker: {{failed}}. Left for the worker's next cycle: {{remaining}}.",
     couldNotRunAccounts: "Could not run the accounts",
+
+    // The account kind, the provider link, the pass and the directory profile (Entra delivery B)
+    accountKindChoice: "Account kind",
+    accountKindChoice_local: "Local",
+    accountKindChoice_external: "External identity provider",
+    accountKindChoice_entra: "Microsoft Entra ID",
+    accountKindChoiceDescription:
+      "Who owns the person's account. Leaving Microsoft Entra ID is refused while the person's account there is enabled or disabled.",
+    defaultAccountKind: "Default account kind",
+    defaultAccountKindDescription: "The kind a new person takes. People already registered keep theirs.",
+    providersNone: "No identity provider is offered: no enabled module provides one.",
+    providerStatus_unconfigured: "{{name}}: not connected yet.",
+    providerStatus_connected: "{{name}}: connected.",
+    providerStatus_failing:
+      "{{name}}: failing — Staff writes nothing to the directory but a disable until it is fixed.",
+    providerStatusReason_unreachable: "It could not be asked.",
+    providerStatusReason_credential_invalid: "Its credential was refused.",
+    providerStatusReason_secret_expired: "Its client secret has expired.",
+    providerStatusReason_secret_expiring: "Its client secret ends within thirty days.",
+    vantigoAccount: "Vantigo",
+    providerNoLink: "No account in the directory yet: Staff has not created or found one for this person.",
+    providerLinkState_preparing: "Being prepared — Staff asked the directory to create or find the account",
+    providerLinkState_enabled: "Enabled",
+    providerLinkState_disabled: "Disabled",
+    providerLinkState_deleted: "Deleted — restorable in the directory for thirty days",
+    providerLinkState_failed: "Failed",
+    providerLinkState_blocked: "Blocked",
+    userPrincipalName: "User principal name",
+    enabledSince: "Enabled since",
+    passIssued: "Pass issued",
+    accountAnnounced: "Announced",
+    providerFailing: "Failed attempts in a row: {{count}}. The directory could not be reached; the worker tries again.",
+    providerReason_user_gone: "The account is gone from the directory; Staff never creates a second.",
+    accountReason_provider_unavailable:
+      "The identity provider is not connected, or its last check failed; Staff writes nothing to the directory but a disable until it is.",
+    accountReason_external_ambiguous:
+      "Two accounts in the directory hold the person's employee number; an administrator takes it off the wrong one.",
+    accountReason_external_address_taken: "The person's work email is another account's in the directory.",
+    accountReason_external_synced_on_premises:
+      "The account is synchronised from an on-premises directory, whose attributes Staff cannot write.",
+    accountReason_external_privileged:
+      "The account holds an administrative role in the directory, which an administrator handles by hand.",
+    accountReason_external_enabled: "The account was not deleted: it is still enabled in the directory.",
+    accountReason_manager_not_in_entra:
+      "The person's manager has no account in the directory, so the account carries no manager.",
+    accountReason_hire_date_not_written: "The directory refused the hire date.",
+    accountReason_licence_unavailable: "A licence of the person's groups could not be assigned: none is left.",
+    accountReason_privileged:
+      "The account holds an administrative role in the directory, so the directory leaves it to an administrator.",
+    accountReason_pass_not_allowed: "The directory does not allow a Temporary Access Pass for this account.",
+    accountReason_manager_not_found: "The directory could not find the manager's account.",
+    showPass: "Show the pass",
+    passTitle: "Temporary Access Pass",
+    passExplained: "{{name}} types this pass at their first sign-in.",
+    passShownOnce: "It will not be shown again.",
+    passExpires: "Works until {{date}}.",
+    copy: "Copy",
+    copied: "Copied",
+    close: "Close",
+    couldNotShowPass: "Could not show the pass",
+    runNowNewPass: "Run now (new pass)",
+    runNowNewPassExplained:
+      "Run now (new pass) does the next step of both accounts at once and has the directory issue a new pass, which Show the pass shows once.",
+    runNowNewPassDone:
+      "Done: when the account is enabled, the directory issued a new pass — Show the pass shows it once.",
+    directoryProfile: "Directory profile",
+    directoryProfileDescription:
+      "Which fields Staff writes on a person's account in the identity provider's directory. A field switched off is cleared there on the next update. The names, the employee number, the user principal name and the usage location are always written.",
+    directoryProfilePersonDescription:
+      "The fields Staff writes on the person's account in the directory, with the value each carries today. Greyed fields are always written; a field switched off in Settings is cleared there.",
+    directoryField: "Field",
+    directoryWritten: "Written",
+    directoryValueToday: "Value today",
+    directoryAlways: "Always",
+    directoryOn: "Yes",
+    directoryOff: "Off — cleared",
+    saveDirectoryProfile: "Save the directory profile",
+    directoryProfileSaved: "The directory profile is saved",
+    directoryField_givenName: "Given name",
+    directoryField_familyName: "Family name",
+    directoryField_displayName: "Display name",
+    directoryField_employeeId: "Employee number",
+    directoryField_userPrincipalName: "User principal name",
+    directoryField_usageLocation: "Usage location (work country)",
+    directoryField_employeeHireDate: "Hire date",
+    directoryField_employeeLeaveDateTime: "Leave date",
+    directoryField_employeeType: "Employee type",
+    directoryField_jobTitle: "Job title",
+    directoryField_department: "Department",
+    directoryField_companyName: "Company name",
+    directoryField_employeeOrgData: "Cost centre and division",
+    directoryField_officeLocation: "Office location",
+    directoryField_workAddress: "Work address",
+    directoryField_phones: "Phones",
+    directoryField_preferredLanguage: "Preferred language",
+    directoryField_manager: "Manager",
 
     // The organisation
     managers: "Managers",
@@ -1837,6 +1956,12 @@ export const staffCatalog = {
       "Kontoflagget er av, men brukeren ble ikke deaktivert: den er en eier eller en systemadministrator. En eier deaktiverer den på siden Brukere; Ansatte prøver igjen daglig.",
     "refusal.account_mismatch":
       "Kontoflagget er av, men brukeren ble ikke deaktivert: kontoen har et annet ansattnummer — den er noen andres. Den deaktiveres når nummeret stemmer.",
+    "refusal.account_kind_locked":
+      "Kontotypen kan ikke forlate Microsoft Entra ID mens personens konto der er aktivert eller deaktivert. Personen forlater katalogen med Deaktiver nå eller når arbeidsforholdet slutter.",
+    "refusal.provider_missing": "Ingen aktivert modul tilbyr denne identitetsleverandøren, så den kan ikke velges.",
+    "refusal.pass_gone":
+      "Passet er allerede vist, har utløpt, eller ble aldri utstedt. Kjør nå (nytt pass) utsteder et nytt.",
+    "refusal.provider_refused": "Identitetsleverandøren avviste steget; ingenting mer ble gjort der.",
 
     // Fanen Konto (leveranse C)
     tab_account: "Konto",
@@ -1848,6 +1973,16 @@ export const staffCatalog = {
     event_account_blocked: "Konto stoppet",
     event_account_failed: "Kontosteg mislyktes",
     event_account_mismatched: "Kontoen hører til et annet ansattnummer",
+    event_account_announced: "Konto varslet til identitet",
+    event_account_external_prepared: "Katalogkonto forberedt",
+    event_account_external_activated: "Katalogkonto aktivert",
+    event_account_external_deactivated: "Katalogkonto deaktivert",
+    event_account_external_updated: "Katalogkonto oppdatert etter registeret",
+    event_account_external_deleted: "Katalogkonto slettet",
+    event_account_external_blocked: "Katalogkonto står fast",
+    event_account_external_failed: "Steg for katalogkonto mislyktes",
+    event_work_email_set_by_provider: "Jobb-e-post satt av identitetsleverandøren",
+    event_pass_revealed: "Pass vist",
     provisionFrom: "Konto fra",
     accountEmailKind: "Adresse",
     accountStep_none: "Ingenting å gjøre",
@@ -1856,6 +1991,9 @@ export const staffCatalog = {
     accountStep_deactivate: "Deaktiver brukeren",
     accountStep_update: "Bring brukeren i samsvar med oppføringen",
     accountStep_report: "Meld hvorfor kontoen står fast",
+    accountStep_delete: "Slett kontoen i katalogen",
+    accountStep_announce: "Varsle kontoen til identitet",
+    accountStep_unexpect: "Trekk tilbake varselet",
     accountReason_accounts_unavailable: "Identitet kunne ikke nås; arbeideren prøver igjen.",
     accountEventStep: "Steg: {{step}}",
     accountEventState: "Tilstand: {{state}}",
@@ -1886,10 +2024,12 @@ export const staffCatalog = {
     saveAccountFlag: "Lagre kontoflagget",
     accountFlagSaved: "Kontoflagget er lagret",
     userAccount: "Brukerkonto",
-    accountMode_local: "Lokale kontoer — Ansatte oppretter brukeren og inviterer personen til å velge et passord.",
-    accountMode_federated:
-      "Føderert — identitetsleverandøren eier kontoene: Ansatte finner brukeren på ansattnummeret, aktiverer brukere den selv har deaktivert, og deaktiverer dem; den oppretter aldri en bruker og inviterer aldri.",
-    accountMode_unavailable:
+    accountKind_local: "Lokal konto — Ansatte oppretter brukeren og inviterer personen til å velge et passord.",
+    accountKind_external:
+      "Ekstern identitetsleverandør — leverandøren eier kontoen: Ansatte finner brukeren på ansattnummeret, aktiverer brukere den selv har deaktivert, og deaktiverer dem; den oppretter aldri en bruker og inviterer aldri.",
+    accountKind_entra:
+      "Microsoft Entra ID — Ansatte oppretter personens konto i katalogen, aktiverer og deaktiverer den, og brukeren kommer til Vantigo styrt av Ansatte, uten en eier imellom.",
+    accountKind_unavailable:
       "Kontoer er ikke tilgjengelige — ingen modul gir dem, eller denne serverens oppsett er uenig med modusen identitet registrerte. Ingenting kjøres før det er rettet.",
     accountNoUser: "Ingen bruker ennå: Ansatte har ikke opprettet eller funnet en for denne personen.",
     accountState: "Tilstand",
@@ -1901,6 +2041,8 @@ export const staffCatalog = {
     accountLinkState_disabledByOwner: "Deaktivert av en eier",
     accountLinkState_failed: "Mislyktes",
     accountLinkState_blocked: "Stoppet",
+    accountLinkState_enabled: "Aktivert",
+    accountLinkState_deleted: "Slettet i katalogen",
     managedByStaff: "Styrt av Ansatte",
     accountInvitation: "Invitasjon",
     accountInvitation_none: "Ingen åpen, eller ingen trengs",
@@ -1922,7 +2064,7 @@ export const staffCatalog = {
     accountReason_user_gone: "Brukeren kontoen var koblet til, finnes ikke lenger; Ansatte oppretter aldri en til.",
     accountReason_mismatch: "Kontoen hører til et annet ansattnummer — den er noen andres; ingenting gjøres med den.",
     accountReason_mode_changed:
-      "Den ventende brukeren ble opprettet for lokale kontoer, men installasjonen er nå føderert og inviterer aldri.",
+      "Den ventende brukeren ble opprettet for en lokal konto, men personens kontotype inviterer nå aldri.",
     accountReason_email_differs:
       "Brukerens adresse i identitet er en annen enn personens valgte adresse etter at invitasjonen ble sendt; en eier endrer den i identitet.",
     accountReason_invitation_revoked: "En eier trakk tilbake invitasjonen; Kjør nå sender en ny.",
@@ -1964,7 +2106,7 @@ export const staffCatalog = {
     // Kontoinnstillingene (leveranse C)
     accountSettings: "Kontoer",
     accountSettingsDescription:
-      "Hvordan Ansatte gir folk kontoer: modusen identitet registrerer, rollene en eier angir at Ansatte kan gi, og når en konto forberedes.",
+      "Hvordan Ansatte gir folk kontoer: kontotypen en ny person får, identitetsleverandørene, rollene en eier angir at Ansatte kan gi, og når en konto forberedes.",
     accountRolesSet: "En eier har angitt rollene Ansatte kan gi.",
     accountRolesMissing:
       "Ingen eier har angitt rollene Ansatte kan gi, så ingen lokal konto kan aktiveres. En eier angir dem under Roller Ansatte kan gi, på siden Roller og tilgang.",
@@ -1973,7 +2115,7 @@ export const staffCatalog = {
     createBeforeDaysInvalid: "0 til 90 dager",
     deleteExternalAfterDays: "Slett en ekstern konto (dager etter slutt)",
     deleteExternalAfterDaysDescription:
-      "Brukes av Entra-modulen, som ikke er installert ennå: ingenting leser den. 1 til 3650 dager etter at siste arbeidsforhold sluttet; tom for aldri.",
+      "Hvor lenge etter at siste arbeidsforhold sluttet Ansatte sletter personens konto i en identitetsleverandørs katalog — den kan gjenopprettes der i tretti dager — når den er deaktivert og personen ikke har bevaringspålegg: 1 til 3650 dager; tom for aldri.",
     deleteExternalAfterDaysInvalid: "1 til 3650 dager, eller tom for aldri",
     saveAccountSettings: "Lagre kontoinnstillingene",
     accountSettingsSaved: "Kontoinnstillingene er lagret",
@@ -1983,6 +2125,101 @@ export const staffCatalog = {
     runAccountsResult:
       "Kontoer behandlet: {{attempted}}. Ferdige: {{done}}. Mislyktes, prøves igjen av arbeideren: {{failed}}. Igjen til arbeiderens neste runde: {{remaining}}.",
     couldNotRunAccounts: "Kunne ikke kjøre kontoene",
+
+    // Kontotypen, leverandørkoblingen, passet og katalogprofilen (Entra leveranse B)
+    accountKindChoice: "Kontotype",
+    accountKindChoice_local: "Lokal",
+    accountKindChoice_external: "Ekstern identitetsleverandør",
+    accountKindChoice_entra: "Microsoft Entra ID",
+    accountKindChoiceDescription:
+      "Hvem som eier personens konto. Å forlate Microsoft Entra ID avvises mens personens konto der er aktivert eller deaktivert.",
+    defaultAccountKind: "Standard kontotype",
+    defaultAccountKindDescription: "Kontotypen en ny person får. Personer som allerede er registrert, beholder sin.",
+    providersNone: "Ingen identitetsleverandør tilbys: ingen aktivert modul gir en.",
+    providerStatus_unconfigured: "{{name}}: ikke tilkoblet ennå.",
+    providerStatus_connected: "{{name}}: tilkoblet.",
+    providerStatus_failing:
+      "{{name}}: feiler — Ansatte skriver ingenting til katalogen utenom deaktiveringer før det er rettet.",
+    providerStatusReason_unreachable: "Den kunne ikke spørres.",
+    providerStatusReason_credential_invalid: "Påloggingsopplysningene ble avvist.",
+    providerStatusReason_secret_expired: "Klienthemmeligheten har utløpt.",
+    providerStatusReason_secret_expiring: "Klienthemmeligheten utløper innen tretti dager.",
+    vantigoAccount: "Vantigo",
+    providerNoLink: "Ingen konto i katalogen ennå: Ansatte har ikke opprettet eller funnet en for denne personen.",
+    providerLinkState_preparing: "Forberedes — Ansatte har bedt katalogen opprette eller finne kontoen",
+    providerLinkState_enabled: "Aktivert",
+    providerLinkState_disabled: "Deaktivert",
+    providerLinkState_deleted: "Slettet — kan gjenopprettes i katalogen i tretti dager",
+    providerLinkState_failed: "Mislyktes",
+    providerLinkState_blocked: "Stoppet",
+    userPrincipalName: "Brukerhovednavn (UPN)",
+    enabledSince: "Aktivert siden",
+    passIssued: "Pass utstedt",
+    accountAnnounced: "Kunngjort",
+    providerFailing: "Mislykkede forsøk på rad: {{count}}. Katalogen kunne ikke nås; arbeideren prøver igjen.",
+    providerReason_user_gone: "Kontoen finnes ikke lenger i katalogen; Ansatte oppretter aldri en til.",
+    accountReason_provider_unavailable:
+      "Identitetsleverandøren er ikke tilkoblet, eller siste kontroll feilet; Ansatte skriver ingenting til katalogen utenom deaktiveringer før den er det.",
+    accountReason_external_ambiguous:
+      "To kontoer i katalogen har personens ansattnummer; en administrator fjerner det fra feil konto.",
+    accountReason_external_address_taken: "Personens jobb-e-post tilhører en annen konto i katalogen.",
+    accountReason_external_synced_on_premises:
+      "Kontoen synkroniseres fra en lokal katalog, og Ansatte kan ikke skrive feltene dens.",
+    accountReason_external_privileged:
+      "Kontoen har en administratorrolle i katalogen, og en administrator tar seg av den for hånd.",
+    accountReason_external_enabled: "Kontoen ble ikke slettet: den er fortsatt aktivert i katalogen.",
+    accountReason_manager_not_in_entra: "Personens leder har ingen konto i katalogen, så kontoen har ingen leder.",
+    accountReason_hire_date_not_written: "Katalogen avviste ansettelsesdatoen.",
+    accountReason_licence_unavailable: "En lisens fra personens grupper kunne ikke tildeles: det er ingen igjen.",
+    accountReason_privileged:
+      "Kontoen har en administratorrolle i katalogen, så katalogen overlater den til en administrator.",
+    accountReason_pass_not_allowed: "Katalogen tillater ikke et midlertidig tilgangspass for denne kontoen.",
+    accountReason_manager_not_found: "Katalogen fant ikke lederens konto.",
+    showPass: "Vis passet",
+    passTitle: "Midlertidig tilgangspass",
+    passExplained: "{{name}} skriver inn dette passet ved første pålogging.",
+    passShownOnce: "Det vises ikke igjen.",
+    passExpires: "Virker til {{date}}.",
+    copy: "Kopier",
+    copied: "Kopiert",
+    close: "Lukk",
+    couldNotShowPass: "Kunne ikke vise passet",
+    runNowNewPass: "Kjør nå (nytt pass)",
+    runNowNewPassExplained:
+      "Kjør nå (nytt pass) gjør neste steg for begge kontoene med en gang og ber katalogen utstede et nytt pass, som Vis passet viser én gang.",
+    runNowNewPassDone:
+      "Ferdig: når kontoen er aktivert, har katalogen utstedt et nytt pass — Vis passet viser det én gang.",
+    directoryProfile: "Katalogprofil",
+    directoryProfileDescription:
+      "Hvilke felter Ansatte skriver på en persons konto i identitetsleverandørens katalog. Et felt som slås av, tømmes der ved neste oppdatering. Navnene, ansattnummeret, brukerhovednavnet og bruksstedet skrives alltid.",
+    directoryProfilePersonDescription:
+      "Feltene Ansatte skriver på personens konto i katalogen, med verdien hvert felt har i dag. Gråe felter skrives alltid; et felt som er slått av under Innstillinger, tømmes der.",
+    directoryField: "Felt",
+    directoryWritten: "Skrives",
+    directoryValueToday: "Verdi i dag",
+    directoryAlways: "Alltid",
+    directoryOn: "Ja",
+    directoryOff: "Av — tømmes",
+    saveDirectoryProfile: "Lagre katalogprofilen",
+    directoryProfileSaved: "Katalogprofilen er lagret",
+    directoryField_givenName: "Fornavn",
+    directoryField_familyName: "Etternavn",
+    directoryField_displayName: "Visningsnavn",
+    directoryField_employeeId: "Ansattnummer",
+    directoryField_userPrincipalName: "Brukerhovednavn (UPN)",
+    directoryField_usageLocation: "Brukssted (arbeidsland)",
+    directoryField_employeeHireDate: "Ansettelsesdato",
+    directoryField_employeeLeaveDateTime: "Sluttdato",
+    directoryField_employeeType: "Ansattype",
+    directoryField_jobTitle: "Stillingstittel",
+    directoryField_department: "Avdeling",
+    directoryField_companyName: "Selskapsnavn",
+    directoryField_employeeOrgData: "Kostnadssted og divisjon",
+    directoryField_officeLocation: "Kontorsted",
+    directoryField_workAddress: "Arbeidsadresse",
+    directoryField_phones: "Telefoner",
+    directoryField_preferredLanguage: "Foretrukket språk",
+    directoryField_manager: "Leder",
 
     // Organisasjonen
     managers: "Ledere",

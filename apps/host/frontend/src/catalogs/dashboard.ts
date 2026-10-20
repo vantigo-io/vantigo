@@ -85,6 +85,29 @@ const en = {
     "{{count}} account waits: a worker sees another sign-in mode than the server recorded",
   "dashboard.staffAccountModeMismatch_other":
     "{{count}} accounts wait: a worker sees another sign-in mode than the server recorded",
+  "dashboard.staffAccountNotArrived": "{{name}}'s account was announced 90 days ago and has not arrived",
+  "dashboard.staffAccountAmbiguousInEntra": "Two accounts in Microsoft Entra ID hold {{name}}'s employee number",
+  "dashboard.staffAccountAddressTakenInEntra": "{{name}}'s work email is another account's in Microsoft Entra ID",
+  "dashboard.staffAccountSyncedOnPremises":
+    "{{name}}'s account is synchronised from an on-premises directory, which Staff cannot write",
+  "dashboard.staffAccountPrivilegedInEntra":
+    "{{name}}'s account holds an administrative role in Microsoft Entra ID, which an administrator handles",
+  "dashboard.staffHireDateNotWritten": "Microsoft Entra ID refused {{name}}'s hire date",
+  "dashboard.staffLicenceUnavailable": "A licence for {{name}} could not be assigned: none is left",
+  "dashboard.staffPassUnrevealed": "{{name}}'s pass has waited a day or more without being shown",
+  "dashboard.staffManagerNotInEntra": "{{name}}'s manager has no account in Microsoft Entra ID",
+  "dashboard.staffEntraNotConnected_one": "{{count}} person's account waits: Microsoft Entra ID is not connected",
+  "dashboard.staffEntraNotConnected_other": "{{count}} people's accounts wait: Microsoft Entra ID is not connected",
+  "dashboard.staffEntraFailing_one": "{{count}} person's account waits: Microsoft Entra ID's last check failed",
+  "dashboard.staffEntraFailing_other": "{{count}} people's accounts wait: Microsoft Entra ID's last check failed",
+  "dashboard.staffSecretExpiring_one":
+    "Microsoft Entra ID's client secret ends within 30 days ({{count}} person's account depends on it)",
+  "dashboard.staffSecretExpiring_other":
+    "Microsoft Entra ID's client secret ends within 30 days ({{count}} people's accounts depend on it)",
+  "dashboard.staffSecretExpired_one":
+    "{{count}} person's account waits: Microsoft Entra ID's client secret has expired",
+  "dashboard.staffSecretExpired_other":
+    "{{count}} people's accounts wait: Microsoft Entra ID's client secret has expired",
   "dashboard.invoicesOutstanding": "Outstanding",
   "dashboard.invoicesOverdueHint": "{{count}} overdue ({{amount}})",
   "dashboard.invoicesIssuedDelta": "issued vs previous period",
@@ -276,6 +299,31 @@ const nb: { [Key in keyof typeof en]: string } = {
     "{{count}} konto venter: en jobb ser en annen påloggingsmodus enn serveren har registrert",
   "dashboard.staffAccountModeMismatch_other":
     "{{count}} kontoer venter: en jobb ser en annen påloggingsmodus enn serveren har registrert",
+  "dashboard.staffAccountNotArrived": "Kontoen til {{name}} ble kunngjort for 90 dager siden og har ikke kommet",
+  "dashboard.staffAccountAmbiguousInEntra": "To kontoer i Microsoft Entra ID har ansattnummeret til {{name}}",
+  "dashboard.staffAccountAddressTakenInEntra":
+    "Jobb-e-posten til {{name}} tilhører en annen konto i Microsoft Entra ID",
+  "dashboard.staffAccountSyncedOnPremises":
+    "Kontoen til {{name}} synkroniseres fra en lokal katalog, som Ansatte ikke kan skrive til",
+  "dashboard.staffAccountPrivilegedInEntra":
+    "Kontoen til {{name}} har en administratorrolle i Microsoft Entra ID, som en administrator tar seg av",
+  "dashboard.staffHireDateNotWritten": "Microsoft Entra ID avviste ansettelsesdatoen til {{name}}",
+  "dashboard.staffLicenceUnavailable": "En lisens til {{name}} kunne ikke tildeles: det er ingen igjen",
+  "dashboard.staffPassUnrevealed": "Passet til {{name}} har ventet en dag eller mer uten å bli vist",
+  "dashboard.staffManagerNotInEntra": "Lederen til {{name}} har ingen konto i Microsoft Entra ID",
+  "dashboard.staffEntraNotConnected_one": "{{count}} persons konto venter: Microsoft Entra ID er ikke tilkoblet",
+  "dashboard.staffEntraNotConnected_other": "{{count}} personers kontoer venter: Microsoft Entra ID er ikke tilkoblet",
+  "dashboard.staffEntraFailing_one": "{{count}} persons konto venter: siste kontroll av Microsoft Entra ID feilet",
+  "dashboard.staffEntraFailing_other":
+    "{{count}} personers kontoer venter: siste kontroll av Microsoft Entra ID feilet",
+  "dashboard.staffSecretExpiring_one":
+    "Klienthemmeligheten til Microsoft Entra ID utløper innen 30 dager ({{count}} persons konto avhenger av den)",
+  "dashboard.staffSecretExpiring_other":
+    "Klienthemmeligheten til Microsoft Entra ID utløper innen 30 dager ({{count}} personers kontoer avhenger av den)",
+  "dashboard.staffSecretExpired_one":
+    "{{count}} persons konto venter: klienthemmeligheten til Microsoft Entra ID har utløpt",
+  "dashboard.staffSecretExpired_other":
+    "{{count}} personers kontoer venter: klienthemmeligheten til Microsoft Entra ID har utløpt",
   "dashboard.invoicesOutstanding": "Utestående",
   "dashboard.invoicesOverdueHint": "{{count}} forfalte ({{amount}})",
   "dashboard.invoicesIssuedDelta": "fakturert mot forrige periode",

@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { meta, settings } from "../test/fixtures";
-import { region, retype, sent } from "../test/helpers";
+import { entraProvider, meta, settings } from "../test/fixtures";
+import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
 
@@ -16,7 +16,9 @@ describe("Settings — accounts", () => {
     renderRoute("/staff/settings");
 
     const card = await region("Accounts");
-    expect(within(card).getByText(/used by the Entra module/i)).toBeInTheDocument();
+    expect(
+      within(card).getByText(/deletes the person's account in an identity provider's directory/),
+    ).toBeInTheDocument();
     await retype(within(card).getByRole("textbox", { name: /Prepare the account/ }), "21");
     await retype(within(card).getByRole("textbox", { name: /Delete an external account/ }), "365");
     await userEvent.click(within(card).getByRole("button", { name: "Save the account settings" }));
@@ -59,11 +61,11 @@ describe("Settings — accounts", () => {
     expect(sent(fetchMock, "PUT", /\/staff\/settings$/)).toHaveLength(0);
   });
 
-  it("says the mode and that an Owner has named the employee roles", async () => {
+  it("says no provider is offered and that an Owner has named the employee roles", async () => {
     stubStaffApi();
     renderRoute("/staff/settings");
     const card = await region("Accounts");
-    expect(within(card).getByText(/Local accounts — Staff creates the user/)).toBeInTheDocument();
+    expect(within(card).getByText(/No identity provider is offered/)).toBeInTheDocument();
     expect(within(card).getByText(/An Owner has named the roles Staff may give/)).toBeInTheDocument();
   });
 
@@ -102,5 +104,126 @@ describe("Settings — accounts", () => {
     const card = await region("Accounts");
     await userEvent.click(within(card).getByRole("button", { name: "Run accounts now" }));
     expect(await screen.findByText(/Identity could not be reached/, {}, slow)).toBeInTheDocument();
+  });
+
+  it("says each provider's status, with its reason in words", async () => {
+    stubStaffApi({
+      meta: meta("manage", {
+        providers: [
+          entraProvider({ status: "failing", reason: "secret_expired" }),
+          entraProvider({ key: "other", name: "Other directory", status: "unconfigured" }),
+        ],
+      }),
+    });
+    renderRoute("/staff/settings");
+    const card = await region("Accounts");
+    expect(
+      within(card).getByText(/^Microsoft Entra ID: failing — .* Its client secret has expired\.$/),
+    ).toBeInTheDocument();
+    expect(within(card).getByText("Other directory: not connected yet.")).toBeInTheDocument();
+  });
+
+  it("offers entra as the default kind only when /meta lists its provider", async () => {
+    stubStaffApi();
+    renderRoute("/staff/settings");
+    const card = await region("Accounts");
+    await userEvent.click(within(card).getByRole("combobox", { name: /Default account kind/ }));
+    expect(await screen.findByRole("option", { name: "External identity provider" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Microsoft Entra ID" })).not.toBeInTheDocument();
+  });
+
+  it("saves a changed default kind with the account settings", async () => {
+    const fetchMock = stubStaffApi({ meta: meta("manage", { providers: [entraProvider()] }) });
+    renderRoute("/staff/settings");
+    const card = await region("Accounts");
+    expect(within(card).getByText("Microsoft Entra ID: connected.")).toBeInTheDocument();
+    await choose(card, /Default account kind/, "Microsoft Entra ID");
+    await userEvent.click(within(card).getByRole("button", { name: "Save the account settings" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/settings$/)).toHaveLength(1), slow);
+    expect(sent(fetchMock, "PUT", /\/staff\/settings$/)[0].body).toMatchObject({ defaultAccountKind: "entra" });
+    expect(fetchMock.state.settings.defaultAccountKind).toBe("entra");
+  });
+
+  it("says provider_missing on the default kind in words", async () => {
+    stubStaffApi({
+      meta: meta("manage", { providers: [entraProvider()] }),
+      write: (method, path) =>
+        method === "PUT" && path.endsWith("/staff/settings")
+          ? staffProblem(400, {
+              code: "provider_missing",
+              title: "Invalid Staff settings",
+              errors: { defaultAccountKind: ["The server's English"] },
+            })
+          : undefined,
+    });
+    renderRoute("/staff/settings");
+    const card = await region("Accounts");
+    await choose(card, /Default account kind/, "Microsoft Entra ID");
+    await userEvent.click(within(card).getByRole("button", { name: "Save the account settings" }));
+    expect(
+      await within(card).findByText(/No enabled module offers this identity provider/, {}, slow),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("The server's English")).not.toBeInTheDocument();
+  });
+});
+
+describe("Settings — the directory profile", () => {
+  it("switches a field and saves the switches with every other setting sent back, under the revision read", async () => {
+    const fetchMock = stubStaffApi({
+      settings: settings({ createBeforeDays: 21, deleteExternalAfterDays: 365, eraseSickCaseDates: true }),
+    });
+    renderRoute("/staff/settings");
+    const card = await region("Directory profile");
+    expect(within(card).getByRole("switch", { name: "Job title" })).toBeChecked();
+    expect(within(card).getByRole("switch", { name: "Work address" })).not.toBeChecked();
+    // The fields always written are not switches here.
+    expect(within(card).queryByRole("switch", { name: "Given name" })).not.toBeInTheDocument();
+    await userEvent.click(within(card).getByRole("switch", { name: "Work address" }));
+    await userEvent.click(within(card).getByRole("switch", { name: "Manager" }));
+    await userEvent.click(within(card).getByRole("button", { name: "Save the directory profile" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/staff\/settings$/)).toHaveLength(1), slow);
+    const [put] = sent(fetchMock, "PUT", /\/staff\/settings$/);
+    expect(put.ifMatch).toBe("3");
+    expect(put.body).toEqual({
+      employeeNumberPrefix: "E-",
+      nextEmployeeNumber: 8,
+      pensionProvider: "Storebrand",
+      createBeforeDays: 21,
+      deleteExternalAfterDays: 365,
+      erasePregnancyHealthTypes: false,
+      eraseSickCaseDates: true,
+      directoryFields: {
+        employeeHireDate: true,
+        employeeLeaveDateTime: true,
+        employeeType: true,
+        jobTitle: true,
+        department: true,
+        companyName: true,
+        employeeOrgData: true,
+        officeLocation: true,
+        workAddress: true,
+        phones: false,
+        preferredLanguage: true,
+        manager: false,
+      },
+    });
+    expect(fetchMock.state.settings.directoryFields.workAddress).toBe(true);
+    expect(fetchMock.state.settings.directoryFields.manager).toBe(false);
+  });
+
+  it("says a revision conflict in words and reloads", async () => {
+    const fetchMock = stubStaffApi({
+      write: (method, path) =>
+        method === "PUT" && path.endsWith("/staff/settings")
+          ? staffProblem(409, { code: "revision_conflict", title: "Revision conflict", detail: "revision 4" })
+          : undefined,
+    });
+    renderRoute("/staff/settings");
+    const card = await region("Directory profile");
+    await userEvent.click(within(card).getByRole("switch", { name: "Phones" }));
+    await userEvent.click(within(card).getByRole("button", { name: "Save the directory profile" }));
+    expect(await screen.findByText("Somebody else saved this; it has been reloaded", {}, slow)).toBeInTheDocument();
+    await waitFor(() => expect(sent(fetchMock, "GET", /\/staff\/settings$/).length).toBeGreaterThan(1));
   });
 });

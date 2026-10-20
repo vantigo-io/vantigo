@@ -249,8 +249,35 @@ export const meta = (role: Role = "manage", overrides: Partial<StaffMeta> = {}):
   holidaySchemes: holidaySchemes(),
   // The structure is staff:view's and staff:manage's (plan reading 15).
   ...(readsDirectory(role) ? { structure: structure() } : {}),
-  // The authority mode and the employee roles' state are staff:manage's (delivery C).
-  ...(manages(role) ? { accountMode: "local" as const, provisioningRolesSet: true } : {}),
+  // The default account kind, the providers and the employee roles' state are
+  // staff:manage's (delivery C, Entra B): no enabled module offers a provider here.
+  ...(manages(role) ? { defaultAccountKind: "local" as const, providers: [], provisioningRolesSet: true } : {}),
+  ...overrides,
+});
+
+/** The directory profile's switches as a new installation has them (Entra delivery B, plan "Exact values"). */
+export const defaultDirectoryFields: Record<string, boolean> = {
+  employeeHireDate: true,
+  employeeLeaveDateTime: true,
+  employeeType: true,
+  jobTitle: true,
+  department: true,
+  companyName: true,
+  employeeOrgData: true,
+  officeLocation: true,
+  workAddress: false,
+  phones: false,
+  preferredLanguage: true,
+  manager: true,
+};
+
+/** The Entra module's provider as `/meta` lists it once an enabled module offers it. */
+export const entraProvider = (
+  overrides: Partial<NonNullable<StaffMeta["providers"]>[number]> = {},
+): NonNullable<StaffMeta["providers"]>[number] => ({
+  key: "entra",
+  name: "Microsoft Entra ID",
+  status: "connected",
   ...overrides,
 });
 
@@ -272,6 +299,8 @@ export const settings = (overrides: Partial<StaffSettings> = {}): StaffSettings 
   createBeforeDays: 14,
   erasePregnancyHealthTypes: false,
   eraseSickCaseDates: false,
+  defaultAccountKind: "local",
+  directoryFields: { ...defaultDirectoryFields },
   revision: 3,
   ...overrides,
 });

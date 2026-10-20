@@ -180,6 +180,16 @@ const staffAccountAttentionTypes = [
   "accountFailing",
   "invitationUnanswered",
   "invitationRevoked",
+  // The provider link's (Entra delivery B), read from the person's provider link.
+  "accountNotArrived",
+  "accountAmbiguousInEntra",
+  "accountAddressTakenInEntra",
+  "accountSyncedOnPremises",
+  "accountPrivilegedInEntra",
+  "hireDateNotWritten",
+  "licenceUnavailable",
+  "passUnrevealed",
+  "managerNotInEntra",
 ];
 
 /** Staff's installation items: entityId the literal 'settings', dealt with in Settings. */
@@ -190,6 +200,11 @@ const staffSettingsAttentionTypes = [
   "employeeRoleMissing",
   "employeeRoleUnsafe",
   "accountModeMismatch",
+  // The identity provider's (Entra delivery B), counted over the people of its kind.
+  "entraNotConnected",
+  "entraFailing",
+  "secretExpiring",
+  "secretExpired",
 ];
 
 /** Staff's attention types about the requests waiting a decision: the approvals inbox's (delivery B). */
@@ -366,6 +381,19 @@ const staffAttentionTitleKeys: Record<string, string> = {
   employeeRoleMissing: "dashboard.staffEmployeeRoleMissing",
   employeeRoleUnsafe: "dashboard.staffEmployeeRoleUnsafe",
   accountModeMismatch: "dashboard.staffAccountModeMismatch",
+  accountNotArrived: "dashboard.staffAccountNotArrived",
+  accountAmbiguousInEntra: "dashboard.staffAccountAmbiguousInEntra",
+  accountAddressTakenInEntra: "dashboard.staffAccountAddressTakenInEntra",
+  accountSyncedOnPremises: "dashboard.staffAccountSyncedOnPremises",
+  accountPrivilegedInEntra: "dashboard.staffAccountPrivilegedInEntra",
+  hireDateNotWritten: "dashboard.staffHireDateNotWritten",
+  licenceUnavailable: "dashboard.staffLicenceUnavailable",
+  passUnrevealed: "dashboard.staffPassUnrevealed",
+  managerNotInEntra: "dashboard.staffManagerNotInEntra",
+  entraNotConnected: "dashboard.staffEntraNotConnected",
+  entraFailing: "dashboard.staffEntraFailing",
+  secretExpiring: "dashboard.staffSecretExpiring",
+  secretExpired: "dashboard.staffSecretExpired",
 };
 
 /**

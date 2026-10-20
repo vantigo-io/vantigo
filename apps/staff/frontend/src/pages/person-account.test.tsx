@@ -2,13 +2,14 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { components } from "../api-schema";
-import { erasedPerson, withErased } from "../test/fixtures";
-import { region, retype, sent } from "../test/helpers";
+import { entraProvider, erasedPerson, meta, withErased } from "../test/fixtures";
+import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
 
 type Account = components["schemas"]["StaffPersonAccount"];
 type Link = components["schemas"]["StaffAccountLink"];
+type ProviderLink = components["schemas"]["StaffProviderLink"];
 
 /** A round trip — a write, the refetch it causes, the render — on a loaded runner. */
 const slow = { timeout: 5000 };
@@ -21,7 +22,7 @@ const account = (overrides: Partial<Account> = {}): Account => ({
   accountEmailKind: "work",
   address: { kind: "work", present: true },
   provisionFromEffective: "2025-01-01",
-  mode: "local",
+  accountKind: "local",
   revision: 4,
   ...overrides,
 });
@@ -52,22 +53,16 @@ describe("Person page — the Account tab", () => {
     expect(screen.getByRole("tab", { name: "Account", selected: true })).toBeInTheDocument();
   });
 
-  it("says the local mode in words", async () => {
+  it("says the local kind in words", async () => {
     stubStaffApi({ accounts: { 101: account({ link: managed() }) } });
     await openTab();
-    expect(await screen.findByText(/Local accounts — Staff creates the user/)).toBeInTheDocument();
+    expect(await screen.findByText(/Local account — Staff creates the user/)).toBeInTheDocument();
   });
 
-  it("says the federated mode in words", async () => {
-    stubStaffApi({ accounts: { 101: account({ mode: "federated", link: managed() }) } });
+  it("says the external kind in words", async () => {
+    stubStaffApi({ accounts: { 101: account({ accountKind: "external", link: managed() }) } });
     await openTab();
-    expect(await screen.findByText(/Federated — the identity provider owns the accounts/)).toBeInTheDocument();
-  });
-
-  it("says accounts are unavailable when the mode is absent", async () => {
-    stubStaffApi({ accounts: { 101: account({ mode: undefined }) } });
-    await openTab();
-    expect(await screen.findByText(/Accounts are unavailable/)).toBeInTheDocument();
+    expect(await screen.findByText(/External identity provider — the provider owns the account/)).toBeInTheDocument();
   });
 
   it("explains the derived day when HR set none, from the earliest employment that has not ended", async () => {
@@ -179,7 +174,7 @@ describe("Person page — the account's link", () => {
     ["disabled_by_owner", /An Owner disabled the user while the person is employed/],
     ["user_gone", /no longer exists; Staff never creates a second/],
     ["mismatch", /belongs to another employee number/],
-    ["mode_changed", /created for local accounts, but the installation is now federated/],
+    ["mode_changed", /created for a local account, but the person's account kind is now one that never invites/],
     ["email_differs", /address in identity differs from the person's chosen address/],
     ["invitation_revoked", /An Owner revoked the invitation; Run now sends a fresh one/],
     ["invitation_unanswered", /Three invitations went unanswered; Run now sends a fresh one/],
@@ -574,5 +569,288 @@ describe("Profile — the self-service link and Staff's accounts", () => {
     expect(within(group).getByText(/Grace at Fjord — managed by Staff/)).toBeInTheDocument();
     expect(within(group).queryByRole("button", { name: "Unlink" })).not.toBeInTheDocument();
     expect(within(group).queryByRole("button", { name: "Link" })).not.toBeInTheDocument();
+  });
+});
+
+/** Ada's account in Microsoft Entra ID as the worker left it: enabled, a pass not yet shown. */
+const entraLink = (overrides: Partial<ProviderLink> = {}): ProviderLink => ({
+  provider: "entra",
+  state: "enabled",
+  attempts: 0,
+  externalUpn: "ada.lovelace@fjord.example",
+  hasPass: true,
+  passIssuedAt: "2026-10-11T06:00:00Z",
+  announcedAt: "2026-10-01T03:00:00Z",
+  lastSyncedAt: "2026-10-10T03:00:00Z",
+  reportedCodes: [],
+  ...overrides,
+});
+
+const entraAccount = (overrides: Partial<Account> = {}): Account =>
+  account({ accountKind: "entra", link: managed(), providerLink: entraLink(), ...overrides });
+
+/** HR's meta once the Entra module offers its provider. */
+const withEntra = { meta: meta("manage", { providers: [entraProvider()] }) };
+
+describe("Person page — the account kind", () => {
+  it("offers local and external, not entra, when no module offers the provider", async () => {
+    stubStaffApi();
+    const card = await openTab();
+    await userEvent.click(within(card).getByRole("combobox", { name: /Account kind/ }));
+    expect(await screen.findByRole("option", { name: "Local" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "External identity provider" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Microsoft Entra ID" })).not.toBeInTheDocument();
+  });
+
+  it("offers entra when /meta lists its provider, and sends the changed kind", async () => {
+    const fetchMock = stubStaffApi(withEntra);
+    const card = await openTab();
+    await choose(card, /Account kind/, "Microsoft Entra ID");
+    await userEvent.click(within(card).getByRole("button", { name: "Save the account flag" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/people\/101\/account$/)).toHaveLength(1), slow);
+    expect(sent(fetchMock, "PUT", /\/people\/101\/account$/)[0].body).toEqual({
+      provisionAccount: false,
+      provisionFrom: null,
+      accountEmailKind: "work",
+      accountKind: "entra",
+    });
+    expect(fetchMock.state.accounts[101].accountKind).toBe("entra");
+  });
+
+  it("says account_kind_locked on the select when leaving entra while its account is held", async () => {
+    const fetchMock = stubStaffApi({ ...withEntra, accounts: { 101: entraAccount() } });
+    const card = await openTab();
+    await choose(card, /Account kind/, "Local");
+    await userEvent.click(within(card).getByRole("button", { name: "Save the account flag" }));
+    expect(
+      await within(card).findByText(/cannot leave Microsoft Entra ID while the person's account there/, {}, slow),
+    ).toBeInTheDocument();
+    expect(fetchMock.state.accounts[101].accountKind).toBe("entra");
+  });
+
+  it("says provider_missing on the select when the server no longer offers the provider", async () => {
+    stubStaffApi({
+      ...withEntra,
+      write: (method, path) =>
+        method === "PUT" && path.endsWith("/account")
+          ? staffProblem(400, {
+              code: "provider_missing",
+              title: "Invalid account",
+              errors: { accountKind: ["The server's English"] },
+            })
+          : undefined,
+    });
+    const card = await openTab();
+    await choose(card, /Account kind/, "Microsoft Entra ID");
+    await userEvent.click(within(card).getByRole("button", { name: "Save the account flag" }));
+    expect(
+      await within(card).findByText(/No enabled module offers this identity provider/, {}, slow),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("The server's English")).not.toBeInTheDocument();
+  });
+
+  it("leaves the kind out of a save that does not change it", async () => {
+    const fetchMock = stubStaffApi({ accounts: { 101: entraAccount() } });
+    const card = await openTab();
+    // No provider in /meta: the person's kind is still said, and kept.
+    expect(within(card).getByRole("combobox", { name: /Account kind/ })).toHaveValue("Microsoft Entra ID");
+    await userEvent.click(within(card).getByRole("switch", { name: /Staff provides an account/ }));
+    await userEvent.click(within(card).getByRole("button", { name: "Save the account flag" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/people\/101\/account$/)).toHaveLength(1), slow);
+    expect(sent(fetchMock, "PUT", /\/people\/101\/account$/)[0].body).not.toHaveProperty("accountKind");
+  });
+
+  it("says the kind read-only to the person themselves", async () => {
+    stubStaffApi({ role: "view", me: 101, accounts: { 101: entraAccount() } });
+    renderRoute("/staff/people/101?tab=account");
+    const card = await region("Account flag");
+    expect(within(card).getByText("Microsoft Entra ID")).toBeInTheDocument();
+    expect(within(card).queryByRole("combobox")).not.toBeInTheDocument();
+  });
+});
+
+describe("Person page — the two links", () => {
+  it("shows Vantigo's link and the provider's side by side, the provider's named by /meta", async () => {
+    stubStaffApi({
+      meta: meta("manage", { providers: [entraProvider({ name: "Entra at Fjord" })] }),
+      accounts: { 101: entraAccount() },
+    });
+    renderRoute("/staff/people/101?tab=account");
+    const group = await region("User account");
+    expect(within(group).getByText(/Microsoft Entra ID — Staff creates the person's account/)).toBeInTheDocument();
+    const vantigo = within(group).getByRole("region", { name: "Vantigo" });
+    expect(within(vantigo).getByText(/^Active$/)).toBeInTheDocument();
+    expect(within(vantigo).getByText("Ada at Fjord")).toBeInTheDocument();
+    const entra = within(group).getByRole("region", { name: "Entra at Fjord" });
+    expect(within(entra).getByText("Enabled")).toBeInTheDocument();
+    expect(within(entra).getByText("ada.lovelace@fjord.example")).toBeInTheDocument();
+    expect(within(entra).getByText("Enabled since")).toBeInTheDocument();
+    expect(within(entra).getByText(/Oct 10, 2026/)).toBeInTheDocument();
+    expect(within(entra).getByText("Announced")).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "Run now (new pass)" })).toBeInTheDocument();
+  });
+
+  it("names the provider's card by the kind when /meta lists no providers (the person's own reading)", async () => {
+    stubStaffApi({ role: "view", me: 101, accounts: { 101: entraAccount() } });
+    renderRoute("/staff/people/101?tab=account");
+    const group = await region("User account");
+    expect(within(group).getByRole("region", { name: "Microsoft Entra ID" })).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: "Show the pass" })).not.toBeInTheDocument();
+  });
+
+  it("says no directory account yet for an entra person the worker has not reached", async () => {
+    stubStaffApi({ accounts: { 101: account({ accountKind: "entra" }) } });
+    renderRoute("/staff/people/101?tab=account");
+    const group = await region("User account");
+    const entra = within(group).getByRole("region", { name: "Microsoft Entra ID" });
+    expect(within(entra).getByText(/No account in the directory yet/)).toBeInTheDocument();
+  });
+
+  it("shows one card for a local person", async () => {
+    stubStaffApi({ accounts: { 101: account({ link: managed() }) } });
+    renderRoute("/staff/people/101?tab=account");
+    const group = await region("User account");
+    expect(within(group).queryByRole("region", { name: "Vantigo" })).not.toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "Run now" })).toBeInTheDocument();
+  });
+
+  const providerWords: [string, Partial<ProviderLink>, RegExp][] = [
+    [
+      "provider_unavailable",
+      { state: "blocked", reason: "provider_unavailable" },
+      /is not connected, or its last check/,
+    ],
+    ["external_ambiguous", { state: "blocked", reason: "external_ambiguous" }, /Two accounts in the directory hold/],
+    ["external_address_taken", { state: "blocked", reason: "external_address_taken" }, /another account's in the/],
+    ["external_synced_on_premises", { state: "blocked", reason: "external_synced_on_premises" }, /on-premises/],
+    [
+      "external_privileged",
+      { state: "blocked", reason: "external_privileged" },
+      /administrative role in the directory, which/,
+    ],
+    ["external_enabled", { state: "disabled", reason: "external_enabled" }, /still enabled in the directory/],
+    ["user_gone", { state: "failed", reason: "user_gone" }, /The account is gone from the directory/],
+    ["hire_date_not_written", { reportedCodes: ["hire_date_not_written"] }, /refused the hire date/],
+    ["licence_unavailable", { reportedCodes: ["licence_unavailable:SPE_E3"] }, /none is left\. \(SPE_E3\)/],
+    ["privileged", { reportedCodes: ["privileged"] }, /leaves it to an administrator/],
+    ["pass_not_allowed", { reportedCodes: ["pass_not_allowed"] }, /does not allow a Temporary Access Pass/],
+    ["manager_not_in_entra", { reportedCodes: ["manager_not_in_entra"] }, /manager has no account in the directory/],
+  ];
+  it.each(providerWords)("says the provider's %s in words", async (_, overrides, words) => {
+    stubStaffApi({ accounts: { 101: entraAccount({ providerLink: entraLink({ hasPass: false, ...overrides }) }) } });
+    renderRoute("/staff/people/101?tab=account");
+    const entra = await region("Microsoft Entra ID");
+    expect(within(entra).getByText(words)).toBeInTheDocument();
+  });
+
+  it("says provider_refused on Run now with the provider's code in words", async () => {
+    stubStaffApi({
+      accounts: { 101: entraAccount() },
+      write: (method, path) =>
+        method === "POST" && path.endsWith("/account/run")
+          ? staffProblem(409, { code: "provider_refused", title: "Refused", detail: "external_privileged" })
+          : undefined,
+    });
+    renderRoute("/staff/people/101?tab=account");
+    const group = await region("User account");
+    await userEvent.click(within(group).getByRole("button", { name: "Run now (new pass)" }));
+    expect(
+      await within(group).findByText(/refused the step; .*administrative role in the directory/, {}, slow),
+    ).toBeInTheDocument();
+  });
+
+  it("offers Disable now while the provider's account is enabled, even with the flag off", async () => {
+    stubStaffApi({ accounts: { 101: entraAccount({ provisionAccount: false, link: undefined }) } });
+    renderRoute("/staff/people/101?tab=account");
+    const group = await region("User account");
+    expect(within(group).getByRole("button", { name: "Disable now" })).toBeInTheDocument();
+  });
+});
+
+describe("Person page — the pass", () => {
+  it("shows the pass once, with its expiry and a copy button, and never asks again", async () => {
+    const fetchMock = stubStaffApi({ accounts: { 101: entraAccount() } });
+    renderRoute("/staff/people/101?tab=account");
+    const entra = await region("Microsoft Entra ID");
+    expect(within(entra).getByText("Pass issued")).toBeInTheDocument();
+    await userEvent.click(within(entra).getByRole("button", { name: "Show the pass" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Temporary Access Pass" }, slow);
+    expect(within(dialog).getByText("Fjord-7Q2k-9xPa")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Works until Oct 12, 2026/)).toBeInTheDocument();
+    expect(within(dialog).getByText("It will not be shown again.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    expect(sent(fetchMock, "POST", /\/people\/101\/account\/pass$/)).toHaveLength(1);
+    // The account says no pass is waiting any more, without asking for the pass again.
+    expect(within(entra).queryByRole("button", { name: "Show the pass" })).not.toBeInTheDocument();
+    expect(within(entra).queryByText("Pass issued")).not.toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByText("Fjord-7Q2k-9xPa")).not.toBeInTheDocument());
+    expect(sent(fetchMock, "POST", /\/account\/pass$/)).toHaveLength(1);
+    expect(fetchMock.state.passesRevealed).toBe(1);
+  });
+
+  it("says pass_gone in words", async () => {
+    stubStaffApi({
+      accounts: { 101: entraAccount() },
+      write: (method, path) =>
+        method === "POST" && path.endsWith("/account/pass")
+          ? staffProblem(409, { code: "pass_gone", title: "Pass gone", detail: "The server's English" })
+          : undefined,
+    });
+    renderRoute("/staff/people/101?tab=account");
+    const entra = await region("Microsoft Entra ID");
+    await userEvent.click(within(entra).getByRole("button", { name: "Show the pass" }));
+    expect(await within(entra).findByText(/The pass was shown already, has expired/, {}, slow)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("offers no pass when none is waiting", async () => {
+    stubStaffApi({
+      accounts: { 101: entraAccount({ providerLink: entraLink({ hasPass: false, passIssuedAt: undefined }) }) },
+    });
+    renderRoute("/staff/people/101?tab=account");
+    const entra = await region("Microsoft Entra ID");
+    expect(within(entra).queryByRole("button", { name: "Show the pass" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Person page — the directory profile", () => {
+  const profile: components["schemas"]["StaffDirectoryField"][] = [
+    { key: "givenName", on: true, switchable: false, value: "Ada" },
+    { key: "employeeId", on: true, switchable: false, value: "E-1" },
+    { key: "jobTitle", on: true, switchable: true, value: "Analyst" },
+    { key: "workAddress", on: false, switchable: true, value: "Storgata 1, 0155 Oslo, NO" },
+    { key: "manager", on: true, switchable: true },
+  ];
+
+  it("lists every field read-only, greys the fixed ones and marks the ones switched off", async () => {
+    stubStaffApi({ accounts: { 101: entraAccount({ directoryProfile: profile }) } });
+    renderRoute("/staff/people/101?tab=account");
+    const table = await screen.findByRole("table", { name: "Directory profile" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(5);
+    expect(within(rows[0]).getByText("Given name")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Always")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("E-1")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Job title")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Analyst")).toBeInTheDocument();
+    expect(within(rows[3]).getByText("Off — cleared")).toBeInTheDocument();
+    expect(within(rows[4]).getByText("—")).toBeInTheDocument();
+    expect(within(table).queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("is shown to the person themselves too", async () => {
+    stubStaffApi({ role: "view", me: 101, accounts: { 101: entraAccount({ directoryProfile: profile }) } });
+    renderRoute("/staff/people/101?tab=account");
+    expect(await screen.findByRole("table", { name: "Directory profile" })).toBeInTheDocument();
+  });
+
+  it("is absent when the account carries none", async () => {
+    stubStaffApi({ accounts: { 101: account({ link: managed() }) } });
+    renderRoute("/staff/people/101?tab=account");
+    await region("User account");
+    expect(screen.queryByRole("table", { name: "Directory profile" })).not.toBeInTheDocument();
   });
 });
