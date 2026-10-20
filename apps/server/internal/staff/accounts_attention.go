@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,7 +31,9 @@ import (
 // settings.provider_status (providerStatusItem), counted over the people of
 // that kind whose flag is on and raised only while someone has the kind.
 // The item types are the design's, named for Entra, though the codes and
-// the slot are generic (plan reading 10).
+// the slot are generic (plan reading 10). A group section the worker left
+// failed raises groupSyncFailed, one per section, naming the group
+// (delivery D).
 
 // settingsEntity is the installation items' entityId: what the host links to
 // the settings.
@@ -162,8 +165,10 @@ type accountAttention struct {
 	// flag is on of each provider's kind.
 	providers map[string]providerStatusSeen
 	kinds     map[string]int64
-	today     time.Time
-	now       time.Time
+	// groups is the group sections the worker left failed (groupSyncFailed).
+	groups []store.ListFailedGroupTraitsRow
+	today  time.Time
+	now    time.Time
 }
 
 // readAccountAttention reads the account items' rows on q, a snapshot's.
@@ -192,6 +197,9 @@ func readAccountAttention(ctx context.Context, q *store.Queries, today, now time
 	a.kinds = make(map[string]int64, len(kinds))
 	for _, k := range kinds {
 		a.kinds[k.AccountKind] = k.People
+	}
+	if a.groups, err = q.ListFailedGroupTraits(ctx); err != nil {
+		return a, fmt.Errorf("staff: read the failed group sections for attention: %w", err)
 	}
 	return a, nil
 }
@@ -277,6 +285,7 @@ func (a accountAttention) items() []gen.StaffStatsAttentionItem {
 		out = append(out, *item)
 	}
 	out = append(out, a.providerItems()...)
+	out = append(out, a.groupItems()...)
 	// One item per type and person: a person's two links may raise the same
 	// (accountFailing on both, a privileged account reported and refused).
 	seen := make(map[string]bool, len(out))
@@ -331,6 +340,23 @@ func (a accountAttention) providerItems() []gen.StaffStatsAttentionItem {
 		out = append(out, gen.StaffStatsAttentionItem{
 			Id: string(kind), Type: kind, Title: accountInstallationItems[kind], OccurredAt: seen.CheckedAt,
 			EntityId: settingsEntity, Count: &count,
+		})
+	}
+	return out
+}
+
+// groupItems is one groupSyncFailed per group section the worker left
+// failed (groups_sync.go): keyed by the group and the provider, naming the
+// group, its entity the group's id — the host links it to the group's page
+// — and dated today, since the row keeps no date of its failure. The code
+// and the field stay on the group's page; the item says no more.
+func (a accountAttention) groupItems() []gen.StaffStatsAttentionItem {
+	out := make([]gen.StaffStatsAttentionItem, 0, len(a.groups))
+	for _, g := range a.groups {
+		id := strconv.FormatInt(g.GroupID, 10)
+		out = append(out, gen.StaffStatsAttentionItem{
+			Id: string(gen.GroupSyncFailed) + "/" + id + "/" + g.Provider, Type: gen.GroupSyncFailed,
+			Title: g.Name, OccurredAt: a.today, EntityId: id,
 		})
 	}
 	return out

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -17,8 +18,9 @@ import (
 // the work country (the usage location), the hire and leave dates while
 // their switches are on, the directory profile's switched-on fields
 // (directory_profile.go, which the Account tab shows from the same values),
-// and the manager as their own external account's id. Licences are delivery
-// D's; Flags.Fresh is set by the caller for HR's Run now.
+// and the manager as their own external account's id, and the licences
+// the person's groups carry (Entra design D10, delivery D); Flags.Fresh is
+// set by the caller for HR's Run now.
 
 // externalSpecFacts is the external spec the worker hands a provider, and
 // whether the person's effective manager has no external account under the
@@ -67,6 +69,18 @@ func readExternalSpec(ctx context.Context, q *store.Queries, set store.StaffSett
 				out.managerMissing = true
 			}
 		}
+	}
+	// The licences are the union of the licences traits of the person's
+	// groups under the provider (D10): a change of a group's trait or of
+	// the person's membership moves the spec's hash, and the next claim is
+	// an Update. None leaves the field nil, as before any group had one.
+	licences, err := q.LicencesOfPerson(ctx, store.LicencesOfPersonParams{PersonID: row.ID, Provider: provider})
+	if err != nil {
+		return out, fmt.Errorf("staff: read person %d's licences: %w", row.ID, err)
+	}
+	if len(licences) > 0 {
+		slices.Sort(licences)
+		spec.Licences = slices.Compact(licences)
 	}
 	out.spec = spec
 	return out, nil
