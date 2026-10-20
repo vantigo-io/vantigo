@@ -60,6 +60,8 @@ Task 2 first, alone. Then 3 (the client, the credentials, the connection) with 5
 6. **`Account` answering nil leaves the row**: Staff records `user_gone` and never re-creates; the module keeps the row for the events' sake, marked nothing.
 7. **The Owner-only steps are the host's session's to hide**: the module's page shows steps 1–3 read-only to `entra:manage` holders who are not Owners, and the server refuses their writes regardless.
 
+8. **An adopted account is untrusted until `entra:manage` confirms it** (the security review's one medium finding). D13's `Prepare` adopts the tenant user holding the employee number, which lets a `staff:manage` holder who registers a person with someone else's `employeeId` take over a disabled account (the module would enable it and issue a pass) or rename, disable and delete an enabled one. So a found account (`created_by_us false`) is linked and reported `adoption_unconfirmed`, and nothing is written to it — no spec, no pass, no deactivate, no delete — until a holder of `entra:manage` confirms the adoption on the Status card (`POST /accounts/{objectId}/confirm`, `adoption_confirmed_at`); an account the module created needs no confirmation. The provider itself also refuses a fresh pass on an account already enabled, whatever the caller's flag.
+
 ## Open questions for the coordinator
 
 1. Whether the owner has a test tenant for task 7's run; the test is written and skipped without the variables either way.
