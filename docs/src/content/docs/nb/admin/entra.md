@@ -200,13 +200,44 @@ Modulen setter den aldri selv.
 - Ansatteinnstillinger, **Kontoer**, sier *Microsoft Entra ID: tilkoblet.*
 - Gi én testperson kontotypen **Microsoft Entra ID** og kontoflagget, og velg **Kjør
   nå** på fanen Konto: kortet **Microsoft Entra ID** viser kontoen med brukerhovednavnet,
-  og modulens siste hendelser viser `entra.user.prepared`.
+  og modulens siste hendelser viser `entra.user.prepared`. Hadde leietakeren allerede en
+  bruker med det ansattnummeret, bekreft den først ([under](#kontoer-vantigo-ikke-opprettet)).
+
+## Kontoer Vantigo ikke opprettet
+
+Når Ansatte klargjør en person og leietakeren allerede har en bruker med personens
+ansattnummer — laget for hånd, av et annet verktøy eller før Vantigo — kobler modulen
+den brukeren, men **skriver ingenting til den før en med `entra:manage` bekrefter at
+den er personens**: ingen opplysninger, ingen aktivering, ikke noe pass, ingen
+deaktivering og ingen sletting. Ellers kunne alle som kan registrere en person i
+Ansatte, ta over en annens konto ved å gi den nye personen kontoens ansattnummer.
+
+Til da sier personens fane Konto i Ansatte *Katalogen har en konto under personens
+ansattnummer som Vantigo ikke opprettet. Ansatte skriver ingenting til den før noen som
+administrerer Microsoft Entra ID, bekrefter overtakelsen på siden for Microsoft Entra
+ID.*, og dashbordet viser et varsel som lenker til siden.
+
+Slik bekrefter du:
+
+1. Åpne **Microsoft Entra ID**. I listen over modulens kontoer på kortet **Status**
+   står brukeren som *Overtatt – bekreft*.
+2. Sjekk i portalen at brukeren er personens — navnet, brukerhovednavnet, hvem som
+   bruker den.
+3. Velg **Bekreft** ved siden av den, og **Bekreft** igjen i *Bekrefte overtakelsen av
+   …?*.
+
+Vantigo forvalter så kontoen fra Ansattes neste kontokjøring: skriver personens
+opplysninger, aktiverer den første dag og deaktiverer og sletter den når personen
+slutter. En som har sluttet og hvis konto ventet på bekreftelsen, deaktiveres innen én
+kjøring etter den. Bekreft aldri en konto du ikke har sjekket: å bekrefte gir den til
+den som er registrert under det nummeret i Ansatte.
 
 ## Hva stegene for en som slutter gjør
 
 Dagen etter at en persons siste arbeidsforhold slutter, får Ansatte modulen til å
-deaktivere kontoen, uansett tilkoblingens status så lenge en hemmelighet virker. I
-denne rekkefølgen, alle unntatt det første slått av eller på i steg 4:
+deaktivere kontoen, uansett tilkoblingens status så lenge en hemmelighet virker — med
+mindre kontoen er en Vantigo ikke opprettet og ingen har bekreftet. I denne
+rekkefølgen, alle unntatt det første slått av eller på i steg 4:
 
 | Steg | Hva som skjer i leietakeren |
 | --- | --- |
@@ -219,11 +250,11 @@ denne rekkefølgen, alle unntatt det første slått av eller på i steg 4:
 Kontoen deaktiveres først uansett hva annet som feiler, og et pass som ikke er vist
 ennå, forkastes med en gang. Et steg som feiler, stopper stegene etter det og meldes
 som `leaver_step_failed:` og stegets navn (`revoke_sessions`, `leave_date`,
-`strip_licences`, `remove_groups`), som personens fane Konto i Ansatte viser med koden,
-*Stoppet (leaver_step_failed:revoke_sessions)*. Modulen ville kjørt stegene igjen ved
-en ny deaktivering, men Ansatte deaktiverer bare en konto som fortsatt er aktivert, så
-ingenting prøver dem igjen av seg selv: gjør steget som er navngitt, og de etter det, i
-portalen.
+`strip_licences`, `remove_groups`), som personens fane Konto i Ansatte sier som *Et
+avslutningssteg i katalogen ble ikke fullført: å logge personen ut overalt.* (eller
+steget det var). Ansatte deaktiverer kontoen igjen én gang om dagen så lenge koden
+står, og modulen kjører stegene på nytt fra det første; koden forsvinner når alle
+lykkes, og et steg som feiler igjen, venter til neste dag.
 
 **Sletting** kommer senere, når Ansattes **Slett en ekstern konto (dager etter slutt)**
 sier det, og aldri mens kontoen er aktivert eller personen har en slettesperre. Det er
@@ -257,10 +288,14 @@ brukt** er når en hemmelighet sist hentet et token.
 **Lagre** i steg 1 med en annen leietaker- eller klient-ID sender tilkoblingen tilbake
 til *ikke tilkoblet* — kortet **Status** forsvinner, og Ansattes innstillinger sier
 *Microsoft Entra ID: ikke tilkoblet ennå.* — til den er testet igjen; de verifiserte
-domenene og organisasjonen glemmes med den. De samme ID-ene igjen endrer ingenting.
-Mens modulen holder kontoer, spør Vantigo først, **Bytte leietaker eller applikasjon?**
-(`connection_in_use`), og **Bytt** lagrer: kontoene ble laget i den gamle leietakeren,
-og modulen vil lete etter folk i den nye. Ingenting slettes i noen av leietakerne.
+domenene og organisasjonen glemmes med den. Et bytte av leietaker forkaster også alle
+midlertidige tilgangspass som ikke er vist ennå; et bytte av bare applikasjonen beholder
+dem. De samme ID-ene igjen endrer ingenting. Mens modulen holder kontoer, spør Vantigo
+først, **Bytte leietaker eller applikasjon?** (`connection_in_use`), og **Bytt**
+lagrer: kontoene ble laget i den gamle leietakeren, modulen vil lete etter folk i den
+nye, og **den gamle leietakerens kontoer blir ikke lenger deaktivert eller slettet av
+Vantigo** når personene slutter — ta deg av dem i den gamle leietakeren selv. Ingenting
+slettes i noen av leietakerne.
 
 ## Den merkede testen
 
@@ -320,7 +355,7 @@ Ansattes ord.
 | `consent_missing` | Tokenet bærer ingen tillatelse — administratorsamtykke ble aldri gitt, eller ble trukket tilbake — eller Graph nektet å lese organisasjonen. | **Grant admin consent** (steg 3) og test igjen. |
 | `secret_expired` | Alle hemmelighetene har utløpt. | Legg til en ny (steg 2). |
 | `secret_expiring` | Den siste gyldige hemmeligheten som utløper, går ut innen 30 dager. | [Roter](#roter-en-hemmelighet). |
-| `role_missing` | Tre opprettelser, aktiveringer, deaktiveringer, pass, telefonendringer eller slettinger på rad ble avvist, uten at noen har lyktes siden: rollen User Administrator er mest sannsynlig ikke tildelt. | Tildel rollen (steg 3), og **Kjør nå** på en av personene som står fast; et vellykket steg fjerner årsaken. |
+| `role_missing` | Tre opprettelser, aktiveringer, deaktiveringer, telefonendringer eller slettinger på rad ble avvist, uten at noen har lyktes siden: rollen User Administrator er mest sannsynlig ikke tildelt. | Tildel rollen (steg 3), og **Kjør nå** på en av personene som står fast; et vellykket steg fjerner årsaken. |
 | Tillatelser mangler | Testens token mangler én eller flere av de åtte. | Legg dem til, gi samtykke igjen, test igjen. |
 
 På en persons fane Konto i Ansatte sier kortet **Microsoft Entra ID** hva leietakeren
@@ -334,6 +369,8 @@ meldte for dem:
 | En administrativ rolle i Entra | Brukeren har en rolle (eller er i en rolletildelbar gruppe) applikasjonen ikke får røre — eller applikasjonen mangler rollen. | En administrator håndterer kontoen for hånd; se `role_missing` over. |
 | Ansettelsesdatoen ikke skrevet | Graph avviste `employeeHireDate`. | Ingenting trengs for innloggingen; slå av skrivingen av ansettelsesdatoen om det fortsetter å feile. |
 | Ingen lisens igjen (lisensen navngitt) | Ingen plass var ledig. | Kjøp plasser eller frigjør én, og **Kjør nå**. |
-| Et pass ikke tillatt | Leietakerens policy for autentiseringsmetoder slår ikke på passet for personen. | [Slå på policyen](#4-sett-kontoreglene) for dem, og **Kjør nå (nytt pass)**. |
+| Et pass ikke tillatt | Leietakerens policy for autentiseringsmetoder slår ikke på passet for personen; kontoen er aktivert uten. | [Slå på policyen](#4-sett-kontoreglene). Vantigo utsteder et pass bare i kallet som aktiverer en konto, så for denne personen lager du det i portalen (brukerens **Authentication methods**). |
+| *Katalogen avviste det midlertidige tilgangspasset; kontoen er aktivert uten et.* | Leietakeren avviste passet med 403 (`pass_forbidden`) — applikasjonen mangler rollen eller tillatelsen for passet, eller brukeren er en den ikke får røre. | Sjekk rollen User Administrator og `UserAuthMethod-TAP.ReadWrite.All`; lag passet i portalen for denne personen. |
+| *Katalogen har en konto under personens ansattnummer som Vantigo ikke opprettet …* | `external_unconfirmed`: modulen fant brukeren og skriver ingenting til den. | [Bekreft den](#kontoer-vantigo-ikke-opprettet) når du har sjekket at den er personens; er den ikke det, rett ansattnummeret der det er feil. |
 | Lederens konto ikke funnet | Lederen har ingen konto i leietakeren. | Gi lederen kontotypen Microsoft Entra ID, eller godta det. |
-| *Stoppet (leaver_step_failed:…)* | Et steg for en som slutter feilet etter deaktiveringen, og stegene etter det ble ikke prøvd; kontoen er deaktivert. | Se modulens siste hendelser og loggen, og gjør så det steget og dem etter det i portalen: Ansatte deaktiverer ikke kontoen igjen. |
+| *Et avslutningssteg i katalogen ble ikke fullført: …* | Et steg for en som slutter feilet etter deaktiveringen, og stegene etter det ble ikke prøvd; kontoen er deaktivert. | Vanligvis ingenting: Ansatte prøver igjen neste dag. Feiler det fortsatt, se modulens siste hendelser og loggen, og gjør steget i portalen. |

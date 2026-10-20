@@ -457,10 +457,13 @@ katalogen ennå: Ansatte har ikke opprettet eller funnet en for denne personen.*
 - Hvorfor kontoen står fast, i en setning, når den gjør det: Entra ikke tilkoblet eller
   feiler, to kontoer i Entra med personens ansattnummer, e-posten på jobb er allerede en
   annen kontos der, en konto synkronisert fra en lokal katalog, en konto med en
-  administrativ rolle i Entra, en konto som ikke ble slettet fordi den fortsatt er
+  administrativ rolle i Entra, en konto Vantigo ikke opprettet og som ingen har
+  bekreftet overtakelsen av på siden for Microsoft Entra ID (Ansatte skriver ingenting
+  til den før noen gjør det), en konto som ikke ble slettet fordi den fortsatt er
   aktivert der, kontoen borte fra Entra (Ansatte lager aldri en til); og, én setning
   hver, hva Entra meldte og ikke fikk gjort: ansettelsesdatoen ikke skrevet, ingen
-  lisens igjen (lisensen navngitt i parentes), et pass ikke tillatt, lederens konto ikke
+  lisens igjen (lisensen navngitt i parentes), et pass ikke tillatt eller avvist, et
+  avslutningssteg ikke fullført (steget navngitt — Ansatte prøver igjen neste dag), lederens konto ikke
   funnet, personens leder ikke i Entra. *Mislykkede forsøk på rad: 3. Katalogen kunne
   ikke nås; arbeideren prøver igjen.* sier at Entra ikke kunne nås.
 

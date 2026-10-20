@@ -201,12 +201,42 @@ module never sets it itself.
 - Give one test person the **Microsoft Entra ID** kind and their account flag, and
   choose **Run now** on their Account tab: the **Microsoft Entra ID** card shows the
   account with its user principal name, and the module's recent events show
-  `entra.user.prepared`.
+  `entra.user.prepared`. If the tenant already held a user with that employee number,
+  confirm it first ([below](#accounts-vantigo-did-not-create)).
+
+## Accounts Vantigo did not create
+
+When Staff prepares a person and the tenant already holds a user with their employee
+number — one made by hand, by another tool, or before Vantigo — the module links that
+user but **writes nothing to it until a holder of `entra:manage` confirms it is the
+person's**: no details, no enable, no pass, no disable and no delete. Otherwise anyone
+who can register a person in Staff could take over someone else's account by giving
+the new person that account's employee number.
+
+Until then the person's Account tab in Staff says *The directory holds an account
+under the person's employee number that Vantigo did not create. Staff writes nothing
+to it until someone who manages Microsoft Entra ID confirms the adoption on the
+Microsoft Entra ID page.*, and the dashboard raises an item that links to the page.
+
+To confirm:
+
+1. Open **Microsoft Entra ID**. In the **Status** card's list of the module's
+   accounts, the user reads *Adopted — confirm*.
+2. Check in the portal that the user is the person's — the name, the principal name,
+   who uses it.
+3. Choose **Confirm** beside it, and **Confirm** again in *Confirm the adoption of …?*.
+
+Vantigo then manages the account from Staff's next accounts run: it writes the
+person's details, enables it on the first day and disables and deletes it when they
+leave. A leaver whose account was waiting for the confirmation is disabled within one
+poll of it. Never confirm an account you have not checked: confirming hands it to
+whoever is registered under that number in Staff.
 
 ## What a leaver's steps do
 
 The day after a person's last employment ends, Staff has the module disable the
-account, whatever the connection's status as long as a secret works. In this order,
+account, whatever the connection's status as long as a secret works — unless the
+account is one Vantigo did not create and nobody has confirmed. In this order,
 each but the first switched in step 4:
 
 | Step | What happens in the tenant |
@@ -220,11 +250,11 @@ each but the first switched in step 4:
 The account is disabled first whatever else fails, and any pass not yet shown is
 discarded at once. A step that fails stops the steps after it and is reported as
 `leaver_step_failed:` and the step's name (`revoke_sessions`, `leave_date`,
-`strip_licences`, `remove_groups`), which the person's Account tab in Staff shows by its
-code, *Blocked (leaver_step_failed:revoke_sessions)*. The module would run the steps again
-on another disable, but Staff disables only an account that is still enabled, so
-nothing retries them on its own: finish the step named, and those after it, in the
-portal.
+`strip_licences`, `remove_groups`), which the person's Account tab in Staff words as
+*A leaver step in the directory was not finished: signing the person out everywhere.*
+(or the step it was). Staff disables the account again once a day while that code
+stands, and the module runs the steps again from the first, the code clearing when
+they all succeed; a step that fails again waits for the next day.
 
 **Deleting** comes later, when Staff's **Delete an external account (days after the
 end)** says, and never while the account is enabled or the person is under a legal
@@ -258,11 +288,14 @@ when a secret last fetched a token.
 Step 1's **Save** with another tenant or client id sends the connection back to *not
 connected* — the **Status** card is gone and Staff's settings say *Microsoft Entra ID:
 not connected yet.* — until it is tested again; the verified domains and the
-organisation are forgotten with it. The same ids again change nothing. While the module
-keeps accounts, Vantigo asks first, **Change the tenant or the application?**
-(`connection_in_use`), and **Change it** saves: the accounts were made in the old
-tenant, and the module will look for people in the new one. Nothing is deleted in
-either tenant.
+organisation are forgotten with it. A change of the tenant also discards every
+Temporary Access Pass not yet shown; a change of the application alone keeps them. The
+same ids again change nothing. While the module keeps accounts, Vantigo asks first,
+**Change the tenant or the application?** (`connection_in_use`), and **Change it**
+saves: the accounts were made in the old tenant, the module will look for people in
+the new one, and **the old tenant's accounts are no longer disabled or deleted by
+Vantigo** when their people leave — handle those leavers in the old tenant yourself.
+Nothing is deleted in either tenant.
 
 ## The tagged test
 
@@ -319,7 +352,7 @@ Staff's words.
 | `consent_missing` | The token carries no permission — admin consent was never granted, or was withdrawn — or Graph refused to read the organisation. | **Grant admin consent** (step 3) and test again. |
 | `secret_expired` | Every secret has ended. | Add a new one (step 2). |
 | `secret_expiring` | The last valid secret to expire ends within 30 days. | [Rotate](#rotate-a-secret). |
-| `role_missing` | Three creates, enables, disables, passes, phone changes or deletes in a row were refused, none succeeding since: the User Administrator role is most likely not assigned. | Assign the role (step 3), then **Run now** on one of the people held up; a success clears it. |
+| `role_missing` | Three creates, enables, disables, phone changes or deletes in a row were refused, none succeeding since: the User Administrator role is most likely not assigned. | Assign the role (step 3), then **Run now** on one of the people held up; a success clears it. |
 | Permissions missing | The test's token lacks one or more of the eight. | Add them, grant consent again, test again. |
 
 On a person's Account tab in Staff, the **Microsoft Entra ID** card says what the
@@ -333,6 +366,8 @@ tenant reported for them:
 | An administrative role in Entra | The user holds a role (or is in a role-assignable group) the application may not touch — or the application lacks the role. | An administrator handles the account by hand; see `role_missing` above. |
 | The hire date not written | Graph refused `employeeHireDate`. | Nothing is needed for sign-in; turn **Write the hire date** off if it keeps failing. |
 | No licence left (the licence named) | No seat was free. | Buy seats or free one, then **Run now**. |
-| A pass not allowed | The tenant's authentication methods policy does not enable the pass for the person. | [Enable the policy](#4-set-the-account-rules) for them, then **Run now (new pass)**. |
+| A pass not allowed | The tenant's authentication methods policy does not enable the pass for the person; the account is enabled without one. | [Enable the policy](#4-set-the-account-rules). Vantigo issues a pass only on the call that enables an account, so for this person create one in the portal (the user's **Authentication methods**). |
+| *The directory refused the Temporary Access Pass; the account is enabled without one.* | The tenant refused the pass with a 403 (`pass_forbidden`) — the application lacks the role or the pass permission, or the user is one it may not touch. | Check the User Administrator role and `UserAuthMethod-TAP.ReadWrite.All`; create the pass in the portal for this person. |
+| *The directory holds an account under the person's employee number that Vantigo did not create …* | `external_unconfirmed`: the module found the user and writes nothing to it. | [Confirm it](#accounts-vantigo-did-not-create) after checking it is the person's; if it is not, correct the employee number where it is wrong. |
 | The manager's account not found | The manager has no account in the tenant. | Give the manager the Microsoft Entra ID kind, or accept it. |
-| *Blocked (leaver_step_failed:…)* | A leaver's step after the disable failed, and the steps after it were not tried; the account is disabled. | Check the module's recent events and the log, then do that step and the ones after it in the portal: Staff does not disable the account again. |
+| *A leaver step in the directory was not finished: …* | A leaver's step after the disable failed, and the steps after it were not tried; the account is disabled. | Nothing, usually: Staff tries again the next day. If it keeps failing, check the module's recent events and the log, and do the step in the portal. |

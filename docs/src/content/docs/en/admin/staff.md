@@ -454,6 +454,7 @@ erased person" — and for a leaver whose account the worker could not disable.
 | `accountAddressTakenInEntra` | The person's work email is another account's in Entra | Change the person's work email, or resolve the other account |
 | `accountSyncedOnPremises` | The account is synchronised from an on-premises directory | Manage it in that directory, or give the person another kind |
 | `accountPrivilegedInEntra` | The account holds an administrative role in Entra | An administrator handles it by hand |
+| `accountUnconfirmedInEntra` | Entra holds an account under the person's employee number that Vantigo did not create, and nobody has confirmed its adoption; Staff writes nothing to it | Check it is the person's, then confirm it on the Microsoft Entra ID page ([Accounts Vantigo did not create](/en/admin/entra/#accounts-vantigo-did-not-create)) |
 | `hireDateNotWritten` | Entra refused the hire date | Nothing is needed for sign-in; turn **Hire date** off in the directory profile if it keeps failing |
 | `licenceUnavailable` | A licence could not be assigned, none being left | Buy or free a licence in Microsoft 365 |
 | `passUnrevealed` | A pass was issued a day ago or more and nobody has shown it | Show it to the person, or Run now (new pass) when they are ready |

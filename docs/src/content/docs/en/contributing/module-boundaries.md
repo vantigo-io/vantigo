@@ -381,7 +381,9 @@ Communications' outbox is the working example.
     from the module's own row. Staff is the authority: it
     decides what exists and when, from the register, and the provider executes against
     its directory and answers what it did — `Prepare` finds the account holding the
-    employee number or creates it disabled, `Activate`, `Deactivate`, `Update`,
+    employee number or creates it disabled — an account it did not create is adopted
+    untrusted, written to only once its adoption is confirmed on the provider's side,
+    and answered `ErrExternalUnconfirmed` until then —, `Activate`, `Deactivate`, `Update`,
     `Delete` (a soft delete; `ErrExternalEnabled` on an enabled account), `Account`
     (a read that writes nothing), `RevealPass` (once, then `ErrPassGone`), and the
     group calls a later delivery uses;
@@ -399,7 +401,8 @@ Communications' outbox is the working example.
     each drop logged by field name, never by value.
     Each refusal is a sentinel (`ErrExternalAmbiguous`, `ErrExternalAddressTaken`,
     `ErrExternalSyncedOnPremises`, `ErrExternalPrivileged`, `ErrExternalEnabled`,
-    `ErrPassGone`, `ErrProviderUnavailable`, `ErrGroupNotManageable`) and a reported
+    `ErrExternalUnconfirmed`, `ErrPassGone`, `ErrProviderUnavailable`,
+    `ErrGroupNotManageable`) and a reported
     fact a code that never carries an address; anything else is a failure to retry.
     `Deactivate` — and the `Account` read Staff makes before it — runs whatever
     `Provider`'s status says, as long as a credential works, while the other writes

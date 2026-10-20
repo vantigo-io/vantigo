@@ -1590,19 +1590,23 @@ as [the accounts worker](#the-accounts-worker) does.
 
 **The third column** (`accounts_decide_provider.go`, `decideProvider`) is a pure
 function as `decide` is. With `T` today, `F` the effective date, `E` the last end and
-`P` the provider link, the first row that holds wins:
+`P` the provider link, the first row that holds wins — but **a call this claim's chain
+has made already is not made again** (`providerDecision.Made`): what it left undone, a
+leaver's step that failed again or an adoption nobody confirmed, waits for the link's
+next claim rather than spending the chain's calls. An account *with its leaver's steps
+undone* is a `disabled` one whose reported codes hold `leaver_step_failed:<step>`:
 
 | # | When | The provider link `P` |
 | --- | --- | --- |
-| 1 | HR's *Disable now* (or the worker finishing it) | `Deactivate` an account that is `enabled`; otherwise nothing |
+| 1 | HR's *Disable now* (or the worker finishing it) | `Deactivate` an account that is `enabled`, or `disabled` with its leaver's steps undone; otherwise nothing |
 | 2 | The person erased | nothing (the external account's erase is delivery E's) |
 | 3 | `P` names an account `Account` answers none for | `user_gone`, `P` `failed` — never created again |
 | 4 | No employment at all | `no_employment` with the flag on and a `P`; otherwise nothing |
-| 5 | Every employment ended (`T > E`, none later), the flag on or off — or, the flag on, between employments before the later one is due | `Deactivate` an `enabled` account, whatever the provider's status; for a leaver, once `deleteExternalAfterDays` have passed since `E`, with no legal hold and the account `disabled`, `Delete` → `P` `deleted`; otherwise nothing |
+| 5 | Every employment ended (`T > E`, none later), the flag on or off — or, the flag on, between employments before the later one is due | `Deactivate` an `enabled` account, whatever the provider's status; for a leaver, once `deleteExternalAfterDays` have passed since `E`, with no legal hold and the account `disabled`, `Delete` → `P` `deleted`; else a `disabled` account with its leaver's steps undone is deactivated again, once a day, the provider finishing the steps left and the code clearing when they succeed; otherwise nothing |
 | 6 | The flag off | nothing |
 | 7 | The provider not `connected` (`unconfigured` or `failing`) | `provider_unavailable` on a `P` there is, its state kept; with no `P`, nothing |
 | 8 | `T < F − createBeforeDays` | nothing |
-| 9 | No account — no `P`, a `P` `deleted`, or one no `Prepare` has answered | `Prepare` (the provider finds the account by the number or creates it disabled) |
+| 9 | No account — no `P`, a `P` `deleted`, or one no `Prepare` has answered | `Prepare` (the provider finds the account by the number or creates it disabled; one it found rather than created answers `ErrExternalUnconfirmed` until its adoption is confirmed) |
 | 10 | The account not announced, and the identity link's user not arrived | announce: identity's `Expect` (below) |
 | 11 | In the window (`F − createBeforeDays ≤ T < F`) | `Update` an `enabled` account whose external spec changed (`last_spec_hash`); otherwise nothing |
 | 12 | Due (`T ≥ F`) | a `disabled` account: `Activate` — a joiner on their first day, a rehire — with a fresh pass when *Run now* asked for one, unless the worker left it enabled earlier today (an account an administrator disabled today is not re-enabled before tomorrow); an `enabled` one: `Update` when the spec changed, otherwise nothing — never an `Activate`, so *Run now* asks no new pass for an account already enabled |
@@ -1665,6 +1669,7 @@ directory's words:
 | `ErrExternalSyncedOnPremises` | `external_synced_on_premises` | `blocked` | `accountSyncedOnPremises` |
 | `ErrExternalPrivileged` — the account holds a directory role | `external_privileged` | `blocked` | `accountPrivilegedInEntra` |
 | `ErrExternalEnabled` — a delete of an account still enabled | `external_enabled` | its state kept | `accountFailing` |
+| `ErrExternalUnconfirmed` — the provider found an account it did not create holding the number, and nobody has confirmed its adoption; it wrote nothing | `external_unconfirmed` | `blocked` | `accountUnconfirmedInEntra` |
 | `ErrProviderUnavailable`, or the status not `connected` | `provider_unavailable` | its state kept | the installation's, from the status |
 | `Account` answers none | `user_gone` | `failed` | `accountUserGone` |
 | `ErrInvalidActor` (a bug of Staff's, logged) | `invalid_actor` | `failed` | `accountFailing` |
@@ -1676,7 +1681,9 @@ link's own `next_attempt_at` is written but claims nothing — the identity link
 brings it back — so **a provider `Deactivate` that did not happen, or a `Delete` that
 could not be made** (as a failed read when a deactivation is due or asked for), sets
 the identity link's next attempt to the next poll, not the next civil day: a leaver
-loses access as soon as the directory answers.
+loses access as soon as the directory answers — or, for an adoption nobody had
+confirmed, within one poll of the confirmation. The other refusals are claimed again
+on the link's daily schedule, or by *Run now*.
 
 **What a provider answers is bounded** before it is stored or shown (review L2): a
 reported code, and a status's reason (before `settings.provider_status` and
@@ -1688,7 +1695,8 @@ when it passes Staff's own email rule (an address of at most 254 characters, sto
 lower-cased). What is dropped is logged by its field's name alone, never its value. A step that answers nothing more resets the reason, so
 `provider_unavailable` lifts once the provider is connected again. The provider's
 reported codes are `hire_date_not_written`, `privileged`, `pass_not_allowed`,
-`licence_unavailable:<SKU part number>` and `manager_not_found`; Staff adds its own
+`pass_forbidden`, `licence_unavailable:<SKU part number>`, `manager_not_found`,
+`adoption_unconfirmed` and `leaver_step_failed:<step>`; Staff adds its own
 `manager_not_in_entra` when the person's effective manager has no account in the
 directory.
 
@@ -3698,6 +3706,7 @@ person, as above, unless said:
 | `accountAddressTakenInEntra` | `external_address_taken` | The person's work email is another account's in the directory. |
 | `accountSyncedOnPremises` | `external_synced_on_premises` | The account is synchronised from an on-premises directory, whose attributes the provider cannot write. |
 | `accountPrivilegedInEntra` | `external_privileged`, or the reported `privileged` | The account holds an administrative role in the directory; an administrator handles it by hand. |
+| `accountUnconfirmedInEntra` | `external_unconfirmed` | The directory holds an account under the person's employee number the provider did not create, and nobody with `entra:manage` has confirmed its adoption; the dashboard's sentence links to the Microsoft Entra ID page (`/entra`), where it is confirmed. |
 | `hireDateNotWritten` | the reported `hire_date_not_written` | The directory refused the hire date. |
 | `licenceUnavailable` | the reported `licence_unavailable:<SKU>` | A licence could not be assigned, none being left — one per person whatever the licences; no title names the licence. |
 | `passUnrevealed` | `pass_issued_at` | A pass issued a day ago or more that nobody has shown; `occurredAt` when it was issued. |
