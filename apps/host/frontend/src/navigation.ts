@@ -8,6 +8,7 @@ export const moduleKeys = [
   "communications",
   "customers",
   "energy",
+  "entra",
   "expenses",
   "invoices",
   "products",

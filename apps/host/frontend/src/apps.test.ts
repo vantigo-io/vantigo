@@ -20,6 +20,7 @@ const allModules = [
   "communications",
   "customers",
   "energy",
+  "entra",
   "expenses",
   "invoices",
   "products",
@@ -44,6 +45,7 @@ describe("the app registry", () => {
       "communications",
       "products",
       "energy",
+      "entra",
     ]);
     for (const app of apps.slice(1)) expect(app.module).toBe(app.key);
   });
@@ -95,6 +97,7 @@ describe("the app registry", () => {
       "/products/categories",
       "/products/tax-categories",
       "/energy/metering-points",
+      "/entra",
     ]);
   });
 
@@ -110,6 +113,24 @@ describe("the app registry", () => {
     ]);
     expect(navigationCatalog.en["navigation.myCalendar"]).toBe("My calendar");
     expect(navigationCatalog.nb["navigation.myCalendar"]).toBe("Min kalender");
+  });
+
+  // The connection to the tenant (Entra design D15): one page behind
+  // entra:manage, so the tile is absent without it.
+  it("gives Microsoft Entra ID its one page behind entra:manage, and no tile without it", () => {
+    const entra = appForKey("entra");
+    expect(entra.requiredPermissions).toEqual(["entra:manage"]);
+    const items = entra.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
+      ["navigation.entra", "/entra", ["entra:manage"]],
+    ]);
+    expect(navigationCatalog.en["navigation.entra"]).toBe("Microsoft Entra ID");
+    expect(navigationCatalog.nb["navigation.entra"]).toBe("Microsoft Entra ID");
+    expect(isAppEnabled(entra, ["staff"])).toBe(false);
+    expect(isAppEnabled(entra, ["staff", "entra"])).toBe(true);
+    const tiles = (permissions: string[]) => switcherTiles(permissions, allModules, "home").map((tile) => tile.app.key);
+    expect(tiles(["staff:access", "staff:manage", "identity:manage"])).not.toContain("entra");
+    expect(tiles(["entra:manage"])).toContain("entra");
   });
 
   it("requires, for a tile, any permission that unlocks one of its sidebar entries", () => {
@@ -421,6 +442,7 @@ describe("the administration areas", () => {
       "communications",
       "products",
       "energy",
+      "entra",
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);
   });
@@ -514,6 +536,7 @@ describe("switcherTiles", () => {
       ["communications", false],
       ["products", false],
       ["energy", false],
+      ["entra", false],
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);
   });

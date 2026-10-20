@@ -1,0 +1,839 @@
+components:
+    schemas:
+        EntraAccount:
+            description: 'One account the module keeps in the tenant (Entra design D11, D13): the user it found or created for a person Staff registers, by the directory''s immutable object id. A deleted account stays, marked deleted, for the events'' sake. The pass itself is never answered here; hasPass says one waits to be revealed on the person''s Account tab in Staff.'
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                createdByUs:
+                    description: True when the module created the user; false when it found one already holding the employee number and linked it.
+                    type: boolean
+                employeeNumber:
+                    description: The employee number the user holds as employeeId, at most 16 characters.
+                    type: string
+                hasPass:
+                    description: A Temporary Access Pass was issued and is neither revealed nor expired.
+                    type: boolean
+                lastSyncedAt:
+                    description: When the module last wrote the user. Absent until it has.
+                    format: date-time
+                    type: string
+                objectId:
+                    description: The user's object id in the tenant, immutable.
+                    format: uuid
+                    type: string
+                reported:
+                    description: The codes of what the module could not act on at its last write — hire_date_not_written, privileged, pass_not_allowed, licence_unavailable:<part number>, manager_not_found — never the directory's words.
+                    items:
+                        type: string
+                    type: array
+                state:
+                    enum:
+                        - disabled
+                        - enabled
+                        - deleted
+                    type: string
+                userPrincipalName:
+                    type: string
+            required:
+                - objectId
+                - employeeNumber
+                - userPrincipalName
+                - state
+                - createdByUs
+                - hasPass
+                - reported
+                - createdAt
+            type: object
+        EntraAccountCounts:
+            description: How many accounts the module keeps in the tenant, by state; count is all of them, deleted included.
+            properties:
+                count:
+                    format: int32
+                    type: integer
+                deleted:
+                    format: int32
+                    type: integer
+                disabled:
+                    format: int32
+                    type: integer
+                enabled:
+                    format: int32
+                    type: integer
+            required:
+                - count
+                - enabled
+                - disabled
+                - deleted
+            type: object
+        EntraConnection:
+            description: 'The installation''s one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done.'
+            properties:
+                accounts:
+                    $ref: '#/components/schemas/EntraAccountCounts'
+                clientId:
+                    description: The application (client) id of the app registration. Absent until step 1 is saved.
+                    format: uuid
+                    type: string
+                credentials:
+                    description: Every client secret ever added, revoked ones included, newest first. The secret itself is sealed and never answered.
+                    items:
+                        $ref: '#/components/schemas/EntraCredential'
+                    type: array
+                lastCheckedAt:
+                    description: When the connection was last tested. Absent until it has been, and again after the tenant or the client changes.
+                    format: date-time
+                    type: string
+                organisationName:
+                    description: The tenant's organisation name as the last test read it.
+                    type: string
+                permissionsMissing:
+                    description: The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All) that the last test's token did not carry; all of them before the first test.
+                    items:
+                        type: string
+                    type: array
+                permissionsPresent:
+                    description: The application permissions the last test's token carried in its roles claim.
+                    items:
+                        type: string
+                    type: array
+                settings:
+                    $ref: '#/components/schemas/EntraSettings'
+                status:
+                    description: 'unconfigured while the tenant, the client or a valid secret is missing; otherwise what the last test, or a refusal since, found: connected or failing.'
+                    enum:
+                        - unconfigured
+                        - connected
+                        - failing
+                    type: string
+                statusReason:
+                    description: 'A code, never the directory''s words: for failing, credential_invalid, tenant_unreachable, consent_missing or secret_expired; for connected, secret_expiring (the newest valid secret ends within 30 days) or role_missing (three sensitive writes in a row were refused, which is the User Administrator role not assigned). Absent when there is nothing to say.'
+                    type: string
+                tenantId:
+                    description: The directory (tenant) id. Absent until step 1 is saved.
+                    format: uuid
+                    type: string
+                verifiedDomains:
+                    description: The tenant's verified domains as the last test read them, the choices for the UPN domain.
+                    items:
+                        type: string
+                    type: array
+                version:
+                    description: The connection's version. PUT /connection and PUT /connection/settings move it on and answer the whole connection; what a test finds, a secret added or revoked and a refusal in the tenant leave it as it is, so an open form is not refused for them. Send it back as If-Match on both PUTs.
+                    format: int32
+                    type: integer
+            required:
+                - status
+                - verifiedDomains
+                - permissionsPresent
+                - permissionsMissing
+                - settings
+                - credentials
+                - accounts
+                - version
+            type: object
+        EntraConnectionRequest:
+            description: Step 1, the tenant and the application registered in it, both GUIDs as the portal's Overview shows them. A change sends the status back to unconfigured until the next test.
+            properties:
+                clientId:
+                    description: The application (client) id, a GUID.
+                    type: string
+                confirmChange:
+                    description: True to change the tenant or the client while the module keeps accounts; without it such a change is refused 409 connection_in_use. Nothing in the tenant is deleted either way.
+                    type: boolean
+                tenantId:
+                    description: The directory (tenant) id, a GUID.
+                    type: string
+            required:
+                - tenantId
+                - clientId
+            type: object
+        EntraConnectionTest:
+            description: 'What POST /connection/test found: a token taken with the newest valid secret, the organisation read, and the token''s roles compared with the permissions the module needs. The same is written to the connection.'
+            properties:
+                organisationName:
+                    type: string
+                permissionsMissing:
+                    items:
+                        type: string
+                    type: array
+                permissionsPresent:
+                    items:
+                        type: string
+                    type: array
+                reason:
+                    description: Why the test failed, a code — credential_invalid, tenant_unreachable or consent_missing. Absent when it connected.
+                    type: string
+                roleKnown:
+                    description: Always false. Whether the application holds the User Administrator role cannot be read without a further permission, so the wizard asks the Owner to check it in the portal.
+                    type: boolean
+                status:
+                    enum:
+                        - unconfigured
+                        - connected
+                        - failing
+                    type: string
+                verifiedDomains:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - status
+                - verifiedDomains
+                - permissionsPresent
+                - permissionsMissing
+                - roleKnown
+            type: object
+        EntraCredential:
+            description: One client secret of the app registration (Entra design D11, credentials in the plural). The newest unrevoked one whose expiry is ahead is the one used. Its value is sealed and never answered.
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                expiresAt:
+                    description: When the secret ends in the tenant, as the portal showed it when it was made.
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                inUse:
+                    description: This is the secret the module uses now.
+                    type: boolean
+                kind:
+                    enum:
+                        - client_secret
+                    type: string
+                label:
+                    description: The secret's description in the portal, or whatever helps the Owner tell two apart.
+                    type: string
+                lastFailedAt:
+                    description: When the tenant last refused a token for it.
+                    format: date-time
+                    type: string
+                lastUsedAt:
+                    description: When it last fetched a token, to the minute.
+                    format: date-time
+                    type: string
+                revokedAt:
+                    description: When it was revoked here. A revoked secret is kept and never used again.
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - kind
+                - expiresAt
+                - createdAt
+                - inUse
+            type: object
+        EntraCredentialRequest:
+            description: Step 2, a client secret made under Certificates & secrets. The value is shown in the portal once; it is sealed here at once and never answered again.
+            properties:
+                expiresAt:
+                    description: When the secret ends, in the future and at most 24 months ahead.
+                    format: date-time
+                    type: string
+                kind:
+                    enum:
+                        - client_secret
+                    type: string
+                label:
+                    description: At most 100 characters.
+                    maxLength: 100
+                    type: string
+                secret:
+                    description: The secret's value, 1 to 1000 characters.
+                    maxLength: 1000
+                    type: string
+            required:
+                - kind
+                - secret
+                - expiresAt
+            type: object
+        EntraEvent:
+            description: One write the module made, in the tenant or to its own connection — the module's own append-only trail. It carries the codes and the UPN the module made, never an address beyond it, a secret or a pass.
+            properties:
+                action:
+                    description: entra.connection.changed, entra.connection.tested, entra.settings.changed, entra.credential.added, entra.credential.revoked, entra.user.prepared, entra.user.activated, entra.user.deactivated, entra.user.updated, entra.user.deleted, entra.pass.issued or entra.pass.revealed.
+                    type: string
+                actor:
+                    description: Who acted — the user's id, or the system's name (system:staff-accounts).
+                    type: string
+                at:
+                    format: date-time
+                    type: string
+                codes:
+                    description: What the write reported, as codes.
+                    items:
+                        type: string
+                    type: array
+                id:
+                    format: int64
+                    type: integer
+                objectId:
+                    description: The user it concerned, by object id. Absent on a connection's event.
+                    format: uuid
+                    type: string
+                upn:
+                    description: The user principal name the module made or found. Absent on a connection's event.
+                    type: string
+            required:
+                - id
+                - at
+                - actor
+                - action
+                - codes
+            type: object
+        EntraProblem:
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        EntraSettings:
+            description: 'The account rules (Entra design D13): how the UPN is made, the usage location a licence needs, what a leaver loses, and the Temporary Access Pass a joiner gets.'
+            properties:
+                defaultUsageLocation:
+                    description: The ISO 3166-1 alpha-2 country written as usageLocation when the person's work country is unknown.
+                    type: string
+                leaverRemoveGroups:
+                    description: 'all: a leaver leaves every group that is not dynamic, role-assignable or mail-enabled only; managed: only the module''s own groups; none: no group.'
+                    enum:
+                        - all
+                        - managed
+                        - none
+                    type: string
+                leaverRevokeSessions:
+                    description: A leaver's sign-in sessions are revoked after the account is disabled.
+                    type: boolean
+                leaverStripLicences:
+                    description: A leaver's directly assigned licences are removed; group-assigned ones go with the groups.
+                    type: boolean
+                leaverWriteLeaveDate:
+                    description: A leaver's last day is written as employeeLeaveDateTime, 23:00 in the business time zone.
+                    type: boolean
+                passDelivery:
+                    description: Who is meant to hand a joiner their pass — hr, manager or both. Stored and offered; the pass itself is revealed only on the person's Account tab in Staff.
+                    enum:
+                        - hr
+                        - manager
+                        - both
+                    type: string
+                passLifetimeMinutes:
+                    description: The pass's lifetime, 10 to 43200 minutes; the tenant's own policy may cap it lower.
+                    format: int32
+                    type: integer
+                passUsableOnce:
+                    type: boolean
+                upnDomain:
+                    description: The verified domain a made-up UPN ends in. Absent until set.
+                    type: string
+                upnPattern:
+                    description: How the UPN's local part is made from the folded names when the work email cannot be the UPN.
+                    enum:
+                        - given.family
+                        - g.family
+                        - given
+                    type: string
+                writeHireDate:
+                    description: A joiner's first day is written as employeeHireDate, 01:00 in the business time zone.
+                    type: boolean
+            required:
+                - upnPattern
+                - defaultUsageLocation
+                - leaverStripLicences
+                - leaverRemoveGroups
+                - leaverRevokeSessions
+                - leaverWriteLeaveDate
+                - writeHireDate
+                - passLifetimeMinutes
+                - passUsableOnce
+                - passDelivery
+            type: object
+        EntraSettingsRequest:
+            description: Step 4, the account rules. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name.
+            properties:
+                defaultUsageLocation:
+                    description: Two letters, ISO 3166-1 alpha-2.
+                    type: string
+                leaverRemoveGroups:
+                    enum:
+                        - all
+                        - managed
+                        - none
+                    type: string
+                leaverRevokeSessions:
+                    type: boolean
+                leaverStripLicences:
+                    type: boolean
+                leaverWriteLeaveDate:
+                    type: boolean
+                passDelivery:
+                    enum:
+                        - hr
+                        - manager
+                        - both
+                    type: string
+                passLifetimeMinutes:
+                    description: 10 to 43200.
+                    format: int32
+                    type: integer
+                passUsableOnce:
+                    type: boolean
+                upnDomain:
+                    description: One of the tenant's verified domains once a test has read them; before that, any lower-case domain name.
+                    maxLength: 253
+                    type: string
+                upnPattern:
+                    enum:
+                        - given.family
+                        - g.family
+                        - given
+                    type: string
+                writeHireDate:
+                    type: boolean
+            type: object
+        EntraSku:
+            description: One licence the tenant subscribes to, as subscribedSkus lists it.
+            properties:
+                consumed:
+                    description: The seats assigned.
+                    format: int32
+                    type: integer
+                enabled:
+                    description: The seats bought (prepaidUnits.enabled).
+                    format: int32
+                    type: integer
+                skuId:
+                    format: uuid
+                    type: string
+                skuPartNumber:
+                    description: The part number a Staff group's licences trait names, such as ENTERPRISEPACK.
+                    type: string
+            required:
+                - skuId
+                - skuPartNumber
+                - enabled
+                - consumed
+            type: object
+info:
+    title: Vantigo Microsoft Entra ID API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/entra/accounts:
+        get:
+            description: Every account the module keeps in the tenant, by UPN, with its state — a read-only list. The pass is never answered.
+            operationId: getEntraAccounts
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/EntraAccount'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The module's accounts
+            tags:
+                - Entra
+            x-vantigo-access: permission:entra:manage
+    /api/v1/entra/connection:
+        get:
+            description: The connection, its settings and its secrets without their values, and the accounts' counts — the status card and every step's Done mark. Reads the module's own rows only; nothing reaches the tenant.
+            operationId: getEntraConnection
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EntraConnection'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the connection
+            tags:
+                - Entra
+            x-vantigo-access: permission:entra:manage
+        put:
+            description: 'Step 1: sets the tenant and the client, under If-Match on the connection''s version, and sends the status back to unconfigured until the next test. While the module keeps accounts a change is refused 409 connection_in_use unless confirmChange is true; a change deletes nothing in the tenant. The Owner''s, as the single sign-on settings are: a tenant-wide application credential is an Owner''s to hold. Audited entra.connection.changed with the ids before and after. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.'
+            operationId: putEntraConnection
+            parameters:
+                - description: The version the connection was read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EntraConnectionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EntraConnection'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Bad Request — field errors on the body, or an If-Match that is not a version.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Conflict — connection_in_use, the module keeps accounts and confirmChange is not true.
+                "412":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Precondition Failed — version_mismatch, the connection has been written since the If-Match version.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — entra-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Set the tenant and the client
+            tags:
+                - Entra
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/entra/connection/credentials:
+        post:
+            description: 'Step 2: adds a client secret, sealed at once and never answered again. Rotation is adding the new one and revoking the old: the newest unrevoked secret whose expiry is ahead is the one used. The Owner''s. Audited entra.credential.added with the label and the dates, never the value. Rate limited with every Owner operation of the module.'
+            operationId: postEntraConnectionCredentials
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EntraCredentialRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EntraCredential'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Bad Request — field errors on the body.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — entra-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Add a client secret
+            tags:
+                - Entra
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/entra/connection/credentials/{id}:
+        delete:
+            description: Revokes a client secret — it is kept, marked revoked, and never used again; nothing changes in the tenant, where the Owner deletes it themselves. The only valid secret is refused 409 credential_in_use while the module keeps accounts. The Owner's. Audited entra.credential.revoked. Rate limited with every Owner operation of the module.
+            operationId: deleteEntraConnectionCredentialsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EntraCredential'
+                    description: OK — the secret as revoked.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such secret. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Conflict — credential_in_use, the only valid secret while the module keeps accounts.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — entra-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Revoke a client secret
+            tags:
+                - Entra
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/entra/connection/settings:
+        put:
+            description: 'Step 4: the account rules, under If-Match on the connection''s version. Every field is optional and one left out keeps its value; each refusal is a field error. Audited entra.settings.changed.'
+            operationId: putEntraConnectionSettings
+            parameters:
+                - description: The version the connection was read at, bare (3) or quoted ("3"). A version that has moved on is a 412 version_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EntraSettingsRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EntraConnection'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Bad Request — field errors on the body, or an If-Match that is not a version.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "412":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Precondition Failed — version_mismatch, the connection has been written since the If-Match version.
+            summary: Set the account rules
+            tags:
+                - Entra
+            x-vantigo-access: permission:entra:manage
+    /api/v1/entra/connection/skus:
+        get:
+            description: The licences the tenant subscribes to, with the seats bought and assigned, read from the tenant through the connection — the choices for a Staff group's licences. 503 when the tenant cannot be asked.
+            operationId: getEntraConnectionSkus
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/EntraSku'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Service Unavailable — credential_invalid, no secret fetched a token; or tenant_unreachable, the tenant did not answer.
+            summary: The tenant's licences
+            tags:
+                - Entra
+            x-vantigo-access: permission:entra:manage
+    /api/v1/entra/connection/test:
+        post:
+            description: 'Step 3: tests the connection — a token with the newest valid secret, the organisation and its verified domains read, the token''s roles compared with the permissions the module needs — and writes what it found to the connection. 200 with the result whatever it found, a failure included. The Owner''s. Audited entra.connection.tested with the status and the missing permissions. Rate limited with every Owner operation of the module.'
+            operationId: postEntraConnectionTest
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EntraConnectionTest'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — entra-owner's limit for this client address, shared with every Owner operation of the module.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Test the connection
+            tags:
+                - Entra
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/entra/events:
+        get:
+            description: The module's recent writes, newest first — the status card's events.
+            operationId: getEntraEvents
+            parameters:
+                - description: How many, 1 to 200; 50 when absent.
+                  in: query
+                  name: limit
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/EntraEvent'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Bad Request — a limit outside 1 to 200.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The module's recent events
+            tags:
+                - Entra
+            x-vantigo-access: permission:entra:manage
+servers:
+    - url: /

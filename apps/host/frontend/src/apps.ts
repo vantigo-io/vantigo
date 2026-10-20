@@ -3,6 +3,7 @@ import {
   IconAdjustments,
   IconBolt,
   IconBook,
+  IconBrandWindows,
   IconBriefcase,
   IconBuildingBank,
   IconCalendar,
@@ -404,6 +405,17 @@ export const apps: readonly AppDefinition[] = [
       icon: IconBolt,
       requiredPermissions: ["energy:metering-points-view", "energy:meters-view"],
       searchStrategy: "energy-list",
+    },
+  ]),
+  // The connection to the tenant (Entra design D15): one page, the status and
+  // the wizard, behind entra:manage. The Owner-only steps are the page's to
+  // show read-only; the server refuses their writes to anyone else.
+  moduleApp("entra", "navigation.entra", IconBrandWindows, "/entra", [
+    {
+      label: "navigation.entra",
+      to: "/entra",
+      icon: IconBrandWindows,
+      requiredPermissions: ["entra:manage"],
     },
   ]),
 ];

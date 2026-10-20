@@ -480,6 +480,12 @@ func WithEnv(key, value string) Option {
 // keeps this file from having to mirror config.go's dependency rule as new
 // modules grow their own.
 //
+// "staff" is likewise included whenever "entra" is among mods: config.go
+// rejects "entra" without "staff" (Staff's accounts worker is the provider's
+// only caller), and entra's own tests drive the provider and its endpoints
+// without Staff — listed as enabled, staff is mounted only when a harness
+// composes it too.
+//
 // stubbed names the modules a harness stands in for with a fake contract
 // rather than composing — "projects" when WithProjects was given, because
 // config.go rejects "time" without "projects" and a time harness supplies a
@@ -493,6 +499,9 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 	moduleSet := map[string]bool{"customers": true}
 	for _, m := range mods {
 		moduleSet[m.Name] = true
+	}
+	if moduleSet["entra"] {
+		moduleSet["staff"] = true
 	}
 	for _, name := range stubbed {
 		moduleSet[name] = true
