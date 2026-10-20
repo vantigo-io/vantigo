@@ -13,22 +13,10 @@ import (
 // which is what proves every operation is exercised.
 var recorder = contracttest.NewForModule("entra")
 
-// pendingOperations are the contract's operations no test covers yet: the
-// whole contract, whose handlers answer 501 until task 3 builds them
-// (stubs_test.go proves each is mounted and guarded meanwhile). Task 3
-// removes each as its test covers it, and RequireCoverage fails the run if
-// an entry left here was in fact exercised.
-var pendingOperations = []string{
-	"getEntraConnection",
-	"putEntraConnection",
-	"postEntraConnectionCredentials",
-	"deleteEntraConnectionCredentialsById",
-	"postEntraConnectionTest",
-	"putEntraConnectionSettings",
-	"getEntraConnectionSkus",
-	"getEntraEvents",
-	"getEntraAccounts",
-}
+// pendingOperations are the contract's operations no test covers yet: none.
+// RequireCoverage fails the run if an operation is never answered with a
+// success, or if an entry listed here was in fact exercised.
+var pendingOperations []string
 
 func TestMain(m *testing.M) {
 	os.Exit(contracttest.RequireCoverage(m, recorder, pendingOperations...))

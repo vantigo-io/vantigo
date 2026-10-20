@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/entra/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
@@ -15,12 +16,14 @@ const (
 )
 
 // provisioner is the module's contracts.IdentityProvisioner (Entra design D6,
-// D13): Staff's decisions executed against the tenant. Until tasks 3 and 4
-// build it, it names itself unconfigured and writes nothing — every write
-// answers ErrProviderUnavailable, which Staff records and retries — and the
-// groups, delivery D's, answer ErrGroupNotManageable.
+// D13): Staff's decisions executed against the tenant through client. Its
+// status is read from the connection's row (status.go); until task 4 builds
+// the lifecycle every write answers ErrProviderUnavailable, which Staff
+// records and retries, and the groups, delivery D's, answer
+// ErrGroupNotManageable.
 type provisioner struct {
-	deps module.Deps
+	deps   module.Deps
+	client *graphClient
 }
 
 var _ contracts.IdentityProvisioner = (*provisioner)(nil)
@@ -28,16 +31,17 @@ var _ contracts.IdentityProvisioner = (*provisioner)(nil)
 // newProvisioner builds the module's provider over d, for Compose and Workers
 // alike.
 func newProvisioner(d module.Deps) contracts.IdentityProvisioner {
-	return &provisioner{deps: d}
+	return &provisioner{deps: d, client: newGraphClient(d)}
 }
 
 // Key is "entra", with no context and no network.
 func (p *provisioner) Key() string { return providerKey }
 
-// Provider names the provider and its status.
-func (p *provisioner) Provider(context.Context) (contracts.ProviderInfo, error) {
-	// Task 3 reads the status from the connection's row (status.go).
-	return contracts.ProviderInfo{Key: providerKey, Name: providerName, Status: contracts.ProviderUnconfigured}, nil
+// Provider names the provider and its status, read from the connection's
+// row and the secrets with no network (plan reading 2): Staff's GET /meta
+// asks it on every request.
+func (p *provisioner) Provider(ctx context.Context) (contracts.ProviderInfo, error) {
+	return providerInfo(ctx, store.New(p.deps.Pool), p.deps.Clock())
 }
 
 // Prepare finds or creates the person's user, disabled.
