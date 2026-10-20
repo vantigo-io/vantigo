@@ -168,7 +168,7 @@ func (s *server) PostStaffPeopleByIdAccountRun(ctx context.Context, req gen.Post
 		return nil, err
 	}
 	run.fresh = true
-	mode, mismatch, unavailable := s.runMode(ctx)
+	_, mismatch, unavailable := s.runMode(ctx)
 	if unavailable {
 		return gen.PostStaffPeopleByIdAccountRun503ApplicationProblemPlusJSONResponse(accountsUnavailable()), nil
 	}
@@ -188,7 +188,10 @@ func (s *server) PostStaffPeopleByIdAccountRun(ctx context.Context, req gen.Post
 	}
 	sent := false
 	if f.decide.Flag {
-		if err := s.prepareAccountLink(ctx, req.Id, f, mode, now); err != nil {
+		if f.provider != nil {
+			run.providers = s.providerStatuses(ctx, f.provider.key)
+		}
+		if err := s.prepareAccountLink(ctx, req.Id, f, now); err != nil {
 			return nil, err
 		}
 		claim, lease, busy, err := s.claimPersonLink(ctx, req.Id, now)
@@ -199,9 +202,12 @@ func (s *server) PostStaffPeopleByIdAccountRun(ctx context.Context, req gen.Post
 			r, _ := asRefusal(accountsBusy())
 			return gen.PostStaffPeopleByIdAccountRun409ApplicationProblemPlusJSONResponse(r.problem), nil
 		case claim != nil:
-			worked := s.workAccountLink(ctx, run, *claim, lease, mode, mismatch, now)
+			worked := s.workAccountLink(ctx, run, *claim, lease, mismatch, now)
 			if worked.err != nil {
 				return nil, worked.err
+			}
+			if worked.providerRefusal != "" {
+				return gen.PostStaffPeopleByIdAccountRun409ApplicationProblemPlusJSONResponse(providerRefused(worked.providerRefusal)), nil
 			}
 			if worked.failed {
 				return gen.PostStaffPeopleByIdAccountRun503ApplicationProblemPlusJSONResponse(accountsUnavailable()), nil
@@ -242,10 +248,24 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 	// disable recorded, nothing called; HR unlinks it, or an Owner disables
 	// the user in identity.
 	handLink := false
+	// external is whether the person's provider link names an account in the
+	// directory not deleted (Entra design D7): Disable now deactivates it
+	// first, then the identity link's user.
+	external := false
 	err = s.withPersonLock(ctx, req.Id, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := readAccountPerson(ctx, txq, req.Id)
 		if err != nil {
 			return err
+		}
+		if providerKind(current.accountKind) {
+			pl, err := txq.PersonProviderLink(ctx, store.PersonProviderLinkParams{PersonID: req.Id, Provider: current.accountKind})
+			switch {
+			case errors.Is(err, pgx.ErrNoRows):
+			case err != nil:
+				return fmt.Errorf("staff: read person %d's %s link: %w", req.Id, current.accountKind, err)
+			default:
+				external = pl.ExternalID != nil && pl.State != providerStateDeleted
+			}
 		}
 		link, err := txq.LockPersonAccountLink(ctx, req.Id)
 		switch {
@@ -260,8 +280,9 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 			user = link.ExternalID
 		}
 		// The disable asked for, recorded with the flag (review M1): what
-		// does not reach identity below is the worker's to finish.
-		if user != nil {
+		// does not reach identity or the provider below is the worker's to
+		// finish.
+		if user != nil || external {
 			if err := txq.RequestAccountDisable(ctx, store.RequestAccountDisableParams{PersonID: req.Id, Now: now}); err != nil {
 				return fmt.Errorf("staff: record person %d's disable: %w", req.Id, err)
 			}
@@ -292,11 +313,11 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 	if hook, ok := disableCommittedHooks.Load(disableHookKey{pool: s.deps.Pool, person: req.Id}); ok {
 		hook.(func())()
 	}
-	if handLink {
+	if handLink && !external {
 		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(conflict(codeAccountNotManaged, "Not managed by Staff",
 			"The account flag is off, but the person is linked by hand to a user Staff does not manage, so Staff does not disable them. Unlink the person, or an Owner disables the user in identity.")), nil
 	}
-	if user != nil {
+	if user != nil || external {
 		if resp, err := s.disableLinkedUser(ctx, run, req.Id, now); resp != nil || err != nil {
 			return resp, err
 		}
@@ -330,9 +351,6 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(r.problem), nil
 	case claim == nil:
 		return nil, nil
-	case claim.ExternalID == nil:
-		s.releaseAccountLease(ctx, claim.ID, lease)
-		return nil, nil
 	}
 	f, err := s.readAccountFacts(ctx, personID, now)
 	if err != nil {
@@ -342,9 +360,39 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 		}
 		return nil, err
 	}
+	if claim.ExternalID == nil && f.provider == nil {
+		s.releaseAccountLease(ctx, claim.ID, lease)
+		return nil, nil
+	}
 	r := newAccountResult(*claim)
-	id, perr := uuid.Parse(*claim.ExternalID)
+	// The provider's account first (Entra design D7), whatever identity
+	// then answers.
+	var provider providerOutcome
+	if f.provider != nil {
+		run.providers = s.providerStatuses(ctx, f.provider.key)
+		var user *uuid.UUID
+		if claim.ExternalID != nil {
+			if id, err := uuid.Parse(*claim.ExternalID); err == nil {
+				user = &id
+			}
+		}
+		provider = s.workProviderLink(ctx, run, *claim, lease, f, identityForProvider(user, nil, false), true, now)
+		if provider.err != nil {
+			s.releaseAccountLease(ctx, claim.ID, lease)
+			return nil, provider.err
+		}
+	}
 	var refusal error
+	if claim.ExternalID == nil {
+		if !provider.failed {
+			r.disableRequested = nil
+		}
+		if err := s.writeAccountResult(ctx, run, r, lease, f, now); err != nil {
+			return nil, err
+		}
+		return providerDisableAnswer(provider), nil
+	}
+	id, perr := uuid.Parse(*claim.ExternalID)
 	if perr != nil {
 		r.answered(reasonUserGone)
 		r.state = linkStateFailed
@@ -365,7 +413,7 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 	}
 	switch {
 	case refusal == nil:
-		return nil, nil
+		return providerDisableAnswer(provider), nil
 	case r.failed:
 		problem := accountsUnavailable()
 		detail := "Identity could not be reached. The account flag is off; the user is not yet disabled. Try again."
@@ -378,13 +426,37 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(conflict(codeAccountPrivileged, "An Owner's account",
 			"The account flag is off, but the user is an Owner or a SystemAdmin, whom an Owner disables in identity.")), nil
 	case errors.Is(refusal, contracts.ErrUserGone):
-		return nil, nil
+		return providerDisableAnswer(provider), nil
 	case errors.Is(refusal, errAccountMismatch):
 		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(conflict(codeAccountMismatch, "Someone else's account",
 			"The account flag is off, but the user the link names carries another employee number, so Staff does nothing to them. Put the person's employee number right; the disable then runs.")), nil
 	default:
 		return nil, fmt.Errorf("staff: Disable now for person %d: %w", personID, refusal)
 	}
+}
+
+// providerDisableAnswer is Disable now's answer for the provider's part:
+// nil when its account is disabled (or there was none), provider_refused
+// with the code of a refusal, accounts_unavailable for a call that could not
+// be made — the flag is off either way, and the worker finishes the disable.
+func providerDisableAnswer(p providerOutcome) gen.PostStaffPeopleByIdAccountDisableResponseObject {
+	switch {
+	case p.refusal != "":
+		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(providerRefused(p.refusal))
+	case p.failed:
+		problem := accountsUnavailable()
+		detail := "The identity provider could not be reached. The account flag is off; the external account is not yet disabled. Try again."
+		problem.Detail = &detail
+		return gen.PostStaffPeopleByIdAccountDisable503ApplicationProblemPlusJSONResponse(problem)
+	}
+	return nil
+}
+
+// providerRefused is the 409 for a provider's refusal of Run now or Disable
+// now: the code in the detail, never the provider's words.
+func providerRefused(code string) gen.StaffProblem {
+	return conflict(codeProviderRefused, "The identity provider refused",
+		"The identity provider refused the account change: "+code+".")
 }
 
 // disableCommittedHooks is what a test runs when Disable now has committed

@@ -31,7 +31,7 @@ import (
 // ErrAccountPrivileged (decide reports account_privileged from
 // AccountRef.Privileged itself, so the call answers it only for a user who
 // became an Owner or a SystemAdmin between the Account read and the call),
-// ErrBlockedByOwner, ErrAccountNotFound (federated, not found), ErrUserGone,
+// ErrBlockedByOwner, ErrAccountNotFound (a link-only kind, not found), ErrUserGone,
 // ErrAccountNotManaged, ErrEmployeeRoleMissing, ErrEmployeeRoleUnsafe,
 // ErrAccountEmailTaken and ErrEmployeeNumberTaken each become the link's
 // blocked_reason; anything else is a failure to retry. A blocked link is
@@ -111,8 +111,11 @@ type decideEmployment struct {
 // accountPersonFacts is what decide needs of the person: whether they are
 // erased, the flag and its stored date (ProvisionFrom nil when HR set none),
 // whether the address the flag names is present (accountAddress), the
-// employee number and every employment.
+// employee number, every employment, and the account kind (Entra design
+// D5: local, external, or a provider's key — entra), which decides the
+// identity link's rule where the installation's mode did.
 type accountPersonFacts struct {
+	Kind           string
 	Erased         bool
 	Flag           bool
 	ProvisionFrom  *time.Time
@@ -127,27 +130,40 @@ type accountPersonFacts struct {
 // (last_spec_hash) differs from the link's — and SyncedEmployeeNumber, the
 // number the worker last wrote to identity for this link ("" when unknown),
 // so a person HR renumbered is still known by the number identity holds.
+//
+// Activated is whether the link already recorded the user active before
+// this claim, or an Activate of this claim succeeded: for a provider's kind
+// the user the provider made arrives enabled, so the Activate that gives
+// them the provisioning roles (identity's, once — plan reading 3) is the
+// one made when the link first sees them active.
 type accountLinkFacts struct {
 	State                string
 	ExternalID           *string
 	Managed              bool
 	SpecChanged          bool
 	SyncedEmployeeNumber string
+	Activated            bool
 }
 
 // accountDecision is decide's whole input. Link nil is a person with no link;
 // Ref is what Account answered for the link's user (nil: no user has the
-// id). Mode is the authority mode, CreateBeforeDays the setting, Today the
+// id). CreateBeforeDays is the setting, Today the
 // civil day in the settings zone (the caller's civilToday: daylight saving
 // is the caller's), and Fresh whether HR asked for this run (Run now).
 type accountDecision struct {
 	Person           accountPersonFacts
 	Link             *accountLinkFacts
 	Ref              *contracts.AccountRef
-	Mode             string
 	CreateBeforeDays int
 	Today            time.Time
 	Fresh            bool
+}
+
+// linkOnly is whether kind is one identity only finds the user for —
+// external, or a provider's (entra) — rather than creating and inviting
+// them (local). "" is local: a person read before the kinds were seeded.
+func linkOnly(kind string) bool {
+	return kind != "" && kind != contracts.AccountKindLocal
 }
 
 // accountPhase is where today falls against the person's employments and
@@ -261,7 +277,8 @@ func accountEnabled(ref *contracts.AccountRef) bool {
 }
 
 // decide is the accounts decision table (spec §4 "Accounts" with §9's
-// account edge cases and the plan's Task 4a), first match wins:
+// account edge cases and the plan's Task 4a; the person's account kind in
+// place of the installation's mode, Entra design D5), first match wins:
 //
 //  1. Erased: nothing — a legal hold stops the erase only.
 //  2. The flag off: nothing is created, enabled or updated, and a link is
@@ -289,25 +306,31 @@ func accountEnabled(ref *contracts.AccountRef) bool {
 //     record whatever the directory says; otherwise nothing.
 //  6. Between employments, before the later one is due: the same, and
 //     before its window nothing else — no report either.
-//  7. Federated mode and a pending user with no credential (created in
-//     local mode): report mode_changed (reading 30), nothing else.
+//  7. A link-only kind and a pending user with no credential (created while
+//     the kind was local): report mode_changed (reading 30), nothing else —
+//     but for a provider's kind (entra) nothing: the provider's
+//     announcement names that user (ReplaceUserID), and the arrival
+//     completes them.
 //  8. Before the window (T < F − createBeforeDays) with no user: nothing.
-//  9. The address the flag names missing: report account_email_missing.
-//  10. No user yet: prepare (federated: find).
+//  9. The address the flag names missing: report account_email_missing —
+//     except for a provider's kind, whose provider makes the address.
+//  10. No user yet: prepare (link-only: find).
 //  11. The user's state (before T ≥ F the same, but never an activate): the
 //     directory deactivated them, nothing (the directory decides); disabled
 //     by an Owner (or by no one recorded), report blocked —
 //     blocked_by_owner for a user still pending (the activation refused),
 //     disabled_by_owner otherwise; disabled by Staff, activate (a rehire;
-//     federated re-enables only); pending and disabled by Staff, activate
+//     a link-only kind re-enables only); pending and disabled by Staff, activate
 //     (local); pending and enabled with no credential, by the invitation —
 //     active nothing, revoked by an Owner invitation_revoked and exhausted
-//     invitation_unanswered unless the run is fresh, else activate.
+//     invitation_unanswered unless the run is fresh, else activate; for a
+//     provider's kind, an active user the link has not yet seen active,
+//     activate once (the roles an adopted user is given).
 //  12. The spec: a pending user whose address differs and still follows the
 //     person's (AccountRef.EmailFollows: no invitation delivered yet — the
 //     owner's decision D1 of 2026-10-18), update (local); any other differing
 //     address — once the first invitation went out, pending or not — report
-//     email_differs (local; in federated mode the identity provider owns it),
+//     email_differs (local; for a link-only kind the identity provider owns it),
 //     riding with an update when the spec changed; the
 //     spec changed, or identity holds the synced number of a person HR
 //     renumbered, update.
@@ -324,7 +347,8 @@ func decide(in accountDecision) accountStep {
 		return accountStep{Kind: accountStepReport, Reason: reasonNoEmployment}
 	}
 	today := decideDay(in.Today)
-	federated := in.Mode == contracts.AccountModeFederated
+	findOnly := linkOnly(p.Kind)
+	provider := findOnly && p.Kind != contracts.AccountKindExternal
 	hasUser := in.Link != nil && in.Link.ExternalID != nil
 	ref := in.Ref
 	if hasUser {
@@ -357,13 +381,16 @@ func decide(in accountDecision) accountStep {
 		}
 	}
 	pending := hasUser && ref.State == contracts.AccountStatePending && ref.DisabledBy != contracts.DisabledByDirectory
-	if federated && pending && !ref.HasCredential {
+	if findOnly && pending && !ref.HasCredential {
+		if provider {
+			return none
+		}
 		return accountStep{Kind: accountStepReport, Reason: reasonModeChanged, State: linkStatePending}
 	}
 	if phase == phaseBefore && !hasUser {
 		return none
 	}
-	if !p.AddressPresent {
+	if !p.AddressPresent && !provider {
 		return accountStep{Kind: accountStepReport, Reason: reasonEmailMissing}
 	}
 	if !hasUser {
@@ -415,8 +442,8 @@ func decideDue(in accountDecision, ref *contracts.AccountRef, pending bool) acco
 	switch {
 	case ref.DisabledBy == contracts.DisabledByDirectory:
 		return none
-	case pending && in.Mode == contracts.AccountModeFederated:
-		// Federated mode never activates a pending user (the identity
+	case pending && linkOnly(in.Person.Kind):
+		// A link-only kind never activates a pending user (the identity
 		// provider is the authority; reading 19), credential or not.
 		return none
 	case pending && ref.DisabledBy == contracts.DisabledByStaff:
@@ -444,6 +471,11 @@ func decideDue(in accountDecision, ref *contracts.AccountRef, pending bool) acco
 		return activate
 	case ref.State == contracts.AccountStateDisabled:
 		return byOwner()
+	case ref.State == contracts.AccountStateActive && linkOnly(in.Person.Kind) &&
+		in.Person.Kind != contracts.AccountKindExternal && !in.Link.Activated:
+		// The provider's user arrived enabled: activated once, for the
+		// provisioning roles identity gives an adopted user (reading 3).
+		return activate
 	default:
 		return none
 	}
@@ -451,16 +483,16 @@ func decideDue(in accountDecision, ref *contracts.AccountRef, pending bool) acco
 
 // decideSpec is row 12 of decide: what the user's details need.
 func decideSpec(in accountDecision, ref *contracts.AccountRef) accountStep {
-	federated := in.Mode == contracts.AccountModeFederated
+	findOnly := linkOnly(in.Person.Kind)
 	// A person HR renumbered: identity still holds the synced number, which
 	// the update rewrites (the owner's answer 1: the number still syncs).
 	changed := in.Link.SpecChanged || !contracts.SameEmployeeNumber(ref.EmployeeNumber, in.Person.EmployeeNumber)
 	switch {
-	case !federated && ref.EmailFollows && ref.EmailDiffers:
+	case !findOnly && ref.EmailFollows && ref.EmailDiffers:
 		return accountStep{Kind: accountStepUpdate}
-	case !federated && ref.EmailDiffers && changed:
+	case !findOnly && ref.EmailDiffers && changed:
 		return accountStep{Kind: accountStepUpdate, Reason: reasonEmailDiffers}
-	case !federated && ref.EmailDiffers:
+	case !findOnly && ref.EmailDiffers:
 		return accountStep{Kind: accountStepReport, Reason: reasonEmailDiffers}
 	case changed:
 		return accountStep{Kind: accountStepUpdate}

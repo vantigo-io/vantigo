@@ -1,8 +1,6 @@
 package staff
 
 import (
-	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -22,12 +20,6 @@ func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState,
 	acknowledged, err := parseAcknowledged(row.ThresholdsAcknowledged)
 	if err != nil {
 		return gen.StaffSettings{}, err
-	}
-	// Task 4: the directory profile's switches as the directory profile
-	// reads them; here the column as stored.
-	directoryFields := map[string]bool{}
-	if err := json.Unmarshal(row.DirectoryFields, &directoryFields); err != nil {
-		return gen.StaffSettings{}, fmt.Errorf("staff: read the directory fields: %w", err)
 	}
 	return gen.StaffSettings{
 		TimeZone:               zone.String(),
@@ -56,7 +48,7 @@ func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState,
 		EraseSickCaseDates:        row.EraseSickCaseDates,
 
 		DefaultAccountKind: gen.StaffAccountKind(row.DefaultAccountKind),
-		DirectoryFields:    directoryFields,
+		DirectoryFields:    directoryFieldsOf(row),
 	}, nil
 }
 

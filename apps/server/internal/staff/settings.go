@@ -23,7 +23,9 @@ import (
 // policy and automatic carry-over (delivery B, absence_settings.go; plan
 // reading 2: the contract grows with the deliveries), and the two account
 // settings (delivery C, account_settings.go) and the two erase settings the
-// owner asked for (delivery C, Task 5b; retention.go reads them). There is
+// owner asked for (delivery C, Task 5b; retention.go reads them), and the
+// default account kind and the directory profile's switches (Entra delivery
+// B, account_settings.go and directory_profile.go). There is
 // exactly one row, written by the migration, and a replace is guarded by its
 // revision.
 
@@ -225,8 +227,9 @@ func retentionState(ctx context.Context, q *store.Queries, withHealth bool) (gen
 //
 // A full replace of A1's four fields, guarded by If-Match; A2's retention
 // periods, B's self-certification policy and carry-over, C's two account
-// settings (account_settings.go) and its two erase settings each keep their
-// value when left out. The policy is resolved against the row as locked, and
+// settings (account_settings.go) and its two erase settings, and Entra B's
+// default account kind and directory switches — a switch left out of the
+// map keeps its value too — each keep their value when left out. The policy is resolved against the row as locked, and
 // "today" for autoCarryOverSince is the business time zone's, read before
 // the transaction; the revision is judged under the row's lock, so two
 // replaces at once queue and the second is told the first won.
@@ -242,6 +245,8 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 	parsed, f := parseSettings(body)
 	accounts := parseAccountSettings(body, bodyHas(ctx, "deleteExternalAfterDays"), &f)
 	erase := parseEraseSettings(ctx, body, &f)
+	defaultKind := s.parseDefaultAccountKind(body, &f)
+	switches := parseDirectoryFields(body.DirectoryFields, &f)
 	q := store.New(s.deps.Pool)
 	if f.failed() {
 		return gen.PutStaffSettings400ApplicationProblemPlusJSONResponse(invalid(invalidSettingsTitle, f)), nil
@@ -270,6 +275,10 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 		}
 		now := s.deps.Clock()
 		policy := parsed.Policy.applyTo(policyOf(current), civilToday(now, zone))
+		directory, err := mergeDirectoryFields(current, switches)
+		if err != nil {
+			return err
+		}
 		saved, err = txq.UpdateSettings(ctx, store.UpdateSettingsParams{
 			EmployeeNumberPrefix:       parsed.Prefix,
 			NextEmployeeNumber:         parsed.Next,
@@ -289,6 +298,8 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 			DeleteExternalAfterDays:    accounts.deleteExternalAfterDays,
 			ErasePregnancyHealthTypes:  erase.pregnancyHealth,
 			EraseSickCaseDates:         erase.sickCaseDates,
+			DefaultAccountKind:         defaultKind,
+			DirectoryFields:            directory,
 			Now:                        now,
 		})
 		if err != nil {

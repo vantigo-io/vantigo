@@ -311,25 +311,80 @@ func TestDecide(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		for _, mode := range []string{contracts.AccountModeLocal, contracts.AccountModeFederated} {
+		for _, kind := range []string{contracts.AccountKindLocal, contracts.AccountKindExternal} {
 			in := accountDecision{
 				Person: accountPersonFacts{
-					Flag: true, AddressPresent: true, EmployeeNumber: "A-1",
+					Kind: kind, Flag: true, AddressPresent: true, EmployeeNumber: "A-1",
 					Employments: []decideEmployment{span("2026-10-01", "")},
 				},
-				Mode: mode, CreateBeforeDays: 14, Today: day(t, "2026-10-18"),
+				CreateBeforeDays: 14, Today: day(t, "2026-10-18"),
 			}
 			if c.edit != nil {
 				c.edit(&in)
 			}
 			want := c.local
-			if mode == contracts.AccountModeFederated {
+			if kind == contracts.AccountKindExternal {
 				want = c.federated
 			}
 			if got := decide(in); got != want {
-				t.Errorf("%s (%s): decide = %+v, want %+v", c.name, mode, got, want)
+				t.Errorf("%s (%s): decide = %+v, want %+v", c.name, kind, got, want)
 			}
 		}
+	}
+}
+
+// TestDecide_TheProviderKind pins the identity column for a provider's kind
+// (entra, Entra design D5, D7): link-only as external, except that the
+// provider makes the address, so none is required, and a pending local user
+// is the announcement's ReplaceUserID to complete, not mode_changed.
+func TestDecide_TheProviderKind(t *testing.T) {
+	user := uuid.MustParse("6f1c1f39-0a49-4c0e-9f1d-7d0d6a3c2b11")
+	external := user.String()
+	base := func() accountDecision {
+		return accountDecision{
+			Person: accountPersonFacts{Kind: contracts.AccountKindEntra, Flag: true, EmployeeNumber: "A-1",
+				Employments: []decideEmployment{{Start: day(t, "2026-10-01")}}},
+			CreateBeforeDays: 14, Today: day(t, "2026-10-18"),
+		}
+	}
+	noAddress := base()
+	if got := decide(noAddress); got.Kind != accountStepPrepare {
+		t.Errorf("entra, no address, no user: decide = %+v, want prepare (find)", got)
+	}
+	pending := base()
+	pending.Link = &accountLinkFacts{State: linkStatePending, ExternalID: &external, Managed: true}
+	pending.Ref = &contracts.AccountRef{UserID: user, State: contracts.AccountStatePending, DisabledBy: contracts.DisabledByStaff,
+		Managed: true, EmployeeNumber: "A-1", Invitation: contracts.Invitation{State: contracts.InvitationNone}}
+	if got := decide(pending); got.Kind != accountStepNone || got.Reason != "" {
+		t.Errorf("entra, a pending local user: decide = %+v, want nothing (the announcement replaces them)", got)
+	}
+	pending.Person.Kind = contracts.AccountKindExternal
+	pending.Person.AddressPresent = true
+	if got := decide(pending); got.Reason != reasonModeChanged {
+		t.Errorf("external, a pending local user: decide = %+v, want mode_changed", got)
+	}
+	adopted := base()
+	adopted.Link = &accountLinkFacts{State: linkStateDisabled, ExternalID: &external, Managed: true}
+	adopted.Ref = &contracts.AccountRef{UserID: user, State: contracts.AccountStateDisabled, DisabledBy: contracts.DisabledByStaff,
+		Managed: true, EmployeeNumber: "A-1", HasCredential: true}
+	if got := decide(adopted); got.Kind != accountStepActivate {
+		t.Errorf("entra, the adopted user disabled by Staff: decide = %+v, want activate", got)
+	}
+	arrived := base()
+	arrived.Link = &accountLinkFacts{State: linkStatePreparing, ExternalID: &external, Managed: true}
+	arrived.Ref = &contracts.AccountRef{UserID: user, State: contracts.AccountStateActive, Managed: true, EmployeeNumber: "A-1", HasCredential: true}
+	if got := decide(arrived); got.Kind != accountStepActivate {
+		t.Errorf("entra, the arrived user enabled, not yet seen active: decide = %+v, want activate (the roles, once)", got)
+	}
+	arrived.Link.Activated = true
+	if got := decide(arrived); got.Kind != accountStepNone {
+		t.Errorf("entra, the arrived user activated already: decide = %+v, want nothing", got)
+	}
+	arrived.Link.Activated = false
+	arrived.Person.Kind = contracts.AccountKindExternal
+	arrived.Person.AddressPresent = true
+	if got := decide(arrived); got.Kind != accountStepNone {
+		t.Errorf("external, an active user: decide = %+v, want nothing (identity gives no roles)", got)
 	}
 }
 
@@ -345,9 +400,9 @@ func TestDecide_TheOctoberDSTDay(t *testing.T) {
 	}
 	base := func(start string, before int, today time.Time) accountDecision {
 		return accountDecision{
-			Person: accountPersonFacts{Flag: true, AddressPresent: true, EmployeeNumber: "A-1",
+			Person: accountPersonFacts{Kind: contracts.AccountKindLocal, Flag: true, AddressPresent: true, EmployeeNumber: "A-1",
 				Employments: []decideEmployment{{Start: day(t, start)}}},
-			Mode: contracts.AccountModeLocal, CreateBeforeDays: before, Today: today,
+			CreateBeforeDays: before, Today: today,
 		}
 	}
 	for _, c := range []struct {

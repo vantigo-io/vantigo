@@ -108,7 +108,10 @@ func mount(d module.Deps) (http.Handler, error) {
 		Catalog:    d.Catalog,
 		BodyLimits: bodyLimits,
 	})
-	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
+	srv := newServer(d)
+	// The account kinds seeded from the authority mode, once (account_seed.go).
+	srv.seedAccountKindsAtMount()
+	strict := gen.NewStrictHandlerWithOptions(srv, nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

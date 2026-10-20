@@ -63,6 +63,48 @@ func (silentAccounts) ProvisioningRoles(context.Context) ([]contracts.RoleRef, e
 	return nil, nil
 }
 
+func (silentAccounts) Expect(context.Context, contracts.Actor, contracts.ExpectedAccount) error {
+	return nil
+}
+
+func (silentAccounts) Unexpect(context.Context, contracts.Actor, string) error { return nil }
+
+// silentProvisioner is a contracts.IdentityProvisioner answering nothing
+// and refusing nothing, under the key "entra".
+type silentProvisioner struct{ contracts.IdentityProvisioner }
+
+func (silentProvisioner) Key() string { return contracts.AccountKindEntra }
+
+func (silentProvisioner) Provider(context.Context) (contracts.ProviderInfo, error) {
+	return contracts.ProviderInfo{Key: contracts.AccountKindEntra, Status: contracts.ProviderConnected}, nil
+}
+
+func (silentProvisioner) Prepare(context.Context, contracts.Actor, contracts.ExternalSpec) (contracts.ExternalAccount, error) {
+	return contracts.ExternalAccount{}, nil
+}
+
+func (silentProvisioner) Activate(context.Context, contracts.Actor, string, contracts.ExternalSpec) (contracts.ExternalAccount, error) {
+	return contracts.ExternalAccount{}, nil
+}
+
+func (silentProvisioner) Deactivate(context.Context, contracts.Actor, string, contracts.ExternalSpec) (contracts.ExternalAccount, error) {
+	return contracts.ExternalAccount{}, nil
+}
+
+func (silentProvisioner) Update(context.Context, contracts.Actor, string, contracts.ExternalSpec) (contracts.ExternalAccount, error) {
+	return contracts.ExternalAccount{}, nil
+}
+
+func (silentProvisioner) Delete(context.Context, contracts.Actor, string) error { return nil }
+
+func (silentProvisioner) Account(context.Context, string) (*contracts.ExternalAccount, error) {
+	return nil, nil
+}
+
+func (silentProvisioner) RevealPass(context.Context, contracts.Actor, string) (contracts.Pass, error) {
+	return contracts.Pass{}, nil
+}
+
 // silentStore is an object store that keeps nothing and refuses nothing.
 type silentStore struct{}
 
@@ -93,7 +135,8 @@ func (silentStore) Delete(context.Context, string) error { return nil }
 func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
-	s := &server{deps: module.Deps{Pool: pool, Users: silentUsers{}, Accounts: &silentAccounts{}, SMTPSend: silentMail}, objects: silentStore{}}
+	s := &server{deps: module.Deps{Pool: pool, Users: silentUsers{}, Accounts: &silentAccounts{}, SMTPSend: silentMail,
+		IdentityProvisioners: []contracts.IdentityProvisioner{silentProvisioner{}}}, objects: silentStore{}}
 
 	var outside, inside []string
 	previous := contractCallHook
@@ -122,10 +165,24 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		_, e9 := s.accountsAccount(ctx, user, nil)
 		_, e10 := s.accountsProvisioningRoles(ctx)
 		_, e11 := s.usersPermissionHolders(ctx, permPersonalData)
-		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11}
+		system := contracts.Actor{System: contracts.SystemActorStaffAccounts}
+		e12 := s.accountsExpect(ctx, system, contracts.ExpectedAccount{EmployeeNumber: "A-1"})
+		e13 := s.accountsUnexpect(ctx, system, "A-1")
+		p, _ := s.provisioner(contracts.AccountKindEntra)
+		_, e14 := s.providerInfo(ctx, p)
+		_, e15 := s.providerAccount(ctx, p, "x")
+		_, e16 := s.providerPrepare(ctx, p, system, contracts.ExternalSpec{})
+		_, e17 := s.providerActivate(ctx, p, system, "x", contracts.ExternalSpec{})
+		_, e18 := s.providerDeactivate(ctx, p, system, "x", contracts.ExternalSpec{})
+		_, e19 := s.providerUpdate(ctx, p, system, "x", contracts.ExternalSpec{})
+		e20 := s.providerDelete(ctx, p, system, "x")
+		_, e21 := s.providerRevealPass(ctx, p, system, "x")
+		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21}
 	}
 	want := []string{"Users.User", "Users.Users", "Users.SearchUsers", "SMTPSend", "ObjectStore.Put", "ObjectStore.Get", "ObjectStore.Delete",
-		"Accounts.Mode", "Accounts.Account", "Accounts.ProvisioningRoles", "Users.PermissionHolders"}
+		"Accounts.Mode", "Accounts.Account", "Accounts.ProvisioningRoles", "Users.PermissionHolders",
+		"Accounts.Expect", "Accounts.Unexpect", "Provisioner.Provider", "Provisioner.Account", "Provisioner.Prepare",
+		"Provisioner.Activate", "Provisioner.Deactivate", "Provisioner.Update", "Provisioner.Delete", "Provisioner.RevealPass"}
 
 	for _, err := range call(ctx) {
 		if err != nil {
@@ -207,6 +264,20 @@ func TestContractCalls_TheAccountsAccessors(t *testing.T) {
 	}
 	if _, err := none.accountsProvisioningRoles(ctx); !errors.Is(err, errAccountsUnavailable) {
 		t.Errorf("ProvisioningRoles without a provider = %v, want errAccountsUnavailable", err)
+	}
+	if err := none.accountsExpect(ctx, contracts.Actor{System: contracts.SystemActorStaffAccounts}, contracts.ExpectedAccount{}); !errors.Is(err, errAccountsUnavailable) {
+		t.Errorf("Expect without a provider = %v, want errAccountsUnavailable", err)
+	}
+	// A provider no enabled module offers: the slot names none, and every
+	// provider accessor answers errProviderUnavailable.
+	if p, ok := none.provisioner(contracts.AccountKindEntra); ok || p != nil {
+		t.Errorf("provisioner(entra) with an empty slot = %v, %v, want none", p, ok)
+	}
+	if _, err := none.providerInfo(ctx, nil); !errors.Is(err, errProviderUnavailable) {
+		t.Errorf("Provider without the provider = %v, want errProviderUnavailable", err)
+	}
+	if _, err := none.providerRevealPass(ctx, nil, contracts.Actor{}, "x"); !errors.Is(err, errProviderUnavailable) {
+		t.Errorf("RevealPass without the provider = %v, want errProviderUnavailable", err)
 	}
 
 	// The persons are read as every caller reads one, readAccountPerson

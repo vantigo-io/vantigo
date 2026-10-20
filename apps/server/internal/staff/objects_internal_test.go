@@ -25,10 +25,11 @@ func TestDocumentUpload_PolicyAndBodyLimit(t *testing.T) {
 	if policyDocumentUpload != want {
 		t.Errorf("policyDocumentUpload = %+v, want %+v", policyDocumentUpload, want)
 	}
-	if len(limits) != 4 || limits["postStaffPeopleByIdDocuments"] != policyDocumentUpload ||
+	if len(limits) != 5 || limits["postStaffPeopleByIdDocuments"] != policyDocumentUpload ||
 		limits["postStaffAccountsRun"] != policyAccountsRun ||
-		limits["postStaffPeopleByIdAccountRun"] != policyAccountAction || limits["postStaffPeopleByIdAccountDisable"] != policyAccountAction {
-		t.Errorf("limits = %v, want the upload's and the account runs' policies alone", limits)
+		limits["postStaffPeopleByIdAccountRun"] != policyAccountAction || limits["postStaffPeopleByIdAccountDisable"] != policyAccountAction ||
+		limits["postStaffPeopleByIdAccountPass"] != policyAccountAction {
+		t.Errorf("limits = %v, want the upload's, the account runs' and the pass's policies alone", limits)
 	}
 	if policyAccountsRun.Limit != 30 || policyAccountsRun.Window != time.Hour ||
 		policyAccountAction.Limit != 120 || policyAccountAction.Window != time.Hour {

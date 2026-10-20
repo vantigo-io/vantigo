@@ -354,13 +354,14 @@ INSERT INTO staff.people (
     employee_number, given_name, family_name, display_name, birth_date, gender,
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language, notes,
-    children_under_12, sole_carer, chronically_ill_children,
+    children_under_12, sole_carer, chronically_ill_children, account_kind,
     created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
     $12, $13, $14, $15, $16, $17, $18,
     $19, $20, $21,
+    (SELECT s.default_account_kind FROM staff.settings s WHERE s.id = 1),
     $22::timestamptz, $22::timestamptz
 )
 RETURNING id
@@ -391,6 +392,8 @@ type InsertPersonParams struct {
 	Now                    time.Time
 }
 
+// InsertPerson writes a new person, who takes the installation's default
+// account kind (00060, Entra design D5) as the settings row holds it.
 func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (int64, error) {
 	row := q.db.QueryRow(ctx, insertPerson,
 		arg.EmployeeNumber,

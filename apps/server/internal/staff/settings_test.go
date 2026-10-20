@@ -337,3 +337,103 @@ func TestSettings_AnEraseSwitchIsRecorded(t *testing.T) {
 		t.Errorf("settings_updated events = %v, want %v", got, want)
 	}
 }
+
+// The default account kind (Entra design D5): local on a fresh installation
+// whose identity is local, kept when a replace leaves it out, refused
+// provider_missing on the field for a kind no enabled module offers, and the
+// kind a new person takes (InsertPerson, which POST /people and the import
+// share) while people already registered keep theirs.
+func TestSettings_TheDefaultAccountKind(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	fresh := getSettings(t, hr)
+	if fresh.DefaultAccountKind != "local" {
+		t.Errorf("a fresh installation's default kind = %v, want local", fresh.DefaultAccountKind)
+	}
+	before := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	for _, kind := range []string{"entra", "okta"} {
+		pr := refused(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{"defaultAccountKind": kind}), ifMatch(fresh.Revision)),
+			http.StatusBadRequest, "provider_missing")
+		if len(pr.Errors["defaultAccountKind"]) != 1 {
+			t.Errorf("%s: errors = %v, want one on defaultAccountKind", kind, pr.Errors)
+		}
+	}
+	var saved gen.StaffSettings
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"defaultAccountKind": "external"}), http.StatusOK, &saved, ifMatch(fresh.Revision))
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(nil), http.StatusOK, &saved, ifMatch(saved.Revision))
+	if saved.DefaultAccountKind != "external" {
+		t.Errorf("left out: default kind = %v, want external kept", saved.DefaultAccountKind)
+	}
+	after := createPerson(t, hr, newPerson("Ola", "Hansen"))
+	if got := getAccount(t, hr, after.Id).AccountKind; got != "external" {
+		t.Errorf("a person created after: kind %v, want the default, external", got)
+	}
+	if got := getAccount(t, hr, before.Id).AccountKind; got != "local" {
+		t.Errorf("a person created before: kind %v, want local kept", got)
+	}
+
+	withProvider := newHarness(t, modtest.WithIdentityProvisioners(entraProvider()))
+	hr2, _ := signIn(t, withProvider, "staff:manage")
+	s2 := getSettings(t, hr2)
+	do(t, hr2, http.MethodPut, settingsPath, settingsBody(map[string]any{"defaultAccountKind": "entra"}), http.StatusOK, &s2, ifMatch(s2.Revision))
+	if s2.DefaultAccountKind != "entra" {
+		t.Errorf("with the provider: default kind = %v, want entra", s2.DefaultAccountKind)
+	}
+	if got := getAccount(t, hr2, createPerson(t, hr2, newPerson("Per", "Hansen")).Id).AccountKind; got != "entra" {
+		t.Errorf("a new person under the entra default: kind %v, want entra", got)
+	}
+}
+
+// The directory profile's switches (Entra design D8): the twelve switchable
+// rows with their defaults; a replace merges the keys it names over the
+// stored ones and keeps the rest, and keeps all when it names none; a key
+// that is not a switchable row — unknown, or one always written — is a field
+// error on directoryFields.<key>, and nothing is saved.
+func TestSettings_TheDirectoryFields(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	fresh := getSettings(t, hr)
+	defaults := map[string]bool{
+		"employeeHireDate": true, "employeeLeaveDateTime": true, "employeeType": true, "jobTitle": true,
+		"department": true, "companyName": true, "employeeOrgData": true, "officeLocation": true,
+		"workAddress": false, "phones": false, "preferredLanguage": true, "manager": true,
+	}
+	if len(fresh.DirectoryFields) != len(defaults) {
+		t.Errorf("a fresh installation's switches = %v, want the twelve defaults", fresh.DirectoryFields)
+	}
+	for k, v := range defaults {
+		if fresh.DirectoryFields[k] != v {
+			t.Errorf("default %s = %v, want %v", k, fresh.DirectoryFields[k], v)
+		}
+	}
+
+	for _, key := range []string{"bogus", "givenName", "userPrincipalName"} {
+		pr := refused(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{"directoryFields": map[string]bool{key: false, "phones": true}}),
+			ifMatch(fresh.Revision)), http.StatusBadRequest, "")
+		if len(pr.Errors["directoryFields."+key]) != 1 {
+			t.Errorf("%s: errors = %v, want one on directoryFields.%s", key, pr.Errors, key)
+		}
+	}
+	if got := getSettings(t, hr); got.Revision != fresh.Revision || got.DirectoryFields["phones"] {
+		t.Errorf("after the refusals: revision %d, phones %v; want nothing saved", got.Revision, got.DirectoryFields["phones"])
+	}
+
+	var saved gen.StaffSettings
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"directoryFields": map[string]bool{"phones": true, "manager": false}}),
+		http.StatusOK, &saved, ifMatch(fresh.Revision))
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"directoryFields": map[string]bool{"jobTitle": false}}),
+		http.StatusOK, &saved, ifMatch(saved.Revision))
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(nil), http.StatusOK, &saved, ifMatch(saved.Revision))
+	want := map[string]bool{}
+	for k, v := range defaults {
+		want[k] = v
+	}
+	want["phones"], want["manager"], want["jobTitle"] = true, false, false
+	for k, v := range want {
+		if saved.DirectoryFields[k] != v {
+			t.Errorf("after the merges: %s = %v, want %v", k, saved.DirectoryFields[k], v)
+		}
+	}
+}

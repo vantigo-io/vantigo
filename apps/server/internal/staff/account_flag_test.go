@@ -255,7 +255,11 @@ func TestAccount_TheLinkAsIdentityReportsIt(t *testing.T) {
 	})
 
 	got := getAccount(t, hr, p.Id)
-	// Task 4: the account kind, seeded from the mode, in place of the mode.
+	// The kinds seeded from the federated mode at mount: a new person takes
+	// the default, external.
+	if got.AccountKind != "external" || got.ProviderLink != nil || got.DirectoryProfile != nil {
+		t.Errorf("accountKind = %v, providerLink %+v, directoryProfile %v; want external and neither", got.AccountKind, got.ProviderLink, got.DirectoryProfile)
+	}
 	if !got.Address.Present || got.Address.Kind != "work" {
 		t.Errorf("address = %+v, want the work address, present", got.Address)
 	}
@@ -480,5 +484,104 @@ func TestAccounts_AMismatchedLinkGrantsNoSelf(t *testing.T) {
 		if person.Status != http.StatusNotFound || string(person.Body) != string(unknown.Body) {
 			t.Errorf("%s: GET /people/{id} %d %s, want the unknown id's 404 %s", c.name, person.Status, person.Body, unknown.Body)
 		}
+	}
+}
+
+// The account kind (Entra design D5) on the flag's replace: left out it is
+// kept; a change is recorded among account_flag_updated's fields and moves
+// the flag's revision; the account view answers the provider link with
+// codes only and the directory profile for a kind a provider holds.
+func TestAccount_TheKind(t *testing.T) {
+	t.Parallel()
+	fake := entraProvider()
+	h := newHarness(t, modtest.WithIdentityProvisioners(fake))
+	hr, _ := signIn(t, h, "staff:manage")
+	p := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	before := getAccount(t, hr, p.Id)
+	if before.AccountKind != "local" || before.DirectoryProfile != nil {
+		t.Fatalf("a new person: kind %v, profile %v; want local and none", before.AccountKind, before.DirectoryProfile)
+	}
+
+	var saved gen.StaffPersonAccount
+	do(t, hr, http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": false, "accountKind": "entra"},
+		http.StatusOK, &saved, ifMatch(before.Revision))
+	if saved.AccountKind != "entra" || saved.Revision != before.Revision+1 || saved.ProvisionAccount {
+		t.Errorf("saved = kind %v, revision %d, flag %v; want entra, %d, false", saved.AccountKind, saved.Revision, saved.ProvisionAccount, before.Revision+1)
+	}
+	if saved.DirectoryProfile == nil || len(*saved.DirectoryProfile) != 18 {
+		t.Errorf("directoryProfile = %v, want its eighteen rows", saved.DirectoryProfile)
+	}
+	change := modtest.One[string](t, h.Harness, `
+		SELECT payload->'fields'->>'accountKind' FROM staff.events
+		WHERE person_id = $1 AND kind = 'account_flag_updated' ORDER BY id DESC LIMIT 1`, p.Id)
+	if change != `{"to": "entra", "from": "local"}` {
+		t.Errorf("the change recorded = %s, want local to entra", change)
+	}
+
+	var kept gen.StaffPersonAccount
+	do(t, hr, http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": true},
+		http.StatusOK, &kept, ifMatch(saved.Revision))
+	if kept.AccountKind != "entra" || !kept.ProvisionAccount {
+		t.Errorf("a replace leaving the kind out: kind %v, flag %v; want entra kept, true", kept.AccountKind, kept.ProvisionAccount)
+	}
+
+	external := uuid.NewString()
+	providerLink(t, h, p.Id, "entra", external, "disabled", false)
+	h.Exec(t, `UPDATE staff.identity_links SET blocked_reason = 'external_privileged', reported_codes = '{hire_date_not_written}',
+		announced_at = $2 WHERE person_id = $1 AND provider = 'entra'`, p.Id, h.Now())
+	got := getAccount(t, hr, p.Id)
+	if l := got.ProviderLink; l == nil || l.Provider != "entra" || l.State != "disabled" || l.Reason == nil ||
+		*l.Reason != "external_privileged" || len(l.ReportedCodes) != 1 || l.ReportedCodes[0] != "hire_date_not_written" ||
+		l.ExternalUpn == nil || l.HasPass || l.AnnouncedAt == nil {
+		t.Errorf("providerLink = %+v, want the entra link as written", got.ProviderLink)
+	}
+}
+
+// A change away from entra is account_kind_locked while the person's entra
+// link is enabled or disabled, and free once it is deleted; a kind no
+// enabled module offers is provider_missing on accountKind.
+func TestAccount_TheKindsRefusals(t *testing.T) {
+	t.Parallel()
+	fake := entraProvider()
+	h := newHarness(t, modtest.WithIdentityProvisioners(fake))
+	hr, _ := signIn(t, h, "staff:manage")
+	p := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	acc := getAccount(t, hr, p.Id)
+	do(t, hr, http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": true, "accountKind": "entra"},
+		http.StatusOK, &acc, ifMatch(acc.Revision))
+	providerLink(t, h, p.Id, "entra", uuid.NewString(), "enabled", false)
+
+	for _, state := range []string{"enabled", "disabled"} {
+		h.Exec(t, `UPDATE staff.identity_links SET state = $2 WHERE person_id = $1 AND provider = 'entra'`, p.Id, state)
+		for _, kind := range []string{"local", "external"} {
+			refused(t, hr.Do(http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": true, "accountKind": kind}, ifMatch(acc.Revision)),
+				http.StatusConflict, "account_kind_locked")
+		}
+	}
+	if got := getAccount(t, hr, p.Id); got.AccountKind != "entra" || got.Revision != acc.Revision {
+		t.Errorf("after the refusals: kind %v, revision %d; want entra, %d", got.AccountKind, got.Revision, acc.Revision)
+	}
+	h.Exec(t, `UPDATE staff.identity_links SET state = 'deleted' WHERE person_id = $1 AND provider = 'entra'`, p.Id)
+	do(t, hr, http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": true, "accountKind": "local"},
+		http.StatusOK, &acc, ifMatch(acc.Revision))
+	if acc.AccountKind != "local" {
+		t.Errorf("after the link was deleted: kind %v, want local", acc.AccountKind)
+	}
+
+	bare := newHarness(t)
+	hr2, _ := signIn(t, bare, "staff:manage")
+	q := createPerson(t, hr2, newPerson("Ola", "Hansen"))
+	qa := getAccount(t, hr2, q.Id)
+	for _, kind := range []string{"entra", "okta"} {
+		pr := refused(t, hr2.Do(http.MethodPut, accountPath(q.Id), map[string]any{"provisionAccount": false, "accountKind": kind}, ifMatch(qa.Revision)),
+			http.StatusBadRequest, "provider_missing")
+		if len(pr.Errors["accountKind"]) != 1 {
+			t.Errorf("%s: errors = %v, want one on accountKind", kind, pr.Errors)
+		}
+	}
+	do(t, hr2, http.MethodPut, accountPath(q.Id), map[string]any{"provisionAccount": false, "accountKind": "external"},
+		http.StatusOK, &qa, ifMatch(qa.Revision))
+	if qa.AccountKind != "external" {
+		t.Errorf("external without a provider: %v, want external", qa.AccountKind)
 	}
 }

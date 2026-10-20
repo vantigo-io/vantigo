@@ -359,3 +359,21 @@ func accountsBusy() error {
 	return refuseConflict(conflict(codeAccountsBusy, "Accounts busy",
 		"Staff's accounts worker is acting on this person's account right now. Nothing was changed; try again in a few minutes."))
 }
+
+// providerUnavailable is the 503 a request answers when it needs the
+// person's identity provider and cannot have it: no enabled module offers
+// the provider, or the provider could not be reached. The code is
+// accounts_unavailable, as identity's; nothing was changed.
+func providerUnavailable() gen.StaffProblem {
+	status := int32(http.StatusServiceUnavailable)
+	code, title := codeAccountsUnavailable, "The identity provider is unavailable"
+	detail := "The person's identity provider could not be reached, or no enabled module offers it. Nothing was changed; try again."
+	return gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
+}
+
+// passGone is the 409 POST /people/{id}/account/pass answers when there is
+// no pass to show: it was shown already, it expired, or none was issued.
+func passGone() gen.StaffProblem {
+	return conflict(codePassGone, "No pass to show",
+		"The pass was shown already, has expired, or was never issued. Run now on the person issues a new one.")
+}

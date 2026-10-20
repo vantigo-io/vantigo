@@ -139,3 +139,11 @@ WHERE pl.id = @id AND pl.provider <> 'identity'
 SELECT person_id, external_id::text AS external_id FROM staff.identity_links
 WHERE person_id = ANY(@person_ids::bigint[]) AND provider = @provider
   AND state IN ('enabled', 'disabled') AND external_id IS NOT NULL;
+
+-- name: ClearPassIssued :execrows
+-- ClearPassIssued records that the pass the provider issued on the person's
+-- link under @provider was shown (or is gone): pass_issued_at cleared, so
+-- the Account tab no longer offers it and passUnrevealed is not raised.
+-- Neither the person's revision nor the claim's lease moves.
+UPDATE staff.identity_links SET pass_issued_at = NULL, updated_at = @now::timestamptz
+WHERE person_id = @person_id AND provider = @provider AND pass_issued_at IS NOT NULL;

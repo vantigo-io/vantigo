@@ -167,7 +167,8 @@ SELECT id, display_name, has_employment FROM (
         EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id) AS has_employment,
         EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
             AND (e.end_date IS NULL OR e.end_date >= $1::date)) AS employed,
-        coalesce(CASE WHEN p.account_email_kind = 'private' THEN p.private_email ELSE p.work_email END, '') <> '' AS address_present
+        (p.account_kind NOT IN ('local', 'external')
+            OR coalesce(CASE WHEN p.account_email_kind = 'private' THEN p.private_email ELSE p.work_email END, '') <> '') AS address_present
     FROM staff.people p
     WHERE p.provision_account AND p.erased_at IS NULL
 ) c
@@ -183,7 +184,8 @@ type AccountPersonAttentionRow struct {
 
 // AccountPersonAttention is every person not erased whose flag is on with
 // no employment at all, or with one not ended by @today and without the
-// address the flag names.
+// address the flag names — which a provider's kind (entra) never lacks: its
+// provider makes the address (Entra design D7).
 func (q *Queries) AccountPersonAttention(ctx context.Context, today pgtype.Date) ([]AccountPersonAttentionRow, error) {
 	rows, err := q.db.Query(ctx, accountPersonAttention, today)
 	if err != nil {
@@ -389,6 +391,42 @@ func (q *Queries) CountDueAccountLinks(ctx context.Context, arg CountDueAccountL
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const flaggedAccountKinds = `-- name: FlaggedAccountKinds :many
+SELECT account_kind, count(*)::bigint AS people FROM staff.people
+WHERE provision_account AND erased_at IS NULL AND account_kind NOT IN ('local', 'external')
+GROUP BY account_kind
+ORDER BY account_kind
+`
+
+type FlaggedAccountKindsRow struct {
+	AccountKind string
+	People      int64
+}
+
+// FlaggedAccountKinds is how many people not erased whose flag is on hold
+// each provider's kind (any but local and external): the providers a cycle
+// asks about though no module offers them, and the count the installation's
+// provider items carry.
+func (q *Queries) FlaggedAccountKinds(ctx context.Context) ([]FlaggedAccountKindsRow, error) {
+	rows, err := q.db.Query(ctx, flaggedAccountKinds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FlaggedAccountKindsRow
+	for rows.Next() {
+		var i FlaggedAccountKindsRow
+		if err := rows.Scan(&i.AccountKind, &i.People); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getPersonAccount = `-- name: GetPersonAccount :one
@@ -611,8 +649,12 @@ func (q *Queries) RenewAccountLease(ctx context.Context, arg RenewAccountLeasePa
 }
 
 const requestAccountDisable = `-- name: RequestAccountDisable :exec
-UPDATE staff.identity_links SET disable_requested_at = coalesce(disable_requested_at, $1::timestamptz)
-WHERE person_id = $2 AND provider = 'identity' AND external_id IS NOT NULL
+UPDATE staff.identity_links AS il SET disable_requested_at = coalesce(il.disable_requested_at, $1::timestamptz)
+WHERE il.person_id = $2 AND il.provider = 'identity'
+  AND (il.external_id IS NOT NULL
+    OR EXISTS (SELECT 1 FROM staff.identity_links x
+        WHERE x.person_id = il.person_id AND x.provider <> 'identity'
+          AND x.external_id IS NOT NULL AND x.state <> 'deleted'))
 `
 
 type RequestAccountDisableParams struct {
@@ -620,13 +662,45 @@ type RequestAccountDisableParams struct {
 	PersonID int64
 }
 
-// RequestAccountDisable records on the person's link, when it names a user,
-// that Disable now asked for the user to be disabled — the first request's
+// RequestAccountDisable records on the person's link, when it names a user
+// or the person's provider link names an external account not deleted
+// (Entra design D7: Disable now deactivates both), that Disable now asked
+// for the user to be disabled — the first request's
 // instant kept — in the transaction that turns the flag off, so a disable
 // that never reaches identity is the worker's to finish (Task 4c review M1).
 func (q *Queries) RequestAccountDisable(ctx context.Context, arg RequestAccountDisableParams) error {
 	_, err := q.db.Exec(ctx, requestAccountDisable, arg.Now, arg.PersonID)
 	return err
+}
+
+const setWorkEmailFromProvider = `-- name: SetWorkEmailFromProvider :execrows
+UPDATE staff.people AS p SET
+    work_email = $1::varchar,
+    revision = p.revision + 1,
+    updated_at = $2::timestamptz
+WHERE p.id = $3::bigint AND coalesce(p.work_email, '') = ''
+  AND NOT EXISTS (SELECT 1 FROM staff.people o
+      WHERE o.id <> p.id AND lower(o.work_email) = lower($1::varchar))
+`
+
+type SetWorkEmailFromProviderParams struct {
+	WorkEmail string
+	Now       time.Time
+	PersonID  int64
+}
+
+// SetWorkEmailFromProvider writes the address a provider made for a person
+// who had no work email (Entra design D7) — the one person write the
+// accounts worker makes — moving the person's revision on, as any write of
+// the person does. No row is a person who has one by now, or an address
+// another person holds already (ux_people_work_email_lower): nothing
+// written.
+func (q *Queries) SetWorkEmailFromProvider(ctx context.Context, arg SetWorkEmailFromProviderParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setWorkEmailFromProvider, arg.WorkEmail, arg.Now, arg.PersonID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updatePersonAccount = `-- name: UpdatePersonAccount :one

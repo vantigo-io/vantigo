@@ -659,6 +659,11 @@ func TestAccountsWorker_EachBlockedReasonIsRecorded(t *testing.T) {
 			}
 			w.fake.set(func(f *fakeAccounts) { f.mode = mode })
 			defer w.fake.set(func(f *fakeAccounts) { f.mode = contracts.AccountModeLocal })
+			if tc.federated {
+				// The person's kind carries the rule the mode did (Entra
+				// design D5): a link-only kind.
+				w.h.Exec(t, `UPDATE staff.people SET account_kind = 'external' WHERE id = $1`, p.Id)
+			}
 			if tc.ref != nil {
 				ref := tc.ref(p.EmployeeNumber)
 				ref.UserID = uuid.New()
