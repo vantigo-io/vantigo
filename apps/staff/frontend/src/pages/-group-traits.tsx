@@ -30,7 +30,7 @@ import { FieldGroup } from "../components/field-group";
 import "../i18n";
 import { mappedRefusals } from "../lib/errors";
 import { useStaffFormat } from "../lib/format";
-import { groupErrorWords, syncStateColor, traitText } from "../lib/groups";
+import { awaitsConfirmation, groupErrorWords, syncStateColor, traitText } from "../lib/groups";
 
 /** A trait's value as the form holds it: a bool, a string (empty for none), a choice (null for none), a list. */
 type TraitValue = boolean | string | string[] | null;
@@ -89,19 +89,25 @@ export const GroupProviders = ({ group, providers }: { group: StaffGroup; provid
   </>
 );
 
-/** The section's state as a badge: *Waiting*, *In sync since …*, *Failed*, *Kept, renamed*, *Deleted*. */
+/**
+ * The section's state as a badge: *Waiting*, *Found in … and awaiting
+ * confirmation there*, *In sync since …*, *Failed*, *Kept, renamed*,
+ * *Deleted*.
+ */
 const StateBadge = ({ provider }: { provider: StaffGroupProvider }) => {
   const { t } = useI18n("staff");
   const { formatters } = useI18n("staff");
   if (!provider.state) return null;
-  const label =
-    provider.state === "synced" && provider.syncedAt
+  const unconfirmed = awaitsConfirmation(provider);
+  const label = unconfirmed
+    ? t("groupAwaitingConfirmation", { provider: provider.name })
+    : provider.state === "synced" && provider.syncedAt
       ? t("groupSyncedSince", {
           date: formatters.formatDate(new Date(provider.syncedAt), { dateStyle: "medium", timeStyle: "short" }),
         })
       : t(`groupSyncState_${provider.state}`);
   return (
-    <Badge variant="light" color={syncStateColor[provider.state]}>
+    <Badge variant="light" color={unconfirmed ? "orange" : syncStateColor[provider.state]}>
       {label}
     </Badge>
   );

@@ -12,6 +12,50 @@ import (
 	"github.com/google/uuid"
 )
 
+const confirmGroupAdoption = `-- name: ConfirmGroupAdoption :one
+UPDATE entra.groups SET
+    adoption_confirmed_at = CASE WHEN created_by_us OR adoption_confirmed_at IS NOT NULL
+        THEN adoption_confirmed_at ELSE $1::timestamptz END,
+    adoption_confirmed_by_user_id = CASE WHEN created_by_us OR adoption_confirmed_at IS NOT NULL
+        THEN adoption_confirmed_by_user_id ELSE $2::uuid END,
+    updated_at = CASE WHEN created_by_us OR adoption_confirmed_at IS NOT NULL
+        THEN updated_at ELSE $1::timestamptz END
+WHERE object_id = $3
+RETURNING object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at, adoption_confirmed_at, adoption_confirmed_by_user_id
+`
+
+type ConfirmGroupAdoptionParams struct {
+	Now               time.Time
+	ConfirmedByUserID uuid.UUID
+	ObjectID          uuid.UUID
+}
+
+// ConfirmGroupAdoption records that a holder of entra:manage confirmed a
+// group the module found by its nickname and adopted: from now on the
+// module writes to it. Idempotent: a group the module made, or one
+// confirmed already, is answered as it is. No row is no such group.
+func (q *Queries) ConfirmGroupAdoption(ctx context.Context, arg ConfirmGroupAdoptionParams) (EntraGroup, error) {
+	row := q.db.QueryRow(ctx, confirmGroupAdoption, arg.Now, arg.ConfirmedByUserID, arg.ObjectID)
+	var i EntraGroup
+	err := row.Scan(
+		&i.ObjectID,
+		&i.GroupID,
+		&i.Key,
+		&i.DisplayName,
+		&i.MailNickname,
+		&i.Type,
+		&i.TeamCreatedAt,
+		&i.CreatedByUs,
+		&i.State,
+		&i.LastMembersAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AdoptionConfirmedAt,
+		&i.AdoptionConfirmedByUserID,
+	)
+	return i, err
+}
+
 const countGroups = `-- name: CountGroups :one
 SELECT count(*)::integer FROM entra.groups WHERE state = 'present'
 `
@@ -26,20 +70,27 @@ func (q *Queries) CountGroups(ctx context.Context) (int32, error) {
 }
 
 const forgetDeletedGroup = `-- name: ForgetDeletedGroup :exec
-DELETE FROM entra.groups WHERE group_id = $1 AND state = 'deleted'
+DELETE FROM entra.groups WHERE group_id = $1 AND state IN ('deleted', 'retired') AND object_id <> $2
 `
 
+type ForgetDeletedGroupParams struct {
+	GroupID  string
+	ObjectID uuid.UUID
+}
+
 // ForgetDeletedGroup removes the row of Staff's group id when it names a
-// group the module deleted in the tenant, so the group made anew for the
-// same Staff group takes its place (ux_entra_groups_group_id). The deleted
-// group's events keep its object id.
-func (q *Queries) ForgetDeletedGroup(ctx context.Context, groupID string) error {
-	_, err := q.db.Exec(ctx, forgetDeletedGroup, groupID)
+// group the module deleted or retired in the tenant, so the group made anew
+// or found again for the same Staff group takes its place
+// (ux_entra_groups_group_id) — all but the row of @object_id itself, the
+// group found again, which InsertGroup brings back with who made it and
+// its confirmation kept. The old group's events keep its object id.
+func (q *Queries) ForgetDeletedGroup(ctx context.Context, arg ForgetDeletedGroupParams) error {
+	_, err := q.db.Exec(ctx, forgetDeletedGroup, arg.GroupID, arg.ObjectID)
 	return err
 }
 
 const getGroup = `-- name: GetGroup :one
-SELECT object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at FROM entra.groups WHERE object_id = $1
+SELECT object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at, adoption_confirmed_at, adoption_confirmed_by_user_id FROM entra.groups WHERE object_id = $1
 `
 
 func (q *Queries) GetGroup(ctx context.Context, objectID uuid.UUID) (EntraGroup, error) {
@@ -58,13 +109,15 @@ func (q *Queries) GetGroup(ctx context.Context, objectID uuid.UUID) (EntraGroup,
 		&i.LastMembersAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdoptionConfirmedAt,
+		&i.AdoptionConfirmedByUserID,
 	)
 	return i, err
 }
 
 const getGroupByGroupID = `-- name: GetGroupByGroupID :one
 
-SELECT object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at FROM entra.groups WHERE group_id = $1
+SELECT object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at, adoption_confirmed_at, adoption_confirmed_by_user_id FROM entra.groups WHERE group_id = $1
 `
 
 // The groups (Entra design D14): the groups the module made or adopted in
@@ -89,6 +142,8 @@ func (q *Queries) GetGroupByGroupID(ctx context.Context, groupID string) (EntraG
 		&i.LastMembersAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdoptionConfirmedAt,
+		&i.AdoptionConfirmedByUserID,
 	)
 	return i, err
 }
@@ -107,7 +162,8 @@ ON CONFLICT (object_id) DO UPDATE SET
     mail_nickname = EXCLUDED.mail_nickname,
     state = 'present',
     updated_at = EXCLUDED.updated_at
-RETURNING object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at
+WHERE entra.groups.group_id = EXCLUDED.group_id
+RETURNING object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at, adoption_confirmed_at, adoption_confirmed_by_user_id
 `
 
 type InsertGroupParams struct {
@@ -122,9 +178,12 @@ type InsertGroupParams struct {
 }
 
 // InsertGroup records the group EnsureGroup made (created_by_us) or adopted,
-// present. A row already there for the object id is brought to what the
-// call found, created_by_us and the team kept: who made the group does not
-// change. Another row for Staff's group id trips ux_entra_groups_group_id.
+// present. A row already there for the object id and the same Staff group
+// is brought to what the call found, created_by_us, the adoption's
+// confirmation and the team kept: who made the group does not change. A row
+// for the object id that is another Staff group's is left as it is and no
+// row is answered (the caller refuses the group as not manageable); another
+// row for Staff's group id trips ux_entra_groups_group_id.
 func (q *Queries) InsertGroup(ctx context.Context, arg InsertGroupParams) (EntraGroup, error) {
 	row := q.db.QueryRow(ctx, insertGroup,
 		arg.ObjectID,
@@ -150,6 +209,8 @@ func (q *Queries) InsertGroup(ctx context.Context, arg InsertGroupParams) (Entra
 		&i.LastMembersAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdoptionConfirmedAt,
+		&i.AdoptionConfirmedByUserID,
 	)
 	return i, err
 }
@@ -181,7 +242,7 @@ func (q *Queries) ListGroupObjectIDs(ctx context.Context) ([]uuid.UUID, error) {
 }
 
 const listGroups = `-- name: ListGroups :many
-SELECT object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at FROM entra.groups ORDER BY display_name, object_id
+SELECT object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at, adoption_confirmed_at, adoption_confirmed_by_user_id FROM entra.groups ORDER BY display_name, object_id
 `
 
 // ListGroups is every group the module made or adopted, deleted ones too, by
@@ -208,6 +269,8 @@ func (q *Queries) ListGroups(ctx context.Context) ([]EntraGroup, error) {
 			&i.LastMembersAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AdoptionConfirmedAt,
+			&i.AdoptionConfirmedByUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -239,7 +302,7 @@ func (q *Queries) SetGroupMembersAt(ctx context.Context, arg SetGroupMembersAtPa
 const setGroupState = `-- name: SetGroupState :one
 UPDATE entra.groups SET state = $1, updated_at = $2::timestamptz
 WHERE object_id = $3
-RETURNING object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at
+RETURNING object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at, adoption_confirmed_at, adoption_confirmed_by_user_id
 `
 
 type SetGroupStateParams struct {
@@ -248,8 +311,9 @@ type SetGroupStateParams struct {
 	ObjectID uuid.UUID
 }
 
-// SetGroupState records a group present or deleted: a deleted one is kept,
-// marked, as an account is.
+// SetGroupState records a group present, deleted or retired (a security
+// group emptied and kept): a deleted or retired one is kept, marked, as an
+// account is.
 func (q *Queries) SetGroupState(ctx context.Context, arg SetGroupStateParams) (EntraGroup, error) {
 	row := q.db.QueryRow(ctx, setGroupState, arg.State, arg.Now, arg.ObjectID)
 	var i EntraGroup
@@ -266,6 +330,8 @@ func (q *Queries) SetGroupState(ctx context.Context, arg SetGroupStateParams) (E
 		&i.LastMembersAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdoptionConfirmedAt,
+		&i.AdoptionConfirmedByUserID,
 	)
 	return i, err
 }
@@ -294,7 +360,7 @@ UPDATE entra.groups SET
     mail_nickname = $3,
     updated_at = $4::timestamptz
 WHERE object_id = $5
-RETURNING object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at
+RETURNING object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at, adoption_confirmed_at, adoption_confirmed_by_user_id
 `
 
 type UpdateGroupParams struct {
@@ -329,6 +395,8 @@ func (q *Queries) UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Entra
 		&i.LastMembersAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdoptionConfirmedAt,
+		&i.AdoptionConfirmedByUserID,
 	)
 	return i, err
 }

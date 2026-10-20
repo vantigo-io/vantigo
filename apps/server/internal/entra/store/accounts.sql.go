@@ -49,7 +49,7 @@ UPDATE entra.accounts SET
     reported = array_remove(reported, 'adoption_unconfirmed'),
     updated_at = $1::timestamptz
 WHERE object_id = $3 AND NOT created_by_us AND adoption_confirmed_at IS NULL
-RETURNING object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at
+RETURNING object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at, licences_assigned
 `
 
 type ConfirmAdoptionParams struct {
@@ -81,6 +81,7 @@ func (q *Queries) ConfirmAdoption(ctx context.Context, arg ConfirmAdoptionParams
 		&i.AdoptionConfirmedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LicencesAssigned,
 	)
 	return i, err
 }
@@ -127,7 +128,7 @@ func (q *Queries) DeleteAccount(ctx context.Context, objectID uuid.UUID) error {
 
 const getAccount = `-- name: GetAccount :one
 
-SELECT object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at FROM entra.accounts WHERE object_id = $1
+SELECT object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at, licences_assigned FROM entra.accounts WHERE object_id = $1
 `
 
 // The accounts (Entra design D11, D13): the users the module found or
@@ -153,12 +154,13 @@ func (q *Queries) GetAccount(ctx context.Context, objectID uuid.UUID) (EntraAcco
 		&i.AdoptionConfirmedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LicencesAssigned,
 	)
 	return i, err
 }
 
 const getAccountByNumber = `-- name: GetAccountByNumber :one
-SELECT object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at FROM entra.accounts WHERE upper(employee_number) = upper($1::text)
+SELECT object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at, licences_assigned FROM entra.accounts WHERE upper(employee_number) = upper($1::text)
 `
 
 func (q *Queries) GetAccountByNumber(ctx context.Context, employeeNumber string) (EntraAccount, error) {
@@ -180,12 +182,13 @@ func (q *Queries) GetAccountByNumber(ctx context.Context, employeeNumber string)
 		&i.AdoptionConfirmedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LicencesAssigned,
 	)
 	return i, err
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at FROM entra.accounts ORDER BY user_principal_name, object_id
+SELECT object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at, licences_assigned FROM entra.accounts ORDER BY user_principal_name, object_id
 `
 
 func (q *Queries) ListAccounts(ctx context.Context) ([]EntraAccount, error) {
@@ -213,6 +216,7 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]EntraAccount, error) {
 			&i.AdoptionConfirmedByUserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LicencesAssigned,
 		); err != nil {
 			return nil, err
 		}
@@ -224,6 +228,25 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]EntraAccount, error) {
 	return items, nil
 }
 
+const setAccountLicences = `-- name: SetAccountLicences :exec
+UPDATE entra.accounts SET licences_assigned = $1::text[], updated_at = $2::timestamptz
+WHERE object_id = $3
+`
+
+type SetAccountLicencesParams struct {
+	LicencesAssigned []string
+	Now              time.Time
+	ObjectID         uuid.UUID
+}
+
+// SetAccountLicences records the SKU ids (lower-case) of the direct licences
+// the module itself assigned the user: the only ones an Update removes
+// (design reading 9). The leaver's strip empties it.
+func (q *Queries) SetAccountLicences(ctx context.Context, arg SetAccountLicencesParams) error {
+	_, err := q.db.Exec(ctx, setAccountLicences, arg.LicencesAssigned, arg.Now, arg.ObjectID)
+	return err
+}
+
 const setAccountPass = `-- name: SetAccountPass :one
 UPDATE entra.accounts SET
     pass_sealed = $1,
@@ -231,7 +254,7 @@ UPDATE entra.accounts SET
     pass_revealed_at = NULL,
     updated_at = $3::timestamptz
 WHERE object_id = $4
-RETURNING object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at
+RETURNING object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at, licences_assigned
 `
 
 type SetAccountPassParams struct {
@@ -268,6 +291,7 @@ func (q *Queries) SetAccountPass(ctx context.Context, arg SetAccountPassParams) 
 		&i.AdoptionConfirmedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LicencesAssigned,
 	)
 	return i, err
 }
@@ -280,7 +304,7 @@ UPDATE entra.accounts SET
     last_synced_at = $4::timestamptz,
     updated_at = $4::timestamptz
 WHERE object_id = $5
-RETURNING object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at
+RETURNING object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at, licences_assigned
 `
 
 type SetAccountStateParams struct {
@@ -318,6 +342,7 @@ func (q *Queries) SetAccountState(ctx context.Context, arg SetAccountStateParams
 		&i.AdoptionConfirmedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LicencesAssigned,
 	)
 	return i, err
 }
@@ -376,7 +401,7 @@ ON CONFLICT (object_id) DO UPDATE SET
     last_error = EXCLUDED.last_error,
     last_synced_at = EXCLUDED.last_synced_at,
     updated_at = EXCLUDED.updated_at
-RETURNING object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at
+RETURNING object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at, licences_assigned
 `
 
 type UpsertAccountParams struct {
@@ -421,6 +446,7 @@ func (q *Queries) UpsertAccount(ctx context.Context, arg UpsertAccountParams) (E
 		&i.AdoptionConfirmedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LicencesAssigned,
 	)
 	return i, err
 }

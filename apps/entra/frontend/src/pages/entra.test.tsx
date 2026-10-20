@@ -132,9 +132,7 @@ describe("EntraPage — the Status card", () => {
     ).toBeInTheDocument();
     expect(within(events).getByText("licence ENTERPRISEPACK has no seat free")).toBeInTheDocument();
     expect(
-      within(events).getByText(
-        "refused: the account was found in the tenant, not created, and its adoption is not yet confirmed",
-      ),
+      within(events).getByText("refused: found in the tenant, not created, and its adoption is not yet confirmed"),
     ).toBeInTheDocument();
   });
 });
@@ -483,6 +481,79 @@ describe("EntraPage — the Groups table", () => {
     const sections = screen.getAllByRole("region").map((section) => section.getAttribute("aria-labelledby"));
     const status = sections.indexOf(region("Status").getAttribute("aria-labelledby"));
     expect(sections[status + 1]).toBe(region("Groups").getAttribute("aria-labelledby"));
+  });
+
+  it("asks to confirm a found group, naming it and what confirming allows, then confirms it; a retired one is worded", async () => {
+    const { fetchMock } = await openPage({
+      connection: connected({ groups: { count: 1 } }),
+      groups: [
+        entraGroup({
+          objectId: "55555555-5555-4555-8555-555555555555",
+          groupId: "1004",
+          key: "sales",
+          displayName: "Sales (found)",
+          mailNickname: "sales",
+          createdByUs: false,
+          lastMembersAt: undefined,
+        }),
+        entraGroup({ displayName: "Engineering (archived)", state: "retired" }),
+      ],
+    });
+    const table = await within(region("Groups")).findByRole("table", { name: "Groups" });
+    const found = within(table).getByRole("row", { name: /Sales \(found\)/ });
+    expect(within(found).getByText("Adopted — confirm")).toBeInTheDocument();
+    const retired = within(table).getByRole("row", { name: /Engineering \(archived\)/ });
+    expect(within(retired).getByText("Emptied and kept")).toBeInTheDocument();
+    expect(within(retired).queryByRole("button")).not.toBeInTheDocument();
+
+    await userEvent.click(within(found).getByRole("button", { name: "Confirm Sales (found)" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm the adoption of Sales (found)?" });
+    expect(within(dialog).getByText(/never deletes a group it did not create/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() =>
+      expect(sentAll(fetchMock, "POST").map((call) => call.url)).toEqual([
+        "/api/v1/entra/groups/55555555-5555-4555-8555-555555555555/confirm",
+      ]),
+    );
+    expect(await screen.findByText("Adoption confirmed")).toBeInTheDocument();
+    await waitFor(() => expect(within(table).queryByText("Adopted — confirm")).not.toBeInTheDocument());
+    expect(within(table).getByText("Found in the tenant and adopted")).toBeInTheDocument();
+  });
+
+  it("words the groups' events and codes", async () => {
+    await openPage({
+      connection: connected(),
+      events: [
+        {
+          id: 1,
+          at: "2026-10-19T11:00:00Z",
+          actor: "system:staff-accounts",
+          action: "entra.group.retired",
+          codes: ["security_kept", "removed:3", "owners_removed:1"],
+        },
+        {
+          id: 2,
+          at: "2026-10-19T10:00:00Z",
+          actor: "system:staff-accounts",
+          action: "entra.group.adopted",
+          codes: ["type:security", "refused:adoption_unconfirmed"],
+        },
+      ],
+    });
+    const events = await within(region("Status")).findByRole("list", { name: "Recent events" });
+    expect(within(events).getByText(/A group was emptied and kept/)).toBeInTheDocument();
+    expect(
+      within(events).getByText(
+        "a security group is never deleted: its people were removed and it was kept; 3 members removed; 1 owners removed",
+      ),
+    ).toBeInTheDocument();
+    expect(within(events).getByText(/A group was found and adopted/)).toBeInTheDocument();
+    expect(
+      within(events).getByText(
+        "type security; refused: found in the tenant, not created, and its adoption is not yet confirmed",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("says there are none yet", async () => {

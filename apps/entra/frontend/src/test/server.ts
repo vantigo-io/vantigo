@@ -88,6 +88,7 @@ export interface EntraServer {
 export interface EntraState {
   connection: EntraConnection;
   accounts: EntraAccount[];
+  groups: EntraGroup[];
 }
 
 export type EntraStub = StubbedFetch & { state: EntraState };
@@ -101,11 +102,16 @@ const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
  * A fake of the module's API, kept as a connection row the writes change:
  * If-Match on both PUTs (412 `version_mismatch`), `connection_in_use` while
  * accounts exist, `credential_in_use` for the only valid secret, the test
- * written back, field errors in the `EntraProblem` shape, and an adopted
- * account's confirmation (404 unknown, 409 `adoption_confirmed`).
+ * written back, field errors in the `EntraProblem` shape, an adopted
+ * account's confirmation (404 unknown, 409 `adoption_confirmed`), and an
+ * adopted group's (404 unknown, idempotent).
  */
 export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
-  const state: EntraState = { connection: server.connection ?? unconfigured(), accounts: server.accounts ?? [] };
+  const state: EntraState = {
+    connection: server.connection ?? unconfigured(),
+    accounts: server.accounts ?? [],
+    groups: server.groups ?? [],
+  };
   let nextCredential = 100;
   const owner = server.owner ?? true;
   const session = { user: { ...TEST_SESSION.user, roles: owner ? ["user", "Owner"] : ["user"] } };
@@ -122,7 +128,16 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
     if (method === "GET" && path === "/api/v1/entra/connection") return jsonResponse(200, c);
     if (method === "GET" && path.startsWith("/api/v1/entra/events")) return jsonResponse(200, server.events ?? []);
     if (method === "GET" && path === "/api/v1/entra/accounts") return jsonResponse(200, state.accounts);
-    if (method === "GET" && path === "/api/v1/entra/groups") return jsonResponse(200, server.groups ?? []);
+    if (method === "GET" && path === "/api/v1/entra/groups") return jsonResponse(200, state.groups);
+    const confirmGroup = method === "POST" && path.match(/^\/api\/v1\/entra\/groups\/([^/]+)\/confirm$/);
+    if (confirmGroup) {
+      const target = state.groups.find((one) => one.objectId === confirmGroup[1]);
+      if (!target) return new Response(null, { status: 404 });
+      if (target.createdByUs || target.adoptionConfirmedAt) return jsonResponse(200, target);
+      const confirmed = { ...target, adoptionConfirmedAt: "2026-10-20T12:00:00Z" };
+      state.groups = state.groups.map((one) => (one.objectId === confirmed.objectId ? confirmed : one));
+      return jsonResponse(200, confirmed);
+    }
     const confirm = method === "POST" && path.match(/^\/api\/v1\/entra\/accounts\/([^/]+)\/confirm$/);
     if (confirm) {
       const target = state.accounts.find((one) => one.objectId === confirm[1]);

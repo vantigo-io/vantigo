@@ -29,7 +29,10 @@ import (
 // deletes the user itself. As the user lifecycle does, every write checks the
 // actor, takes its footing with open, makes its Graph calls on no
 // transaction and records its row and its event after them; an event names
-// the group by its object id, never a user.
+// the group by its object id, never a user. A group the module found and
+// adopted is untrusted until a holder of entra:manage confirms it, as an
+// adopted account is (lifecycle_user.go's trusted): until then nothing is
+// written to it.
 
 // The groups' event actions (the plan's "Exact values").
 const (
@@ -39,12 +42,19 @@ const (
 	actionGroupMembersSet  = "entra.group.members_set"
 	actionGroupTeamCreated = "entra.group.team_created"
 	actionGroupDeleted     = "entra.group.deleted"
+	actionGroupRetired     = "entra.group.retired"
+	// actionGroupAdoptionConfirmed audits POST /groups/{objectId}/confirm.
+	actionGroupAdoptionConfirmed = "entra.group.adoption_confirmed"
 )
 
 // The states entra.groups.state names.
 const (
 	groupStatePresent = "present"
 	groupStateDeleted = "deleted"
+	// groupStateRetired is a security group the module made and Staff let
+	// go: emptied of its people and kept, never deleted (Graph deletes a
+	// security group for good).
+	groupStateRetired = "retired"
 )
 
 const (
@@ -52,6 +62,18 @@ const (
 	// write: dynamic, role-assignable, mail-enabled by Exchange alone, or
 	// another Staff group's.
 	refusedNotManageable = "group_not_manageable"
+	// refusedGroupUnconfirmed is the refusal code of a write to a group the
+	// module adopted and nobody has confirmed.
+	refusedGroupUnconfirmed = "adoption_unconfirmed"
+	// codeKeptNotOurs is DeleteGroup's code for a group the module did not
+	// make: the tenant keeps it, the row is marked deleted.
+	codeKeptNotOurs = "kept_not_ours"
+	// codeSecurityKept is the retired event's code for a security group
+	// emptied and kept rather than deleted.
+	codeSecurityKept = "security_kept"
+	// groupArchivedSuffix is what a retired security group's name ends
+	// with, once.
+	groupArchivedSuffix = " (archived)"
 	// codeTeamPending is the event code of a team not made yet: the group is
 	// too young, or Teams has not seen it.
 	codeTeamPending = "team_pending"
@@ -191,6 +213,12 @@ func groupRow(ctx context.Context, q *store.Queries, groupID string) (store.Entr
 	return row, row.State == groupStatePresent, nil
 }
 
+// trustedGroup reports whether the module may write to row's group: one it
+// made, or an adoption a holder of entra:manage confirmed.
+func trustedGroup(row store.EntraGroup) bool {
+	return row.CreatedByUs || row.AdoptionConfirmedAt != nil
+}
+
 // servicePrincipal is the application's service principal in the tenant:
 // the oid claim of the token s was opened with, written to the connection
 // when the row lacks it or names another (plan reading 2); the row's when
@@ -230,9 +258,14 @@ func (p *provisioner) groupRefused(ctx context.Context, s session, actor contrac
 //     principal never. A group gone from the tenant is made anew.
 //   - No row: a group holding the mail nickname is adopted when the module
 //     may write it — not dynamic, role-assignable, Exchange's or another
-//     Staff group's, which is ErrGroupNotManageable — with the missing
-//     owners added and Staff's name written; none is created with the
+//     Staff group's, which is ErrGroupNotManageable — untrusted: its row is
+//     recorded and nothing written to the tenant, ErrGroupUnconfirmed,
+//     until a holder of entra:manage confirms it (POST
+//     /groups/{objectId}/confirm); the call after the confirmation adds the
+//     missing owners and writes Staff's name. None is created with the
 //     service principal and the first nineteen owners, the rest by $ref.
+//   - An adopted group nobody has confirmed: ErrGroupUnconfirmed, nothing
+//     written, the event refused:adoption_unconfirmed.
 //   - team: on a Microsoft 365 group fifteen minutes old with a person
 //     among its owners, PUT /team, three tries ten seconds apart on a 404;
 //     younger, or still 404, the answer's Pending names it; without a person
@@ -256,6 +289,9 @@ func (p *provisioner) EnsureGroup(ctx context.Context, actor contracts.Actor, sp
 	row, present, err := groupRow(ctx, s.q, w.groupID)
 	if err != nil {
 		return contracts.ExternalGroup{}, err
+	}
+	if present && !trustedGroup(row) {
+		return contracts.ExternalGroup{}, p.groupRefused(ctx, s, actor, actionGroupUpdated, &row.ObjectID, refusedGroupUnconfirmed, contracts.ErrGroupUnconfirmed)
 	}
 	if traitErr != nil {
 		action, id := actionGroupCreated, (*uuid.UUID)(nil)
@@ -328,8 +364,12 @@ func (p *provisioner) placeGroup(ctx context.Context, s session, actor contracts
 // adoptGroup takes hit, the one group holding the nickname, as the Staff
 // group's: refused when the module may not write it or another Staff group
 // holds it, trait_immutable when its type is not the one asked; otherwise
-// recorded created_by_us false, the missing owners added (none removed) and
-// Staff's name, description and visibility written.
+// recorded created_by_us false and answered ErrGroupUnconfirmed with nothing
+// written to the tenant — the event adopted with refused:adoption_unconfirmed
+// — until a holder of entra:manage confirms it. A group the module made
+// itself and retired, found again, is its own still: the missing owners
+// added (none removed) and Staff's name, description and visibility
+// written.
 func (p *provisioner) adoptGroup(ctx context.Context, s session, actor contracts.Actor, sp uuid.UUID, w groupWant, hit graphGroup) (contracts.ExternalGroup, error) {
 	oid, ok := objectID(hit.ID)
 	if !ok {
@@ -339,18 +379,25 @@ func (p *provisioner) adoptGroup(ctx context.Context, s session, actor contracts
 	if err != nil {
 		return contracts.ExternalGroup{}, fmt.Errorf("entra: read the groups: %w", err)
 	}
-	taken := slices.ContainsFunc(rows, func(r store.EntraGroup) bool {
-		return r.GroupID != w.groupID && (r.ObjectID == oid || (r.State == groupStatePresent && strings.EqualFold(r.MailNickname, w.nickname)))
-	})
 	switch {
-	case taken || !hit.manageable():
+	case groupTaken(rows, w, oid, true) || !hit.manageable():
 		return contracts.ExternalGroup{}, p.groupRefused(ctx, s, actor, actionGroupAdopted, &oid, refusedNotManageable, contracts.ErrGroupNotManageable)
 	case hit.kind() != w.values.kind:
 		return contracts.ExternalGroup{}, p.groupRefused(ctx, s, actor, actionGroupAdopted, &oid, contracts.TraitImmutable,
 			traitError(traitType, contracts.TraitImmutable))
 	}
-	if err := p.insertGroup(ctx, s, w, oid, hit.kind(), false); err != nil {
+	row, err := p.insertGroup(ctx, s, w, oid, hit.kind(), false)
+	if errors.Is(err, contracts.ErrGroupNotManageable) {
+		return contracts.ExternalGroup{}, p.groupRefused(ctx, s, actor, actionGroupAdopted, &oid, refusedNotManageable, err)
+	} else if err != nil {
 		return contracts.ExternalGroup{}, err
+	}
+	if !trustedGroup(row) {
+		if err := recordEvent(ctx, s.q, p.client.now(), actor, actionGroupAdopted, &oid, "",
+			[]string{"type:" + hit.kind(), "refused:" + refusedGroupUnconfirmed}); err != nil {
+			return contracts.ExternalGroup{}, err
+		}
+		return contracts.ExternalGroup{}, contracts.ErrGroupUnconfirmed
 	}
 	codes, persons, err := p.bringGroup(ctx, s, sp, oid, hit, w, false)
 	codes = append([]string{"type:" + hit.kind()}, codes...)
@@ -411,7 +458,7 @@ func (p *provisioner) createGroup(ctx context.Context, s session, actor contract
 	if !ok {
 		return contracts.ExternalGroup{}, errors.New("entra: Graph created a group without an id")
 	}
-	if err := p.insertGroup(ctx, s, w, oid, w.values.kind, true); err != nil {
+	if _, err := p.insertGroup(ctx, s, w, oid, w.values.kind, true); err != nil {
 		return contracts.ExternalGroup{}, err
 	}
 	codes := []string{"type:" + w.values.kind}
@@ -628,14 +675,27 @@ func (p *provisioner) makeTeam(ctx context.Context, s session, oid uuid.UUID) (b
 	}
 }
 
+// groupTaken reports whether rows hold oid, or — when adopting — a present
+// group holding w's nickname, for another Staff group than w's.
+func groupTaken(rows []store.EntraGroup, w groupWant, oid uuid.UUID, adopting bool) bool {
+	return slices.ContainsFunc(rows, func(r store.EntraGroup) bool {
+		return r.GroupID != w.groupID && (r.ObjectID == oid ||
+			(adopting && r.State == groupStatePresent && strings.EqualFold(r.MailNickname, w.nickname)))
+	})
+}
+
 // insertGroup records the group EnsureGroup made or adopted, at once, so a
 // failure from here on finds it next time — under the connection's share
 // lock, as a user's create is (recordCreated): a change of the tenant or the
 // client since the session was opened records nothing and answers
-// ErrProviderUnavailable. A deleted group's row for the same Staff group
-// gives way.
-func (p *provisioner) insertGroup(ctx context.Context, s session, w groupWant, oid uuid.UUID, kind string, createdByUs bool) error {
+// ErrProviderUnavailable. A deleted or retired group's row for the same
+// Staff group gives way, unless it is this group's, found again. A group
+// another Staff group's row holds — read again inside the transaction, so
+// two Staff groups racing for one object both see it — answers
+// ErrGroupNotManageable and records nothing. It answers the row.
+func (p *provisioner) insertGroup(ctx context.Context, s session, w groupWant, oid uuid.UUID, kind string, createdByUs bool) (store.EntraGroup, error) {
 	now := p.client.now()
+	var row store.EntraGroup
 	err := db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		conn, err := q.LockConnectionShare(ctx)
@@ -645,13 +705,26 @@ func (p *provisioner) insertGroup(ctx context.Context, s session, w groupWant, o
 		if conn.TenantID == nil || *conn.TenantID != s.cred.tenantID || conn.ClientID == nil || *conn.ClientID != s.cred.clientID {
 			return errConnectionMoved
 		}
-		if err := q.ForgetDeletedGroup(ctx, w.groupID); err != nil {
+		rows, err := q.ListGroups(ctx)
+		if err != nil {
+			return fmt.Errorf("entra: read the groups: %w", err)
+		}
+		if groupTaken(rows, w, oid, !createdByUs) {
+			return contracts.ErrGroupNotManageable
+		}
+		if err := q.ForgetDeletedGroup(ctx, store.ForgetDeletedGroupParams{GroupID: w.groupID, ObjectID: oid}); err != nil {
 			return fmt.Errorf("entra: forget the deleted group: %w", err)
 		}
-		if _, err := q.InsertGroup(ctx, store.InsertGroupParams{
+		row, err = q.InsertGroup(ctx, store.InsertGroupParams{
 			ObjectID: oid, GroupID: w.groupID, Key: w.key, DisplayName: w.name, MailNickname: w.nickname,
 			Type: kind, CreatedByUs: createdByUs, Now: now,
-		}); err != nil {
+		})
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			// Another Staff group's row holds the object (InsertGroup's
+			// WHERE): it is not re-pointed.
+			return contracts.ErrGroupNotManageable
+		case err != nil:
 			return fmt.Errorf("entra: record the group: %w", err)
 		}
 		return nil
@@ -659,9 +732,9 @@ func (p *provisioner) insertGroup(ctx context.Context, s session, w groupWant, o
 	if errors.Is(err, errConnectionMoved) {
 		p.client.logger.WarnContext(ctx, "entra: the connection changed while a group was made; the group is left unrecorded",
 			"object_id", oid.String())
-		return fmt.Errorf("%w: %w", contracts.ErrProviderUnavailable, err)
+		return row, fmt.Errorf("%w: %w", contracts.ErrProviderUnavailable, err)
 	}
-	return err
+	return row, err
 }
 
 // settleGroup records what a write left the group as — its key, name and
@@ -800,8 +873,9 @@ func (p *provisioner) batchDelete(ctx context.Context, s session, paths []string
 // their reference in $batch requests of twenty, each answer read on its
 // own. A member that is not a user (a nested group, a device) is left
 // alone. ErrGroupNotManageable for a group the module never made, or one
-// that became role-assignable or Exchange's; a group that became dynamic
-// changes nothing, each member to change failed dynamic. Every failure is
+// that became role-assignable or Exchange's; ErrGroupUnconfirmed for an
+// adopted group nobody has confirmed, nothing written; a group that became
+// dynamic changes nothing, each member to change failed dynamic. Every failure is
 // a code with the member's id, never Graph's words, and no user id is
 // logged.
 func (p *provisioner) SetMembers(ctx context.Context, actor contracts.Actor, groupID string, memberExternalIDs []string) (contracts.MembersResult, error) {
@@ -821,13 +895,21 @@ func (p *provisioner) SetMembers(ctx context.Context, actor contracts.Actor, gro
 		return result, contracts.ErrGroupNotManageable
 	}
 	oid := row.ObjectID
+	if !trustedGroup(row) {
+		return result, p.groupRefused(ctx, s, actor, actionGroupMembersSet, &oid, refusedGroupUnconfirmed, contracts.ErrGroupUnconfirmed)
+	}
+	// wanted keeps the order the ids came in, each once; wantedSet answers
+	// "is it wanted" at once, for groups of tens of thousands.
 	var wanted []uuid.UUID
+	wantedSet := map[uuid.UUID]struct{}{}
 	for _, raw := range memberExternalIDs {
 		id, ok := objectID(raw)
-		switch {
-		case !ok:
+		if !ok {
 			result.Failed = append(result.Failed, contracts.MemberFailure{ID: raw, Code: contracts.MemberNotFound})
-		case !slices.Contains(wanted, id):
+			continue
+		}
+		if _, dup := wantedSet[id]; !dup {
+			wantedSet[id] = struct{}{}
 			wanted = append(wanted, id)
 		}
 	}
@@ -863,7 +945,7 @@ func (p *provisioner) SetMembers(ctx context.Context, actor contracts.Actor, gro
 		}
 	}
 	for id := range have {
-		if !slices.Contains(wanted, id) {
+		if _, ok := wantedSet[id]; !ok {
 			remove = append(remove, id)
 		}
 	}
@@ -977,12 +1059,23 @@ func (p *provisioner) settleMembers(ctx context.Context, s session, actor contra
 	return errors.Join(failure, err)
 }
 
-// DeleteGroup soft-deletes the group of Staff's group
-// (contracts.IdentityProvisioner.DeleteGroup): restorable from the portal
-// for thirty days, its row kept and marked deleted. A group the module
-// never made, or deleted already, answers nil with no call; one the tenant
-// no longer holds is marked deleted. No rename here: Staff renames a group
-// it keeps through EnsureGroup (plan reading 5).
+// DeleteGroup lets go of the group of Staff's group
+// (contracts.IdentityProvisioner.DeleteGroup), its row kept:
+//
+//   - a group the module did not make — adopted, confirmed or not — is the
+//     tenant's: no call, the row marked deleted, the event deleted with
+//     kept_not_ours;
+//   - a Microsoft 365 group the module made is soft-deleted, restorable
+//     from the portal for thirty days, the row marked deleted;
+//   - a security group the module made is never deleted — Graph deletes a
+//     security group for good — but emptied: every user member and every
+//     person owner removed by reference (the service principal stays),
+//     renamed "… (archived)" once, and kept, the row marked retired with
+//     the event retired, security_kept (retireGroup).
+//
+// A group never made, deleted or retired already answers nil with no call;
+// one the tenant no longer holds is marked deleted. Staff renames a group
+// it keeps whole through EnsureGroup (plan reading 5).
 func (p *provisioner) DeleteGroup(ctx context.Context, actor contracts.Actor, groupID string) error {
 	if !actor.Valid() {
 		return contracts.ErrInvalidActor
@@ -991,11 +1084,17 @@ func (p *provisioner) DeleteGroup(ctx context.Context, actor contracts.Actor, gr
 	if err != nil || !present {
 		return err
 	}
+	oid := row.ObjectID
+	if !row.CreatedByUs {
+		return p.settleGroupGone(ctx, store.New(p.deps.Pool), actor, oid, groupStateDeleted, actionGroupDeleted, []string{codeKeptNotOurs})
+	}
 	s, err := p.open(ctx, true)
 	if err != nil {
 		return err
 	}
-	oid := row.ObjectID
+	if row.Type == groupTypeSecurity {
+		return p.retireGroup(ctx, s, actor, oid)
+	}
 	var codes []string
 	switch err := p.client.del(ctx, s.cred, groupPath(oid)); {
 	case isStatus(err, http.StatusNotFound):
@@ -1003,12 +1102,94 @@ func (p *provisioner) DeleteGroup(ctx context.Context, actor contracts.Actor, gr
 	case err != nil:
 		return err
 	}
+	return p.settleGroupGone(ctx, s.q, actor, oid, groupStateDeleted, actionGroupDeleted, codes)
+}
+
+// retireGroup empties and keeps a security group the module made
+// (DeleteGroup): its user members and its person owners removed by their
+// reference in $batch requests, the service principal left an owner, the
+// name suffixed " (archived)" once; the row retired. A member or an owner
+// the tenant would not remove fails the call, the row as it was, for the
+// next call to try again; one the tenant no longer holds is marked deleted.
+func (p *provisioner) retireGroup(ctx context.Context, s session, actor contracts.Actor, oid uuid.UUID) error {
+	g, err := p.getGroup(ctx, s, oid)
+	switch {
+	case errors.Is(err, errNoSuchGroup):
+		return p.settleGroupGone(ctx, s.q, actor, oid, groupStateDeleted, actionGroupDeleted, []string{"gone"})
+	case err != nil:
+		return err
+	case !g.manageable():
+		return p.groupRefused(ctx, s, actor, actionGroupRetired, &oid, refusedNotManageable, contracts.ErrGroupNotManageable)
+	}
+	sp, err := p.servicePrincipal(ctx, s)
+	if err != nil {
+		return err
+	}
+	current, err := p.listDirectory(ctx, s, groupPath(oid, "/members?", query(url.Values{
+		"$select": {"id"}, "$top": {strconv.Itoa(membersPageSize)},
+	})), maxMembersPages)
+	if err != nil {
+		return err
+	}
+	var users []uuid.UUID
+	for _, m := range current {
+		if id, ok := objectID(m.ID); ok && m.ODataType == odataUser {
+			users = append(users, id)
+		}
+	}
+	slices.SortFunc(users, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	var result contracts.MembersResult
+	if err := p.removeMembers(ctx, s, oid, users, &result); err != nil {
+		return err
+	}
+	if n := len(result.Failed); n > 0 {
+		return fmt.Errorf("entra: %d of a retiring group's members could not be removed", n)
+	}
+	codes := []string{codeSecurityKept, "removed:" + strconv.Itoa(result.Removed)}
+	_, removed, persons, err := p.reconcileOwners(ctx, s, sp, oid, nil, true)
+	if err != nil {
+		return err
+	}
+	if persons > 0 {
+		return fmt.Errorf("entra: %d of a retiring group's owners could not be removed", persons)
+	}
+	codes = append(codes, "owners_removed:"+strconv.Itoa(removed))
+	name := g.DisplayName
+	if !strings.HasSuffix(name, groupArchivedSuffix) {
+		name = cut(name, maxGroupDisplayName-len(groupArchivedSuffix)) + groupArchivedSuffix
+		if err := p.client.patch(ctx, s.cred, groupPath(oid), map[string]any{"displayName": name}); err != nil {
+			return err
+		}
+		codes = append(codes, "changed:displayName")
+	}
 	now := p.client.now()
 	return db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if _, err := q.SetGroupState(ctx, store.SetGroupStateParams{State: groupStateDeleted, Now: now, ObjectID: oid}); err != nil {
-			return fmt.Errorf("entra: record the group deleted: %w", err)
+		row, err := q.GetGroup(ctx, oid)
+		if err != nil {
+			return fmt.Errorf("entra: read the group: %w", err)
 		}
-		return recordEvent(ctx, q, now, actor, actionGroupDeleted, &oid, "", codes)
+		if _, err := q.UpdateGroup(ctx, store.UpdateGroupParams{
+			Key: row.Key, DisplayName: name, MailNickname: row.MailNickname, Now: now, ObjectID: oid,
+		}); err != nil {
+			return fmt.Errorf("entra: record the group's name: %w", err)
+		}
+		if _, err := q.SetGroupState(ctx, store.SetGroupStateParams{State: groupStateRetired, Now: now, ObjectID: oid}); err != nil {
+			return fmt.Errorf("entra: record the group retired: %w", err)
+		}
+		return recordEvent(ctx, q, now, actor, actionGroupRetired, &oid, "", codes)
+	})
+}
+
+// settleGroupGone records oid's group as state with the event action and
+// codes, in one transaction on q's pool.
+func (p *provisioner) settleGroupGone(ctx context.Context, q *store.Queries, actor contracts.Actor, oid uuid.UUID, state, action string, codes []string) error {
+	now := p.client.now()
+	return db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := q.WithTx(tx)
+		if _, err := q.SetGroupState(ctx, store.SetGroupStateParams{State: state, Now: now, ObjectID: oid}); err != nil {
+			return fmt.Errorf("entra: record the group %s: %w", state, err)
+		}
+		return recordEvent(ctx, q, now, actor, action, &oid, "", codes)
 	})
 }

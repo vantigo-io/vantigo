@@ -169,7 +169,9 @@ func (p *provisioner) writeLeaveDate(ctx context.Context, s session, id uuid.UUI
 }
 
 // stripLicences removes every licence assigned directly — assignedByGroup
-// null; a group's licence is the tenant's (design reading 9).
+// null; a group's licence is the tenant's (design reading 9) — as the
+// connection's leaver_strip_licences asks, and forgets the licences the
+// module had assigned.
 func (p *provisioner) stripLicences(ctx context.Context, s session, id uuid.UUID, u graphUser) (string, error) {
 	var direct []string
 	for _, st := range u.LicenseAssignmentStates {
@@ -177,13 +179,17 @@ func (p *provisioner) stripLicences(ctx context.Context, s session, id uuid.UUID
 			direct = append(direct, st.SkuID)
 		}
 	}
-	if len(direct) == 0 {
-		return "", nil
+	code := ""
+	if len(direct) > 0 {
+		if err := p.client.post(ctx, s.cred, userPath(id, "/assignLicense"), map[string]any{"addLicenses": []any{}, "removeLicenses": direct}, nil); err != nil {
+			return "", err
+		}
+		code = "licences_stripped"
 	}
-	if err := p.client.post(ctx, s.cred, userPath(id, "/assignLicense"), map[string]any{"addLicenses": []any{}, "removeLicenses": direct}, nil); err != nil {
-		return "", err
+	if err := s.q.SetAccountLicences(ctx, store.SetAccountLicencesParams{LicencesAssigned: []string{}, Now: p.client.now(), ObjectID: id}); err != nil {
+		return "", fmt.Errorf("entra: forget the module's licences: %w", err)
 	}
-	return "licences_stripped", nil
+	return code, nil
 }
 
 // graphGroup is a group as memberOf lists it, and as the groups' calls read
@@ -224,7 +230,10 @@ func (g graphGroup) removable() bool {
 // removeGroups removes the user from every group memberOf lists that
 // removable admits — when managed, from those of them the module keeps
 // present in entra.groups alone — by $ref (membersRefPath), never the
-// member's object itself. A member already gone (404) is done.
+// member's object itself, inside $batch requests (batchDelete) so the
+// user's id never stands in a request line the client logs. A member
+// already gone (404) is done; another answer fails the step, for the next
+// call to try again.
 func (p *provisioner) removeGroups(ctx context.Context, s session, id uuid.UUID, managed bool) (string, error) {
 	var ours []uuid.UUID
 	if managed {
@@ -253,20 +262,29 @@ func (p *provisioner) removeGroups(ctx context.Context, s session, id uuid.UUID,
 			path = rest
 		}
 	}
-	removed := 0
+	var paths []string
 	for _, g := range groups {
 		gid, ok := objectID(g.ID)
 		if !ok || !g.removable() || (managed && !slices.Contains(ours, gid)) {
 			continue
 		}
-		err := p.client.del(ctx, s.cred, membersRefPath(gid, id))
-		if err != nil && !isStatus(err, http.StatusNotFound) {
-			return "", err
-		}
-		removed++
+		paths = append(paths, membersRefPath(gid, id))
 	}
-	if removed == 0 {
+	if len(paths) == 0 {
 		return "", nil
+	}
+	statuses, err := p.batchDelete(ctx, s, paths)
+	if err != nil {
+		return "", err
+	}
+	refused := 0
+	for _, st := range statuses {
+		if st != http.StatusNoContent && st != http.StatusOK && st != http.StatusNotFound {
+			refused++
+		}
+	}
+	if refused > 0 {
+		return "", fmt.Errorf("entra: %d of the leaver's group removals were refused", refused)
 	}
 	return "groups_removed", nil
 }

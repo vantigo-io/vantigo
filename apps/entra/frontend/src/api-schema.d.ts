@@ -206,6 +206,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/entra/groups/{objectId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm an adopted group
+         * @description Confirms the adoption of a group the module found holding a Staff group's mail nickname rather than made. Until it is confirmed the module writes nothing to that group — no name, no description, no owner, no member — and Staff's sync waits with group_unconfirmed; from then on the module writes to it as to one it made, and Staff's next cycle adds the owners and writes the name, the description and the members. The module never deletes a group it did not make. Idempotent: a group confirmed already, or one the module made, is answered as it is. Audited entra.group.adoption_confirmed with the actor, once. 404 for a group the module does not keep.
+         */
+        post: operations["postEntraGroupsByObjectIdConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -381,11 +401,16 @@ export interface components {
             /** @description The user principal name the module made or found. Absent on a connection's event. */
             upn?: string;
         };
-        /** @description One group the module keeps in the tenant for a Staff group (Entra design D14), by the directory's immutable object id: made by the module, or found by its mail nickname and adopted. Its members and its traits are Staff's; this is the tenant's side. A deleted group stays, marked deleted. */
+        /** @description One group the module keeps in the tenant for a Staff group (Entra design D14), by the directory's immutable object id: made by the module, or found by its mail nickname and adopted. Its members and its traits are Staff's; this is the tenant's side. A deleted group stays, marked deleted; a security group the module made and Staff let go stays, marked retired: emptied of its people and kept, since the tenant deletes a security group for good. */
         EntraGroup: {
+            /**
+             * Format: date-time
+             * @description When a holder of entra:manage confirmed the adoption of a group the module found rather than made (POST /groups/{objectId}/confirm). Until then the module writes nothing to that group — no name, no owner, no member, no delete. Absent for one not confirmed, and for one the module made, which needs no confirmation.
+             */
+            adoptionConfirmedAt?: string;
             /** Format: date-time */
             createdAt: string;
-            /** @description True when the module created the group; false when it found one holding the mail nickname that it may write, and adopted it. */
+            /** @description True when the module created the group; false when it found one holding the mail nickname that it may write, and adopted it — untrusted until confirmed (adoptionConfirmedAt). */
             createdByUs: boolean;
             /** @description The name the module last wrote — Staff's name, with " (archived)" after it once Staff archived the group and keeps it. */
             displayName: string;
@@ -404,8 +429,11 @@ export interface components {
              * @description The group's object id in the tenant, immutable.
              */
             objectId: string;
-            /** @enum {string} */
-            state: "present" | "deleted";
+            /**
+             * @description present; deleted (soft-deleted in the tenant, or a group the module did not make, left to the tenant); retired (a security group the module made, emptied of its people, renamed "… (archived)" and kept).
+             * @enum {string}
+             */
+            state: "present" | "deleted" | "retired";
             /** @description True once the group became a team in Microsoft Teams. */
             team: boolean;
             /**
@@ -1120,6 +1148,53 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+        };
+    };
+    postEntraGroupsByObjectIdConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                objectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the group as confirmed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraGroup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the module keeps no group by that object id. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

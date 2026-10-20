@@ -9,8 +9,18 @@
 -- display name and the mail nickname are what the module last wrote; type is
 -- the kind the group was made with, which never changes. team_created_at is
 -- when the group became a team. created_by_us is false for a group the
--- module found by its nickname and adopted. A deleted group is kept, marked
--- deleted. last_members_at is when its members were last reconciled.
+-- module found by its nickname and adopted: untrusted, the module writes
+-- nothing to it, until a holder of entra:manage confirms the adoption
+-- (adoption_confirmed_at, adoption_confirmed_by_user_id), as an adopted
+-- account is. A deleted group is kept, marked deleted; a security group the
+-- module made is never deleted in the tenant (Graph deletes one for good),
+-- but emptied of its people and kept, marked retired. last_members_at is
+-- when its members were last reconciled.
+--
+-- entra.accounts gains licences_assigned: the SKU ids (lower-case) of the
+-- direct licences the module itself assigned, the only ones an Update
+-- removes (design reading 9) — a licence an administrator assigned is never
+-- the module's to strip.
 --
 -- entra.connection gains service_principal_id, the application's service
 -- principal in the tenant, read from its token's oid claim and named as an
@@ -32,8 +42,10 @@ CREATE TABLE entra.groups (
     last_members_at timestamptz,
     created_at      timestamptz  NOT NULL,
     updated_at      timestamptz  NOT NULL,
+    adoption_confirmed_at         timestamptz,
+    adoption_confirmed_by_user_id uuid,
     CONSTRAINT groups_type_check CHECK (type IN ('security', 'microsoft365')),
-    CONSTRAINT groups_state_check CHECK (state IN ('present', 'deleted'))
+    CONSTRAINT groups_state_check CHECK (state IN ('present', 'deleted', 'retired'))
 );
 CREATE UNIQUE INDEX ux_entra_groups_group_id ON entra.groups (group_id);
 
@@ -41,10 +53,14 @@ ALTER TABLE entra.connection
     ADD COLUMN service_principal_id uuid,
     ADD COLUMN skus jsonb NOT NULL DEFAULT '[]'::jsonb;
 
+ALTER TABLE entra.accounts ADD COLUMN licences_assigned text[] NOT NULL DEFAULT '{}';
+
 -- +goose Down
 -- The rows go, and the two columns: the groups the module made stay in the
 -- tenant for an administrator, and the next connection test reads the
--- service principal and the licences again.
+-- service principal and the licences again; the licences the module
+-- assigned are forgotten.
+ALTER TABLE entra.accounts DROP COLUMN licences_assigned;
 ALTER TABLE entra.connection
     DROP COLUMN skus,
     DROP COLUMN service_principal_id;

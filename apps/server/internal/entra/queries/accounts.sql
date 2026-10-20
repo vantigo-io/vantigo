@@ -42,6 +42,13 @@ UPDATE entra.accounts SET
 WHERE object_id = @object_id
 RETURNING *;
 
+-- name: SetAccountLicences :exec
+-- SetAccountLicences records the SKU ids (lower-case) of the direct licences
+-- the module itself assigned the user: the only ones an Update removes
+-- (design reading 9). The leaver's strip empties it.
+UPDATE entra.accounts SET licences_assigned = @licences_assigned::text[], updated_at = @now::timestamptz
+WHERE object_id = @object_id;
+
 -- name: SetAccountPass :one
 -- SetAccountPass keeps a newly issued pass sealed under entra/pass with its
 -- expiry; it replaces any pass not yet revealed, as the tenant's one pass per

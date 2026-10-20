@@ -108,7 +108,7 @@ func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, exter
 		u.AccountEnabled = true
 	}
 
-	licences, licenceCodes, err := p.reconcileLicences(ctx, s, id, u, spec.Licences)
+	licences, licenceCodes, err := p.reconcileLicences(ctx, s, id, u, row, spec.Licences)
 	if err != nil {
 		return contracts.ExternalAccount{}, err
 	}
@@ -137,14 +137,18 @@ func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, exter
 
 // reconcileLicences brings the user's direct licences to the part numbers
 // parts names (design D10, plan reading 6): the missing assigned
-// (assignLicences), then every licence assigned directly — assignedByGroup
-// null — whose part number parts does not name removed in one
-// assignLicense; a licence a group assigns is the tenant's and is left, and
-// so is one whose SKU the tenant no longer lists. A refusal of the removal
-// is the event's licences_not_removed, the user left as it is. It answers
-// the codes reported (licence_unavailable:<part>) and the event's codes.
-// With no part named and no direct licence held it asks nothing.
-func (p *provisioner) reconcileLicences(ctx context.Context, s session, id uuid.UUID, u graphUser, parts []string) ([]string, []string, error) {
+// (assignLicences), then every licence the module itself assigned —
+// row.LicencesAssigned, held directly still — whose part number parts does
+// not name removed in one assignLicense. Only the module's own (design
+// reading 9): a licence an administrator assigned directly, or a group
+// assigns, is the tenant's and is left, and so is one whose SKU the tenant
+// no longer lists. A refusal of the removal is the event's
+// licences_not_removed, the user left as it is. The module's licences are
+// recorded after: those it held still and those it assigned now, less those
+// it removed. It answers the codes reported (licence_unavailable:<part>)
+// and the event's codes. With no part named and no direct licence held it
+// asks nothing.
+func (p *provisioner) reconcileLicences(ctx context.Context, s session, id uuid.UUID, u graphUser, row store.EntraAccount, parts []string) ([]string, []string, error) {
 	var wanted []string
 	for _, part := range parts {
 		if part = strings.TrimSpace(part); part != "" && !slices.Contains(wanted, part) {
@@ -157,16 +161,28 @@ func (p *provisioner) reconcileLicences(ctx context.Context, s session, id uuid.
 			direct = append(direct, strings.ToLower(st.SkuID))
 		}
 	}
+	// mine is the module's own licences the user holds directly still.
+	var mine []string
+	for _, sku := range row.LicencesAssigned {
+		if sku = strings.ToLower(sku); slices.Contains(direct, sku) && !slices.Contains(mine, sku) {
+			mine = append(mine, sku)
+		}
+	}
 	if len(wanted) == 0 && len(direct) == 0 {
-		return nil, nil, nil
+		return nil, nil, p.recordLicences(ctx, s, id, row, mine)
 	}
 	var skus subscribedSkus
 	if err := p.client.get(ctx, s.cred, "/subscribedSkus", &skus); err != nil {
 		return nil, nil, err
 	}
-	reported, assigned, err := p.assignLicences(ctx, s, id, u, wanted, skus)
+	reported, assigned, added, err := p.assignLicences(ctx, s, id, u, wanted, skus)
 	if err != nil {
 		return nil, nil, err
+	}
+	for _, sku := range added {
+		if !slices.Contains(mine, sku) {
+			mine = append(mine, sku)
+		}
 	}
 	var codes []string
 	if assigned > 0 {
@@ -174,25 +190,46 @@ func (p *provisioner) reconcileLicences(ctx context.Context, s session, id uuid.
 	}
 	var remove []string
 	for _, sku := range direct {
+		if !slices.Contains(mine, sku) {
+			continue // not the module's to remove
+		}
 		i := slices.IndexFunc(skus.Value, func(v subscribedSku) bool { return strings.EqualFold(v.SkuID, sku) })
 		if i < 0 || slices.ContainsFunc(wanted, func(part string) bool { return strings.EqualFold(part, skus.Value[i].SkuPartNumber) }) {
 			continue
 		}
 		remove = append(remove, skus.Value[i].SkuID)
 	}
-	if len(remove) == 0 {
-		return reported, codes, nil
+	if len(remove) > 0 {
+		err = p.client.post(ctx, s.cred, userPath(id, "/assignLicense"), map[string]any{"addLicenses": []any{}, "removeLicenses": remove}, nil)
+		switch g, ok := asGraphError(err); {
+		case ok && g.Status >= 400 && g.Status < 500:
+			codes = append(codes, "licences_not_removed")
+		case err != nil:
+			return nil, nil, errors.Join(err, p.recordLicences(ctx, s, id, row, mine))
+		default:
+			codes = append(codes, fmt.Sprintf("licences_removed:%d", len(remove)))
+			mine = slices.DeleteFunc(mine, func(sku string) bool {
+				return slices.ContainsFunc(remove, func(r string) bool { return strings.EqualFold(r, sku) })
+			})
+		}
 	}
-	err = p.client.post(ctx, s.cred, userPath(id, "/assignLicense"), map[string]any{"addLicenses": []any{}, "removeLicenses": remove}, nil)
-	switch g, ok := asGraphError(err); {
-	case ok && g.Status >= 400 && g.Status < 500:
-		codes = append(codes, "licences_not_removed")
-	case err != nil:
-		return nil, nil, err
-	default:
-		codes = append(codes, fmt.Sprintf("licences_removed:%d", len(remove)))
+	return reported, codes, p.recordLicences(ctx, s, id, row, mine)
+}
+
+// recordLicences records mine as the licences the module assigned the user
+// (entra.accounts.licences_assigned) when they differ from row's.
+func (p *provisioner) recordLicences(ctx context.Context, s session, id uuid.UUID, row store.EntraAccount, mine []string) error {
+	mine = slices.Sorted(slices.Values(mine))
+	if mine == nil {
+		mine = []string{}
 	}
-	return reported, codes, nil
+	if slices.Equal(mine, slices.Sorted(slices.Values(row.LicencesAssigned))) {
+		return nil
+	}
+	if err := s.q.SetAccountLicences(ctx, store.SetAccountLicencesParams{LicencesAssigned: mine, Now: p.client.now(), ObjectID: id}); err != nil {
+		return fmt.Errorf("entra: record the module's licences: %w", err)
+	}
+	return nil
 }
 
 // assignLicences assigns the part numbers wanted that the user does not
@@ -200,11 +237,11 @@ func (p *provisioner) reconcileLicences(ctx context.Context, s session, id uuid.
 // part number reported licence_unavailable:<part> —, then one
 // assignLicense, after which a licenseAssignmentStates error on a SKU (a
 // CountViolation) is reported for it while the rest stay assigned. A refusal
-// of the whole call reports every part it carried. It answers the codes and
-// how many SKUs it asked for.
-func (p *provisioner) assignLicences(ctx context.Context, s session, id uuid.UUID, u graphUser, wanted []string, skus subscribedSkus) ([]string, int, error) {
+// of the whole call reports every part it carried. It answers the codes,
+// how many SKUs it asked for, and the SKU ids (lower-case) it assigned.
+func (p *provisioner) assignLicences(ctx context.Context, s session, id uuid.UUID, u graphUser, wanted []string, skus subscribedSkus) ([]string, int, []string, error) {
 	if len(wanted) == 0 {
-		return nil, 0, nil
+		return nil, 0, nil, nil
 	}
 	held := map[string]bool{}
 	for _, l := range u.AssignedLicenses {
@@ -233,7 +270,7 @@ func (p *provisioner) assignLicences(ctx context.Context, s session, id uuid.UUI
 		add = append(add, map[string]any{"skuId": skus.Value[i].SkuID, "disabledPlans": []string{}})
 	}
 	if len(add) == 0 {
-		return reported, 0, nil
+		return reported, 0, nil, nil
 	}
 	var after graphUser
 	err := p.client.post(ctx, s.cred, userPath(id, "/assignLicense"), map[string]any{"addLicenses": add, "removeLicenses": []string{}}, &after)
@@ -241,17 +278,26 @@ func (p *provisioner) assignLicences(ctx context.Context, s session, id uuid.UUI
 		for _, l := range add {
 			reported = append(reported, licenceCode(partOf[strings.ToLower(l["skuId"].(string))]))
 		}
-		return reported, len(add), nil
+		return reported, len(add), nil, nil
 	} else if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
+	failed := map[string]bool{}
 	for _, st := range after.LicenseAssignmentStates {
 		part := partOf[strings.ToLower(st.SkuID)]
 		if part != "" && st.AssignedByGroup == nil && st.Error != "" && st.Error != "None" {
 			reported = append(reported, licenceCode(part))
+			failed[strings.ToLower(st.SkuID)] = true
 		}
 	}
-	return reported, len(add), nil
+	var added []string
+	for sku := range partOf {
+		if !failed[sku] {
+			added = append(added, sku)
+		}
+	}
+	slices.Sort(added)
+	return reported, len(add), added, nil
 }
 
 // issuePass creates a Temporary Access Pass with the connection's lifetime

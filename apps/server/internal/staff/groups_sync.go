@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -36,8 +37,16 @@ import (
 //     through EnsureGroup and kept (state retired). Neither is claimed again;
 //   - otherwise EnsureGroup when the provider holds no group for it yet or
 //     the values' hash (the name, the description, the values and the
-//     owners) moved, then SetMembers when the members' hash moved —
-//     at most two calls, each under the call timeout on no transaction.
+//     owners) moved, then SetMembers when the members' hash (the members
+//     and the civil day) moved — at most two calls, each under the call
+//     timeout on no transaction. A value the provider refuses for a group
+//     it holds already is kept on the section, failed, and not sent again
+//     until the values change, but the members are reconciled all the
+//     same: a leaver never keeps the group's access while HR mends a trait;
+//   - a group the provider found and adopted and nobody has confirmed there
+//     (contracts.ErrGroupUnconfirmed) is no failure: the section waits,
+//     pending with group_unconfirmed, claimed again at the next poll with
+//     nothing counted, so the cycle after the confirmation proceeds.
 //
 // The members and owners are sent as the external ids of their enabled
 // accounts under the provider (EnabledProviderLinksOfPeople): a person
@@ -70,6 +79,16 @@ const (
 	groupErrorNotManageable = "group_not_manageable"
 	groupErrorCallFailed    = "call_failed"
 	groupErrorMembersFailed = "members_failed"
+	// groupErrorUnconfirmed: the provider adopted a group it found and
+	// waits for a holder of its permission to confirm it.
+	groupErrorUnconfirmed = "group_unconfirmed"
+)
+
+// The bounds of what a provider's GroupTraitError writes to the section:
+// last_error_field is varchar(40), last_error varchar(200).
+const (
+	groupErrorFieldMax = 40
+	groupErrorCodeMax  = 200
 )
 
 // syncGroups works up to groupsBatch due group sections for run. A run by
@@ -204,11 +223,23 @@ func groupValuesHash(name string, description *string, values map[string]any, ow
 	return sum[:]
 }
 
-// groupMembersHash is last_members_hash: SHA-256 over the members' external
-// ids, sorted and each once, joined by newlines.
-func groupMembersHash(ids []string) []byte {
-	sum := sha256.Sum256([]byte(strings.Join(ids, "\n")))
+// groupMembersHash is last_members_hash: SHA-256 over the civil day and the
+// members' external ids, sorted and each once, joined by newlines. The day
+// is in it so that every group's members are reconciled once a day whatever
+// Staff saw: a member added in the directory by hand, or a self-join on a
+// public group, is undone by the next day's SetMembers.
+func groupMembersHash(ids []string, today time.Time) []byte {
+	sum := sha256.Sum256([]byte(today.Format(time.DateOnly) + "\n" + strings.Join(ids, "\n")))
 	return sum[:]
+}
+
+// cutRunes is s at most n characters long: what a provider answers is
+// bounded before it is written.
+func cutRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n])
 }
 
 // archivedName is name as a retired group keeps it in the provider: with
@@ -250,6 +281,7 @@ func (r *groupTraitResult) answered() {
 // refused records an answer that will not change until HR changes the
 // section: failed, the code and the field, never due again by itself.
 func (r *groupTraitResult) refused(code, field string) {
+	code, field = cutRunes(code, groupErrorCodeMax), cutRunes(field, groupErrorFieldMax)
 	r.state = groupTraitFailed
 	r.lastError = &code
 	r.lastErrorField = nil
@@ -271,6 +303,8 @@ func (r *groupTraitResult) failed(err error, now, poll time.Time) {
 		r.refused(traitErr.Code, traitErr.Field)
 	case errors.Is(err, contracts.ErrGroupNotManageable):
 		r.refused(groupErrorNotManageable, "")
+	case errors.Is(err, contracts.ErrGroupUnconfirmed):
+		r.unconfirmed(poll)
 	case errors.Is(err, contracts.ErrProviderUnavailable), errors.Is(err, errProviderUnavailable):
 		r.next = &poll
 	default:
@@ -284,6 +318,24 @@ func (r *groupTraitResult) failed(err error, now, poll time.Time) {
 		next := now.Add(retryBackoff(r.attempts))
 		r.next = &next
 	}
+}
+
+// unconfirmed records a group the provider adopted and waits to have
+// confirmed: pending with group_unconfirmed, no attempt counted, due at the
+// next poll — as a provider not connected is waited for.
+func (r *groupTraitResult) unconfirmed(poll time.Time) {
+	code := groupErrorUnconfirmed
+	r.state = groupTraitPending
+	r.lastError, r.lastErrorField = &code, nil
+	r.next = &poll
+}
+
+// keepsRefusal reports whether claim holds a value the provider refused for
+// the values it holds now: failed on an EnsureGroup refusal whose values'
+// hash was kept (a call that failed is call_failed, and leaves no hash).
+func keepsRefusal(claim store.StaffGroupTrait) bool {
+	return claim.State == groupTraitFailed && claim.LastError != nil && *claim.LastError != groupErrorCallFailed &&
+		claim.LastValuesHash != nil
 }
 
 // syncGroupTrait works one claimed section and writes its result.
@@ -327,31 +379,61 @@ func (s *server) syncGroupTrait(ctx context.Context, run accountsRun, claim stor
 	}
 
 	called := false
+	// refused: the values stand refused by the provider — this claim's
+	// EnsureGroup, or an earlier one whose values have not changed since.
+	// The refusal stays on the row, and the members are reconciled all the
+	// same (the group exists in the provider).
+	refused := false
 	valuesHash := groupValuesHash(g.Name, g.Description, values, f.owners)
 	if r.externalID == nil || !bytes.Equal(valuesHash, claim.LastValuesHash) {
 		called = true
 		got, err := s.ensureGroup(ctx, run, p, spec)
-		if err != nil {
+		var traitErr *contracts.GroupTraitError
+		switch {
+		case errors.As(err, &traitErr) && r.externalID != nil:
+			// Not asked again until the values change: their hash is kept.
+			r.refused(traitErr.Code, traitErr.Field)
+			r.valuesHash = valuesHash
+			refused = true
+		case err != nil:
 			logCallFailure(ctx, log, "EnsureGroup", err)
 			r.failed(err, now, poll)
 			s.writeGroupTraitResult(ctx, r, lease)
 			return
+		default:
+			id := got.ExternalID
+			r.externalID = &id
+			if len(got.Pending) == 0 {
+				// A trait the provider will act on later (reading 7) leaves
+				// the hash as it was, so the next cycle asks again.
+				r.valuesHash = valuesHash
+			}
 		}
-		id := got.ExternalID
-		r.externalID = &id
-		if len(got.Pending) == 0 {
-			// A trait the provider will act on later (reading 7) leaves the
-			// hash as it was, so the next cycle asks again.
-			r.valuesHash = valuesHash
-		}
+	} else {
+		refused = keepsRefusal(claim)
 	}
-	r.answered()
-	if membersHash := groupMembersHash(f.members); !bytes.Equal(membersHash, claim.LastMembersHash) {
+	if !refused {
+		r.answered()
+	}
+	if membersHash := groupMembersHash(f.members, f.today); !bytes.Equal(membersHash, claim.LastMembersHash) {
 		called = true
 		got, err := withCallTimeout(ctx, func(ctx context.Context) (contracts.MembersResult, error) {
 			return s.providerSetMembers(ctx, p, run.actor, spec.GroupID, f.members)
 		})
-		if err != nil {
+		switch {
+		case err != nil && refused:
+			// The refusal stays the row's word; the members are tried again
+			// at the next poll, or after the backoff for a call that failed.
+			logCallFailure(ctx, log, "SetMembers", err)
+			next := poll
+			if !errors.Is(err, contracts.ErrProviderUnavailable) && !errors.Is(err, errProviderUnavailable) {
+				r.attempts = claim.Attempts + 1
+				next = now.Add(retryBackoff(r.attempts))
+			}
+			r.next = &next
+			s.writeGroupTraitResult(ctx, r, lease)
+			return
+		case err != nil:
 			logCallFailure(ctx, log, "SetMembers", err)
 			r.failed(err, now, poll)
 			s.writeGroupTraitResult(ctx, r, lease)
@@ -361,17 +443,25 @@ func (s *server) syncGroupTrait(ctx context.Context, run accountsRun, claim stor
 			// The members' hash stays as it was, so the next cycle tries
 			// again; the ids are never stored nor logged.
 			log.DebugContext(ctx, "staff: the provider could not change some of a group's members", "failed", n)
-			code := groupErrorMembersFailed + ":" + strconv.Itoa(n)
-			r.lastError = &code
+			if !refused {
+				code := groupErrorMembersFailed + ":" + strconv.Itoa(n)
+				r.lastError = &code
+			}
 		} else {
 			r.membersHash = membersHash
 		}
+	}
+	r.next = &poll
+	if refused {
+		// Failed on its values, due again at the next poll for its members.
+		r.state = groupTraitFailed
+		s.writeGroupTraitResult(ctx, r, lease)
+		return
 	}
 	if called || r.state != groupTraitSynced || r.syncedAt == nil {
 		r.syncedAt = &now
 	}
 	r.state = groupTraitSynced
-	r.next = &poll
 	s.writeGroupTraitResult(ctx, r, lease)
 }
 
@@ -468,6 +558,7 @@ func (s *server) retireGroupTrait(ctx context.Context, log *slog.Logger, run acc
 func logCallFailure(ctx context.Context, log *slog.Logger, method string, err error) {
 	var traitErr *contracts.GroupTraitError
 	if errors.As(err, &traitErr) || errors.Is(err, contracts.ErrGroupNotManageable) ||
+		errors.Is(err, contracts.ErrGroupUnconfirmed) ||
 		errors.Is(err, contracts.ErrProviderUnavailable) || errors.Is(err, errProviderUnavailable) {
 		return
 	}

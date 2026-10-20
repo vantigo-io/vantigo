@@ -26,6 +26,7 @@ type EntraAccount struct {
 	AdoptionConfirmedByUserID *uuid.UUID
 	CreatedAt                 time.Time
 	UpdatedAt                 time.Time
+	LicencesAssigned          []string
 }
 
 type EntraConnection struct {
@@ -82,16 +83,18 @@ type EntraEvent struct {
 }
 
 type EntraGroup struct {
-	ObjectID      uuid.UUID
-	GroupID       string
-	Key           string
-	DisplayName   string
-	MailNickname  string
-	Type          string
-	TeamCreatedAt *time.Time
-	CreatedByUs   bool
-	State         string
-	LastMembersAt *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ObjectID                  uuid.UUID
+	GroupID                   string
+	Key                       string
+	DisplayName               string
+	MailNickname              string
+	Type                      string
+	TeamCreatedAt             *time.Time
+	CreatedByUs               bool
+	State                     string
+	LastMembersAt             *time.Time
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+	AdoptionConfirmedAt       *time.Time
+	AdoptionConfirmedByUserID *uuid.UUID
 }

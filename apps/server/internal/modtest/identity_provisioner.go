@@ -41,7 +41,11 @@ import (
 // EnsureGroup answers a *contracts.GroupTraitError for a value they do not
 // admit or a type that differs from the one the group was made with;
 // Owners is what a group's last EnsureGroup named, and FailMembers makes
-// the next SetMembers report a member as failed.
+// the next SetMembers report a member as failed. A group SetGroupUnconfirmed
+// marks is one the provider found and adopted and nobody has confirmed:
+// EnsureGroup and SetMembers answer ErrGroupUnconfirmed for it and change
+// nothing, and DeleteGroup forgets it, as a provider leaves a group it did
+// not make to its directory.
 // A write names a valid actor (contracts.ErrInvalidActor otherwise), and
 // while the status is not connected every write but Deactivate answers
 // ErrProviderUnavailable — Deactivate runs whatever the status says, as the
@@ -62,6 +66,9 @@ type FakeIdentityProvisioner struct {
 	// memberFailures are the members the next SetMembers of a group reports
 	// as failed, by the caller's group id, then by external id: the code.
 	memberFailures map[string]map[string]string
+	// unconfirmedGroups are the caller's group ids SetGroupUnconfirmed
+	// marked: adopted, not yet confirmed.
+	unconfirmedGroups map[string]bool
 }
 
 // ProvisionerCall is one call a FakeIdentityProvisioner recorded: the method,
@@ -123,7 +130,8 @@ func NewFakeIdentityProvisioner(key, name string) *FakeIdentityProvisioner {
 		fail:     map[string]error{},
 		groups:   map[string]*fakeExternalGroup{},
 
-		memberFailures: map[string]map[string]string{},
+		memberFailures:    map[string]map[string]string{},
+		unconfirmedGroups: map[string]bool{},
 	}
 }
 
@@ -258,6 +266,20 @@ func (f *FakeIdentityProvisioner) FailMembers(groupID, externalID, code string) 
 		f.memberFailures[groupID] = map[string]string{}
 	}
 	f.memberFailures[groupID][externalID] = code
+}
+
+// SetGroupUnconfirmed marks the caller's groupID as a group the provider
+// found and adopted and nobody has confirmed — EnsureGroup and SetMembers
+// answer contracts.ErrGroupUnconfirmed for it, recorded, and change nothing
+// — or, with unconfirmed false, as confirmed: its writes act again.
+func (f *FakeIdentityProvisioner) SetGroupUnconfirmed(groupID string, unconfirmed bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if unconfirmed {
+		f.unconfirmedGroups[groupID] = true
+	} else {
+		delete(f.unconfirmedGroups, groupID)
+	}
 }
 
 // Calls is every write so far, in order, refused ones included.
@@ -495,6 +517,9 @@ func (f *FakeIdentityProvisioner) EnsureGroup(_ context.Context, actor contracts
 	if err := f.begin("EnsureGroup", actor, "", nil, true); err != nil {
 		return contracts.ExternalGroup{}, err
 	}
+	if f.unconfirmedGroups[spec.GroupID] {
+		return contracts.ExternalGroup{}, contracts.ErrGroupUnconfirmed
+	}
 	kind, err := fakeGroupValues(spec.Values)
 	if err != nil {
 		return contracts.ExternalGroup{}, err
@@ -545,6 +570,9 @@ func (f *FakeIdentityProvisioner) SetMembers(_ context.Context, actor contracts.
 	if err := f.begin("SetMembers", actor, groupID, nil, true); err != nil {
 		return contracts.MembersResult{}, err
 	}
+	if f.unconfirmedGroups[groupID] {
+		return contracts.MembersResult{}, contracts.ErrGroupUnconfirmed
+	}
 	group, ok := f.groups[groupID]
 	if !ok {
 		return contracts.MembersResult{}, contracts.ErrGroupNotManageable
@@ -578,8 +606,8 @@ func (f *FakeIdentityProvisioner) SetMembers(_ context.Context, actor contracts.
 	return out, nil
 }
 
-// DeleteGroup forgets the group; one the fake does not hold is deleted
-// without a word.
+// DeleteGroup forgets the group — an unconfirmed adoption's too, the mark
+// with it; one the fake does not hold is deleted without a word.
 func (f *FakeIdentityProvisioner) DeleteGroup(_ context.Context, actor contracts.Actor, groupID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -587,6 +615,7 @@ func (f *FakeIdentityProvisioner) DeleteGroup(_ context.Context, actor contracts
 		return err
 	}
 	delete(f.groups, groupID)
+	delete(f.unconfirmedGroups, groupID)
 	return nil
 }
 

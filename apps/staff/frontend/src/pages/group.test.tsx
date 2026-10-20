@@ -37,6 +37,22 @@ describe("The group page — the header and its actions", () => {
     expect(await screen.findByText(/The group is archived/)).toBeInTheDocument();
   });
 
+  it("judges Delete as the server does: a provider on hides it, one off and retired with no external id does not", async () => {
+    await openGroup(1002, {
+      groupTraits: { 1002: [entraSection({ enabled: true, values: { type: "security" }, state: "pending" })] },
+    });
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+  });
+
+  it("offers Delete for a section turned off and retired that never held the group", async () => {
+    await openGroup(1002, {
+      groupTraits: {
+        1002: [entraSection({ enabled: false, state: "retired", retiredAt: "2026-10-06T06:00:00Z" })],
+      },
+    });
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+
   it("deletes a group never synced and goes back to the list", async () => {
     const { fetchMock, router } = await openGroup(1002);
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
@@ -222,6 +238,24 @@ describe("The group page — a provider's traits, from its declaration", () => {
     const field = team.closest(".mantine-Switch-root") as HTMLElement;
     expect(within(field).getByText("Failed: it needs a person as an owner")).toBeInTheDocument();
     expect(within(card).queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says a group the provider found awaits confirmation there, not a failure", async () => {
+    const { card } = await openGroup(1002, {
+      groupTraits: {
+        1002: [
+          entraSection({
+            enabled: true,
+            values: { type: "security" },
+            state: "pending",
+            lastError: "group_unconfirmed",
+          }),
+        ],
+      },
+    });
+    expect(within(card).getByText("Found in Microsoft Entra ID and awaiting confirmation there")).toBeInTheDocument();
+    expect(within(card).queryByText(/^Failed/)).not.toBeInTheDocument();
+    expect(within(card).queryByText("Waiting")).not.toBeInTheDocument();
   });
 
   it("says a provider that could not declare its traits is failing, with no form", async () => {

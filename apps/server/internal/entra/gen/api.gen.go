@@ -116,6 +116,7 @@ func (e EntraCredentialRequestKind) Valid() bool {
 const (
 	EntraGroupStateDeleted EntraGroupState = "deleted"
 	EntraGroupStatePresent EntraGroupState = "present"
+	EntraGroupStateRetired EntraGroupState = "retired"
 )
 
 // Valid indicates whether the value is a known member of the EntraGroupState enum.
@@ -124,6 +125,8 @@ func (e EntraGroupState) Valid() bool {
 	case EntraGroupStateDeleted:
 		return true
 	case EntraGroupStatePresent:
+		return true
+	case EntraGroupStateRetired:
 		return true
 	default:
 		return false
@@ -454,11 +457,13 @@ type EntraEvent struct {
 	Upn *string `json:"upn,omitempty"`
 }
 
-// EntraGroup One group the module keeps in the tenant for a Staff group (Entra design D14), by the directory's immutable object id: made by the module, or found by its mail nickname and adopted. Its members and its traits are Staff's; this is the tenant's side. A deleted group stays, marked deleted.
+// EntraGroup One group the module keeps in the tenant for a Staff group (Entra design D14), by the directory's immutable object id: made by the module, or found by its mail nickname and adopted. Its members and its traits are Staff's; this is the tenant's side. A deleted group stays, marked deleted; a security group the module made and Staff let go stays, marked retired: emptied of its people and kept, since the tenant deletes a security group for good.
 type EntraGroup struct {
-	CreatedAt time.Time `json:"createdAt"`
+	// AdoptionConfirmedAt When a holder of entra:manage confirmed the adoption of a group the module found rather than made (POST /groups/{objectId}/confirm). Until then the module writes nothing to that group — no name, no owner, no member, no delete. Absent for one not confirmed, and for one the module made, which needs no confirmation.
+	AdoptionConfirmedAt *time.Time `json:"adoptionConfirmedAt,omitempty"`
+	CreatedAt           time.Time  `json:"createdAt"`
 
-	// CreatedByUs True when the module created the group; false when it found one holding the mail nickname that it may write, and adopted it.
+	// CreatedByUs True when the module created the group; false when it found one holding the mail nickname that it may write, and adopted it — untrusted until confirmed (adoptionConfirmedAt).
 	CreatedByUs bool `json:"createdByUs"`
 
 	// DisplayName The name the module last wrote — Staff's name, with " (archived)" after it once Staff archived the group and keeps it.
@@ -476,7 +481,9 @@ type EntraGroup struct {
 
 	// ObjectId The group's object id in the tenant, immutable.
 	ObjectId openapi_types.UUID `json:"objectId"`
-	State    EntraGroupState    `json:"state"`
+
+	// State present; deleted (soft-deleted in the tenant, or a group the module did not make, left to the tenant); retired (a security group the module made, emptied of its people, renamed "… (archived)" and kept).
+	State EntraGroupState `json:"state"`
 
 	// Team True once the group became a team in Microsoft Teams.
 	Team bool `json:"team"`
@@ -485,7 +492,7 @@ type EntraGroup struct {
 	Type EntraGroupType `json:"type"`
 }
 
-// EntraGroupState defines model for EntraGroup.State.
+// EntraGroupState present; deleted (soft-deleted in the tenant, or a group the module did not make, left to the tenant); retired (a security group the module made, emptied of its people, renamed "… (archived)" and kept).
 type EntraGroupState string
 
 // EntraGroupType security or microsoft365, as the group was made; it never changes.
@@ -654,6 +661,9 @@ type ServerInterface interface {
 	// GetEntraGroups The module's groups
 	// (GET /api/v1/entra/groups)
 	GetEntraGroups(w http.ResponseWriter, r *http.Request)
+	// PostEntraGroupsByObjectIdConfirm Confirm an adopted group
+	// (POST /api/v1/entra/groups/{objectId}/confirm)
+	PostEntraGroupsByObjectIdConfirm(w http.ResponseWriter, r *http.Request, objectId openapi_types.UUID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -924,6 +934,32 @@ func (siw *ServerInterfaceWrapper) GetEntraGroups(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// PostEntraGroupsByObjectIdConfirm operation middleware
+func (siw *ServerInterfaceWrapper) PostEntraGroupsByObjectIdConfirm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "objectId" -------------
+	var objectId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "objectId", r.PathValue("objectId"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "objectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEntraGroupsByObjectIdConfirm(w, r, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1055,6 +1091,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/connection/test", wrapper.PostEntraConnectionTest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/events", wrapper.GetEntraEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/groups", wrapper.GetEntraGroups)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/groups/{objectId}/confirm", wrapper.PostEntraGroupsByObjectIdConfirm)
 
 	return m
 }
@@ -1882,6 +1919,64 @@ func (response GetEntraGroups403JSONResponse) VisitGetEntraGroupsResponse(w http
 	return err
 }
 
+type PostEntraGroupsByObjectIdConfirmRequestObject struct {
+	ObjectId openapi_types.UUID `json:"objectId"`
+}
+
+type PostEntraGroupsByObjectIdConfirmResponseObject interface {
+	VisitPostEntraGroupsByObjectIdConfirmResponse(w http.ResponseWriter) error
+}
+
+type PostEntraGroupsByObjectIdConfirm200JSONResponse EntraGroup
+
+func (response PostEntraGroupsByObjectIdConfirm200JSONResponse) VisitPostEntraGroupsByObjectIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraGroupsByObjectIdConfirm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEntraGroupsByObjectIdConfirm401JSONResponse) VisitPostEntraGroupsByObjectIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraGroupsByObjectIdConfirm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEntraGroupsByObjectIdConfirm403JSONResponse) VisitPostEntraGroupsByObjectIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraGroupsByObjectIdConfirm404Response struct {
+}
+
+func (response PostEntraGroupsByObjectIdConfirm404Response) VisitPostEntraGroupsByObjectIdConfirmResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetEntraAccounts The module's accounts
@@ -1917,6 +2012,9 @@ type StrictServerInterface interface {
 	// GetEntraGroups The module's groups
 	// (GET /api/v1/entra/groups)
 	GetEntraGroups(ctx context.Context, request GetEntraGroupsRequestObject) (GetEntraGroupsResponseObject, error)
+	// PostEntraGroupsByObjectIdConfirm Confirm an adopted group
+	// (POST /api/v1/entra/groups/{objectId}/confirm)
+	PostEntraGroupsByObjectIdConfirm(ctx context.Context, request PostEntraGroupsByObjectIdConfirmRequestObject) (PostEntraGroupsByObjectIdConfirmResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -2246,6 +2344,32 @@ func (sh *strictHandler) GetEntraGroups(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetEntraGroupsResponseObject); ok {
 		if err := validResponse.VisitGetEntraGroupsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEntraGroupsByObjectIdConfirm operation middleware
+func (sh *strictHandler) PostEntraGroupsByObjectIdConfirm(w http.ResponseWriter, r *http.Request, objectId openapi_types.UUID) {
+	var request PostEntraGroupsByObjectIdConfirmRequestObject
+
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEntraGroupsByObjectIdConfirm(ctx, request.(PostEntraGroupsByObjectIdConfirmRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEntraGroupsByObjectIdConfirm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEntraGroupsByObjectIdConfirmResponseObject); ok {
+		if err := validResponse.VisitPostEntraGroupsByObjectIdConfirmResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

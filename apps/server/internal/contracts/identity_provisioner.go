@@ -85,6 +85,8 @@ type IdentityProvisioner interface {
 	// keeps the field and the code, and calls again only when the values
 	// changed); ErrGroupNotManageable for a group the provider found that it
 	// may not write (dynamic membership, role-assignable, or another's);
+	// ErrGroupUnconfirmed for a group the provider found and adopted and
+	// nobody has confirmed yet, nothing written to it;
 	// ErrProviderUnavailable. What the provider could not do yet and will
 	// try again is ExternalGroup.Pending, never an error.
 	EnsureGroup(ctx context.Context, actor Actor, spec GroupSpec) (ExternalGroup, error)
@@ -92,11 +94,14 @@ type IdentityProvisioner interface {
 	// external ids: the missing added, the extra removed. Idempotent; a
 	// member it could not change is in MembersResult.Failed with a code, and
 	// the call answers no error for it. ErrGroupNotManageable for a group
-	// EnsureGroup never made.
+	// EnsureGroup never made; ErrGroupUnconfirmed for an adopted group
+	// nobody has confirmed yet, nothing written.
 	SetMembers(ctx context.Context, actor Actor, groupID string, memberExternalIDs []string) (MembersResult, error)
 	// DeleteGroup deletes the external group (restorable by an
-	// administrator for thirty days where the directory allows).
-	// Idempotent: a group already gone, or never made, answers nil.
+	// administrator for thirty days where the directory allows), or retires
+	// it where a delete could not be undone, or leaves a group the provider
+	// did not create to its directory, forgetting it. Idempotent: a group
+	// already gone, or never made, answers nil.
 	DeleteGroup(ctx context.Context, actor Actor, groupID string) error
 }
 
@@ -322,4 +327,11 @@ var (
 	// ErrGroupNotManageable: the external group is not one the provider may
 	// write (another's, or of a kind it does not manage).
 	ErrGroupNotManageable = errors.New("contracts: the external group is not manageable")
+	// ErrGroupUnconfirmed: the provider found a group it did not create
+	// and adopted it untrusted; a holder of the provider's permission must
+	// confirm the adoption before the provider writes to it. EnsureGroup
+	// adopting the group answers this, and so does every later write to it,
+	// nothing written, until the confirmation. Not a failure: the caller
+	// asks again later.
+	ErrGroupUnconfirmed = errors.New("contracts: the external group was adopted and is not yet confirmed")
 )

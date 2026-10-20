@@ -67,5 +67,7 @@ export const actionText = (action: string, t: Translate): string =>
 export const codeText = (code: string, t: Translate): string => {
   const [name, ...rest] = code.split(":");
   if (name === "refused" && known(`code.refused_${rest.join(":")}`)) return t(`code.refused_${rest.join(":")}`);
+  // A code that also comes with a detail (failed:<n>) has its own words alone.
+  if (rest.length === 0 && known(`code.${name}.alone`)) return t(`code.${name}.alone`);
   return known(`code.${name}`) ? t(`code.${name}`, { detail: rest.join(":") }) : code;
 };

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -136,7 +137,9 @@ func TestGroups_Lifecycle(t *testing.T) {
 }
 
 // A group no provider ever reached is deleted, its members leaving it with
-// an event each; one a provider made or found is group_synced, to archive.
+// an event each; one a provider made or found, one with a provider turned
+// on, or one the worker is sending right now (a live lease, its first sync
+// in flight) is group_synced, to archive (the review's LOW 5).
 func TestGroups_Delete(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -145,7 +148,9 @@ func TestGroups_Delete(t *testing.T) {
 
 	g := createGroup(t, hr, listedGroup("never-synced"))
 	do(t, hr, http.MethodPut, groupMembersPath(g.Id), map[string]any{"personIds": []int64{person}}, http.StatusOK, nil)
-	h.Exec(t, `INSERT INTO staff.group_traits (group_id, provider, values, state) VALUES ($1, 'entra', '{}', 'pending')`, g.Id)
+	// Turned on once and off again, never synced, its last lease lapsed.
+	h.Exec(t, `INSERT INTO staff.group_traits (group_id, provider, values, state, enabled, disabled_at, lease_until)
+		VALUES ($1, 'entra', '{}', 'pending', false, $2, $3)`, g.Id, h.Now(), h.Now().Add(-time.Minute))
 	do(t, hr, http.MethodDelete, groupPath(g.Id), nil, http.StatusNoContent, nil)
 	if n := h.Count(t, `SELECT count(*) FROM staff.groups WHERE id = $1`, g.Id); n != 0 {
 		t.Errorf("the group is still there")
@@ -164,6 +169,15 @@ func TestGroups_Delete(t *testing.T) {
 	found := createGroup(t, hr, listedGroup("found"))
 	h.Exec(t, `INSERT INTO staff.group_traits (group_id, provider, values, state, external_id) VALUES ($1, 'entra', '{}', 'failed', 'ext-1')`, found.Id)
 	refused(t, hr.Do(http.MethodDelete, groupPath(found.Id), nil), http.StatusConflict, "group_synced")
+
+	on := createGroup(t, hr, listedGroup("turned-on"))
+	h.Exec(t, `INSERT INTO staff.group_traits (group_id, provider, values, state) VALUES ($1, 'entra', '{}', 'pending')`, on.Id)
+	refused(t, hr.Do(http.MethodDelete, groupPath(on.Id), nil), http.StatusConflict, "group_synced")
+
+	inFlight := createGroup(t, hr, listedGroup("in-flight"))
+	h.Exec(t, `INSERT INTO staff.group_traits (group_id, provider, values, state, enabled, disabled_at, lease_id, lease_until)
+		VALUES ($1, 'entra', '{}', 'pending', false, $2, gen_random_uuid(), $3)`, inFlight.Id, h.Now(), h.Now().Add(time.Minute))
+	refused(t, hr.Do(http.MethodDelete, groupPath(inFlight.Id), nil), http.StatusConflict, "group_synced")
 }
 
 // A rule names what exists — a department, business unit, location or

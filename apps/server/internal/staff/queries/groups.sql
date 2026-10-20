@@ -271,10 +271,14 @@ WHERE group_id = @group_id AND provider = @provider AND lease_id = @lease_id::uu
 
 -- name: CountGroupTraitsSynced :one
 -- CountGroupTraitsSynced is how many of a group's sections ever reached the
--- provider — synced once, or holding the external group's id — which makes
--- the group one to archive, never delete.
+-- provider — synced once, or holding the external group's id — or may be
+-- reaching it now: turned on, or claimed by the worker under a live lease
+-- (its first sync in flight, the external id not written yet). Any makes
+-- the group one to archive, never delete: a delete would cascade the
+-- section away and orphan the group in the provider.
 SELECT count(*)::integer FROM staff.group_traits
-WHERE group_id = @group_id AND (synced_at IS NOT NULL OR external_id IS NOT NULL);
+WHERE group_id = @group_id
+  AND (synced_at IS NOT NULL OR external_id IS NOT NULL OR enabled OR lease_until > @now::timestamptz);
 
 -- name: ListFailedGroupTraits :many
 -- ListFailedGroupTraits is every failed section, by group name: the

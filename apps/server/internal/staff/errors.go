@@ -371,6 +371,16 @@ func providerUnavailable() gen.StaffProblem {
 	return gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
 }
 
+// groupProviderUnavailable is the 503 PUT /groups/{id}/traits/{provider}
+// answers when it turns a provider on that could not declare its traits:
+// the values cannot be checked, and nothing is written.
+func groupProviderUnavailable() gen.StaffProblem {
+	status := int32(http.StatusServiceUnavailable)
+	code, title := codeProviderUnavailable, "The provider is unavailable"
+	detail := "The provider could not declare the traits a group may carry, so the values cannot be checked. Nothing was changed; try again."
+	return gen.StaffProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
+}
+
 // passGone is the 409 POST /people/{id}/account/pass answers when there is
 // no pass to show: it was shown already, it expired, or none was issued.
 func passGone() gen.StaffProblem {
