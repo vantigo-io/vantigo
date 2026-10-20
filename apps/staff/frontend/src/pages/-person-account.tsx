@@ -389,7 +389,16 @@ const AccountLinkGroup = ({
     mutationFn: () => disablePersonAccount(person.id),
     onSuccess: (answer) => {
       queryClient.setQueryData(queryKey, answer);
-      setOutcome({ color: "teal", text: t(answer.link?.user ? "disableNowDone" : "disableNowNoAccount") });
+      const userDisabled = Boolean(answer.link?.user);
+      const directoryDisabled = answer.providerLink?.state === "disabled" || providerLink?.state === "enabled";
+      const done = userDisabled
+        ? directoryDisabled
+          ? "disableNowBothDone"
+          : "disableNowDone"
+        : directoryDisabled
+          ? "disableNowDirectoryDone"
+          : "disableNowNoAccount";
+      setOutcome({ color: "teal", text: t(done) });
     },
     onError: async (error) => {
       const code = codeOf(error);
