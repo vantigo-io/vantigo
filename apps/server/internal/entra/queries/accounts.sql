@@ -90,3 +90,9 @@ FROM entra.accounts;
 
 -- name: ListAccounts :many
 SELECT * FROM entra.accounts ORDER BY user_principal_name, object_id;
+
+-- name: DeleteAccount :exec
+-- DeleteAccount forgets the row of a user the tenant no longer holds, so the
+-- employee number can name the new user a rehire after a delete is given
+-- (D13: a new account). The events keep the old object id and its UPN.
+DELETE FROM entra.accounts WHERE object_id = @object_id;
