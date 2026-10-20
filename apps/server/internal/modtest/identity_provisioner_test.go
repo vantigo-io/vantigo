@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -291,31 +292,88 @@ func TestFakeIdentityProvisioner_StatusActorFailuresAndReports(t *testing.T) {
 	}
 }
 
-// The groups: one required choice trait; EnsureGroup creates once; and
-// SetMembers reconciles to exactly the given members.
+// The groups: a required choice and a bounded string declared; EnsureGroup
+// validates, creates once and records the owners; and SetMembers reconciles
+// to exactly the given members, but for the ones FailMembers named.
 func TestFakeIdentityProvisioner_Groups(t *testing.T) {
 	ctx := context.Background()
 	f, _ := newTestProvisioner()
-	traits := f.GroupTraits()
-	if len(traits) != 1 || traits[0].Key != "type" || traits[0].Type != "choice" || !traits[0].Required || len(traits[0].Choices) != 2 ||
+	traits, err := f.GroupTraits(ctx)
+	if err != nil || len(traits) != 2 || traits[0].Key != "type" || traits[0].Type != "choice" || !traits[0].Required || len(traits[0].Choices) != 2 ||
 		traits[0].Choices[0].Value != "security" || traits[0].Choices[1].Value != "microsoft365" {
-		t.Errorf("GroupTraits = %+v, want the required type choice of security and microsoft365", traits)
+		t.Errorf("GroupTraits = %+v, %v; want the required type choice of security and microsoft365 first", traits, err)
 	}
+	if len(traits) == 2 && (traits[1].Key != "mailNickname" || traits[1].Type != "string" || traits[1].Required || traits[1].MaxLength != 64) {
+		t.Errorf("GroupTraits[1] = %+v, want the optional mailNickname string of at most 64", traits[1])
+	}
+	f.FailWith("GroupTraits", errors.New("unreadable"))
+	if _, err := f.GroupTraits(ctx); err == nil {
+		t.Errorf("GroupTraits under FailWith answered no error")
+	}
+	f.FailWith("GroupTraits", nil)
+
 	if _, err := f.SetMembers(ctx, fakeWorker, "7", []string{"a"}); !errors.Is(err, contracts.ErrGroupNotManageable) {
 		t.Errorf("SetMembers before EnsureGroup = %v, want ErrGroupNotManageable", err)
 	}
-	g, err := f.EnsureGroup(ctx, fakeWorker, contracts.GroupSpec{GroupID: "7", Name: "Sales"})
+	for _, tc := range []struct {
+		name   string
+		values map[string]any
+		field  string
+		code   string
+	}{
+		{"no type", map[string]any{}, "type", contracts.TraitRequired},
+		{"an empty type", map[string]any{"type": ""}, "type", contracts.TraitRequired},
+		{"a type not among the choices", map[string]any{"type": "distribution"}, "type", contracts.TraitInvalid},
+		{"a type not a string", map[string]any{"type": 1}, "type", contracts.TraitInvalid},
+		{"a nickname too long", map[string]any{"type": "security", "mailNickname": strings.Repeat("a", 65)}, "mailNickname", contracts.TraitInvalid},
+	} {
+		_, err := f.EnsureGroup(ctx, fakeWorker, contracts.GroupSpec{GroupID: "7", Name: "Sales", Values: tc.values})
+		var traitErr *contracts.GroupTraitError
+		if !errors.As(err, &traitErr) || traitErr.Field != tc.field || traitErr.Code != tc.code {
+			t.Errorf("%s: EnsureGroup = %v, want the %s error on %s", tc.name, err, tc.code, tc.field)
+		}
+	}
+	if f.Owners("7") != nil {
+		t.Errorf("a refused EnsureGroup made the group")
+	}
+
+	values := map[string]any{"type": "security", "mailNickname": strings.Repeat("a", 64)}
+	g, err := f.EnsureGroup(ctx, fakeWorker, contracts.GroupSpec{GroupID: "7", Name: "Sales", Values: values, OwnerExternalIDs: []string{"o1", "o2"}})
 	if err != nil || !g.Created || g.ExternalID == "" {
 		t.Fatalf("EnsureGroup = %+v, %v; want created", g, err)
 	}
-	if again, _ := f.EnsureGroup(ctx, fakeWorker, contracts.GroupSpec{GroupID: "7", Name: "Sales"}); again.Created || again.ExternalID != g.ExternalID {
-		t.Errorf("EnsureGroup again = %+v, want the same group, not created", again)
+	if got := f.Owners("7"); !slices.Equal(got, []string{"o1", "o2"}) {
+		t.Errorf("Owners = %v, want o1 and o2", got)
 	}
-	if r, _ := f.SetMembers(ctx, fakeWorker, "7", []string{"a", "b"}); r.Added != 2 || r.Removed != 0 {
+	again, err := f.EnsureGroup(ctx, fakeWorker, contracts.GroupSpec{GroupID: "7", Name: "Sales", Values: values, OwnerExternalIDs: []string{"o2"}})
+	if err != nil || again.Created || again.ExternalID != g.ExternalID {
+		t.Errorf("EnsureGroup again = %+v, %v; want the same group, not created", again, err)
+	}
+	if got := f.Owners("7"); !slices.Equal(got, []string{"o2"}) {
+		t.Errorf("Owners after the second call = %v, want o2", got)
+	}
+	_, err = f.EnsureGroup(ctx, fakeWorker, contracts.GroupSpec{GroupID: "7", Name: "Sales", Values: map[string]any{"type": "microsoft365"}})
+	var traitErr *contracts.GroupTraitError
+	if !errors.As(err, &traitErr) || traitErr.Field != "type" || traitErr.Code != contracts.TraitImmutable || err.Error() == "" {
+		t.Errorf("EnsureGroup with another type = %v, want trait_immutable on type", err)
+	}
+
+	if r, _ := f.SetMembers(ctx, fakeWorker, "7", []string{"a", "b"}); r.Added != 2 || r.Removed != 0 || len(r.Failed) != 0 {
 		t.Errorf("SetMembers = %+v, want two added", r)
 	}
 	if r, _ := f.SetMembers(ctx, fakeWorker, "7", []string{"b", "c"}); r.Added != 1 || r.Removed != 1 {
 		t.Errorf("SetMembers again = %+v, want one added and one removed", r)
+	}
+	f.FailMembers("7", "d", contracts.MemberNotFound)
+	f.FailMembers("7", "b", contracts.MemberRefused)
+	r, _ := f.SetMembers(ctx, fakeWorker, "7", []string{"c", "d"})
+	if r.Added != 0 || r.Removed != 0 || len(r.Failed) != 2 ||
+		!slices.Contains(r.Failed, contracts.MemberFailure{ID: "d", Code: contracts.MemberNotFound}) ||
+		!slices.Contains(r.Failed, contracts.MemberFailure{ID: "b", Code: contracts.MemberRefused}) {
+		t.Errorf("SetMembers with two failures = %+v, want d and b failed and nothing changed", r)
+	}
+	if r, _ := f.SetMembers(ctx, fakeWorker, "7", []string{"c", "d"}); r.Added != 1 || r.Removed != 1 || len(r.Failed) != 0 {
+		t.Errorf("SetMembers after the failures = %+v, want d added and b removed: FailMembers holds once", r)
 	}
 	if err := f.DeleteGroup(ctx, fakeWorker, "7"); err != nil {
 		t.Errorf("DeleteGroup: %v", err)

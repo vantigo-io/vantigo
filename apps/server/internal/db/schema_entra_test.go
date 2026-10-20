@@ -26,6 +26,10 @@ const entraBaselineVersion = 61
 func TestEntraBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, entraBaselineVersion)
+	// What is pinned below is 00061's own schema: the later migrations —
+	// 00063's groups and the connection's two columns among them — are
+	// rolled back first, and pinned by their own tests.
+	migrateTo(t, url, entraBaselineVersion)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)
@@ -280,5 +284,116 @@ func TestEntraBaseline_DownDropsTheSchema(t *testing.T) {
 	if got := staffCollect(t, ctx, pool, "the entra schema", `
 		SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'entra'`); len(got) != 0 {
 		t.Errorf("schema entra after the down = %v, want it gone", got)
+	}
+}
+
+// entraGroupsVersion is 00063_entra_groups.sql, the module's groups in the
+// tenant and the connection's service principal and licences
+// (docs/superpowers/specs/2026-10-19-entra-design.md, D10 and D14; the plan,
+// docs/superpowers/plans/2026-10-20-entra-groups.md, task 2).
+const entraGroupsVersion = 63
+
+// TestEntraGroups_AppliesAndIsIdempotent proves the migration applies, rolls
+// back and re-applies cleanly, and pins what delivery D's module rests on:
+// entra.groups with every column's type, length, nullability and default,
+// keyed by the object id, one per Staff group id, its type and state held to
+// their values by CHECKs as the baseline's are; and the connection's two new
+// columns, the service principal null and the licences an empty array until
+// a test reads them. The Down drops the table and the two columns.
+func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, entraGroupsVersion)
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	columns := func(table string) []string {
+		return staffCollect(t, ctx, pool, "entra."+table+" columns", `
+			SELECT column_name || ':' || data_type || coalesce('(' || character_maximum_length || ')', '') || ':'
+			    || is_nullable || ':' || coalesce(column_default, '')
+			FROM information_schema.columns
+			WHERE table_schema = 'entra' AND table_name = $1
+			ORDER BY ordinal_position`, table)
+	}
+	if want := []string{
+		"object_id:uuid:NO:",
+		"group_id:character varying(60):NO:",
+		"key:character varying(60):NO:",
+		"display_name:character varying(256):NO:",
+		"mail_nickname:character varying(64):NO:",
+		"type:character varying(12):NO:",
+		"team_created_at:timestamp with time zone:YES:",
+		"created_by_us:boolean:NO:",
+		"state:character varying(10):NO:",
+		"last_members_at:timestamp with time zone:YES:",
+		"created_at:timestamp with time zone:NO:",
+		"updated_at:timestamp with time zone:NO:",
+	}; !equalStrings(columns("groups"), want) {
+		t.Errorf("entra.groups columns =\n%s\nwant\n%s", strings.Join(columns("groups"), "\n"), strings.Join(want, "\n"))
+	}
+	connection := columns("connection")
+	if tail := connection[max(len(connection)-2, 0):]; !equalStrings(tail, []string{
+		"service_principal_id:uuid:YES:",
+		"skus:jsonb:NO:'[]'::jsonb",
+	}) {
+		t.Errorf("entra.connection's last columns = %v, want service_principal_id and skus", tail)
+	}
+	if cols := primaryKeyColumns(t, ctx, pool, "entra", "groups"); !equalStrings(cols, []string{"object_id"}) {
+		t.Errorf("entra.groups primary key = %v, want [object_id]", cols)
+	}
+	if got := staffCollect(t, ctx, pool, "the groups' index", `
+		SELECT indexdef FROM pg_indexes WHERE schemaname = 'entra' AND tablename = 'groups' AND indexname NOT LIKE '%_pkey'`); !equalStrings(got, []string{
+		"CREATE UNIQUE INDEX ux_entra_groups_group_id ON entra.groups USING btree (group_id)",
+	}) {
+		t.Errorf("entra.groups indexes = %v", got)
+	}
+	if got := staffCollect(t, ctx, pool, "the connection's new columns", `
+		SELECT coalesce(service_principal_id::text, 'null') || ':' || skus::text FROM entra.connection`); !equalStrings(got, []string{"null:[]"}) {
+		t.Errorf("the seeded connection = %v, want no service principal and no SKUs", got)
+	}
+
+	group := func(groupID, kind, state string) error {
+		_, err := pool.Exec(ctx, `
+			INSERT INTO entra.groups (object_id, group_id, key, display_name, mail_nickname, type, created_by_us, state, created_at, updated_at)
+			VALUES ($1, $2, 'sales', 'Sales', 'sales', $3, true, $4, now(), now())`, uuid.New(), groupID, kind, state)
+		return err
+	}
+	if err := group("1001", "security", "present"); err != nil {
+		t.Fatalf("a group: %v", err)
+	}
+	if err := group("1002", "microsoft365", "deleted"); err != nil {
+		t.Errorf("a deleted Microsoft 365 group: %v", err)
+	}
+	if err := group("1001", "security", "present"); !uniqueViolationOf(err, "ux_entra_groups_group_id") {
+		t.Errorf("a second group for Staff's 1001: %v, want ux_entra_groups_group_id", err)
+	}
+	if err := group("1003", "distribution", "present"); !checkViolationOf(err, "groups_type_check") {
+		t.Errorf("an unknown type: %v, want groups_type_check", err)
+	}
+	if err := group("1004", "security", "archived"); !checkViolationOf(err, "groups_state_check") {
+		t.Errorf("an unknown state: %v, want groups_state_check", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE entra.connection SET service_principal_id = $1,
+		    skus = '[{"skuId": "6fd2c87f-b296-42f0-b197-1e91e994b900", "skuPartNumber": "ENTERPRISEPACK", "enabled": 25, "consumed": 20}]'
+		WHERE id = 1`, uuid.New()); err != nil {
+		t.Errorf("write the service principal and the SKUs: %v", err)
+	}
+
+	migrateTo(t, url, entraGroupsVersion-1)
+	if got := staffCollect(t, ctx, pool, "entra tables after the rollback", `
+		SELECT table_name FROM information_schema.tables WHERE table_schema = 'entra' AND table_name = 'groups'`); len(got) != 0 {
+		t.Errorf("the rollback left entra.groups")
+	}
+	for _, name := range []string{"service_principal_id", "skus"} {
+		if got := staffCollect(t, ctx, pool, name, `
+			SELECT column_name FROM information_schema.columns
+			WHERE table_schema = 'entra' AND table_name = 'connection' AND column_name = $1`, name); len(got) != 0 {
+			t.Errorf("the rollback left entra.connection.%s", name)
+		}
 	}
 }

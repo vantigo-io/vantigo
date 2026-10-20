@@ -207,6 +207,12 @@ const staffSettingsAttentionTypes = [
   "secretExpired",
 ];
 
+/**
+ * Staff's group items (Entra delivery D): one per group a provider could not
+ * sync, entityId the group's id, dealt with on the group's page.
+ */
+const staffGroupAttentionTypes = ["groupSyncFailed"];
+
 /** Staff's attention types about the requests waiting a decision: the approvals inbox's (delivery B). */
 const staffApprovalAttentionTypes = ["absenceAwaitingDecision", "hrOnlyAwaitingDecision"];
 
@@ -309,6 +315,7 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     if (item.type === "hrOnlySelfApproved") return `${person}?tab=absence`;
     if (staffApprovalAttentionTypes.includes(item.type)) return "/staff/absence";
     if (staffSettingsAttentionTypes.includes(item.type)) return "/staff/settings";
+    if (staffGroupAttentionTypes.includes(item.type)) return `/staff/groups/${encodeURIComponent(item.entityId)}`;
     return "/staff";
   }
   return "/communications/inbox";
@@ -397,6 +404,7 @@ const staffAttentionTitleKeys: Record<string, string> = {
   entraFailing: "dashboard.staffEntraFailing",
   secretExpiring: "dashboard.staffSecretExpiring",
   secretExpired: "dashboard.staffSecretExpired",
+  groupSyncFailed: "dashboard.staffGroupSyncFailed",
 };
 
 /**

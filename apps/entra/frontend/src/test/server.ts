@@ -36,6 +36,7 @@ export const unconfigured = (): EntraConnection => ({
   settings: defaultSettings(),
   credentials: [],
   accounts: { count: 0, enabled: 0, disabled: 0, deleted: 0 },
+  groups: { count: 0 },
   version: 1,
 });
 
@@ -63,6 +64,7 @@ export const connected = (overrides: Partial<EntraConnection> = {}): EntraConnec
   settings: { ...defaultSettings(), upnDomain: "contoso.no" },
   credentials: [credential()],
   accounts: { count: 3, enabled: 2, disabled: 1, deleted: 0 },
+  groups: { count: 0 },
   version: 4,
   ...overrides,
 });

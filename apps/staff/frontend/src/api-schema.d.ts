@@ -710,6 +710,158 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List groups
+         * @description Every group, archived ones included, by name, with how many members and owners each has and where its sync stands with each provider HR turned on for it — without the members and owners themselves. staff:manage's alone; anyone else gets the uniform 403.
+         */
+        get: operations["getStaffGroups"];
+        put?: never;
+        /**
+         * Add a group
+         * @description Adds a group with its key, name and kind and, for a derived group, its rule. A derived group's members are materialised by the accounts worker's next cycle; a listed one starts empty.
+         */
+        post: operations["postStaffGroups"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a group
+         * @description One group with its members and owners by name.
+         */
+        get: operations["getStaffGroupsById"];
+        /**
+         * Change a group
+         * @description Replaces a group's name, description, kind and rule; the key never changes. A change of the name or the description is carried to every provider at the worker's next cycle; a change of the rule, to the members at the next materialisation.
+         */
+        put: operations["putStaffGroupsById"];
+        post?: never;
+        /**
+         * Delete a group
+         * @description Deletes a group that never reached a provider — its members, owners and sections with it. One a provider has made or found in its directory is refused group_synced; archive it instead.
+         */
+        delete: operations["deleteStaffGroupsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/groups/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a group
+         * @description Archives a group: it keeps its members as they stood and becomes read-only, and each provider's section is retired at the worker's next cycles as the settings' deleteExternalAfterDays says — the group deleted in the directory after that many days, or renamed "… (archived)" and kept when it is never. Archiving it again changes nothing.
+         */
+        post: operations["postStaffGroupsByIdArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/groups/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a listed group's members
+         * @description Replaces a listed group's members with exactly these people, from today; each person who joins or leaves is a group_joined or group_left event on the person, by the caller. A derived group's members are its rule's, refused group_derived.
+         */
+        put: operations["putStaffGroupsByIdMembers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/groups/{id}/owners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a group's owners
+         * @description Replaces a group's owners with exactly these people — the owners a provider names on the group in its directory beside itself, at the worker's next cycle. No event is recorded.
+         */
+        put: operations["putStaffGroupsByIdOwners"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/groups/{id}/traits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a group's providers
+         * @description The group's section under every provider in the IdentityProvisioner slot: the traits it declares, the values Staff stores, whether HR has it on for the group and where the sync stands. The declaration is the provider's answer, read from its own state, never its directory; a provider that could not answer is listed failing, with no traits.
+         */
+        get: operations["getStaffGroupsByIdTraits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/groups/{id}/traits/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a group's provider
+         * @description Turns a provider on for the group with the trait values, checked against the provider's declaration — the worker then makes or updates the group in the provider's directory at its next cycle — or off, which retires it there as the settings' deleteExternalAfterDays says. Turning off a provider never turned on writes nothing. The provider's own rules (a type that cannot change, a team without a person as owner) are judged when the worker sends the values, and land on the section as lastError beside the trait.
+         */
+        put: operations["putStaffGroupsByIdTraitsByProvider"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/holiday-adjustments/{id}": {
         parameters: {
             query?: never;
@@ -1022,6 +1174,26 @@ export interface paths {
          * @description The caller's own data in one file (design S16, reading 31 and 35): their record, next of kin, roles, employments with their terms, self-service link, documents' metadata and history, read in one snapshot. The sealed values are left out — the national identity number is its kind and whether one is on file, the bank account its kind and last four digits — and so are HR's notes and the terms' notes; the history is shaped as the person reads it on My page. Served as an attachment named staff-<employeeNumber>-personal-data.json, and never cached. The person's own copy records no event. A caller linked to nobody gets the 404 no_person.
          */
         get: operations["getStaffMeExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/me/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my own groups
+         * @description The groups the caller is in, archived groups aside, by name — the names alone. A caller linked to nobody gets the 404 no_person.
+         */
+        get: operations["getStaffMeGroups"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2836,7 +3008,7 @@ export interface components {
             at: string;
             /** Format: int64 */
             id: number;
-            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed and account_mismatched for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the kinds grow with the module. */
+            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed and account_mismatched for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the groups' — group_joined and group_left, naming the group (groupId, groupName, groupKey) and how the person came in or went (source, listed or derived); the kinds grow with the module. */
             kind: string;
             /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}. An erase records up to two: the health kinds (health, cases, childSick, withdrawal, pregnancyHealth) in one of class E, listed to the person and staff:personal-data alone, and D and A in one read by HR and listed as the hold's kinds are — not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone. */
             payload: {
@@ -2859,6 +3031,193 @@ export interface components {
          * @enum {string}
          */
         StaffGender: "female" | "male" | "other" | "unspecified";
+        /** @description A group in Staff (Entra design D9): listed — HR names the members — or derived, its members the people its rule yields on the business day, which the accounts worker materialises before it works the links. Its key is the providers' reference to it and never changes. members and owners are answered by GET /groups/{id} and the writes of one group, never by the list. groups are staff:manage's alone. */
+        StaffGroup: {
+            /**
+             * Format: date-time
+             * @description When it was archived. Absent while it is in use. An archived group is read-only; its sections are retired in each provider as the settings' deleteExternalAfterDays says.
+             */
+            archivedAt?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Absent when not set. */
+            description?: string;
+            /** Format: int64 */
+            id: number;
+            /** @description Lower-case letters, digits and hyphens, unique, set on create and never changed — the reference a provider keeps the group by (its mail nickname in Microsoft Entra ID, unless a trait says otherwise). */
+            key: string;
+            kind: components["schemas"]["StaffGroupKind"];
+            /** Format: int32 */
+            memberCount: number;
+            /** @description The members by name, how each came in and since when. Only on one group's own answers. */
+            members?: components["schemas"]["StaffGroupMember"][];
+            name: string;
+            /** Format: int32 */
+            ownerCount: number;
+            /** @description The owners by name — the people who own the group in each provider's directory beside the provider itself. Only on one group's own answers. */
+            owners?: components["schemas"]["StaffGroupOwner"][];
+            /** @description Each provider HR has turned on for the group, or had, with where its sync stands. Empty when none. */
+            providers: components["schemas"]["StaffGroupProviderState"][];
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on PUT /groups/{id}.
+             */
+            revision: number;
+            rule?: components["schemas"]["StaffGroupRule"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * @description listed — HR names the members — or derived — the rule does, daily.
+         * @enum {string}
+         */
+        StaffGroupKind: "listed" | "derived";
+        /** @description One member of a group. */
+        StaffGroupMember: {
+            displayName: string;
+            employeeNumber: string;
+            /** Format: int64 */
+            personId: number;
+            /**
+             * Format: date
+             * @description The day the person joined the group.
+             */
+            since: string;
+            source: components["schemas"]["StaffGroupKind"];
+        };
+        /** @description A listed group's members, exactly; the people not named leave it, each change an event on the person (group_joined, group_left). */
+        StaffGroupMembersRequest: {
+            /** @description Existing people, not erased; a duplicate counts once. */
+            personIds: number[];
+        };
+        /** @description One owner of a group. */
+        StaffGroupOwner: {
+            displayName: string;
+            employeeNumber: string;
+            /** Format: int64 */
+            personId: number;
+        };
+        /** @description A group's owners, exactly. No event is recorded. */
+        StaffGroupOwnersRequest: {
+            /** @description Existing people, not erased; a duplicate counts once. */
+            personIds: number[];
+        };
+        /** @description A group's section under one provider in the IdentityProvisioner slot (Entra design D10): the traits the provider declares — the page renders them as a form from this description alone — the values Staff stores for the group, whether HR has the provider on for it, and where the accounts worker's sync stands. Codes only: lastError never carries the directory's words. */
+        StaffGroupProvider: {
+            /** @description Whether HR has the provider on for the group. False when it never was. */
+            enabled: boolean;
+            /** @description The group's id in the provider's directory. Absent until the provider made or found it. */
+            externalId?: string;
+            /** @description The provider's key, entra. */
+            key: string;
+            /** @description The code of the last sync's failure, absent when it did not fail: a trait's code (trait_required, trait_invalid, trait_immutable, trait_needs_owner — lastErrorField names the trait), group_not_manageable (the directory holds a group by the key the provider may not write — dynamic, role-assignable or another's), call_failed, or members_failed:<n> (n members the provider could not change, tried again at the next sync). */
+            lastError?: string;
+            /** @description The trait lastError names, absent when it names none. */
+            lastErrorField?: string;
+            /** @description The provider's display name, Microsoft Entra ID. */
+            name: string;
+            /**
+             * Format: date-time
+             * @description When the group was renamed "… (archived)" and kept in the provider's directory, the settings' deleteExternalAfterDays being never. Absent when it was not.
+             */
+            retiredAt?: string;
+            state?: components["schemas"]["StaffGroupSyncState"];
+            /** @description The provider's status as it answers it, as StaffIdentityProvider's — unconfigured, connected or failing; failing too when its traits could not be read, and traits is then empty. */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the worker last brought the group in the provider's directory in line. Absent when it never has.
+             */
+            syncedAt?: string;
+            /** @description The traits the provider declares, in its order. */
+            traits: components["schemas"]["StaffGroupTraitDeclaration"][];
+            /** @description The values Staff stores for the group under the provider, by trait key. Empty when it stores none. */
+            values: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description A provider HR has turned on for a group, or had, as the list shows it. */
+        StaffGroupProviderState: {
+            enabled: boolean;
+            /** @description The provider's key, entra. */
+            key: string;
+            state: components["schemas"]["StaffGroupSyncState"];
+        };
+        /** @description A group's fields. The key is set on create and never changed. */
+        StaffGroupRequest: {
+            /** @description Up to 500 characters. Left out, it is cleared. */
+            description?: string;
+            /** @description On create: 1 to 60 lower-case letters, digits or hyphens, starting with a letter or a digit, unique. On a change it is left out or the group's own; another is a field error. */
+            key?: string;
+            kind: components["schemas"]["StaffGroupKind"];
+            /** @description 1 to 120 characters. */
+            name: string;
+            rule?: components["schemas"]["StaffGroupRule"];
+        };
+        /** @description A derived group's rule: one predicate over the register, judged on the business day against the employments and terms in force — employed (everyone with an employment in force), department (the terms name the department id, or, with includeBelow, one beneath it), businessUnit (the employment's unit is id), location (the terms name location id), employeeType (the terms' employee type is value), reportsTo (the person id is their manager today, one level). Required for a derived group, refused for a listed one. */
+        StaffGroupRule: {
+            /**
+             * Format: int64
+             * @description The department, business unit, location or person the rule names; required for those four kinds, refused for the others. An archived one is admitted.
+             */
+            id?: number;
+            /** @description department only — the departments beneath it too. */
+            includeBelow?: boolean;
+            /** @enum {string} */
+            kind: "employed" | "department" | "businessUnit" | "location" | "employeeType" | "reportsTo";
+            /** @description employeeType only — the employee type, one of the terms' values. */
+            value?: string;
+        };
+        /**
+         * @description Where a group's sync with a provider stands: pending (the worker has yet to send what HR saved), synced, failed (lastError says why), retired (renamed "… (archived)" and kept in the directory) or deleted (deleted in the directory). A retired or deleted section is never synced again until HR turns the provider on anew.
+         * @enum {string}
+         */
+        StaffGroupSyncState: "pending" | "synced" | "failed" | "retired" | "deleted";
+        /** @description One value a choice or list trait admits. */
+        StaffGroupTraitChoice: {
+            label: components["schemas"]["StaffGroupTraitText"];
+            value: string;
+        };
+        /** @description One trait a group may carry for a provider, as the provider declares it (Entra design D10): Staff renders it as a form field from this alone — bool a switch, string a text field of at most maxLength characters, choice one of choices, list any of choices — and checks a value against it when it is saved. */
+        StaffGroupTraitDeclaration: {
+            /** @description For choice and list, the values admitted. Absent for the others. */
+            choices?: components["schemas"]["StaffGroupTraitChoice"][];
+            /** @description The value an empty form starts with, of the trait's type. Absent when there is none. */
+            default?: unknown;
+            description?: components["schemas"]["StaffGroupTraitText"];
+            /** @description The provider's page about the setting. Absent when there is none. */
+            docUrl?: string;
+            /** @description The trait's key, which values are keyed by and a field error names. */
+            key: string;
+            label: components["schemas"]["StaffGroupTraitText"];
+            /**
+             * Format: int32
+             * @description For string, the longest value admitted, in characters. Absent when unbounded.
+             */
+            maxLength?: number;
+            /** @description Whether turning the provider on needs a value. */
+            required: boolean;
+            /** @enum {string} */
+            type: "bool" | "string" | "choice" | "list";
+        };
+        /** @description A text the provider gives in each language; nb absent when it gave none, and English is shown instead. */
+        StaffGroupTraitText: {
+            en: string;
+            nb?: string;
+        };
+        /** @description A group's sections, one for every provider in the IdentityProvisioner slot, in the slot's order — whether HR has turned it on for the group or not. */
+        StaffGroupTraits: {
+            providers: components["schemas"]["StaffGroupProvider"][];
+        };
+        /** @description Turns a provider on for a group with the trait values, or off. */
+        StaffGroupTraitsRequest: {
+            /** @description True turns the provider on: the values are checked against the provider's declaration and the worker sends them at its next cycle. False turns it off: the values are kept and the worker retires the group in the provider's directory as the settings' deleteExternalAfterDays says — deleted after that many days, or renamed "… (archived)" and kept when it is never. */
+            enabled: boolean;
+            /** @description The values by trait key: a bool for bool, a string for string and choice, an array of strings for list. A key the provider does not declare, a required trait left out, a value not among its choices or longer than its maxLength is a field error keyed by the trait. Ignored when enabled is false. */
+            values?: {
+                [key: string]: unknown;
+            };
+        };
         /** @description A person's holiday account for a year in working days (design §4): remaining is the entitlement and both carry-ins less taken; pending is shown apart. */
         StaffHolidayAccount: {
             /**
@@ -3442,6 +3801,8 @@ export interface components {
             address: components["schemas"]["StaffPersonAccountAddress"];
             /** @description The directory profile (Entra design D8): every field the provider writes on the person's external account, in its order, with whether the installation writes it and the value it would carry today — the person's own data as the directory would see it. Absent when the person's kind names no provider. */
             directoryProfile?: components["schemas"]["StaffDirectoryField"][];
+            /** @description The groups the person is in, archived groups aside, by name, with how each came in and since when (Entra design D9) — the groups a provider makes them a member of, and whose licences they get. */
+            groups?: components["schemas"]["StaffPersonGroup"][];
             link?: components["schemas"]["StaffAccountLink"];
             providerLink?: components["schemas"]["StaffProviderLink"];
             /** @description Whether Staff provides the person with a user. */
@@ -3492,6 +3853,20 @@ export interface components {
              * @description The day to enable the account from; null or left out derives it from the employments.
              */
             provisionFrom?: string | null;
+        };
+        /** @description A group a person is in, archived groups aside. */
+        StaffPersonGroup: {
+            /** Format: int64 */
+            id: number;
+            /** @description Absent on My page's list, which names the groups only. */
+            key?: string;
+            name: string;
+            /**
+             * Format: date
+             * @description The day the person joined it. Absent on My page's list.
+             */
+            since?: string;
+            source?: components["schemas"]["StaffGroupKind"];
         };
         /** @description A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody. */
         StaffPersonLink: {
@@ -3763,7 +4138,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued) and provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory; archive it instead), group_derived (409: the members of a derived group are its rule's) and group_archived (409: a change of an archived group, its members, owners or providers). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -4132,7 +4507,7 @@ export interface components {
         /**
          * @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. The host words the sentence from `type`; `title` is the name of the thing — a person's name — or, for the three items about the installation, an English sentence the host replaces. "Today" is the day in the settings' time zone; a date-only occurredAt is that day at midnight UTC.
          *
-         *     Fifty types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie''s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt the ferie''s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (the external kind): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created for the local kind, the person's kind now one that never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). The provider items (delivery B, Entra design D7; staff:manage alone, the same way) are read from the person's provider link as the worker wrote it, and from what the worker last saw of each provider (the settings' provider_status), never by asking the provider at read time; they are named for Entra, though their codes are the slot's. One per person, as above, unless said: `accountNotArrived`: Staff announced the external account to identity more than ninety days ago and no user has arrived for it; occurredAt the announcement. `accountAmbiguousInEntra`: two accounts in the directory hold the person's employee number. `accountAddressTakenInEntra`: the person's work email is another account's in the directory. `accountUnconfirmedInEntra`: the directory holds an account under the person's employee number that Vantigo did not create; a holder of entra:manage confirms the adoption on the Microsoft Entra ID page before Staff acts on it. `accountSyncedOnPremises`: the account is synchronised from an on-premises directory, whose attributes the provider cannot write. `accountPrivilegedInEntra`: the account holds an administrative role in the directory (refused, or reported privileged), which an administrator handles by hand. `hireDateNotWritten`: the directory refused the hire date. `licenceUnavailable`: a licence of the person's groups could not be assigned, none being left — one per person whatever the licences; no title names the licence. `passUnrevealed`: the provider issued a pass for the person a day ago or more and nobody has shown it; occurredAt when it was issued. `managerNotInEntra`: the person's manager has no account in the directory, so the account carries no manager. Four are the installation's, one each with entityId the literal 'settings', id the type, count the people of a provider's kind whose flag is on and occurredAt when the worker last checked the provider, raised only while someone has that kind: `entraNotConnected` (the provider has no connection yet), `entraFailing` (its last check failed — a credential refused or consent withdrawn), `secretExpiring` (the newest valid client secret ends within thirty days), `secretExpired` (it has ended). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items; on a provider link, provider_unavailable to entraNotConnected or entraFailing by the provider's status, external_ambiguous, external_address_taken, external_synced_on_premises, external_privileged and external_unconfirmed to their items, the reported privileged to accountPrivilegedInEntra, hire_date_not_written to hireDateNotWritten, licence_unavailable to licenceUnavailable, manager_not_in_entra to managerNotInEntra, user_gone to accountUserGone and invalid_actor to accountFailing. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
+         *     Fifty-one types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie''s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt the ferie''s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (the external kind): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created for the local kind, the person's kind now one that never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). The provider items (delivery B, Entra design D7; staff:manage alone, the same way) are read from the person's provider link as the worker wrote it, and from what the worker last saw of each provider (the settings' provider_status), never by asking the provider at read time; they are named for Entra, though their codes are the slot's. One per person, as above, unless said: `accountNotArrived`: Staff announced the external account to identity more than ninety days ago and no user has arrived for it; occurredAt the announcement. `accountAmbiguousInEntra`: two accounts in the directory hold the person's employee number. `accountAddressTakenInEntra`: the person's work email is another account's in the directory. `accountUnconfirmedInEntra`: the directory holds an account under the person's employee number that Vantigo did not create; a holder of entra:manage confirms the adoption on the Microsoft Entra ID page before Staff acts on it. `accountSyncedOnPremises`: the account is synchronised from an on-premises directory, whose attributes the provider cannot write. `accountPrivilegedInEntra`: the account holds an administrative role in the directory (refused, or reported privileged), which an administrator handles by hand. `hireDateNotWritten`: the directory refused the hire date. `licenceUnavailable`: a licence of the person's groups could not be assigned, none being left — one per person whatever the licences; no title names the licence. `passUnrevealed`: the provider issued a pass for the person a day ago or more and nobody has shown it; occurredAt when it was issued. `managerNotInEntra`: the person's manager has no account in the directory, so the account carries no manager. Four are the installation's, one each with entityId the literal 'settings', id the type, count the people of a provider's kind whose flag is on and occurredAt when the worker last checked the provider, raised only while someone has that kind: `entraNotConnected` (the provider has no connection yet), `entraFailing` (its last check failed — a credential refused or consent withdrawn), `secretExpiring` (the newest valid client secret ends within thirty days), `secretExpired` (it has ended). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items; on a provider link, provider_unavailable to entraNotConnected or entraFailing by the provider's status, external_ambiguous, external_address_taken, external_synced_on_premises, external_privileged and external_unconfirmed to their items, the reported privileged to accountPrivilegedInEntra, hire_date_not_written to hireDateNotWritten, licence_unavailable to licenceUnavailable, manager_not_in_entra to managerNotInEntra, user_gone to accountUserGone and invalid_actor to accountFailing. `groupSyncFailed` (staff:manage alone, Entra design D14): a group's section under a provider the accounts worker could not sync — a trait value the provider refused, a group in its directory it may not manage, or its calls failing — one per section, id `groupSyncFailed/<groupId>/<provider>`, entityId the group's id, title the group's name and nothing more (the code is on the group page), occurredAt today; it clears when the sync succeeds. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
          */
         StaffStatsAttentionItem: {
             /**
@@ -4140,14 +4515,14 @@ export interface components {
              * @description How many the item stands for — the failing ledger rows, the headcount of a threshold, the requests waiting, or the links an installation account item stands for. Absent on the other types.
              */
             count?: number;
-            /** @description The person's id, or the literal 'retention', 'thresholds', 'approvals' or 'settings', or the headcount threshold ('5', '30', '50'). */
+            /** @description The person's id, a group's id (groupSyncFailed), or the literal 'retention', 'thresholds', 'approvals' or 'settings', or the headcount threshold ('5', '30', '50'). */
             entityId: string;
             id: string;
             /** Format: date-time */
             occurredAt: string;
             title: string;
             /** @enum {string} */
-            type: "contractOverdue" | "probationEnding" | "temporaryNoticeDue" | "temporaryConverts" | "reportsWithoutManager" | "reassessmentDue" | "retentionFailing" | "otpThreshold" | "headcountThreshold" | "selfApproved" | "holidayAffectedBySickness" | "absenceAwaitingDecision" | "hrOnlyAwaitingDecision" | "hrOnlySelfApproved" | "sickMilestoneDue" | "holidayUntaken" | "mainPeriodShort" | "accountNoEmployment" | "accountEmailMissing" | "accountNotFound" | "accountNotManaged" | "accountBlockedByOwner" | "accountDisabledByOwner" | "accountUserGone" | "accountPrivileged" | "accountMismatch" | "accountModeChanged" | "accountEmailDiffers" | "accountEmailTaken" | "accountNumberTaken" | "accountFailing" | "invitationUnanswered" | "invitationRevoked" | "employeeRoleMissing" | "employeeRoleUnsafe" | "accountModeMismatch" | "entraNotConnected" | "entraFailing" | "accountNotArrived" | "accountAmbiguousInEntra" | "accountAddressTakenInEntra" | "accountUnconfirmedInEntra" | "accountSyncedOnPremises" | "accountPrivilegedInEntra" | "hireDateNotWritten" | "licenceUnavailable" | "passUnrevealed" | "secretExpiring" | "secretExpired" | "managerNotInEntra";
+            type: "contractOverdue" | "probationEnding" | "temporaryNoticeDue" | "temporaryConverts" | "reportsWithoutManager" | "reassessmentDue" | "retentionFailing" | "otpThreshold" | "headcountThreshold" | "selfApproved" | "holidayAffectedBySickness" | "absenceAwaitingDecision" | "hrOnlyAwaitingDecision" | "hrOnlySelfApproved" | "sickMilestoneDue" | "holidayUntaken" | "mainPeriodShort" | "accountNoEmployment" | "accountEmailMissing" | "accountNotFound" | "accountNotManaged" | "accountBlockedByOwner" | "accountDisabledByOwner" | "accountUserGone" | "accountPrivileged" | "accountMismatch" | "accountModeChanged" | "accountEmailDiffers" | "accountEmailTaken" | "accountNumberTaken" | "accountFailing" | "invitationUnanswered" | "invitationRevoked" | "employeeRoleMissing" | "employeeRoleUnsafe" | "accountModeMismatch" | "entraNotConnected" | "entraFailing" | "accountNotArrived" | "accountAmbiguousInEntra" | "accountAddressTakenInEntra" | "accountUnconfirmedInEntra" | "accountSyncedOnPremises" | "accountPrivilegedInEntra" | "hireDateNotWritten" | "licenceUnavailable" | "passUnrevealed" | "secretExpiring" | "secretExpired" | "managerNotInEntra" | "groupSyncFailed";
         };
         /** @description The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out. */
         StaffStructure: {
@@ -7066,6 +7441,571 @@ export interface operations {
             };
         };
     };
+    getStaffGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGroup"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postStaffGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGroup"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; a field error when another group has the key, a derived group has no rule or a listed one has one, or the rule names a department, business unit, location or person that does not exist, an employee type the terms do not know, or includeBelow on a kind other than department. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getStaffGroupsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGroup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffGroupsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the row was read at, as the response's revision gave it — bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGroup"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, as on the create; a key other than the group's own is a field error. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, or group_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    deleteStaffGroupsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — group_synced: a provider has the group in its directory; archive it instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffGroupsByIdArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGroup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffGroupsByIdMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffGroupMembersRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the group with its members and owners. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGroup"];
+                };
+            };
+            /** @description Bad Request — a field error on personIds when one names no person, or an erased one. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — group_derived (the group's members are its rule's) or group_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    putStaffGroupsByIdOwners: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffGroupOwnersRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the group with its members and owners. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGroup"];
+                };
+            };
+            /** @description Bad Request — a field error on personIds when one names no person, or an erased one. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — group_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffGroupsByIdTraits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGroupTraits"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffGroupsByIdTraitsByProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description The provider's key, entra. */
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffGroupTraitsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the group's section under the provider. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGroupProvider"];
+                };
+            };
+            /** @description Bad Request — field errors keyed by the trait (values.<key>), each with its code: trait_required, trait_invalid; a key the provider does not declare is a field error too. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such group, or no such provider in the slot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — group_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     deleteStaffHolidayAdjustmentsById: {
         parameters: {
             query?: never;
@@ -8140,6 +9080,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffPersonalData"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person, the caller is linked to no person. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffMeGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonGroup"][];
                 };
             };
             /** @description Unauthorized */

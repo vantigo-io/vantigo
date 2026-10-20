@@ -264,8 +264,9 @@ func livePass(row store.EntraAccount, now time.Time) bool {
 
 // GroupTraits declares the traits a group may carry for Entra (design D10):
 // its type, which D's EnsureGroup creates and never changes, and its mail
-// nickname. Staff renders the form from this alone.
-func (p *provisioner) GroupTraits() []contracts.GroupTrait {
+// nickname. Staff renders the form from this alone. It reads nothing yet,
+// so it never fails.
+func (p *provisioner) GroupTraits(context.Context) ([]contracts.GroupTrait, error) {
 	return []contracts.GroupTrait{
 		{
 			Key:   "type",
@@ -293,7 +294,7 @@ func (p *provisioner) GroupTraits() []contracts.GroupTrait {
 			},
 			DocURL: "https://learn.microsoft.com/en-us/graph/api/resources/group?view=graph-rest-1.0",
 		},
-	}
+	}, nil
 }
 
 // EnsureGroup answers ErrGroupNotManageable: the module manages no group in

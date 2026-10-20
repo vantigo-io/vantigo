@@ -17,10 +17,12 @@ import (
 // roles, their employments and terms, their link and their documents — and
 // delivery B's absence tables (Task 6): the absences, the holiday
 // adjustments, the sick-leave cases and their milestones, and the types and
-// schemes they name.
+// schemes they name — and Entra delivery D's groups, their members, owners
+// and sections per provider.
 var classedTables = []string{
 	"people", "next_of_kin", "person_roles", "employments", "employment_terms", "identity_links", "documents",
 	"absences", "holiday_adjustments", "sick_cases", "sick_case_milestones", "absence_types", "holiday_schemes",
+	"groups", "group_members", "group_owners", "group_traits",
 }
 
 // Every column of the tables the erase reaches has a class, and every class

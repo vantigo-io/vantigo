@@ -72,7 +72,7 @@ components:
                 - deleted
             type: object
         EntraConnection:
-            description: 'The installation''s one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done.'
+            description: 'The installation''s one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts and groups the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done.'
             properties:
                 accounts:
                     $ref: '#/components/schemas/EntraAccountCounts'
@@ -85,6 +85,8 @@ components:
                     items:
                         $ref: '#/components/schemas/EntraCredential'
                     type: array
+                groups:
+                    $ref: '#/components/schemas/EntraGroupCounts'
                 lastCheckedAt:
                     description: When the connection was last tested. Absent until it has been, and again after the tenant or the client changes.
                     format: date-time
@@ -135,6 +137,7 @@ components:
                 - settings
                 - credentials
                 - accounts
+                - groups
                 - version
             type: object
         EntraConnectionRequest:
@@ -288,6 +291,69 @@ components:
                 - actor
                 - action
                 - codes
+            type: object
+        EntraGroup:
+            description: 'One group the module keeps in the tenant for a Staff group (Entra design D14), by the directory''s immutable object id: made by the module, or found by its mail nickname and adopted. Its members and its traits are Staff''s; this is the tenant''s side. A deleted group stays, marked deleted.'
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                createdByUs:
+                    description: True when the module created the group; false when it found one holding the mail nickname that it may write, and adopted it.
+                    type: boolean
+                displayName:
+                    description: The name the module last wrote — Staff's name, with " (archived)" after it once Staff archived the group and keeps it.
+                    type: string
+                groupId:
+                    description: The Staff group's id.
+                    type: string
+                key:
+                    description: The Staff group's key.
+                    type: string
+                lastMembersAt:
+                    description: When the module last reconciled the group's members. Absent until it has.
+                    format: date-time
+                    type: string
+                mailNickname:
+                    type: string
+                objectId:
+                    description: The group's object id in the tenant, immutable.
+                    format: uuid
+                    type: string
+                state:
+                    enum:
+                        - present
+                        - deleted
+                    type: string
+                team:
+                    description: True once the group became a team in Microsoft Teams.
+                    type: boolean
+                type:
+                    description: security or microsoft365, as the group was made; it never changes.
+                    enum:
+                        - security
+                        - microsoft365
+                    type: string
+            required:
+                - objectId
+                - groupId
+                - key
+                - displayName
+                - mailNickname
+                - type
+                - team
+                - state
+                - createdByUs
+                - createdAt
+            type: object
+        EntraGroupCounts:
+            description: How many groups the module keeps present in the tenant; deleted ones are not counted.
+            properties:
+                count:
+                    format: int32
+                    type: integer
+            required:
+                - count
             type: object
         EntraProblem:
             description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account''s adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
@@ -888,6 +954,35 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: The module's recent events
+            tags:
+                - Entra
+            x-vantigo-access: permission:entra:manage
+    /api/v1/entra/groups:
+        get:
+            description: Every group the module keeps in the tenant for Staff's groups, deleted ones included, by display name — a read-only list. Staff decides what exists; the module page shows the tenant's side.
+            operationId: getEntraGroups
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/EntraGroup'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The module's groups
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage

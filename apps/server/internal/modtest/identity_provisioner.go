@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"golang.org/x/text/unicode/norm"
@@ -35,6 +36,12 @@ import (
 // an enabled account and marks it deleted; RevealPass answers a pass once.
 // An account SetUnconfirmed marks is an adoption nobody confirmed: every
 // write to it answers ErrExternalUnconfirmed and changes nothing.
+// Its groups validate as a provider does: GroupTraits declares a required
+// "type" choice and a "mailNickname" string of at most 64 characters, and
+// EnsureGroup answers a *contracts.GroupTraitError for a value they do not
+// admit or a type that differs from the one the group was made with;
+// Owners is what a group's last EnsureGroup named, and FailMembers makes
+// the next SetMembers report a member as failed.
 // A write names a valid actor (contracts.ErrInvalidActor otherwise), and
 // while the status is not connected every write but Deactivate answers
 // ErrProviderUnavailable — Deactivate runs whatever the status says, as the
@@ -52,6 +59,9 @@ type FakeIdentityProvisioner struct {
 	calls    []ProvisionerCall
 	fail     map[string]error
 	groups   map[string]*fakeExternalGroup // by the caller's group id
+	// memberFailures are the members the next SetMembers of a group reports
+	// as failed, by the caller's group id, then by external id: the code.
+	memberFailures map[string]map[string]string
 }
 
 // ProvisionerCall is one call a FakeIdentityProvisioner recorded: the method,
@@ -84,8 +94,13 @@ type fakePass struct {
 type fakeExternalGroup struct {
 	externalID string
 	spec       contracts.GroupSpec
+	kind       string // the "type" the group was made with, which never changes
+	owners     []string
 	members    []string
 }
+
+// fakeNicknameMax is the longest mailNickname the fake's declaration admits.
+const fakeNicknameMax = 64
 
 var _ contracts.IdentityProvisioner = (*FakeIdentityProvisioner)(nil)
 
@@ -107,6 +122,8 @@ func NewFakeIdentityProvisioner(key, name string) *FakeIdentityProvisioner {
 		accounts: map[string][]*fakeExternalAccount{},
 		fail:     map[string]error{},
 		groups:   map[string]*fakeExternalGroup{},
+
+		memberFailures: map[string]map[string]string{},
 	}
 }
 
@@ -129,9 +146,9 @@ func (f *FakeIdentityProvisioner) SetStatus(status, reason string) {
 }
 
 // FailWith makes every call of method ("Provider", "Prepare", "Activate",
-// "Deactivate", "Update", "Delete", "Account", "RevealPass", "EnsureGroup",
-// "SetMembers", "DeleteGroup") answer err, nil to stop. A write is recorded
-// before it answers err.
+// "Deactivate", "Update", "Delete", "Account", "RevealPass", "GroupTraits",
+// "EnsureGroup", "SetMembers", "DeleteGroup") answer err, nil to stop. A
+// write is recorded before it answers err.
 func (f *FakeIdentityProvisioner) FailWith(method string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -216,6 +233,31 @@ func (f *FakeIdentityProvisioner) LastSpec(number string) (contracts.ExternalSpe
 		return contracts.ExternalSpec{}, false
 	}
 	return copySpec(*held[0].spec), true
+}
+
+// Owners is the owners' external ids the last EnsureGroup for the caller's
+// groupID named, nil when the fake holds no such group.
+func (f *FakeIdentityProvisioner) Owners(groupID string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	group, ok := f.groups[groupID]
+	if !ok {
+		return nil
+	}
+	return slices.Clone(group.owners)
+}
+
+// FailMembers makes the next SetMembers of the caller's groupID report
+// externalID in MembersResult.Failed with code (contracts.MemberNotFound,
+// MemberDynamic, MemberRefused, MemberOther) and leave its membership as it
+// was. Once: the SetMembers after that changes it as asked.
+func (f *FakeIdentityProvisioner) FailMembers(groupID, externalID, code string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.memberFailures[groupID] == nil {
+		f.memberFailures[groupID] = map[string]string{}
+	}
+	f.memberFailures[groupID][externalID] = code
 }
 
 // Calls is every write so far, in order, refused ones included.
@@ -409,41 +451,94 @@ func (f *FakeIdentityProvisioner) RevealPass(_ context.Context, actor contracts.
 	return contracts.Pass{Value: held.pass.value, ExpiresAt: held.pass.expiresAt}, nil
 }
 
-// GroupTraits declares one trait: the group's type, a required choice of
-// security or microsoft365.
-func (f *FakeIdentityProvisioner) GroupTraits() []contracts.GroupTrait {
-	return []contracts.GroupTrait{{
-		Key:   "type",
-		Type:  "choice",
-		Label: map[string]string{"en": "Type", "nb": "Type"},
-		Choices: []contracts.TraitChoice{
-			{Value: "security", Label: map[string]string{"en": "Security", "nb": "Sikkerhet"}},
-			{Value: "microsoft365", Label: map[string]string{"en": "Microsoft 365", "nb": "Microsoft 365"}},
+// GroupTraits declares two traits: the group's type, a required choice of
+// security or microsoft365, and its mail nickname, a string of at most 64
+// characters — a required choice and a bounded string for Staff's form and
+// its validation. A read: unrecorded, it answers what FailWith gave it.
+func (f *FakeIdentityProvisioner) GroupTraits(context.Context) ([]contracts.GroupTrait, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.fail["GroupTraits"]; err != nil {
+		return nil, err
+	}
+	return []contracts.GroupTrait{
+		{
+			Key:   "type",
+			Type:  "choice",
+			Label: map[string]string{"en": "Type", "nb": "Type"},
+			Choices: []contracts.TraitChoice{
+				{Value: "security", Label: map[string]string{"en": "Security", "nb": "Sikkerhet"}},
+				{Value: "microsoft365", Label: map[string]string{"en": "Microsoft 365", "nb": "Microsoft 365"}},
+			},
+			Default:  "security",
+			Required: true,
 		},
-		Required: true,
-	}}
+		{
+			Key:       "mailNickname",
+			Type:      "string",
+			Label:     map[string]string{"en": "Mail nickname", "nb": "E-postalias"},
+			MaxLength: fakeNicknameMax,
+		},
+	}, nil
 }
 
-// EnsureGroup records the group's spec under the caller's id and answers its
-// external id, Created on the first call for the id.
+// EnsureGroup validates the spec's values against the declaration — "type"
+// missing is trait_required, a type not among the choices or a nickname
+// longer than 64 characters trait_invalid, a type differing from the one the
+// group was made with trait_immutable, each a *contracts.GroupTraitError
+// and nothing written — then records the spec and its owners under the
+// caller's id and answers the group's external id, Created on the first
+// call for the id.
 func (f *FakeIdentityProvisioner) EnsureGroup(_ context.Context, actor contracts.Actor, spec contracts.GroupSpec) (contracts.ExternalGroup, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.begin("EnsureGroup", actor, "", nil, true); err != nil {
 		return contracts.ExternalGroup{}, err
 	}
+	kind, err := fakeGroupValues(spec.Values)
+	if err != nil {
+		return contracts.ExternalGroup{}, err
+	}
 	group, ok := f.groups[spec.GroupID]
+	if ok && group.kind != kind {
+		return contracts.ExternalGroup{}, &contracts.GroupTraitError{Field: "type", Code: contracts.TraitImmutable}
+	}
 	if !ok {
-		group = &fakeExternalGroup{externalID: uuid.NewString()}
+		group = &fakeExternalGroup{externalID: uuid.NewString(), kind: kind}
 		f.groups[spec.GroupID] = group
 	}
 	group.spec = spec
+	group.spec.Values = maps.Clone(spec.Values)
+	group.spec.OwnerExternalIDs = slices.Clone(spec.OwnerExternalIDs)
+	group.owners = slices.Clone(spec.OwnerExternalIDs)
 	return contracts.ExternalGroup{ExternalID: group.externalID, Created: !ok}, nil
 }
 
+// fakeGroupValues checks values against the fake's declaration and answers
+// the type they name, or the *contracts.GroupTraitError of the first value
+// it does not admit.
+func fakeGroupValues(values map[string]any) (string, error) {
+	raw, present := values["type"]
+	kind, isString := raw.(string)
+	switch {
+	case !present || raw == nil || (isString && kind == ""):
+		return "", &contracts.GroupTraitError{Field: "type", Code: contracts.TraitRequired}
+	case !isString || (kind != "security" && kind != "microsoft365"):
+		return "", &contracts.GroupTraitError{Field: "type", Code: contracts.TraitInvalid}
+	}
+	if raw, present := values["mailNickname"]; present && raw != nil {
+		nickname, ok := raw.(string)
+		if !ok || utf8.RuneCountInString(nickname) > fakeNicknameMax {
+			return "", &contracts.GroupTraitError{Field: "mailNickname", Code: contracts.TraitInvalid}
+		}
+	}
+	return kind, nil
+}
+
 // SetMembers makes the group's members exactly memberExternalIDs and answers
-// how many it added and removed. ErrGroupNotManageable for a group the fake
-// has not ensured.
+// how many it added and removed; a member FailMembers named is reported in
+// Failed with its code instead, its membership left as it was.
+// ErrGroupNotManageable for a group the fake has not ensured.
 func (f *FakeIdentityProvisioner) SetMembers(_ context.Context, actor contracts.Actor, groupID string, memberExternalIDs []string) (contracts.MembersResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -454,18 +549,32 @@ func (f *FakeIdentityProvisioner) SetMembers(_ context.Context, actor contracts.
 	if !ok {
 		return contracts.MembersResult{}, contracts.ErrGroupNotManageable
 	}
+	failures := f.memberFailures[groupID]
+	delete(f.memberFailures, groupID)
 	var out contracts.MembersResult
-	for _, id := range memberExternalIDs {
-		if !slices.Contains(group.members, id) {
-			out.Added++
-		}
-	}
+	var members []string
 	for _, id := range group.members {
-		if !slices.Contains(memberExternalIDs, id) {
+		switch {
+		case slices.Contains(memberExternalIDs, id):
+			members = append(members, id)
+		case failures[id] != "":
+			out.Failed = append(out.Failed, contracts.MemberFailure{ID: id, Code: failures[id]})
+			members = append(members, id)
+		default:
 			out.Removed++
 		}
 	}
-	group.members = slices.Clone(memberExternalIDs)
+	for _, id := range memberExternalIDs {
+		switch {
+		case slices.Contains(members, id):
+		case failures[id] != "":
+			out.Failed = append(out.Failed, contracts.MemberFailure{ID: id, Code: failures[id]})
+		default:
+			out.Added++
+			members = append(members, id)
+		}
+	}
+	group.members = members
 	return out, nil
 }
 

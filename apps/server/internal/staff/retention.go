@@ -187,6 +187,26 @@ var columnClasses = map[string]string{
 	"holiday_schemes.after_september_virkedager": "C", "holiday_schemes.max_carry_over_virkedager": "C",
 	"holiday_schemes.is_default": "C", "holiday_schemes.seeded": "C", "holiday_schemes.archived_at": "C",
 	"holiday_schemes.revision": "C", "holiday_schemes.created_at": "C", "holiday_schemes.updated_at": "C",
+
+	// Entra delivery D (00062): the groups are the installation's, about
+	// nobody, C whole as the structure is; a membership or an ownership says
+	// who was in which group when, C; a group's sections per provider are
+	// the provider's references and the worker's state, C. A person's rows
+	// go with the person (plan reading 9), never by a class.
+	"groups.id": "C", "groups.key": "C", "groups.name": "C", "groups.description": "C", "groups.kind": "C",
+	"groups.rule": "C", "groups.archived_at": "C", "groups.archived_by_user_id": "C",
+	"groups.revision": "C", "groups.created_at": "C", "groups.updated_at": "C",
+
+	"group_members.group_id": "C", "group_members.person_id": "C", "group_members.source": "C", "group_members.since": "C",
+
+	"group_owners.group_id": "C", "group_owners.person_id": "C",
+
+	"group_traits.group_id": "C", "group_traits.provider": "C", "group_traits.values": "C", "group_traits.enabled": "C",
+	"group_traits.disabled_at": "C", "group_traits.external_id": "C", "group_traits.state": "C",
+	"group_traits.last_values_hash": "C", "group_traits.last_members_hash": "C", "group_traits.last_error": "C",
+	"group_traits.last_error_field": "C", "group_traits.synced_at": "C", "group_traits.retired_at": "C",
+	"group_traits.attempts": "C", "group_traits.next_attempt_at": "C", "group_traits.lease_id": "C",
+	"group_traits.lease_until": "C",
 }
 
 // erasedTo is what an erase writes in place of NULL in a column that cannot
@@ -731,8 +751,9 @@ func (s *server) erasePerson(ctx context.Context, conn *pgxpool.Conn, personID i
 
 // eraseD is the D erase (S15): every D column of the person and their terms
 // nulled, their next of kin deleted, their documents of class D deleted and
-// queued, every value of class D in their history replaced, and erased_at
-// set. Class C is untouched.
+// queued, every value of class D in their history replaced, the person out
+// of every group and every group's owners, and erased_at set. Class C is
+// otherwise untouched.
 func (s *server) eraseD(ctx context.Context, tx pgx.Tx, txq *store.Queries, personID int64, now time.Time) (int64, error) {
 	var count int64
 	for _, table := range tablesWith("D") {
@@ -758,6 +779,15 @@ func (s *server) eraseD(ctx context.Context, tx pgx.Tx, txq *store.Queries, pers
 		return 0, err
 	}
 	count += n
+	// The person leaves every group and every group's owners, with no
+	// event (Entra delivery D, reading 9): the next sync of each group
+	// removes them in the provider's directory by the members' hash.
+	if err := txq.DeletePersonGroupMembers(ctx, personID); err != nil {
+		return 0, fmt.Errorf("staff: take person %d out of their groups: %w", personID, err)
+	}
+	if err := txq.DeletePersonGroupOwners(ctx, personID); err != nil {
+		return 0, fmt.Errorf("staff: take person %d off their groups' owners: %w", personID, err)
+	}
 	if err := txq.MarkPersonErased(ctx, store.MarkPersonErasedParams{ID: personID, Now: now}); err != nil {
 		return 0, fmt.Errorf("staff: mark person %d erased: %w", personID, err)
 	}
