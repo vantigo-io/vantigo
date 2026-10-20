@@ -528,8 +528,8 @@ On an [erased record](#an-erased-record) the tab is read-only but for **Disable 
 the person's access must end too.
 
 A **Groups** card lists the [groups](#groups) the person is in —
-archived groups aside — each with how they came in, named by HR or by the group's rule,
-and since when. It is read-only here: HR changes a group's members on the group's page.
+archived groups aside — by **Name**, **Came in by** (*Listed* by HR, or *The rule*) and
+**Since**. It is read-only here: HR changes a group's members on the group's page.
 
 ### A legal hold
 
@@ -1047,7 +1047,7 @@ type is counted only for `staff:personal-data`:
 | Too little holiday in the main period | From April to September: someone has fewer approved holiday days between 1 June and 30 September than their scheme's main period (three weeks under the Holiday Act). | The person |
 | Approved their own absence | Someone approved their own absence, as the only decider there was. | The person |
 | Sick during approved holiday | A 100 % sykmelding lies over approved ferie: the employee may demand to postpone it. | The person |
-| A group not in sync | A group could not be kept in the directory — a setting the directory refused, or a group there holding its key that Vantigo may not change. One per group, for HR. | The group |
+| The group … is not in sync with its directory | A group could not be kept in the directory — a setting the directory refused, or a group there holding its key that Vantigo may not change; the group's page says why. One per group, for HR. | The group |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
 acknowledges the threshold — once, for good — under [Thresholds](#thresholds) in the

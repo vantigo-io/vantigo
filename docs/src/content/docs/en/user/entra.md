@@ -49,8 +49,8 @@ that, and again after step 1 changes, it is not shown:
   secret refused, the tenant not answering, no consent granted, the secrets expired, a
   secret expiring within 30 days, or the User Administrator role apparently missing;
 - **Organisation**, as the tenant gives it; **Last checked**, when the connection was
-  last tested; and **Accounts**, how many Vantigo keeps in the tenant — enabled,
-  disabled and deleted;
+  last tested; **Accounts**, how many Vantigo keeps in the tenant — enabled,
+  disabled and deleted; and **Groups**, *… kept*, the groups present there;
 - **Permissions**: *Every permission the module needs is granted.*, or each one still
   missing by name, and the ones granted;
 - **Client secrets**: each by its **Description**, with **Added**, **Expires**, **Last

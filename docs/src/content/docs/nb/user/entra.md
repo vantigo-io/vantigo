@@ -50,8 +50,8 @@ etter at steg 1 endres, vises det ikke:
   utløpt, en hemmelighet som utløper innen 30 dager, eller rollen User Administrator
   som ser ut til å mangle;
 - **Organisasjon**, slik leietakeren oppgir den; **Sist testet**, når tilkoblingen sist
-  ble testet; og **Kontoer**, hvor mange Vantigo holder i leietakeren — aktiverte,
-  deaktiverte og slettede;
+  ble testet; **Kontoer**, hvor mange Vantigo holder i leietakeren — aktiverte,
+  deaktiverte og slettede; og **Grupper**, *… holdt*, gruppene som finnes der;
 - **Tillatelser**: *Alle tillatelsene modulen trenger, er gitt.*, eller hver som
   fortsatt mangler, ved navn, og de som er gitt;
 - **Klienthemmeligheter**: hver med **Beskrivelse**, **Lagt til**, **Utløper**, **Sist
