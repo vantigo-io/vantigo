@@ -1599,28 +1599,32 @@ provider's, with *Show the pass* once and *Run now (new pass)*. Migrations
 (staff).
 
 *Unblocks:* C's provider, dropped into the slot with nothing in Staff or identity left
-to build; HR choosing per person who holds the account**C — The module, built** on `feat/entra-module`
+to build; HR choosing per person who holds the account.
+
+**C — The module, built** on `feat/entra-module`
 ([the plan](docs/superpowers/plans/2026-10-20-entra-module.md);
 [the reference](docs/src/content/docs/en/reference/entra.md);
 [the operations page](docs/src/content/docs/en/admin/entra.md)): the `entra` module,
 Microsoft Entra ID as the first provider in B's slot, under the key `entra`, which
 `MODULES` refuses without `staff`. Its schema holds the one connection — the tenant and
 the client, the account rules, what the last test found — the client secrets in the
-plural, sealed under `entra/client-secret`, the newest valid one used and the next tried
-on `invalid_client`, revoked never deleted, with `secret_expiring` thirty days ahead and
+plural, sealed under `entra/client-secret`, the newest valid one tried first and a
+refused one last, revoked never deleted, with `secret_expiring` thirty days ahead and
 `secret_expired` after; the accounts it found or made, by object id, with a Temporary
 Access Pass sealed under `entra/pass` until it is shown once; and its own append-only
 trail of events. One permission, `entra:manage` (sensitive, not delegable), for the
 status and the account rules; the registration, the secrets and the connection test are
 the Owner's, as the single sign-on settings are. The Graph client is guarded — two fixed
 hosts, `netguard`, no proxy, no redirect, a token cached per secret until five minutes
-before it ends, `Retry-After` honoured once, one 5xx retry, a 1 MiB cap, the body never
-stored — and `Provider` reads the row with no network call, its reasons Staff's
-attention items. The lifecycle: found by employee id or created disabled under an
-address made from the work email or a pattern over the folded names; enabled on the
-first day with the hire date, the licences and the pass; kept in step; disabled first,
-then the sessions revoked, the leave date written, the direct licences stripped and the
-groups left as the connection says; soft-deleted when Staff asks; every refusal a
+before it ends, `Retry-After` honoured once, one 5xx retry, one fresh token on a 401, a
+1 MiB cap, the body never stored — and `Provider` reads the row with no network call,
+its reasons Staff's attention items. The lifecycle: found by employee id or created
+disabled under an address made from the work email or a pattern over the folded names;
+enabled on the first day with the hire date, the licences and the pass; kept in step;
+disabled first, whatever the status, then the sessions revoked, the leave date written,
+the direct licences stripped and the groups left as the connection says, a step that
+fails reported `leaver_step_failed:<step>`; soft-deleted when Staff asks, a rehire after
+it a new user; every refusal a
 sentinel or a reported code, and a streak of three refused sensitive actions read as
 `role_missing`, the User Administrator role not assigned. The tile **Microsoft Entra
 ID** carries the **Status** card and the six-step wizard with every portal path,
@@ -1632,8 +1636,6 @@ for a later delivery. Migration `00061_entra_baseline.sql` (entra).
 *Unblocks:* an Owner connecting the company's tenant without a deployment; HR's joiners,
 movers and leavers reaching Microsoft 365 with no second place to type; D's groups,
 whose traits the provider already declares.
-
-.
 
 **D — Groups and traits**, on `feat/entra-groups`: groups in Staff, listed or derived
 from the register, with owners and members materialised daily; **traits** a provider

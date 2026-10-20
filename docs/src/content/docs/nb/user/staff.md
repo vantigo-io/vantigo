@@ -479,7 +479,7 @@ utstedte for personens første innlogging i et vindu, **Midlertidig tilgangspass
 **Lukk**: *Det vises ikke igjen.* Det vises **én gang**: når du lukker vinduet, kan ingen
 se det igjen, og knappen er borte. Hvor lenge et pass virker, og om det bare virker for
 én innlogging, er en innstilling i tilkoblingen til Microsoft Entra ID — åtte timer om
-ikke endret — under [steget Kontoer](/nb/user/entra/#4-kontoer). Gi det til personen selv; det sendes aldri på
+ikke endret — under [steget **Sett kontoreglene**](/nb/user/entra/#4-sett-kontoreglene). Gi det til personen selv; det sendes aldri på
 e-post. Et pass som har gått ut, eller som allerede er vist, er borte — fanen sier
 *Passet er allerede vist, har utløpt, eller ble aldri utstedt. Kjør nå (nytt pass)
 utsteder et nytt.* — så bruk **Kjør nå (nytt pass)**.

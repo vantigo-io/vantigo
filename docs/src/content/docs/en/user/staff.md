@@ -483,7 +483,7 @@ Pass**, with *… types this pass at their first sign-in.*, *Works until …*, *
 **Close**: *It will not be shown again.* It is shown **once**: after you close the window
 nobody can see it again, and the button is gone. How long a pass works, and whether it
 works for one sign-in only, is the Microsoft Entra ID connection's setting — eight hours
-unless changed — under its [Accounts step](/en/user/entra/#4-accounts). Give it to the person yourself; it is
+unless changed — under its [**Set the account rules** step](/en/user/entra/#4-set-the-account-rules). Give it to the person yourself; it is
 never mailed. A pass that has run out, or one already shown, is gone — the tab says
 *The pass was shown already, has expired, or none was issued. Run now (new pass) issues
 a new one.* — so use **Run now (new pass)**.

@@ -62,7 +62,7 @@ gjelder hele installasjonen.
 **Med Microsoft Entra ID-modulen** er kortets to deler også de to siste stegene i
 modulens veiviser: steg 5, **Innlogging**, er leverandørskjemaet, fylt ut med
 leietakerens autoritet og klient-ID-en veiviseren registrerte (bare på et tomt
-skjema), og steg 6, **Provisjonering**, er SCIM-delen. De er de samme skjemaene over
+skjema), og steg 6, **Klargjøring**, er SCIM-delen. Begge er bare en eiers. De er de samme skjemaene over
 den samme raden og de samme operasjonene; lagre på hvilket som helst av stedene
 ([Microsoft Entra ID](/nb/admin/entra/#5-innlogging)).
 
