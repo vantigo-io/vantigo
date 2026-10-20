@@ -1334,6 +1334,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
             ...current,
             provisionAccount: false,
             revision: current.revision + (current.provisionAccount ? 1 : 0),
+            // The provider's account is disabled with the flag, whatever the Vantigo user does.
+            ...(current.providerLink?.state === "enabled"
+              ? { providerLink: { ...current.providerLink, state: "disabled", attempts: 0 } }
+              : {}),
           };
           state.accounts[stored.id] = off;
           const link = off.link;

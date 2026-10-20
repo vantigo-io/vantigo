@@ -553,6 +553,8 @@ export const staffCatalog = {
       "This also turns the account flag off, so the account stays disabled until HR turns the flag on again.",
     disableNowDone: "The account is disabled and the account flag is off.",
     disableNowNoAccount: "The account flag is off; there was no account to disable.",
+    disableNowDirectoryDone: "The account flag is off and the directory account is disabled.",
+    disableNowBothDone: "The account and the directory account are disabled and the account flag is off.",
     disableUnavailable:
       "The account flag is off, but identity could not be reached; the accounts worker disables the user as soon as it can.",
 
@@ -645,15 +647,15 @@ export const staffCatalog = {
       "Done: when the account is enabled, the directory issued a new pass — Show the pass shows it once.",
     directoryProfile: "Directory profile",
     directoryProfileDescription:
-      "Which fields Staff writes on a person's account in the identity provider's directory. A field switched off is cleared there on the next update. The names, the employee number, the user principal name and the usage location are always written.",
+      "Which fields Staff writes on a person's account in the identity provider's directory. A field switched off is not sent; the directory keeps what it has. The names, the employee number, the user principal name and the usage location are always written.",
     directoryProfilePersonDescription:
-      "The fields Staff writes on the person's account in the directory, with the value each carries today. Greyed fields are always written; a field switched off in Settings is cleared there.",
+      "The fields Staff writes on the person's account in the directory, with the value each carries today. Greyed fields are always written; a field switched off in Settings is not sent, and the directory keeps what it has.",
     directoryField: "Field",
     directoryWritten: "Written",
     directoryValueToday: "Value today",
     directoryAlways: "Always",
     directoryOn: "Yes",
-    directoryOff: "Off — cleared",
+    directoryOff: "Off — not sent",
     saveDirectoryProfile: "Save the directory profile",
     directoryProfileSaved: "The directory profile is saved",
     directoryField_givenName: "Given name",
@@ -2102,6 +2104,8 @@ export const staffCatalog = {
     disableNowExplained: "Dette slår også av kontoflagget, så kontoen forblir deaktivert til HR slår flagget på igjen.",
     disableNowDone: "Kontoen er deaktivert og kontoflagget er av.",
     disableNowNoAccount: "Kontoflagget er av; det fantes ingen konto å deaktivere.",
+    disableNowDirectoryDone: "Kontoflagget er av og kontoen i katalogen er deaktivert.",
+    disableNowBothDone: "Kontoen og kontoen i katalogen er deaktivert, og kontoflagget er av.",
     disableUnavailable:
       "Kontoflagget er av, men identitet kunne ikke nås; kontoarbeideren deaktiverer brukeren så snart den kan.",
 
@@ -2193,15 +2197,15 @@ export const staffCatalog = {
       "Ferdig: når kontoen er aktivert, har katalogen utstedt et nytt pass — Vis passet viser det én gang.",
     directoryProfile: "Katalogprofil",
     directoryProfileDescription:
-      "Hvilke felter Ansatte skriver på en persons konto i identitetsleverandørens katalog. Et felt som slås av, tømmes der ved neste oppdatering. Navnene, ansattnummeret, brukerhovednavnet og bruksstedet skrives alltid.",
+      "Hvilke felter Ansatte skriver på en persons konto i identitetsleverandørens katalog. Et felt som slås av, sendes ikke; katalogen beholder det den har. Navnene, ansattnummeret, brukerhovednavnet og bruksstedet skrives alltid.",
     directoryProfilePersonDescription:
-      "Feltene Ansatte skriver på personens konto i katalogen, med verdien hvert felt har i dag. Gråe felter skrives alltid; et felt som er slått av under Innstillinger, tømmes der.",
+      "Feltene Ansatte skriver på personens konto i katalogen, med verdien hvert felt har i dag. Gråe felter skrives alltid; et felt som er slått av under Innstillinger, sendes ikke, og katalogen beholder det den har.",
     directoryField: "Felt",
     directoryWritten: "Skrives",
     directoryValueToday: "Verdi i dag",
     directoryAlways: "Alltid",
     directoryOn: "Ja",
-    directoryOff: "Av — tømmes",
+    directoryOff: "Av — sendes ikke",
     saveDirectoryProfile: "Lagre katalogprofilen",
     directoryProfileSaved: "Katalogprofilen er lagret",
     directoryField_givenName: "Fornavn",

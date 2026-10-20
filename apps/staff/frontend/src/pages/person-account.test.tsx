@@ -330,6 +330,25 @@ describe("Person page — Run now and Disable now", () => {
     ).toBeInTheDocument();
   });
 
+  it("says the directory account is disabled when only the provider's account was", async () => {
+    stubStaffApi({
+      ...withEntra,
+      accounts: { 101: entraAccount({ link: undefined }) },
+    });
+    renderRoute("/staff/people/101?tab=account");
+    const card = await region("User account");
+    await userEvent.click(within(card).getByRole("button", { name: "Disable now" }));
+    await userEvent.click(
+      within(await screen.findByRole("dialog", { name: /Disable Ada Lovelace's account now/ })).getByRole("button", {
+        name: "Disable now",
+      }),
+    );
+    expect(
+      await within(card).findByText("The account flag is off and the directory account is disabled.", {}, slow),
+    ).toBeInTheDocument();
+    expect(within(card).queryByText(/there was no account to disable/)).not.toBeInTheDocument();
+  });
+
   it.each([
     ["Run now", /\/account\/run$/],
     ["Disable now", /\/account\/disable$/],
@@ -836,7 +855,7 @@ describe("Person page — the directory profile", () => {
     expect(within(rows[1]).getByText("E-1")).toBeInTheDocument();
     expect(within(rows[2]).getByText("Job title")).toBeInTheDocument();
     expect(within(rows[2]).getByText("Analyst")).toBeInTheDocument();
-    expect(within(rows[3]).getByText("Off — cleared")).toBeInTheDocument();
+    expect(within(rows[3]).getByText("Off — not sent")).toBeInTheDocument();
     expect(within(rows[4]).getByText("—")).toBeInTheDocument();
     expect(within(table).queryByRole("switch")).not.toBeInTheDocument();
   });

@@ -1333,7 +1333,7 @@ export interface paths {
         put?: never;
         /**
          * Run a person's account now
-         * @description Run now for one person (design S27), the caller as the actor: their preparing link written when the account is due and they have none, then their link claimed whatever its next attempt and worked as the worker works it — with a fresh invitation (identity's ActivateOpts.FreshInvitation) on the run's first step only, which starts a new invitation spell for a pending user whose last invitation an Owner revoked or three went unanswered. Identity never re-sends an invitation that can still be accepted and sends none within ten minutes of the last; the run is done all the same, and invitationSent says whether one went. A person whose flag is off has nothing run. A step identity refuses is done, its reason on the link. The run goes on if the client goes away.
+         * @description Run now for one person (design S27), the caller as the actor: their preparing link written when the account is due and they have none, then their link claimed whatever its next attempt and worked as the worker works it — with a fresh invitation (identity's ActivateOpts.FreshInvitation) on the run's first step only, which starts a new invitation spell for a pending user whose last invitation an Owner revoked or three went unanswered. Identity never re-sends an invitation that can still be accepted and sends none within ten minutes of the last; the run is done all the same, and invitationSent says whether one went. For a person of a provider's kind, the provider is asked for a new pass only on the activation that enables a disabled account — a joiner on their first day, a rehire — never for an account already enabled. A person whose flag is off has nothing run. A step identity refuses is done, its reason on the link. The run goes on if the client goes away.
          */
         post: operations["postStaffPeopleByIdAccountRun"];
         delete?: never;
@@ -8952,8 +8952,17 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict; person_erased when the person has been erased; account_kind_locked when the kind would leave entra while the person's entra link is enabled or disabled. */
+            /** @description Conflict — revision_conflict; person_erased when the person has been erased; account_kind_locked when the kind would leave a provider's while the person's link under it names an account the directory has not deleted (and has not reported gone). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Service Unavailable — accounts_unavailable: the request changes the person's account kind while the account kinds are not yet seeded from identity's authority mode (identity could not say it). Nothing was changed. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9179,7 +9188,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Service Unavailable — accounts_unavailable: no module provides accounts, or identity could not be reached; a call that failed is recorded on the link (last_error) and retried by the worker. */
+            /** @description Service Unavailable — accounts_unavailable: no module provides accounts, or identity could not be reached; a call that failed is recorded on the link (last_error) and retried by the worker. The same, with a detail saying so, while the account kinds are not yet seeded from identity's authority mode: nothing was run. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -10877,6 +10886,15 @@ export interface operations {
             };
             /** @description Conflict — revision_conflict: the settings were changed since the revision If-Match names. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Service Unavailable — accounts_unavailable: the request changes defaultAccountKind while the account kinds are not yet seeded from identity's authority mode (identity could not say it). Nothing was changed. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
