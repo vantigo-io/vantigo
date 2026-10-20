@@ -1,6 +1,6 @@
 ---
 title: "Identity, authentication and deployment"
-description: "Local accounts, users Staff manages and the roles it may give, the workforce OIDC provider and SCIM, email, proxy trust, APP_SECRET-derived key material and migrations."
+description: "Local accounts, users Staff manages, the accounts it announces and the roles it may give, the workforce OIDC provider and SCIM, email, proxy trust, APP_SECRET-derived key material and migrations."
 sidebar:
   order: 20
 sources:
@@ -217,6 +217,15 @@ OIDC or SCIM is on in the [single sign-on settings](/en/admin/sso-scim/#the-sing
 employee number, re-enables a user Staff disabled and disables; it never creates or
 invites (see [SSO and SCIM operations](/en/admin/sso-scim/#staff-in-a-federated-installation)).
 
+**Staff now decides per person.** Each person in Staff has an **account kind** —
+`local`, `external` or `entra` — and every call Staff's provisioning makes carries it,
+so the kind, not the installation's mode alone, decides what identity creates, gives
+and invites ([below](#what-staffs-provisioning-does-in-identity)): a `local` person in
+an installation whose single sign-on is on is still created and invited. The mode stays
+for two things: a call that names no kind — from a Staff worker of the release before —
+is judged by it (`local` from local, `external` from federated), and Staff seeds every
+person's kind and its default from it once, when it first starts on this release.
+
 The mode is derived from `identity.sso_settings` by every process — the API and the
 workers alike — so none can disagree, and a worker needs no OIDC or SCIM settings of
 its own. Turning SSO or SCIM on or off on the card changes the mode everywhere within
@@ -265,16 +274,22 @@ Staff reaches identity's users only through identity's provisioning, which runs 
 change in a transaction of its own — under the owner lock, then the user's
 invitations, then the user — audits it with its actor (the person who pressed a button
 in Staff, or `system:staff-accounts`), and sends mail only once the change is
-committed. It refuses anything with no valid actor, and acts in the
+committed. It refuses anything with no valid actor, and acts by the **account kind
+the call carries** — the person's in Staff — or, for a call that names none, by the
 [authority mode](#the-authority-mode) the single sign-on settings derive, read in the
-change's own transaction.
+change's own transaction (`local` from local mode, `external` from federated). The
+`external` kind is the federated mode's rules for one person; `entra` is the same
+link-only path for a person whose account Staff has an external provider create and
+[announces](#the-announced-account), with the employee roles given once.
 
-| Step | Local mode | Federated mode | Audited |
-| --- | --- | --- | --- |
-| Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's open invitation to that address is revoked `replaced` and named in the audit — but an open invitation to become an Owner keeps the address for its invitee. The answer says whether this call created the user (`Created`), so Staff never undoes a user it only found. | Finds the Staff-managed user with the number; creates nothing | `user.staff-prepared` |
-| Activate | Enables a user Staff disabled — a prepared user among them — giving them the [employee roles](#the-employee-roles) on that call only, so a role an Owner removes later stays removed; invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | `user.staff-activated` |
-| Deactivate | Disables the user as Staff's (`disabledBy: staff`) — also one the directory already deactivated — ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | `user.staff-deactivated` |
-| Update | Writes the display name, the language and the employee number; the address only while the user is pending and no invitation naming them has been delivered yet, which revokes their invitations `email_changed` and an Owner's open invitations to the new address `replaced` (named in the audit) | Writes the language and the employee number only | `user.staff-updated` |
+| Step | `local` | `external` | `entra` | Audited |
+| --- | --- | --- | --- | --- |
+| Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's open invitation to that address is revoked `replaced` and named in the audit — but an open invitation to become an Owner keeps the address for its invitee. The answer says whether this call created the user (`Created`), so Staff never undoes a user it only found. | Finds the Staff-managed user with the number; creates nothing (`Not found` until an Owner adopts one) | Finds the Staff-managed user with the number — the one the announced account's arrival made; creates nothing | `user.staff-prepared` |
+| Activate | Enables a user Staff disabled — a prepared user among them — giving them the [employee roles](#the-employee-roles) on that call only, so a role an Owner removes later stays removed, and recording when (`provisioning_roles_at`); invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | Re-enables a user Staff disabled and, while `provisioning_roles_at` is empty, gives the employee roles and records it — once, enabled or not, never again; sends no invitation | `user.staff-activated` |
+| Deactivate | Disables the user as Staff's (`disabledBy: staff`) — also one the directory already deactivated — ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | The same | `user.staff-deactivated` |
+| Update | Writes the display name, the language and the employee number; the address only while the user is pending and no invitation naming them has been delivered yet, which revokes their invitations `email_changed` and an Owner's open invitations to the new address `replaced` (named in the audit) | Writes the language and the employee number only | The same as `external` | `user.staff-updated` |
+| Expect | — | — | Records or replaces the [announcement](#the-announced-account) for the employee number | `account.expected` |
+| Unexpect | — | — | Withdraws an announcement nobody fulfilled | `account.unexpected` |
 
 An activated pending user is enabled but still cannot sign in: password, passkey and
 OIDC sign-in refuse them — OIDC's first sign-in by their address answers
@@ -313,8 +328,76 @@ out and Staff reports their account disabled by the directory. What it refuses:
 | Employee role unsafe | A role in the set carries a permission that grants administration — possible only by a change outside identity's checks | Take the permission off the role, or the role out of the set |
 | Address taken | Another user holds the person's address, or an Owner has invited someone to become an Owner at it and the invitation is still open | Give the person another address in Staff, or resolve the other account or the invitation |
 | Employee number taken | A user Staff does not manage holds the number | Adopt that user, or correct the number in Staff |
-| Not found | Federated mode: no Staff-managed user holds the number yet | Let the identity provider create the account, then adopt it |
+| Not found | `external` or `entra`: no Staff-managed user holds the number yet | `external`: let the identity provider create the account, then adopt it; `entra`: the account arrives by SCIM or the person's first sign-in and is adopted by its announcement |
 | Mode mismatch | Reported only by a worker still on the release before the Single sign-on card, during a rolling upgrade (refused for every step but deactivation) | Finish the upgrade |
+
+### The announced account
+
+For a person of the `entra` kind, Staff has the external provider create the account
+and then **announces** it to identity (`Expect`), so the user that arrives — by the
+provider's SCIM push, or at the person's first OIDC sign-in — is adopted for Staff on
+arrival, managed, numbered and not pending, with no Owner in between. An announcement
+is kept in `identity.expected_accounts`, one per employee number (a new one replaces
+it): the employee number, the display name, the language, the issuer (identity's own
+from the single sign-on settings — Staff leaves it empty), the provider's object id of
+the account, its user principal name (stored normalised as addresses are) and, at
+most, a user it replaces.
+
+**The match, three keys in order.** A SCIM create of a User is matched first on the
+[enterprise extension's](#scim) `employeeNumber`, by the number's key; then on
+`userName` against the announced principal name; then on `externalId` against the
+announced object id. An OIDC first sign-in is matched on the `oid` claim against the
+object id, under the announced issuer. The number comes first because the provider
+writes it as the account's `employeeId`, which Entra's default SCIM mapping sends as
+`employeeNumber`; the principal name second, since Entra sends `userName` from it by
+default; and the object id last for SCIM, because Entra's default mapping sends the
+**mail nickname**, not the object id, as `externalId` — it matches only when the Owner
+maps `objectId` there — while OIDC always carries `oid`, which identity already
+requires.
+
+**What an arrival does.** Under the owner lock, in the arrival's own transaction:
+
+- **A match** creates the user as SCIM or OIDC would, then marks them managed by Staff
+  with the announced employee number, not pending (the credential is the provider's),
+  with the announced display name only when the provider sent none. The announcement is
+  consumed, audited `account.adopted-from-provider` with `matchedBy`
+  (`employeeNumber`, `userName`, `externalId` or `oid`) and the employee number — never
+  an address — beside SCIM's own `scim.user.created`.
+- **A match naming a user to replace** (`ReplaceUserID`: the person was `local` with a
+  pending, credential-less user when HR changed their kind to `entra`) completes that
+  user instead of inserting a second: the user is locked, their open invitations
+  revoked `replaced`, `pending_since` and the invitation spell cleared, their address
+  overwritten by the arriving `userName` — another user holding it is still
+  `DuplicateEmail` — and the SCIM mapping or the OIDC link attached to them, their id
+  kept; `account.adopted-from-provider` names `replacedUserId`. For OIDC, the email
+  claim colliding with that very user is the completion, not `oidc_email_conflict`;
+  with anyone else it is refused as before.
+- **No match** is what it was: a plain SCIM or OIDC user, whom an Owner adopts by hand
+  if they are Staff's. The enterprise extension's `employeeNumber` is kept in the SCIM
+  profile and **never** becomes the user's employee number: only Staff's provisioning
+  and an Owner's adoption make that claim.
+
+**What `Expect` refuses.** An unmanaged user holding the number is
+`ErrEmployeeNumberTaken`; a managed Owner or SystemAdmin `ErrAccountPrivileged`. A
+managed user who holds the number and is not pending has arrived already: nothing is
+recorded and the call succeeds. A pending managed user is recorded only when the
+announcement names them to replace; a user to replace who is not managed, not pending
+or holds another number is refused. `Unexpect` deletes an announcement and is audited
+`account.unexpected` when one went; with none, it succeeds and writes nothing.
+
+**The roles, once.** An adopted user arrives enabled, so no `Activate` ever enables
+them; `identity.users.provisioning_roles_at` records when Staff's `Activate` gave a
+user the employee roles. For the `entra` kind the first `Activate` that finds it empty
+gives them and sets it — once: an Owner's later removal of a role is not undone. The
+`local` path sets it too when it gives them.
+
+An announcement nobody fulfils stays until Staff withdraws it; after ninety days Staff
+reports the person's account as not arrived (`accountNotArrived`). The Owner's manual
+[adoption](#adopt-an-existing-user-for-staff) stays for the `external` kind and for any
+user the provider made without an announcement. Migration
+`00059_identity_expected_accounts.sql` adds the table and `provisioning_roles_at`; its
+Down drops both, and an unfulfilled announcement is made again after the provider's
+next `Prepare`.
 
 ### Adopt an existing user for Staff
 
@@ -838,6 +921,19 @@ most 24 hours, which **End overlap** ends early; both digests are compared, the
 previous one only until its expiry. Every process reads the row through a 20-second
 cache. The procedures are in
 [SSO and SCIM operations](/en/admin/sso-scim/#scim).
+
+The User resource accepts the **enterprise extension**,
+`urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` (RFC 7643 §4.3):
+`employeeNumber`, `costCenter`, `organization`, `division`, `department` and `manager`
+(`value`, `displayName`, and `$ref` answered as this server's path), each at most 256
+characters. A create or a replace carrying the block, and a PATCH on any of its paths
+(`urn:…:User:department`, `urn:…:User:manager.value`, …), are accepted and kept in the
+user's SCIM profile under `enterprise`; a replace without it clears it. `GET` answers
+it, `Schemas` and `ResourceTypes` advertise it (`schemaExtensions`, not required), and
+`GET /Users` filters on `urn:…:User:employeeNumber eq "…"`. A path outside the two
+schemas is still `invalidPath`. Nothing in `identity.users` changes for it: its
+`employeeNumber` is what an [announced account](#the-announced-account) is matched on,
+never the user's employee number.
 
 ## Forwarded headers and HTTPS
 

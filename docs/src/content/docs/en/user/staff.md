@@ -364,7 +364,7 @@ colleague do not have it. It has two
 groups.
 
 **Account flag** says whether Staff gives the person a user to sign in with, from which
-day and at which address. HR changes it:
+day, at which address and who holds the account. HR changes it:
 
 1. Turn on **Staff provides an account**. Staff then creates the person's user,
    disabled, the number of days before its day that **Prepare the account (days
@@ -380,16 +380,36 @@ day and at which address. HR changes it:
 3. Choose the **Address**: **Work email** or **Private email**. When the person does
    not have the one chosen, the tab warns *… has no work email on file: the account
    waits until one is added*.
-4. Press **Save the account flag**. The three fields are saved together. If somebody
+4. Choose the **Account kind** — who holds the person's account:
+   - **Local** — Vantigo holds the password: Staff creates the user and invites the
+     person to choose one.
+   - **External identity provider** — the company's identity provider owns the account:
+     Staff finds the user it created once an Owner has adopted it, enables what Staff
+     disabled and disables, but never creates or invites.
+   - **Microsoft Entra ID** — offered only when the Entra module is installed: Staff has
+     Entra create the person's account, enables and disables it there, and tells
+     Vantigo to expect it, so the user it brings is the person's with no Owner in
+     between.
+
+   A new person gets the **Default account kind** from [Accounts](#accounts). Changing a
+   person away from Microsoft Entra ID while their Entra account is enabled or disabled
+   is refused — *The account kind cannot leave Microsoft Entra ID while the person's
+   account there is enabled or disabled. The person leaves the directory by Disable now
+   or by the end of their employment.* A person whose
+   Vantigo user still waits for its invitation can be moved from Local to Microsoft
+   Entra ID: the account that arrives from Entra takes over that user.
+5. Press **Save the account flag**. The fields are saved together. If somebody
    else changed the flag since you opened the tab, the tab reloads and says
    *Somebody else saved this; it has been reloaded*.
 
-**User account** first says the authority mode in words: *Local accounts* — Staff
-creates the user and invites the person to choose a password — or *Federated* — the
-identity provider owns the accounts, and Staff finds the user by the employee number,
-enables what it disabled and disables, never creating or inviting — or *Accounts are
-unavailable*, when no module provides them or this server disagrees with the mode
-identity recorded. Then, once Staff has created or found a user:
+**User account** shows the person's accounts as cards side by side: **Vantigo**, the
+user the person signs in to Vantigo with, and — for a person of the Microsoft Entra ID
+kind — a card titled with the provider's name, **Microsoft Entra ID**, for their account
+in the company's directory.
+
+The **Vantigo** card first says the account kind in words — *Local*, *External identity
+provider* or *Microsoft Entra ID* — or *Accounts are unavailable*, when no module
+provides them. Then, once Staff has created or found a user:
 
 - **State** — *Being prepared*, *Pending — waiting for the person to choose a
   password*, *Active*, *Disabled by Staff* or *Disabled by an Owner*, *Failed*,
@@ -398,8 +418,8 @@ identity recorded. Then, once Staff has created or found a user:
 - Why the account is held up, in a sentence, when it is: no employment to give an
   account from, the address the flag names missing, an Owner disabled the user (or the
   pending user, whom Staff then never enables), the user gone, the account belonging to
-  another employee number (someone else's, left alone), a pending user made for local
-  accounts under a federated mode, the address in identity differing from the person's
+  another employee number (someone else's, left alone), a pending user made for a local
+  account while the person's kind no longer invites, the address in identity differing from the person's
   after their invitation was sent (an Owner changes it in identity), an invitation revoked
   by an Owner or three left unanswered, the user no longer managed by Staff, an Owner or
   a system administrator, no user with the employee number yet in the identity
@@ -416,14 +436,46 @@ an Owner stopped managing — the tab tells HR that an Owner adopts the user for
 **Users** page (**Adopt for Staff**), with the person's employee number, and **Open
 Users** goes there. An erased record shows no such step.
 
+The **Microsoft Entra ID** card shows the person's account in the directory:
+
+- **State** — *Being prepared — Staff asked the directory to create or find the
+  account*, *Enabled*, *Disabled*, *Deleted — restorable in the directory for thirty
+  days*, *Failed* or *Blocked*.
+- **User principal name** — the name the person signs in to Microsoft with, once Entra
+  has made the account — and **Enabled since**.
+- **Pass issued** — when Entra issued a Temporary Access Pass nobody has shown yet —
+  and **Announced** — when Staff told Vantigo to expect the account.
+- Why the account is held up, in a sentence, when it is: Entra not connected or failing,
+  two accounts in Entra with the person's employee number, the work email already
+  another account's there, an account synchronised from an on-premises directory, an
+  account with an administrative role in Entra, the account gone from Entra (Staff never
+  makes a second); and what Entra reported and could not do: the hire date not written,
+  no licence left, a pass not allowed, the person's manager not in Entra.
+- **Directory profile** — a read-only table, **Field**, **Written** and **Value today**:
+  every field Staff writes on the account and the value it carries from the register
+  today. The names, the employee number, the user principal name and the usage location
+  are always written and shown greyed; the others follow the installation's
+  [Directory profile](#directory-profile). The person sees this table on their own tab
+  too: it is their data as the directory sees it.
+
+**Show the pass** (HR) shows the pass Entra issued for the person's first sign-in, in a
+window with **Copy** and its expiry: *It will not be shown again.* It is shown **once**:
+after you close the window nobody can see it again, and the button says there is none.
+Give it to the person yourself; it is never mailed. A pass that has run out, or one
+already shown, is gone — use **Run now (new pass)**.
+
 **Run now** (HR, while the flag is on) does the account's next step at once, with a
 fresh invitation for a pending user whose last one cannot be accepted. The tab then
 says *Done: a new invitation was sent*, or *Done: no invitation was sent* — none was
 due, one can still be accepted, or the last went less than ten minutes ago; the run is
-done all the same.
+done all the same. For a person of the Microsoft Entra ID kind it is **Run now (new
+pass)**: the step runs in Entra first, then in Vantigo, and Entra issues a new pass to
+show. When Entra refuses the step, the tab says why.
 
 **Disable now** (HR) asks first — *This also turns the account flag off, so the account
-stays disabled until HR turns the flag on again* — then disables the user and says *The
+stays disabled until HR turns the flag on again* — then disables the user — for a
+person of the Microsoft Entra ID kind the Entra account first, then the Vantigo user —
+and says *The
 account is disabled and the account flag is off* — or, when Staff had made or found no
 user yet, *The account flag is off; there was no account to disable*. It is not offered
 for a user HR linked by hand under Self-service, which is not Staff's to disable: an
@@ -889,7 +941,7 @@ Staff settings.
 structure, the document categories, three cards for absence — **Absence types**,
 **Holiday schemes** and **Egenmelding and carry-over** — four cards for the data —
 **Import and export people**, **Payroll export**, **Retention** and **Thresholds** — and
-**Accounts**.
+**Accounts** and **Directory profile**.
 Someone without `staff:manage` who opens the page by its address sees none of them.
 
 ### General
@@ -1144,18 +1196,27 @@ item never comes back, whatever the headcount does later. The row then says
 ### Accounts
 
 **Accounts** is how Staff gives people a user to sign in with — turned on per person on
-their [Account](#account) tab. It says the authority mode in words (*Local accounts*,
-*Federated* or *Accounts are unavailable*), and whether an Owner has named the roles
-Staff may give. Until one has, the card warns *No Owner has named the roles Staff may
+their [Account](#account) tab. It lists each identity provider an installed module
+offers with its status — *Microsoft Entra ID: connected.*, *Microsoft Entra ID: not
+connected yet.* or *Microsoft Entra ID: failing — Staff writes nothing to the directory
+but a disable until it is fixed.*, with the reason in a sentence; with none, *No
+identity provider is offered: no enabled module provides one.* It also says whether an
+Owner has named the roles Staff may give. Until one has, the card warns *No Owner has named the roles Staff may
 give, so no local account can be enabled*, and **Open Roles & access** goes to
 identity's **Roles & access** page, where an Owner names them under **Roles Staff
 may give**.
 
+- **Default account kind** — the account kind a new person gets: **Local**,
+  **External identity provider** or, when the Entra module is installed, **Microsoft
+  Entra ID**. People already registered keep theirs; change them one by one on their
+  Account tab. On the upgrade that brought the kinds, it was set from the installation:
+  Local, or External identity provider where single sign-on was on.
 - **Prepare the account (days before)** — how many days before the account's day
   Staff creates the user, disabled: 0 to 90, 14 unless changed.
-- **Delete an external account (days after the end)** — used by the Entra module,
-  which is not installed yet: nothing reads it. 1 to 3650 days after the last
-  employment ended, or empty for never.
+- **Delete an external account (days after the end)** — how many days after the last
+  employment ended Staff deletes the person's account in Entra, once it is disabled and
+  no legal hold is on the person: 1 to 3650, or empty for never. Entra keeps a deleted
+  account restorable for thirty days.
 
 Press **Save the account settings**. A number outside its bounds is refused on its
 field before anything is saved; the other settings are saved as they were.
@@ -1165,3 +1226,25 @@ that is due, as the worker would. A run may take minutes when identity or the ma
 server is slow. The card then says, one figure each, how many accounts it worked, how many were done,
 how many failed and are retried by the worker, and how many are left for the worker's
 next cycle.
+
+### Directory profile
+
+**Directory profile** (`staff:manage`) chooses which fields Staff writes on a person's
+account in the company's directory — Microsoft Entra ID — for every person of that
+kind. Each field has a switch:
+
+- On by default: **Hire date**, **Leave date**, **Employee type**, **Job title**,
+  **Department**, **Company name** (the legal entity), **Cost centre and division**,
+  **Office location**, **Preferred language** and **Manager**.
+- Off by default: **Work address** (the location's street, postal code, city and
+  country) and **Phones** (the work phone and the mobile).
+
+The names, the employee number, the user principal name and the work country are always
+written and listed greyed. Private contact details are never written.
+
+1. Turn the switches on or off.
+2. Press **Save the directory profile**.
+
+A field you turn off is cleared in the directory at each person's next update; one you
+turn on is written then. Each person's Account tab shows the result as their
+directory profile.

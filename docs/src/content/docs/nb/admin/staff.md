@@ -35,6 +35,12 @@ sources:
   - apps/server/internal/staff/accounts_worker.go
   - apps/server/internal/staff/accounts_run.go
   - apps/server/internal/staff/accounts_attention.go
+  - apps/server/internal/staff/accounts_provider.go
+  - apps/server/internal/staff/accounts_decide_provider.go
+  - apps/server/internal/staff/accounts_spec.go
+  - apps/server/internal/staff/account_seed.go
+  - apps/server/internal/staff/account_pass.go
+  - apps/server/internal/staff/directory_profile.go
   - apps/server/internal/staff/holders.go
 ---
 
@@ -125,12 +131,10 @@ første arbeidsdag (leveranse C). Kontoflagget settes her; kontoarbeideren
 1. Før den første kontoen navngir en Owner rollene Ansatte kan gi i identity
    (ansattrollene, under **Roller Ansatte kan gi** på siden Roller og tilgang). Kortet
    **Kontoer** i Ansatteinnstillinger advarer *Ingen eier har angitt rollene Ansatte kan
-   gi* til en har gjort det, med **Åpne Roller og tilgang**, og sier autoritetsmodusen:
-   *Lokale kontoer* (identity holder passordene) eller *Føderert* (en
-   identitetsleverandør eier kontoene) — eller *Kontoer er ikke tilgjengelige* når denne
-   prosessens OIDC- eller SCIM-innstillinger er uenige med API-ets, eller identity ikke
-   kunne spørres. Gjennom API-et svarer `GET /api/v1/staff/meta` `provisioningRolesSet`
-   og `accountMode` til `staff:manage`.
+   gi* til en har gjort det, med **Åpne Roller og tilgang**. Det har også **Standard
+   kontotype** en ny person får, og viser identitetsleverandørene en installert modul
+   tilbyr, hver med status. Gjennom API-et svarer `GET /api/v1/staff/meta`
+   `provisioningRolesSet`, `defaultAccountKind` og `providers` til `staff:manage`.
 2. Som en bruker med `staff:manage` åpner du personens fane **Konto**
    (`/staff/people/<id>?tab=account`). Under **Kontoflagg** slår du på **Ansatte gir en
    konto**.
@@ -139,11 +143,14 @@ første arbeidsdag (leveranse C). Kontoflagget settes her; kontoarbeideren
    annen dag. Mellom to arbeidsforhold hører en dag fra før det første sluttet til det,
    og kontoen følger den senere startdatoen; en dag etter det følges. Velg **Privat
    e-post** under **Adresse** for å gi identitet personens private e-post i stedet for
-   jobb-e-posten. Trykk **Lagre kontoflagget**. Gjennom API-et er det
+   jobb-e-posten, og **Kontotype** — *Lokal*, *Ekstern identitetsleverandør* eller
+   *Microsoft Entra ID* ([kontotypen](#kontotypen)). Trykk **Lagre kontoflagget**.
+   Gjennom API-et er det
    `PUT /api/v1/staff/people/{id}/account` med `If-Match` satt til flaggets egen
    `revision` fra `GET` — aldri personens: å endre flagget flytter aldri personens
    revisjon — og alle tre feltene, `{"provisionAccount": true, "provisionFrom": null,
-   "accountEmailKind": "work"}`; en uten `provisionAccount`, eller med den `null`,
+   "accountEmailKind": "work"}`, med `accountKind` når den endres (utelatt beholdes
+   typen); en uten `provisionAccount`, eller med den `null`,
    avvises (400) og endrer ingenting.
 4. Kontroller: **Konto fra** navngir dagen kontoen aktiveres (`provisionFromEffective`),
    og fanen viser ingen advarsel om at personen *har ingen e-post på jobb registrert*
@@ -156,6 +163,43 @@ Hvor mange dager før den dagen kontoen klargjøres, deaktivert, er **Forbered k
 En slettet persons flagg kan ikke endres (`person_erased`): fanen tilbyr HR bare
 **Deaktiver nå** på en slettet person. Har noen andre lagret flagget først, svarer
 forespørselen `revision_conflict`: fanen lastes inn på nytt og sier det.
+
+### Kontotypen
+
+Hver persons konto holdes av én av tre typer, som Ansatte gir identitetsmodulen ved hvert
+kall:
+
+| Type | Hvem som har kontoen | Hva Ansatte gjør |
+| --- | --- | --- |
+| `local` (*Lokal*) | Vantigos identitetsmodul | Oppretter brukeren, inviterer dem, gir ansattrollene |
+| `external` (*Ekstern identitetsleverandør*) | Selskapets identitetsleverandør, med SSO eller SCIM | Finner brukeren leverandøren laget når en Owner har tatt den inn; aktiverer igjen det Ansatte deaktiverte; deaktiverer |
+| `entra` (*Microsoft Entra ID*) | Microsoft Entra ID, gjennom en leverandørmodul | Lar Entra opprette, aktivere, oppdatere og deaktivere kontoen; kunngjør den, så brukeren som kommer, tas inn uten en Owner; gir ansattrollene én gang |
+
+**Ved oppgraderingen** som innførte typene, satte Ansatte hver persons type og
+standarden ut fra installasjonens autoritetsmodus, én gang, første gang den startet —
+`local` fra lokal, `external` fra føderert (SSO eller SCIM på) — og logger `staff: the
+account kinds were seeded from the authority mode`. Kunne identity ikke spørres i det
+øyeblikket, prøver den igjen ved neste oppstart eller kontorunde. Ingenting endrer noens
+type etterpå, bortsett fra HR.
+
+**For å endre standarden**: Ansatteinnstillinger → **Kontoer** → **Standard kontotype**,
+så **Lagre kontoinnstillingene** (`defaultAccountKind` på `PUT /settings`). Bare nye
+personer får den. **For å endre én persons**: Konto-fanen deres → **Kontotype**. Typen
+`entra` avvises `provider_missing` med mindre en aktivert modul tilbyr leverandøren; å
+forlate `entra` avvises `account_kind_locked` (409) mens personens Entra-konto er
+aktivert eller deaktivert — deaktiver dem med **Deaktiver nå**, eller la arbeidsforholdet
+ta slutt, og endre den så. Å flytte en person fra `local` til `entra` mens
+Vantigo-brukeren deres fortsatt venter på invitasjonen, er tillatt: brukeren Entra
+bringer, tar over den.
+
+**Typen `entra` krever** at leverandørmodulen er installert og at tilkoblingen virker:
+kortet **Kontoer** viser *Microsoft Entra ID: tilkoblet.* Til da — *ikke tilkoblet
+ennå* eller *feiler* — skriver arbeideren ingenting til katalogen for disse personene (den
+deaktiverer fortsatt dem som slutter, i Vantigo), og dashbordet viser ett punkt for
+installasjonen. Sett opp **SCIM** fra Entra til Vantigo slik
+[SSO- og SCIM-drift](/nb/admin/sso-scim/#virksomhetsutvidelsen-og-ansattnummeret)
+sier, eller la personene logge inn med Entra: den kunngjorte kontoen tas inn idet den
+kommer, uansett vei.
 
 ### Kontoarbeideren
 
@@ -203,12 +247,28 @@ arbeidet person for person; ingen venter på en annen.
    ventende brukere — klargjort, aldri invitert — som en Owner da fullfører eller sletter
    i identity.
 
-**Føderert modus** (en identitetsleverandør eier kontoene): arbeideren oppretter eller
+**Typen `external`** (en identitetsleverandør eier kontoen): arbeideren oppretter eller
 inviterer aldri noen. Den finner brukeren leverandøren opprettet etter ansattnummeret,
 kobler den, aktiverer igjen en bruker den selv deaktiverte, og deaktiverer dem som
 slutter; til leverandøren har opprettet brukeren, holdes lenken tilbake med `not_found`
-og prøves igjen daglig. En ventende bruker laget i lokal modus før byttet holdes tilbake
-med `mode_changed` for en Owner.
+og prøves igjen daglig. En ventende bruker laget for typen `local` før endringen holdes
+tilbake med `mode_changed` for en Owner.
+
+**Typen `entra`**: arbeideren arbeider med personens konto i Entra først, så med
+Vantigo-brukeren deres, i samme omgang. Før virkningsdagen lar den Entra opprette
+kontoen, deaktivert, med feltene i [katalogprofilen](#innstillingene), og kunngjør den
+for identity (`account_external_prepared`, `account_announced`); på dagen aktiverer den
+kontoen i Entra, som utsteder et midlertidig tilgangspass, og finner Vantigo-brukeren
+kontoens ankomst laget — ingen Owner tar den inn — og gir dem ansattrollene én gang; den
+skriver endringene for en som bytter stilling, til Entra (`account_external_updated`);
+dagen etter siste slutt deaktiverer den kontoen i Entra, så brukeren i Vantigo; og etter
+**Slett en ekstern konto (dager etter slutt)**, uten slettesperre, sletter den
+Entra-kontoen (`account_external_deleted`), som Entra holder gjenopprettbar i tretti
+dager. En adresse Entra laget for en person uten e-post på jobb, skrives til personen
+(`work_email_set_by_provider`). HR viser passet én gang på personens Konto-fane (**Vis
+passet**, `POST /api/v1/staff/people/{id}/account/pass`, `pass_revealed` i historikken);
+et nytt forsøk, eller et etter at det gikk ut, er `pass_gone` (409): **Kjør nå (nytt
+pass)** utsteder et nytt.
 
 **Ulik modus.** Arbeideren leser modusen fra innstillingene for single sign-on i
 databasen, slik API-et gjør
@@ -230,7 +290,12 @@ SystemAdmin og håndteres for hånd), `account_not_managed` (en Owner lot Ansatt
 styre brukeren), `mismatch` (brukeren har et annet ansattnummer: en annens konto),
 `user_gone` (brukeren ble slettet i identity), `invitation_revoked` og
 `invitation_unanswered` (en Owner trakk invitasjonen tilbake, eller tre invitasjoner ble
-ikke besvart). En lenke der `attempts` når tre, kom ikke fram til identity: den prøves
+ikke besvart). På en Entra-konto: `provider_unavailable` (Entra ikke tilkoblet, eller
+feiler), `external_ambiguous` (to kontoer i Entra har ansattnummeret),
+`external_address_taken` (e-posten på jobb er en annen kontos i Entra),
+`external_synced_on_premises`, `external_privileged` (kontoen har en katalogrolle),
+`external_enabled` (en sletting av en konto som fortsatt er aktivert) og `user_gone`
+(kontoen er borte fra Entra; Ansatte lager aldri en til). En lenke der `attempts` når tre, kom ikke fram til identity: den prøves
 daglig fra da av, og loggen navngir feilen — men deaktiveringen av en som har sluttet,
 prøves ved hver kjøring så lenge den feiler, så tilgangen forsvinner så snart identity
 svarer.
@@ -258,9 +323,11 @@ identity registrerer og historikken navngir.
   Identity sender aldri på nytt en invitasjon som fortsatt kan godtas, og sender ingen
   innen ti minutter etter den forrige; kjøringen er like fullt gjort — prøv igjen etter
   ti minutter om det trengs. En person med flagget av får ingenting kjørt, og fanen
-  tilbyr ikke Kjør nå.
+  tilbyr ikke Kjør nå. For en `entra`-person er det **Kjør nå (nytt pass)**: Entra
+  utsteder et nytt pass, som vises med **Vis passet**; en avvisning fra Entra er
+  `provider_refused` (409) med koden sin.
 - **Grenser**: fra én klientadresse høyst 30 kjøringer av alle kontoer i timen, og
-  høyst 120 av en persons Kjør nå og Deaktiver nå til sammen i timen; over grensen
+  høyst 120 av en persons Kjør nå, Deaktiver nå og Vis passet til sammen i timen; over grensen
   avvises forespørselen (429) — vent, eller la arbeiderens egen runde gjøre det. Antallet
   telles per klientadresse og deles av alle på den adressen: bak en omvendt proxy setter
   du `TRUSTED_PROXY_HOPS` eller `TRUSTED_PROXY_CIDRS` ([Autentisering](/nb/admin/authentication/)),
@@ -288,7 +355,10 @@ HR slår flagget på igjen.
 1. Trykk **Deaktiver nå** og bekreft — dialogen sier *Dette slår også av
    kontoflagget*. Flagget slås av først (historikken viser `account_flag_updated`)
    sammen med en merknad på koblingen om at en deaktivering er bedt om, så deaktiverer
-   identity brukeren (`account_deactivated`) og avslutter øktene. Personens egen revisjon
+   identity brukeren (`account_deactivated`) og avslutter øktene. For en `entra`-person
+   deaktiveres Entra-kontoen først (`account_external_deactivated`), så
+   Vantigo-brukeren; en avvisning fra Entra er `provider_refused` (409) med koden sin,
+   med flagget allerede av. Personens egen revisjon
    flytter seg ikke. Gir nettleseren opp å vente, fortsetter deaktiveringen likevel; det
    som ikke når fram til identity, gjør arbeideren ferdig ved de neste kjøringene.
 2. Kontroller: fanen sier *Kontoen er deaktivert og kontoflagget er av*, **Ansatte gir
@@ -337,14 +407,14 @@ erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk
 | --- | --- | --- |
 | `accountNoEmployment` | Flagget er på, men personen har ikke noe arbeidsforhold | Legg til arbeidsforholdet, eller slå flagget av |
 | `accountEmailMissing` | Personen har ingen adresse av typen flagget navngir | Legg til jobb- (eller privat) e-post, eller bytt adressevalget |
-| `accountNotFound` | Føderert: identitetsleverandøren har ikke opprettet brukeren ennå | Opprett brukeren hos leverandøren med personens ansattnummer |
+| `accountNotFound` | Typen `external`: identitetsleverandøren har ikke opprettet brukeren ennå | Opprett brukeren hos leverandøren med personens ansattnummer |
 | `accountNotManaged` | En Owner lot Ansatte slutte å styre brukeren — eller, med flagget av, en Deaktiver nå som ble avvist for en bruker Ansatte ikke styrer, prøvd igjen daglig | En Owner tar brukeren inn igjen (neste forsøk deaktiverer dem) eller deaktiverer dem i identity; HR fjerner en selvbetjent kobling. Til da har personen ingen Min side: HR fjerner koblingen og kobler brukeren for hånd igjen (**Bruker** på personsiden) for å gi den tilbake |
 | `accountBlockedByOwner` | En Owner deaktiverte den ventende brukeren | En Owner aktiverer dem i identity, om de skal begynne |
 | `accountDisabledByOwner` | En Owner deaktiverte brukeren mens personen er ansatt | En Owner avgjør; Ansatte opphever det ikke |
 | `accountUserGone` | Brukeren ble slettet i identity | Fjern koblingen, eller en Owner gjenoppretter kontoen |
 | `accountPrivileged` | Brukeren er Owner eller SystemAdmin — også etter en Deaktiver nå som ble avvist for dem, prøvd igjen daglig; en som slutter og er det, forblir aktiv, siden Ansatte aldri deaktiverer en Owner eller en SystemAdmin | En annen Owner fratar dem rollen og deaktiverer dem i identity (uten rollen deaktiverer neste forsøk dem) |
 | `accountMismatch` | Brukeren har et annet ansattnummer: en annens konto — også etter en Deaktiver nå som ikke gjorde noe med den | Sjekk personens ansattnummer; når det er riktig, kjøres deaktiveringen |
-| `accountModeChanged` | En ventende bruker laget i lokal modus, nå i føderert modus | En Owner fullfører eller sletter brukeren |
+| `accountModeChanged` | En ventende bruker laget for typen `local`, mens personens type nå er en som aldri inviterer | En Owner fullfører eller sletter brukeren |
 | `accountEmailDiffers` | Brukerens adresse i identity er ulik personens | En Owner endrer den i identity (Ansatte endrer den bare mens brukeren venter og ingen invitasjon er levert til dem) |
 | `accountEmailTaken` | En annen bruker i identity har adressen | Rydd opp i duplikatet i identity, eller endre personens adresse |
 | `accountNumberTaken` | En bruker Ansatte ikke styrer har ansattnummeret | En Owner tar den brukeren inn for Ansatte, eller rydder i nummeret |
@@ -356,6 +426,19 @@ erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk
 | `employeeRoleMissing` | Ingen ansattrolle er navngitt (ett punkt, med antall) | En Owner navngir rollene Ansatte kan gi |
 | `employeeRoleUnsafe` | En rolle navngitt for Ansatte gir administrasjon (ett punkt) | En Owner tar den nøkkelen ut av rollen, eller rollen ut av settet |
 | `accountModeMismatch` | En arbeiders OIDC- eller SCIM-innstillinger er ulike API-ets (ett punkt) | Gjør innstillingene like og start arbeideren på nytt |
+| `accountNotArrived` | Ansatte kunngjorde personens Entra-konto for nitti dager siden, og ingen Vantigo-bruker har kommet for den | Sjekk at brukeren er innenfor omfanget av Entras klargjøring til Vantigo, eller la personen logge inn |
+| `accountAmbiguousInEntra` | To kontoer i Entra har personens ansattnummer | Fjern nummeret fra feil konto i Entra |
+| `accountAddressTakenInEntra` | Personens e-post på jobb er en annen kontos i Entra | Endre personens e-post på jobb, eller rydd i den andre kontoen |
+| `accountSyncedOnPremises` | Kontoen synkroniseres fra en lokal katalog | Styr den i den katalogen, eller gi personen en annen type |
+| `accountPrivilegedInEntra` | Kontoen har en administrativ rolle i Entra | En administrator håndterer den for hånd |
+| `hireDateNotWritten` | Entra avviste ansettelsesdatoen | Ingenting trengs for innlogging; slå av **Ansettelsesdato** i katalogprofilen om det fortsetter å feile |
+| `licenceUnavailable` | En lisens kunne ikke tildeles, fordi det ikke er flere igjen | Kjøp eller frigjør en lisens i Microsoft 365 |
+| `passUnrevealed` | Et pass ble utstedt for en dag eller mer siden, og ingen har vist det | Vis det til personen, eller Kjør nå (nytt pass) når de er klare |
+| `managerNotInEntra` | Personens leder har ingen konto i Entra, så kontoen har ingen leder | Gi lederen typen Microsoft Entra ID, eller godta det |
+| `entraNotConnected` | Entra-leverandøren har ingen tilkobling ennå (ett punkt, som teller `entra`-personene) | Koble den til i Entra-modulen |
+| `entraFailing` | Entra-leverandørens siste kontroll feilet — en legitimasjon avvist, et samtykke trukket tilbake (ett punkt) | Rett tilkoblingen i Entra-modulen |
+| `secretExpiring` | Den nyeste gyldige klienthemmeligheten utløper innen tretti dager (ett punkt) | Legg til en ny hemmelighet i Entra-modulen |
+| `secretExpired` | Klienthemmeligheten har utløpt (ett punkt) | Legg til en ny hemmelighet i Entra-modulen |
 
 ## Rettigheten for personopplysninger
 
@@ -1315,10 +1398,24 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   90, og `deleteExternalAfterDays`, ingen, fra 1 til 3650 eller `null` for aldri): hvor
   mange dager før kontoens
   virkningsdato den klargjøres, deaktivert ([Slå på konto for en
-  person](#slå-på-konto-for-en-person)), og når en ekstern katalogs konto slettes etter
-  at det siste arbeidsforholdet sluttet — lagret, men ikke brukt ennå; Entra-modulen
-  vil lese den. Utelatt fra en erstatning beholder hver sin verdi; `null` setter
+  person](#slå-på-konto-for-en-person)), og når en persons konto i Entra slettes etter
+  at det siste arbeidsforholdet sluttet, når den er deaktivert og ingen slettesperre er
+  på personen. Utelatt fra en erstatning beholder hver sin verdi; `null` setter
   `deleteExternalAfterDays` til aldri.
+- **Standard kontotype** (`defaultAccountKind`, på kortet **Kontoer**): typen en ny
+  person får — `local`, `external` eller `entra` — satt én gang fra autoritetsmodusen ved
+  oppgraderingen ([kontotypen](#kontotypen)). `entra` avvises `provider_missing` på
+  feltet med mindre en aktivert modul tilbyr leverandøren. Utelatt fra en erstatning
+  beholder den verdien sin; personer som allerede er registrert, beholder sin.
+- **Katalogprofil** (`directoryFields`, kortet **Katalogprofil**): hvilke felt Ansatte
+  skriver på en `entra`-persons konto i Entra, som `{"<felt>": true|false}` over de
+  som kan slås av og på — `employeeHireDate`, `employeeLeaveDateTime`, `employeeType`,
+  `jobTitle`, `department`, `companyName`, `employeeOrgData`, `officeLocation`,
+  `preferredLanguage` og `manager` på som standard, `workAddress` og `phones` av. Et
+  felt som utelates, beholder verdien sin; et ukjent avvises på
+  `directoryFields.<felt>`. Et felt som slås av, tømmes i Entra ved hver persons neste
+  oppdatering. Navnene, ansattnummeret, brukerhovednavnet og arbeidslandet skrives
+  alltid ([tilordningen](/en/reference/staff/#the-directory-profile)).
 - **Oppbevaringsstatus** (`retention`, skrivebeskyttet): sletteloggens ventende og
   avviste filer, den eldste ventende, og den siste slettingen
   ([Sletteloggen](#sletteloggen)). Filer lageret har avvist minst én gang, og som ble

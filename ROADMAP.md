@@ -1540,7 +1540,7 @@ Calendar and Staff it **depends on nobody but identity** for what it reads; Staf
 it through a new many-provider slot, `contracts.IdentityProvisioner`, and identity's
 accounts stay identity's. It follows [Staff](#staff)'s phase 1, done.
 
-### Phase 1 — The tenant follows the register (A done)
+### Phase 1 — The tenant follows the register (A and B done)
 
 Five deliveries, five pull requests, one migration per schema each. A, B and C are
 specified in full by the design; D and E are decided there and planned on their own.
@@ -1570,17 +1570,36 @@ rather than a guard against a misconfigured worker. One migration,
 deployment, and C's wizard, which embeds the card's two forms as its sign-in and
 provisioning steps.
 
-**B — The announced account and the slot**, on `feat/staff-provisioner-slot`:
-identity's SCIM enterprise extension, inbound — the employee number, the department and
-the manager stored and answered; the **announced account**, a user identity expects
-from the provider's SCIM push or the person's first sign-in and adopts for Staff on
-arrival, matched on the employee number; the **account kind** per person (`local`,
-`external` or `entra`) with an installation default; `contracts.IdentityProvisioner`,
-the many-provider slot Staff writes through, with the provider link as the decision
-table's third column and a fake provider in `modtest` that proves it before any real
-one exists; the **directory profile**, the fixed mapping of which fields reach the
-directory, toggled per installation; and Staff's Account tab showing both accounts.
-Migrations `00059` (identity) and `00060` (staff).
+**B — The announced account and the slot, built** on `feat/staff-provisioner-slot`
+([the plan](docs/superpowers/plans/2026-10-20-staff-provisioner-slot.md);
+[the reference](docs/src/content/docs/en/reference/staff.md#the-provider-link)):
+identity's SCIM **enterprise extension**, inbound — `employeeNumber`, the cost centre,
+the organisation, the division, the department and the manager accepted on a create, a
+replace and a patch, kept in the SCIM profile, answered back, advertised by `Schemas`
+and `ResourceTypes` and filterable on `employeeNumber`, and never promoted to the
+user's employee number; the **announced account**, `AccountProvisioning.Expect` and
+`Unexpect` over `identity.expected_accounts`, which a SCIM create matches on the
+employee number, then the principal name, then `externalId`, and an OIDC first sign-in
+on `oid` under its issuer, adopting the user for Staff on arrival — managed, numbered,
+not pending, audited `account.adopted-from-provider` — or completing the pending user a
+change of kind left behind (`ReplaceUserID`), and the provisioning roles given once
+(`users.provisioning_roles_at`); the **account kind** per person — `local`, `external`
+or `entra` — in place of the installation-wide authority mode, seeded once from it,
+with the installation's **Default account kind**, and carried to identity on every
+call; `contracts.IdentityProvisioner`, the fifth many-provider slot, collected from
+enabled modules, keyed by `Key()` and refusing a key claimed twice, which Staff writes
+through under rule 13 — the provider link as the decision table's third column,
+provider first and identity second under one claim, its states, codes, events and
+thirteen attention items — with `modtest.FakeIdentityProvisioner` proving it before any
+real provider exists; the **directory profile**, the fixed mapping of the register's
+fields onto the directory's, switched per installation under Settings and shown on
+the person's Account tab; and the Account tab's two cards, *Vantigo* and the
+provider's, with *Show the pass* once and *Run now (new pass)*. Migrations
+`00059_identity_expected_accounts.sql` (identity) and `00060_staff_account_kind.sql`
+(staff).
+
+*Unblocks:* C's provider, dropped into the slot with nothing in Staff or identity left
+to build; HR choosing per person who holds the account.
 
 **C — The module**, on `feat/entra-module`: the `entra` module, its schema — the
 connection, the sealed credentials, the accounts, the events — and one permission; the

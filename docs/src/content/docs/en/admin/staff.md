@@ -35,6 +35,12 @@ sources:
   - apps/server/internal/staff/accounts_worker.go
   - apps/server/internal/staff/accounts_run.go
   - apps/server/internal/staff/accounts_attention.go
+  - apps/server/internal/staff/accounts_provider.go
+  - apps/server/internal/staff/accounts_decide_provider.go
+  - apps/server/internal/staff/accounts_spec.go
+  - apps/server/internal/staff/account_seed.go
+  - apps/server/internal/staff/account_pass.go
+  - apps/server/internal/staff/directory_profile.go
   - apps/server/internal/staff/holders.go
 ---
 
@@ -125,12 +131,10 @@ their first day (delivery C). The account flag is set here; the accounts worker
 1. Before the first account, an Owner names the roles Staff may give in identity (the
    employee roles, under **Roles Staff may give** on the Roles & access page). The
    **Accounts** card in Staff settings warns *No Owner has named the roles Staff may
-   give* until one has, with **Open Roles & access**, and says the authority mode:
-   *Local accounts* (identity holds the passwords) or *Federated* (an identity provider
-   owns the accounts) — or *Accounts are unavailable* when this process's OIDC or SCIM
-   settings disagree with the API's, or identity could not be asked. Through the API,
-   `GET /api/v1/staff/meta` answers `provisioningRolesSet` and `accountMode` to
-   `staff:manage`.
+   give* until one has, with **Open Roles & access**. It also holds the **Default
+   account kind** a new person gets and lists the identity providers an installed module
+   offers, each with its status. Through the API, `GET /api/v1/staff/meta` answers
+   `provisioningRolesSet`, `defaultAccountKind` and `providers` to `staff:manage`.
 2. As a user with `staff:manage`, open the person's **Account** tab
    (`/staff/people/<id>?tab=account`). Under **Account flag**, turn on **Staff provides
    an account**.
@@ -139,11 +143,14 @@ their first day (delivery C). The account flag is set here; the accounts worker
    choose another day. Between two employments a day from before the first one ended
    is that one's, and the account follows the later start; a day after it is honoured.
    Choose **Private email** under **Address** to give identity the person's private
-   email instead of the work email. Press **Save the account flag**. Through the API
+   email instead of the work email, and the **Account kind** — *Local*, *External
+   identity provider* or *Microsoft Entra ID* ([the account kind](#the-account-kind)).
+   Press **Save the account flag**. Through the API
    it is `PUT /api/v1/staff/people/{id}/account` with `If-Match` set to the flag's own
    `revision` from `GET` — never the person's: changing the flag never moves the
    person's revision — and all three fields, `{"provisionAccount": true,
-   "provisionFrom": null, "accountEmailKind": "work"}`; one without
+   "provisionFrom": null, "accountEmailKind": "work"}`, with `accountKind` when it
+   changes (left out, the kind is kept); one without
    `provisionAccount`, or with it `null`, is refused (400) and changes nothing.
 4. Verify: **Account from** names the day the account is enabled
    (`provisionFromEffective`), and the tab shows no warning that the person *has no
@@ -156,6 +163,43 @@ account (days before)** on the Accounts card (`createBeforeDays`, [The
 settings](#the-settings)). An erased person's flag cannot be changed (`person_erased`):
 the tab offers HR only **Disable now** on an erased record. Someone else saving the flag
 first answers `revision_conflict`: the tab reloads and says so.
+
+### The account kind
+
+Each person's account is held by one of three kinds, which Staff passes to identity on
+every call:
+
+| Kind | Who holds the account | What Staff does |
+| --- | --- | --- |
+| `local` (*Local*) | Vantigo's identity module | Creates the user, invites them, gives the employee roles |
+| `external` (*External identity provider*) | The company's identity provider, by SSO or SCIM | Finds the user the provider made once an Owner has adopted it; re-enables what Staff disabled; disables |
+| `entra` (*Microsoft Entra ID*) | Microsoft Entra ID, through a provider module | Has Entra create, enable, update and disable the account; announces it so the user that arrives is adopted with no Owner; gives the employee roles once |
+
+**On the upgrade** that brought the kinds, Staff set every person's kind and the
+default from the installation's authority mode, once, the first time it started —
+`local` from local, `external` from federated (SSO or SCIM on) — and logs `staff: the
+account kinds were seeded from the authority mode`. If identity could not be asked at
+that moment, it tries again at the next start or accounts cycle. Nothing changes
+anyone's kind afterwards but HR.
+
+**To change the default**: Staff settings → **Accounts** → **Default account kind**,
+then **Save the account settings** (`defaultAccountKind` on `PUT /settings`). Only new
+people get it. **To change one person's**: their Account tab → **Account kind**. The
+`entra` kind is refused `provider_missing` unless an enabled module offers the
+provider; leaving `entra` is refused `account_kind_locked` (409) while the person's
+Entra account is enabled or disabled — disable them with **Disable now**, or let the
+employment end, then change it. Moving a person from `local` to `entra` while their
+Vantigo user still waits for its invitation is allowed: the user Entra brings takes
+that one over.
+
+**The `entra` kind needs** the provider module installed and its connection working:
+the **Accounts** card reads *Microsoft Entra ID: connected.* Until then — *not
+connected yet* or *failing* — the worker writes nothing to the directory for those people
+(it still disables leavers in Vantigo), and the dashboard shows one item for the
+installation. Set **SCIM** up from Entra to Vantigo as
+[SSO and SCIM operations](/en/admin/sso-scim/#the-enterprise-extension-and-the-employee-number)
+says, or have the people sign in with Entra: the announced account is adopted on its
+arrival either way.
 
 ### The accounts worker
 
@@ -202,11 +246,28 @@ person; none waits for another.
    `staff` module off has the same effect, and also strands pending users — prepared,
    never invited — whom an Owner then finishes or deletes in identity.
 
-**Federated mode** (an identity provider owns the accounts): the worker never creates
-or invites anyone. It finds the user the provider created by the employee number, links
-it, re-enables a user it disabled and disables leavers; until the provider has created
-the user the link is held with `not_found` and tried again daily. A pending user made
-in local mode before the switch is held with `mode_changed` for an Owner.
+**The `external` kind** (an identity provider owns the account): the worker never
+creates or invites anyone. It finds the user the provider created by the employee
+number, links it, re-enables a user it disabled and disables leavers; until the provider
+has created the user the link is held with `not_found` and tried again daily. A pending
+user made for the `local` kind before the change is held with `mode_changed` for an
+Owner.
+
+**The `entra` kind**: the worker works the person's account in Entra first, then their
+Vantigo user, in one go. Before the effective day it has Entra create the account,
+disabled, with the [directory profile's](#the-settings) fields, and announces it to
+identity (`account_external_prepared`, `account_announced`); on the day it enables the
+account in Entra, which issues a Temporary Access Pass, and finds the Vantigo user the
+account's arrival made — no Owner adopts it — giving them the employee roles once; it
+writes a mover's changes to Entra (`account_external_updated`); the day after the last
+end it disables the account in Entra, then the user in Vantigo; and after **Delete an
+external account (days after the end)**, with no legal hold, it deletes the Entra
+account (`account_external_deleted`), which Entra keeps restorable for thirty days. An
+address Entra made for a person with no work email is written to the person
+(`work_email_set_by_provider`). HR shows the pass once on the person's Account tab
+(**Show the pass**, `POST /api/v1/staff/people/{id}/account/pass`, `pass_revealed` in
+the history); a second look, or one after it expired, is `pass_gone` (409): **Run now
+(new pass)** issues another.
 
 **The mode mismatch.** The worker reads the mode from the single sign-on settings in
 the database, as the API does
@@ -226,7 +287,13 @@ the user; only an Owner undoes it), `account_privileged` (the user is an Owner o
 SystemAdmin, handled by hand), `account_not_managed` (an Owner stopped Staff managing
 the user), `mismatch` (the user holds another employee number: someone else's account),
 `user_gone` (the user was deleted in identity), `invitation_revoked` and
-`invitation_unanswered` (an Owner's revoke, or three invitations unanswered). A link
+`invitation_unanswered` (an Owner's revoke, or three invitations unanswered). On an
+Entra account: `provider_unavailable` (Entra not connected, or failing),
+`external_ambiguous` (two accounts in Entra hold the employee number),
+`external_address_taken` (the work email is another account's in Entra),
+`external_synced_on_premises`, `external_privileged` (the account holds a directory
+role), `external_enabled` (a delete of an account still enabled) and `user_gone` (the
+account is gone from Entra; Staff never makes a second). A link
 whose `attempts` reach three could not reach identity: it is tried daily from then on,
 and the log names the failure — but a leaver's deactivation is tried at every poll for
 as long as it fails, so the leaver loses access as soon as identity answers.
@@ -252,9 +319,12 @@ identity records and the history names.
   sent* or *Done: no invitation was sent* (`{invitationSent, account}`). Identity never
   re-sends an invitation that can still be accepted and sends none within ten minutes of
   the last; the run is done all the same — try again after ten minutes if one is needed.
+  For an `entra` person it is **Run now (new pass)**: Entra issues a new pass, shown
+  with **Show the pass**; a refusal from Entra is `provider_refused` (409) with its
+  code.
   A person whose flag is off has nothing run, and the tab offers no Run now.
 - **Limits**: from one client address, Run accounts now at most 30 times an hour, and a
-  person's Run now and Disable now together at most 120 times an hour; past either the
+  person's Run now, Disable now and Show the pass together at most 120 times an hour; past either the
   request is refused (429) — wait, or let the worker's own cycle do it. The count is per
   client address, shared by everyone at that address: behind a reverse proxy set
   `TRUSTED_PROXY_HOPS` or `TRUSTED_PROXY_CIDRS` ([Authentication](/en/admin/authentication/)),
@@ -282,7 +352,10 @@ until HR turns the flag on again.
    off*. The flag is turned off first (the history shows
    `account_flag_updated`) together with a note on the link that a disable was asked
    for, then identity disables the user (`account_deactivated`) and ends their
-   sessions. The person's own revision does not move. If the browser gives up waiting,
+   sessions. For an `entra` person the Entra account is disabled first
+   (`account_external_deactivated`), then the Vantigo user; a refusal from Entra is
+   `provider_refused` (409) with its code, the flag already off. The person's own
+   revision does not move. If the browser gives up waiting,
    the disable still goes on; whatever does not reach identity, the worker finishes at
    its next polls.
 2. Verify: the tab says *The account is disabled and the account flag is off*, **Staff
@@ -330,14 +403,14 @@ erased person" — and for a leaver whose account the worker could not disable.
 | --- | --- | --- |
 | `accountNoEmployment` | The flag is on but the person has no employment | Add the employment, or turn the flag off |
 | `accountEmailMissing` | The person has no address of the kind the flag names | Add the work (or private) email, or switch the address choice |
-| `accountNotFound` | Federated: the identity provider has not created the user yet | Create the user in the provider with the person's employee number |
+| `accountNotFound` | The `external` kind: the identity provider has not created the user yet | Create the user in the provider with the person's employee number |
 | `accountNotManaged` | An Owner stopped Staff managing the user — or, with the flag off, a Disable now refused for a user Staff does not manage, tried again daily | An Owner adopts the user again (the next try disables them) or disables them in identity; HR unlinks a self-service link. Until then the person has no My page: HR unlinks the user and links them again by hand (**User** on the person's page) to give it back |
 | `accountBlockedByOwner` | An Owner disabled the pending user | An Owner enables them in identity, if they should start |
 | `accountDisabledByOwner` | An Owner disabled the user while the person is employed | An Owner decides; Staff does not undo it |
 | `accountUserGone` | The user was deleted in identity | Unlink, or an Owner restores the account |
 | `accountPrivileged` | The user is an Owner or a SystemAdmin — also after a Disable now refused for them, tried again daily; a leaver who is one stays enabled, since Staff never disables an Owner or a SystemAdmin | Another Owner demotes and disables them in identity (once demoted, the next try disables them) |
 | `accountMismatch` | The user carries another employee number: someone else's account — also after a Disable now that did nothing for it | Check the person's employee number; once it is right the disable runs |
-| `accountModeChanged` | A pending user made in local mode, now under federated mode | An Owner finishes or deletes the user |
+| `accountModeChanged` | A pending user made for the `local` kind, the person's kind now one that never invites | An Owner finishes or deletes the user |
 | `accountEmailDiffers` | The user's address in identity differs from the person's | An Owner changes it in identity (Staff changes it only while the user is pending and no invitation has been delivered to them) |
 | `accountEmailTaken` | Another user in identity holds the address | Resolve the duplicate in identity, or change the person's address |
 | `accountNumberTaken` | A user Staff does not manage holds the employee number | An Owner adopts that user for Staff, or resolves the number |
@@ -349,6 +422,19 @@ erased person" — and for a leaver whose account the worker could not disable.
 | `employeeRoleMissing` | No employee role named (one item, with a count) | An Owner names the roles Staff may give |
 | `employeeRoleUnsafe` | A role named for Staff grants administration (one item) | An Owner takes that key out of the role, or the role out of the set |
 | `accountModeMismatch` | A worker's OIDC or SCIM settings differ from the API's (one item) | Align the settings and restart the worker |
+| `accountNotArrived` | Staff announced the person's Entra account ninety days ago and no Vantigo user has arrived for it | Check that the user is in the scope of Entra's provisioning to Vantigo, or have the person sign in |
+| `accountAmbiguousInEntra` | Two accounts in Entra hold the person's employee number | Clear the number from the wrong account in Entra |
+| `accountAddressTakenInEntra` | The person's work email is another account's in Entra | Change the person's work email, or resolve the other account |
+| `accountSyncedOnPremises` | The account is synchronised from an on-premises directory | Manage it in that directory, or give the person another kind |
+| `accountPrivilegedInEntra` | The account holds an administrative role in Entra | An administrator handles it by hand |
+| `hireDateNotWritten` | Entra refused the hire date | Nothing is needed for sign-in; turn **Hire date** off in the directory profile if it keeps failing |
+| `licenceUnavailable` | A licence could not be assigned, none being left | Buy or free a licence in Microsoft 365 |
+| `passUnrevealed` | A pass was issued a day ago or more and nobody has shown it | Show it to the person, or Run now (new pass) when they are ready |
+| `managerNotInEntra` | The person's manager has no account in Entra, so the account carries no manager | Give the manager the Microsoft Entra ID kind, or accept it |
+| `entraNotConnected` | The Entra provider has no connection yet (one item, counting the `entra` people) | Connect it in the Entra module |
+| `entraFailing` | The Entra provider's last check failed — a credential refused, consent withdrawn (one item) | Fix the connection in the Entra module |
+| `secretExpiring` | The newest valid client secret ends within thirty days (one item) | Add a new secret in the Entra module |
+| `secretExpired` | The client secret has ended (one item) | Add a new secret in the Entra module |
 
 ## The personal-data permission
 
@@ -1302,10 +1388,24 @@ changing the settings at once cannot overwrite each other unseen.
   (`createBeforeDays`, 14, from 0 to 90, and `deleteExternalAfterDays`, none, from 1 to
   3650 or `null` for never): how many days before an account's
   effective date it is prepared, disabled ([Turn on accounts for a
-  person](#turn-on-accounts-for-a-person)), and when an external directory's account is
-  deleted after the last employment ended — stored but not used yet; the Entra module
-  will read it. Left out of a replace, each keeps its value; `null` sets
+  person](#turn-on-accounts-for-a-person)), and when a person's account in Entra is
+  deleted after the last employment ended, once it is disabled and no legal hold is on
+  the person. Left out of a replace, each keeps its value; `null` sets
   `deleteExternalAfterDays` to never.
+- **Default account kind** (`defaultAccountKind`, on the **Accounts** card): the kind
+  a new person gets — `local`, `external` or `entra` — set once from the authority mode
+  on the upgrade ([the account kind](#the-account-kind)). `entra` is refused
+  `provider_missing` on the field unless an enabled module offers the provider. Left out
+  of a replace, it keeps its value; people already registered keep theirs.
+- **Directory profile** (`directoryFields`, the **Directory profile** card): which
+  fields Staff writes on an `entra` person's account in Entra, as
+  `{"<field>": true|false}` over the switchable ones — `employeeHireDate`,
+  `employeeLeaveDateTime`, `employeeType`, `jobTitle`, `department`, `companyName`,
+  `employeeOrgData`, `officeLocation`, `preferredLanguage` and `manager` on by default,
+  `workAddress` and `phones` off. A field left out keeps its value; an unknown one is
+  refused on `directoryFields.<field>`. A field turned off is cleared in Entra at each
+  person's next update. The names, the employee number, the user principal name and
+  the work country are always written ([the mapping](/en/reference/staff/#the-directory-profile)).
 - **Retention state** (`retention`, read-only): the deletion ledger's pending and
   failing files, the oldest pending, and the last erase ([The deletion
   ledger](#the-deletion-ledger)). Files the store has refused at least once and that
