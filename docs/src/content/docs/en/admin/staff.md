@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, turning on accounts for a person and the accounts worker, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence, the retention periods and the account settings.
+description: Enabling the Staff module, giving people access to it, linking people to their users, turning on accounts for a person and the accounts worker with the groups it keeps, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence, the retention periods and the account settings.
 sidebar:
   order: 44
 sources:
@@ -42,6 +42,7 @@ sources:
   - apps/server/internal/staff/account_pass.go
   - apps/server/internal/staff/directory_profile.go
   - apps/server/internal/staff/holders.go
+  - apps/server/internal/staff/groups_sync.go
 ---
 
 Staff is the company's register of the people who work for it: their records, their
@@ -286,6 +287,17 @@ address Entra made for a person with no work email is written to the person
 the history); a second look, or one after it expired, is `pass_gone` (409): **Run now
 (new pass)** issues another.
 
+**Groups.** Each cycle also materialises the derived [groups](/en/user/staff/#groups) —
+the members a group's rule yields today, each who joins or leaves recorded on their
+history (`group_joined`, `group_left`) — before it works the accounts, and after them
+syncs up to 100 groups with each provider HR turned on for them: the group made in the
+directory with its owners, its name and values written when they change, its members
+set to those of its people whose account there is enabled, and an archived group
+deleted after **Delete an external account (days after the end)** or, when that is
+empty, renamed `… (archived)` and kept ([Staff's groups in the
+tenant](/en/admin/entra/#staffs-groups-in-the-tenant)). A group the provider refused
+raises `groupSyncFailed`. With `STAFF_ACCOUNTS_ENABLED=0` neither happens.
+
 **The mode mismatch.** The worker reads the mode from the single sign-on settings in
 the database, as the API does
 ([the authority mode](/en/admin/authentication/#the-authority-mode)), so the two no
@@ -463,6 +475,7 @@ erased person" — and for a leaver whose account the worker could not disable.
 | `entraFailing` | The Entra provider's last check failed — a credential refused, consent withdrawn — or Staff could not ask it (one item) | Fix the connection in the Entra module |
 | `secretExpiring` | The newest valid client secret ends within thirty days (one item) | Add a new secret in the Entra module |
 | `secretExpired` | The client secret has ended (one item) | Add a new secret in the Entra module |
+| `groupSyncFailed` | A group could not be kept in a provider's directory — a value the provider refused, a group holding its key that Vantigo may not write, or three failed tries in a row (one per group and provider, naming the group) | Open the group in Staff's **Groups**: its provider card says why, beside the setting it names; change the value, or resolve the clash in the directory |
 
 ## The personal-data permission
 

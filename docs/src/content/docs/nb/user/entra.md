@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene — og hvem som ser hva.
+description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene, tabellen Grupper — og hvem som ser hva.
 sidebar:
   order: 47
 sources:
@@ -22,7 +22,7 @@ står i [referansen](/en/reference/entra/).
 
 | Hva | Hvem |
 | --- | --- |
-| Flisen **Microsoft Entra ID**, siden, kortet **Status**, kontoene — **Bekreft** på en Vantigo ikke opprettet — og de siste hendelsene | `entra:manage` |
+| Flisen **Microsoft Entra ID**, siden, kortet **Status**, kontoene — **Bekreft** på en Vantigo ikke opprettet — de siste hendelsene og tabellen **Grupper** | `entra:manage` |
 | Stegene **1 Registrer applikasjonen**, **2 Legg til en klienthemmelighet** og **3 Gi tillatelsene og rollen** — **Lagre**, **Legg til hemmeligheten**, **Trekk tilbake**, **Test tilkoblingen** | en **eier**, innlogget med en andre faktor; for alle andre med `entra:manage` vises de skrivebeskyttet, med *En eier gjør dette steget. Du ser hva som er satt, men kan ikke endre det.* |
 | Steg **4 Sett kontoreglene** — **Lagre kontoreglene** | `entra:manage` |
 | Stegene **5 Innlogging** og **6 Klargjøring** | en **eier**: de er skjemaene fra kortet **Single sign-on**; alle andre leser steget uten dem |
@@ -65,6 +65,16 @@ etter at steg 1 endres, vises det ikke:
 - **Siste hendelser**: hva Vantigo gjorde i leietakeren eller med tilkoblingen, når,
   brukerhovednavnet, *av Ansattes kontokjøring* når Ansattes kontojobb gjorde det, og
   hva som ble meldt. Aldri en hemmelighet, et passord eller et pass.
+
+### Tabellen Grupper
+
+Under kortet **Status** viser **Grupper** gruppene Vantigo holder i leietakeren for
+Ansattes grupper ([Grupper i Ansatte](/nb/user/staff/#grupper)), slettede medregnet:
+hver gruppes **Navn**, **Type** — sikkerhet eller Microsoft 365 — **Team**, om den er
+blitt et team i Microsoft Teams, **Tilstand**, til stede eller slettet, og **Siste
+medlemssynkronisering**, når Vantigo sist brakte medlemmene i samsvar. Den er
+skrivebeskyttet: HR oppretter, endrer og arkiverer grupper i Ansatte, og Ansattes
+kontoarbeider bringer dem hit.
 
 ### 1 Registrer applikasjonen
 

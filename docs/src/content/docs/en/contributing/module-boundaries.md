@@ -378,7 +378,8 @@ Communications' outbox is the working example.
     it (depguard lets a module import its own subpackages, and no other module's). Its
     `Provider` reads the module's own rows and makes no network call, since Staff asks it
     on every `GET /meta`, and neither does `RevealPass`, which takes the sealed pass
-    from the module's own row. Staff is the authority: it
+    from the module's own row, nor `GroupTraits`, which declares a group's traits from
+    the module's own state. Staff is the authority: it
     decides what exists and when, from the register, and the provider executes against
     its directory and answers what it did — `Prepare` finds the account holding the
     employee number or creates it disabled — an account it did not create is adopted
@@ -386,7 +387,12 @@ Communications' outbox is the working example.
     and answered `ErrExternalUnconfirmed` until then —, `Activate`, `Deactivate`, `Update`,
     `Delete` (a soft delete; `ErrExternalEnabled` on an enabled account), `Account`
     (a read that writes nothing), `RevealPass` (once, then `ErrPassGone`), and the
-    group calls a later delivery uses;
+    group calls — `GroupTraits(ctx)`, the traits a group may carry, which Staff renders
+    and stores without naming one; `EnsureGroup`, which makes or adopts the group with
+    the provider's own identity among its owners and answers a refused value as a
+    `GroupTraitError` keyed by the trait, and what it could not do yet as
+    `ExternalGroup.Pending`; `SetMembers`, which reconciles the members and answers the
+    ones it could not change; and `DeleteGroup`;
     `Provider` names its key — never a reserved one (rule 5) — display name and status
     (`unconfigured`, `connected`, `failing`). It is held to rule 11's lock discipline: every other call reaches the network
     on the provider's own pool, so **Staff never calls it inside a transaction or

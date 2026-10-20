@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules — and who sees what.
+description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules, the Groups table — and who sees what.
 sidebar:
   order: 47
 sources:
@@ -22,7 +22,7 @@ reference](/en/reference/entra/).
 
 | What | Who |
 | --- | --- |
-| The **Microsoft Entra ID** tile, the page, the **Status** card, the accounts — **Confirm** on one Vantigo did not create — and the recent events | `entra:manage` |
+| The **Microsoft Entra ID** tile, the page, the **Status** card, the accounts — **Confirm** on one Vantigo did not create — the recent events and the **Groups** table | `entra:manage` |
 | Steps **1 Register the application**, **2 Add a client secret** and **3 Grant the permissions and the role** — **Save**, **Add the secret**, **Revoke**, **Test connection** | an **Owner**, signed in with a second factor; to anyone else with `entra:manage` they are shown read-only, with *An Owner does this step. You can see what is set, but not change it.* |
 | Step **4 Set the account rules** — **Save the account rules** | `entra:manage` |
 | Steps **5 Sign-in** and **6 Provisioning** | an **Owner**: they are the **Single sign-on** card's forms; anyone else reads the step without them |
@@ -64,6 +64,16 @@ that, and again after step 1 changes, it is not shown:
 - **Recent events**: what Vantigo did in the tenant or to the connection, when, the
   user principal name, *by Staff's accounts run* when Staff's worker did it, and what
   was reported. Never a secret, a password or a pass.
+
+### The Groups table
+
+Under the **Status** card, **Groups** lists the groups Vantigo keeps in the tenant for
+Staff's groups ([Groups in Staff](/en/user/staff/#groups)), deleted ones included:
+each group's **Name**, its **Type** — security or Microsoft 365 — **Team**, whether it
+has become a team in Microsoft Teams, its **State**, present or deleted, and **Last
+members sync**, when Vantigo last brought its members in line. It is read-only: HR
+creates, changes and archives groups in Staff, and Staff's accounts worker brings them
+here.
 
 ### 1 Register the application
 

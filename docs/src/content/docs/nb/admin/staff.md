@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, slå på konto for en person og kontoarbeideren, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien, oppbevaringstidene og kontoinnstillingene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, slå på konto for en person og kontoarbeideren med gruppene den holder, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien, oppbevaringstidene og kontoinnstillingene.
 sidebar:
   order: 44
 sources:
@@ -42,6 +42,7 @@ sources:
   - apps/server/internal/staff/account_pass.go
   - apps/server/internal/staff/directory_profile.go
   - apps/server/internal/staff/holders.go
+  - apps/server/internal/staff/groups_sync.go
 ---
 
 Ansatte er bedriftens register over menneskene som jobber for den: personopplysningene
@@ -289,6 +290,17 @@ passet**, `POST /api/v1/staff/people/{id}/account/pass`, `pass_revealed` i histo
 et nytt forsøk, eller et etter at det gikk ut, er `pass_gone` (409): **Kjør nå (nytt
 pass)** utsteder et nytt.
 
+**Grupper.** Hver runde henter også de avledede [gruppene](/nb/user/staff/#grupper) —
+medlemmene en gruppes regel gir i dag, hver som kommer inn eller går ut, registrert i
+historikken deres (`group_joined`, `group_left`) — før den arbeider med kontoene, og
+etter dem synkroniserer den opptil 100 grupper med hver leverandør HR har slått på for
+dem: gruppen lages i katalogen med eierne, navnet og verdiene skrives når de endres,
+medlemmene settes til de av personene som har en aktivert konto der, og en arkivert
+gruppe slettes etter **Slett en ekstern konto (dager etter slutt)** eller, når den står
+tom, får `… (archived)` etter navnet og beholdes ([Ansattes grupper i
+leietakeren](/nb/admin/entra/#ansattes-grupper-i-leietakeren)). En gruppe leverandøren
+avviste, gir `groupSyncFailed`. Med `STAFF_ACCOUNTS_ENABLED=0` skjer ingen av delene.
+
 **Ulik modus.** Arbeideren leser modusen fra innstillingene for single sign-on i
 databasen, slik API-et gjør
 ([autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen)), så de to er ikke
@@ -469,6 +481,7 @@ erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk
 | `entraFailing` | Entra-leverandørens siste kontroll feilet — en legitimasjon avvist, et samtykke trukket tilbake — eller Ansatte kunne ikke spørre den (ett punkt) | Rett tilkoblingen i Entra-modulen |
 | `secretExpiring` | Den nyeste gyldige klienthemmeligheten utløper innen tretti dager (ett punkt) | Legg til en ny hemmelighet i Entra-modulen |
 | `secretExpired` | Klienthemmeligheten har utløpt (ett punkt) | Legg til en ny hemmelighet i Entra-modulen |
+| `groupSyncFailed` | En gruppe kunne ikke holdes i en leverandørs katalog — en verdi leverandøren avviste, en gruppe med nøkkelen som Vantigo ikke får skrive til, eller tre mislykkede forsøk på rad (ett per gruppe og leverandør, med gruppens navn) | Åpne gruppen under **Grupper** i Ansatte: leverandørkortet sier hvorfor, ved innstillingen det gjelder; endre verdien, eller løs konflikten i katalogen |
 
 ## Rettigheten for personopplysninger
 
