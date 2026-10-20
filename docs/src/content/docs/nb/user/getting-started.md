@@ -230,7 +230,9 @@ siden. Det hilser deg med navn; når Kalender er på og du kan bruke den, åpner
 **I dag og denne uken**, avtalene og de daterte elementene dine for i dag og de seks
 neste dagene ([agendaen](/nb/user/calendar/#dashbordet)). Under viser det et kort for hver app du har tilgang til, med
 nøkkeltallene for valgt datoperiode (**7d**, **30d**, **90d**, **12m** eller
-**Tilpasset**), listen **Trenger oppfølging** med det som venter på deg, og
+**Tilpasset**), listen **Trenger oppfølging** med det som venter på deg — hvert punkt
+åpner der det tas hånd om, som personens side i Ansatte, eller siden **Microsoft Entra
+ID** for en konto i leietakeren der overtakelsen venter på å bli bekreftet — og
 **Hurtighandlinger** for det du gjør oftest. Ansatte har ingen tall ennå, så appen står
 bare under **Moduler** nederst på siden. Et nytt arbeidsområde viser også
 **Fullfør oppsettet**, en kort liste over de første stegene (den første kunden, en

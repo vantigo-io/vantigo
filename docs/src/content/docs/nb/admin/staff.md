@@ -460,6 +460,7 @@ erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk
 | `accountAddressTakenInEntra` | Personens e-post på jobb er en annen kontos i Entra | Endre personens e-post på jobb, eller rydd i den andre kontoen |
 | `accountSyncedOnPremises` | Kontoen synkroniseres fra en lokal katalog | Styr den i den katalogen, eller gi personen en annen type |
 | `accountPrivilegedInEntra` | Kontoen har en administrativ rolle i Entra | En administrator håndterer den for hånd |
+| `accountUnconfirmedInEntra` | Entra har en konto under personens ansattnummer som Vantigo ikke opprettet, og ingen har bekreftet overtakelsen; Ansatte skriver ingenting til den | Sjekk at den er personens, og bekreft den på siden for Microsoft Entra ID ([Kontoer Vantigo ikke opprettet](/nb/admin/entra/#kontoer-vantigo-ikke-opprettet)) |
 | `hireDateNotWritten` | Entra avviste ansettelsesdatoen | Ingenting trengs for innlogging; slå av **Ansettelsesdato** i katalogprofilen om det fortsetter å feile |
 | `licenceUnavailable` | En lisens kunne ikke tildeles, fordi det ikke er flere igjen | Kjøp eller frigjør en lisens i Microsoft 365 |
 | `passUnrevealed` | Et pass ble utstedt for en dag eller mer siden, og ingen har vist det | Vis det til personen, eller Kjør nå (nytt pass) når de er klare |

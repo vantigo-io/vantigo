@@ -1623,8 +1623,14 @@ disabled under an address made from the work email or a pattern over the folded 
 enabled on the first day with the hire date, the licences and the pass; kept in step;
 disabled first, whatever the status, then the sessions revoked, the leave date written,
 the direct licences stripped and the groups left as the connection says, a step that
-fails reported `leaver_step_failed:<step>`; soft-deleted when Staff asks, a rehire after
-it a new user; every refusal a
+fails reported `leaver_step_failed:<step>` and the disable made again the next day;
+soft-deleted when Staff asks, a rehire after it a new user. A user the module found
+rather than created is adopted untrusted — nothing written to it, `ErrExternalUnconfirmed`
+and Staff's `accountUnconfirmedInEntra`, until a holder of `entra:manage` confirms it on
+the Status card (the security review's finding, the plan's reading 8); a pass is
+issued only on the call that enables an account; a tenant change clears the sealed
+passes; the creates are never retried on a 5xx and their refusals logged without
+Graph's words; every refusal a
 sentinel or a reported code, and a streak of three refused sensitive actions read as
 `role_missing`, the User Administrator role not assigned. The tile **Microsoft Entra
 ID** carries the **Status** card and the six-step wizard with every portal path,

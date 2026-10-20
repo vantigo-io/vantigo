@@ -224,8 +224,10 @@ of the page. It greets you by name; when Calendar is on and you may use it, it o
 with **Today and this week**, your appointments and dated items for today and the six
 days after ([the dashboard](/en/user/calendar/#the-dashboard)). Below, it shows a card for each app you have access to,
 with its key numbers for the chosen date range (**7d**, **30d**, **90d**, **12m** or
-**Custom**), a **Needs attention** list of things waiting for you, and **Quick
-actions** for the things you do most. Staff has no numbers yet, so it is listed only
+**Custom**), a **Needs attention** list of things waiting for you — each opens where
+it is dealt with, such as the person's page in Staff, or the **Microsoft Entra ID**
+page for an account in the tenant whose adoption is waiting to be confirmed — and
+**Quick actions** for the things you do most. Staff has no numbers yet, so it is listed only
 under **Modules** at the bottom of the page. A new workspace also shows **Finish your
 setup**, a short list of first steps (the first customer, a mailbox, a product, a
 project…) that disappears once they are all done.

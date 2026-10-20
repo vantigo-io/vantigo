@@ -22,7 +22,7 @@ reference](/en/reference/entra/).
 
 | What | Who |
 | --- | --- |
-| The **Microsoft Entra ID** tile, the page, the **Status** card, the accounts and the recent events | `entra:manage` |
+| The **Microsoft Entra ID** tile, the page, the **Status** card, the accounts — **Confirm** on one Vantigo did not create — and the recent events | `entra:manage` |
 | Steps **1 Register the application**, **2 Add a client secret** and **3 Grant the permissions and the role** — **Save**, **Add the secret**, **Revoke**, **Test connection** | an **Owner**, signed in with a second factor; to anyone else with `entra:manage` they are shown read-only, with *An Owner does this step. You can see what is set, but not change it.* |
 | Step **4 Set the account rules** — **Save the account rules** | `entra:manage` |
 | Steps **5 Sign-in** and **6 Provisioning** | an **Owner**: they are the **Single sign-on** card's forms; anyone else reads the step without them |
@@ -58,7 +58,9 @@ that, and again after step 1 changes, it is not shown:
   tried first, *Revoked* and the date, and *Refused by the tenant* and the date for one
   the tenant turned down — and **Revoke** (an Owner);
 - **The module's accounts**, once there are any: each **User principal name**, its
-  **State** and what was **Reported** for it;
+  **State** and what was **Reported** for it. An account Vantigo found in the tenant
+  rather than created reads *Adopted — confirm* until someone confirms it
+  ([below](#confirm-an-account-vantigo-did-not-create));
 - **Recent events**: what Vantigo did in the tenant or to the connection, when, the
   user principal name, *by Staff's accounts run* when Staff's worker did it, and what
   was reported. Never a secret, a password or a pass.
@@ -73,7 +75,9 @@ registration**, *Accounts in this organizational directory only*), then copy its
 *Done* once both are saved. Saving another tenant or client later sends the connection
 back to not connected until it is tested again. While Vantigo keeps accounts in the
 tenant, it asks first — **Change the tenant or the application?** — and **Change it**
-saves, since the accounts were made in the old one. Nothing is deleted in either
+saves, since the accounts were made in the old one: Vantigo no longer manages them, and
+no longer disables or deletes them when their people leave. A change of tenant also
+discards every Temporary Access Pass not yet shown. Nothing is deleted in either
 tenant.
 
 ### 2 Add a client secret
@@ -166,6 +170,21 @@ The card also offers **Open Staff's settings**, where **Default account kind** c
 **Microsoft Entra ID** for the people registered from now on
 ([Accounts](/en/user/staff/#accounts)). People already registered keep their kind until
 HR changes it on their Account tab.
+
+## Confirm an account Vantigo did not create
+
+When the tenant already holds a user with the employee number of a person Staff
+registers, Vantigo links it but writes nothing to it — no details, no enable, no pass,
+no disable, no delete — until someone with `entra:manage` confirms it is the person's.
+Staff's Account tab and dashboard say so, and the dashboard links here.
+
+1. In the **Status** card's accounts, find the one reading *Adopted — confirm*.
+2. Check in the portal that it is the person's.
+3. Choose **Confirm** beside it, then **Confirm** in *Confirm the adoption of …?*.
+
+The page says *Adoption confirmed*, and Vantigo manages the account from Staff's next
+accounts run. Confirm only an account you have checked: confirming hands it to whoever
+holds that employee number in Staff.
 
 ## After the setup
 

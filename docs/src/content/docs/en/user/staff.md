@@ -460,10 +460,13 @@ account in the directory yet: Staff has not created or found one for this person
 - Why the account is held up, in a sentence, when it is: Entra not connected or failing,
   two accounts in Entra with the person's employee number, the work email already
   another account's there, an account synchronised from an on-premises directory, an
-  account with an administrative role in Entra, an account not deleted because it is
+  account with an administrative role in Entra, an account Vantigo did not create
+  whose adoption nobody has confirmed on the Microsoft Entra ID page (Staff writes
+  nothing to it until someone does), an account not deleted because it is
   still enabled there, the account gone from Entra (Staff never makes a second); and,
   one sentence each, what Entra reported and could not do: the hire date not written,
-  no licence left (the licence named in brackets), a pass not allowed, the manager's
+  no licence left (the licence named in brackets), a pass not allowed or refused, a
+  leaver step not finished (the step named — Staff tries it again the next day), the manager's
   account not found, the person's manager not in Entra. *Failed attempts in a row: 3.
   The directory could not be reached; the worker tries again.* says Entra could not be
   reached.

@@ -22,7 +22,7 @@ står i [referansen](/en/reference/entra/).
 
 | Hva | Hvem |
 | --- | --- |
-| Flisen **Microsoft Entra ID**, siden, kortet **Status**, kontoene og de siste hendelsene | `entra:manage` |
+| Flisen **Microsoft Entra ID**, siden, kortet **Status**, kontoene — **Bekreft** på en Vantigo ikke opprettet — og de siste hendelsene | `entra:manage` |
 | Stegene **1 Registrer applikasjonen**, **2 Legg til en klienthemmelighet** og **3 Gi tillatelsene og rollen** — **Lagre**, **Legg til hemmeligheten**, **Trekk tilbake**, **Test tilkoblingen** | en **eier**, innlogget med en andre faktor; for alle andre med `entra:manage` vises de skrivebeskyttet, med *En eier gjør dette steget. Du ser hva som er satt, men kan ikke endre det.* |
 | Steg **4 Sett kontoreglene** — **Lagre kontoreglene** | `entra:manage` |
 | Stegene **5 Innlogging** og **6 Klargjøring** | en **eier**: de er skjemaene fra kortet **Single sign-on**; alle andre leser steget uten dem |
@@ -59,7 +59,9 @@ etter at steg 1 endres, vises det ikke:
   prøves først, *Trukket tilbake* og datoen, og *Avvist av leietakeren* og datoen for
   en leietakeren har avvist — og **Trekk tilbake** (en eier);
 - **Modulens kontoer**, når det finnes noen: hvert **Brukerhovednavn**, **Tilstand** og
-  hva som ble **Rapportert** for det;
+  hva som ble **Rapportert** for det. En konto Vantigo fant i leietakeren i stedet for å
+  opprette den, står som *Overtatt – bekreft* til noen bekrefter den
+  ([under](#bekreft-en-konto-vantigo-ikke-opprettet));
 - **Siste hendelser**: hva Vantigo gjorde i leietakeren eller med tilkoblingen, når,
   brukerhovednavnet, *av Ansattes kontokjøring* når Ansattes kontojobb gjorde det, og
   hva som ble meldt. Aldri en hemmelighet, et passord eller et pass.
@@ -74,8 +76,10 @@ registration**, *Accounts in this organizational directory only*), kopier så
 *Ferdig* når begge er lagret. Lagrer du en annen leietaker eller klient senere, går
 tilkoblingen tilbake til ikke tilkoblet til den er testet igjen. Mens Vantigo holder
 kontoer i leietakeren, spør den først — **Bytte leietaker eller applikasjon?** — og
-**Bytt** lagrer, siden kontoene ble laget i den gamle. Ingenting slettes i noen av
-leietakerne.
+**Bytt** lagrer, siden kontoene ble laget i den gamle: Vantigo forvalter dem ikke
+lenger, og deaktiverer eller sletter dem ikke lenger når personene slutter. Et bytte av
+leietaker forkaster også alle midlertidige tilgangspass som ikke er vist ennå.
+Ingenting slettes i noen av leietakerne.
 
 ### 2 Legg til en klienthemmelighet
 
@@ -167,6 +171,23 @@ Kortet tilbyr også **Åpne innstillingene til Ansatte**, der **Standard kontoty
 **Microsoft Entra ID** for personene som registreres fra nå av
 ([Kontoer](/nb/user/staff/#kontoer)). Personer som allerede er registrert, beholder
 kontotypen sin til HR endrer den på fanen Konto.
+
+## Bekreft en konto Vantigo ikke opprettet
+
+Når leietakeren allerede har en bruker med ansattnummeret til en person Ansatte
+registrerer, kobler Vantigo den, men skriver ingenting til den — ingen opplysninger,
+ingen aktivering, ikke noe pass, ingen deaktivering, ingen sletting — før noen med
+`entra:manage` bekrefter at den er personens. Fanen Konto i Ansatte og dashbordet sier
+fra, og dashbordet lenker hit.
+
+1. Finn kontoen som står som *Overtatt – bekreft* blant kontoene på kortet **Status**.
+2. Sjekk i portalen at den er personens.
+3. Velg **Bekreft** ved siden av den, og så **Bekreft** i *Bekrefte overtakelsen av
+   …?*.
+
+Siden sier *Overtakelsen er bekreftet*, og Vantigo forvalter kontoen fra Ansattes neste
+kontokjøring. Bekreft bare en konto du har sjekket: å bekrefte gir den til den som har
+ansattnummeret i Ansatte.
 
 ## Etter oppsettet
 

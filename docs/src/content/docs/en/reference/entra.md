@@ -61,7 +61,7 @@ reaches them.
   - what the last [connection test](#the-connection-test) — or a refusal since — found:
     `status` (`unconfigured`, `connected` or `failing`; `unconfigured` by default),
     `status_reason` (60, a code), `permissions_present` (the token's roles),
-    `verified_domains`, `organisation_name` (200) and `last_checked_at`;
+    `verified_domains`, `organisation_name` (256) and `last_checked_at`;
   - `sensitive_denied_streak` (0 by default, never negative), the sensitive writes
     refused in a row with none succeeding since ([role_missing](#the-sensitive-actions-and-role_missing));
   - `version` (from 1), the `If-Match` of both of the connection's `PUT`s, and
@@ -78,7 +78,9 @@ reaches them.
   purpose `entra/pass`, until revealed or expired) with `pass_expires_at` — a sealed
   pass always has its expiry (`CHECK`) — and `pass_revealed_at`, `created_by_us`
   (false for a user the module found and linked), `reported` (the codes of the last
-  write), `last_error` (60, the last refusal's code), `last_synced_at` and the two
+  write), `last_error` (60, the last refusal's code), `last_synced_at`,
+  `adoption_confirmed_at` and `adoption_confirmed_by_user_id` (who confirmed a found
+  user's [adoption](#adopted-accounts), null for one the module created) and the two
   stamps. `ux_entra_accounts_number` on `upper(employee_number)` holds one account per
   employee number, case-folded as Staff's numbers are. A deleted account stays,
   marked `deleted`, until the number is prepared again: a rehire after a delete drops
@@ -107,7 +109,7 @@ lost (Staff's **Run now (new pass)** issues another).
 
 | Key | Name | Grants | Sensitive | Delegable |
 | --- | --- | --- | --- | --- |
-| `entra:manage` | Manage Microsoft Entra ID | The tile and its page; the connection's status, secrets (without their values), accounts and events; the [account rules](#the-account-rules) and the tenant's licences. | yes | **no** |
+| `entra:manage` | Manage Microsoft Entra ID | The tile and its page; the connection's status, secrets (without their values), accounts and events; confirming an [adopted account](#adopted-accounts); the [account rules](#the-account-rules) and the tenant's licences. | yes | **no** |
 
 It is in the category "Administration". The Owner holds it through the wildcard;
 anyone else needs a role that grants it, and because it is not delegable, only an Owner
@@ -148,12 +150,15 @@ to `unconfigured`, forgets what the last test found — `lastCheckedAt`, the per
 present, the verified domains and the organisation's name — and the sensitive streak,
 and is recorded as the event `entra.connection.changed` with the codes
 `tenant_before:`, `tenant_after:`, `client_before:` and `client_after:` (`none` for an id
-not set before). **The same pair again writes nothing**: no version, no event; the
-answer is the connection as it is. **While the module keeps accounts**
+not set before). **A change of the tenant also clears every pass not yet revealed**,
+in the same transaction — they are the old tenant's users' — while a change of the
+client alone keeps them. **The same pair again writes nothing**: no version, no event;
+the answer is the connection as it is. **While the module keeps accounts**
 (`entra.accounts` has rows) a change of either id is refused `409 connection_in_use`
-unless the request carries
-`confirmChange: true`: the accounts were made in the old tenant, and the module would
-now look for them in the new one. A change deletes nothing in the tenant either way.
+unless the request carries `confirmChange: true`: the accounts were made in the old
+tenant, the module would now look for them in the new one, and — as the refusal's
+detail says — the current tenant's accounts would no longer be disabled or deleted by
+Vantigo when their people leave. A change deletes nothing in the tenant either way.
 
 ### The credentials
 
@@ -321,7 +326,9 @@ part number a Staff group's licences name, such as `ENTERPRISEPACK`), `enabled` 
 seats bought, `prepaidUnits.enabled`) and `consumed`, sorted by part number. It
 answers `503 credential_invalid` when no secret fetched a token (or no tenant or client
 is saved) and `503 tenant_unreachable` when the tenant did not answer. The wizard shows
-the list under step 4 while the connection is `connected`.
+the list under step 4 while the connection is `connected`. It is rate-limited in a
+bucket of its own, `entra-skus`, 30 requests a minute per client address (429 beyond),
+since every request reaches the tenant.
 
 ## The Graph client
 
@@ -346,20 +353,28 @@ Staff's worker calls:
 - **Throttling.** A 429 waits its `Retry-After` once (a second when it names none); a
   second 429, or a `Retry-After` over 60 seconds, fails the call, and Staff's worker
   tries again at its next poll.
-- **A 5xx is retried once**, after a second.
+- **A 5xx is retried once**, after a second — except on the two creates that must not
+  happen twice, `POST /users` and the pass's create: their 5xx is the answer, and the
+  caller reads back instead ([Prepare](#prepare)). A 429 and a 401, which the tenant
+  answers before it acts, are retried on them as on any call.
 - **A 401 drops the cached token** and the call is retried once with a fresh one.
 - **Every response body is read through a 1 MiB cap**; a larger one is refused.
 - **Graph's errors** (`{ error: { code, message, details } }`) are mapped to a
   sentinel or a reported code by the status, the code and the first detail's code (a
   taken UPN is `ObjectConflict` there). The message is logged at debug level with the
   tenant's id, the method and the path — never the query, which may carry an employee
-  number — and **the body is never stored**: not in a row, an event or anything a
-  person sees.
+  number — except for the user's create and the pass's create, whose refusal is logged
+  by its status and codes alone, since the message could echo the password or the pass
+  the call carried; the token endpoint's refusal is likewise logged by its status and
+  OAuth code, never its `error_description`. **The body is never stored**: not in a
+  row, an event or anything a person sees.
 
 ## The user lifecycle
 
 The module's `IdentityProvisioner` executes Staff's steps. Every write checks its actor
 first (`contracts.ErrInvalidActor` for one that is neither a user nor a system).
+**An account the module did not create is written to only once its adoption is
+confirmed** ([adopted accounts](#adopted-accounts)).
 **`Prepare`, `Activate`, `Update` and `Delete` need the status `connected`**, as
 `Provider` answers it, and answer `contracts.ErrProviderUnavailable` otherwise.
 **`Deactivate` and `Account` run whatever the status**, on any secret that fetches a
@@ -375,7 +390,9 @@ shows on the person's Account tab:
 | --- | --- |
 | `hire_date_not_written` | Graph refused the `PATCH` carrying `employeeHireDate` (400 or 403); the account was enabled without it. |
 | `licence_unavailable:<part number>` | That licence could not be assigned — the tenant does not subscribe to the part number, no seat was left, or the assignment was refused; the others were. |
-| `pass_not_allowed` | The tenant's policy refused the Temporary Access Pass. |
+| `pass_not_allowed` | The tenant's policy refused the Temporary Access Pass (a 400). |
+| `pass_forbidden` | The tenant refused the pass's create alone with a 403; the account is enabled without a pass. Not a privileged refusal, and not counted in the sensitive streak. |
+| `adoption_unconfirmed` | The account is one the module found, not created, and nobody has confirmed its adoption; nothing is written to it ([adopted accounts](#adopted-accounts)). |
 | `manager_not_found` | The manager's account was not found in the tenant, or Staff named no valid object id. |
 | `privileged` | A sensitive action was refused ([below](#the-sensitive-actions-and-role_missing)). |
 | `leaver_step_failed:<step>` | A leaver's step after the disable failed — `revoke_sessions`, `leave_date`, `strip_licences` or `remove_groups` — and the steps after it were not tried ([Deactivate](#deactivate)). |
@@ -390,12 +407,14 @@ link ([the provider link](/en/reference/staff/#the-provider-link)):
 | `ErrExternalSyncedOnPremises` | The user is synchronised from on-premises Active Directory (`onPremisesSyncEnabled`), which Graph will not write. Checked on every write to a user. |
 | `ErrExternalPrivileged` | A sensitive action was refused 403. |
 | `ErrExternalEnabled` | A delete of an account that is still enabled. |
+| `ErrExternalUnconfirmed` | The account is one the module found, not created, and its adoption is not confirmed; nothing was written. |
 | `ErrPassGone` | No pass waits, or it has expired. |
 | `ErrProviderUnavailable` | The connection is not set, or no secret works. |
 
 Each refusal sets the account's `last_error` and is recorded under the write's own
 event with the code `refused:<code>` — `ambiguous`, `address_taken`,
-`synced_on_premises`, `privileged` or `enabled`. Anything else — a throttled call, a 5xx
+`synced_on_premises`, `privileged` or `enabled`; an unconfirmed adoption records
+`refused:adoption_unconfirmed` and leaves `last_error` as it was. Anything else — a throttled call, a 5xx
 after its retry, a network failure, no domain to make an address under — is a plain
 error, which Staff counts and retries.
 
@@ -406,8 +425,17 @@ the number's `'` escaped as `''`:
 
 - **Two rows** is `ErrExternalAmbiguous`.
 - **One row** is read whole and linked — `created_by_us` false, unless the module made
-  it — and brought to the spec by the [Update](#update) path; `onPremisesSyncEnabled`
-  on it is `ErrExternalSyncedOnPremises`.
+  it; `onPremisesSyncEnabled` on it is `ErrExternalSyncedOnPremises`. A user the module
+  made, or one whose adoption was confirmed, is brought to the spec by the
+  [Update](#update) path. **Any other is adopted untrusted**: its row is written with
+  `adoption_unconfirmed` among its codes, nothing is written to the user, and the call
+  answers `contracts.ErrExternalUnconfirmed` (event codes `found` and
+  `refused:adoption_unconfirmed`) until a holder of `entra:manage` confirms it; the
+  next `Prepare` then brings it to the spec and answers it. This supersedes the letter
+  of the design's D13, under which `Prepare` adopted and wrote the user holding the
+  number; [the plan's reading 8](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-20-entra-module.md)
+  is the record of why: a `staff:manage` holder registering someone else's employee
+  number could otherwise take over that person's account.
 - **None, while the module's row for the number names a user the tenant still holds**
   (the filter may lag a create by seconds): that user, as above.
 - **The module's row names a user deleted, or one the tenant answers 404 for**: the row
@@ -428,7 +456,16 @@ the number's `'` escaped as `''`:
   written together as `employeeOrgData`, since Graph replaces the object whole — each
   cut to the length Graph keeps. A conflict (`ObjectConflict`) on the UPN is
   `ErrExternalAddressTaken` when the work email was the UPN, and a retry with the next
-  suffix when the pattern made it; a 403 is `ErrExternalPrivileged`. Then the manager,
+  suffix when the pattern made it; a 403 is `ErrExternalPrivileged`. **The create is
+  made once**: when its answer is lost — a 5xx, or no answer — `Prepare` reads the
+  number back and takes the user as its own only when exactly one holds it, with the
+  UPN it asked for, disabled and not synchronised; otherwise the call fails, and a
+  user it may have made is found by the next `Prepare` and adopted untrusted. **The
+  row is recorded under the connection's share lock** (`FOR SHARE`), after checking
+  that the tenant, the client and a usable secret are still the ones the create was
+  made with; when one moved — step 1 changed, or the last valid secret was revoked,
+  meanwhile — nothing is recorded, the user is left disabled in the tenant, and the
+  call answers `ErrProviderUnavailable`. Then the manager,
   by `PUT /users/{id}/manager/$ref`, when Staff names one; a 404 there, or a manager id
   that is not an object id, reports `manager_not_found`.
 
@@ -456,16 +493,18 @@ On the first day:
    `licenseAssignmentStates[].error` (such as `CountViolation`, no seat left), reports
    `licence_unavailable:<part number>`; the rest are assigned. A 4xx on the whole call
    reports every licence it carried.
-3. The pass, **when Staff's step asks for a fresh one** — **Run now (new pass)**,
-   `Flags.Fresh` — **or when this call enabled the account and no unrevealed, unexpired
-   pass waits**; an `Activate` of an account already enabled issues none otherwise.
+3. The pass, **only when this call enabled the account**, and then when Staff's step
+   asks for a fresh one — **Run now (new pass)**, `Flags.Fresh` — or no unrevealed,
+   unexpired pass waits. An `Activate` of an account already enabled issues none,
+   `Fresh` included: a pass over a working account would be a way into it. The create
+   is made once, never retried on a 5xx.
    `POST /users/{id}/authentication/temporaryAccessPassMethods` with
    `lifetimeInMinutes` and `isUsableOnce` from the connection. The pass is sealed under
    `entra/pass` with its expiry — Graph's `startDateTime` plus its lifetime — and the
    account answers `HasPass` true; recorded as the event `entra.pass.issued` with
    `expires_at:<instant>`. A 400 on the create — the tenant's authentication methods
-   policy does not enable the pass for the user — reports `pass_not_allowed`, and there
-   is no pass; a 403 is `ErrExternalPrivileged`.
+   policy does not enable the pass for the user — reports `pass_not_allowed`, and a 403
+   reports `pass_forbidden`; either way there is no pass and the enable stands.
 
 An enabled user with nothing missing is answered as it is. Recorded as the event
 `entra.user.activated` with `enabled`, `hire_date_written`, `licences_assigned:<n>`
@@ -503,8 +542,11 @@ by the connection unless named always:
 `leaver_step_failed:<step>` (`revoke_sessions`, `leave_date`, `strip_licences` or
 `remove_groups`), and the call still answers the account disabled. A later
 `Deactivate` runs the steps again from the first — each is safe to repeat — and
-finishes the rest; Staff, though, calls `Deactivate` only on an account that is still
-enabled, so it makes no such call by itself. Recorded as the event `entra.user.deactivated` with `disabled`,
+finishes the rest, the code clearing once they succeed. Staff makes that call: it
+deactivates again a disabled account whose codes hold `leaver_step_failed:<step>`,
+once a day — a call already made in a claim's chain is not made again in it, so a
+step that fails again waits for the link's next claim
+([the provider link](/en/reference/staff/#the-provider-link)). Recorded as the event `entra.user.deactivated` with `disabled`,
 `sessions_revoked`, `leave_date_written`, `licences_stripped` and `groups_removed` as
 each happened, and the step that failed.
 
@@ -582,7 +624,37 @@ is shown, **shown once** — through `RevealPass`, which Staff calls when HR cho
 any of the module's endpoints. `GET /accounts` says only `hasPass`, false once the
 expiry is past. A new pass issued by Graph replaces the last one in the tenant and on
 the row; one that expired unseen is cleared when a reveal finds it, and a leaver's
-disable or a delete clears any pass waiting.
+disable or a delete clears any pass waiting, as a change of the tenant clears them
+all.
+
+## Adopted accounts
+
+An account is **trusted** — written to by the lifecycle — when the module created it
+(`created_by_us`) or a holder of `entra:manage` confirmed its adoption
+(`adoption_confirmed_at` set). Any other user Staff names — one `Prepare` found holding
+the employee number, or one the module keeps no row for — is **adopted untrusted**:
+`Activate`, `Update`, `Deactivate` and `Delete` answer `contracts.ErrExternalUnconfirmed`
+and make no write to Graph, the row keeps `adoption_unconfirmed` among its codes with
+its `last_error` untouched, and the write's event carries
+`refused:adoption_unconfirmed`. A leaver's disable is refused too: the module never
+owned the account, and its safety is not the module's to give until someone confirms
+the account is the person's ([the plan's reading 8](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-20-entra-module.md)).
+
+**`POST /accounts/{objectId}/confirm`** (`entra:manage`) confirms one: it sets
+`adoption_confirmed_at` and `adoption_confirmed_by_user_id`, takes `adoption_unconfirmed`
+out of the codes, answers `200` with the account, and is recorded as the event
+`entra.account.adoption_confirmed`. An account the module does not keep is a 404 with
+an empty body; one confirmed already, or one the module created, is `409
+adoption_confirmed`. The next `Prepare` or `Update` Staff makes brings the account to
+the person's spec. On the **Status** card such an account reads *Adopted — confirm*
+with a **Confirm** button, which asks *Confirm the adoption of …?* first;
+`GET /accounts` answers `adoptionConfirmed` beside `createdByUs`.
+
+Staff records the sentinel as the blocked reason `external_unconfirmed` and raises the
+attention item `accountUnconfirmedInEntra`, whose dashboard sentence links to the
+module's page. A refused `Deactivate` is tried again at every poll, so a leaver's
+account is disabled within one poll of the confirmation; the other refused steps wait
+for the link's daily claim (or **Run now**).
 
 ## The sensitive actions and role_missing
 
@@ -591,7 +663,8 @@ the delete and the pass — need the **User Administrator** role on the applicat
 service principal as well as the permission, and even with it an application cannot
 act on a user who holds an administrator role, is in a role-assignable group or a
 restricted management administrative unit. The module treats a 403 on the create, the
-enable, the disable, a phone's update, the delete or the pass as one: it is
+enable, the disable, a phone's update or the delete as one — a 403 on the pass alone
+is `pass_forbidden` instead, the enable before it having been allowed: it is
 `ErrExternalPrivileged`, the account reports `privileged`, its `last_error` is set, and
 the connection's `sensitive_denied_streak` goes up by one. A sensitive action that
 succeeds sets the streak back to 0, as does a change of the tenant or the client.
@@ -623,6 +696,7 @@ limit outside that is a 400) on the **Status** card:
 | `entra.credential.added`, `entra.credential.revoked` | the two secret operations |
 | `entra.user.prepared`, `entra.user.activated`, `entra.user.deactivated`, `entra.user.updated`, `entra.user.deleted` | the lifecycle |
 | `entra.pass.issued`, `entra.pass.revealed` | the pass |
+| `entra.account.adoption_confirmed` | `POST /accounts/{objectId}/confirm` |
 
 A lifecycle write the tenant refused is recorded under its own action with
 `refused:<code>`. The codes carry the details each section names — `tenant_before:`,
@@ -637,8 +711,9 @@ Each answers `id`, `at`, `actor` — the user's id, or the system's name
 `objectId` and `upn`. Nothing else: never an address beyond the UPN, a secret or a pass.
 
 `GET /accounts` (`entra:manage`) lists every account the module keeps, by UPN —
-`objectId`, `employeeNumber`, `userPrincipalName`, `state`, `createdByUs`, `hasPass`,
-`reported`, `lastSyncedAt` and `createdAt` — read-only, never the pass. The **Status**
+`objectId`, `employeeNumber`, `userPrincipalName`, `state`, `createdByUs`,
+`adoptionConfirmed`, `hasPass`, `reported`, `lastSyncedAt` and `createdAt` — never the
+pass. The **Status**
 card lists them once the module keeps any.
 
 ## Refusals
@@ -651,13 +726,14 @@ what a client keys off, never the words:
 | field errors under `errors` | 400 | A form field broke its rule, keyed by the request's camelCase field. |
 | `connection_in_use` | 409 | The tenant or the client changes while the module keeps accounts, without `confirmChange`. |
 | `credential_in_use` | 409 | Revoking the only valid secret while the module keeps accounts. |
+| `adoption_confirmed` | 409 | Confirming an account confirmed already, or one the module created. |
 | `version_mismatch` | 412 | The connection was written since the `If-Match` version. |
 | `credential_invalid` | 503 | `GET /connection/skus`: no secret fetched a token, or no tenant or client is saved. |
 | `tenant_unreachable` | 503 | `GET /connection/skus`: the tenant did not answer. |
 
 A request the server could not decode is a bare 400 with neither. The 401 (no session),
 the 403 (the permission, or the Owner policy — an Owner without a second factor
-included) and the 429 (`entra-owner`) are the router's.
+included) and the 429 (`entra-owner`, `entra-skus`) are the router's.
 
 ## Testing
 
@@ -692,9 +768,10 @@ All under `/api/v1/entra`.
 | `DELETE /connection/credentials/{id}` | `policy:Owner+OwnerManagement`; `entra-owner` |
 | `POST /connection/test` | `policy:Owner+OwnerManagement`; `entra-owner` |
 | `PUT /connection/settings` | `entra:manage`; `If-Match` |
-| `GET /connection/skus` | `entra:manage` |
+| `GET /connection/skus` | `entra:manage`; `entra-skus` (30 a minute per client address, its own bucket) |
 | `GET /events` | `entra:manage` |
 | `GET /accounts` | `entra:manage` |
+| `POST /accounts/{objectId}/confirm` | `entra:manage` |
 
 The request and response shapes are in the contract,
 [`openapi/entra.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/entra.yaml),
