@@ -395,9 +395,9 @@ day, at which address and who holds the account. HR changes it:
    A new person gets the **Default account kind** from [Accounts](#accounts). Changing a
    person away from Microsoft Entra ID while Entra holds an account for them — enabled,
    disabled or held up, until Entra has deleted it or reported it gone — is refused —
-   *The account kind cannot leave Microsoft Entra ID while the person's
-   account there is enabled or disabled. The person leaves the directory by Disable now
-   or by the end of their employment.* A person whose
+   *The account kind cannot leave Microsoft Entra ID while Microsoft Entra ID
+   holds an account for the person. The person leaves the directory by Disable now or
+   by the end of their employment.* A person whose
    Vantigo user still waits for its invitation can be moved from Local to Microsoft
    Entra ID: the account that arrives from Entra takes over that user. Until Staff has
    set everyone's kind on the upgrade that brought the kinds, a change of kind is not
