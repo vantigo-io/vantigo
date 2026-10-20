@@ -46,6 +46,15 @@ CREATE INDEX ix_expected_accounts_upn ON identity.expected_accounts (user_princi
 -- later removal of one is not undone. The local path sets it too.
 ALTER TABLE identity.users ADD COLUMN provisioning_roles_at timestamptz;
 
+-- A user Staff manages who is not pending had their roles given already:
+-- by the previous release's Activate (the local kind, which gave them on
+-- the enable), or by an Owner when they adopted the user (an external
+-- kind). The once-only grant is spent for them, so an entra Activate after
+-- this upgrade does not give the roles again over what an Owner has since
+-- removed. A pending user has had none and keeps null.
+UPDATE identity.users SET provisioning_roles_at = now()
+WHERE managed_by IS NOT NULL AND pending_since IS NULL;
+
 -- +goose Down
 -- The announcements not yet fulfilled go with the table: Staff announces a
 -- person's account again after its provider's next Prepare, and until then

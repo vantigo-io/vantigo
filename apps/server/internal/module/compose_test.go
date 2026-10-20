@@ -2313,3 +2313,26 @@ func TestCompose_TwoIdentityProvisionersWithOneKeyFail(t *testing.T) {
 		t.Errorf("compose with a preset = %v, want an error naming Deps.IdentityProvisioners and alpha", err)
 	}
 }
+
+// A provider under a reserved key — none, identity, local or external —
+// fails composition naming its module (a preset one as
+// Deps.IdentityProvisioners): Staff's identity link and the two kinds that
+// name no provider are not a provider's.
+func TestCompose_IdentityProvisionerWithAReservedKeyFails(t *testing.T) {
+	for _, key := range []string{"", "identity", contracts.AccountKindLocal, contracts.AccountKindExternal} {
+		provider := func(Deps) contracts.IdentityProvisioner { return &fakeIdentityProvisioner{key: key} }
+		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract}),
+			Module{Name: "alpha", IdentityProvisioner: provider, Mount: staticHandler("alpha")},
+		)
+		if err == nil || !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "reserved") {
+			t.Errorf("compose with the key %q = %v, want an error naming alpha and the reserved key", key, err)
+		}
+		_, err = compose(Deps{Access: &fakeAccess{}, IdentityProvisioners: []contracts.IdentityProvisioner{&fakeIdentityProvisioner{key: key}}},
+			fakeLoad(map[string]string{"alpha": alphaContract}),
+			Module{Name: "alpha", Mount: staticHandler("alpha")},
+		)
+		if err == nil || !strings.Contains(err.Error(), "Deps.IdentityProvisioners") || !strings.Contains(err.Error(), "reserved") {
+			t.Errorf("compose with a preset under %q = %v, want an error naming Deps.IdentityProvisioners and the reserved key", key, err)
+		}
+	}
+}

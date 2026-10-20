@@ -161,7 +161,11 @@ type accountDecision struct {
 
 // linkOnly is whether kind is one identity only finds the user for —
 // external, or a provider's (entra) — rather than creating and inviting
-// them (local). "" is local: a person read before the kinds were seeded.
+// them (local). "" reads local, though no stored person carries it: the
+// column is NOT NULL and defaults to local, which is what every person reads
+// before the kinds are seeded too — whatever the installation's mode — so
+// the worker judges nothing on a kind until the seed has run
+// (account_seed.go).
 func linkOnly(kind string) bool {
 	return kind != "" && kind != contracts.AccountKindLocal
 }

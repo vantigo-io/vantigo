@@ -59,8 +59,9 @@ const (
 
 // The problem codes of the kind, the provider and the pass.
 const (
-	// codeAccountKindLocked (409): a change of kind away from entra while
-	// the person's entra link is enabled or disabled.
+	// codeAccountKindLocked (409): a change of kind away from a provider's
+	// while the person's link under it names an account the directory has
+	// not deleted or reported gone (kindLocked).
 	codeAccountKindLocked = "account_kind_locked"
 	// codeProviderMissing (400, a field error on accountKind or
 	// defaultAccountKind): no enabled module offers that provider.

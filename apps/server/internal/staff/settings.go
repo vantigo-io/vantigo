@@ -229,7 +229,10 @@ func retentionState(ctx context.Context, q *store.Queries, withHealth bool) (gen
 // periods, B's self-certification policy and carry-over, C's two account
 // settings (account_settings.go) and its two erase settings, and Entra B's
 // default account kind and directory switches — a switch left out of the
-// map keeps its value too — each keep their value when left out. The policy is resolved against the row as locked, and
+// map keeps its value too — each keep their value when left out. A change of
+// the default kind while the account kinds are unseeded (account_seed.go,
+// tried first) is 503 accounts_unavailable: the seed would overwrite it. The
+// policy is resolved against the row as locked, and
 // "today" for autoCarryOverSince is the business time zone's, read before
 // the transaction; the revision is judged under the row's lock, so two
 // replaces at once queue and the second is told the first won.
@@ -260,9 +263,14 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 	if err != nil {
 		return nil, err
 	}
+	seeded := true
+	if defaultKind != nil {
+		seeded = s.seedAccountKinds(ctx)
+	}
 	var (
-		saved store.StaffSetting
-		stale *int32
+		saved    store.StaffSetting
+		stale    *int32
+		unseeded bool
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := txq.LockSettings(ctx)
@@ -271,6 +279,10 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 		}
 		if current.Revision != revision {
 			stale = &current.Revision
+			return nil
+		}
+		if defaultKind != nil && *defaultKind != current.DefaultAccountKind && !seeded {
+			unseeded = true
 			return nil
 		}
 		now := s.deps.Clock()
@@ -312,6 +324,9 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 	}
 	if stale != nil {
 		return gen.PutStaffSettings409ApplicationProblemPlusJSONResponse(revisionConflict("settings", *stale, revision)), nil
+	}
+	if unseeded {
+		return gen.PutStaffSettings503ApplicationProblemPlusJSONResponse(accountKindsUnseeded()), nil
 	}
 	state, err := retentionState(ctx, q, s.has(ctx, permPersonalData))
 	if err != nil {

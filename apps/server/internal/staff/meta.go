@@ -144,8 +144,7 @@ func (s *server) identityProviders(ctx context.Context) []gen.StaffIdentityProvi
 		row := gen.StaffIdentityProvider{
 			Key: p.Key(), Name: info.Name, Status: gen.StaffIdentityProviderStatus(info.Status),
 		}
-		if info.Reason != "" {
-			reason := info.Reason
+		if reason := s.providerReason(ctx, p.Key(), info.Reason); reason != "" {
 			row.Reason = &reason
 		}
 		out = append(out, row)

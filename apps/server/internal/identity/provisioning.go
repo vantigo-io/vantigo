@@ -711,7 +711,7 @@ func (p *provisioning) Deactivate(ctx context.Context, actor contracts.Actor, us
 				return err
 			}
 		}
-		if err := q.RevokeUserInvitations(ctx, store.RevokeUserInvitationsParams{UserID: &userID, Now: now, RevokedReason: revokedDeactivated}); err != nil {
+		if _, err := q.RevokeUserInvitations(ctx, store.RevokeUserInvitationsParams{UserID: &userID, Now: now, RevokedReason: revokedDeactivated}); err != nil {
 			return err
 		}
 		ref, err = p.reread(ctx, q, userID, now)
@@ -791,7 +791,7 @@ func (p *provisioning) Update(ctx context.Context, actor contracts.Actor, userID
 				}
 				next.Email, next.NormalizedEmail, next.InvitationsSince = s.email, normalizeEmail(s.email), &now
 				emailChanged = true
-				if err := q.RevokeUserInvitations(ctx, store.RevokeUserInvitationsParams{UserID: &userID, Now: now, RevokedReason: revokedEmailChanged}); err != nil {
+				if _, err := q.RevokeUserInvitations(ctx, store.RevokeUserInvitationsParams{UserID: &userID, Now: now, RevokedReason: revokedEmailChanged}); err != nil {
 					return err
 				}
 				if replaced, err = replaceInvitationsTo(ctx, q, next.NormalizedEmail, now); err != nil {

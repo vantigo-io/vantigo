@@ -277,3 +277,29 @@ func TestShapePayload_TheAccountEvents(t *testing.T) {
 		}
 	}
 }
+
+// A provider link's event answers the codes the provider reported, and
+// pass_revealed its provider, to the links group — the person, staff:manage,
+// staff:personal-data — and an empty payload to anyone else.
+func TestShapePayload_TheProviderEvents(t *testing.T) {
+	t.Parallel()
+	external := []byte(`{"step":"activate","state":"enabled","codes":["hire_date_not_written","licence_unavailable:EMS"]}`)
+	revealed := []byte(`{"provider":"entra"}`)
+	for name, a := range map[string]audience{"self": {Self: true}, "staff:manage": {Manage: true}, "staff:personal-data": {PersonalData: true}} {
+		got := shapePayload(external, accountEventClasses, a)
+		if codes, ok := got["codes"].([]string); !ok || len(codes) != 2 || codes[1] != "licence_unavailable:EMS" || got["step"] != "activate" {
+			t.Errorf("%s: the provider event = %v, want its step and both codes", name, got)
+		}
+		if got := shapePayload(revealed, accountEventClasses, a); got["provider"] != "entra" {
+			t.Errorf("%s: pass_revealed = %v, want its provider", name, got)
+		}
+	}
+	for name, a := range map[string]audience{"manager": {Manager: true}, "colleague": {Colleague: true}} {
+		if got := shapePayload(external, accountEventClasses, a); len(got) != 0 {
+			t.Errorf("%s: the provider event = %v, want nothing", name, got)
+		}
+		if got := shapePayload(revealed, accountEventClasses, a); len(got) != 0 {
+			t.Errorf("%s: pass_revealed = %v, want nothing", name, got)
+		}
+	}
+}

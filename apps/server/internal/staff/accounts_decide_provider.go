@@ -58,7 +58,8 @@ type providerLinkFacts struct {
 // credential-less one (the announced account has arrived, or the person
 // signed in). DeleteAfterDays is delete_external_after_days (nil: never),
 // LegalHold the person's, DisableRequested HR's Disable now, Fresh HR's Run
-// now (a new pass).
+// now (a new pass, asked for only on the activation that enables the
+// account: row 12).
 type providerDecision struct {
 	Person           accountPersonFacts
 	Status           string
@@ -97,10 +98,14 @@ type providerDecision struct {
 //  10. The account not announced and nothing arrived yet: announce.
 //  11. In the window: update an enabled account whose spec changed, else
 //     nothing.
-//  12. Due (T ≥ F): a disabled account is activated (a rehire too, with a
-//     new pass), unless the worker left it enabled today; an enabled one is
-//     activated again with a fresh pass on Run now, updated when its spec
-//     changed, else nothing.
+//  12. Due (T ≥ F): a disabled account is activated — a joiner on their
+//     first day, a rehire — with a fresh pass when HR's Run now asked for
+//     one, unless the worker left it enabled today; an enabled one is
+//     updated when its spec changed, else nothing. Run now never asks a new
+//     pass for an account already enabled (review M2): staff:manage would
+//     otherwise mint a Temporary Access Pass over a colleague's working
+//     account. The provider's own rule — a pass on an activation when none
+//     unrevealed is waiting (D13) — is the provider's, untouched.
 func decideProvider(in providerDecision) accountStep {
 	none := accountStep{Kind: accountStepNone}
 	p := in.Person
@@ -168,7 +173,7 @@ func decideProvider(in providerDecision) accountStep {
 	switch {
 	case !enabled && link.EnabledToday:
 		return none
-	case !enabled, in.Fresh:
+	case !enabled:
 		return accountStep{Kind: accountStepActivate, Fresh: in.Fresh}
 	case in.SpecChanged:
 		return accountStep{Kind: accountStepUpdate}

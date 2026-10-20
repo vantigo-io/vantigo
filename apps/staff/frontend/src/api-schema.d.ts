@@ -9036,7 +9036,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Service Unavailable — accounts_unavailable: identity could not be reached. The flag is already off; the link records the error (last_error) and the disable asked for, which the accounts worker retries at every poll, and accountFailing is raised meanwhile. */
+            /** @description Service Unavailable — accounts_unavailable: identity could not be reached, or the person's external directory did not confirm the disable of their account there (it could not be reached, said it is unavailable, or no enabled module offers it). The flag is already off; the link records the error (last_error) and the disable asked for, which the accounts worker retries at every poll, and accountFailing is raised meanwhile. */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -81,7 +81,12 @@ func TestDecideProvider(t *testing.T) {
 		{"due, disabled, enabled today by the worker", all(withAccount(providerStateDisabled), func(in *providerDecision) { in.Link.EnabledToday = true }), none},
 		{"due, enabled", withAccount(providerStateEnabled), none},
 		{"due, enabled, the spec changed", all(withAccount(providerStateEnabled), func(in *providerDecision) { in.SpecChanged = true }), step(accountStepUpdate)},
-		{"due, enabled, Run now", all(withAccount(providerStateEnabled), func(in *providerDecision) { in.Fresh = true }),
+		// Run now asks a new pass only on the activation that enables the
+		// account (review M2): never over an account already enabled.
+		{"due, enabled, Run now: no new pass", all(withAccount(providerStateEnabled), func(in *providerDecision) { in.Fresh = true }), none},
+		{"due, enabled, the spec changed, Run now: the update alone", all(withAccount(providerStateEnabled),
+			func(in *providerDecision) { in.Fresh, in.SpecChanged = true, true }), step(accountStepUpdate)},
+		{"due, disabled, Run now: the enable with a new pass", all(withAccount(providerStateDisabled), func(in *providerDecision) { in.Fresh = true }),
 			accountStep{Kind: accountStepActivate, Fresh: true}},
 		{"due, the account gone", func(in *providerDecision) { in.Link = link(providerStateEnabled, true) }, report(reasonUserGone, providerStateFailed)},
 		{"due, the account gone, failed already: never re-created", func(in *providerDecision) { in.Link = link(providerStateFailed, true) },

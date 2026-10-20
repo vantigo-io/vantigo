@@ -1319,3 +1319,67 @@ func TestAccountsWorker_ALeaverIsDisabledWithTheFlagOff(t *testing.T) {
 		t.Errorf("%d other writes with the flag off, want none", n)
 	}
 }
+
+// While the account kinds are unseeded — the seed attempted and failed,
+// identity unable to say its mode — every person's kind reads local by the
+// column's default, so the cycle runs nothing but a deactivate (review M1):
+// a leaver's user is disabled, a joiner is not prepared; Run now for them,
+// a change of their kind and a change of the default kind answer 503
+// accounts_unavailable saying the kinds are not yet seeded. Once identity
+// answers, the next cycle seeds the kinds and the joiner is prepared with
+// the kind the mode gives.
+func TestAccountsWorker_TheUnseededKindsRunOnlyDeactivations(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	leaver := w.employee(t, "Går", "2026-09-01", nil)
+	w.cycle(t)
+	user := mustLink(t, w.h, leaver.Id).User
+	if user == "" {
+		t.Fatal("the leaver has no user")
+	}
+	w.h.Exec(t, `UPDATE staff.employments SET end_date = '2026-09-12', end_reason = 'contract_ended' WHERE person_id = $1`, leaver.Id)
+	// The seed undone, and identity cannot say its mode — which is federated.
+	w.h.Exec(t, `UPDATE staff.settings SET account_kind_seeded = false, default_account_kind = 'local'`)
+	w.h.Exec(t, `UPDATE staff.people SET account_kind = 'local'`)
+	w.fake.set(func(f *fakeAccounts) { f.mode, f.modeErr = contracts.AccountModeFederated, errFakeDown })
+	joiner := w.employee(t, "Kommer", "2026-09-01", nil)
+	w.h.Advance(48 * time.Hour)
+	w.cycle(t)
+
+	if !w.fake.staffDisabledUser(uuid.MustParse(user)) {
+		t.Error("the leaver's user is not disabled while the kinds are unseeded")
+	}
+	if n := countWrites(w.fake, "Prepare:"+joiner.EmployeeNumber); n != 0 {
+		t.Errorf("the joiner was prepared %d times while the kinds are unseeded, want none", n)
+	}
+	if _, ok := linkOf(t, w.h, joiner.Id); ok {
+		t.Error("the joiner has a link while the kinds are unseeded, want none")
+	}
+	if !strings.Contains(w.h.Logs(), "the account kinds are not yet seeded; only deactivations run") {
+		t.Error("the hold was not logged")
+	}
+
+	if pr := refused(t, w.hr.Do(http.MethodPost, accountRunPath(joiner.Id), nil), http.StatusServiceUnavailable, "accounts_unavailable"); !strings.Contains(pr.Detail, "not yet seeded") {
+		t.Errorf("Run now's detail = %q, want it to say the kinds are not yet seeded", pr.Detail)
+	}
+	acc := getAccount(t, w.hr, joiner.Id)
+	refused(t, w.hr.Do(http.MethodPut, accountPath(joiner.Id), map[string]any{"provisionAccount": true, "accountKind": "external"}, ifMatch(acc.Revision)),
+		http.StatusServiceUnavailable, "accounts_unavailable")
+	do(t, w.hr, http.MethodPut, accountPath(joiner.Id), map[string]any{"provisionAccount": true, "accountKind": "local"}, http.StatusOK, nil, ifMatch(acc.Revision))
+	set := getSettings(t, w.hr)
+	refused(t, w.hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{"defaultAccountKind": "external"}), ifMatch(set.Revision)),
+		http.StatusServiceUnavailable, "accounts_unavailable")
+	do(t, w.hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"defaultAccountKind": "local"}), http.StatusOK, nil, ifMatch(set.Revision))
+
+	// Identity answers: the seed runs, and the joiner is prepared as the
+	// mode's kind, external.
+	w.fake.set(func(f *fakeAccounts) { f.modeErr = nil })
+	w.h.Advance(time.Hour + time.Minute)
+	w.cycle(t)
+	if got := modtest.One[string](t, w.h.Harness, `SELECT account_kind FROM staff.people WHERE id = $1`, joiner.Id); got != "external" {
+		t.Errorf("the joiner's kind after the seed = %q, want external", got)
+	}
+	if got := w.fake.callKinds(); !slices.Contains(got, "Prepare:external") {
+		t.Errorf("identity calls' kinds = %v, want the joiner's Prepare as external", got)
+	}
+}

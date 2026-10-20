@@ -113,9 +113,10 @@ SELECT EXISTS (
     WHERE user_id = @user_id AND revoked_reason IS DISTINCT FROM 'delivery_failed'
 )::boolean AS delivered;
 
--- name: RevokeUserInvitations :exec
+-- name: RevokeUserInvitations :execrows
 -- RevokeUserInvitations revokes every invitation naming the user that could
--- still be accepted, recording why (deactivated, email_changed).
+-- still be accepted, recording why (deactivated, email_changed, replaced),
+-- and answers how many it revoked.
 UPDATE identity.invitations
 SET revoked_at = @now::timestamptz, revoked_reason = @revoked_reason::text
 WHERE user_id = @user_id AND accepted_at IS NULL AND revoked_at IS NULL;
