@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Connecting Vantigo to a Microsoft Entra ID tenant so Staff's accounts are made there — the app registration, the client secret, the eight application permissions and the User Administrator role, admin consent, the Temporary Access Pass policy, the account rules, sign-in and provisioning; what a leaver's steps do and what deleting loses; Staff's groups in the tenant, the application as their owner and what an archived group becomes; rotating secrets; the tagged test against a real tenant; and what each reason code means.
+description: Connecting Vantigo to a Microsoft Entra ID tenant so Staff's accounts are made there — the app registration, the client secret, the eight application permissions and the User Administrator role, admin consent, the Temporary Access Pass policy, the account rules, sign-in and provisioning; what a leaver's steps do and what deleting loses; Staff's groups in the tenant, the application as their owner, confirming a group Vantigo did not create and what an archived group becomes; rotating secrets; the tagged test against a real tenant; and what each reason code means.
 sidebar:
   order: 46
 sources:
@@ -284,12 +284,14 @@ application from a group's owners in the portal**: Vantigo never removes it, and
 group without it may no longer be changed from Vantigo. An owner HR names is made an
 owner in the tenant only once their account there is enabled.
 
-**A group already in the tenant is adopted.** Before it makes a group, the module looks
-for one holding the mail nickname — one made by hand earlier with the same nickname —
-and takes it over: Staff's name, description and visibility are written to it and the
-application and HR's owners are added. **Its own owners stay only until Staff next
-changes the group**: from then on the owners are exactly HR's and the application, and
-anyone else is removed. Check who owns a group before you let Staff adopt it. The module
+**A group already in the tenant is adopted, untrusted.** Before it makes a group, the
+module looks for one holding the mail nickname — one made by hand earlier with the same
+nickname — and links it to the Staff group, but **writes nothing to it until a holder of
+`entra:manage` confirms it**: no name, no owner, no member, no delete. Otherwise anyone
+who keeps groups in Staff could take over any group in the tenant by giving a Staff
+group its nickname. Until then the group's page in Staff says *Found in Microsoft Entra
+ID and awaiting confirmation there* — not a failure, and no item on Staff's dashboard —
+and the module page's **Groups** table marks the group *Adopted — confirm*. The module
 never touches a group holding the nickname that is dynamic, role-assignable, a
 distribution list or a mail-enabled security group (which Exchange keeps), or that
 another Staff group already uses, nor a nickname two groups hold; and it refuses a group
@@ -297,22 +299,43 @@ of the other type than the Staff group's **Group type**. The group's page in Sta
 says why: rename that group's nickname in the portal, or give the Staff group another
 **Mail nickname** before it is made.
 
-**Edits in the portal** last until Staff next changes the group: the name, the
-description and the visibility are written again, and the owners set to Staff's, when HR
-changes the group's name, description, settings or owners; the members are set to
-Staff's exactly whenever Staff's members change — a nested group or a device you add as
-a member is left alone. Keep a group's membership and owners in Staff, not in the
+To confirm an adopted group:
+
+1. Open **Microsoft Entra ID**. In the **Groups** table, the group reads *Adopted —
+   confirm*.
+2. Check in the portal that it is the group meant for that Staff group — its name, its
+   owners, its members.
+3. Choose **Confirm** beside it, and **Confirm** again in *Confirm the adoption of …?*.
+
+From Staff's next accounts run Vantigo manages the group: Staff's name, description and
+visibility are written to it, **its owners become exactly HR's and the application —
+anyone else is removed —** and its members exactly Staff's. Never confirm a group you
+have not checked. If it is not the group meant, leave it unconfirmed — Vantigo writes
+nothing to it — and give the people another Staff group with another key: the Staff
+group stays linked to the group it found until it is confirmed or let go of.
+**Vantigo never deletes a group it did not create**, confirmed or not.
+
+**Edits in the portal** do not last: the name, the description and the visibility are
+written again, and the owners set to Staff's, when HR changes the group's name,
+description, settings or owners; the members are set to Staff's exactly whenever
+Staff's members change, and at least once a day — a member added in the portal, or one
+who joined a public group themselves, is removed by the next day. A nested group or a
+device you add as a member is left alone. Keep a group's membership and owners in Staff, not in the
 portal. A group deleted in the portal is made again the next time Staff sends its
 settings; until then the group's page may say the directory holds a group Vantigo may
 not write — save the group's settings again to have it made.
 
 **Licences come from the groups.** A person whose account is enabled is assigned
-directly the licences of every group they are in that has Microsoft Entra ID on, and
-**every other licence assigned to them directly is removed** when Staff next brings
-their account in line — a licence an administrator assigned by hand included. A
-licence that comes from a group in the tenant (group-based licensing) is left alone.
-So once Staff keeps a person's account, give licences through Staff's groups, or
-through the tenant's own group-based licensing, never directly. The choices a group's
+directly the licences of every group they are in that has Microsoft Entra ID on, and a
+licence Vantigo assigned is removed again when Staff next brings their account in line
+and none of their groups names it any more. **Vantigo removes only the licences it
+assigned itself**: one an administrator assigned directly, one the person held before a
+group named it, and one that comes from a group in the tenant (group-based licensing)
+are left alone. Vantigo keeps the list per account from this release on; an account it
+enabled earlier starts with an empty list, so nothing assigned to it before is removed
+by a group change. The leaver's **Remove the licences** step is the exception: it
+removes every licence assigned to the person directly, Vantigo's or not. The choices a
+group's
 **Licences** offer are the tenant's licences as the last connection test, or the last
 look at **The tenant's licences** in step 4, read them: test again after you buy a new
 licence.
@@ -322,11 +345,15 @@ licence.
 
 | The setting | What happens to the group in the tenant |
 | --- | --- |
-| A number of days | That many days after the archive (or the switch turned off), the group is deleted — a soft delete: it is in the tenant's **Deleted groups** for 30 days and can be restored there. Until then it stays as it was. |
+| A number of days | That many days after the archive (or the switch turned off), Vantigo lets the group go, by its kind and by who made it. **A Microsoft 365 group Vantigo made** is deleted — a soft delete: it is in the tenant's **Deleted groups** for 30 days and can be restored there. **A security group Vantigo made** is never deleted, since Microsoft deletes a security group for good: its members and its person owners are removed (the application stays an owner), it is renamed with ` (archived)` after its name, and kept. **A group Vantigo did not create** is left in the tenant as it is. Until the days have passed the group stays as it was. |
 | Empty (never) | At the next cycle the group is renamed with ` (archived)` after its name and kept, its members as they stood; Vantigo writes nothing to it afterwards. |
 
 A deleted Microsoft 365 group takes its mailbox, its SharePoint site and its team with it
-when the 30 days are over.
+when the 30 days are over. The module page's **Groups** table shows a kept security group
+as *Emptied and kept*, and a group Vantigo did not create as *Deleted* — Vantigo has let
+go of it, though the tenant keeps it. Should HR turn Microsoft Entra ID on again for the
+Staff group, a kept security group is found by its nickname and is Vantigo's own again,
+with no confirmation; delete one in the portal when it is no longer wanted.
 
 ## Rotate a secret
 
@@ -403,8 +430,10 @@ disables and deletes the user it made; a deleted user stays restorable under
 **Deleted users** for 30 days. It also makes a group with the application and the user
 as its owners (a security group whose mail nickname starts with `vt-test-`), makes it
 again to check it finds the same group, adds the user as its member and removes them
-again in a `$batch`, and deletes it — the team is not tried,
-since a group must be fifteen minutes old first. It goes through
+again in a `$batch`, and lets it go — the team is not tried,
+since a group must be fifteen minutes old first. Being a security group, it is not
+deleted but emptied, renamed with ` (archived)` and kept, so each run leaves one
+`vt-test-` group in the tenant: delete them in the portal. It goes through
 the same guarded transport as production. Keep the secret out of your shell history.
 
 ## What can go wrong
@@ -447,6 +476,7 @@ in the tenant:
 | *Failed: this cannot change once the group is made* beside **Group type** or **Mail nickname** | The value differs from the one the group was made or adopted with (`trait_immutable`). | Set it back; a group of another type is a new Staff group. |
 | *Failed: it needs a person as an owner* beside **Team in Microsoft Teams** | A team needs a person among the group's owners (`trait_needs_owner`). | Add an owner on the group's page; Staff sends it at the next cycle. |
 | *Failed: the value is not one the directory accepts* beside a setting | `trait_invalid` — a visibility or a team on a security group, say. | Change the value and save. |
+| *Found in Microsoft Entra ID and awaiting confirmation there* | `group_unconfirmed`: a group already in the tenant holds the mail nickname; Vantigo linked it and writes nothing to it. | [Confirm it](#staffs-groups-in-the-tenant) on the module page after checking it is the group meant. |
 | *Failed: the directory holds a group by this key that Staff may not write …* | `group_not_manageable`: a group holding the mail nickname is dynamic, role-assignable or Exchange's, another Staff group's, held by two groups, or gone from the tenant. | Rename the other group's nickname in the portal, or give the Staff group another **Mail nickname** before it is made; for a group deleted in the portal, save the settings again. |
 | *Failed: the directory could not be reached; the worker tries again* | Three calls in a row failed (`call_failed`). | Check the connection's **Status** card and the log. |
 | *… members could not be changed; they are tried again at the next sync* | The tenant refused adding or removing some members (`members_failed`). | Nothing, usually: Staff tries them again at the next cycle. |

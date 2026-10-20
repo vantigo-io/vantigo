@@ -297,14 +297,19 @@ ikke før seedingen av kontotypene har kjørt, og etter dem synkroniserer den op
 gruppeseksjoner — en gruppe under én leverandør HR har slått på for den — per runde, så
 en person som aktiveres i en runde, er med i gruppene sine i samme runde: gruppen lages
 i katalogen med eierne, navnet, eierne og verdiene skrives når de endres, medlemmene
-settes til de av personene som har en aktivert konto der, og en arkivert gruppe — eller
-en en leverandør er slått av for — slettes etter **Slett en ekstern konto (dager etter
-slutt)** eller, når den står tom, får `… (archived)` etter navnet og beholdes ([Ansattes
-grupper i leietakeren](/nb/admin/entra/#ansattes-grupper-i-leietakeren)). En leverandør
-som ikke er tilkoblet, hoppes over og prøves igjen ved neste kjøring. En gruppe
-leverandøren avviste, eller der kallene mislyktes tre ganger på rad, gir
-`groupSyncFailed`; en avvist gruppe sendes ikke igjen før HR endrer gruppen. **Kjør
-kontoer nå** kjører gruppene også. Med `STAFF_ACCOUNTS_ENABLED=0` skjer ingen av
+settes til de av personene som har en aktivert konto der — når de endres, og én gang i
+døgnet uansett, noe som fjerner et medlem lagt til for hånd i katalogen — og en arkivert
+gruppe — eller en en leverandør er slått av for — slettes etter **Slett en ekstern konto
+(dager etter slutt)** eller, når den står tom, får `… (archived)` etter navnet og
+beholdes. Entra sletter bare en Microsoft 365-gruppe den laget: en sikkerhetsgruppe
+tømmes og beholdes, og en gruppe den ikke laget, blir stående ([Ansattes grupper i
+leietakeren](/nb/admin/entra/#ansattes-grupper-i-leietakeren)). En leverandør som ikke
+er tilkoblet, hoppes over og prøves igjen ved neste kjøring. En gruppe leverandøren fant
+i katalogen sin i stedet for å lage den, venter, uten noe varsel, til en med
+leverandørens rettighet bekrefter den der. En gruppe leverandøren avviste, eller der
+kallene mislyktes tre ganger på rad, gir `groupSyncFailed`; en avvist verdi sendes ikke
+igjen før HR endrer gruppen, men medlemmene i en gruppe leverandøren har, holdes i
+samsvar i mellomtiden. **Kjør kontoer nå** kjører gruppene også. Med `STAFF_ACCOUNTS_ENABLED=0` skjer ingen av
 delene.
 
 **Ulik modus.** Arbeideren leser modusen fra innstillingene for single sign-on i
@@ -1450,7 +1455,8 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   person](#slå-på-konto-for-en-person)), og når en persons konto i Entra slettes etter
   at det siste arbeidsforholdet sluttet, når den er deaktivert og ingen slettesperre er
   på personen — og like mange dager etter at en gruppe ble arkivert, eller en
-  leverandør slått av for den, slettes gruppen i katalogen; aldri, får den
+  leverandør slått av for den, slettes gruppen i katalogen (Entra tømmer og beholder en
+  sikkerhetsgruppe i stedet, og lar en den ikke laget, stå); aldri, får den
   `… (archived)` etter navnet og beholdes. Utelatt fra en erstatning beholder hver sin
   verdi; `null` setter `deleteExternalAfterDays` til aldri.
 - **Standard kontotype** (`defaultAccountKind`, på kortet **Kontoer**): typen en ny

@@ -294,13 +294,19 @@ the account kinds are unseeded, and after them syncs up to 100 group sections �
 under one provider HR turned on for it — a cycle, so a person enabled in a cycle is in
 their groups in the same cycle: the group made in the directory with its owners, its
 name, owners and values written when they change, its members set to those of its
-people whose account there is enabled, and an archived group — or one a provider was
-turned off for — deleted after **Delete an external account (days after the end)** or,
-when that is empty, renamed `… (archived)` and kept ([Staff's groups in the
+people whose account there is enabled — whenever they change, and once a day whatever
+changed, which undoes a member added in the directory by hand — and an archived group —
+or one a provider was turned off for — deleted after **Delete an external account (days
+after the end)** or, when that is empty, renamed `… (archived)` and kept. Entra deletes
+only a Microsoft 365 group it made: it empties and keeps a security group, and leaves a
+group it did not make ([Staff's groups in the
 tenant](/en/admin/entra/#staffs-groups-in-the-tenant)). A provider not connected is
-skipped, and tried again at the next poll. A group the provider refused, or whose calls
-failed three times in a row, raises `groupSyncFailed`; a refused one is not sent again
-until HR changes the group. **Run accounts now** runs the groups too. With
+skipped, and tried again at the next poll. A group the provider found in its directory
+rather than made waits, with no item raised, until a holder of the provider's
+permission confirms it there. A group the provider refused, or whose calls failed three
+times in a row, raises `groupSyncFailed`; a refused value is not sent again until HR
+changes the group, but the members of a group the provider holds are still kept in
+step meanwhile. **Run accounts now** runs the groups too. With
 `STAFF_ACCOUNTS_ENABLED=0` neither happens.
 
 **The mode mismatch.** The worker reads the mode from the single sign-on settings in
@@ -1437,7 +1443,8 @@ changing the settings at once cannot overwrite each other unseen.
   person](#turn-on-accounts-for-a-person)), and when a person's account in Entra is
   deleted after the last employment ended, once it is disabled and no legal hold is on
   the person — and as many days after a group was archived, or a provider turned off
-  for it, its group in the directory is deleted; never, it is renamed `… (archived)` and
+  for it, its group in the directory is deleted (Entra empties and keeps a security
+  group instead, and leaves one it did not make); never, it is renamed `… (archived)` and
   kept. Left out of a replace, each keeps its value; `null` sets
   `deleteExternalAfterDays` to never.
 - **Default account kind** (`defaultAccountKind`, on the **Accounts** card): the kind

@@ -1912,6 +1912,11 @@ error on `personIds`. A derived group's members are its rule's: the `PUT` is 409
 `group_derived`; an archived group's, 409 `group_archived`. It answers the group with
 its members and owners.
 
+**A change of members** — the materialisation's or the `PUT`'s, anyone joining or
+leaving — makes every section of the group that is neither retired nor deleted due at
+once, in the same transaction, a failed one included, so the worker carries the members
+at its next cycle whatever the section waits for.
+
 **The events** `group_joined` and `group_left` carry `{groupId, groupName, groupKey,
 source}`, of class C. They are listed to every reader of the person's
 [history](#the-history) — unlike the [account events](#accounts), which only the
@@ -1953,13 +1958,18 @@ each provider's section is [retired](#the-sync) — deleted in the directory aft
 settings' `deleteExternalAfterDays`, or renamed `… (archived)` and kept when that is
 never. A person's lists leave archived groups out.
 
-**`DELETE /groups/{id}`** answers 204 for a group no provider ever reached — no section
-that has synced or holds the external group's id — archived or not, and deletes its
+**`DELETE /groups/{id}`** answers 204 for a group no provider has reached or may be
+reaching — no section that has synced, holds the external group's id, is turned on, or
+is claimed by the worker under a live lease — archived or not, and deletes its
 members, owners and sections with it, under the group's lock. Each member is recorded
 leaving it first — a `group_left` event on the person by the caller, with the member's
-`source` — so a person's history keeps no join without its end. A group a provider has
-made or found in its directory is 409 `group_synced`: archive it instead. An unknown id
-is a bare 404.
+`source` — so a person's history keeps no join without its end. Any other group is 409
+`group_synced`: one a provider has made or found in its directory, one with a provider
+turned on, and one whose section the worker holds under a live lease — its first sync
+in flight, the external id not written yet — since a delete would take the sections
+with it and orphan the provider's group. Archive it instead, or turn its providers off
+first while none has made it. An unknown id is a bare 404. The group's page offers
+**Delete** by the same rule but the lease, which it cannot see.
 
 ### Traits
 
@@ -1995,7 +2005,7 @@ off for the group. An unknown group, or a provider the slot does not hold, is a 
   while `false` is a value — is `trait_required` the same way, unless its key is
   refused already. A `null` value is left out, and an empty string is admitted for a
   `choice`. A provider whose declaration cannot be read cannot have its values
-  checked: the request fails, a 500, and nothing is written. Then the section's row
+  checked: the request is 503 `provider_unavailable`, and nothing is written. Then the section's row
   (`staff.group_traits`, one per group and provider) is written `enabled`, `pending`,
   the values stored, `attempts` 0, and `disabled_at`, `last_values_hash`, `last_error`,
   `last_error_field` and `retired_at` cleared, due at once, and any claim the worker
@@ -2034,7 +2044,9 @@ the values, then decides:
 2. **Retiring** — the group archived, or the section turned off, since the earlier of
    `archived_at` and `disabled_at`. When the settings' `deleteExternalAfterDays` is a
    number and that many civil days, in the business time zone, have passed since then,
-   `DeleteGroup`, and the section reads `deleted`. When it is never, `EnsureGroup` once
+   `DeleteGroup`, and the section reads `deleted` — whatever the provider made of it:
+   Entra soft-deletes a Microsoft 365 group it made, empties and keeps a security group,
+   and leaves one it did not make ([DeleteGroup](/en/reference/entra/#deletegroup)). When it is never, `EnsureGroup` once
    with the name followed by ` (archived)` — a name that already ends so is left — and
    the values, and the section reads `retired`, with `retired_at` (plan reading 5: the
    provider knows no archive, so one code path writes names); a section the provider
@@ -2049,23 +2061,31 @@ the values, then decides:
    differs from `last_values_hash` — SHA-256 over the name, the description, the values
    and the owners' sorted external ids (`owners`) as JSON with sorted keys, so a change
    of owners reaches the provider through `EnsureGroup` too — then `SetMembers` when the
-   members' hash differs from `last_members_hash` — SHA-256 over the sorted,
-   de-duplicated external ids joined by `\n`. At most two calls a claim, each through
-   `contractscalls.go` on no transaction, under the two-minute timeout. A section with
-   nothing changed is claimed and read at each poll and makes no call.
+   members' hash differs from `last_members_hash` — SHA-256 over the civil day in the
+   business time zone and the sorted, de-duplicated external ids, joined by `\n`. The day
+   is in it so that every group's members are reconciled at least once a day, whatever
+   Staff saw: a member added in the directory by hand, or a self-join on a public group,
+   is undone by the next day's `SetMembers` (plan reading 14). At most two calls a
+   claim, each through `contractscalls.go` on no transaction, under the two-minute
+   timeout. A section with nothing changed is claimed and read at each poll and makes no
+   call but the day's first `SetMembers`.
 
 | The provider's answer | `state` | `last_error` | Next |
 | --- | --- | --- | --- |
 | Done | `synced`; `external_id` and both hashes written, `synced_at` when a call was made, `attempts` 0 | cleared | the next poll |
 | Done, with `ExternalGroup.Pending` (Entra's team on a young group) | `synced` | cleared | the values' hash is not written, so the next cycle calls `EnsureGroup` again (plan reading 7) |
 | `MembersResult.Failed` with *n* members | `synced` | `members_failed:<n>` | the members' hash is not written, so the next cycle tries them again; the ids are never stored, only counted in a debug log |
-| `GroupTraitError` | `failed` | its code (`trait_required`, `trait_invalid`, `trait_immutable`, `trait_needs_owner`), `last_error_field` the trait; `attempts` 0 | not due again until HR saves the values, changes the group's name, description or owners, or archives it; the values' hash is not written |
-| `ErrGroupNotManageable` — the provider may not write the group: Entra's [reasons](/en/reference/entra/#ensuregroup) | `failed` | `group_not_manageable`; `attempts` 0 | as a `GroupTraitError` |
+| `GroupTraitError` on a section with no `external_id` | `failed` | its code (`trait_required`, `trait_invalid`, `trait_immutable`, `trait_needs_owner`), `last_error_field` the trait; `attempts` 0 | not due again until HR saves the values, changes the group's name, description, owners or members, or archives it; the values' hash is not written |
+| `GroupTraitError` on a section holding the `external_id` — the provider has the group | `failed` | as above | the values' hash is written, so `EnsureGroup` is not called again until the values change; but `SetMembers` still runs when the members' hash moved — a leaver never keeps the group's access while HR mends a trait (plan reading 14) — and the section is due at the next poll. A `SetMembers` that fails leaves the refusal as the row's word: a call that could not be made is counted and retried on the backoff, the provider unavailable at the next poll; members it could not change are tried again, with no `members_failed` written over the refusal |
+| `ErrGroupNotManageable` — the provider may not write the group: Entra's [reasons](/en/reference/entra/#ensuregroup) | `failed` | `group_not_manageable`; `attempts` 0 | as a `GroupTraitError` on a section with no `external_id` |
+| `ErrGroupUnconfirmed` — the provider found a group holding the key and adopted it, and waits for a holder of its permission to confirm it ([Entra's adopted groups](/en/reference/entra/#adopted-groups)) | `pending` | `group_unconfirmed`, `last_error_field` cleared | the next poll; no attempt counted: no failure and no item, and the cycle after the confirmation proceeds |
 | `ErrProviderUnavailable` | kept | kept | the next poll; no attempt counted |
 | Anything else — the call could not be made | kept; `failed` from the third failure in a row | `call_failed` | `attempts` counted, retried on the accounts worker's backoff (`backoff.go`) |
 
 Codes only: `last_error` never carries the directory's words, and a member's external
-id is never stored. A `failed` section raises
+id is never stored. What a provider's `GroupTraitError` names is bounded before it is
+written: the code at 200 characters (`last_error`), the field at 40
+(`last_error_field`). A `failed` section raises
 [`groupSyncFailed`](#attention-items) until it is no longer failed.
 
 ### The licences
@@ -2076,9 +2096,10 @@ and neither retired nor deleted, of groups not archived (`LicencesOfPerson`), so
 and de-duplicated (Entra design D10); with none it is nil. The spec's hash covers
 it, so a change of a group's licences, or of the person's membership, is an `Update`
 at the person's next claim; on an enabled account the provider assigns the licences
-missing and removes the direct ones not in the list — every direct one when the list
-is empty — and a licence the directory assigned through its own group-based licensing
-is left alone.
+missing and removes those it assigned itself that the list no longer names — every one
+of them when the list is empty — while a licence an administrator assigned directly,
+and one the directory assigns through its own group-based licensing, are left alone
+([Entra's Update](/en/reference/entra/#update)).
 
 ### The person's groups
 
@@ -4161,9 +4182,10 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `payroll_month_invalid` | 400 | A payroll export's `month` that is not `YYYY-MM` with a month from `01` to `12`. |
 | `payroll_format_unsupported` | 400 | A payroll export's `format` other than `csv`. |
 | `retention_busy` | 409 | `POST /retention/run` while the retention lease is held — by the worker, here or on another replica, or another run by hand. Nothing ran. |
-| `group_synced` | 409 | `DELETE /groups/{id}` on a group a provider has made or found in its directory; archive it instead. |
+| `group_synced` | 409 | `DELETE /groups/{id}` on a group a provider has made or found in its directory, has turned on, or is syncing under a live lease; archive it instead. |
 | `group_derived` | 409 | `PUT /groups/{id}/members` on a derived group, whose members are its rule's. |
 | `group_archived` | 409 | A change of an archived group: `PUT /groups/{id}`, its members, its owners or a provider's section. |
+| `provider_unavailable` | 503 | `PUT /groups/{id}/traits/{provider}` turning on a provider that could not declare its traits: the values cannot be checked, and nothing is written. |
 | `threshold_unknown` | 404 | `POST /thresholds/{key}/acknowledge` with a key other than `5`, `30`, `50` and `otp`. |
 | `link_managed` | 409 | `PUT /people/{id}/user` naming, or unlinking, a Staff-managed user, or on a link in one of the accounts worker's states — but one blocked `account_not_managed`, which HR may unlink or relink. |
 | `account_mismatch` | 409 | `POST /people/{id}/account/disable` on a link whose user carries another employee number: someone else's account, left alone. The flag is off. |

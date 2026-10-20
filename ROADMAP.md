@@ -1652,7 +1652,7 @@ rule over the register (everyone employed, a department and optionally those ben
 it, a business unit, a location, an employee type, a manager's direct reports), judged
 on the business day against the employments and terms in force — with a key that never
 changes, owners, an archive that keeps the members as they stood, and a delete only
-while no provider has the group; the accounts worker **materialises** the derived
+while no provider has the group, is turned on for it or is syncing it; the accounts worker **materialises** the derived
 members each cycle as the difference, each change a `group_joined` or `group_left` on
 the person, and a person erased or deleted leaves every group with them. A provider in
 the slot **declares the traits** a group may carry — `GroupTraits` now takes a context
@@ -1661,24 +1661,31 @@ as a form from the declaration alone, checks at the save (required, choices, typ
 lengths) and stores; the provider's own rules come back from `EnsureGroup` as a
 `GroupTraitError` beside the field, not retried until HR changes the group (reading 3).
 The worker **syncs** each group a provider is on for, after the links, under a lease,
-by the hash of its values and owners and the hash of its members' enabled accounts, the
-row's state and code on the group's card and `groupSyncFailed` on the dashboard; a group
-archived or switched off is deleted in the directory after `deleteExternalAfterDays`
-or, when that is never, renamed `… (archived)` and kept — Staff's rename through
-`EnsureGroup`, so one code path writes names (reading 5). The **licences** a person gets
+by the hash of its values and owners and the hash of its members' enabled accounts and
+the day, the row's state and code on the group's card and `groupSyncFailed` on the
+dashboard; a group archived or switched off is let go in the directory after
+`deleteExternalAfterDays` or, when that is never, renamed `… (archived)` and kept —
+Staff's rename through `EnsureGroup`, so one code path writes names (reading 5). The **licences** a person gets
 are the union of their groups' licence traits, in the spec on every activation and
 update, and the module now reconciles them on `Update` as on `Activate` — the missing
-assigned, the direct ones no longer named removed, a group-assigned one untouched
-(reading 6). In the tenant: the six traits (`type`, immutable; `mailNickname`;
+assigned, those it assigned itself and no longer named removed, an administrator's or a
+group-assigned one untouched (readings 6 and 12). In the tenant: the six traits (`type`, immutable; `mailNickname`;
 `visibility`; `description`; `team`; `licences`, from the SKUs cached on the connection
 row); the group created with the module's **service principal** — read from its
 token's `oid` (reading 2) — and the owners' accounts as owners, or a group holding the
-nickname adopted — its own owners kept until the next change — a dynamic,
-role-assignable, Exchange-kept or another row's refused; the owners reconciled, never
-the service principal; a team made by `PUT /team` once the group is
-fifteen minutes old and has a person owner, a younger one answered `Pending` and asked
-again next cycle (reading 7); members added in twenties and removed by `$ref` in
-`$batch`; a soft delete. The leaver's `managed` step now means the module's own groups.
+nickname adopted untrusted, written to only once a holder of `entra:manage` confirms it
+on the module page's **Groups** table — a dynamic, role-assignable, Exchange-kept or
+another row's refused; the owners reconciled, never the service principal; a team made
+by `PUT /team` once the group is fifteen minutes old and has a person owner, a younger
+one answered `Pending` and asked again next cycle (reading 7); members added in twenties
+and removed by `$ref` in `$batch`; a Microsoft 365 group soft-deleted, a security group
+emptied and kept. The leaver's `managed` step now means the module's own groups, its
+removals batched. The security review's four decisions (the plan's readings 11–14): an
+adopted group is untrusted until `entra:manage` confirms it, and a group the module did
+not make is never deleted; the module strips only the licences it assigned
+(`entra.accounts.licences_assigned`); a security group, which Graph deletes for good, is
+emptied of its people, renamed and kept rather than deleted; and a trait refusal no
+longer freezes the members, every group's members reconciled at least once a day.
 The apps: Staff's **Groups** page and the group page with a card per provider, the
 Account tab's **Groups** card, My page's **Your groups**, and the module page's
 **Groups** table. Migrations `00062_staff_groups.sql` (staff) and

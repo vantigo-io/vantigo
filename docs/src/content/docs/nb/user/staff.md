@@ -749,8 +749,10 @@ avdelingene under*, *rapporterer til Kari Nordmann* — og beskrivelsen. **Endre
 skjemaet, som viser *Nøkkel: … — den endres aldri.* i stedet for nøkkelen; typen kan
 endres der også. Har noen andre lagret gruppen etter at du åpnet den, sier siden fra og
 leser den på nytt. **Arkiver** spør først. **Slett** finnes bare så lenge ingen katalog
-noen gang har laget eller funnet gruppen, arkivert eller ikke; etter det arkiverer du
-den. Den spør *Slette …?* — *Gruppen, medlemmene, eierne og innstillingene slettes.
+har gruppen eller noen gang har synkronisert den, og ingen er slått på for den, arkivert
+eller ikke; ellers arkiverer du den — eller, når ingen katalog har laget den ennå, slår
+du av katalogene først. En katalog som sender gruppen akkurat da, avviser likevel
+slettingen. Den spør *Slette …?* — *Gruppen, medlemmene, eierne og innstillingene slettes.
 Ingen katalog har den ennå.* — og hvert medlem får det registrert i historikken sin at
 de gikk ut av gruppen.
 
@@ -773,20 +775,33 @@ etiketten på ditt språk, *Om denne innstillingen* som lenker til Microsofts si
 påkrevde merket og standardverdiene fylt ut. For Microsoft Entra ID er det
 **Gruppetype** — *Sikkerhet* eller *Microsoft 365*, som ikke kan endres når gruppen er
 laget — **E-postalias**, som heller ikke kan endres, **Synlighet** for en Microsoft
-365-gruppe, **Beskrivelse i tenanten**, **Team i Microsoft Teams** for en Microsoft
+365-gruppe, **Beskrivelse i leietakeren**, **Team i Microsoft Teams** for en Microsoft
 365-gruppe, og **Lisenser** medlemmene får, hver med setene som er ledige. Trykk
 **Lagre**: en verdi som ikke passer, markeres ved feltet, og ellers sier siden *Lagret
 for Microsoft Entra ID; gruppen følger ved kontoarbeiderens neste kjøring*.
 
-Merket på kortet sier så hvordan gruppen står: *Venter* til den er sendt, *Synkronisert
-siden …* med *Gruppen finnes også i Microsoft Entra ID*, *Mislyktes*, *Beholdt, omdøpt*
-eller *Slettet*. Når katalogen avviste en innstilling — en type eller et e-postalias
-endret etter at gruppen ble laget, et team uten noen person blant eierne — sier kortet
-*Mislyktes:* og hvorfor ved den innstillingen; en avvisning av selve gruppen —
-*katalogen har en gruppe med denne nøkkelen som Ansatte ikke får skrive* — står øverst
-på kortet. Medlemmer katalogen ikke kunne endre, står der også, og prøves igjen ved
-neste kjøring. Endre verdien og lagre igjen — eller endre gruppens navn, beskrivelse
-eller eiere — for å få den prøvd på nytt. Et team lages når gruppen er femten minutter
+Merket på kortet sier så hvordan gruppen står: *Venter* til den er sendt, *Funnet i
+Microsoft Entra ID og venter på bekreftelse der*, *Synkronisert siden …* med *Gruppen
+finnes også i Microsoft Entra ID*, *Mislyktes*, *Beholdt, omdøpt* eller *Slettet*. Når
+katalogen avviste en innstilling — en type eller et e-postalias endret etter at gruppen
+ble laget, et team uten noen person blant eierne — sier kortet *Mislyktes:* og hvorfor
+ved den innstillingen; en avvisning av selve gruppen — *katalogen har en gruppe med
+denne nøkkelen som Ansatte ikke får skrive* — står øverst på kortet. Medlemmer katalogen
+ikke kunne endre, står der også, og prøves igjen ved neste kjøring. Endre verdien og
+lagre igjen — eller endre gruppens navn, beskrivelse eller eiere — for å få den prøvd på
+nytt. I mellomtiden holdes medlemmene i en gruppe katalogen allerede har, i samsvar
+likevel: en person som går ut av gruppen i Ansatte, går ut av den der også. Én gang i
+døgnet setter Ansatte medlemmene i katalogen til gruppens igjen, så et medlem noen la
+til der for hånd, fjernes.
+
+**En gruppe funnet i katalogen.** Når Microsoft Entra ID allerede hadde en gruppe med
+e-postaliaset som Vantigo ikke laget, kobler Vantigo den, men skriver ingenting til den
+før noen som administrerer Microsoft Entra ID, bekrefter den på siden for Microsoft
+Entra ID ([Bekreft en gruppe Vantigo ikke opprettet](/nb/user/entra/#bekreft-en-gruppe-vantigo-ikke-opprettet)).
+Til da sier merket *Funnet i Microsoft Entra ID og venter på bekreftelse der* og kortet
+*katalogen hadde en gruppe med denne nøkkelen som Ansatte ikke laget; den skrives til
+først når noen bekrefter den der*. Det er ingen feil: arbeideren spør igjen ved hver
+kjøring, og gruppen følger ved kjøringen etter bekreftelsen. Et team lages når gruppen er femten minutter
 gammel, så det kommer en kjøring etter gruppen. Når katalogen ikke kunne si hva en
 gruppe kan ha, sier kortet *Microsoft Entra ID kunne ikke si hva en gruppe kan ha der.
 Prøv igjen senere.*
@@ -797,6 +812,14 @@ slettes i Microsoft Entra ID etter N dager.*, eller, når den står tom, *Gruppe
 Microsoft Entra ID, omdøpt til «… (archived)».* **Slå av** bekrefter, og siden sier
 *Microsoft Entra ID er slått av for gruppen*. Innstillingene beholdes. En katalog du slo
 på, men aldri lagret for, slås bare av igjen, uten å spørre.
+
+**Slettet i Microsoft Entra ID** gjelder en Microsoft 365-gruppe Vantigo laget, som
+leietakeren kan gjenopprette i tretti dager. En sikkerhetsgruppe Vantigo laget, slettes
+aldri der, siden Microsoft ikke kan gjenopprette en: når dagene er gått, fjernes
+personene fra den, den omdøpes «… (archived)» og beholdes. En gruppe Vantigo fant i
+stedet for å lage, blir stående i Microsoft Entra ID som den er. Kortet sier *Slettet* i
+hvert tilfelle; [administrasjonsveiledningen](/nb/admin/entra/#ansattes-grupper-i-leietakeren)
+har detaljene.
 
 **Arkiver** spør *Arkivere …?* — *Gruppen beholder medlemmene og blir skrivebeskyttet. I
 hver katalog slettes den etter dagene innstillingene i Ansatte sier, eller omdøpes
@@ -1368,7 +1391,9 @@ tilgang** går til identitets side **Roller og tilgang**, der en eier angir dem 
   og ingen slettesperre er på personen: 1 til 3650, eller tom for aldri. Entra holder en
   slettet konto gjenopprettbar i tretti dager. Like mange dager etter at en
   [gruppe](#grupper) er arkivert, eller Microsoft Entra ID er slått av for den, slettes
-  gruppen i Entra; står feltet tomt, omdøpes den «… (archived)» og beholdes.
+  gruppen i Entra — en sikkerhetsgruppe tømmes og beholdes i stedet, og en Vantigo ikke
+  laget, blir stående, slik [Grupper](#grupper) sier; står feltet tomt, omdøpes den
+  «… (archived)» og beholdes.
 
 Trykk **Lagre kontoinnstillingene**. Et tall utenfor grensene avvises på feltet før noe
 lagres; de andre innstillingene lagres som de var.

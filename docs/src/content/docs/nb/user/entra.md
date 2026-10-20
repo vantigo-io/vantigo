@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene, tabellen Grupper — og hvem som ser hva.
+description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene, tabellen Grupper og å bekrefte en gruppe Vantigo ikke opprettet — og hvem som ser hva.
 sidebar:
   order: 47
 sources:
@@ -22,7 +22,7 @@ står i [referansen](/en/reference/entra/).
 
 | Hva | Hvem |
 | --- | --- |
-| Flisen **Microsoft Entra ID**, siden, kortet **Status**, kontoene — **Bekreft** på en Vantigo ikke opprettet — de siste hendelsene og tabellen **Grupper** | `entra:manage` |
+| Flisen **Microsoft Entra ID**, siden, kortet **Status**, kontoene og tabellen **Grupper** — **Bekreft** på en konto eller en gruppe Vantigo ikke opprettet — og de siste hendelsene | `entra:manage` |
 | Stegene **1 Registrer applikasjonen**, **2 Legg til en klienthemmelighet** og **3 Gi tillatelsene og rollen** — **Lagre**, **Legg til hemmeligheten**, **Trekk tilbake**, **Test tilkoblingen** | en **eier**, innlogget med en andre faktor; for alle andre med `entra:manage` vises de skrivebeskyttet, med *En eier gjør dette steget. Du ser hva som er satt, men kan ikke endre det.* |
 | Steg **4 Sett kontoreglene** — **Lagre kontoreglene** | `entra:manage` |
 | Stegene **5 Innlogging** og **6 Klargjøring** | en **eier**: de er skjemaene fra kortet **Single sign-on**; alle andre leser steget uten dem |
@@ -65,24 +65,29 @@ etter at steg 1 endres, vises det ikke:
 - **Siste hendelser**: hva Vantigo gjorde i leietakeren eller med tilkoblingen, når,
   brukerhovednavnet, *av Ansattes kontokjøring* når Ansattes kontojobb gjorde det, og
   hva som ble meldt. Aldri en hemmelighet, et passord eller et pass. En gruppes
-  hendelse vises med handlingens navn slik det er — `entra.group.created`,
-  `entra.group.adopted`, `entra.group.updated`, `entra.group.team_created`,
-  `entra.group.members_set` eller `entra.group.deleted` — med kodene sine, for
-  eksempel `added:3` eller `team_pending`.
+  hendelse vises også med ord — *En gruppe ble opprettet*, *En gruppe ble funnet og
+  overtatt*, *En gruppes medlemmer ble avstemt*, *En gruppe ble tømt og beholdt*,
+  *Overtakelsen av en gruppe ble bekreftet* og lignende — med det som ble meldt i ord,
+  for eksempel *3 medlemmer lagt til* eller *teamet venter til gruppen er femten
+  minutter gammel og Teams har sett den*.
 
 ### Tabellen Grupper
 
 Under kortet **Status**, og vist sammen med det, viser **Grupper** gruppene Vantigo
 holder i leietakeren for Ansattes grupper ([Grupper i Ansatte](/nb/user/staff/#grupper)),
-slettede medregnet og nedtonet: hver gruppes **Navn** slik Vantigo sist skrev det, med
-e-postaliaset under; **Type**, *Sikkerhet* eller *Microsoft 365*; **Team**, *Ja* når den
-er blitt et team i Microsoft Teams, ellers *Nei*; **Tilstand**, *Finnes* eller
-*Slettet*, med *Funnet i tenanten og overtatt* under for en gruppe Vantigo fant med
-aliaset i stedet for å lage den; og **Siste medlemssynkronisering**, når Vantigo sist
-brakte medlemmene i samsvar, eller *Aldri*. Før det finnes noen, står det *Ingen
-grupper ennå. En gruppe i Ansatte som er slått på for Microsoft Entra ID, vises her når
-kontoarbeideren har laget den.* Den er skrivebeskyttet: HR oppretter, endrer og
-arkiverer grupper i Ansatte, og Ansattes kontoarbeider bringer dem hit.
+slettede og beholdte medregnet og nedtonet: hver gruppes **Navn** slik Vantigo sist
+skrev det, med e-postaliaset under; **Type**, *Sikkerhet* eller *Microsoft 365*;
+**Team**, *Ja* når den er blitt et team i Microsoft Teams, ellers *Nei*; **Tilstand** —
+*Finnes*, *Slettet*, eller *Tømt og beholdt* for en sikkerhetsgruppe Ansatte ga slipp
+på, som Vantigo aldri sletter — med *Funnet i leietakeren og overtatt* under for en
+gruppe Vantigo fant med aliaset i stedet for å lage den, eller *Overtatt – bekreft* og
+**Bekreft** så lenge ingen har bekreftet den
+([under](#bekreft-en-gruppe-vantigo-ikke-opprettet)); og **Siste
+medlemssynkronisering**, når Vantigo sist brakte medlemmene i samsvar, eller *Aldri*.
+Før det finnes noen, står det *Ingen grupper ennå. En gruppe i Ansatte som er slått på
+for Microsoft Entra ID, vises her når kontoarbeideren har laget den.* Bortsett fra
+**Bekreft** er den skrivebeskyttet: HR oppretter, endrer og arkiverer grupper i
+Ansatte, og Ansattes kontoarbeider bringer dem hit.
 
 ### 1 Registrer applikasjonen
 
@@ -208,6 +213,24 @@ fra, og dashbordet lenker hit.
 Siden sier *Overtakelsen er bekreftet*, og Vantigo forvalter kontoen fra Ansattes neste
 kontokjøring. Bekreft bare en konto du har sjekket: å bekrefte gir den til den som har
 ansattnummeret i Ansatte.
+
+## Bekreft en gruppe Vantigo ikke opprettet
+
+Når leietakeren allerede har en gruppe med e-postaliaset til en Ansatte-gruppe som er
+slått på for Microsoft Entra ID, kobler Vantigo den, men skriver ingenting til den —
+ikke noe navn, ingen eier, ingen medlemmer, ingen sletting — før noen med
+`entra:manage` bekrefter at det er den gruppen. Ansatte-gruppens side sier *Funnet i
+Microsoft Entra ID og venter på bekreftelse der* så lenge.
+
+1. Finn gruppen som står som *Overtatt – bekreft* i tabellen **Grupper**.
+2. Sjekk i portalen at det er gruppen som er ment — navnet, eierne, medlemmene.
+3. Velg **Bekreft** ved siden av den, og så **Bekreft** i *Bekrefte overtakelsen av
+   …?*, som sier hva som følger.
+
+Siden sier *Overtakelsen er bekreftet* — *Vantigo forvalter gruppen fra Ansattes neste
+kontokjøring.* Vantigo skriver så Ansattes navn og beskrivelse til gruppen og gjør
+eierne og medlemmene til Ansattes, og fjerner alle andre. Den sletter aldri en gruppe
+den ikke har opprettet. Bekreft bare en gruppe du har sjekket.
 
 ## Etter oppsettet
 

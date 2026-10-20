@@ -754,8 +754,10 @@ The page's header shows the group's name, its kind, its key and its rule in word
 description. **Edit** opens the form, which shows *Key: … — it never changes.* in place
 of the key; the kind can change there too. If someone else saved the group since you
 opened it, the page says so and reads it again. **Archive** asks first. **Delete** is
-there only while no directory has ever made or found the group, archived or not; after
-that, archive it. It asks *Delete …?* — *The group, its members, owners and settings are
+there only while no directory has the group or has ever synced it and none is turned on
+for it, archived or not; otherwise archive it — or, when no directory has made it yet,
+turn its directories off first. A directory that is sending the group at that moment
+still refuses the delete. It asks *Delete …?* — *The group, its members, owners and settings are
 deleted. No directory has it yet.* — and each member is recorded on their history as
 having left the group.
 
@@ -784,15 +786,27 @@ with the seats left. Press
 **Save**: a value that does not fit is marked beside its field, and otherwise the page
 says *Saved for Microsoft Entra ID; the group follows at the accounts worker's next run*.
 
-The card's badge then says where the group stands: *Waiting* until it is sent, *In sync
-since …* with *Staff's in Microsoft Entra ID too*, *Failed*, *Kept, renamed* or
-*Deleted*. When the directory refused a setting — a type or a mail nickname changed
-after the group was made, a team with no person among the owners — the card says
-*Failed:* and why beside that setting; a refusal of the group itself — *the directory
-holds a group by this key that Staff may not write* — is said at the top of the card.
-Members the directory could not change are said there too, and tried again at the next
-run. Change the value and save again — or change the group's name, description or
-owners — to have it tried again. A team is made once the group is fifteen minutes old,
+The card's badge then says where the group stands: *Waiting* until it is sent, *Found
+in Microsoft Entra ID and awaiting confirmation there*, *In sync since …* with *Staff's
+in Microsoft Entra ID too*, *Failed*, *Kept, renamed* or *Deleted*. When the directory
+refused a setting — a type or a mail nickname changed after the group was made, a team
+with no person among the owners — the card says *Failed:* and why beside that setting;
+a refusal of the group itself — *the directory holds a group by this key that Staff may
+not write* — is said at the top of the card. Members the directory could not change are
+said there too, and tried again at the next run. Change the value and save again — or
+change the group's name, description or owners — to have it tried again. Meanwhile a
+group the directory already holds still has its members kept in step: a person who
+leaves the group in Staff leaves it there too. Once a day Staff sets the members in the
+directory to the group's again, so a member someone added there by hand is removed.
+
+**A group found in the directory.** When Microsoft Entra ID already held a group with the
+mail nickname that Vantigo did not make, Vantigo links it but writes nothing to it until
+someone who manages Microsoft Entra ID confirms it on the Microsoft Entra ID page
+([Confirm a group Vantigo did not create](/en/user/entra/#confirm-a-group-vantigo-did-not-create)).
+Until then the badge says *Found in Microsoft Entra ID and awaiting confirmation there*
+and the card *the directory held a group by this key that Staff did not make; it is
+written to only once someone confirms it there*. It is not a failure: the worker asks
+again at each run, and the group follows at the run after the confirmation. A team is made once the group is fifteen minutes old,
 so it appears a run after the group. When the directory could not say what a group can
 carry, the card says *Microsoft Entra ID could not say what a group can carry there.
 Try again later.*
@@ -804,6 +818,14 @@ or, when that is empty, *The group will be kept in Microsoft Entra ID, renamed �
 (archived)”.* **Turn off** confirms, and the page says *Microsoft Entra ID is off for
 the group*. The settings are kept. A directory you turned on but never saved for is
 just turned off again, without asking.
+
+**Deleted in Microsoft Entra ID** means a Microsoft 365 group Vantigo made, which the
+tenant can restore for thirty days. A security group Vantigo made is never deleted there,
+since Microsoft cannot restore one: when the days have passed, its people are removed
+from it, it is renamed “… (archived)” and kept. A group Vantigo found rather than made
+is left in Microsoft Entra ID as it is. The card says *Deleted* in each case; the
+[administration guide](/en/admin/entra/#staffs-groups-in-the-tenant) has the
+details.
 
 **Archive** asks *Archive …?* — *The group keeps its members and becomes read-only. In
 each directory it is deleted after the days Staff's settings say, or renamed
@@ -1380,8 +1402,9 @@ may give**.
   employment ended Staff deletes the person's account in Entra, once it is disabled and
   no legal hold is on the person: 1 to 3650, or empty for never. Entra keeps a deleted
   account restorable for thirty days. The same days after a [group](#groups) is
-  archived, or Microsoft Entra ID turned off for it, the group is deleted in Entra; empty,
-  it is renamed “… (archived)” and kept.
+  archived, or Microsoft Entra ID turned off for it, the group is deleted in Entra — a
+  security group is emptied and kept instead, and one Vantigo did not make is left, as
+  [Groups](#groups) says; empty, it is renamed “… (archived)” and kept.
 
 Press **Save the account settings**. A number outside its bounds is refused on its
 field before anything is saved; the other settings are saved as they were.

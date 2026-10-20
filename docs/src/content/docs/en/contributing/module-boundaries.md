@@ -391,8 +391,13 @@ Communications' outbox is the working example.
     and stores without naming one; `EnsureGroup`, which makes or adopts the group with
     the provider's own identity among its owners and answers a refused value as a
     `GroupTraitError` keyed by the trait, and what it could not do yet as
-    `ExternalGroup.Pending`; `SetMembers`, which reconciles the members and answers the
-    ones it could not change; and `DeleteGroup`;
+    `ExternalGroup.Pending` — a group it found rather than made is adopted untrusted,
+    as an account is, and it and `SetMembers` answer `ErrGroupUnconfirmed`, writing
+    nothing, until the adoption is confirmed on the provider's side; `SetMembers`, which
+    reconciles the members and answers the ones it could not change; and `DeleteGroup`,
+    which deletes the group where the directory can restore it, retires it where a
+    delete could not be undone, and leaves a group the provider did not create to its
+    directory;
     `Provider` names its key — never a reserved one (rule 5) — display name and status
     (`unconfigured`, `connected`, `failing`). It is held to rule 11's lock discipline: every other call reaches the network
     on the provider's own pool, so **Staff never calls it inside a transaction or
@@ -404,11 +409,13 @@ Communications' outbox is the working example.
     Staff bounds what it answers before storing it: a code or a status reason outside
     `^[a-z_]{1,40}(:[A-Za-z0-9_.-]{1,64})?$` is dropped, a principal name over 254
     characters is not recorded, and the made address must pass Staff's email rule —
-    each drop logged by field name, never by value.
+    each drop logged by field name, never by value; a group's refused value is cut,
+    its code at 200 characters and its field at 40.
     Each refusal is a sentinel (`ErrExternalAmbiguous`, `ErrExternalAddressTaken`,
     `ErrExternalSyncedOnPremises`, `ErrExternalPrivileged`, `ErrExternalEnabled`,
     `ErrExternalUnconfirmed`, `ErrPassGone`, `ErrProviderUnavailable`,
-    `ErrGroupNotManageable`) and a reported
+    `ErrGroupNotManageable`, `ErrGroupUnconfirmed` — no failure: Staff asks again) and a
+    reported
     fact a code that never carries an address; anything else is a failure to retry.
     `Deactivate` — and the `Account` read Staff makes before it — runs whatever
     `Provider`'s status says, as long as a credential works, while the other writes
