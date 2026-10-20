@@ -83,6 +83,7 @@ describe("the app registry", () => {
       "/staff/me",
       "/staff/people",
       "/staff/absence",
+      "/staff/groups",
       "/staff/settings",
       "/invoices",
       "/invoices/quick",
@@ -380,6 +381,7 @@ describe("the app registry", () => {
         ["staff:view", "staff:approve", "staff:manage", "staff:personal-data"],
         ["staff:access"],
       ],
+      ["navigation.staffGroups", "/staff/groups", ["staff:manage"], undefined],
       ["navigation.staffSettings", "/staff/settings", ["staff:manage"], undefined],
     ]);
     expect(items.map((item) => item.to)).toEqual(staffNavItems.map((item) => item.to));
@@ -412,9 +414,10 @@ describe("the app registry", () => {
       "/staff/me",
       "/staff/people",
       "/staff/absence",
+      "/staff/groups",
       "/staff/settings",
     ]);
-    expect(paths(["*"])).toEqual(["/staff/me", "/staff/people", "/staff/absence", "/staff/settings"]);
+    expect(paths(["*"])).toEqual(["/staff/me", "/staff/people", "/staff/absence", "/staff/groups", "/staff/settings"]);
   });
 
   it("treats Home as always enabled and module apps as enabled when their module is", () => {

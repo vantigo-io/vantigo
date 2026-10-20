@@ -13,6 +13,8 @@ import {
 import { render } from "@testing-library/react";
 import {
   ABSENCE_ROUTE_PATH,
+  GROUP_ROUTE_PATH,
+  GROUPS_ROUTE_PATH,
   MY_PAGE_ROUTE_PATH,
   PEOPLE_ROUTE_PATH,
   PERSON_ROUTE_PATH,
@@ -20,6 +22,8 @@ import {
 } from "../lib/routes";
 import { validateAbsenceSearch, validateMyPageSearch, validatePeopleSearch, validatePersonSearch } from "../lib/search";
 import { AbsencePage } from "../pages/absence";
+import { GroupPage } from "../pages/group";
+import { GroupsPage } from "../pages/groups";
 import { MyPage } from "../pages/my-page";
 import { PeoplePage } from "../pages/people";
 import { PersonPage } from "../pages/person";
@@ -63,6 +67,8 @@ export const makeRouteTree = () => {
       validateSearch: validateAbsenceSearch,
     }),
     createRoute({ getParentRoute: () => rootRoute, path: STAFF_SETTINGS_ROUTE_PATH, component: SettingsPage }),
+    createRoute({ getParentRoute: () => rootRoute, path: GROUPS_ROUTE_PATH, component: GroupsPage }),
+    createRoute({ getParentRoute: () => rootRoute, path: GROUP_ROUTE_PATH, component: GroupPage }),
   ]);
 };
 

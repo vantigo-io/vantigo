@@ -17,6 +17,7 @@ import {
 import { ApiConflictError, ENTRA_QUERY_KEY } from "../api/request";
 import { callerIsOwnerQueryOptions } from "../api/session";
 import { AddSecretForm, CredentialList } from "../components/credentials";
+import { GroupsCard } from "../components/groups-card";
 import { SettingsForm } from "../components/settings-form";
 import { StatusCard } from "../components/status-card";
 import { CopyValue, OwnerOnly, PortalPath, StepCard } from "../components/step-card";
@@ -81,6 +82,7 @@ const Wizard = ({
   return (
     <Stack gap="lg">
       {connection.status !== "unconfigured" && <StatusCard connection={connection} owner={owner} />}
+      {connection.status !== "unconfigured" && <GroupsCard />}
 
       <StepCard step={1} title={t("step1Title")} path={t("step1Path")} done={done.register}>
         <Text size="sm">{t("step1Body")}</Text>

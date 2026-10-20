@@ -822,6 +822,19 @@ describe("the dashboard's staff account attention items", () => {
     }
   });
 
+  // A group a provider could not sync (Entra delivery D): one item per group,
+  // its id the entity, dealt with on the group's own page.
+  it("opens the group's page for a group not in sync, and words it with the group's name", () => {
+    expect(attentionHref({ module: "staff", type: "groupSyncFailed", entityId: "1001" })).toBe("/staff/groups/1001");
+    const key = attentionTitleKey({ module: "staff", type: "groupSyncFailed" }) as string;
+    expect(key).toBe("dashboard.staffGroupSyncFailed");
+    for (const lng of ["en", "nb"]) {
+      const sentence = i18n.t(key, { ns: "host", lng, name: "Engineering" });
+      expect(sentence, lng).not.toBe(key);
+      expect(sentence, lng).toContain("Engineering");
+    }
+  });
+
   it("opens Staff's Settings for the installation's items", () => {
     for (const type of installationTypes) {
       expect(attentionHref({ module: "staff", type, entityId: "settings" }), type).toBe("/staff/settings");

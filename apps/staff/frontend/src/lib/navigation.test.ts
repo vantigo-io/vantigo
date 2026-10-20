@@ -1,25 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { staffNavItems, visibleStaffNavItems } from "./navigation";
-import { ABSENCE_ROUTE_PATH, MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH, STAFF_SETTINGS_ROUTE_PATH } from "./routes";
+import {
+  ABSENCE_ROUTE_PATH,
+  GROUPS_ROUTE_PATH,
+  MY_PAGE_ROUTE_PATH,
+  PEOPLE_ROUTE_PATH,
+  STAFF_SETTINGS_ROUTE_PATH,
+} from "./routes";
 
 const offered = (permissions: string[] | undefined) => visibleStaffNavItems(permissions).map((item) => item.key);
 
 describe("the Staff sidebar", () => {
-  it("offers My page to everyone in the app, People to the directory, Absence to who reads or decides it, Settings to HR", () => {
+  it("offers My page to everyone in the app, People to the directory, Absence to who reads or decides it, Groups and Settings to HR", () => {
     expect(offered(["staff:access"])).toEqual(["myPage"]);
     expect(offered(["staff:access", "staff:view"])).toEqual(["myPage", "people", "absence"]);
     // HR without the directory lists people too (the server answers it), so the sidebar offers it.
-    expect(offered(["staff:access", "staff:manage"])).toEqual(["myPage", "people", "absence", "settings"]);
+    expect(offered(["staff:access", "staff:manage"])).toEqual(["myPage", "people", "absence", "groups", "settings"]);
     expect(offered(["staff:access", "staff:view", "staff:manage"])).toEqual([
       "myPage",
       "people",
       "absence",
+      "groups",
       "settings",
     ]);
     // The Approver decides everyone's requests; staff:personal-data alone decides the HR-only types (plan reading 33).
     expect(offered(["staff:access", "staff:approve"])).toEqual(["myPage", "absence"]);
     expect(offered(["staff:access", "staff:personal-data"])).toEqual(["myPage", "absence"]);
-    expect(offered(["*"])).toEqual(["myPage", "people", "absence", "settings"]);
+    expect(offered(["*"])).toEqual(["myPage", "people", "absence", "groups", "settings"]);
     expect(offered(undefined)).toEqual([]);
   });
 
@@ -45,6 +52,7 @@ describe("the Staff sidebar", () => {
       MY_PAGE_ROUTE_PATH,
       PEOPLE_ROUTE_PATH,
       ABSENCE_ROUTE_PATH,
+      GROUPS_ROUTE_PATH,
       STAFF_SETTINGS_ROUTE_PATH,
     ]);
   });

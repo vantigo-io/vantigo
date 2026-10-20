@@ -1,4 +1,10 @@
-import { ABSENCE_ROUTE_PATH, MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH, STAFF_SETTINGS_ROUTE_PATH } from "./routes";
+import {
+  ABSENCE_ROUTE_PATH,
+  GROUPS_ROUTE_PATH,
+  MY_PAGE_ROUTE_PATH,
+  PEOPLE_ROUTE_PATH,
+  STAFF_SETTINGS_ROUTE_PATH,
+} from "./routes";
 
 /**
  * One destination of the Staff app's sidebar (design S28), as the host
@@ -8,7 +14,7 @@ import { ABSENCE_ROUTE_PATH, MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH, STAFF_SETTIN
  * and this package's own gate cannot disagree.
  */
 export interface StaffNavItem {
-  key: "myPage" | "people" | "absence" | "settings";
+  key: "myPage" | "people" | "absence" | "groups" | "settings";
   /** A key in the `staff` catalog. */
   label: string;
   to: string;
@@ -45,6 +51,8 @@ export const staffNavItems: readonly StaffNavItem[] = [
     requiredPermissions: ["staff:view", "staff:approve", "staff:manage", "staff:personal-data"],
     guardPermissions: ["staff:access"],
   },
+  // The groups are staff:manage's alone, the list and every group (Entra design D9).
+  { key: "groups", label: "navGroups", to: GROUPS_ROUTE_PATH, requiredPermissions: ["staff:manage"] },
   { key: "settings", label: "navSettings", to: STAFF_SETTINGS_ROUTE_PATH, requiredPermissions: ["staff:manage"] },
 ];
 

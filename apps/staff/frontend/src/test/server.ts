@@ -7,6 +7,7 @@ import type {
   StaffTerms,
   StaffTermsInput,
 } from "../api/employments";
+import type { StaffGroup, StaffGroupProvider, StaffPersonGroup } from "../api/groups";
 import type { StaffMeta } from "../api/meta";
 import type { StaffAssignableUser, StaffEvent, StaffPerson, StaffPersonInput } from "../api/people";
 import type { StaffRetentionRun } from "../api/retention";
@@ -54,6 +55,11 @@ import {
   type StoredPerson,
   TODAY,
 } from "./fixtures";
+import {
+  groups as defaultGroups,
+  groupTraits as defaultGroupTraits,
+  myGroups as defaultMyGroups,
+} from "./group-fixtures";
 
 export interface StaffServer {
   /** Who is asking; HR by default. It decides `/meta`'s capabilities and who `GET /people` lists. */
@@ -95,6 +101,12 @@ export interface StaffServer {
   /** Absence as the server answers it for the caller (delivery B): the fake hands it out as it is. */
   absence?: AbsenceServer;
   pageSize?: number;
+  /** The groups (Entra delivery D), each with its members and owners; the fixture's three by default. */
+  groups?: StaffGroup[];
+  /** Each group's sections, by the group's id, as `GET /groups/{id}/traits` answers them. */
+  groupTraits?: Record<number, StaffGroupProvider[]>;
+  /** What `GET /me/groups` answers the caller linked to a person. */
+  myGroups?: StaffPersonGroup[];
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
   /** Answers a read instead of the fake's own, as `write` does a write. */
@@ -157,6 +169,8 @@ export interface StaffState {
   accounts: Record<number, Schemas["StaffPersonAccount"]>;
   /** How many passes `POST …/account/pass` has answered (Entra B). */
   passesRevealed: number;
+  groups: StaffGroup[];
+  groupTraits: Record<number, StaffGroupProvider[]>;
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -488,6 +502,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     holidaySchemes: server.absence?.schemes ?? defaultHolidaySchemes(),
     accounts: server.accounts ?? {},
     passesRevealed: 0,
+    groups: server.groups ?? defaultGroups(),
+    groupTraits: server.groupTraits ?? defaultGroupTraits(),
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -2353,6 +2369,176 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     return undefined;
   };
 
+  /**
+   * The groups (Entra delivery D) as the server keeps them: staff:manage's
+   * alone, the key's pattern and uniqueness, If-Match on a change,
+   * `group_archived` on an archived group's writes, `group_derived` on a
+   * derived group's members, `group_synced` on deleting one a provider
+   * made, and a provider's section checked against its declaration.
+   */
+  const groupRoutes = (
+    method: string,
+    path: string,
+    init: RequestInit | undefined,
+    body: unknown,
+  ): Response | undefined => {
+    if (path === "/api/v1/staff/me/groups" && method === "GET") {
+      if (server.me === undefined) return meProblem();
+      return jsonResponse(200, server.myGroups ?? defaultMyGroups());
+    }
+    const match = /^\/api\/v1\/staff\/groups(?:\/(\d+)(?:\/(archive|members|owners|traits)(?:\/([^/]+))?)?)?$/.exec(
+      path,
+    );
+    if (!match) return undefined;
+    if (!manages(role)) return forbidden();
+    const listed = (group: StaffGroup): StaffGroup => {
+      const { members, owners, ...rest } = group;
+      return { ...rest, memberCount: members?.length ?? 0, ownerCount: owners?.length ?? 0 };
+    };
+    const whole = (group: StaffGroup): StaffGroup => ({
+      ...group,
+      memberCount: group.members?.length ?? 0,
+      ownerCount: group.owners?.length ?? 0,
+    });
+    if (!match[1]) {
+      if (method === "GET")
+        return jsonResponse(200, [...state.groups].sort((a, b) => a.name.localeCompare(b.name)).map(listed));
+      if (method === "POST") {
+        const input = body as Schemas["StaffGroupRequest"];
+        if (!/^[a-z0-9][a-z0-9-]{0,59}$/.test(input.key ?? ""))
+          return staffProblem(400, {
+            title: "Invalid group",
+            errors: { key: ["The key is 1 to 60 lower-case letters, digits or hyphens"] },
+          });
+        if (state.groups.some((one) => one.key === input.key))
+          return staffProblem(400, { title: "Invalid group", errors: { key: ["Another group has this key"] } });
+        const group: StaffGroup = {
+          id: nextId++,
+          key: input.key ?? "",
+          name: input.name,
+          ...(input.description ? { description: input.description } : {}),
+          kind: input.kind,
+          ...(input.rule ? { rule: input.rule } : {}),
+          memberCount: 0,
+          ownerCount: 0,
+          providers: [],
+          members: [],
+          owners: [],
+          revision: 1,
+          createdAt: `${TODAY}T08:00:00Z`,
+          updatedAt: `${TODAY}T08:00:00Z`,
+        };
+        state.groups.push(group);
+        return jsonResponse(201, whole(group));
+      }
+      return undefined;
+    }
+    const group = state.groups.find((one) => one.id === Number(match[1]));
+    if (!group) return notFound();
+    const sub = match[2];
+    const archivedRefusal = () =>
+      staffProblem(409, {
+        code: "group_archived",
+        title: "Group archived",
+        detail: "The group is archived and can no longer be changed.",
+      });
+    const peopleOf = (ids: number[]) =>
+      ids.flatMap((id) => state.people.filter((one) => one.id === id && !one.erasedAt));
+    if (!sub) {
+      if (method === "GET") return jsonResponse(200, whole(group));
+      if (method === "PUT") {
+        if (group.archivedAt) return archivedRefusal();
+        const stale = staleRevision(init, group.revision, "group");
+        if (stale) return stale;
+        const input = body as Schemas["StaffGroupRequest"];
+        group.name = input.name;
+        group.description = input.description;
+        group.kind = input.kind;
+        group.rule = input.rule;
+        group.revision += 1;
+        return jsonResponse(200, whole(group));
+      }
+      if (method === "DELETE") {
+        const synced = (state.groupTraits[group.id] ?? []).some((one) => one.syncedAt || one.externalId);
+        if (synced)
+          return staffProblem(409, {
+            code: "group_synced",
+            title: "Group synced",
+            detail: "A provider has made this group in its directory; archive it instead.",
+          });
+        state.groups = state.groups.filter((one) => one !== group);
+        return new Response(null, { status: 204 });
+      }
+    }
+    if (sub === "archive" && method === "POST") {
+      group.archivedAt = group.archivedAt ?? `${TODAY}T09:00:00Z`;
+      return jsonResponse(200, whole(group));
+    }
+    if (sub === "members" && method === "PUT") {
+      if (group.archivedAt) return archivedRefusal();
+      if (group.kind === "derived")
+        return staffProblem(409, {
+          code: "group_derived",
+          title: "Group derived",
+          detail: "A derived group's members are its rule's.",
+        });
+      const wanted = peopleOf((body as { personIds: number[] }).personIds);
+      group.members = wanted.map(
+        (person) =>
+          group.members?.find((one) => one.personId === person.id) ?? {
+            personId: person.id,
+            displayName: person.displayName,
+            employeeNumber: person.employeeNumber,
+            source: "listed",
+            since: TODAY,
+          },
+      );
+      return jsonResponse(200, whole(group));
+    }
+    if (sub === "owners" && method === "PUT") {
+      if (group.archivedAt) return archivedRefusal();
+      group.owners = peopleOf((body as { personIds: number[] }).personIds).map((person) => ({
+        personId: person.id,
+        displayName: person.displayName,
+        employeeNumber: person.employeeNumber,
+      }));
+      return jsonResponse(200, whole(group));
+    }
+    const sections = state.groupTraits[group.id] ?? [];
+    if (sub === "traits" && !match[3] && method === "GET") return jsonResponse(200, { providers: sections });
+    if (sub === "traits" && match[3] && method === "PUT") {
+      const section = sections.find((one) => one.key === decodeURIComponent(match[3]));
+      if (!section) return notFound();
+      if (group.archivedAt) return archivedRefusal();
+      const input = body as Schemas["StaffGroupTraitsRequest"];
+      if (!input.enabled) {
+        if (section.enabled) section.enabled = false;
+        return jsonResponse(200, section);
+      }
+      const values = input.values ?? {};
+      const errors: Record<string, string[]> = {};
+      for (const [key, value] of Object.entries(values)) {
+        const trait = section.traits.find((one) => one.key === key);
+        if (!trait) errors[key] = ["trait_invalid: not a trait of this provider"];
+        else if (trait.type === "choice" && !trait.choices?.some((choice) => choice.value === value))
+          errors[key] = ["trait_invalid: not one of the choices"];
+        else if (trait.type === "string" && trait.maxLength && String(value).length > trait.maxLength)
+          errors[key] = [`trait_invalid: at most ${trait.maxLength} characters`];
+      }
+      for (const trait of section.traits)
+        if (trait.required && !(trait.key in values)) errors[trait.key] = ["trait_required: a value is needed"];
+      if (Object.keys(errors).length > 0) return staffProblem(400, { title: "Invalid traits", errors });
+      Object.assign(section, { enabled: true, values, state: "pending" as const });
+      delete section.lastError;
+      delete section.lastErrorField;
+      const listedState = group.providers.find((one) => one.key === section.key);
+      if (listedState) Object.assign(listedState, { enabled: true, state: "pending" });
+      else group.providers.push({ key: section.key, enabled: true, state: "pending" });
+      return jsonResponse(200, section);
+    }
+    return undefined;
+  };
+
   const stub = stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     const path = url.pathname;
@@ -2524,6 +2710,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const employments = /^\/api\/v1\/staff\/people\/(\d+)\/employments$/.exec(path);
     if (employments && method === "POST")
       return Promise.resolve(manages(role) ? createEmployment(Number(employments[1]), body) : forbidden());
+
+    const groupsAnswer = groupRoutes(method, path, init, body);
+    if (groupsAnswer) return Promise.resolve(groupsAnswer);
 
     const absenceAnswer = absenceRoutes(method, path, url, init, body);
     if (absenceAnswer) return Promise.resolve(absenceAnswer);

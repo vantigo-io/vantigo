@@ -22,6 +22,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconAlertTriangle, IconKey, IconPlayerPlay, IconUserOff } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { appUrl, ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import {
@@ -38,6 +39,7 @@ import {
   type StaffProviderLink,
   updatePersonAccount,
 } from "../api/accounts";
+import type { StaffPersonGroup } from "../api/groups";
 import { type StaffMeta, staffMetaQueryOptions } from "../api/meta";
 import type { StaffPerson } from "../api/people";
 import { ApiConflictError, ApiValidationError } from "../api/request";
@@ -47,6 +49,7 @@ import { refusalText } from "../lib/absence";
 import { accountKindsOffered, isProviderKind, useAccountKindText, WORKSPACE_USERS_PATH } from "../lib/accounts";
 import { isRevisionConflict } from "../lib/errors";
 import { useStaffFormat } from "../lib/format";
+import { groupLinkOptions } from "../lib/routes";
 
 /** The reasons for which only an Owner, adopting the user for Staff, lets Staff manage them. */
 const adoptionReasons = ["account_not_managed", "employee_number_taken"];
@@ -159,6 +162,7 @@ export const PersonAccount = ({
         canManage={canManage}
         erased={erased}
       />
+      {data.groups && <PersonGroups groups={data.groups} canOpen={canManage} />}
       {data.directoryProfile && <DirectoryProfileTable fields={data.directoryProfile} />}
     </Stack>
   );
@@ -727,6 +731,53 @@ const DirectoryProfileTable = ({ fields }: { fields: StaffDirectoryField[] }) =>
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+    </FieldGroup>
+  );
+};
+
+/**
+ * The groups the person is in (Entra design D9), archived groups aside: how
+ * each came in and since when — the groups a provider makes them a member
+ * of, and whose licences they get. HR opens a group from here.
+ */
+const PersonGroups = ({ groups, canOpen }: { groups: StaffPersonGroup[]; canOpen: boolean }) => {
+  const { t, date } = useStaffFormat();
+  return (
+    <FieldGroup title={t("personGroups")} description={t("personGroupsDescription")}>
+      {groups.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          {t("personNoGroups")}
+        </Text>
+      ) : (
+        <Table.ScrollContainer minWidth={420}>
+          <Table aria-label={t("personGroups")}>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("name")}</Table.Th>
+                <Table.Th>{t("groupSource")}</Table.Th>
+                <Table.Th>{t("groupSince")}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {groups.map((group) => (
+                <Table.Tr key={group.id}>
+                  <Table.Td>
+                    {canOpen ? (
+                      <Anchor size="sm" renderRoot={(props) => <Link {...groupLinkOptions(group.id)} {...props} />}>
+                        {group.name}
+                      </Anchor>
+                    ) : (
+                      group.name
+                    )}
+                  </Table.Td>
+                  <Table.Td>{group.source ? t(`groupSource_${group.source}`) : "—"}</Table.Td>
+                  <Table.Td>{group.since ? date(group.since) : "—"}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
     </FieldGroup>
   );
 };

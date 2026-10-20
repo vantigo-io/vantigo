@@ -110,7 +110,7 @@ const en = {
     "{{count}} person's account waits: Microsoft Entra ID's client secret has expired",
   "dashboard.staffSecretExpired_other":
     "{{count}} people's accounts wait: Microsoft Entra ID's client secret has expired",
-  "dashboard.staffGroupSyncFailed": "The group {{name}} could not be synced with its provider",
+  "dashboard.staffGroupSyncFailed": "The group {{name}} is not in sync with its directory; its page says why",
   "dashboard.invoicesOutstanding": "Outstanding",
   "dashboard.invoicesOverdueHint": "{{count}} overdue ({{amount}})",
   "dashboard.invoicesIssuedDelta": "issued vs previous period",
@@ -329,7 +329,8 @@ const nb: { [Key in keyof typeof en]: string } = {
     "{{count}} persons konto venter: klienthemmeligheten til Microsoft Entra ID har utløpt",
   "dashboard.staffSecretExpired_other":
     "{{count}} personers kontoer venter: klienthemmeligheten til Microsoft Entra ID har utløpt",
-  "dashboard.staffGroupSyncFailed": "Gruppen {{name}} kunne ikke synkroniseres med leverandøren",
+  "dashboard.staffGroupSyncFailed":
+    "Gruppen {{name}} er ikke synkronisert med katalogen; gruppesiden forteller hvorfor",
   "dashboard.invoicesOutstanding": "Utestående",
   "dashboard.invoicesOverdueHint": "{{count}} forfalte ({{amount}})",
   "dashboard.invoicesIssuedDelta": "fakturert mot forrige periode",
