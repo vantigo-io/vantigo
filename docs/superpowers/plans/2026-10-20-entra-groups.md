@@ -65,7 +65,8 @@ Task 2 first, alone. Then 3a (Staff's endpoints, the rule, the materialisation),
 
 - The key: `^[a-z0-9][a-z0-9-]{0,59}$`; `mailNicknameOf(key)`: the key with `-` kept, cut at 64. The archived suffix: ` (archived)`, English, once (an already-suffixed name is left).
 - The rule kinds: `employed`, `department`, `businessUnit`, `location`, `employeeType`, `reportsTo`; `includeBelow` on `department` only.
-- The hashes: SHA-256; the values' hash over `{ name, description, values }` as JSON with sorted keys; the members' hash over the sorted, de-duplicated external ids joined by `\n`.
+- The hashes: SHA-256; the values' hash over `{ name, description, values, owners }` as JSON with sorted keys (`owners` the owners' sorted external ids, since `EnsureGroup` is the only call that reconciles them); the members' hash over the sorted, de-duplicated external ids joined by `\n`.
+- A `call_failed` row keeps its state and retries by the backoff; it becomes `failed` (the `groupSyncFailed` item) after three failures in a row. A retiring row whose rename the provider refuses still becomes `retired`, the code kept on it.
 - The worker: `groupsBatch` 100 claims per cycle; the lease and the call timeout the accounts worker's (five minutes, two minutes); a synced row due again after the poll; the backoff `backoff.go`'s.
 - The person events: `group_joined`, `group_left`, payload `{ "groupId", "groupName", "groupKey", "source" }`, class C.
 - The trait rows' states: `pending`, `synced`, `failed`, `retired`, `deleted`; `last_error` codes: a `GroupTraitError` code, `group_not_manageable`, `call_failed`, `members_failed:<n>`.

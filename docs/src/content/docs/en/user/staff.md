@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page with its documents and their account, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, absence and the holiday account, and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention, the thresholds and the accounts.
+description: The people register — People, a person's page with its documents and their account, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, absence and the holiday account, and the Groups and their place in the directory, and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention, the thresholds and the accounts.
 sidebar:
   order: 45
 sources:
@@ -24,6 +24,7 @@ permissions give you:
 | **My page** | everyone with `staff:access` |
 | **Staff directory** (the People screen) | `staff:view`, or `staff:manage` — an HR role without `staff:view` still lists people and reads the structure |
 | **Absence** (the calendar and the approvals) | `staff:view`, `staff:approve`, `staff:manage` or `staff:personal-data`; a manager without those opens it from the dashboard's link, and decides on [My team](#my-team) |
+| **Groups** | `staff:manage` |
 | **Staff settings** | `staff:manage` |
 
 What a screen offers follows what the server says you may do: the **New person**
@@ -526,6 +527,10 @@ try again in a few minutes. After any refusal the tab reads the account again.
 On an [erased record](#an-erased-record) the tab is read-only but for **Disable now**:
 the person's access must end too.
 
+A **Groups** card lists the [groups](#groups) the person is in —
+archived groups aside — each with how they came in, named by HR or by the group's rule,
+and since when. It is read-only here: HR changes a group's members on the group's page.
+
 ### A legal hold
 
 With `staff:personal-data`, a person's page has **Put under legal hold** at the top. A
@@ -689,6 +694,81 @@ refuses the terms without them.
 **Add it later** closes the form with the person saved and opens their page, where
 **New employment** on the Employments tab adds it.
 
+## Groups
+
+**Groups** (`staff:manage`) is where HR keeps the company's groups: sets of people, kept
+in the company's directory — Microsoft Entra ID — when you turn it on for a group, where
+they become a security group or a Microsoft 365 group (a team too, if you ask). A group's
+licences are how its members get theirs in Microsoft 365. There are two kinds:
+
+- **Listed** — you name the members.
+- **Derived** — a rule names them, and Staff brings the members in line every day: who
+  joins and who leaves is written to each person's history.
+
+### The list
+
+**Groups** lists the groups by **Name**, with **Key**, **Kind**, **Members**,
+**Providers** — a badge for each directory the group is kept in, saying where it stands —
+and **Status**. Archived groups are hidden until you turn on **Show archived**. Press a
+group to open it.
+
+### Add a group
+
+1. Press **New group**.
+2. Fill in the **Key** — lower-case letters, digits and hyphens, at most 60, unique. It is
+   how the directory knows the group (its mail nickname, unless you set another) and
+   **cannot be changed later**. Then the **Name** and, if you like, a **Description**.
+3. Choose the **Kind**. For **Derived**, choose the rule:
+   - **Everyone employed** — everyone with an employment today;
+   - **Department** — the people whose terms place them in the department you pick;
+     turn on *Include departments beneath* to take in the departments under it too;
+   - **Business unit** or **Location** — the people employed in it;
+   - **Employee type** — the people of the type you pick;
+   - **Reports to** — the people the person you pick manages today, one level down.
+4. Press **Save**. A key already taken, or a rule without what it needs, is marked on its
+   field. A derived group fills at the accounts worker's next run, within the hour; a
+   listed one starts empty.
+
+### A group's page
+
+The page's header shows the group's name, its kind and its rule in words. **Edit** opens
+the same form without the key. **Archive** asks first. **Delete** is there only while the
+group has never reached a directory; after that, archive it.
+
+- **Members** — for a listed group, pick the people and press **Save**; each who joins
+  or leaves is written to their history. For a derived group the list is read-only,
+  *Materialised daily by the rule*, each member with the day they joined.
+- **Owners** — the people who own the group in the directory: pick them and press
+  **Save**. An owner needs an account in the directory to be one there.
+
+Below them is a card for each directory Staff can keep groups in, titled with its name —
+**Microsoft Entra ID**. Turn on *In Microsoft Entra ID* and the card shows the group's
+settings there, which the directory itself describes: each with its label in your
+language, *About this setting* linking to Microsoft's page, the required ones marked and
+the defaults filled in. For Microsoft Entra ID they are the group's type — a security
+group or a Microsoft 365 group, which cannot change once the group is made — its mail
+nickname, its visibility and description, whether a Microsoft 365 group is also a team
+in Microsoft Teams, and the licences its members get, each with the seats left. Press
+**Save**: a value that does not fit is marked beside its field, and the rest is sent at
+the accounts worker's next run.
+
+The card then says where the group stands: *Waiting* until it is sent, *In sync since …*
+with *Staff's in Microsoft Entra ID too*, *Failed* and why — beside the setting, when the
+directory refused one, such as a type changed after the group was made or a team with no
+person among the owners — *Kept, renamed* or *Deleted*. Change the value and save again
+to have it tried again. A team is made once the group is fifteen minutes old, so it
+appears a run after the group.
+
+**Turning the switch off** asks *Turn off Microsoft Entra ID for …?* and says what
+happens, by **Delete an external account (days after the end)** under
+[Accounts](#accounts): *The group will be deleted in Microsoft Entra ID after N days.*,
+or, when that is empty, *The group will be kept in Microsoft Entra ID, renamed "…
+(archived)".* The settings are kept.
+
+**Archive** does the same for every directory, and makes the group read-only: its
+members stay as they were, and nothing on the page can be changed any more. Nothing in
+Staff is deleted.
+
 ## My page
 
 **My page** (`staff:access`) is your own record in Staff, found through the user HR
@@ -722,6 +802,7 @@ a person's four tabs, then **Absence**, **Account** and, when you manage anyone,
 - **Account** — whether Staff gives you a user to sign in with, from which day and at
   which address, and how your account stands: pending your password, active,
   disabled, with your invitation. It is read-only: ask HR to change it.
+  **Your groups** lists by name the groups you are in, as HR keeps them.
 - **My team** — only when you manage someone today: the requests you decide, your
   reports' absence this month and their open sick-leave cases (see
   [My team](#my-team) below).
@@ -966,6 +1047,7 @@ type is counted only for `staff:personal-data`:
 | Too little holiday in the main period | From April to September: someone has fewer approved holiday days between 1 June and 30 September than their scheme's main period (three weeks under the Holiday Act). | The person |
 | Approved their own absence | Someone approved their own absence, as the only decider there was. | The person |
 | Sick during approved holiday | A 100 % sykmelding lies over approved ferie: the employee may demand to postpone it. | The person |
+| A group not in sync | A group could not be kept in the directory — a setting the directory refused, or a group there holding its key that Vantigo may not change. One per group, for HR. | The group |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
 acknowledges the threshold — once, for good — under [Thresholds](#thresholds) in the

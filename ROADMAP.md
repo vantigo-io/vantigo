@@ -1540,7 +1540,7 @@ Calendar and Staff it **depends on nobody but identity** for what it reads; Staf
 it through a new many-provider slot, `contracts.IdentityProvisioner`, and identity's
 accounts stay identity's. It follows [Staff](#staff)'s phase 1, done.
 
-### Phase 1 — The tenant follows the register (A, B and C done)
+### Phase 1 — The tenant follows the register (A, B, C and D done)
 
 Five deliveries, five pull requests, one migration per schema each. A, B and C are
 specified in full by the design; D and E are decided there and planned on their own.
@@ -1643,11 +1643,49 @@ for a later delivery. Migration `00061_entra_baseline.sql` (entra).
 movers and leavers reaching Microsoft 365 with no second place to type; D's groups,
 whose traits the provider already declares.
 
-**D — Groups and traits**, on `feat/entra-groups`: groups in Staff, listed or derived
-from the register, with owners and members materialised daily; **traits** a provider
-declares and Staff stores and renders on the group; and the groups kept in the tenant —
-created with owners, renamed, made a Team when the trait asks. Migrations `00062`
-(staff) and `00063` (entra).
+**D — Groups and traits, built** on `feat/entra-groups`
+([the plan](docs/superpowers/plans/2026-10-20-entra-groups.md);
+[Staff's reference](docs/src/content/docs/en/reference/staff.md#groups);
+[the module's](docs/src/content/docs/en/reference/entra.md#groups-in-the-tenant)):
+**groups in Staff**, `staff:manage`'s — listed, HR naming the members, or derived by one
+rule over the register (everyone employed, a department and optionally those beneath
+it, a business unit, a location, an employee type, a manager's direct reports), judged
+on the business day against the employments and terms in force — with a key that never
+changes, owners, an archive that keeps the members as they stood, and a delete only
+while no provider has the group; the accounts worker **materialises** the derived
+members each cycle as the difference, each change a `group_joined` or `group_left` on
+the person, and a person erased or deleted leaves every group with them. A provider in
+the slot **declares the traits** a group may carry — `GroupTraits` now takes a context
+and reads the provider's own state, never the network (reading 1) — which Staff renders
+as a form from the declaration alone, checks at the save (required, choices, types,
+lengths) and stores; the provider's own rules come back from `EnsureGroup` as a
+`GroupTraitError` beside the field, not retried until the values change (reading 3).
+The worker **syncs** each group a provider is on for, after the links, under a lease,
+by the hash of its values and owners and the hash of its members' enabled accounts, the
+row's state and code on the group's card and `groupSyncFailed` on the dashboard; a group
+archived or switched off is deleted in the directory after `deleteExternalAfterDays`
+or, when that is never, renamed `… (archived)` and kept — Staff's rename through
+`EnsureGroup`, so one code path writes names (reading 5). The **licences** a person gets
+are the union of their groups' licence traits, in the spec on every activation and
+update, and the module now reconciles them on `Update` as on `Activate` — the missing
+assigned, the direct ones no longer named removed, a group-assigned one untouched
+(reading 6). In the tenant: the six traits (`type`, immutable; `mailNickname`;
+`visibility`; `description`; `team`; `licences`, from the SKUs cached on the connection
+row); the group created with the module's **service principal** — read from its
+token's `oid` (reading 2) — and the owners' accounts as owners, or a group holding the
+nickname adopted, a dynamic, role-assignable or another row's refused; the owners
+reconciled, never the service principal; a team made by `PUT /team` once the group is
+fifteen minutes old and has a person owner, a younger one answered `Pending` and asked
+again next cycle (reading 7); members added in twenties and removed by `$ref` in
+`$batch`; a soft delete. The leaver's `managed` step now means the module's own groups.
+The apps: Staff's **Groups** page and the group page with a card per provider, the
+Account tab's **Groups** card, My page's **Your groups**, and the module page's
+**Groups** table. Migrations `00062_staff_groups.sql` (staff) and
+`00063_entra_groups.sql` (entra).
+
+*Unblocks:* HR keeping who is in which Microsoft 365 group, team and licence in the
+register, with no second place to type; a second provider's groups, which need nothing
+new in Staff.
 
 **E — The erase and the leftovers**, on `feat/identity-erase`: identity's erase on
 Staff's call, after the retention worker has erased the person — the managed user

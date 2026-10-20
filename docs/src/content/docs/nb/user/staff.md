@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden med dokumentene og kontoen, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, fravær og feriekontoen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring, tersklene og kontoene.
+description: Personregisteret — Personer, personsiden med dokumentene og kontoen, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, fravær og feriekontoen, Grupper og plassen deres i katalogen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring, tersklene og kontoene.
 sidebar:
   order: 45
 sources:
@@ -25,6 +25,7 @@ deg:
 | **Min side** | alle med `staff:access` |
 | **Ansattoversikt** (skjermbildet Personer) | `staff:view`, eller `staff:manage` — en HR-rolle uten `staff:view` ser også listen og strukturen |
 | **Fravær** (kalenderen og godkjenningene) | `staff:view`, `staff:approve`, `staff:manage` eller `staff:personal-data`; en leder uten disse åpner den fra lenken på dashbordet, og avgjør under [Mitt team](#mitt-team) |
+| **Grupper** | `staff:manage` |
 | **Ansatteinnstillinger** | `staff:manage` |
 
 Hva et skjermbilde tilbyr, følger det serveren sier at du kan gjøre: knappen **Ny
@@ -521,6 +522,10 @@ minutter. Etter hver avvisning leser fanen kontoen på nytt.
 På en [slettet person](#en-slettet-person) er fanen skrivebeskyttet, bortsett fra
 **Deaktiver nå**: personens tilgang må også ta slutt.
 
+Et kort **Grupper** viser [gruppene](#grupper) personen er med i — arkiverte grupper
+unntatt — hver med hvordan de kom inn, angitt av HR eller av gruppens regel, og siden
+når. Det er skrivebeskyttet her: HR endrer en gruppes medlemmer på gruppens side.
+
 ### En slettesperre
 
 Med `staff:personal-data` har personsiden **Sett slettesperre** øverst. En slettesperre
@@ -683,6 +688,80 @@ avviser vilkår uten dem.
 **Legg det til senere** lukker skjemaet med personen lagret og åpner siden deres, der
 **Nytt arbeidsforhold** under Arbeidsforhold legger det til.
 
+## Grupper
+
+**Grupper** (`staff:manage`) er der HR holder selskapets grupper: sett av personer, som
+holdes i selskapets katalog — Microsoft Entra ID — når du slår den på for en gruppe, der
+de blir en sikkerhetsgruppe eller en Microsoft 365-gruppe (og et team, om du ber om det).
+En gruppes lisenser er hvordan medlemmene får sine i Microsoft 365. Det finnes to typer:
+
+- **Oppført** — du angir medlemmene.
+- **Avledet** — en regel angir dem, og Ansatte bringer medlemmene i samsvar hver dag: hvem
+  som kommer inn og hvem som går ut, skrives i hver persons historikk.
+
+### Listen
+
+**Grupper** viser gruppene etter **Navn**, med **Nøkkel**, **Type**, **Medlemmer**,
+**Leverandører** — et merke for hver katalog gruppen holdes i, som sier hvordan den står —
+og **Status**. Arkiverte grupper er skjult til du slår på **Vis arkiverte**. Trykk på en
+gruppe for å åpne den.
+
+### Legg til en gruppe
+
+1. Trykk **Ny gruppe**.
+2. Fyll ut **Nøkkel** — små bokstaver, sifre og bindestreker, høyst 60, unik. Det er slik
+   katalogen kjenner gruppen (e-postkallenavnet, med mindre du setter et annet), og den
+   **kan ikke endres senere**. Så **Navn** og, om du vil, en **Beskrivelse**.
+3. Velg **Type**. For **Avledet** velger du regelen:
+   - **Alle ansatte** — alle med et arbeidsforhold i dag;
+   - **Avdeling** — de hvis vilkår plasserer dem i avdelingen du velger; slå på *Ta med
+     avdelingene under* for å ta med avdelingene under den også;
+   - **Virksomhet** eller **Arbeidssted** — de som er ansatt der;
+   - **Ansattype** — de av typen du velger;
+   - **Rapporterer til** — de personen du velger er leder for i dag, ett nivå ned.
+4. Trykk **Lagre**. En nøkkel som allerede er tatt, eller en regel uten det den trenger,
+   markeres på feltet. En avledet gruppe fylles ved kontoarbeiderens neste kjøring,
+   innen en time; en oppført gruppe starter tom.
+
+### Gruppens side
+
+Toppen av siden viser gruppens navn, type og regel med ord. **Endre** åpner det samme
+skjemaet uten nøkkelen. **Arkiver** spør først. **Slett** finnes bare så lenge gruppen
+aldri har kommet til en katalog; etter det arkiverer du den.
+
+- **Medlemmer** — for en oppført gruppe velger du personene og trykker **Lagre**; hver som
+  kommer inn eller går ut, skrives i historikken deres. For en avledet gruppe er listen
+  skrivebeskyttet, *Hentes daglig fra regelen*, hvert medlem med dagen de kom inn.
+- **Eiere** — personene som eier gruppen i katalogen: velg dem og trykk **Lagre**. En eier
+  trenger en konto i katalogen for å være det der.
+
+Under dem står et kort for hver katalog Ansatte kan holde grupper i, med katalogens navn —
+**Microsoft Entra ID**. Slå på *I Microsoft Entra ID*, så viser kortet gruppens
+innstillinger der, som katalogen selv beskriver: hver med etiketten på ditt språk, *Om
+denne innstillingen* som lenker til Microsofts side, de påkrevde merket og
+standardverdiene fylt ut. For Microsoft Entra ID er det gruppens type — en
+sikkerhetsgruppe eller en Microsoft 365-gruppe, som ikke kan endres når gruppen er laget —
+e-postkallenavnet, synligheten og beskrivelsen, om en Microsoft 365-gruppe også er et
+team i Microsoft Teams, og lisensene medlemmene får, hver med plassene som er igjen. Trykk
+**Lagre**: en verdi som ikke passer, markeres ved feltet, og resten sendes ved
+kontoarbeiderens neste kjøring.
+
+Kortet sier så hvordan gruppen står: *Venter* til den er sendt, *Synkronisert siden …*
+med *Gruppen finnes også i Microsoft Entra ID*, *Mislyktes* og hvorfor — ved
+innstillingen, når katalogen avviste en, for eksempel en type endret etter at gruppen ble
+laget eller et team uten noen person blant eierne — *Beholdt, omdøpt* eller *Slettet*.
+Endre verdien og lagre igjen for å få den prøvd på nytt. Et team lages når gruppen er
+femten minutter gammel, så det kommer en kjøring etter gruppen.
+
+**Å slå av bryteren** spør *Slå av Microsoft Entra ID for …?* og sier hva som skjer, etter
+**Slett en ekstern konto (dager etter slutt)** under [Kontoer](#kontoer): *Gruppen
+slettes i Microsoft Entra ID etter N dager.*, eller, når den står tom, *Gruppen beholdes i
+Microsoft Entra ID, omdøpt til «… (archived)».* Innstillingene beholdes.
+
+**Arkiver** gjør det samme for hver katalog, og gjør gruppen skrivebeskyttet: medlemmene
+blir stående som de var, og ingenting på siden kan endres lenger. Ingenting slettes i
+Ansatte.
+
 ## Min side
 
 **Min side** (`staff:access`) er din egen oppføring i Ansatte, funnet gjennom brukeren
@@ -715,6 +794,7 @@ leder for noen, **Mitt team**:
 - **Konto** — om Ansatte gir deg en bruker å logge inn med, fra hvilken dag og på
   hvilken adresse, og hvordan kontoen din står: venter på passordet ditt, aktiv,
   deaktivert, med invitasjonen din. Den er skrivebeskyttet: spør HR om å endre den.
+  **Gruppene dine** viser ved navn gruppene du er med i, slik HR holder dem.
 - **Mitt team** — bare når du er leder for noen i dag: søknadene du avgjør, fraværet
   denne måneden til dem du er leder for, og de åpne sykefraværssakene deres (se
   [Mitt team](#mitt-team) nedenfor).
@@ -957,6 +1037,7 @@ bare for `staff:personal-data`:
 | For lite ferie i hovedferien | Fra april til september: noen har færre godkjente feriedager mellom 1. juni og 30. september enn ferieordningens hovedferie (tre uker etter ferieloven). | Personen |
 | Godkjente sitt eget fravær | Noen godkjente sitt eget fravær, som den eneste som kunne avgjøre det. | Personen |
 | Syk i godkjent ferie | En 100 % sykmelding ligger over godkjent ferie: den ansatte kan kreve å få den utsatt. | Personen |
+| En gruppe ikke synkronisert | En gruppe kunne ikke holdes i katalogen — en innstilling katalogen avviste, eller en gruppe der med nøkkelen som Vantigo ikke får endre. Én per gruppe, for HR. | Gruppen |
 
 Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
 bekrefter terskelen — én gang, for godt — under [Terskler](#terskler) i

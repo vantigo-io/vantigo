@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble Vantigo til en Microsoft Entra ID-leietaker slik at kontoene Ansatte gir, lages der — appregistreringen, klienthemmeligheten, de åtte applikasjonstillatelsene og rollen User Administrator, administratorsamtykket, policyen for midlertidig tilgangspass, kontoreglene, innlogging og klargjøring; hva stegene for en som slutter gjør, og hva sletting mister; rotasjon av hemmeligheter; den merkede testen mot en ekte leietaker; og hva hver årsakskode betyr.
+description: Å koble Vantigo til en Microsoft Entra ID-leietaker slik at kontoene Ansatte gir, lages der — appregistreringen, klienthemmeligheten, de åtte applikasjonstillatelsene og rollen User Administrator, administratorsamtykket, policyen for midlertidig tilgangspass, kontoreglene, innlogging og klargjøring; hva stegene for en som slutter gjør, og hva sletting mister; Ansattes grupper i leietakeren, applikasjonen som eier og hva en arkivert gruppe blir til; rotasjon av hemmeligheter; den merkede testen mot en ekte leietaker; og hva hver årsakskode betyr.
 sidebar:
   order: 46
 sources:
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/entra/status.go
   - apps/server/internal/entra/lifecycle_activate.go
   - apps/server/internal/entra/lifecycle_deactivate.go
+  - apps/server/internal/entra/groups.go
   - apps/server/internal/entra/tenant_test.go
 ---
 
@@ -245,7 +246,7 @@ rekkefølgen, alle unntatt det første slått av eller på i steg 4:
 | Tilbakekall øktene | Hvert oppdateringstoken og hver nettleserøkt slutter innen noen minutter; et tilgangstoken som allerede er utstedt, lever ut timen sin. |
 | Skriv sluttdatoen | `employeeLeaveDateTime` settes til siste dag kl. 23.00 i forretningstidssonen — det en utløser for Lifecycle Workflows leser. Hoppes over når Ansatte ikke sender noen sluttdag. |
 | Fjern lisensene | Hver lisens tildelt personen direkte fjernes, og plassen frigjøres. En lisens som kommer fra en gruppe, går med gruppen. |
-| Forlat gruppene | **Alle**: hver gruppe unntatt dynamiske, rolletildelbare og rene e-postgrupper (distribusjonslister), også grupper Vantigo aldri laget. **Administrerte**: bare Vantigos egne grupper — ingen før gruppene kommer. **Ingen**: alle medlemskap blir stående. |
+| Forlat gruppene | **Alle**: hver gruppe unntatt dynamiske, rolletildelbare og rene e-postgrupper (distribusjonslister), også grupper Vantigo aldri laget. **Administrerte**: bare gruppene Vantigo laget eller tok over for Ansattes grupper, som tabellen **Grupper** på modulens side viser. **Ingen**: alle medlemskap blir stående. |
 
 Kontoen deaktiveres først uansett hva annet som feiler, og et pass som ikke er vist
 ennå, forkastes med en gang. Et steg som feiler, stopper stegene etter det og meldes
@@ -264,6 +265,44 @@ gjenopprettes der. **Etter de 30 dagene er den borte, med postboksen og OneDrive
 overlever OneDrive i Microsoft 365 admin center før det — Vantigo gjør ingen av delene —
 eller la innstillingen stå tom, som aldri sletter. En person som ansettes igjen etter en
 sletting, får en ny konto.
+
+## Ansattes grupper i leietakeren
+
+HR holder grupper i Ansatte og slår på Microsoft Entra ID for en gruppe på gruppens side
+([Grupper](/nb/user/staff/#grupper)). Ansattes kontoarbeider får da modulen til å lage
+gruppen i leietakeren — en sikkerhetsgruppe eller en Microsoft 365-gruppe, etter
+gruppens **Type** — med gruppens eiere som eiere, og holde navnet, beskrivelsen og
+medlemmene i samsvar med Ansatte ved hver runde. En Microsoft 365-gruppe kan gjøres til et
+team. Ingenting annet trengs i leietakeren: `Group.ReadWrite.All`, en av de åtte
+tillatelsene, dekker gruppene, eierne, medlemmene og teamet.
+
+**Vantigos applikasjon eier hver gruppe den lager.** Modulen setter sin egen
+tjenestekontohaver (service principal) — applikasjonen fra steg 1, slik **Enterprise
+applications** viser den — som eier av hver gruppe, ved siden av personene HR har angitt.
+Microsoft lar ikke en applikasjon endre en gruppe den opprettet uten eier, så **ikke fjern
+applikasjonen fra en gruppes eiere i portalen**: Vantigo fjerner den aldri, og en gruppe
+uten den kan det hende Vantigo ikke lenger kan endre. En gruppe modulen fant etter
+e-postkallenavnet (mail nickname) i stedet for å lage den — en laget for hånd tidligere
+med samme kallenavn — tas over: applikasjonen og eierne legges til. En dynamisk eller
+rolletildelbar gruppe med kallenavnet røres aldri, og gruppens side i Ansatte sier at
+katalogen har en gruppe Vantigo ikke får skrive til: gi den gruppen et annet kallenavn i
+portalen, eller gi Ansatte-gruppen et annet kallenavn.
+
+**Endringer i portalen** varer til Ansatte neste gang endrer gruppen: navnet,
+beskrivelsen og synligheten skrives på nytt når HR endrer gruppens verdier eller eiere, og
+medlemmene settes til nøyaktig Ansattes hver gang Ansattes medlemmer endres. Hold
+gruppens medlemskap i Ansatte, ikke i portalen.
+
+**En arkivert gruppe, eller en HR har slått av Microsoft Entra ID for**, følger Ansattes
+**Slett en ekstern konto (dager etter slutt)**:
+
+| Innstillingen | Hva som skjer med gruppen i leietakeren |
+| --- | --- |
+| Et antall dager | Så mange dager etter arkiveringen (eller etter at bryteren ble slått av) slettes gruppen — en myk sletting: den ligger i leietakerens **Deleted groups** i 30 dager og kan gjenopprettes der. Til da blir den stående som den var. |
+| Tom (aldri) | Ved neste runde får gruppen ` (archived)` etter navnet og beholdes, med medlemmene slik de var; Vantigo skriver ingenting til den etterpå. |
+
+En slettet Microsoft 365-gruppe tar med seg postboksen, SharePoint-området og teamet når
+de 30 dagene er omme.
 
 ## Roter en hemmelighet
 
@@ -339,7 +378,9 @@ et pass, viser passet én gang, oppdaterer den, deaktiverer den med sluttdatoen 
 sletter den mykt. Den logger hva Graph svarte for de tre faktaene (`UNCERTAIN FACT 1`
 til `3`) og modulens hendelser, aldri hemmeligheten eller et pass. Feiler et steg først,
 deaktiverer og sletter oppryddingen brukeren den laget; en slettet bruker kan
-gjenopprettes under **Deleted users** i 30 dager. Grupper testes ikke før de kommer. Den
+gjenopprettes under **Deleted users** i 30 dager. Den lager også en gruppe med
+applikasjonen og brukeren som eiere, setter medlemmene i én omgang og sletter den —
+teamet prøves ikke, siden en gruppe først må være femten minutter gammel. Den
 går gjennom den samme bevoktede transporten som produksjon. Hold hemmeligheten utenfor
 skallhistorikken.
 
@@ -374,3 +415,12 @@ meldte for dem:
 | *Katalogen har en konto under personens ansattnummer som Vantigo ikke opprettet …* | `external_unconfirmed`: modulen fant brukeren og skriver ingenting til den. | [Bekreft den](#kontoer-vantigo-ikke-opprettet) når du har sjekket at den er personens; er den ikke det, rett ansattnummeret der det er feil. |
 | Lederens konto ikke funnet | Lederen har ingen konto i leietakeren. | Gi lederen kontotypen Microsoft Entra ID, eller godta det. |
 | *Et avslutningssteg i katalogen ble ikke fullført: …* | Et steg for en som slutter feilet etter deaktiveringen, og stegene etter det ble ikke prøvd; kontoen er deaktivert. | Vanligvis ingenting: Ansatte prøver igjen neste dag. Feiler det fortsatt, se modulens siste hendelser og loggen, og gjør steget i portalen. |
+
+På en gruppes side i Ansatte sier kortet **Microsoft Entra ID** hvordan gruppen står i
+leietakeren:
+
+| På kortet | Betyr | Gjør |
+| --- | --- | --- |
+| *Mislyktes* ved en innstilling | Leietakeren avviste gruppens verdi — en type som ikke kan endres når gruppen finnes, et team på en gruppe uten noen person blant eierne, en synlighet på en sikkerhetsgruppe. | Endre verdien på gruppens side, eller legg til en person som eier; Ansatte sender den ved neste runde. |
+| Katalogen har en gruppe Vantigo ikke får skrive til (`group_not_manageable`) | En dynamisk eller rolletildelbar gruppe, eller en annen av Vantigos grupper, har e-postkallenavnet. | Endre kallenavnet på en av dem. |
+| Medlemmer som ikke kunne endres (`members_failed`) | Leietakeren avviste å legge til eller fjerne noen medlemmer. | Vanligvis ingenting: Ansatte prøver dem igjen ved neste runde. |

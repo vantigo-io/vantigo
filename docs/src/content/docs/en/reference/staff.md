@@ -1,11 +1,12 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, groups — listed or derived by a rule, their owners, the traits a provider declares, the sync with the provider's directory and the licences they give — and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
   - openapi/staff.yaml
   - apps/server/internal/db/migrations/00060_staff_account_kind.sql
+  - apps/server/internal/db/migrations/00062_staff_groups.sql
 ---
 The Staff module is the company's register of the people who work for it: who they
 are, how to reach them and their next of kin, their employments as Norwegian
@@ -35,7 +36,7 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [derived dates](#the-derived-dates), the [§ 14-6 check](#the--14-6-check),
 [managers and the org view](#managers-and-the-org-view), the
 [sealed identifiers](#the-sealed-identifiers), the
-[self-service link](#the-self-service-link), the [accounts](#accounts), [My page](#my-page), the
+[self-service link](#the-self-service-link), the [accounts](#accounts), [groups](#groups), [My page](#my-page), the
 [documents](#documents) and their [categories](#categories-and-classes),
 [absence](#absence) — the [types](#absence-types), the [holiday schemes](#holiday-schemes) and the
 [care-day fields](#the-care-day-fields) — the
@@ -136,6 +137,18 @@ it. Still no CHECK constraint: `contracts.ValidAccountKind` and the module's
 validation own the kinds. The Down deletes every provider link — the external
 accounts they name stay in the provider's directory — and drops the columns.
 
+The Entra phase's delivery D adds `00062_staff_groups.sql` (00063 is the entra
+module's, the same delivery's) and four tables, the [groups](#groups): `groups` (unique
+`key`; `archived_by_user_id` beside `archived_at`), `group_members` and `group_owners`
+(each keyed by group and person, indexed by person, deleted with their group), and
+`group_traits`, a group's section per provider — the values, `enabled` and
+`disabled_at`, the sync's `external_id`, `state`, `last_values_hash`,
+`last_members_hash`, `last_error` and `last_error_field`, `synced_at`, `retired_at`, and
+the claim's `attempts`, `next_attempt_at`, `lease_id` and `lease_until`, as a link
+holds them (indexed by provider and `next_attempt_at`). Still no CHECK constraint: the
+module validates the kinds and the states, and a provider judges its traits' values.
+The Down drops the four tables; the groups a provider made in its directory stay there.
+
 ## Permissions
 
 | Key | Name | Grants | Sensitive |
@@ -143,7 +156,7 @@ accounts they name stay in the provider's directory — and drops the columns.
 | `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** | no |
 | `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the [calendar](#the-calendar) with types hidden. | no |
 | `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. It [decides](#decisions) anyone's absence requests but an HR-only type's, is the [Approver audience](#field-groups-and-audiences), sees the [inbox](#the-approvals-inbox) and the [calendar](#the-calendar), and makes `GET /meta`'s `canDecide` true; it reads open [sick-leave cases](#sick-leave-cases) and marks their milestones. | no |
-| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the settings, documents other than health and their categories, the [account flag](#accounts), imports and exports, the retention run by hand, the thresholds' acknowledgement. | yes |
+| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the settings, documents other than health and their categories, the [account flag](#accounts), the [groups](#groups), imports and exports, the retention run by hand, the thresholds' acknowledgement. | yes |
 | `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure is the [retention run](#retention)'s, on its schedule (run by hand by `staff:manage`); it alone writes the milestones' notes and [decides HR-only types](#decisions). | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
@@ -184,7 +197,7 @@ acknowledged thresholds.
 | `selfCertAfterMonths` | 2 | 0 to 2 months of employment before egenmelding may be used; left out, kept. |
 | `autoCarryOver` | false | Carry holiday left at a year's end into the next as forced, without HR's action; left out, kept. |
 | `createBeforeDays` | 14 | 0 to 90 days before the account's effective date that the accounts worker prepares it, disabled ([accounts](#accounts)); left out, kept. |
-| `deleteExternalAfterDays` | — | 1 to 3650 days after the last employment ended that a person's account in a provider's directory is deleted — soft-deleted there, once it is disabled and no legal hold is on the person ([the provider link](#the-provider-link)) — or `null` for never; left out, kept, and absent on the wire when never. |
+| `deleteExternalAfterDays` | — | 1 to 3650 days after the last employment ended that a person's account in a provider's directory is deleted — soft-deleted there, once it is disabled and no legal hold is on the person ([the provider link](#the-provider-link)) — or `null` for never; left out, kept, and absent on the wire when never. The same days after a group was archived, or a provider turned off for it, the group is deleted in the directory; never renames it `… (archived)` and keeps it ([the sync](#the-sync)). |
 | `defaultAccountKind` | `local`, seeded once from identity's recorded mode | The [account kind](#the-account-kind) a new person takes: `local`, `external` or a provider's key (`entra`), which is `provider_missing` on the field unless an enabled module offers that provider; left out, kept. People already registered keep theirs. While the kinds are [not yet seeded](#the-account-kind), a change of it is 503 `accounts_unavailable` and nothing is saved. |
 | `directoryFields` | every switchable field on but `workAddress` and `phones` | `{"<key>": boolean}` over the [directory profile's](#the-directory-profile) switchable fields; a key left out keeps its value, a key that is not a switchable field is a field error on `directoryFields.<key>`. |
 | `erasePregnancyHealthTypes` | false | Put the pregnancy and health-appointment rows on the health schedule ([what is due](#what-is-due)); left out, kept; `null` refused on the field (400), never read as false. |
@@ -558,6 +571,7 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `people_exported` | Installation-level (no person): `rows`, the people the [export](#the-registers-import-and-export) wrote. |
 | `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; no personal data, so no payload class. |
 | `threshold_acknowledged` | Installation-level (no person): `key`, the [threshold](#the-thresholds) acknowledged (`5`, `30`, `50` or `otp`); the actor is the caller; no payload class. |
+| `group_joined`, `group_left` | `groupId`, `groupName`, `groupKey` and `source` (`listed` or `derived`): the person joined or left a [group](#members-and-owners) — by the caller for a listed group's members, by the accounts worker's run for a derived one's. Class C. |
 | `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`, `cases`, `childSick`, `withdrawal`, `pregnancyHealth`), read by `staff:manage` and `staff:personal-data`, the five health-side entries (`health`, `cases`, `childSick`, `withdrawal`, `pregnancyHealth`) by `staff:personal-data` alone; listed as the hold's kinds are; the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
 
 Delivery B's absence and adjustment events carry their classes per field and are
@@ -619,7 +633,8 @@ detail says what names the person — "has documents", "has absences" and "has h
 adjustments" among the reasons; the person stays. The delete takes the person's row
 and then the manager-graph lock before it judges, so no write can start naming the
 person between the check and the delete, and a foreign key that refuses anyway is still
-`person_in_use`. In one transaction it removes the next of kin, the roles and the
+`person_in_use`. In one transaction it removes the next of kin, the roles, the person's
+rows in [groups](#members-and-owners) — as a member and as an owner, with no event — and the
 person's own history — the one exception to the history's append-only rule — and
 records an installation-level `person_deleted` event carrying the employee number and
 nothing else. It answers 204.
@@ -1020,7 +1035,8 @@ manager, an Approver, a colleague and anyone else get the person's 404.
   `staff:manage` or `staff:personal-data`; otherwise the unknown id's 404) answers
   `{provisionAccount, provisionFrom, provisionFromEffective, accountEmailKind,
   address: {kind, present}, accountKind, link, providerLink, directoryProfile,
-  revision}` — `revision` the flag's own.
+  groups, revision}` — `revision` the flag's own; `groups` is the person's
+  [groups](#the-persons-groups).
   - `accountEmailKind` is `work` or `private`; a null column reads `work`.
     `address` says which of the person's addresses the account would be given and
     whether the person has it — never the address itself.
@@ -1365,6 +1381,10 @@ worker process, a run beside the ticker — through the link rows alone.
    `account_deactivated` is recorded when the link's state moved or the user changed:
    a leaver the SCIM directory keeps inactive is deactivated on every run, recorded
    once.
+
+**The groups.** The same cycle [materialises the derived groups](#members-and-owners)
+after the providers' statuses and before the preparing links, and, after the claims,
+[syncs the groups](#the-sync) with each provider — up to 100 sections a cycle.
 
 **The schedule.** A claim that ended — done, or answered with a refusal or a report —
 is acted on again at **the next civil midnight** in the settings zone: once per civil
@@ -1719,8 +1739,8 @@ provider make the address — `WorkCountry` (the usage location), `PreferredLang
 `Fields`, the profile's switched-on attributes, `ManagerExternalID` — while the
 `manager` row is on, the effective manager's own provider link's `external_id` while
 that link is `enabled` or `disabled`; a person with a manager who has none gets an
-empty one and `manager_not_in_entra` on their link — `Licences`, empty until groups come
-(delivery D), and `Flags.Fresh` on *Run now*. `last_spec_hash` is SHA-256 over the
+empty one and `manager_not_in_entra` on their link — `Licences`, the union of their
+groups' [licences](#the-licences), and `Flags.Fresh` on *Run now*. `last_spec_hash` is SHA-256 over the
 spec as JSON, the flags left out, so a mover is one `Update` on the day the record
 changes and nothing on the others.
 
@@ -1788,6 +1808,232 @@ module offering the provider, or any other failure of the provider's (logged), 5
 *Disable now* (one counter, 120 an hour from one client address). A pass issued and not
 shown for a day raises `passUnrevealed`.
 
+## Groups
+
+**Groups** are HR's named sets of people (Entra design D9, D10 and D14): listed — HR
+names the members — or derived from the register by a rule, with owners, and kept by
+each provider HR turns on for them in its own directory (a security or Microsoft 365
+group in [Microsoft Entra ID](/en/reference/entra/#groups-in-the-tenant)). A group's
+`licences` trait is how a person gets their licences in the directory: the
+[licences](#the-licences) they are sent are the union of their groups'. Every group
+operation is `staff:manage`'s (`staff:access+staff:manage`); `staff:view`, a manager and
+anyone else get the uniform 403. Groups are **not audited** (plan reading 10), as the
+structure's writes are not: a membership's change is an event on the person, and what
+a provider did is on its own trail.
+
+### The group
+
+A group is a row of `staff.groups`:
+
+- **`key`** — 1 to 60 lower-case letters, digits and hyphens, starting with a letter or
+  a digit (`^[a-z0-9][a-z0-9-]{0,59}$`), unique, set on create and **never changed**: it
+  is the reference a provider keeps the group by — Entra's mail nickname unless the
+  group's `mailNickname` trait names another. A key another group holds is a field error
+  on `key`. A `PUT` ignores a key left out or the group's own; any other is a field
+  error on `key` ("cannot change").
+- **`name`** — 1 to 120 characters; **`description`** — up to 500, cleared when a `PUT`
+  leaves it out. A change of either reaches every provider at the worker's next cycle.
+- **`kind`** — `listed` or `derived`. A derived group needs a `rule`; a listed one
+  refuses one (a field error on `rule`).
+- **`revision`** — 1 on create; `PUT /groups/{id}` needs `If-Match`
+  ([revisions](#refusals-and-revisions)); `revision_conflict` when it has moved on.
+
+`POST /groups` answers 201 with the group. A listed group starts empty; a derived one's
+members are materialised by the accounts worker's next cycle. `GET /groups` lists every
+group, archived ones included, by name, with `memberCount`, `ownerCount` and, for each
+provider HR turned on for it, `{key, enabled, state}` — never the members and owners
+themselves, which only one group's own answers carry (`GET /groups/{id}` and the writes
+of one group), each `{personId, displayName, employeeNumber}` and, for a member,
+`source` and `since`.
+
+### The rule
+
+A derived group's `rule` is one predicate over the register (`StaffGroupRule`, plan
+reading 4):
+
+| `kind` | Names | A person is a member today when |
+| --- | --- | --- |
+| `employed` | nothing | they have an employment in force |
+| `department` | `id`, a department; optionally `includeBelow` | the terms in force name the department — or, with `includeBelow`, it or any department beneath it by the parent chain, archived departments included |
+| `businessUnit` | `id`, a business unit | the employment is in the unit |
+| `location` | `id`, a location | the terms in force name the location |
+| `employeeType` | `value`, an employee type | the terms in force carry that employee type |
+| `reportsTo` | `id`, a person | their effective manager today, by the [manager rule](#managers-and-the-org-view), is that person — one level: their reports, not their reports' reports |
+
+`id` is required for the four kinds that name a row and must name one that exists — an
+archived one is admitted — and is refused for the other two; `value` is required for
+`employeeType` and must be one of the employee types the terms know; `includeBelow` is
+refused on any kind but `department`. Each is a field error under its path
+(`rule.id`, `rule.value`, `rule.includeBelow`).
+
+**In force** means on the business day — today in the settings'
+[time zone](#the-business-time-zone) — over the people not erased: an employment that
+started on or before today and has not ended before it (the end day still counts), and
+its terms row in force today. A person with more than one employment in force is judged
+on the one the [directory profile](#the-directory-profile) reads, the earliest in force.
+
+### Members and owners
+
+A group's members are rows of `staff.group_members`: the person, `source` (`listed` or
+`derived`) and `since`, the day they joined.
+
+**The materialisation** (`materialiseGroups`, `groups_members.go`) is the
+[accounts worker's](#the-accounts-worker) first step after the providers' statuses and
+before the preparing links, skipped while the account kinds are unseeded. For each
+derived group that is not archived, under the transaction advisory lock
+`staff:group:<id>`, it evaluates the rule today and writes the difference against the
+rows: a person who entered the set gets a row with `source` `derived` and `since` today,
+and one who left it loses theirs. Each change is an event on the person —
+`group_joined` or `group_left` — by the run's actor. A group whose evaluation fails is
+logged and skipped, and the cycle goes on with the others. An archived group's members
+stay as they stood.
+
+**A listed group's members** are set by `PUT /groups/{id}/members` with
+`{personIds}`: exactly these people from today, the difference written under the same
+lock, `source` `listed`, a duplicate counted once, each change an event on the person
+with the caller as its actor. A person that does not exist, or one erased, is a field
+error on `personIds`. A derived group's members are its rule's: the `PUT` is 409
+`group_derived`. It answers the group with its members and owners.
+
+**The events** `group_joined` and `group_left` carry `{groupId, groupName, groupKey,
+source}`, of class C: every reader of the person's [history](#the-history) sees them.
+
+**The owners** (`staff.group_owners`) are the people a provider names as the group's
+owners in its directory, beside the provider itself. `PUT /groups/{id}/owners` with
+`{personIds}` replaces them, under the same rules for the people, and records no event.
+The provider is sent the owners' accounts under it — the external ids of their
+[provider links](#the-provider-link) that are `enabled` — so an owner without such an
+account owns the group in Staff alone. The owners are part of the values' hash, so a
+change of owners is an `EnsureGroup` at the next sync.
+
+**Who is sent as a member**: a member's account under the provider, the external id of
+their provider link while it is `enabled`. A member with no account there, one whose
+account is disabled — a leaver — or deleted is not sent, and so leaves the external
+group at its next sync while the Staff group keeps the row.
+
+**A person leaving every group**: the retention run's erase and `DELETE /people/{id}`
+delete the person's `group_members` and `group_owners` rows in their own transaction,
+before the person's, and record no event — the person is going (plan reading 9). The
+members' hash differs at the next sync, which takes them out in the directory.
+
+### Archive and delete
+
+**`POST /groups/{id}/archive`** sets `archivedAt` and who archived it, and answers 200
+with the group; archiving it again changes nothing. An archived group is read-only:
+`PUT`, the members, the owners and the providers are 409 `group_archived`. It is no
+longer materialised, its members stay as they stood, and each provider's section is
+[retired](#the-sync) — deleted in the directory after the settings'
+`deleteExternalAfterDays`, or renamed `… (archived)` and kept when that is never. A
+person's lists leave archived groups out.
+
+**`DELETE /groups/{id}`** answers 204 for a group no provider ever synced — no section
+with a `synced_at` — and deletes its members, owners and sections with it. A group a
+provider has made or found in its directory is 409 `group_synced`: archive it instead.
+An unknown id is a bare 404.
+
+### Traits
+
+A provider in the slot **declares the traits** a group may carry for it, and Staff
+renders, stores and checks them from that declaration alone — no trait is named in
+Staff's code. `GroupTraits(ctx)` answers `[]GroupTrait` — `Key`; `Type`, one of `bool`,
+`string`, `choice` and `list`; `Label` and `Description` in `en` and `nb`; `Choices`
+(`{Value, Label}`, for `choice` and `list`); `DocURL`, the vendor's page; `Default`;
+`Required`; and `MaxLength` for a `string` (0 for unbounded). The provider reads its own
+state to answer — never the network — and is called through `providerGroupTraits` in
+`contractscalls.go`, on no connection, under the two-minute call timeout. Entra's six
+traits are under [its reference](/en/reference/entra/#the-traits).
+
+**`GET /groups/{id}/traits`** answers a section for every provider in the slot, in the
+slot's order, whether HR turned it on for the group or not: `key`, `name`, `status` (as
+the provider answers it), `enabled`, `traits` (the declaration, `StaffGroupTraitDeclaration`),
+`values`, and from the row `state`, `externalId`, `lastError`, `lastErrorField`,
+`syncedAt` and `retiredAt`. A provider whose declaration could not be read is listed
+`failing`, with no traits.
+
+**`PUT /groups/{id}/traits/{provider}`** with `{enabled, values}` turns a provider on or
+off for the group. A provider the slot does not hold is 404; an archived group 409
+`group_archived`.
+
+- **`enabled: true`** checks the values against the declaration (plan reading 3): a key
+  it does not declare, a `required` trait without a value, a value of the wrong type (a
+  boolean for `bool`, a string for `string` and `choice`, an array of strings for
+  `list`), a `choice` not among its choices, a `list` with a value outside them, or a
+  `string` over `maxLength` is a field error under `values.<key>`, with the code
+  `trait_required` or `trait_invalid`. Then the section's row
+  (`staff.group_traits`, one per group and provider) is written `enabled`, `pending`,
+  the values stored, `attempts` 0, `disabled_at` cleared and `last_values_hash`
+  cleared, due at once: the worker sends it at its next cycle.
+- **`enabled: false`** on a section sets `enabled` false and `disabled_at` now, keeping
+  the values and the state; the worker [retires](#the-sync) it. On a group with no
+  section for the provider it writes nothing and answers 200.
+
+It answers the section. What the declaration cannot say — a trait that cannot change
+once the group exists, a trait that needs a person as owner, a value another trait
+forbids — is the provider's to judge when the worker sends the values, and comes back
+on the row as `lastError` and `lastErrorField`, shown beside the field.
+
+### The sync
+
+The accounts worker's cycle, after it has worked the links, **syncs the groups**
+(`syncGroups`, `groups_sync.go`): up to 100 sections a cycle (`groupsBatch`), each
+claimed alone (`ClaimGroupTrait`, `FOR UPDATE SKIP LOCKED`, the lease five minutes as a
+link's) when it is due and neither `retired` nor `deleted`; every write of the result is
+`WHERE lease_id` is the claim's. A claim reads the group, its owners' and its members'
+accounts under the provider (sorted, de-duplicated) and the values, then decides:
+
+1. **The provider not `connected`** in this cycle: nothing is written but the next
+   poll; no attempt is counted.
+2. **Retiring** — the group archived, or the section turned off. When the settings'
+   `deleteExternalAfterDays` is a number and that many days have passed since
+   `archived_at` (or `disabled_at`), `DeleteGroup`, and the section reads `deleted`.
+   When it is never, `EnsureGroup` once with the name followed by ` (archived)` — a name
+   that already ends so is left — and the values, and the section reads `retired`, with
+   `retired_at` (plan reading 5: the provider knows no archive, so one code path writes
+   names). A rename the provider refuses — a trait error or `group_not_manageable` —
+   still leaves the section `retired`, the code kept on the row: an archived group
+   takes no new values, and a `failed` section there would raise an item nobody could
+   clear. Before the days have passed nothing is sent. A retired or deleted section is
+   never claimed again; turning the provider on anew starts it over.
+3. **Otherwise** `EnsureGroup` when the section has no `external_id` or the values' hash
+   differs from `last_values_hash` — SHA-256 over the name, the description, the values
+   and the owners' sorted external ids (`owners`) as JSON with sorted keys, so a change
+   of owners reaches the provider through `EnsureGroup` too — then `SetMembers` when it has an `external_id` and the members'
+   hash differs from `last_members_hash` — SHA-256 over the sorted, de-duplicated
+   external ids joined by `\n`. At most two calls a claim, each through
+   `contractscalls.go` on no transaction, under the two-minute timeout. A section with
+   nothing changed costs one query a cycle and no call.
+
+| The provider's answer | `state` | `last_error` | Next |
+| --- | --- | --- | --- |
+| Done | `synced`; `external_id`, both hashes and `synced_at` written, `attempts` 0 | cleared | the next poll |
+| Done, with `ExternalGroup.Pending` (Entra's team on a young group) | `synced` | cleared | the values' hash is not written, so the next cycle calls `EnsureGroup` again (plan reading 7) |
+| `MembersResult.Failed` with *n* members | `synced` | `members_failed:<n>` | the members' hash is not written, so the next cycle tries them again; the ids are never stored, only counted in a debug log |
+| `GroupTraitError` | `failed` | its code (`trait_required`, `trait_invalid`, `trait_immutable`, `trait_needs_owner`), `last_error_field` the trait | not again until HR saves the values; the values' hash is not written |
+| `ErrGroupNotManageable` — the directory holds a group by the key the provider may not write | `failed` | `group_not_manageable` | not again until HR saves the values |
+| `ErrProviderUnavailable` | kept | kept | the next poll; no attempt counted |
+| Anything else — the call could not be made | kept; `failed` after three failures in a row | `call_failed` | `attempts` counted, retried on the accounts worker's backoff (`backoff.go`) |
+
+Codes only: `last_error` never carries the directory's words, and a member's external
+id is never stored.
+
+### The licences
+
+`ExternalSpec.Licences` ([the external spec](#the-provider-link)) is the union of the
+`licences` values of the person's groups' sections under their provider that are on and
+neither retired nor deleted (`LicencesOfPerson`), sorted and de-duplicated (Entra design
+D10). The spec's hash covers it, so a change of a group's licences, or of the person's
+membership, is an `Update` at the person's next claim; the provider assigns the
+licences missing and removes the direct ones not in the list, and a licence the
+directory assigned through its own group-based licensing is left alone.
+
+### The person's groups
+
+`GET /people/{id}/account` carries `groups` — the groups the person is in, archived
+groups aside, by name, each `{id, name, key, source, since}` — to the tab's own
+readers: the person, `staff:manage` and `staff:personal-data` (plan reading 8).
+`GET /me/groups` answers the caller's own, by name and with no more than `{id, name}`
+([My page](#my-page)).
+
 ## My page
 
 `/me` is the caller's own person, found through their self-service link and read as
@@ -1811,6 +2057,8 @@ caller about themselves.
   HR's notes are left out.
 - **`GET /me/documents`** is the person's own [documents](#documents), health
   documents included, newest first.
+- **`GET /me/groups`** is the [groups](#the-persons-groups) the person is in, archived
+  groups aside, by name alone.
 - **`GET /me/export`** is the person's own copy of their data — see
   [the personal-data exports](#the-personal-data-exports).
 
@@ -3415,6 +3663,10 @@ and an Approver are listed and counted nothing new after an erase of health cont
 alone: an entry they could not read would still say the person's health was on file
 (the coordinator's follow-up to Task 5b).
 
+A **D** erase also takes the person out of every [group](#members-and-owners): their
+`group_members` and `group_owners` rows are deleted in the same transaction, before the
+person's row is written, with no event; the next sync takes them out in the directory.
+
 The run is **idempotent**: a second run finds nothing due and writes nothing. That is
 what makes "once per civil day" hold whatever the poll and the clock do.
 
@@ -3735,6 +3987,12 @@ the pass, and nothing on the dashboard would let HR act on it. On a provider lin
 links raise the same type gets one item. The walk over the reasons covers the
 provider's too, so every code the worker records maps to an item.
 
+**The group item** (delivery D, `accounts_attention.go`) is `staff:manage`'s alone too:
+`groupSyncFailed`, one per [group section](#the-sync) whose state is `failed`
+(`ListFailedGroupTraits`) — a trait the provider refused, a group by the key it may not
+write, or three calls in a row that could not be made — with `entityId` the group's id and `title` the group's name; it goes once the
+section is no longer `failed`.
+
 `id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for
 the person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
 `title` is the person's display name — class C, so it survives the erase — with the
@@ -3846,6 +4104,9 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `payroll_month_invalid` | 400 | A payroll export's `month` that is not `YYYY-MM` with a month from `01` to `12`. |
 | `payroll_format_unsupported` | 400 | A payroll export's `format` other than `csv`. |
 | `retention_busy` | 409 | `POST /retention/run` while the retention lease is held — by the worker, here or on another replica, or another run by hand. Nothing ran. |
+| `group_synced` | 409 | `DELETE /groups/{id}` on a group a provider has made or found in its directory; archive it instead. |
+| `group_derived` | 409 | `PUT /groups/{id}/members` on a derived group, whose members are its rule's. |
+| `group_archived` | 409 | A change of an archived group: `PUT /groups/{id}`, its members, its owners or a provider's section. |
 | `threshold_unknown` | 404 | `POST /thresholds/{key}/acknowledge` with a key other than `5`, `30`, `50` and `otp`. |
 | `link_managed` | 409 | `PUT /people/{id}/user` naming, or unlinking, a Staff-managed user, or on a link in one of the accounts worker's states — but one blocked `account_not_managed`, which HR may unlink or relink. |
 | `account_mismatch` | 409 | `POST /people/{id}/account/disable` on a link whose user carries another employee number: someone else's account, left alone. The flag is off. |
@@ -3935,6 +4196,11 @@ person's, which it moves on when the list changes.
   (a review finding), so a change of the type's own waits. Every case write and every sick
   row of one person are judged one after the other; the case's dates are derived
   inside the lock from the rows read in it, and the egenmelding counters likewise.
+- **A group's members.** The materialisation of a derived group and a listed group's
+  `PUT /groups/{id}/members` take the transaction advisory lock `staff:group:<id>`, so
+  two writes of one group's members are judged one after the other; neither takes a
+  person's row. A group's section is claimed by the accounts worker under its lease,
+  as a link is.
 - **The sequence.** A create that generates an employee number holds the settings row
   until it commits, so two creators take numbers one after the other.
 - **The delete.** `DELETE /people/{id}` takes the person's row, then the manager graph,
@@ -3963,7 +4229,7 @@ All under `/api/v1/staff`.
 | `PUT /people/{id}/account`, `POST /people/{id}/account/run`, `POST /people/{id}/account/disable`, `POST /people/{id}/account/pass`, `POST /accounts/run` | `staff:manage` |
 | `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |
 | `PUT /people/{id}/national-id`, `POST /people/{id}/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST /people/{id}/bank-account/reveal` | `staff:personal-data` |
-| `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents`, `GET /me/export` | `staff:access`, then a self-service link (otherwise `no_person`) |
+| `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents`, `GET /me/export`, `GET /me/groups` | `staff:access`, then a self-service link (otherwise `no_person`) |
 | `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
 | `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
 | `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |
@@ -3996,6 +4262,7 @@ All under `/api/v1/staff`.
 | `GET /stats` | `staff:view` or `staff:manage` (judged in the module; otherwise 403) |
 | `GET /stats/attention` | `staff:access`, shaped per caller: `staff:manage`, `staff:personal-data`, `staff:approve` and a manager for their reports (otherwise `[]`) |
 | `POST /thresholds/{key}/acknowledge` | `staff:manage` |
+| `GET /groups`, `POST /groups`, `GET /groups/{id}`, `PUT /groups/{id}`, `DELETE /groups/{id}`, `POST /groups/{id}/archive`, `PUT /groups/{id}/members`, `PUT /groups/{id}/owners`, `GET /groups/{id}/traits`, `PUT /groups/{id}/traits/{provider}` | `staff:manage` |
 | `GET /people/{id}/employments`, `GET /employments/{id}`, `GET /employments/{id}/terms`, `GET /people/{id}/org` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `GET /employments/{id}/contract-check` | `staff:access`, then the person, a manager of theirs or HR (otherwise 404) |
 | `POST /people/{id}/employments`, `PUT /employments/{id}`, `POST /employments/{id}/end`, `POST /employments/{id}/reopen`, `POST /employments/{id}/terms`, `PUT /terms/{id}`, `DELETE /terms/{id}` | `staff:manage` |
