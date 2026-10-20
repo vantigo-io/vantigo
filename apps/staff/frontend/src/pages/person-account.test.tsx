@@ -642,7 +642,11 @@ describe("Person page — the account kind", () => {
     await choose(card, /Account kind/, "Local");
     await userEvent.click(within(card).getByRole("button", { name: "Save the account flag" }));
     expect(
-      await within(card).findByText(/cannot leave Microsoft Entra ID while Microsoft Entra ID holds an account/, {}, slow),
+      await within(card).findByText(
+        /cannot leave Microsoft Entra ID while Microsoft Entra ID holds an account/,
+        {},
+        slow,
+      ),
     ).toBeInTheDocument();
     expect(fetchMock.state.accounts[101].accountKind).toBe("entra");
   });
