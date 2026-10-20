@@ -523,8 +523,8 @@ På en [slettet person](#en-slettet-person) er fanen skrivebeskyttet, bortsett f
 **Deaktiver nå**: personens tilgang må også ta slutt.
 
 Et kort **Grupper** viser [gruppene](#grupper) personen er med i — arkiverte grupper
-unntatt — hver med hvordan de kom inn, angitt av HR eller av gruppens regel, og siden
-når. Det er skrivebeskyttet her: HR endrer en gruppes medlemmer på gruppens side.
+unntatt — med **Navn**, **Kom inn ved** (*Oppført* av HR, eller *Regelen*) og
+**Siden**. Det er skrivebeskyttet her: HR endrer en gruppes medlemmer på gruppens side.
 
 ### En slettesperre
 
@@ -1037,7 +1037,7 @@ bare for `staff:personal-data`:
 | For lite ferie i hovedferien | Fra april til september: noen har færre godkjente feriedager mellom 1. juni og 30. september enn ferieordningens hovedferie (tre uker etter ferieloven). | Personen |
 | Godkjente sitt eget fravær | Noen godkjente sitt eget fravær, som den eneste som kunne avgjøre det. | Personen |
 | Syk i godkjent ferie | En 100 % sykmelding ligger over godkjent ferie: den ansatte kan kreve å få den utsatt. | Personen |
-| En gruppe ikke synkronisert | En gruppe kunne ikke holdes i katalogen — en innstilling katalogen avviste, eller en gruppe der med nøkkelen som Vantigo ikke får endre. Én per gruppe, for HR. | Gruppen |
+| Gruppen … er ikke synkronisert med katalogen | En gruppe kunne ikke holdes i katalogen — en innstilling katalogen avviste, eller en gruppe der med nøkkelen som Vantigo ikke får endre; gruppesiden forteller hvorfor. Én per gruppe, for HR. | Gruppen |
 
 Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
 bekrefter terskelen — én gang, for godt — under [Terskler](#terskler) i
