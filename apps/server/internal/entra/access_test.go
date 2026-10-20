@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -34,6 +36,7 @@ func TestAccess_EveryOperation(t *testing.T) {
 		{http.MethodGet, skusPath, nil, nil, false},
 		{http.MethodGet, eventsPath + "?limit=10", nil, nil, false},
 		{http.MethodGet, accountsPath, nil, nil, false},
+		{http.MethodPost, accountsPath + "/" + uuid.NewString() + "/confirm", nil, nil, false},
 	} {
 		name := op.method + " " + op.path
 		if r := h.Client(t).Do(op.method, op.path, op.body, op.opts...); r.Status != http.StatusUnauthorized {

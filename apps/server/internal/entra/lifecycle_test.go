@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/entra/graphtest"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -32,28 +33,52 @@ var staffActor = contracts.Actor{System: contracts.SystemActorStaffAccounts}
 // tap stands between the module and the fake tenant: it keeps the password
 // of each create, so a test can prove it is stored and logged nowhere, and
 // answers a Graph refusal for the calls a test names ("METHOD path-suffix"
-// → status) without the fake learning a new trick.
+// → status) without the fake learning a new trick — before the fake sees
+// the call (fail), or after the fake carried it out, its answer lost
+// (lose). It counts each call it so answered, and runs a call's after hook
+// once the fake has answered it.
 type tap struct {
 	inner     http.RoundTripper
 	mu        sync.Mutex
 	passwords []string
 	fail      map[string]int
+	lose      map[string]int
+	answered  map[string]int
+	after     map[string]func()
+}
+
+// tapMessage is the words of every refusal the tap answers, which no log
+// line may carry for a call that creates a user or a pass.
+const tapMessage = "The tap refused this call."
+
+func tapRefusal(req *http.Request, status int) *http.Response {
+	body, _ := json.Marshal(map[string]any{"error": map[string]any{"code": "Authorization_RequestDenied", "message": tapMessage}})
+	return &http.Response{
+		StatusCode: status, Status: http.StatusText(status), Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
+		Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)),
+		ContentLength: int64(len(body)), Request: req,
+	}
+}
+
+// matching is the key of keys that req matches, "" when none.
+func matching[V any](keys map[string]V, req *http.Request) string {
+	for key := range keys {
+		method, suffix, _ := strings.Cut(key, " ")
+		if req.Method == method && strings.HasSuffix(req.URL.Path, suffix) {
+			return key
+		}
+	}
+	return ""
 }
 
 func (w *tap) RoundTrip(req *http.Request) (*http.Response, error) {
 	w.mu.Lock()
-	for key, status := range w.fail {
-		method, suffix, _ := strings.Cut(key, " ")
-		if req.Method == method && strings.HasSuffix(req.URL.Path, suffix) {
-			w.mu.Unlock()
-			body, _ := json.Marshal(map[string]any{"error": map[string]any{"code": "Authorization_RequestDenied", "message": "The tap refused this call."}})
-			return &http.Response{
-				StatusCode: status, Status: http.StatusText(status), Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
-				Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)),
-				ContentLength: int64(len(body)), Request: req,
-			}, nil
-		}
+	if key := matching(w.fail, req); key != "" {
+		w.answered[key]++
+		w.mu.Unlock()
+		return tapRefusal(req, w.fail[key]), nil
 	}
+	lost, hook := matching(w.lose, req), w.after[matching(w.after, req)]
 	if req.Method == http.MethodPost && req.URL.Host == graphtest.GraphHost && req.URL.Path == "/v1.0/users" && req.Body != nil {
 		data, err := io.ReadAll(req.Body)
 		_ = req.Body.Close()
@@ -72,7 +97,22 @@ func (w *tap) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.Body = io.NopCloser(bytes.NewReader(data))
 	}
 	w.mu.Unlock()
-	return w.inner.RoundTrip(req)
+	resp, err := w.inner.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	if hook != nil {
+		hook()
+	}
+	if lost != "" {
+		w.mu.Lock()
+		w.answered[lost]++
+		status := w.lose[lost]
+		w.mu.Unlock()
+		_ = resp.Body.Close()
+		return tapRefusal(req, status), nil
+	}
+	return resp, nil
 }
 
 func (w *tap) failOn(key string, status int) {
@@ -81,10 +121,35 @@ func (w *tap) failOn(key string, status int) {
 	w.fail[key] = status
 }
 
+// loseOn lets the fake carry out the calls key names, and answers status
+// in its stead: an answer the tenant gave and the module never saw.
+func (w *tap) loseOn(key string, status int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.lose[key] = status
+}
+
+// afterOn runs fn once the fake has answered each call key names.
+func (w *tap) afterOn(key string, fn func()) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.after[key] = fn
+}
+
+// refusedCount is how many calls the tap answered for key.
+func (w *tap) refusedCount(key string) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.answered[key]
+}
+
 func (w *tap) clear() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	clear(w.fail)
+	clear(w.lose)
+	clear(w.after)
+	clear(w.answered)
 }
 
 func (w *tap) createdPasswords() []string {
@@ -104,7 +169,7 @@ type lifecycle struct {
 
 func newLifecycle(t *testing.T) *lifecycle {
 	t.Helper()
-	w := &tap{fail: map[string]int{}}
+	w := &tap{fail: map[string]int{}, lose: map[string]int{}, answered: map[string]int{}, after: map[string]func(){}}
 	h, g := newTenantHarness(t, modtest.WithTransport(w))
 	w.inner = g
 	h.SetBusinessTimeZone(t, "Europe/Oslo")
@@ -317,29 +382,137 @@ func TestPrepare_AWorkEmailHeldByAnotherIsAddressTaken(t *testing.T) {
 	}
 }
 
-func TestPrepare_FindsTheUserByEmployeeID(t *testing.T) {
+// TestPrepare_AFoundUserIsAdoptedUntrustedUntilConfirmed is plan reading 8
+// (review M1): a user Prepare finds by employee id is linked and reported
+// adoption_unconfirmed, and nothing is written to it — no spec, no enable,
+// no pass, no disable, no delete — until entra:manage confirms it; the
+// next Prepare then brings it to the spec.
+func TestPrepare_AFoundUserIsAdoptedUntrustedUntilConfirmed(t *testing.T) {
 	t.Parallel()
 	l := newLifecycle(t)
+	ctx := context.Background()
 	seeded := l.g.AddUser(graphtest.User{
 		DisplayName: "Kari Nordmann", MailNickname: "kari", UserPrincipalName: "kari@nordlys.no", Mail: "kari.n@nordlys.no",
-		EmployeeID: "E-4", JobTitle: "Trainee", AccountEnabled: true, UsageLocation: "NO",
+		EmployeeID: "E-4", JobTitle: "Trainee", UsageLocation: "NO",
 	})
 	mark := len(l.g.Calls())
 	spec := joiner("E-4")
 	spec.Fields = map[string]string{"jobTitle": "Konsulent"}
 	acc := l.prepare(t, spec)
-	if acc.Created || acc.ExternalID != seeded.ID || acc.State != "enabled" || acc.UserPrincipalName != "kari@nordlys.no" || acc.Email != "kari.n@nordlys.no" {
-		t.Errorf("the found user: %+v", acc)
+	if acc.Created || acc.ExternalID != seeded.ID || acc.State != "disabled" || acc.UserPrincipalName != "kari@nordlys.no" ||
+		acc.Email != "kari.n@nordlys.no" || !hasCode(acc.Reported, "adoption_unconfirmed") {
+		t.Errorf("the found user: %+v, want it linked and adoption_unconfirmed reported", acc)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND NOT created_by_us AND state = 'disabled'
+	    AND adoption_confirmed_at IS NULL AND 'adoption_unconfirmed' = ANY(reported)`, seeded.ID); n != 1 {
+		t.Errorf("the found user's row: %d rows match", n)
+	}
+
+	// Every write answers the user as it is and writes nothing to it.
+	if acc := l.activate(t, seeded.ID, spec); acc.State != "disabled" || acc.HasPass || !hasCode(acc.Reported, "adoption_unconfirmed") {
+		t.Errorf("Activate of an unconfirmed adoption: %+v", acc)
+	}
+	fresh := spec
+	fresh.Flags.Fresh = true
+	l.activate(t, seeded.ID, fresh)
+	if acc, err := l.p.Update(ctx, staffActor, seeded.ID, spec); err != nil || !hasCode(acc.Reported, "adoption_unconfirmed") {
+		t.Errorf("Update of an unconfirmed adoption: %+v %v", acc, err)
+	}
+	if err := l.p.Delete(ctx, staffActor, seeded.ID); !errors.Is(err, contracts.ErrExternalEnabled) {
+		t.Errorf("Delete of an unconfirmed adoption: %v, want the refusal", err)
+	}
+	l.g.EditUser(seeded.ID, func(u *graphtest.User) { u.AccountEnabled = true })
+	if acc := l.deactivate(t, seeded.ID, leaver(spec)); acc.State != "enabled" || !hasCode(acc.Reported, "adoption_unconfirmed") {
+		t.Errorf("Deactivate of an unconfirmed adoption: %+v, want it answered enabled, untouched", acc)
+	}
+	if w := writes(l.graphCalls(mark)); len(w) != 0 {
+		t.Errorf("writes to an unconfirmed adoption: %v", w)
 	}
 	u := l.user(t, seeded.ID)
-	if u.JobTitle != "Konsulent" || u.EmployeeID != "E-4" || u.UserPrincipalName != "kari@nordlys.no" || u.GivenName != "Kari" {
-		t.Errorf("the found user brought to the spec: %+v", u)
+	if u.JobTitle != "Trainee" || u.GivenName != "" || u.Pass != nil || !u.AccountEnabled || u.Deleted {
+		t.Errorf("the unconfirmed adoption was written: %+v", u)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND pass_sealed IS NULL`, seeded.ID); n != 1 {
+		t.Error("a pass is kept for an unconfirmed adoption")
+	}
+	if got, err := l.p.Account(ctx, seeded.ID); err != nil || got == nil || !hasCode(got.Reported, "adoption_unconfirmed") {
+		t.Errorf("Account of an unconfirmed adoption: %+v %v", got, err)
+	}
+
+	// entra:manage confirms it; the next Prepare brings it to the spec.
+	m, managerID := manager(t, l.h)
+	r := m.Do(http.MethodPost, accountsPath+"/"+seeded.ID+"/confirm", nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("confirm: %d %s", r.Status, r.Body)
+	}
+	l.g.EditUser(seeded.ID, func(u *graphtest.User) { u.AccountEnabled = false })
+	acc = l.prepare(t, spec)
+	if acc.ExternalID != seeded.ID || hasCode(acc.Reported, "adoption_unconfirmed") {
+		t.Errorf("Prepare after the confirmation: %+v", acc)
+	}
+	if u := l.user(t, seeded.ID); u.JobTitle != "Konsulent" || u.GivenName != "Kari" || u.EmployeeID != "E-4" || u.UserPrincipalName != "kari@nordlys.no" {
+		t.Errorf("the confirmed user brought to the spec: %+v", u)
 	}
 	if n := countCalls(l.graphCalls(mark), http.MethodPost, "/users"); n != 0 {
 		t.Errorf("Prepare created %d users beside the one it found", n)
 	}
-	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND NOT created_by_us AND state = 'enabled'`, seeded.ID); n != 1 {
-		t.Errorf("the found user's row: %d rows match", n)
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND NOT created_by_us
+	    AND adoption_confirmed_at IS NOT NULL AND adoption_confirmed_by_user_id = $2`, seeded.ID, managerID); n != 1 {
+		t.Error("the confirmation and its actor are not on the row")
+	}
+	if acc := l.activate(t, seeded.ID, spec); acc.State != "enabled" || !acc.HasPass {
+		t.Errorf("Activate after the confirmation: %+v", acc)
+	}
+}
+
+// TestConfirm_TheAdoptionOnce is POST /accounts/{objectId}/confirm: 200 with
+// the account confirmed and audited with the actor, 409 adoption_confirmed
+// the second time and for an account the module created, 404 for one it
+// does not keep, 403 without entra:manage.
+func TestConfirm_TheAdoptionOnce(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	seeded := l.g.AddUser(graphtest.User{DisplayName: "Ola", MailNickname: "ola", UserPrincipalName: "ola@nordlys.no", EmployeeID: "E-5"})
+	spec := joiner("E-5")
+	l.prepare(t, spec)
+	created := l.prepare(t, joiner("E-6")).ExternalID
+
+	nobody := l.h.SignIn(t, "staff:manage")
+	if r := nobody.Do(http.MethodPost, accountsPath+"/"+seeded.ID+"/confirm", nil); r.Status != http.StatusForbidden {
+		t.Errorf("confirm without entra:manage: %d, want 403", r.Status)
+	}
+	m, managerID := manager(t, l.h)
+	r := m.Do(http.MethodPost, accountsPath+"/"+seeded.ID+"/confirm", nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("confirm: %d %s", r.Status, r.Body)
+	}
+	var acc gen.EntraAccount
+	r.JSON(&acc)
+	if acc.ObjectId.String() != seeded.ID || acc.CreatedByUs || !acc.AdoptionConfirmed || slices.Contains(acc.Reported, "adoption_unconfirmed") {
+		t.Errorf("the confirmed account: %+v", acc)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.account.adoption_confirmed' AND actor_user_id = $1
+	    AND object_id = $2 AND upn = 'ola@nordlys.no'`, managerID, seeded.ID); n != 1 {
+		t.Errorf("%d confirmation events, want one", n)
+	}
+	for name, id := range map[string]string{"again": seeded.ID, "an account the module created": created} {
+		if r := m.Do(http.MethodPost, accountsPath+"/"+id+"/confirm", nil); r.Status != http.StatusConflict || codeOf(t, r) != "adoption_confirmed" {
+			t.Errorf("confirm %s: %d %s, want 409 adoption_confirmed", name, r.Status, r.Body)
+		}
+	}
+	if r := m.Do(http.MethodPost, accountsPath+"/"+uuid.NewString()+"/confirm", nil); r.Status != http.StatusNotFound {
+		t.Errorf("confirm an unknown account: %d, want 404", r.Status)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.account.adoption_confirmed'`); n != 1 {
+		t.Errorf("%d confirmation events after the refusals, want one", n)
+	}
+	r = m.Do(http.MethodGet, accountsPath, nil)
+	var all []gen.EntraAccount
+	r.JSON(&all)
+	for _, a := range all {
+		if want := a.ObjectId.String() == seeded.ID; a.AdoptionConfirmed != want || a.CreatedByUs == want {
+			t.Errorf("the accounts list: %+v", a)
+		}
 	}
 }
 
@@ -397,6 +570,76 @@ func TestPrepare_ASyncedUserIsRefused(t *testing.T) {
 	}
 	if u := l.user(t, seeded.ID); u.JobTitle != "" {
 		t.Errorf("the synced user was written: %+v", u)
+	}
+}
+
+// TestPrepare_ACreateWhoseAnswerIsLost is review L4: POST /users is made
+// once — a 5xx is not retried — and when the tenant made the user before
+// its answer was lost, the user is read back by employee number and taken
+// as the module's own, not adopted by the next Prepare.
+func TestPrepare_ACreateWhoseAnswerIsLost(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	l.w.loseOn("POST /users", http.StatusBadGateway)
+	acc := l.prepare(t, joiner("E-1"))
+	if !acc.Created || acc.State != "disabled" || acc.UserPrincipalName != "kari.nordmann@nordlys.no" || hasCode(acc.Reported, "adoption_unconfirmed") {
+		t.Errorf("Prepare with the create's answer lost: %+v, want the user it made", acc)
+	}
+	if n := len(l.g.Users()); n != 1 {
+		t.Errorf("%d users in the tenant, want the one create", n)
+	}
+	if n := l.w.refusedCount("POST /users"); n != 1 {
+		t.Errorf("POST /users was made %d times, want once", n)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND created_by_us`, acc.ExternalID); n != 1 {
+		t.Error("the user read back is not recorded as the module's")
+	}
+
+	// No answer and nothing made: the failure, once, and no row.
+	l.w.clear()
+	l.w.failOn("POST /users", http.StatusServiceUnavailable)
+	other := joiner("E-2")
+	other.GivenName, other.WorkEmail = "Per", ""
+	if _, err := l.p.Prepare(context.Background(), staffActor, other); err == nil {
+		t.Error("Prepare with the create refused 503: nil, want the failure")
+	}
+	if n := l.w.refusedCount("POST /users"); n != 1 {
+		t.Errorf("POST /users was refused %d times, want once: a 5xx is not retried", n)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE employee_number = 'E-2'`); n != 0 {
+		t.Error("a row for a user never made")
+	}
+	if strings.Contains(l.h.Logs(), tapMessage) {
+		t.Error("the create's refusal logged Graph's words")
+	}
+}
+
+// TestPrepare_TheConnectionMovedDuringTheCreate is review L3: the row of a
+// created user is written under the connection's share lock, after the
+// registration and a valid secret are read again. A change of the tenant
+// (confirmed, as the module kept no account yet) or the revoke of the last
+// secret committed between the create and the row leaves the user
+// unrecorded, ErrProviderUnavailable; committed after the row, it is judged
+// against the row (connection_test.go, credentials_test.go). The share
+// lock's wait itself is not raced here: that needs two transactions
+// interleaved at will.
+func TestPrepare_TheConnectionMovedDuringTheCreate(t *testing.T) {
+	t.Parallel()
+	for name, move := range map[string]string{
+		"the tenant changed": `UPDATE entra.connection SET tenant_id = gen_random_uuid(), status = 'unconfigured'`,
+		"the secret revoked": `UPDATE entra.credentials SET revoked_at = now()`,
+	} {
+		l := newLifecycle(t)
+		l.w.afterOn("POST /users", func() { l.h.Exec(t, move) })
+		if _, err := l.p.Prepare(context.Background(), staffActor, joiner("E-1")); !errors.Is(err, contracts.ErrProviderUnavailable) {
+			t.Errorf("%s: Prepare %v, want ErrProviderUnavailable", name, err)
+		}
+		if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts`); n != 0 {
+			t.Errorf("%s: %d rows, want the user unrecorded", name, n)
+		}
+		if u := l.g.Users(); len(u) != 1 || u[0].AccountEnabled {
+			t.Errorf("%s: the tenant's users %+v, want the one made, disabled", name, u)
+		}
 	}
 }
 
@@ -480,10 +723,25 @@ func TestActivate_EnablesWritesTheHireDateAssignsAndIssuesThePass(t *testing.T) 
 		t.Errorf("the second Activate patched an enabled user %d times", n)
 	}
 
-	// HR's Run now: a fresh pass replaces the one not yet revealed.
+	// HR's Run now on a user enabled already: no pass, whatever the flag
+	// (review L1) — a pass over a working account is a way into it.
 	fresh := spec
 	fresh.Flags.Fresh = true
+	mark = len(l.g.Calls())
 	if acc := l.activate(t, id, fresh); !acc.HasPass {
+		t.Errorf("Activate with Fresh on an enabled user: %+v, want the waiting pass kept", acc)
+	}
+	if n := countCalls(l.graphCalls(mark), http.MethodPost, "/temporaryAccessPassMethods"); n != 0 {
+		t.Errorf("Fresh on an enabled user issued %d passes", n)
+	}
+	if p := l.user(t, id).Pass; p == nil || p.ID != first.ID {
+		t.Errorf("Fresh on an enabled user replaced the pass: %+v", p)
+	}
+
+	// Disabled in the tenant meanwhile, Run now's enable brings a fresh pass
+	// that replaces the one not yet revealed.
+	l.g.EditUser(id, func(u *graphtest.User) { u.AccountEnabled = false })
+	if acc := l.activate(t, id, fresh); !acc.HasPass || acc.State != "enabled" {
 		t.Errorf("Activate with Fresh: %+v", acc)
 	}
 	second := l.user(t, id).Pass
@@ -578,6 +836,61 @@ func TestActivate_APassThePolicyRefusesIsReported(t *testing.T) {
 	}
 	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND pass_sealed IS NULL`, id); n != 1 {
 		t.Error("a pass was kept")
+	}
+}
+
+// TestActivate_APassForbiddenAloneIsReported is review L5: a 403 on the
+// pass's create, the enable allowed, is pass_forbidden — the user enabled
+// and answered, no refusal, no streak, no privileged — and Graph's words
+// are not logged.
+func TestActivate_APassForbiddenAloneIsReported(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	spec := joiner("E-1")
+	id := l.prepare(t, spec).ExternalID
+	l.w.failOn("POST /temporaryAccessPassMethods", http.StatusForbidden)
+	acc, err := l.p.Activate(context.Background(), staffActor, id, spec)
+	if err != nil || acc.State != "enabled" || acc.HasPass || !hasCode(acc.Reported, "pass_forbidden") || hasCode(acc.Reported, contracts.ReportedPrivileged) {
+		t.Errorf("Activate with the pass forbidden: %+v %v", acc, err)
+	}
+	if u := l.user(t, id); !u.AccountEnabled || u.Pass != nil {
+		t.Errorf("the user: enabled %v, pass %+v", u.AccountEnabled, u.Pass)
+	}
+	if n := l.h.Count(t, `SELECT sensitive_denied_streak FROM entra.connection`); n != 0 {
+		t.Errorf("the streak after the pass forbidden: %d", n)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND state = 'enabled' AND last_error IS NULL
+	    AND pass_sealed IS NULL AND 'pass_forbidden' = ANY(reported)`, id); n != 1 {
+		t.Error("the row does not say enabled with pass_forbidden")
+	}
+	if ev := l.events(t, "entra.user.activated"); len(ev) != 1 || !hasCode(ev[0], "enabled") || !hasCode(ev[0], "pass_forbidden") {
+		t.Errorf("the activated events: %v", ev)
+	}
+	if n := l.w.refusedCount("POST /temporaryAccessPassMethods"); n != 1 {
+		t.Errorf("the pass was asked %d times, want once", n)
+	}
+	if strings.Contains(l.h.Logs(), tapMessage) {
+		t.Error("the pass's refusal logged Graph's words")
+	}
+}
+
+// TestActivate_APassAnswerLostIsNotRetried is review L4 for the pass: a 5xx
+// on its create is not retried — a second would replace a pass the first
+// may have issued — and the call is answered as the failure it is.
+func TestActivate_APassAnswerLostIsNotRetried(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	spec := joiner("E-1")
+	id := l.prepare(t, spec).ExternalID
+	l.w.loseOn("POST /temporaryAccessPassMethods", http.StatusBadGateway)
+	if _, err := l.p.Activate(context.Background(), staffActor, id, spec); err == nil {
+		t.Error("Activate with the pass's answer lost: nil, want the failure")
+	}
+	if n := l.w.refusedCount("POST /temporaryAccessPassMethods"); n != 1 {
+		t.Errorf("the pass was asked %d times, want once", n)
+	}
+	if strings.Contains(l.h.Logs(), tapMessage) {
+		t.Error("the pass's refusal logged Graph's words")
 	}
 }
 
@@ -1008,8 +1321,12 @@ func TestLifecycle_NoPasswordPassOrSecretOutsideTheSealedColumns(t *testing.T) {
 	}
 	fresh := spec
 	fresh.Flags.Fresh = true
+	l.g.EditUser(id, func(u *graphtest.User) { u.AccountEnabled = false })
 	l.activate(t, id, fresh)
 	second := l.user(t, id).Pass.Value
+	if second == pass.Value {
+		t.Fatal("no second pass to look for")
+	}
 	l.deactivate(t, id, leaver(spec))
 	if err := l.p.Delete(ctx, staffActor, id); err != nil {
 		t.Fatal(err)

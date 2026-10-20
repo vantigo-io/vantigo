@@ -143,12 +143,12 @@ type tokenAnswer struct {
 	AccessToken string `json:"access_token"`
 	ExpiresIn   int64  `json:"expires_in"`
 	Error       string `json:"error"`
-	Description string `json:"error_description"`
 }
 
 // fetchToken asks the token endpoint for cred's token. The secret is opened
-// for this request alone and is never logged: a refusal logs the OAuth code
-// and description, which name neither the secret nor the token.
+// for this request alone and is never logged: a refusal logs the status and
+// the OAuth code alone — not error_description, the endpoint's own words,
+// which this request's secret could be echoed in.
 func (c *graphClient) fetchToken(ctx context.Context, cred graphCredential) (cachedToken, error) {
 	if c.box == nil {
 		return cachedToken{}, errors.New("entra: no secrets box to open the client secret with")
@@ -187,8 +187,7 @@ func (c *graphClient) fetchToken(ctx context.Context, cred graphCredential) (cac
 	decodeErr := json.Unmarshal(data, &answer)
 	if resp.StatusCode != http.StatusOK || decodeErr != nil || answer.AccessToken == "" {
 		c.logger.DebugContext(ctx, "entra: the token endpoint refused",
-			"tenant", cred.tenantID.String(), "credential", cred.id, "status", resp.StatusCode,
-			"code", answer.Error, "description", answer.Description)
+			"tenant", cred.tenantID.String(), "credential", cred.id, "status", resp.StatusCode, "code", answer.Error)
 		if slices.Contains(credentialRefusals, answer.Error) {
 			return cachedToken{}, fmt.Errorf("%w: %s", errCredentialInvalid, answer.Error)
 		}

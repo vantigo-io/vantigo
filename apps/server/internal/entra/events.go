@@ -2,13 +2,17 @@ package entra
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/entra/store"
 )
@@ -20,14 +24,16 @@ import (
 // UPN, a secret, a token or a pass, and never the directory's words. It is
 // append-only: nothing here updates or deletes a row.
 
-// The event actions of the connection's writes. The lifecycle's
-// (entra.user.*, entra.pass.*) are the provisioner's.
+// The event actions of the connection's writes and of an adoption's
+// confirmation. The lifecycle's (entra.user.*, entra.pass.*) are the
+// provisioner's.
 const (
 	actionConnectionChanged = "entra.connection.changed"
 	actionConnectionTested  = "entra.connection.tested"
 	actionSettingsChanged   = "entra.settings.changed"
 	actionCredentialAdded   = "entra.credential.added"
 	actionCredentialRevoked = "entra.credential.revoked"
+	actionAdoptionConfirmed = "entra.account.adoption_confirmed"
 )
 
 // The events list's bounds.
@@ -120,21 +126,73 @@ func (s *server) GetEntraAccounts(ctx context.Context, _ gen.GetEntraAccountsReq
 	now := s.deps.Clock()
 	out := make(gen.GetEntraAccounts200JSONResponse, 0, len(rows))
 	for _, a := range rows {
-		reported := a.Reported
-		if reported == nil {
-			reported = []string{}
-		}
-		out = append(out, gen.EntraAccount{
-			ObjectId:          openapi_types.UUID(a.ObjectID),
-			EmployeeNumber:    a.EmployeeNumber,
-			UserPrincipalName: a.UserPrincipalName,
-			State:             gen.EntraAccountState(a.State),
-			CreatedByUs:       a.CreatedByUs,
-			HasPass:           a.PassSealed != nil && a.PassExpiresAt != nil && a.PassExpiresAt.After(now),
-			Reported:          reported,
-			LastSyncedAt:      a.LastSyncedAt,
-			CreatedAt:         a.CreatedAt,
-		})
+		out = append(out, accountBody(a, now))
 	}
 	return out, nil
+}
+
+// accountBody is an account's row as the contract answers it at now.
+func accountBody(a store.EntraAccount, now time.Time) gen.EntraAccount {
+	return gen.EntraAccount{
+		ObjectId:          openapi_types.UUID(a.ObjectID),
+		EmployeeNumber:    a.EmployeeNumber,
+		UserPrincipalName: a.UserPrincipalName,
+		State:             gen.EntraAccountState(a.State),
+		CreatedByUs:       a.CreatedByUs,
+		AdoptionConfirmed: a.AdoptionConfirmedAt != nil,
+		HasPass:           livePass(a, now),
+		Reported:          orEmpty(a.Reported),
+		LastSyncedAt:      a.LastSyncedAt,
+		CreatedAt:         a.CreatedAt,
+	}
+}
+
+// PostEntraAccountsByObjectIdConfirm confirms the adoption of a user the
+// module found rather than created (plan reading 8): from now on the
+// lifecycle writes to it as to one it created, and the next Prepare or
+// Update brings it to the person's spec. The confirmation and the actor are
+// kept on the row and audited entra.account.adoption_confirmed. 404 for an
+// account the module does not keep; 409 adoption_confirmed for one
+// confirmed already or one the module created, which needs none.
+// (POST /api/v1/entra/accounts/{objectId}/confirm)
+func (s *server) PostEntraAccountsByObjectIdConfirm(ctx context.Context, req gen.PostEntraAccountsByObjectIdConfirmRequestObject) (gen.PostEntraAccountsByObjectIdConfirmResponseObject, error) {
+	actor, err := requestActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id := uuid.UUID(req.ObjectId)
+	now := s.deps.Clock()
+	var (
+		row   store.EntraAccount
+		found bool
+	)
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		var err error
+		row, err = q.ConfirmAdoption(ctx, store.ConfirmAdoptionParams{Now: now, ConfirmedByUserID: actor.UserID, ObjectID: id})
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			if _, err := q.GetAccount(ctx, id); errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			} else if err != nil {
+				return fmt.Errorf("entra: read the account: %w", err)
+			}
+			found = true
+			return refusal{adoptionConfirmed()}
+		case err != nil:
+			return fmt.Errorf("entra: confirm the adoption: %w", err)
+		}
+		found = true
+		return recordEvent(ctx, q, now, actor, actionAdoptionConfirmed, &id, row.UserPrincipalName, nil)
+	})
+	var r refusal
+	switch {
+	case errors.As(err, &r) && r.status() == http.StatusConflict:
+		return gen.PostEntraAccountsByObjectIdConfirm409ApplicationProblemPlusJSONResponse(r.problem), nil
+	case err != nil:
+		return nil, err
+	case !found:
+		return gen.PostEntraAccountsByObjectIdConfirm404Response{}, nil
+	}
+	return gen.PostEntraAccountsByObjectIdConfirm200JSONResponse(accountBody(row, now)), nil
 }

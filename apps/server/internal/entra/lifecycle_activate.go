@@ -35,9 +35,12 @@ const (
 // accountEnabled with the hire day's 01:00 when write_hire_date — a refusal
 // of the hire date alone retried without it and reported
 // hire_date_not_written —, the spec's licences not yet assigned, then a pass
-// when HR asked for a fresh one, or when this call enabled the user and no
-// pass waits unrevealed. Idempotent: an enabled user with nothing missing is
-// answered as it is.
+// when this call enabled the user and HR asked for a fresh one or no pass
+// waits unrevealed — never on a user enabled already, whatever the flag: a
+// Temporary Access Pass over a working account would be a way into it. A
+// 403 on the pass alone is reported pass_forbidden, the user enabled all the
+// same. Idempotent: an enabled user with nothing missing is answered as it
+// is. An unconfirmed adoption is answered as it is, nothing written.
 func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
 	if !actor.Valid() {
 		return contracts.ExternalAccount{}, contracts.ErrInvalidActor
@@ -51,6 +54,9 @@ func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, exter
 	}
 	if u.synced() {
 		return refuse(syncedRefusal())
+	}
+	if !trusted(row) {
+		return p.unconfirmed(ctx, s, actor, actionUserActivated, id, u, row)
 	}
 	wasEnabled := u.AccountEnabled
 	var reported, codes []string
@@ -110,11 +116,9 @@ func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, exter
 		codes = append(codes, fmt.Sprintf("licences_assigned:%d", assigned))
 	}
 
-	if spec.Flags.Fresh || (!wasEnabled && !livePass(row, p.client.now())) {
+	if !wasEnabled && (spec.Flags.Fresh || !livePass(row, p.client.now())) {
 		code, err := p.issuePass(ctx, s, actor, id, u.UserPrincipalName)
-		if r, ok := asRefused(err); ok {
-			return refuse(r)
-		} else if err != nil {
+		if err != nil {
 			return contracts.ExternalAccount{}, err
 		}
 		if code != "" {
@@ -205,8 +209,11 @@ func (p *provisioner) assignLicences(ctx context.Context, s session, id uuid.UUI
 // and single use, and keeps it sealed under entra/pass with its expiry
 // (startDateTime + lifetime) until RevealPass. A 400 is the tenant's
 // authentication methods policy refusing it: pass_not_allowed, answered as a
-// code. A 403 is privilegedRefusal. The pass is never logged, and never
-// written anywhere but the sealed column.
+// code. A 403 is pass_forbidden, a code too: the enable before it was
+// allowed, so it is no privileged refusal and lengthens no streak. The
+// create is made once (noRetry): a second would replace a pass the first
+// may have issued. The pass is never logged, and never written anywhere but
+// the sealed column.
 func (p *provisioner) issuePass(ctx context.Context, s session, actor contracts.Actor, id uuid.UUID, upn string) (string, error) {
 	if p.deps.Secrets == nil {
 		return "", errors.New("entra: no secrets box to seal the pass with")
@@ -218,12 +225,12 @@ func (p *provisioner) issuePass(ctx context.Context, s session, actor contracts.
 	}
 	err := p.client.post(ctx, s.cred, userPath(id, "/authentication/temporaryAccessPassMethods"), map[string]any{
 		"lifetimeInMinutes": s.conn.PassLifetimeMinutes, "isUsableOnce": s.conn.PassUsableOnce,
-	}, &made)
+	}, &made, noRetry)
 	switch {
 	case isStatus(err, http.StatusBadRequest):
 		return contracts.ReportedPassNotAllowed, nil
 	case isStatus(err, http.StatusForbidden):
-		return "", privilegedRefusal()
+		return reportedPassForbidden, nil
 	case err != nil:
 		return "", err
 	case made.TemporaryAccessPass == "":

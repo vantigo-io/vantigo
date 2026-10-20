@@ -380,6 +380,70 @@ func TestGraphClient_A5xxIsRetriedOnce(t *testing.T) {
 	}
 }
 
+// TestGraphClient_NoRetryNeitherRetriesA5xxNorLogsTheWords pins the create
+// of a user and of a pass (review L4, L7): a 5xx is answered at once, as
+// the tenant may have carried the create out; a 429 is still waited out;
+// and a refusal is logged by its status and codes, never Graph's words,
+// which may echo the password or the pass.
+func TestGraphClient_NoRetryNeitherRetriesA5xxNorLogsTheWords(t *testing.T) {
+	ctx := context.Background()
+	f := newClientFixture(t, nil)
+	fake := fakeTenant(f)
+	f.c.http = graphHTTPClient(fake)
+	cred := f.credential(t, testSecret)
+	if err := f.c.get(ctx, cred, "/organization", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	fake.FailNext(http.StatusServiceUnavailable)
+	before := len(fake.Calls())
+	err := f.c.post(ctx, cred, "/users", map[string]any{"accountEnabled": false}, nil, noRetry)
+	if !isStatus(err, http.StatusServiceUnavailable) || !errors.Is(err, errTenantUnreachable) {
+		t.Errorf("a 503 on a noRetry call: %v, want it answered as tenant_unreachable", err)
+	}
+	if n := len(fake.Calls()) - before; n != 1 {
+		t.Errorf("a noRetry call was sent %d times on a 503, want once", n)
+	}
+	if w := f.recordedWaits(); len(w) != 0 {
+		t.Errorf("a noRetry call waited %v", w)
+	}
+
+	fake.Throttle(1)
+	fake.AddUser(graphtest.User{UserPrincipalName: "kari@nordlys.no", DisplayName: "Kari", MailNickname: "kari"})
+	err = f.c.post(ctx, cred, "/users", map[string]any{
+		"accountEnabled": false, "displayName": "Kari Nordmann", "mailNickname": "kari", "userPrincipalName": "kari@nordlys.no",
+		"passwordProfile": map[string]any{"password": "Pa55word!xyz", "forceChangePasswordNextSignIn": true},
+	}, nil, noRetry)
+	if !isCode(err, "ObjectConflict") {
+		t.Fatalf("a taken UPN after a 429: %v, want the 429 waited out and ObjectConflict", err)
+	}
+	log := f.log.String()
+	if strings.Contains(log, "Another object with the same value") || strings.Contains(log, "fake was told to fail") || strings.Contains(log, `"message"`) {
+		t.Errorf("a noRetry call's refusal logged Graph's words: %s", log)
+	}
+	if !strings.Contains(log, `"code":"Request_BadRequest"`) || !strings.Contains(log, `"detail":"ObjectConflict"`) || !strings.Contains(log, `"status":503`) {
+		t.Errorf("a noRetry call's refusal is not logged by its status and codes: %s", log)
+	}
+}
+
+// TestGraphToken_TheEndpointsWordsAreNotLogged pins review L7 for the token
+// endpoint: a refusal is logged with its status and OAuth code, never its
+// error_description.
+func TestGraphToken_TheEndpointsWordsAreNotLogged(t *testing.T) {
+	f := newClientFixture(t, nil)
+	f.c.http = graphHTTPClient(fakeTenant(f))
+	if _, err := f.c.token(context.Background(), f.credential(t, "wrong")); !errors.Is(err, errCredentialInvalid) {
+		t.Fatalf("a wrong secret: %v, want errCredentialInvalid", err)
+	}
+	log := f.log.String()
+	if strings.Contains(log, "AADSTS") || strings.Contains(log, "description") {
+		t.Errorf("the token endpoint's words are in the log: %s", log)
+	}
+	if !strings.Contains(log, `"code":"invalid_client"`) || !strings.Contains(log, `"status":401`) {
+		t.Errorf("the refusal is not logged by its status and code: %s", log)
+	}
+}
+
 func TestGraphClient_A401FetchesAFreshTokenOnce(t *testing.T) {
 	f := newClientFixture(t, nil)
 	fake := fakeTenant(f)

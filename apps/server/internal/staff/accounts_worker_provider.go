@@ -579,7 +579,7 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 		if got != nil {
 			acc = got
 		}
-		in.Link, in.Account = linkFacts(), acc
+		in.Link, in.Account, in.Made = linkFacts(), acc, append(in.Made, step.Kind)
 		if step.Kind == accountStepActivate {
 			// Run now's new pass is asked once, on the enable it rides with —
 			// which may follow the announcement of an account Run now finds

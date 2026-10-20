@@ -45,6 +45,15 @@ export const entraCatalog = {
     accountState_enabled: "Enabled",
     accountState_disabled: "Disabled",
     accountState_deleted: "Deleted",
+    accountAdopted: "Adopted — confirm",
+    confirmAdoption: "Confirm",
+    confirmAdoptionNamed: "Confirm {{upn}}",
+    confirmAdoptionTitle: "Confirm the adoption of {{upn}}?",
+    confirmAdoptionBody:
+      "Vantigo found {{upn}} in the tenant holding the person's employee number; it did not create it, and has written nothing to it. Confirming lets Vantigo manage it as its own: write the person's details to it, enable it and issue a Temporary Access Pass, and disable and delete it when the person leaves. Confirm only if the account is this person's.",
+    adoptionConfirmed: "Adoption confirmed",
+    adoptionConfirmedBody: "Vantigo manages the account from Staff's next accounts run.",
+    couldNotConfirm: "The adoption could not be confirmed",
     recentEvents: "Recent events",
     eventsFailed: "The events could not be loaded.",
     noEvents: "Nothing has happened yet.",
@@ -210,6 +219,8 @@ export const entraCatalog = {
     "refusal.credential_invalid": "The tenant refused every secret: add a valid one in step 2.",
     "refusal.tenant_unreachable": "The tenant did not answer. Try again in a moment.",
     "refusal.not_found": "It is gone: somebody else removed it.",
+    "refusal.adoption_confirmed":
+      "The account is Vantigo's already: its adoption was confirmed, or Vantigo created it.",
 
     "reason.credential_invalid":
       "The tenant refused the client secret: it is wrong, expired or deleted. Add a valid one.",
@@ -233,12 +244,16 @@ export const entraCatalog = {
     "action.entra.user.deleted": "An account was deleted",
     "action.entra.pass.issued": "A Temporary Access Pass was issued",
     "action.entra.pass.revealed": "A Temporary Access Pass was revealed",
+    "action.entra.account.adoption_confirmed": "An account's adoption was confirmed",
 
     "code.hire_date_not_written": "the hire date could not be written",
     "code.privileged": "the tenant refused a sensitive change",
     "code.pass_not_allowed": "the tenant refused the Temporary Access Pass",
     "code.licence_unavailable": "licence {{detail}} has no seat free",
     "code.manager_not_found": "the manager has no account in the tenant",
+    "code.pass_forbidden": "the tenant refused to issue a Temporary Access Pass to this account",
+    "code.adoption_unconfirmed":
+      "found in the tenant, not created: nothing is written to it until its adoption is confirmed",
   },
   nb: {
     entra: "Microsoft Entra ID",
@@ -284,6 +299,15 @@ export const entraCatalog = {
     accountState_enabled: "Aktivert",
     accountState_disabled: "Deaktivert",
     accountState_deleted: "Slettet",
+    accountAdopted: "Overtatt – bekreft",
+    confirmAdoption: "Bekreft",
+    confirmAdoptionNamed: "Bekreft {{upn}}",
+    confirmAdoptionTitle: "Bekrefte overtakelsen av {{upn}}?",
+    confirmAdoptionBody:
+      "Vantigo fant {{upn}} i leietakeren med personens ansattnummer; Vantigo opprettet den ikke og har ikke skrevet noe til den. Bekrefter du, forvalter Vantigo den som sin egen: skriver personens opplysninger til den, aktiverer den og utsteder et midlertidig tilgangspass, og deaktiverer og sletter den når personen slutter. Bekreft bare hvis kontoen er denne personens.",
+    adoptionConfirmed: "Overtakelsen er bekreftet",
+    adoptionConfirmedBody: "Vantigo forvalter kontoen fra Ansattes neste kontokjøring.",
+    couldNotConfirm: "Overtakelsen kunne ikke bekreftes",
     recentEvents: "Siste hendelser",
     eventsFailed: "Hendelsene kunne ikke lastes.",
     noEvents: "Ingenting har skjedd ennå.",
@@ -450,6 +474,8 @@ export const entraCatalog = {
     "refusal.credential_invalid": "Leietakeren avviste alle hemmelighetene: legg til en gyldig i steg 2.",
     "refusal.tenant_unreachable": "Leietakeren svarte ikke. Prøv igjen om litt.",
     "refusal.not_found": "Den er borte: noen andre har fjernet den.",
+    "refusal.adoption_confirmed":
+      "Kontoen er allerede Vantigos: overtakelsen er bekreftet, eller Vantigo opprettet den.",
 
     "reason.credential_invalid":
       "Leietakeren avviste klienthemmeligheten: den er feil, utløpt eller slettet. Legg til en gyldig.",
@@ -472,12 +498,16 @@ export const entraCatalog = {
     "action.entra.user.deleted": "En konto ble slettet",
     "action.entra.pass.issued": "Et midlertidig tilgangspass ble utstedt",
     "action.entra.pass.revealed": "Et midlertidig tilgangspass ble vist",
+    "action.entra.account.adoption_confirmed": "Overtakelsen av en konto ble bekreftet",
 
     "code.hire_date_not_written": "ansettelsesdatoen kunne ikke skrives",
     "code.privileged": "leietakeren avviste en sensitiv endring",
     "code.pass_not_allowed": "leietakeren avviste det midlertidige tilgangspasset",
     "code.licence_unavailable": "lisensen {{detail}} har ingen ledige seter",
     "code.manager_not_found": "lederen har ingen konto i leietakeren",
+    "code.pass_forbidden": "leietakeren nektet å utstede et midlertidig tilgangspass til denne kontoen",
+    "code.adoption_unconfirmed":
+      "funnet i leietakeren, ikke opprettet: ingenting skrives til den før overtakelsen er bekreftet",
   },
 } satisfies CatalogResources;
 

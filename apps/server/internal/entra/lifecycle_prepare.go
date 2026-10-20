@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/entra/store"
 )
 
@@ -19,13 +20,22 @@ import (
 // and a password nobody sees; and the mover's changed properties and
 // manager.
 
+// errConnectionMoved: the tenant or the client changed, or the last valid
+// secret was revoked, between a user's create and its row (recordCreated).
+// The user is left in the tenant disabled, unrecorded.
+var errConnectionMoved = errors.New("entra: the connection changed while the user was created")
+
 // Prepare finds the user whose employeeId is the spec's number, or creates
 // it disabled (contracts.IdentityProvisioner.Prepare).
 //
 //   - Two users hold the number: ErrExternalAmbiguous.
 //   - One: linked (created_by_us false, unless the module made it) and
 //     brought to the spec by the update path; one synchronised from
-//     on-premises is ErrExternalSyncedOnPremises.
+//     on-premises is ErrExternalSyncedOnPremises. A user the module did not
+//     make is adopted untrusted (plan reading 8): linked and answered as it
+//     is, adoption_unconfirmed reported and nothing written to it, until a
+//     holder of entra:manage confirms it; the next Prepare then brings it to
+//     the spec.
 //   - None (and the module's own row names no user the tenant still holds —
 //     the filter may lag a create by seconds): created, Created true.
 func (p *provisioner) Prepare(ctx context.Context, actor contracts.Actor, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
@@ -140,6 +150,9 @@ func (p *provisioner) link(ctx context.Context, s session, actor contracts.Actor
 	if err != nil {
 		return contracts.ExternalAccount{}, fmt.Errorf("entra: record the account: %w", err)
 	}
+	if !trusted(row) {
+		return p.unconfirmed(ctx, s, actor, actionUserPrepared, id, u, row, "found")
+	}
 	reported, changed, err := p.bringToSpec(ctx, s, id, u, spec)
 	if r, ok := asRefused(err); ok {
 		return contracts.ExternalAccount{}, p.refused(ctx, s, actor, actionUserPrepared, &id, u.UserPrincipalName, r)
@@ -168,7 +181,10 @@ func changedCodes(changed []string) []string {
 // suffix on a pattern's conflict, ErrExternalAddressTaken on the work
 // email's or past the last suffix), the mapped properties, the employee id,
 // a password from crypto/rand never stored or logged that the pass replaces,
-// then the manager.
+// then the manager. The create is made once (noRetry): when the tenant's
+// answer is lost — a 5xx, or no answer —, the user it may have made all the
+// same is read back (madeAnyway) and taken as this call's, so the next
+// Prepare does not find the module's own user and adopt it.
 func (p *provisioner) create(ctx context.Context, s session, actor contracts.Actor, spec contracts.ExternalSpec, number string) (contracts.ExternalAccount, error) {
 	addr, err := addressFor(spec, s.conn.UpnPattern, s.conn.UpnDomain, s.conn.VerifiedDomains)
 	if err != nil {
@@ -197,9 +213,15 @@ func (p *provisioner) create(ctx context.Context, s session, actor contracts.Act
 		if _, ok := body["displayName"]; !ok {
 			body["displayName"] = nickname
 		}
-		err = p.client.post(ctx, s.cred, "/users", body, &created)
+		err = p.client.post(ctx, s.cred, "/users", body, &created, noRetry)
 		switch {
 		case err == nil:
+		case errors.Is(err, errTenantUnreachable) && ctx.Err() == nil:
+			made, ok, readErr := p.madeAnyway(ctx, s, number, upn)
+			if readErr != nil || !ok {
+				return contracts.ExternalAccount{}, err
+			}
+			created = made
 		case isCode(err, "ObjectConflict"):
 			if addr.fromEmail {
 				return contracts.ExternalAccount{}, p.refused(ctx, s, actor, actionUserPrepared, nil, upn,
@@ -220,12 +242,8 @@ func (p *provisioner) create(ctx context.Context, s session, actor contracts.Act
 	if err := p.sensitiveSucceeded(ctx, s); err != nil {
 		return contracts.ExternalAccount{}, err
 	}
-	// The row at once, so a failure from here on finds the user next time.
-	if _, err := s.q.UpsertAccount(ctx, store.UpsertAccountParams{
-		ObjectID: id, EmployeeNumber: number, UserPrincipalName: created.UserPrincipalName, State: stateDisabled,
-		CreatedByUs: true, Reported: []string{}, Now: p.client.now(),
-	}); err != nil {
-		return contracts.ExternalAccount{}, fmt.Errorf("entra: record the account: %w", err)
+	if err := p.recordCreated(ctx, s, id, number, created.UserPrincipalName); err != nil {
+		return contracts.ExternalAccount{}, err
 	}
 	var reported []string
 	code, err := p.setManager(ctx, s, id, spec.ManagerExternalID)
@@ -246,8 +264,69 @@ func (p *provisioner) create(ctx context.Context, s session, actor contracts.Act
 	return out, nil
 }
 
+// madeAnyway reads back the user a create whose answer was lost may have
+// made: the one user the employee id's filter finds that holds upn — the
+// address this create asked for, so no one else's — disabled, as the
+// create made it. ok false when there is none such; the filter may lag a
+// create, and the user is then found by the next Prepare and adopted.
+func (p *provisioner) madeAnyway(ctx context.Context, s session, number, upn string) (graphUser, bool, error) {
+	found, err := p.findByNumber(ctx, s, number)
+	if err != nil {
+		return graphUser{}, false, err
+	}
+	if len(found) != 1 || !strings.EqualFold(found[0].UserPrincipalName, upn) || found[0].AccountEnabled || found[0].synced() {
+		return graphUser{}, false, nil
+	}
+	return found[0], true, nil
+}
+
+// recordCreated writes the row of the user the create made, at once, so a
+// failure from here on finds the user next time. It takes the connection's
+// share lock first (LockConnectionShare): a change of the tenant or the
+// revoke of the last valid secret, each under the row's update lock with
+// its CountAccounts check, then runs wholly before this transaction or
+// wholly after it. After, it counts this row. Before, this transaction sees
+// what it changed and records nothing — errConnectionMoved, answered as
+// ErrProviderUnavailable: the user stays in the tenant, disabled, in a
+// tenant or under a secret the module no longer works with. The lock itself
+// is not raced in a test (it would need two transactions interleaved at
+// will); the test commits the change between the create and this
+// transaction, the order the lock leaves to judge.
+func (p *provisioner) recordCreated(ctx context.Context, s session, id uuid.UUID, number, upn string) error {
+	now := p.client.now()
+	err := db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		conn, err := q.LockConnectionShare(ctx)
+		if err != nil {
+			return fmt.Errorf("entra: lock the connection: %w", err)
+		}
+		creds, err := q.ListCredentials(ctx)
+		if err != nil {
+			return fmt.Errorf("entra: read the secrets: %w", err)
+		}
+		if conn.TenantID == nil || *conn.TenantID != s.cred.tenantID || conn.ClientID == nil || *conn.ClientID != s.cred.clientID ||
+			len(usableCredentials(creds, now)) == 0 {
+			return errConnectionMoved
+		}
+		if _, err := q.UpsertAccount(ctx, store.UpsertAccountParams{
+			ObjectID: id, EmployeeNumber: number, UserPrincipalName: upn, State: stateDisabled,
+			CreatedByUs: true, Reported: []string{}, Now: now,
+		}); err != nil {
+			return fmt.Errorf("entra: record the account: %w", err)
+		}
+		return nil
+	})
+	if errors.Is(err, errConnectionMoved) {
+		p.client.logger.WarnContext(ctx, "entra: the connection changed while a user was created; the user is left disabled and unrecorded",
+			"object_id", id.String())
+		return fmt.Errorf("%w: %w", contracts.ErrProviderUnavailable, err)
+	}
+	return err
+}
+
 // Update writes the properties of the spec that differ and the manager —
 // never the employee id or the UPN (contracts.IdentityProvisioner.Update).
+// An unconfirmed adoption is answered as it is, nothing written.
 func (p *provisioner) Update(ctx context.Context, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
 	if !actor.Valid() {
 		return contracts.ExternalAccount{}, contracts.ErrInvalidActor
@@ -258,6 +337,9 @@ func (p *provisioner) Update(ctx context.Context, actor contracts.Actor, externa
 	}
 	if u.synced() {
 		return contracts.ExternalAccount{}, p.refused(ctx, s, actor, actionUserUpdated, &id, u.UserPrincipalName, syncedRefusal())
+	}
+	if !trusted(row) {
+		return p.unconfirmed(ctx, s, actor, actionUserUpdated, id, u, row)
 	}
 	reported, changed, err := p.bringToSpec(ctx, s, id, u, spec)
 	if r, ok := asRefused(err); ok {

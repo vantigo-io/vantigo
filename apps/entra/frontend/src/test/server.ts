@@ -82,6 +82,7 @@ export interface EntraServer {
 
 export interface EntraState {
   connection: EntraConnection;
+  accounts: EntraAccount[];
 }
 
 export type EntraStub = StubbedFetch & { state: EntraState };
@@ -95,10 +96,11 @@ const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
  * A fake of the module's API, kept as a connection row the writes change:
  * If-Match on both PUTs (412 `version_mismatch`), `connection_in_use` while
  * accounts exist, `credential_in_use` for the only valid secret, the test
- * written back, field errors in the `EntraProblem` shape.
+ * written back, field errors in the `EntraProblem` shape, and an adopted
+ * account's confirmation (404 unknown, 409 `adoption_confirmed`).
  */
 export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
-  const state: EntraState = { connection: server.connection ?? unconfigured() };
+  const state: EntraState = { connection: server.connection ?? unconfigured(), accounts: server.accounts ?? [] };
   let nextCredential = 100;
   const owner = server.owner ?? true;
   const session = { user: { ...TEST_SESSION.user, roles: owner ? ["user", "Owner"] : ["user"] } };
@@ -114,7 +116,20 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
     const c = state.connection;
     if (method === "GET" && path === "/api/v1/entra/connection") return jsonResponse(200, c);
     if (method === "GET" && path.startsWith("/api/v1/entra/events")) return jsonResponse(200, server.events ?? []);
-    if (method === "GET" && path === "/api/v1/entra/accounts") return jsonResponse(200, server.accounts ?? []);
+    if (method === "GET" && path === "/api/v1/entra/accounts") return jsonResponse(200, state.accounts);
+    const confirm = method === "POST" && path.match(/^\/api\/v1\/entra\/accounts\/([^/]+)\/confirm$/);
+    if (confirm) {
+      const target = state.accounts.find((one) => one.objectId === confirm[1]);
+      if (!target) return new Response(null, { status: 404 });
+      if (target.createdByUs || target.adoptionConfirmed) return entraProblem(409, "adoption_confirmed");
+      const confirmed = {
+        ...target,
+        adoptionConfirmed: true,
+        reported: target.reported.filter((code) => code !== "adoption_unconfirmed"),
+      };
+      state.accounts = state.accounts.map((one) => (one.objectId === confirmed.objectId ? confirmed : one));
+      return jsonResponse(200, confirmed);
+    }
     if (method === "GET" && path === "/api/v1/entra/connection/skus") {
       if (server.skus instanceof Response) return server.skus;
       return jsonResponse(200, server.skus ?? []);

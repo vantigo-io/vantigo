@@ -125,6 +125,80 @@ describe("EntraPage — the Status card", () => {
   });
 });
 
+describe("EntraPage — an adopted account", () => {
+  const adopted = {
+    objectId: "33333333-3333-3333-3333-333333333333",
+    employeeNumber: "E-4",
+    userPrincipalName: "kari@contoso.no",
+    state: "enabled" as const,
+    createdByUs: false,
+    adoptionConfirmed: false,
+    hasPass: false,
+    reported: ["adoption_unconfirmed"],
+    createdAt: "2026-10-19T08:00:00Z",
+  };
+  const created = {
+    ...adopted,
+    objectId: "44444444-4444-4444-4444-444444444444",
+    employeeNumber: "E-5",
+    userPrincipalName: "ola@contoso.no",
+    createdByUs: true,
+    reported: [],
+  };
+
+  it("asks to confirm a found account, naming it and what confirming allows, then confirms it", async () => {
+    const { fetchMock } = await openPage({ connection: connected(), accounts: [adopted, created] });
+    const table = await within(region("Status")).findByRole("table", { name: "The module's accounts" });
+    expect(within(table).getByText("Adopted — confirm")).toBeInTheDocument();
+    expect(
+      within(table).getByText(
+        "found in the tenant, not created: nothing is written to it until its adoption is confirmed",
+      ),
+    ).toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: "Confirm ola@contoso.no" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(table).getByRole("button", { name: "Confirm kari@contoso.no" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm the adoption of kari@contoso.no?" });
+    expect(
+      within(dialog).getByText(/enable it and issue a Temporary Access Pass, and disable and delete it/),
+    ).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() =>
+      expect(sentAll(fetchMock, "POST").map((call) => call.url)).toEqual([
+        "/api/v1/entra/accounts/33333333-3333-3333-3333-333333333333/confirm",
+      ]),
+    );
+    expect(await screen.findByText("Adoption confirmed")).toBeInTheDocument();
+    await waitFor(() => expect(within(table).queryByText("Adopted — confirm")).not.toBeInTheDocument());
+  });
+
+  it("says a refused confirmation in words", async () => {
+    await openPage({
+      connection: connected(),
+      accounts: [adopted],
+      handle: (method, path) =>
+        method === "POST" && path.endsWith("/confirm")
+          ? new Response(JSON.stringify({ title: "Adoption confirmed", status: 409, code: "adoption_confirmed" }), {
+              status: 409,
+              headers: { "Content-Type": "application/problem+json" },
+            })
+          : undefined,
+    });
+    const table = await within(region("Status")).findByRole("table", { name: "The module's accounts" });
+    await userEvent.click(within(table).getByRole("button", { name: "Confirm kari@contoso.no" }));
+    await userEvent.click(
+      within(await screen.findByRole("dialog", { name: "Confirm the adoption of kari@contoso.no?" })).getByRole(
+        "button",
+        { name: "Confirm" },
+      ),
+    );
+    expect(
+      await screen.findByText("The account is Vantigo's already: its adoption was confirmed, or Vantigo created it."),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("EntraPage — the secrets", () => {
   it("lists the secrets with their state and says the credential_in_use refusal in words", async () => {
     const { fetchMock } = await openPage({ connection: connected() });

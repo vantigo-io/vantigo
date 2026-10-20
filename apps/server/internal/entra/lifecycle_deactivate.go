@@ -47,7 +47,9 @@ const leaverGroupsAll = "all"
 // 23:00 as employeeLeaveDateTime, every direct licence removed, and the
 // groups (leaver_remove_groups). A step that fails leaves the rest to the
 // next call and is reported leaver_step_failed:<step>; the user is answered
-// disabled all the same.
+// disabled all the same. An unconfirmed adoption is answered as it is,
+// nothing written: the module never owned it, and a leaver's safety is not
+// its to give.
 func (p *provisioner) Deactivate(ctx context.Context, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
 	if !actor.Valid() {
 		return contracts.ExternalAccount{}, contracts.ErrInvalidActor
@@ -58,6 +60,9 @@ func (p *provisioner) Deactivate(ctx context.Context, actor contracts.Actor, ext
 	}
 	if u.synced() {
 		return contracts.ExternalAccount{}, p.refused(ctx, s, actor, actionUserDeactivated, &id, u.UserPrincipalName, syncedRefusal())
+	}
+	if !trusted(row) {
+		return p.unconfirmed(ctx, s, actor, actionUserDeactivated, id, u, row)
 	}
 	var done []string
 	if u.AccountEnabled {
@@ -247,7 +252,8 @@ func (p *provisioner) removeGroups(ctx context.Context, s session, id uuid.UUID)
 // Delete soft-deletes a disabled user (contracts.IdentityProvisioner.Delete):
 // ErrExternalEnabled while Graph says it is enabled; the row marked deleted
 // and kept for the events. A user the tenant no longer holds is deleted
-// already.
+// already. An unconfirmed adoption is refused (adoptionRefusal), nothing
+// written.
 func (p *provisioner) Delete(ctx context.Context, actor contracts.Actor, externalID string) error {
 	if !actor.Valid() {
 		return contracts.ErrInvalidActor
@@ -260,6 +266,8 @@ func (p *provisioner) Delete(ctx context.Context, actor contracts.Actor, externa
 		return err
 	}
 	switch {
+	case !trusted(row):
+		return p.refused(ctx, s, actor, actionUserDeleted, &id, u.UserPrincipalName, adoptionRefusal())
 	case u.AccountEnabled:
 		return p.refused(ctx, s, actor, actionUserDeleted, &id, u.UserPrincipalName, &refusedError{code: refusedEnabled, sentinel: contracts.ErrExternalEnabled})
 	case u.synced():

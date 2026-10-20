@@ -115,6 +115,50 @@ func TestConnection_AChangeForgetsTheTestAndNeedsConfirmationWhileAccountsExist(
 	}
 }
 
+// TestConnection_AConfirmedTenantChangeForgetsThePasses is review L2: the
+// 409 says the old tenant's accounts are no longer disabled or deleted by
+// Vantigo, and a confirmed change of the tenant forgets every pass not yet
+// revealed in its own transaction; a change of the client alone keeps them.
+func TestConnection_AConfirmedTenantChangeForgetsThePasses(t *testing.T) {
+	t.Parallel()
+	h, _ := newTenantHarness(t)
+	o := connected(t, h)
+	id := addAccount(t, h, "E-1", "kari.nordmann@nordlys.no")
+	h.Exec(t, `UPDATE entra.accounts SET pass_sealed = '\x01', pass_expires_at = $2 WHERE object_id = $1`, id, h.Now().Add(time.Hour))
+	passes := func() int {
+		return h.Count(t, `SELECT count(*) FROM entra.accounts WHERE pass_sealed IS NOT NULL OR pass_expires_at IS NOT NULL`)
+	}
+	otherTenant := "99999999-2222-4333-8444-555555555555"
+	otherClient := "11111111-2222-4333-8444-555555555555"
+
+	before := getConnection(t, o)
+	r := o.Do(http.MethodPut, connectionPath, map[string]any{"tenantId": otherTenant, "clientId": clientID}, ifMatch(before.Version))
+	if r.Status != http.StatusConflict || codeOf(t, r) != "connection_in_use" {
+		t.Fatalf("a change while accounts exist: %d %s", r.Status, r.Body)
+	}
+	if p := problemOf(t, r); p.Detail == nil || !strings.Contains(*p.Detail, "will no longer be disabled or deleted by Vantigo") {
+		t.Errorf("the 409's detail does not say what confirming costs: %+v", p.Detail)
+	}
+
+	r = o.Do(http.MethodPut, connectionPath, map[string]any{"tenantId": tenantID, "clientId": otherClient, "confirmChange": true}, ifMatch(before.Version))
+	if r.Status != http.StatusOK {
+		t.Fatalf("a confirmed change of the client: %d %s", r.Status, r.Body)
+	}
+	if n := passes(); n != 1 {
+		t.Errorf("a change of the client alone forgot the pass: %d left", n)
+	}
+	r = o.Do(http.MethodPut, connectionPath, map[string]any{"tenantId": otherTenant, "clientId": otherClient, "confirmChange": true}, ifMatch(before.Version+1))
+	if r.Status != http.StatusOK {
+		t.Fatalf("a confirmed change of the tenant: %d %s", r.Status, r.Body)
+	}
+	if n := passes(); n != 0 {
+		t.Errorf("a change of the tenant left %d passes", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.accounts`); n != 1 {
+		t.Errorf("the change deleted the account's row: %d left", n)
+	}
+}
+
 func TestConnection_TheTestReportsTheMissingPermissionsAndWritesTheDomains(t *testing.T) {
 	t.Parallel()
 	h, g := newTenantHarness(t)
@@ -325,6 +369,27 @@ func TestSkus_TheTenantsLicences(t *testing.T) {
 	}
 	if strings.Contains(string(r.Body), "fake was told") {
 		t.Error("Graph's words reached the answer")
+	}
+}
+
+// TestSkus_RateLimitedInABucketOfItsOwn is review L8: GET /connection/skus
+// reaches the tenant on every request, so it is limited to 30 a minute per
+// client address — entra-skus, not the Owner operations' bucket.
+func TestSkus_RateLimitedInABucketOfItsOwn(t *testing.T) {
+	t.Parallel()
+	h, _ := newTenantHarness(t)
+	o := connected(t, h)
+	m, _ := manager(t, h)
+	for i := 1; i <= 30; i++ {
+		if r := m.Do(http.MethodGet, skusPath, nil); r.Status != http.StatusOK {
+			t.Fatalf("GET /skus %d: %d %s", i, r.Status, r.Body)
+		}
+	}
+	if r := m.Do(http.MethodGet, skusPath, nil); r.Status != http.StatusTooManyRequests {
+		t.Errorf("GET /skus 31: %d, want 429", r.Status)
+	}
+	if result := testConnection(t, o); result.Status != gen.EntraConnectionTestStatusConnected {
+		t.Errorf("the Owner's test after the licences' limit: %+v, want its own bucket", result)
 	}
 }
 

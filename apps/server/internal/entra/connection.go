@@ -173,9 +173,12 @@ func (s *server) GetEntraConnection(ctx context.Context, _ gen.GetEntraConnectio
 // PutEntraConnection sets the tenant and the client (step 1), both GUIDs,
 // under If-Match. A change sends the status back to unconfigured and
 // forgets what the last test found; while the module keeps accounts it
-// needs confirmChange, and deletes nothing in the tenant either way. The
-// same pair again writes nothing. Audited entra.connection.changed with the
-// ids before and after. (PUT /api/v1/entra/connection)
+// needs confirmChange, and deletes nothing in the tenant either way. A
+// change of the tenant forgets, in the same transaction, every pass not yet
+// revealed: those are the old tenant's users', and nobody is to reveal one
+// after the module has let them go. The same pair again writes nothing.
+// Audited entra.connection.changed with the ids before and after.
+// (PUT /api/v1/entra/connection)
 func (s *server) PutEntraConnection(ctx context.Context, req gen.PutEntraConnectionRequestObject) (gen.PutEntraConnectionResponseObject, error) {
 	version, ok := parseVersion(req.Params.IfMatch)
 	if !ok {
@@ -229,6 +232,11 @@ func (s *server) PutEntraConnection(ctx context.Context, req gen.PutEntraConnect
 			})
 			if err != nil {
 				return fmt.Errorf("entra: set the tenant and the client: %w", err)
+			}
+			if conn.TenantID == nil || *conn.TenantID != tenant {
+				if err := q.ClearAllPasses(ctx, now); err != nil {
+					return fmt.Errorf("entra: forget the old tenant's passes: %w", err)
+				}
 			}
 			codes := []string{
 				"tenant_before:" + idOrNone(conn.TenantID), "tenant_after:" + tenant.String(),

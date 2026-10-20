@@ -16,6 +16,14 @@ SELECT * FROM entra.connection WHERE id = 1;
 -- check and the revoke are one step.
 SELECT * FROM entra.connection WHERE id = 1 FOR UPDATE;
 
+-- name: LockConnectionShare :one
+-- LockConnectionShare takes the row's share lock in the transaction that
+-- records a user Prepare created, so a change of the tenant or the revoke of
+-- the last secret (LockConnection, FOR UPDATE) is judged either before the
+-- row exists — and the transaction then sees what changed — or after it,
+-- when CountAccounts counts it.
+SELECT * FROM entra.connection WHERE id = 1 FOR SHARE;
+
 -- name: UpdateConnectionRegistration :one
 -- UpdateConnectionRegistration sets the tenant and the client (step 1) and
 -- forgets everything the last test found about the previous pair: the status

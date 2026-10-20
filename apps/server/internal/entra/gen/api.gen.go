@@ -240,9 +240,11 @@ func (e EntraSettingsRequestUpnPattern) Valid() bool {
 
 // EntraAccount One account the module keeps in the tenant (Entra design D11, D13): the user it found or created for a person Staff registers, by the directory's immutable object id. A deleted account stays, marked deleted, for the events' sake. The pass itself is never answered here; hasPass says one waits to be revealed on the person's Account tab in Staff.
 type EntraAccount struct {
-	CreatedAt time.Time `json:"createdAt"`
+	// AdoptionConfirmed True when a holder of entra:manage confirmed the adoption of a user the module found (POST /accounts/{objectId}/confirm). Until then the module writes nothing to that user and reports adoption_unconfirmed. False, and of no matter, for a user the module created.
+	AdoptionConfirmed bool      `json:"adoptionConfirmed"`
+	CreatedAt         time.Time `json:"createdAt"`
 
-	// CreatedByUs True when the module created the user; false when it found one already holding the employee number and linked it.
+	// CreatedByUs True when the module created the user; false when it found one already holding the employee number and linked it — an adopted account, untrusted until confirmed (adoptionConfirmed).
 	CreatedByUs bool `json:"createdByUs"`
 
 	// EmployeeNumber The employee number the user holds as employeeId, at most 16 characters.
@@ -257,7 +259,7 @@ type EntraAccount struct {
 	// ObjectId The user's object id in the tenant, immutable.
 	ObjectId openapi_types.UUID `json:"objectId"`
 
-	// Reported The codes of what the module could not act on at its last write — hire_date_not_written, privileged, pass_not_allowed, licence_unavailable:<part number>, manager_not_found — never the directory's words.
+	// Reported The codes of what the module could not act on at its last write — hire_date_not_written, privileged, pass_not_allowed, pass_forbidden, licence_unavailable:<part number>, manager_not_found, leaver_step_failed:<step>, adoption_unconfirmed — never the directory's words.
 	Reported          []string          `json:"reported"`
 	State             EntraAccountState `json:"state"`
 	UserPrincipalName string            `json:"userPrincipalName"`
@@ -395,7 +397,7 @@ type EntraCredentialRequestKind string
 
 // EntraEvent One write the module made, in the tenant or to its own connection — the module's own append-only trail. It carries the codes and the UPN the module made, never an address beyond it, a secret or a pass.
 type EntraEvent struct {
-	// Action entra.connection.changed, entra.connection.tested, entra.settings.changed, entra.credential.added, entra.credential.revoked, entra.user.prepared, entra.user.activated, entra.user.deactivated, entra.user.updated, entra.user.deleted, entra.pass.issued or entra.pass.revealed.
+	// Action entra.connection.changed, entra.connection.tested, entra.settings.changed, entra.credential.added, entra.credential.revoked, entra.user.prepared, entra.user.activated, entra.user.deactivated, entra.user.updated, entra.user.deleted, entra.pass.issued, entra.pass.revealed or entra.account.adoption_confirmed.
 	Action string `json:"action"`
 
 	// Actor Who acted — the user's id, or the system's name (system:staff-accounts).
@@ -413,7 +415,7 @@ type EntraEvent struct {
 	Upn *string `json:"upn,omitempty"`
 }
 
-// EntraProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// EntraProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type EntraProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -541,6 +543,9 @@ type ServerInterface interface {
 	// GetEntraAccounts The module's accounts
 	// (GET /api/v1/entra/accounts)
 	GetEntraAccounts(w http.ResponseWriter, r *http.Request)
+	// PostEntraAccountsByObjectIdConfirm Confirm an adopted account
+	// (POST /api/v1/entra/accounts/{objectId}/confirm)
+	PostEntraAccountsByObjectIdConfirm(w http.ResponseWriter, r *http.Request, objectId openapi_types.UUID)
 	// GetEntraConnection Get the connection
 	// (GET /api/v1/entra/connection)
 	GetEntraConnection(w http.ResponseWriter, r *http.Request)
@@ -581,6 +586,32 @@ func (siw *ServerInterfaceWrapper) GetEntraAccounts(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetEntraAccounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEntraAccountsByObjectIdConfirm operation middleware
+func (siw *ServerInterfaceWrapper) PostEntraAccountsByObjectIdConfirm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "objectId" -------------
+	var objectId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "objectId", r.PathValue("objectId"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "objectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEntraAccountsByObjectIdConfirm(w, r, objectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -916,6 +947,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/accounts", wrapper.GetEntraAccounts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/accounts/{objectId}/confirm", wrapper.PostEntraAccountsByObjectIdConfirm)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/connection", wrapper.GetEntraConnection)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/entra/connection", wrapper.PutEntraConnection)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/connection/credentials", wrapper.PostEntraConnectionCredentials)
@@ -973,6 +1005,78 @@ func (response GetEntraAccounts403JSONResponse) VisitGetEntraAccountsResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraAccountsByObjectIdConfirmRequestObject struct {
+	ObjectId openapi_types.UUID `json:"objectId"`
+}
+
+type PostEntraAccountsByObjectIdConfirmResponseObject interface {
+	VisitPostEntraAccountsByObjectIdConfirmResponse(w http.ResponseWriter) error
+}
+
+type PostEntraAccountsByObjectIdConfirm200JSONResponse EntraAccount
+
+func (response PostEntraAccountsByObjectIdConfirm200JSONResponse) VisitPostEntraAccountsByObjectIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraAccountsByObjectIdConfirm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEntraAccountsByObjectIdConfirm401JSONResponse) VisitPostEntraAccountsByObjectIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraAccountsByObjectIdConfirm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEntraAccountsByObjectIdConfirm403JSONResponse) VisitPostEntraAccountsByObjectIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraAccountsByObjectIdConfirm404Response struct {
+}
+
+func (response PostEntraAccountsByObjectIdConfirm404Response) VisitPostEntraAccountsByObjectIdConfirmResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEntraAccountsByObjectIdConfirm409ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response PostEntraAccountsByObjectIdConfirm409ApplicationProblemPlusJSONResponse) VisitPostEntraAccountsByObjectIdConfirmResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1455,6 +1559,30 @@ func (response GetEntraConnectionSkus403JSONResponse) VisitGetEntraConnectionSku
 	return err
 }
 
+type GetEntraConnectionSkus429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetEntraConnectionSkus429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetEntraConnectionSkus429ResponseHeaders
+}
+
+func (response GetEntraConnectionSkus429JSONResponse) VisitGetEntraConnectionSkusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEntraConnectionSkus503ApplicationProblemPlusJSONResponse EntraProblem
 
 func (response GetEntraConnectionSkus503ApplicationProblemPlusJSONResponse) VisitGetEntraConnectionSkusResponse(w http.ResponseWriter) error {
@@ -1611,6 +1739,9 @@ type StrictServerInterface interface {
 	// GetEntraAccounts The module's accounts
 	// (GET /api/v1/entra/accounts)
 	GetEntraAccounts(ctx context.Context, request GetEntraAccountsRequestObject) (GetEntraAccountsResponseObject, error)
+	// PostEntraAccountsByObjectIdConfirm Confirm an adopted account
+	// (POST /api/v1/entra/accounts/{objectId}/confirm)
+	PostEntraAccountsByObjectIdConfirm(ctx context.Context, request PostEntraAccountsByObjectIdConfirmRequestObject) (PostEntraAccountsByObjectIdConfirmResponseObject, error)
 	// GetEntraConnection Get the connection
 	// (GET /api/v1/entra/connection)
 	GetEntraConnection(ctx context.Context, request GetEntraConnectionRequestObject) (GetEntraConnectionResponseObject, error)
@@ -1693,6 +1824,32 @@ func (sh *strictHandler) GetEntraAccounts(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetEntraAccountsResponseObject); ok {
 		if err := validResponse.VisitGetEntraAccountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEntraAccountsByObjectIdConfirm operation middleware
+func (sh *strictHandler) PostEntraAccountsByObjectIdConfirm(w http.ResponseWriter, r *http.Request, objectId openapi_types.UUID) {
+	var request PostEntraAccountsByObjectIdConfirmRequestObject
+
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEntraAccountsByObjectIdConfirm(ctx, request.(PostEntraAccountsByObjectIdConfirmRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEntraAccountsByObjectIdConfirm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEntraAccountsByObjectIdConfirmResponseObject); ok {
+		if err := validResponse.VisitPostEntraAccountsByObjectIdConfirmResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

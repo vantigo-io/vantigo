@@ -111,6 +111,47 @@ func (q *Queries) LockConnection(ctx context.Context) (EntraConnection, error) {
 	return i, err
 }
 
+const lockConnectionShare = `-- name: LockConnectionShare :one
+SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id FROM entra.connection WHERE id = 1 FOR SHARE
+`
+
+// LockConnectionShare takes the row's share lock in the transaction that
+// records a user Prepare created, so a change of the tenant or the revoke of
+// the last secret (LockConnection, FOR UPDATE) is judged either before the
+// row exists — and the transaction then sees what changed — or after it,
+// when CountAccounts counts it.
+func (q *Queries) LockConnectionShare(ctx context.Context) (EntraConnection, error) {
+	row := q.db.QueryRow(ctx, lockConnectionShare)
+	var i EntraConnection
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.ClientID,
+		&i.UpnDomain,
+		&i.UpnPattern,
+		&i.DefaultUsageLocation,
+		&i.LeaverStripLicences,
+		&i.LeaverRemoveGroups,
+		&i.LeaverRevokeSessions,
+		&i.LeaverWriteLeaveDate,
+		&i.WriteHireDate,
+		&i.PassLifetimeMinutes,
+		&i.PassUsableOnce,
+		&i.PassDelivery,
+		&i.Status,
+		&i.StatusReason,
+		&i.PermissionsPresent,
+		&i.VerifiedDomains,
+		&i.OrganisationName,
+		&i.LastCheckedAt,
+		&i.SensitiveDeniedStreak,
+		&i.Version,
+		&i.UpdatedAt,
+		&i.UpdatedByUserID,
+	)
+	return i, err
+}
+
 const resetSensitiveDenied = `-- name: ResetSensitiveDenied :exec
 UPDATE entra.connection SET sensitive_denied_streak = 0
 WHERE id = 1 AND sensitive_denied_streak <> 0
