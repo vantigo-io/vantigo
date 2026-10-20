@@ -102,3 +102,22 @@ func TestModulesEnv_ListsAStubbedModuleAsEnabled(t *testing.T) {
 		t.Errorf("modulesEnv(projects; stubbed projects) = %q, want exactly %q", got, "customers,projects")
 	}
 }
+
+// TestModulesEnv_ListsStaffBesideEntra proves a harness composing entra lists
+// staff as enabled: config.go refuses "entra" without "staff", and entra's
+// own tests compose the provider without Staff, so without it config.Load
+// would refuse the harness before Compose ever ran. Staff is listed, not
+// mounted: enabledModules filters only the modules actually composed.
+func TestModulesEnv_ListsStaffBesideEntra(t *testing.T) {
+	t.Parallel()
+
+	if got := modulesEnv([]module.Module{{Name: "entra"}}); got != "customers,entra,staff" {
+		t.Errorf("modulesEnv(entra) = %q, want exactly %q", got, "customers,entra,staff")
+	}
+	if got := modulesEnv([]module.Module{{Name: "staff"}, {Name: "entra"}}); got != "customers,entra,staff" {
+		t.Errorf("modulesEnv(staff, entra) = %q, want exactly %q", got, "customers,entra,staff")
+	}
+	if got := modulesEnv([]module.Module{{Name: "staff"}}); got != "customers,staff" {
+		t.Errorf("modulesEnv(staff) = %q, want exactly %q (entra is never added)", got, "customers,staff")
+	}
+}

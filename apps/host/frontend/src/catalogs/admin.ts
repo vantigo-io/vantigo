@@ -417,6 +417,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.calendarViewColleagues",
     descriptionKey: "admin.permission.calendarViewColleaguesDescription",
   },
+  "entra:manage": {
+    moduleKey: "admin.permission.module.entra",
+    categoryKey: "admin.permission.category.administration",
+    displayNameKey: "admin.permission.entraManage",
+    descriptionKey: "admin.permission.entraManageDescription",
+  },
 } as const;
 
 export const getHostPermissionTranslation = (permissionKey: string) =>
@@ -611,6 +617,7 @@ const en = {
   "admin.permission.module.expenses": "Expenses",
   "admin.permission.module.invoices": "Invoices",
   "admin.permission.module.calendar": "Calendar",
+  "admin.permission.module.entra": "Microsoft Entra ID",
   "admin.permission.module.staff": "Staff",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
@@ -793,6 +800,9 @@ const en = {
   "admin.permission.calendarViewColleagues": "See colleagues' calendars",
   "admin.permission.calendarViewColleaguesDescription":
     "See a colleague's appointments as busy or free, with the title when it is shared.",
+  "admin.permission.entraManage": "Manage Microsoft Entra ID",
+  "admin.permission.entraManageDescription":
+    "See the Microsoft Entra ID connection's status, accounts and events, and set the account rules: the address pattern, the usage location, what a leaver loses and the Temporary Access Pass.",
   "admin.accountExists": "An account already exists for this email address.",
   "admin.filterUsers": "Filter users by {{label}}",
   "admin.searchUsers": "Search users",
@@ -1152,6 +1162,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.expenses": "Utlegg",
   "admin.permission.module.invoices": "Fakturaer",
   "admin.permission.module.calendar": "Kalender",
+  "admin.permission.module.entra": "Microsoft Entra ID",
   "admin.permission.module.staff": "Ansatte",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
@@ -1337,6 +1348,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.calendarViewColleagues": "Se kollegers kalendere",
   "admin.permission.calendarViewColleaguesDescription":
     "Se en kollegas avtaler som opptatt eller ledig, med tittelen når den er delt.",
+  "admin.permission.entraManage": "Administrere Microsoft Entra ID",
+  "admin.permission.entraManageDescription":
+    "Se status, kontoer og hendelser for tilkoblingen til Microsoft Entra ID, og angi kontoreglene: adressemønsteret, bruksstedet, hva en som slutter mister, og det midlertidige tilgangspasset.",
   "admin.accountExists": "Det finnes allerede en konto for denne e-postadressen.",
   "admin.filterUsers": "Filtrer brukere etter {{label}}",
   "admin.searchUsers": "Søk etter brukere",

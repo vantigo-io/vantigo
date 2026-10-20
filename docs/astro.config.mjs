@@ -23,6 +23,7 @@ const contracts = [
   "invoices",
   "staff",
   "calendar",
+  "entra",
 ];
 
 /**

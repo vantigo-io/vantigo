@@ -13,6 +13,7 @@ const allModules: ModuleKey[] = [
   "communications",
   "customers",
   "energy",
+  "entra",
   "expenses",
   "products",
   "projects",

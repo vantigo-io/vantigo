@@ -17,6 +17,7 @@ import { Route as CommunicationsRouteImport } from './routes/communications'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as EnergyRouteImport } from './routes/energy'
+import { Route as EntraRouteImport } from './routes/entra'
 import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as InvoicesRouteImport } from './routes/invoices'
@@ -44,6 +45,7 @@ import { Route as CustomersIndexRouteImport } from './routes/customers/index'
 import { Route as CustomersCustomerIdRouteImport } from './routes/customers/$customerId'
 import { Route as CustomersFollowUpsRouteImport } from './routes/customers/follow-ups'
 import { Route as EnergyIndexRouteImport } from './routes/energy/index'
+import { Route as EntraIndexRouteImport } from './routes/entra/index'
 import { Route as ExpensesIndexRouteImport } from './routes/expenses/index'
 import { Route as ExpensesApprovalsRouteImport } from './routes/expenses/approvals'
 import { Route as ExpensesReimbursementsRouteImport } from './routes/expenses/reimbursements'
@@ -147,6 +149,11 @@ const DashboardRoute = DashboardRouteImport.update({
 const EnergyRoute = EnergyRouteImport.update({
   id: '/energy',
   path: '/energy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EntraRoute = EntraRouteImport.update({
+  id: '/entra',
+  path: '/entra',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExpensesRoute = ExpensesRouteImport.update({
@@ -284,6 +291,11 @@ const EnergyIndexRoute = EnergyIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => EnergyRoute,
+} as any)
+const EntraIndexRoute = EntraIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => EntraRoute,
 } as any)
 const ExpensesIndexRoute = ExpensesIndexRouteImport.update({
   id: '/',
@@ -630,6 +642,7 @@ export interface FileRoutesByFullPath {
   '/customers': typeof CustomersRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/energy': typeof EnergyRouteWithChildren
+  '/entra': typeof EntraRouteWithChildren
   '/expenses': typeof ExpensesRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/invoices': typeof InvoicesRouteWithChildren
@@ -685,6 +698,7 @@ export interface FileRoutesByFullPath {
   '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
+  '/entra/': typeof EntraIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
   '/products/': typeof ProductsIndexRoute
@@ -771,6 +785,7 @@ export interface FileRoutesByTo {
   '/communications': typeof CommunicationsIndexRoute
   '/customers': typeof CustomersIndexRoute
   '/energy': typeof EnergyIndexRoute
+  '/entra': typeof EntraIndexRoute
   '/expenses': typeof ExpensesIndexRoute
   '/invoices': typeof InvoicesIndexRoute
   '/products': typeof ProductsIndexRoute
@@ -818,6 +833,7 @@ export interface FileRoutesById {
   '/customers': typeof CustomersRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/energy': typeof EnergyRouteWithChildren
+  '/entra': typeof EntraRouteWithChildren
   '/expenses': typeof ExpensesRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/invoices': typeof InvoicesRouteWithChildren
@@ -873,6 +889,7 @@ export interface FileRoutesById {
   '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
+  '/entra/': typeof EntraIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
   '/products/': typeof ProductsIndexRoute
@@ -921,6 +938,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/dashboard'
     | '/energy'
+    | '/entra'
     | '/expenses'
     | '/forgot-password'
     | '/invoices'
@@ -976,6 +994,7 @@ export interface FileRouteTypes {
     | '/communications/'
     | '/customers/'
     | '/energy/'
+    | '/entra/'
     | '/expenses/'
     | '/invoices/'
     | '/products/'
@@ -1062,6 +1081,7 @@ export interface FileRouteTypes {
     | '/communications'
     | '/customers'
     | '/energy'
+    | '/entra'
     | '/expenses'
     | '/invoices'
     | '/products'
@@ -1108,6 +1128,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/dashboard'
     | '/energy'
+    | '/entra'
     | '/expenses'
     | '/forgot-password'
     | '/invoices'
@@ -1163,6 +1184,7 @@ export interface FileRouteTypes {
     | '/communications/'
     | '/customers/'
     | '/energy/'
+    | '/entra/'
     | '/expenses/'
     | '/invoices/'
     | '/products/'
@@ -1210,6 +1232,7 @@ export interface RootRouteChildren {
   CustomersRoute: typeof CustomersRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   EnergyRoute: typeof EnergyRouteWithChildren
+  EntraRoute: typeof EntraRouteWithChildren
   ExpensesRoute: typeof ExpensesRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   InvoicesRoute: typeof InvoicesRouteWithChildren
@@ -1285,6 +1308,13 @@ declare module '@tanstack/react-router' {
       path: '/energy'
       fullPath: '/energy'
       preLoaderRoute: typeof EnergyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/entra': {
+      id: '/entra'
+      path: '/entra'
+      fullPath: '/entra'
+      preLoaderRoute: typeof EntraRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/expenses': {
@@ -1475,6 +1505,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/energy/'
       preLoaderRoute: typeof EnergyIndexRouteImport
       parentRoute: typeof EnergyRoute
+    }
+    '/entra/': {
+      id: '/entra/'
+      path: '/'
+      fullPath: '/entra/'
+      preLoaderRoute: typeof EntraIndexRouteImport
+      parentRoute: typeof EntraRoute
     }
     '/expenses/': {
       id: '/expenses/'
@@ -2031,6 +2068,16 @@ const EnergyRouteChildren: EnergyRouteChildren = {
 const EnergyRouteWithChildren =
   EnergyRoute._addFileChildren(EnergyRouteChildren)
 
+interface EntraRouteChildren {
+  EntraIndexRoute: typeof EntraIndexRoute
+}
+
+const EntraRouteChildren: EntraRouteChildren = {
+  EntraIndexRoute: EntraIndexRoute,
+}
+
+const EntraRouteWithChildren = EntraRoute._addFileChildren(EntraRouteChildren)
+
 interface ExpensesRouteChildren {
   ExpensesApprovalsRoute: typeof ExpensesApprovalsRoute
   ExpensesReimbursementsRoute: typeof ExpensesReimbursementsRoute
@@ -2227,6 +2274,7 @@ const rootRouteChildren: RootRouteChildren = {
   CustomersRoute: CustomersRouteWithChildren,
   DashboardRoute: DashboardRoute,
   EnergyRoute: EnergyRouteWithChildren,
+  EntraRoute: EntraRouteWithChildren,
   ExpensesRoute: ExpensesRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
   InvoicesRoute: InvoicesRouteWithChildren,

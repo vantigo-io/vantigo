@@ -42,6 +42,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/docs"
 	"github.com/vantigo-io/vantigo/server/internal/energy"
+	"github.com/vantigo-io/vantigo/server/internal/entra"
 	"github.com/vantigo-io/vantigo/server/internal/expenses"
 	"github.com/vantigo-io/vantigo/server/internal/health"
 	"github.com/vantigo-io/vantigo/server/internal/identity"
@@ -300,6 +301,7 @@ func businessModules(access *identity.Access) []module.Module {
 		invoices.Module(),
 		staff.Module(),
 		calendar.Module(),
+		entra.Module(),
 	}
 }
 

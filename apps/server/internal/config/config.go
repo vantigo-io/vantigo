@@ -1569,8 +1569,11 @@ var defaultModules = knownModules
 // enabling any of them without customers is its own problem, naming both.
 // time depends on projects the same way (it reads contracts.ProjectDirectory,
 // which only projects provides), and invoices on customers (its buyer comes
-// from contracts.CustomerDirectory). Identity is always mounted and is never
-// listed here.
+// from contracts.CustomerDirectory). entra depends on staff: it is
+// contracts.IdentityProvisioner's provider, and Staff's accounts worker is
+// the only caller of the slot, so entra without staff would hold a tenant's
+// credential that nothing ever uses (Entra design D11). Identity is always
+// mounted and is never listed here.
 func modules(p *problems, env map[string]string) []string {
 	v := env["MODULES"]
 	if v == "" {
@@ -1604,6 +1607,9 @@ func modules(p *problems, env map[string]string) []string {
 	}
 	if slices.Contains(out, "invoices") && !slices.Contains(out, "customers") {
 		p.add("MODULES", "invoices requires customers")
+	}
+	if slices.Contains(out, "entra") && !slices.Contains(out, "staff") {
+		p.add("MODULES", "entra requires staff")
 	}
 
 	return out

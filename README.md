@@ -38,17 +38,19 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 
 ## Modules
 
-| Module             | Description                                                          | Status            |
-| ------------------ | -------------------------------------------------------------------- | ----------------- |
-| **Customers**      | Manage your customers and their legal identities across countries.   | 🚧 In development |
-| **Communications** | Send and archive business email across shared mailboxes.             | 🚧 In development |
-| **Products**       | The catalog of goods and services the company sells, with prices.    | 🚧 In development |
-| **Energy**         | Metering points, meters, supply periods and consumption.             | 🚧 In development |
-| **Projects**       | Projects per customer, the people on them and their billing rules.   | 🚧 In development |
-| **Time**           | Hours on projects, with rates, weekly submission and approval.       | 🚧 In development |
-| **Expenses**       | Outlays and mileage, receipts, approval, reimbursement and invoicing. | 🚧 In development |
-| **Invoices**       | Invoices and credit notes, payments, reminders and EHF delivery.      | 🚧 In development |
-| **Staff**          | The company's people, their employments and its structure.           | 🚧 In development |
+| Module                 | Description                                                           | Status           |
+| ---------------------- | --------------------------------------------------------------------- | ---------------- |
+| **Customers**          | Manage your customers and their legal identities across countries.    | 🚧 In development |
+| **Communications**     | Send and archive business email across shared mailboxes.              | 🚧 In development |
+| **Products**           | The catalog of goods and services the company sells, with prices.     | 🚧 In development |
+| **Energy**             | Metering points, meters, supply periods and consumption.              | 🚧 In development |
+| **Projects**           | Projects per customer, the people on them and their billing rules.    | 🚧 In development |
+| **Time**               | Hours on projects, with rates, weekly submission and approval.        | 🚧 In development |
+| **Expenses**           | Outlays and mileage, receipts, approval, reimbursement and invoicing. | 🚧 In development |
+| **Invoices**           | Invoices and credit notes, payments, reminders and EHF delivery.      | 🚧 In development |
+| **Staff**              | The company's people, their employments and its structure.            | 🚧 In development |
+| **Calendar**           | One calendar per person: appointments and what the other apps hold.   | 🚧 In development |
+| **Microsoft Entra ID** | The accounts of Staff's people in your Entra tenant, kept in step.    | 🚧 In development |
 
 Identity — accounts, sign-in, MFA, RBAC, OIDC and SCIM — is always part of the
 application and is never listed as an optional module. Which business modules a
@@ -77,8 +79,8 @@ docker compose up -d
 
 Compose starts PostgreSQL, applies the database migrations as a one-shot `migrate`
 job, and then brings up the single Vantigo application on <http://localhost:8080>.
-Customers, Communications, Products, Energy, Projects, Time, Expenses, Invoices
-and Staff are modules in that one application.
+Customers, Communications, Products, Energy, Projects, Time, Expenses, Invoices,
+Staff, Calendar and Microsoft Entra ID are modules in that one application.
 
 The stack runs outside development, so `vantigo.env` must carry `APP_SECRET` before
 the first start — at least 32 bytes of key material, generated with
@@ -115,6 +117,8 @@ vantigo/
 │   │       ├── expenses/            # Expenses vertical slice
 │   │       ├── invoices/            # Invoices vertical slice (the sales document)
 │   │       ├── staff/               # Staff vertical slice (the workforce register)
+│   │       ├── calendar/            # Calendar vertical slice
+│   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── db/                  # Pool and the embedded goose migrations
 │   │       └── web/                 # The embedded SPA
@@ -127,7 +131,9 @@ vantigo/
 │   ├── time/frontend/               # @vantigo/time-ui
 │   ├── expenses/frontend/           # @vantigo/expenses-ui
 │   ├── invoices/frontend/           # @vantigo/invoices-ui
-│   └── staff/frontend/              # @vantigo/staff-ui
+│   ├── staff/frontend/              # @vantigo/staff-ui
+│   ├── calendar/frontend/           # @vantigo/calendar-ui
+│   └── entra/frontend/              # @vantigo/entra-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared shell, theme, branding
 │   └── frontend-api-client/         # @vantigo/frontend-api-client — generated types and client

@@ -132,6 +132,8 @@ vantigo/
 │   │       ├── expenses/            # Expenses vertical slice
 │   │       ├── invoices/            # Invoices vertical slice (the sales document)
 │   │       ├── staff/               # Staff vertical slice (the workforce register)
+│   │       ├── calendar/            # Calendar vertical slice
+│   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── contracts/           # Cross-module interfaces, permissions, access rules
 │   │       ├── config/              # The environment reference: one struct, one validation pass
@@ -152,7 +154,9 @@ vantigo/
 │   ├── time/frontend/               # @vantigo/time-ui
 │   ├── expenses/frontend/           # @vantigo/expenses-ui
 │   ├── invoices/frontend/           # @vantigo/invoices-ui
-│   └── staff/frontend/              # @vantigo/staff-ui
+│   ├── staff/frontend/              # @vantigo/staff-ui
+│   ├── calendar/frontend/           # @vantigo/calendar-ui
+│   └── entra/frontend/              # @vantigo/entra-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared app shell, theme, branding
 │   └── frontend-api-client/         # @vantigo/frontend-api-client — generated types and client
@@ -212,7 +216,8 @@ own deployable without a rewrite.
 ### Database
 
 One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
-`energy`, `communications`, `projects`, `time`, `expenses`, `invoices` and `staff`. Schemas are hard boundaries:
+`energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`,
+`calendar` and `entra`. Schemas are hard boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
@@ -299,7 +304,7 @@ Navigation — *one pattern per level*, so every page reads the same way:
 - **Versioned APIs** — Identity lives under `/api/v1/identity`; business modules use
   `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
   `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
-  `/api/v1/invoices` and `/api/v1/staff`.
+  `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/calendar` and `/api/v1/entra`.
 - **In-process contracts** — module collaboration uses `internal/contracts`, not
   service-to-service API keys.
 - **Form-friendly errors** — validation errors use camelCase JSON field paths.
@@ -314,7 +319,8 @@ All endpoints are versioned by URL segment. Each module's own contract lives in
 enabled modules at `GET /api/openapi.json` (session required). Module prefixes are
 `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
 `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
-`/api/v1/invoices` and `/api/v1/staff`. Every other `/api` path answers the catch-all 404 problem.
+`/api/v1/invoices`, `/api/v1/staff`, `/api/v1/calendar` and `/api/v1/entra`. Every other
+`/api` path answers the catch-all 404 problem.
 
 Errors are RFC 7807 problem responses written by `internal/httpx`; validation errors
 carry keys matching the JSON field path:
@@ -485,9 +491,9 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products, energy, communications, projects, time, expenses, invoices and staff
+### Customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar and entra
 
-Nine business modules mount on that platform, each serving its own contract and
+Eleven business modules mount on that platform, each serving its own contract and
 owning its own schema:
 
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
@@ -540,10 +546,20 @@ owning its own schema:
   `MODULES=staff` alone is valid — reading users through
   `contracts.UserDirectory` and sending its one mail through the SMTP seam. See
   [`docs/src/content/docs/en/reference/staff.md`](docs/src/content/docs/en/reference/staff.md).
+- `internal/calendar` → `/api/v1/calendar/*` from `openapi/calendar.yaml`: one
+  calendar per person — the appointments it owns beside what every enabled module
+  projects onto it through `contracts.CalendarSource`, invitations, the feed and the
+  subscriptions. It depends on **nobody but identity**. See
+  [`docs/src/content/docs/en/reference/calendar.md`](docs/src/content/docs/en/reference/calendar.md).
+- `internal/entra` → `/api/v1/entra/*` from `openapi/entra.yaml`: Microsoft Entra ID
+  as the provider of `contracts.IdentityProvisioner` — the connection to a tenant,
+  its client secrets and the account rules, and the users Staff's decisions create,
+  enable, disable and delete there through Microsoft Graph. Staff's accounts worker
+  is its only caller, so `entra` **requires `staff`**.
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
-`customers,products,energy,communications,projects,time,expenses,invoices,staff` — every module
+`customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra` — every module
 this binary can mount. Identity is always mounted and is never
 listed. A name the binary does not know fails
 startup, naming the name and the known set. `energy`, `communications` and
@@ -551,8 +567,8 @@ startup, naming the name and the known set. `energy`, `communications` and
 them without `customers` fails startup naming both; `time` reads projects through
 `contracts.ProjectDirectory`, so `time` without `projects` fails the same way, and
 `invoices` reads its buyer through `contracts.CustomerDirectory`, so `invoices`
-without `customers` fails too.
-`expenses` and `staff` have no such dependency check — each starts with or
+without `customers` fails too, and `entra` without `staff` fails the same way.
+`expenses`, `staff` and `calendar` have no such dependency check — each starts with or
 without any other module. A disabled module
 contributes no route, no permission and no contract path, and its paths answer
 the `/api` catch-all 404 — but every schema is migrated regardless, so enabling
