@@ -788,7 +788,7 @@ says *Saved for Microsoft Entra ID; the group follows at the accounts worker's n
 
 The card's badge then says where the group stands: *Waiting* until it is sent, *Found
 in Microsoft Entra ID and awaiting confirmation there*, *In sync since …* with *Staff's
-in Microsoft Entra ID too*, *Failed*, *Kept, renamed* or *Deleted*. When the directory
+in Microsoft Entra ID too*, *Failed*, *Kept, renamed* or *Let go*. When the directory
 refused a setting — a type or a mail nickname changed after the group was made, a team
 with no person among the owners — the card says *Failed:* and why beside that setting;
 a refusal of the group itself — *the directory holds a group by this key that Staff may
@@ -813,23 +813,25 @@ Try again later.*
 
 **Turning the switch off** asks *Turn off Microsoft Entra ID for …?* and says what
 happens, by **Delete an external account (days after the end)** under
-[Accounts](#accounts): *The group will be deleted in Microsoft Entra ID after N days.*,
+[Accounts](#accounts): *The group will be let go in Microsoft Entra ID after N days —
+deleted, or emptied and kept, as the directory's rules say.*,
 or, when that is empty, *The group will be kept in Microsoft Entra ID, renamed “…
 (archived)”.* **Turn off** confirms, and the page says *Microsoft Entra ID is off for
 the group*. The settings are kept. A directory you turned on but never saved for is
 just turned off again, without asking.
 
-**Deleted in Microsoft Entra ID** means a Microsoft 365 group Vantigo made, which the
-tenant can restore for thirty days. A security group Vantigo made is never deleted there,
+**Let go in Microsoft Entra ID** means deleted for a Microsoft 365 group Vantigo made,
+which the tenant can restore for thirty days. A security group Vantigo made is never deleted there,
 since Microsoft cannot restore one: when the days have passed, its people are removed
 from it, it is renamed “… (archived)” and kept. A group Vantigo found rather than made
-is left in Microsoft Entra ID as it is. The card says *Deleted* in each case; the
+is left in Microsoft Entra ID as it is. The card says *Let go* in each case; the
 [administration guide](/en/admin/entra/#staffs-groups-in-the-tenant) has the
 details.
 
 **Archive** asks *Archive …?* — *The group keeps its members and becomes read-only. In
-each directory it is deleted after the days Staff's settings say, or renamed
-“… (archived)” and kept when they say never.* — and does that for every directory. The
+each directory it is let go after the days Staff's settings say — deleted, or emptied
+and kept, as the directory's rules say — or renamed “… (archived)” and kept when they
+say never.* — and does that for every directory. The
 page then says *The group is archived: it keeps its members as they stood and can no
 longer be changed.*, shows the owners as a list, and offers no **Edit**, **Archive**,
 **Save** or switch. Nothing in Staff is deleted.

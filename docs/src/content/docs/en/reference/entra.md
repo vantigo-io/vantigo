@@ -884,9 +884,10 @@ group's row holds is `ErrGroupNotManageable` and nothing is recorded — `Insert
 never re-points another Staff group's row.
 
 **With the row of an adopted group nobody has confirmed**, the call is
-`ErrGroupUnconfirmed` before anything else is judged, nothing written, and recorded as
-`entra.group.updated` with `refused:adoption_unconfirmed` — at every call, so the trail
-shows one at each of Staff's polls until the group is confirmed. **With any other
+`ErrGroupUnconfirmed` before anything else is judged, nothing written — no row, no
+event: the refusal is recorded once, on the adoption (`entra.group.adopted` with
+`refused:adoption_unconfirmed`), not at each of Staff's polls until the group is
+confirmed. **With any other
 row**, a `type` other than the row's, or a `mailNickname` other than the row's, is
 `GroupTraitError{…, trait_immutable}`, and nothing is written. The module reads the
 group (`GET /groups/{id}`): **a group gone from the tenant** — a 404, deleted by
@@ -916,8 +917,9 @@ adopted on its nickname alone would let HR take over any group in the tenant the
 may write — its name, its owners, its members and, through Staff's archive, its
 existence. An adopted group is therefore untrusted, as an [adopted
 account](#adopted-accounts) is (plan reading 11): until it is confirmed, `EnsureGroup`
-and `SetMembers` answer `ErrGroupUnconfirmed` and write nothing, each recording
-`refused:adoption_unconfirmed` under its action, and Staff's section waits `pending`
+and `SetMembers` answer `ErrGroupUnconfirmed` and write nothing — the refusal recorded
+once, on the adoption, as `entra.group.adopted` with `refused:adoption_unconfirmed` —
+and Staff's section waits `pending`
 with `group_unconfirmed`, asked again at every poll with no attempt counted ([the
 sync](/en/reference/staff/#the-sync)).
 
@@ -963,8 +965,8 @@ team.
 
 Reconciles the group's members to exactly the accounts Staff names. A group the module
 keeps no row for, or one marked deleted or retired, is `ErrGroupNotManageable`; an
-adopted group nobody has confirmed is `ErrGroupUnconfirmed`, nothing read or written,
-recorded under `entra.group.members_set` with `refused:adoption_unconfirmed`; an id
+adopted group nobody has confirmed is `ErrGroupUnconfirmed`, nothing read or written
+and no event (the refusal was recorded once, on the adoption); an id
 that is not a GUID is a failure `not_found`. It reads the group: one gone from the tenant (a 404)
 has its row marked `deleted` and is `ErrGroupNotManageable`; one that became
 role-assignable or Exchange's is refused `group_not_manageable`; **one that became

@@ -219,12 +219,14 @@ meanwhile.
 1. In the **Groups** table, find the group reading *Adopted — confirm*.
 2. Check in the portal that it is the group meant — its name, its owners, its members.
 3. Choose **Confirm** beside it, then **Confirm** in *Confirm the adoption of …?*, which
-   says what follows.
+   says what follows: *Confirming lets Vantigo manage it for Staff. Its first write makes
+   the group's owners exactly Staff's owners and the application — the owners it has now
+   are removed — and writes Staff's name, description and visibility to it; Vantigo then
+   makes its members Staff's, removing everyone else. Vantigo never deletes a group it did
+   not create.*
 
 The page says *Adoption confirmed* — *Vantigo manages the group from Staff's next
-accounts run.* Vantigo then writes Staff's name and description to the group, makes its
-owners Staff's and its members Staff's, removing everyone else. It never deletes a
-group it did not create. Confirm only a group you have checked.
+accounts run.* Confirm only a group you have checked.
 
 ## After the setup
 

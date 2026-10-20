@@ -370,8 +370,8 @@ func TestEnsureGroup_RefusesAGroupItMayNotWrite(t *testing.T) {
 // A group found holding the nickname is adopted untrusted (the review's
 // HIGH 1): its row recorded, nothing written to the tenant — no name, no
 // owner, no member — and every write answers ErrGroupUnconfirmed until a
-// holder of entra:manage confirms it; then EnsureGroup does what adoption
-// did. The module never deletes a group it did not make.
+// holder of entra:manage confirms it, the refusal recorded once, on the
+// adoption; then EnsureGroup does what adoption did. The module never deletes a group it did not make.
 func TestEnsureGroup_AnAdoptedGroupIsUntrustedUntilConfirmed(t *testing.T) {
 	t.Parallel()
 	l := newLifecycle(t)
@@ -391,16 +391,26 @@ func TestEnsureGroup_AnAdoptedGroupIsUntrustedUntilConfirmed(t *testing.T) {
 	if ev := l.events(t, "entra.group.adopted"); len(ev) != 1 || !slices.Equal(ev[0], []string{"type:security", "refused:adoption_unconfirmed"}) {
 		t.Errorf("the adopted event: %v", ev)
 	}
+	adoptedAt := modtest.One[time.Time](t, l.h.Harness, `SELECT updated_at FROM entra.groups WHERE object_id = $1::uuid`, found.ID)
+	l.h.Advance(time.Minute)
 	if _, err := l.p.EnsureGroup(ctx, staffActor, groupSpec(security(), kari, ola)); !errors.Is(err, contracts.ErrGroupUnconfirmed) {
 		t.Errorf("EnsureGroup again: %v, want ErrGroupUnconfirmed", err)
 	}
 	if _, err := l.p.SetMembers(ctx, staffActor, "17", []string{ola}); !errors.Is(err, contracts.ErrGroupUnconfirmed) {
 		t.Errorf("SetMembers of an unconfirmed group: %v, want ErrGroupUnconfirmed", err)
 	}
+	// The refusal is recorded once, on the adoption: Staff's worker calls at
+	// every poll, and a refusal per call would fill the trail at that rate.
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE 'refused:adoption_unconfirmed' = ANY(codes)`); n != 1 {
+		t.Errorf("%d refused:adoption_unconfirmed events across three calls, want 1 (the adoption's)", n)
+	}
 	for _, action := range []string{"entra.group.updated", "entra.group.members_set"} {
-		if ev := l.events(t, action); len(ev) != 1 || !hasCode(ev[0], "refused:adoption_unconfirmed") {
-			t.Errorf("the %s events: %v, want refused:adoption_unconfirmed", action, ev)
+		if ev := l.events(t, action); len(ev) != 0 {
+			t.Errorf("the %s events: %v, want none", action, ev)
 		}
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE object_id = $1::uuid AND updated_at = $2 AND state = 'present'`, found.ID, adoptedAt); n != 1 {
+		t.Error("a call on the unconfirmed group wrote its row")
 	}
 	if got := writes(l.graphCalls(mark)); len(got) != 0 {
 		t.Errorf("writes to an unconfirmed group: %q", got)
