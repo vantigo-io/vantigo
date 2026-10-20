@@ -378,7 +378,8 @@ Slik lar du folk logge inn gjennom en leverandør:
    `https://login.microsoftonline.com/<tenant-guid>/v2.0` for Entra; for Google fyller
    kortet inn `https://accounts.google.com` — og **Klient-ID**.
 4. Oppgi legitimasjonen: lim inn **Klienthemmelighet**, eller, for Entra på en
-   plattform som leverer en, velg **Tokenfil** under **Legitimasjon** og skriv stien.
+   plattform som leverer en, velg **Tokenfil** under **Legitimasjon** og skriv stien, i
+   katalogen distribusjonen tillater for den.
    Når en hemmelighet er lagret, er feltet tomt og sier «Satt _dato_. La feltet stå
    tomt for å beholde den.»: skriv en ny bare for å erstatte den. En ny
    **Leverandør** eller **Klient-ID** trenger sin egen hemmelighet eller tokenfil.

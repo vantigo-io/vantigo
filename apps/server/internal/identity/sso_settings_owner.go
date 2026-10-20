@@ -21,6 +21,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
@@ -88,12 +89,12 @@ func (s *server) PutIdentityOwnerSsoOidc(ctx context.Context, req gen.PutIdentit
 	}
 	// The token file is checked here, before the transaction opens: no
 	// filesystem access happens while the row is held.
-	fileProblem := tokenFileProblem(string(in.Provider), deref(in.WorkloadTokenFile))
+	tokenFile, fileProblem := tokenFileProblem(string(in.Provider), deref(in.WorkloadTokenFile), s.deps.Config.WorkloadTokenDir)
 	body, err := s.changeSSOSettings(ctx, func(ctx context.Context, q *store.Queries, current store.IdentitySsoSetting, now time.Time) (store.SaveSsoSettingsParams, bool, error) {
 		if current.Version != version {
 			return store.SaveSsoSettingsParams{}, false, refuse(http.StatusPreconditionFailed, "version_mismatch", ssoVersionMismatchMessage, nil)
 		}
-		v, fields := validateOIDCSettings(in, current, fileProblem)
+		v, fields := validateOIDCSettings(in, current, tokenFile, fileProblem)
 		if len(fields) > 0 {
 			return store.SaveSsoSettingsParams{}, false, refuse(http.StatusBadRequest, "invalid_request", invalidRequestMessage, fields)
 		}
@@ -535,9 +536,9 @@ const googleAuthority = "https://accounts.google.com"
 // and the client id are the ones it was set for — a new application never
 // inherits the old one's credential. An empty string is absent. The token
 // file is judged by tokenFileProblem before the caller's transaction opens,
-// and its answer is fileProblem ("" when the file passes); this function
-// touches no file.
-func validateOIDCSettings(in gen.SsoOidcSettingsRequest, current store.IdentitySsoSetting, fileProblem string) (oidcSettingsInput, map[string][]string) {
+// and its answer is tokenFile, the path as it is saved, and fileProblem
+// ("" when the file passes); this function touches no file.
+func validateOIDCSettings(in gen.SsoOidcSettingsRequest, current store.IdentitySsoSetting, tokenFile, fileProblem string) (oidcSettingsInput, map[string][]string) {
 	fields := map[string][]string{}
 	add := func(field, message string) { fields[field] = append(fields[field], message) }
 	v := oidcSettingsInput{provider: string(in.Provider), authority: in.Authority, clientID: in.ClientId}
@@ -561,14 +562,14 @@ func validateOIDCSettings(in gen.SsoOidcSettingsRequest, current store.IdentityS
 		add("provider", "The provider must be entra or google.")
 	}
 
-	secret, tokenFile := deref(in.ClientSecret), deref(in.WorkloadTokenFile)
+	secret, fileGiven := deref(in.ClientSecret), deref(in.WorkloadTokenFile) != ""
 	sameApplication := current.OidcEnabled && deref(current.OidcProvider) == v.provider && deref(current.OidcClientID) == v.clientID
 	switch {
-	case secret != "" && tokenFile != "":
+	case secret != "" && fileGiven:
 		add("clientSecret", "The client secret and the workload token file are mutually exclusive.")
 	case secret != "":
 		v.clientSecret = secret
-	case tokenFile != "":
+	case fileGiven:
 		if fileProblem != "" {
 			add("workloadTokenFile", fileProblem)
 		} else {
@@ -656,27 +657,36 @@ func normalizeDomains(raw []string) ([]string, bool) {
 	return out, ok
 }
 
-// tokenFileProblem is why a PUT's workload identity token file may not be
-// saved for provider, "" when it may (or when there is none): Entra only,
-// an absolute path, and a regular file of at most maxAssertionBytes this
-// process can open. It reads the filesystem, so the PUT calls it before its
-// transaction opens.
-func tokenFileProblem(provider, path string) string {
+// tokenFileProblem is the path a PUT's workload identity token file is
+// saved as — cleaned, so the row holds one spelling of it — and why it may
+// not be saved for provider, "" when it may (or when there is none): Entra
+// only, an absolute path inside dir, the directory the deployment names
+// (config.WorkloadTokenDir), and a regular file of at most maxAssertionBytes
+// this process can open. The path is the Owner's word, so nothing is asked
+// of the filesystem — not even whether the path exists — until it has been
+// found inside dir: the server neither probes nor reads anywhere else on
+// an Owner's say-so. It reads the filesystem, so the PUT calls it before
+// its transaction opens.
+func tokenFileProblem(provider, path, dir string) (string, string) {
 	switch {
 	case path == "":
-		return ""
+		return "", ""
 	case provider != "entra":
-		return "The workload token file is supported only for the entra provider."
+		return path, "The workload token file is supported only for the entra provider."
 	case !filepath.IsAbs(path):
-		return "The workload token file must be an absolute path."
+		return path, "The workload token file must be an absolute path."
 	}
-	switch readable, regular := readableFile(path); {
+	clean := filepath.Clean(path)
+	if dir == "" || !strings.HasPrefix(clean, config.InDirPrefix(dir)) {
+		return clean, fmt.Sprintf("The workload token file must be a file in %s, the directory the deployment names.", dir)
+	}
+	switch readable, regular := readableFile(clean); {
 	case !regular:
-		return fmt.Sprintf("The workload token file must be a regular file of at most %d KiB.", maxAssertionBytes/1024)
+		return clean, fmt.Sprintf("The workload token file must be a regular file of at most %d KiB.", maxAssertionBytes/1024)
 	case !readable:
-		return "The workload token file must be a file this server can read, at the same path on every replica."
+		return clean, "The workload token file must be a file this server can read, at the same path on every replica."
 	}
-	return ""
+	return clean, ""
 }
 
 // readableFile reports whether path names a file this process can open for

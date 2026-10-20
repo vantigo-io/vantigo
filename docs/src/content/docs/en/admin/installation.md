@@ -480,6 +480,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   database once, at the first start of the release that brought the card, and then
   only warned about — though still validated at startup — until you remove them
   ([Before the card](/en/admin/sso-scim/#before-the-card-the-environment-variables)).
+  One OIDC variable stays live: `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR`, the directory a
+  workload identity token file saved on the card must lie in, the webhook's
+  `/var/run/secrets/azure/tokens` by default
+  ([Workload identity](/en/admin/sso-scim/#microsoft-entra-id-workload-identity)).
   Do not put secrets in source-controlled files — inject `COMMUNICATIONS_AI_API_KEY`
   from a secret store instead.
 - SCIM uses `/api/v1/identity/scim/v2`, bearer tokens and `application/scim+json`.

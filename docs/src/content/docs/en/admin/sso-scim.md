@@ -29,7 +29,9 @@ workforce OIDC provider and the SCIM credential are installation-wide.
   provider redirects to and the directory calls. The callback URL and the SCIM
   endpoint the card shows are derived from them.
 - For Entra workload identity: the platform projecting the token file into every
-  replica that serves the API, at the same path (see
+  replica that serves the API, at the same path, inside the directory
+  `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` names — by default the webhook's,
+  `/var/run/secrets/azure/tokens` (see
   [workload identity](#microsoft-entra-id-workload-identity)).
 
 ## The Single sign-on card
@@ -216,8 +218,14 @@ spec:
 Then, on the card: **Microsoft Entra ID**, the **Authority** and the **Client ID**;
 choose **Token file** as the **Credential** and enter the projected file's path.
 Choose **Save**. The process that saves checks, before it touches the row, that the
-path is absolute and names a regular file of at most 16 KiB that it can read, and
-refuses it on **Token file** otherwise; saving it clears any stored client secret.
+path is absolute and lies in the directory `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` names
+— the directory of `AZURE_FEDERATED_TOKEN_FILE` when the webhook set it, else
+`/var/run/secrets/azure/tokens`, unless the deployment sets the variable itself —
+and only then that it names a regular file of at most 16 KiB that it can read. It
+refuses the path on **Token file** otherwise, naming the directory; the card's
+word reaches no stat outside it, so the card tells nothing about the rest of the
+server's filesystem. The path is saved cleaned. Saving it clears any stored client
+secret.
 
 **Every replica must see the same file at the same path.** The save is checked by one
 process only; a replica that cannot read the file fails the sign-ins it completes with
@@ -436,7 +444,10 @@ The procedure, once, on the upgrade to that release:
 3. Remove every `OIDC_*` and `SCIM_*` variable from every API and worker container —
    `vantigo.env`, the secret store, the platform's environment — all together, and
    restart when convenient. `AZURE_FEDERATED_TOKEN_FILE`, which the workload identity
-   webhook sets, may stay.
+   webhook sets, may stay. A token file imported from
+   `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` outside the webhook's directory needs
+   `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` set to its directory before the card is saved
+   again, or the save is refused on **Token file**.
 4. Verify: the next start logs no warning about the variables, local Owner sign-in,
    an SSO sign-in and a SCIM test connection still work.
 

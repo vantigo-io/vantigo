@@ -811,6 +811,7 @@ oppstarten feiler.
 | `INVITATION_ACCEPT_URL` | Mal som inneholder `{token}` | utledet fra `APP_URL` + `APP_BASE_PATH` |
 | `PASSWORD_RESET_URL` | Mal som inneholder `{email}` og `{token}` | utledet fra `APP_URL` + `APP_BASE_PATH` |
 | `BOOTSTRAP_OWNER_EMAIL` | Stenger `/setup`; setter inn den første eieren ved invitasjon på e-post i stedet | ikke satt (`/setup` åpen) |
+| `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` | Katalogen en workload identity-tokenfil lagret på kortet **Single sign-on** må ligge i, en absolutt sti: distribusjonen, ikke eieren, avgrenser hva serveren undersøker og leser på kortets ord ([Workload identity](/nb/admin/sso-scim/#microsoft-entra-id-workload-identity)) | katalogen til `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE`, ellers til `AZURE_FEDERATED_TOKEN_FILE`, ellers `/var/run/secrets/azure/tokens` |
 
 ### E-post
 
@@ -841,7 +842,7 @@ importen; neste utgivelse avviser dem ved oppstart. Se
 | `OIDC_AUTHORITY` | Nøyaktig utsteder for leverandøren; over 200 tegn importeres leverandøren av | ikke satt |
 | `OIDC_CLIENT_ID` | Entra-GUID, eller en `.apps.googleusercontent.com`-klient-ID; over 200 tegn importeres leverandøren av | ikke satt |
 | `OIDC_CLIENT_SECRET` | Klienthemmelighet, forseglet | ikke satt |
-| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolutt, lesbar assertion-fil (bare Entra); over 500 tegn importeres leverandøren av | ikke satt |
+| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolutt, lesbar assertion-fil (bare Entra), i `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` når den er satt; over 500 tegn importeres leverandøren av | ikke satt |
 | `AZURE_FEDERATED_TOKEN_FILE` | Plattformlevert reserve for den over | ikke satt |
 | `OIDC_ALLOWED_DOMAINS` | Kommaseparert liste over rene DNS-navn (bare Google, påkrevd der) | ikke satt |
 | `OIDC_DISPLAY_NAME` | Etikett på innloggingsknappen, avkortet til 100 tegn | `Workforce SSO` |
@@ -924,8 +925,10 @@ med feltfeil. Relying party bygges på nytt når radens versjon flytter seg.
 
 **Klientautentiseringsmodusen utledes, den konfigureres ikke.** Det finnes ingen
 `ClientAuthentication`-innstilling: kortets **Klienthemmelighet** betyr autentisering
-med klienthemmelighet, dets **Tokenfil** (en absolutt sti til en vanlig fil på høyst
-16 KiB som prosessen som lagrer, kan lese) workload identity. Å lagre begge samtidig
+med klienthemmelighet, dets **Tokenfil** (en absolutt sti i katalogen
+`OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` navngir, til en vanlig fil på høyst 16 KiB som
+prosessen som lagrer, kan lese; ingenting utenfor katalogen undersøkes) workload
+identity. Å lagre begge samtidig
 avvises, og det gjør også å lagre ingen av dem, med mindre en klienthemmelighet er
 lagret for samme leverandør og klient-ID, som da beholdes; å lagre den ene fjerner den
 andre. Workload identity er

@@ -152,6 +152,12 @@ type Config struct {
 	Mail MailConfig
 	OIDC *OIDCConfig
 	SCIM *SCIMConfig
+	// WorkloadTokenDir is OIDC_WORKLOAD_IDENTITY_TOKEN_DIR, cleaned: the
+	// directory a workload identity token file saved on the Single sign-on
+	// card must lie in. An Owner names the file; the deployment bounds
+	// where on the filesystem the server will stat, open and read on their
+	// word. See workloadTokenDir for the default.
+	WorkloadTokenDir string
 
 	// BootstrapOwnerEmail, when set, replaces the anonymous /setup bootstrap:
 	// POST /identity/bootstrap is disabled and, while no Owner exists, startup
@@ -539,6 +545,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.Mail = mailConfig(&p, env, c)
 	c.OIDC = oidc(&p, env)
 	c.SCIM = scim(&p, env)
+	c.WorkloadTokenDir = workloadTokenDir(&p, env, c.OIDC)
 
 	c.BootstrapOwnerEmail = bootstrapOwnerEmail(&p, env)
 	c.Management = management(&p, env, c)
@@ -1104,14 +1111,14 @@ func branding(p *problems, env map[string]string) Branding {
 }
 
 // linkField accepts an absolute http(s) URL or a same-origin path. Anything
-// else (javascript:, protocol-relative //host) would end up in an href or src
-// the SPA renders.
+// else (javascript:, protocol-relative //host, or /\host, which a browser
+// reads as //host) would end up in an href or src the SPA renders.
 func linkField(p *problems, env map[string]string, field string) string {
 	v := strings.TrimSpace(env[field])
 	if v == "" {
 		return ""
 	}
-	if strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "//") {
+	if strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "//") && !strings.HasPrefix(v, `/\`) {
 		return v
 	}
 	u, err := url.Parse(v)
@@ -1364,6 +1371,50 @@ func leftoverOIDCSettings(env map[string]string) []string {
 		}
 	}
 	return leftover
+}
+
+// defaultWorkloadTokenDir is where the Azure workload identity webhook
+// projects a token when nothing in the environment says otherwise.
+const defaultWorkloadTokenDir = "/var/run/secrets/azure/tokens"
+
+// workloadTokenDir is OIDC_WORKLOAD_IDENTITY_TOKEN_DIR: the directory a
+// workload identity token file saved on the Single sign-on card must lie
+// in, an absolute path, cleaned. An Owner names the file, so the
+// deployment, not the Owner, bounds what the server will stat, open and
+// read at every sign-in on their word. Unset, it is the directory of the
+// token file the environment names — OIDC_WORKLOAD_IDENTITY_TOKEN_FILE,
+// else AZURE_FEDERATED_TOKEN_FILE, which the workload identity webhook
+// sets — and, with neither, the webhook's own directory,
+// defaultWorkloadTokenDir. A token file the environment names must lie in
+// it, which it does unless the two are set apart on purpose.
+func workloadTokenDir(p *problems, env map[string]string, o *OIDCConfig) string {
+	dir := env["OIDC_WORKLOAD_IDENTITY_TOKEN_DIR"]
+	switch {
+	case dir != "":
+		if !filepath.IsAbs(dir) {
+			p.add("OIDC_WORKLOAD_IDENTITY_TOKEN_DIR", "must be an absolute path")
+			return ""
+		}
+		dir = filepath.Clean(dir)
+	case filepath.IsAbs(env["OIDC_WORKLOAD_IDENTITY_TOKEN_FILE"]):
+		dir = filepath.Dir(filepath.Clean(env["OIDC_WORKLOAD_IDENTITY_TOKEN_FILE"]))
+	case filepath.IsAbs(env["AZURE_FEDERATED_TOKEN_FILE"]):
+		dir = filepath.Dir(filepath.Clean(env["AZURE_FEDERATED_TOKEN_FILE"]))
+	default:
+		dir = defaultWorkloadTokenDir
+	}
+	if o != nil && o.WorkloadTokenFile != "" && !strings.HasPrefix(filepath.Clean(o.WorkloadTokenFile), InDirPrefix(dir)) {
+		p.add("OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "must be a file in OIDC_WORKLOAD_IDENTITY_TOKEN_DIR")
+	}
+	return dir
+}
+
+// InDirPrefix is what a cleaned path must start with to lie inside dir, a
+// cleaned absolute directory: dir with one trailing slash, so neither dir
+// itself nor a sibling whose name merely begins with dir's passes. The
+// test is lexical; a symbolic link inside dir may still lead out of it.
+func InDirPrefix(dir string) string {
+	return strings.TrimSuffix(dir, "/") + "/"
 }
 
 // readableFile reports whether path names a regular file this process can

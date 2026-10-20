@@ -490,9 +490,13 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   sign-on**, ikke i `vantigo.env`: `OIDC_*` og `SCIM_*` der importeres i databasen én
   gang, ved første oppstart av utgivelsen som kom med kortet, og varsles deretter bare
   om — men valideres fortsatt ved oppstart — til du fjerner dem
-  ([Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene)). Ikke legg
-  hemmeligheter i filer under versjonskontroll — injiser `COMMUNICATIONS_AI_API_KEY`
-  fra en hemmelighetsforvalter i stedet.
+  ([Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene)). Én OIDC-variabel
+  forblir i bruk: `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR`, katalogen en workload
+  identity-tokenfil lagret på kortet må ligge i, som standard webhookens
+  `/var/run/secrets/azure/tokens`
+  ([Workload identity](/nb/admin/sso-scim/#microsoft-entra-id-workload-identity)).
+  Ikke legg hemmeligheter i filer under versjonskontroll — injiser
+  `COMMUNICATIONS_AI_API_KEY` fra en hemmelighetsforvalter i stedet.
 - SCIM bruker `/api/v1/identity/scim/v2`, bearer-tokener og `application/scim+json`.
   En Owner utsteder tokenet med **Nytt token** på kortet, og roterer det der med en
   overlapping på høyst 24 timer. Se [SSO- og SCIM-drift](/nb/admin/sso-scim/#scim).

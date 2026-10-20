@@ -783,6 +783,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `INVITATION_ACCEPT_URL` | Template containing `{token}` | derived from `APP_URL` + `APP_BASE_PATH` |
 | `PASSWORD_RESET_URL` | Template containing `{email}` and `{token}` | derived from `APP_URL` + `APP_BASE_PATH` |
 | `BOOTSTRAP_OWNER_EMAIL` | Closes `/setup`; seats the first Owner by emailed invitation instead | unset (`/setup` open) |
+| `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` | The directory a workload identity token file saved on the **Single sign-on** card must lie in, an absolute path: the deployment, not the Owner, bounds what the server stats and reads on the card's word ([Workload identity](/en/admin/sso-scim/#microsoft-entra-id-workload-identity)) | the directory of `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE`, else of `AZURE_FEDERATED_TOKEN_FILE`, else `/var/run/secrets/azure/tokens` |
 
 ### Mail
 
@@ -813,7 +814,7 @@ release refuses them at startup. See
 | `OIDC_AUTHORITY` | Exact issuer for the provider; over 200 characters, the provider is imported off | unset |
 | `OIDC_CLIENT_ID` | Entra GUID, or a `.apps.googleusercontent.com` client ID; over 200 characters, the provider is imported off | unset |
 | `OIDC_CLIENT_SECRET` | Client secret, sealed | unset |
-| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolute, readable assertion file (Entra only); over 500 characters, the provider is imported off | unset |
+| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolute, readable assertion file (Entra only), in `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` when that is set; over 500 characters, the provider is imported off | unset |
 | `AZURE_FEDERATED_TOKEN_FILE` | Platform-supplied fallback for the above | unset |
 | `OIDC_ALLOWED_DOMAINS` | Comma list of bare DNS names (Google only, required there) | unset |
 | `OIDC_DISPLAY_NAME` | Sign-in button label, cut to 100 characters | `Workforce SSO` |
@@ -896,8 +897,10 @@ version moves.
 
 **The client-authentication mode is inferred, not configured.** There is no
 `ClientAuthentication` setting: the card's **Client secret** means client-secret
-authentication, its **Token file** (an absolute path to a regular file of at most
-16 KiB that the saving process can read) workload identity. Saving both at once is
+authentication, its **Token file** (an absolute path inside the directory
+`OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` names, to a regular file of at most 16 KiB that
+the saving process can read; nothing outside the directory is looked at) workload
+identity. Saving both at once is
 refused, and so is saving neither, unless a client secret is stored for the same
 provider and client ID, which is then kept; saving one clears the other. Workload identity is Entra-only; Google is
 client-secret-only.
