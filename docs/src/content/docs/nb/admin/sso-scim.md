@@ -310,8 +310,9 @@ Ressursen User godtar SCIMs **virksomhetsutvidelse** (enterprise extension),
 `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` — `employeeNumber`,
 `costCenter`, `organization`, `division`, `department` og `manager` — som beholdes i
 brukerens SCIM-profil, svares tilbake på `GET`, annonseres av `Schemas` og
-`ResourceTypes`, og kan patches på sine egne stier (`urn:…:User:department`). Hver verdi
-er på høyst 256 tegn. Den endrer ingenting i brukerens egen post: særlig blir katalogens
+`ResourceTypes`, og kan patches på sine egne stier (`urn:…:User:department`) eller med
+en PatchOp uten sti der verdien har blokken — formen Entra sender, med lederen som en ren
+streng godtatt også. Hver verdi er på høyst 256 tegn. Den endrer ingenting i brukerens egen post: særlig blir katalogens
 `employeeNumber` aldri brukerens ansattnummer i Vantigo — bare Ansattes klargjøring eller
 en eiers inntak gjør det kravet ([detaljer](/nb/admin/authentication/#scim)).
 

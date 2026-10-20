@@ -178,9 +178,12 @@ kall:
 **Ved oppgraderingen** som innførte typene, satte Ansatte hver persons type og
 standarden ut fra installasjonens autoritetsmodus, én gang, første gang den startet —
 `local` fra lokal, `external` fra føderert (SSO eller SCIM på) — og logger `staff: the
-account kinds were seeded from the authority mode`. Kunne identity ikke spørres i det
-øyeblikket, prøver den igjen ved neste oppstart eller kontorunde. Ingenting endrer noens
-type etterpå, bortsett fra HR.
+account kinds were seeded from the authority mode` med typen. Kunne identity ikke
+spørres i det øyeblikket — eller var en workers innstillinger uenige med den registrerte
+modusen — logger den en advarsel og prøver igjen ved neste oppstart eller kontorunde.
+Innstillingenes revisjon flytter seg bare når standarden ble `external`, så en
+innstillingsside som var åpen under en seeding som lot `local` stå, lagrer som vanlig.
+Ingenting endrer noens type etterpå, bortsett fra HR.
 
 **For å endre standarden**: Ansatteinnstillinger → **Kontoer** → **Standard kontotype**,
 så **Lagre kontoinnstillingene** (`defaultAccountKind` på `PUT /settings`). Bare nye
@@ -194,9 +197,11 @@ bringer, tar over den.
 
 **Typen `entra` krever** at leverandørmodulen er installert og at tilkoblingen virker:
 kortet **Kontoer** viser *Microsoft Entra ID: tilkoblet.* Til da — *ikke tilkoblet
-ennå* eller *feiler* — skriver arbeideren ingenting til katalogen for disse personene (den
-deaktiverer fortsatt dem som slutter, i Vantigo), og dashbordet viser ett punkt for
-installasjonen. Sett opp **SCIM** fra Entra til Vantigo slik
+ennå* eller *feiler* — lager og endrer arbeideren ingenting i katalogen for disse
+personene utenom deaktiveringen av en som slutter (som Entra fortsatt kan avvise mens
+legitimasjonen ikke virker), gjør ingenting for dem i Vantigo utenom å deaktivere dem som
+slutter, og dashbordet viser ett punkt for installasjonen. En person med en type som
+navngir en leverandør ingen aktivert modul tilbyr, holdes igjen på samme måte. Sett opp **SCIM** fra Entra til Vantigo slik
 [SSO- og SCIM-drift](/nb/admin/sso-scim/#virksomhetsutvidelsen-og-ansattnummeret)
 sier, eller la personene logge inn med Entra: den kunngjorte kontoen tas inn idet den
 kommer, uansett vei.
@@ -357,8 +362,9 @@ HR slår flagget på igjen.
    sammen med en merknad på koblingen om at en deaktivering er bedt om, så deaktiverer
    identity brukeren (`account_deactivated`) og avslutter øktene. For en `entra`-person
    deaktiveres Entra-kontoen først (`account_external_deactivated`), så
-   Vantigo-brukeren; en avvisning fra Entra er `provider_refused` (409) med koden sin,
-   med flagget allerede av. Personens egen revisjon
+   Vantigo-brukeren; en avvisning fra Entra er `provider_refused` (409) med koden sin, og
+   Entra utilgjengelig `accounts_unavailable` (503), med flagget allerede av uansett —
+   identitys egen avvisning svares først. Personens egen revisjon
    flytter seg ikke. Gir nettleseren opp å vente, fortsetter deaktiveringen likevel; det
    som ikke når fram til identity, gjør arbeideren ferdig ved de neste kjøringene.
 2. Kontroller: fanen sier *Kontoen er deaktivert og kontoflagget er av*, **Ansatte gir
@@ -414,7 +420,7 @@ erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk
 | `accountUserGone` | Brukeren ble slettet i identity | Fjern koblingen, eller en Owner gjenoppretter kontoen |
 | `accountPrivileged` | Brukeren er Owner eller SystemAdmin — også etter en Deaktiver nå som ble avvist for dem, prøvd igjen daglig; en som slutter og er det, forblir aktiv, siden Ansatte aldri deaktiverer en Owner eller en SystemAdmin | En annen Owner fratar dem rollen og deaktiverer dem i identity (uten rollen deaktiverer neste forsøk dem) |
 | `accountMismatch` | Brukeren har et annet ansattnummer: en annens konto — også etter en Deaktiver nå som ikke gjorde noe med den | Sjekk personens ansattnummer; når det er riktig, kjøres deaktiveringen |
-| `accountModeChanged` | En ventende bruker laget for typen `local`, mens personens type nå er en som aldri inviterer | En Owner fullfører eller sletter brukeren |
+| `accountModeChanged` | En ventende bruker laget for typen `local`, mens personens type nå er `external`, som aldri inviterer | En Owner fullfører eller sletter brukeren |
 | `accountEmailDiffers` | Brukerens adresse i identity er ulik personens | En Owner endrer den i identity (Ansatte endrer den bare mens brukeren venter og ingen invitasjon er levert til dem) |
 | `accountEmailTaken` | En annen bruker i identity har adressen | Rydd opp i duplikatet i identity, eller endre personens adresse |
 | `accountNumberTaken` | En bruker Ansatte ikke styrer har ansattnummeret | En Owner tar den brukeren inn for Ansatte, eller rydder i nummeret |
@@ -434,9 +440,9 @@ erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk
 | `hireDateNotWritten` | Entra avviste ansettelsesdatoen | Ingenting trengs for innlogging; slå av **Ansettelsesdato** i katalogprofilen om det fortsetter å feile |
 | `licenceUnavailable` | En lisens kunne ikke tildeles, fordi det ikke er flere igjen | Kjøp eller frigjør en lisens i Microsoft 365 |
 | `passUnrevealed` | Et pass ble utstedt for en dag eller mer siden, og ingen har vist det | Vis det til personen, eller Kjør nå (nytt pass) når de er klare |
-| `managerNotInEntra` | Personens leder har ingen konto i Entra, så kontoen har ingen leder | Gi lederen typen Microsoft Entra ID, eller godta det |
-| `entraNotConnected` | Entra-leverandøren har ingen tilkobling ennå (ett punkt, som teller `entra`-personene) | Koble den til i Entra-modulen |
-| `entraFailing` | Entra-leverandørens siste kontroll feilet — en legitimasjon avvist, et samtykke trukket tilbake (ett punkt) | Rett tilkoblingen i Entra-modulen |
+| `managerNotInEntra` | Personens leder har ingen konto i Entra, eller Entra fant den ikke, så kontoen har ingen leder | Gi lederen typen Microsoft Entra ID, eller godta det |
+| `entraNotConnected` | Entra-leverandøren har ingen tilkobling ennå, eller ingen aktivert modul tilbyr den (ett punkt, som teller `entra`-personene med flagget på) | Koble den til i Entra-modulen, eller aktiver modulen |
+| `entraFailing` | Entra-leverandørens siste kontroll feilet — en legitimasjon avvist, et samtykke trukket tilbake — eller Ansatte kunne ikke spørre den (ett punkt) | Rett tilkoblingen i Entra-modulen |
 | `secretExpiring` | Den nyeste gyldige klienthemmeligheten utløper innen tretti dager (ett punkt) | Legg til en ny hemmelighet i Entra-modulen |
 | `secretExpired` | Klienthemmeligheten har utløpt (ett punkt) | Legg til en ny hemmelighet i Entra-modulen |
 
@@ -1413,8 +1419,8 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   `jobTitle`, `department`, `companyName`, `employeeOrgData`, `officeLocation`,
   `preferredLanguage` og `manager` på som standard, `workAddress` og `phones` av. Et
   felt som utelates, beholder verdien sin; et ukjent avvises på
-  `directoryFields.<felt>`. Et felt som slås av, tømmes i Entra ved hver persons neste
-  oppdatering. Navnene, ansattnummeret, brukerhovednavnet og arbeidslandet skrives
+  `directoryFields.<felt>`. Et felt som slås av, sendes ikke lenger: Ansatte slutter å
+  skrive det, og Entra beholder det det sist hadde. Navnene, ansattnummeret, brukerhovednavnet og arbeidslandet skrives
   alltid ([tilordningen](/en/reference/staff/#the-directory-profile)).
 - **Oppbevaringsstatus** (`retention`, skrivebeskyttet): sletteloggens ventende og
   avviste filer, den eldste ventende, og den siste slettingen

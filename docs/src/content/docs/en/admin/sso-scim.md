@@ -305,8 +305,9 @@ The User resource accepts the SCIM **enterprise extension**,
 `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` — `employeeNumber`,
 `costCenter`, `organization`, `division`, `department` and `manager` — kept in the
 user's SCIM profile, answered back on `GET`, advertised by `Schemas` and
-`ResourceTypes`, and patchable on its own paths (`urn:…:User:department`). Each value is
-at most 256 characters. It changes nothing in the user's own record: in particular the
+`ResourceTypes`, and patchable on its own paths (`urn:…:User:department`) or by a
+PatchOp without a path whose value holds the block — the form Entra sends, its manager
+as a bare string accepted too. Each value is at most 256 characters. It changes nothing in the user's own record: in particular the
 directory's `employeeNumber` never becomes the user's employee number in Vantigo — only
 Staff's provisioning or an Owner's adoption make that claim
 ([details](/en/admin/authentication/#scim)).

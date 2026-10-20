@@ -284,7 +284,7 @@ link-only path for a person whose account Staff has an external provider create 
 
 | Step | `local` | `external` | `entra` | Audited |
 | --- | --- | --- | --- | --- |
-| Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's open invitation to that address is revoked `replaced` and named in the audit — but an open invitation to become an Owner keeps the address for its invitee. The answer says whether this call created the user (`Created`), so Staff never undoes a user it only found. | Finds the Staff-managed user with the number; creates nothing (`Not found` until an Owner adopts one) | Finds the Staff-managed user with the number — the one the announced account's arrival made; creates nothing | `user.staff-prepared` |
+| Prepare | Finds the Staff-managed user with the employee number, else creates one: Staff-managed, pending, disabled by Staff, with the built-in `User` role, no credential and an unconfirmed address. An Owner's open invitation to that address is revoked `replaced` and named in the audit — but an open invitation to become an Owner keeps the address for its invitee. The answer says whether this call created the user (`Created`), so Staff never undoes a user it only found. | Finds the Staff-managed user with the number; creates nothing (`Not found` until an Owner adopts one) | Finds the Staff-managed user with the number — the one the announced account's arrival made; creates nothing (`Not found` until it has arrived) | `user.staff-prepared` |
 | Activate | Enables a user Staff disabled — a prepared user among them — giving them the [employee roles](#the-employee-roles) on that call only, so a role an Owner removes later stays removed, and recording when (`provisioning_roles_at`); invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | Re-enables a user Staff disabled and, while `provisioning_roles_at` is empty, gives the employee roles and records it — once, enabled or not, never again; sends no invitation | `user.staff-activated` |
 | Deactivate | Disables the user as Staff's (`disabledBy: staff`) — also one the directory already deactivated — ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | The same | `user.staff-deactivated` |
 | Update | Writes the display name, the language and the employee number; the address only while the user is pending and no invitation naming them has been delivered yet, which revokes their invitations `email_changed` and an Owner's open invitations to the new address `replaced` (named in the audit) | Writes the language and the employee number only | The same as `external` | `user.staff-updated` |
@@ -357,19 +357,27 @@ requires.
 
 **What an arrival does.** Under the owner lock, in the arrival's own transaction:
 
-- **A match** creates the user as SCIM or OIDC would, then marks them managed by Staff
-  with the announced employee number, not pending (the credential is the provider's),
-  with the announced display name only when the provider sent none. The announcement is
+- **A match** that nobody else's user holds the number for creates the user as SCIM or
+  OIDC would, then marks them managed by Staff with the announced employee number, not
+  pending (the credential is the provider's), in the announced language. A SCIM user
+  takes the announced display name only when the resource carries no display name and
+  no name part; an OIDC user is named by the claims, as before. The announcement is
   consumed, audited `account.adopted-from-provider` with `matchedBy`
   (`employeeNumber`, `userName`, `externalId` or `oid`) and the employee number — never
-  an address — beside SCIM's own `scim.user.created`.
+  an address — beside SCIM's own `scim.user.created`. An adopted OIDC user is then
+  signed in by the linked account's rules, so a user Staff keeps disabled is
+  `account_locked` until Staff enables them.
 - **A match naming a user to replace** (`ReplaceUserID`: the person was `local` with a
   pending, credential-less user when HR changed their kind to `entra`) completes that
-  user instead of inserting a second: the user is locked, their open invitations
-  revoked `replaced`, `pending_since` and the invitation spell cleared, their address
-  overwritten by the arriving `userName` — another user holding it is still
-  `DuplicateEmail` — and the SCIM mapping or the OIDC link attached to them, their id
-  kept; `account.adopted-from-provider` names `replacedUserId`. For OIDC, the email
+  user instead of inserting a second — as long as that user still holds the number and
+  is still managed, unprivileged, pending and without a credential; otherwise the
+  arrival is no adoption. The user is locked, their open invitations revoked
+  `replaced`, `pending_since` and the invitation spell cleared, and the SCIM mapping or
+  the OIDC link attached to them, their id, display name and disabled state kept;
+  `account.adopted-from-provider` names `replacedUserId`. Their address becomes the
+  arrival's: for SCIM the resource's **work email** (none is `InvalidEmail`, another
+  user's `DuplicateEmail`, and a `userName` another mapping has is `uniqueness`); for
+  OIDC the email claim when there is one, else the address is kept. For OIDC, the email
   claim colliding with that very user is the completion, not `oidc_email_conflict`;
   with anyone else it is refused as before.
 - **No match** is what it was: a plain SCIM or OIDC user, whom an Owner adopts by hand
@@ -377,13 +385,24 @@ requires.
   profile and **never** becomes the user's employee number: only Staff's provisioning
   and an Owner's adoption make that claim.
 
-**What `Expect` refuses.** An unmanaged user holding the number is
-`ErrEmployeeNumberTaken`; a managed Owner or SystemAdmin `ErrAccountPrivileged`. A
-managed user who holds the number and is not pending has arrived already: nothing is
-recorded and the call succeeds. A pending managed user is recorded only when the
-announcement names them to replace; a user to replace who is not managed, not pending
-or holds another number is refused. `Unexpect` deletes an announcement and is audited
-`account.unexpected` when one went; with none, it succeeds and writes nothing.
+**What `Expect` refuses.** It reads no mode, and it judges the announcement first: an
+employee number in Staff's alphabet, a display name of 1 to 200 characters, the
+language `en`, `nb` or none, an issuer and an object id of at most 200 characters, a
+principal name that is an address of at most 254 — and at least one of the object id
+and the principal name, the keys an arrival can carry; anything else is an invalid
+announcement. Then the user holding the number decides: an unmanaged user is
+`ErrEmployeeNumberTaken`; a managed Owner or SystemAdmin `ErrAccountPrivileged`; a
+managed user who is not pending has arrived already, or an Owner adopted them: nothing
+is recorded and the call succeeds, so Staff's next `Prepare` finds them. A managed,
+pending user without a credential is recorded only when the announcement names that
+very user to replace. A user to replace named when nobody holds the number, or who is
+not that pending, credential-less holder, is an invalid announcement. The same
+announcement again changes nothing; any change replaces it whole, audited
+`account.expected` with the number, the names of its keys and the user it replaces.
+Staff records `ErrEmployeeNumberTaken` and `ErrAccountPrivileged` on the person's
+provider link and retries an invalid announcement as a failure. `Unexpect` deletes an
+announcement and is audited `account.unexpected` when one went; with none — never
+announced, or fulfilled already, which consumed it — it succeeds and writes nothing.
 
 **The roles, once.** An adopted user arrives enabled, so no `Activate` ever enables
 them; `identity.users.provisioning_roles_at` records when Staff's `Activate` gave a
@@ -925,15 +944,23 @@ cache. The procedures are in
 The User resource accepts the **enterprise extension**,
 `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` (RFC 7643 §4.3):
 `employeeNumber`, `costCenter`, `organization`, `division`, `department` and `manager`
-(`value`, `displayName`, and `$ref` answered as this server's path), each at most 256
-characters. A create or a replace carrying the block, and a PATCH on any of its paths
-(`urn:…:User:department`, `urn:…:User:manager.value`, …), are accepted and kept in the
-user's SCIM profile under `enterprise`; a replace without it clears it. `GET` answers
-it, `Schemas` and `ResourceTypes` advertise it (`schemaExtensions`, not required), and
-`GET /Users` filters on `urn:…:User:employeeNumber eq "…"`. A path outside the two
-schemas is still `invalidPath`. Nothing in `identity.users` changes for it: its
-`employeeNumber` is what an [announced account](#the-announced-account) is matched on,
-never the user's employee number.
+(`value`, `displayName`, and `$ref` answered as this server's path for that id), each
+a string, trimmed, of at most 256 characters, or `invalidValue`. The block is named by
+its URN exactly; its attributes are read in any ASCII case, as the core ones are. A
+create carrying the block, a replace — which sets it whole, and clears it when it is
+left out — and a PATCH are accepted and kept in the user's SCIM profile under
+`enterprise`. A PATCH may name one of its paths (`urn:…:User:department`,
+`urn:…:User:manager`, `urn:…:User:manager.value`, …), or carry no path and an object
+whose member under the URN sets each attribute it names; `manager` takes an object
+with a string `value`, or a bare string as its value, as Microsoft's provisioning
+service sends it. An attribute the extension has no path for, and a path outside the
+two schemas, is still `invalidPath`. `GET` answers the block, the URN among its
+`schemas`, when it holds any value; `Schemas` and `ResourceTypes` advertise it
+(`schemaExtensions`, not required); and `GET /Users` filters on
+`urn:…:User:employeeNumber eq "…"` — the URN spelled exactly, the value compared as the
+profile keeps it. Nothing in `identity.users` changes for it: its `employeeNumber` is
+what an [announced account](#the-announced-account) is matched on, never the user's
+employee number.
 
 ## Forwarded headers and HTTPS
 

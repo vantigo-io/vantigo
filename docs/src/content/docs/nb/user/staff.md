@@ -361,7 +361,8 @@ feltet for å ta det ut av saken. Et dokument i en annen kategori hører ikke ti
 
 Fanen **Konto** er HRs (`staff:manage`). Personen selv og den som har
 `staff:personal-data`, leser den og endrer ingenting. En leder, `staff:approve` og en
-kollega har den ikke. Den har to grupper.
+kollega har den ikke. Den har to grupper — tre for en person av typen Microsoft Entra
+ID, der **Katalogprofil** følger etter.
 
 **Kontoflagg** sier om Ansatte gir personen en bruker å logge inn med, fra hvilken dag,
 på hvilken adresse og hvem som har kontoen. HR endrer det:
@@ -386,7 +387,7 @@ på hvilken adresse og hvem som har kontoen. HR endrer det:
    - **Ekstern identitetsleverandør** — selskapets identitetsleverandør eier kontoen:
      Ansatte finner brukeren den opprettet når en eier har tatt den inn, aktiverer det
      Ansatte deaktiverte, og deaktiverer, men oppretter og inviterer aldri.
-   - **Microsoft Entra ID** — tilbys bare når Entra-modulen er installert: Ansatte lar
+   - **Microsoft Entra ID** — tilbys bare så lenge en aktivert modul tilbyr den: Ansatte lar
      Entra opprette personens konto, aktiverer og deaktiverer den der, og ber Vantigo
      vente den, så brukeren den bringer, er personens uten en eier imellom.
 
@@ -401,19 +402,22 @@ på hvilken adresse og hvem som har kontoen. HR endrer det:
    flagget siden du åpnet fanen, lastes fanen inn på nytt og sier *Noen andre lagret
    dette først; det er lastet inn på nytt*.
 
-**Brukerkonto** viser personens kontoer som kort side om side: **Vantigo**, brukeren
-personen logger inn i Vantigo med, og — for en person av typen Microsoft Entra ID — et
-kort med leverandørens navn, **Microsoft Entra ID**, for kontoen deres i selskapets
-katalog.
+**Brukerkonto** sier først personens kontotype i en setning — *Lokal konto — Ansatte
+oppretter brukeren og inviterer personen til å velge et passord.*, *Ekstern
+identitetsleverandør — leverandøren eier kontoen: …* eller *Microsoft Entra ID — Ansatte
+oppretter personens konto i katalogen, …* — eller *Kontoer er ikke tilgjengelige — …*
+når ingen modul gir dem. For en person av typen Microsoft Entra ID viser den så
+personens kontoer som kort side om side: **Vantigo**, brukeren personen logger inn i
+Vantigo med, og et kort med leverandørens navn, **Microsoft Entra ID**, for kontoen
+deres i selskapets katalog. For alle andre viser den Vantigo-brukeren alene.
 
-Kortet **Vantigo** sier først kontotypen med ord — *Lokal*, *Ekstern
-identitetsleverandør* eller *Microsoft Entra ID* — eller *Kontoer er ikke
-tilgjengelige*, når ingen modul gir dem. Deretter, når Ansatte har opprettet eller
-funnet en bruker:
+Til Ansatte har opprettet eller funnet en bruker, sier Vantigo-delen *Ingen bruker ennå:
+Ansatte har ikke opprettet eller funnet en for denne personen.* Deretter:
 
-- **Tilstand** — *Forberedes*, *Venter — på at personen velger et passord*, *Aktiv*,
-  *Deaktivert av Ansatte* eller *Deaktivert av en eier*, *Mislyktes*, *Stoppet*, eller
-  *Koblet, ikke styrt av Ansatte* for en bruker HR koblet for hånd.
+- **Tilstand** — *Forberedes — Ansatte oppretter eller finner brukeren*, *Venter — på
+  at personen velger et passord*, *Aktiv*, *Deaktivert av Ansatte* eller *Deaktivert av
+  en eier*, *Mislyktes*, *Stoppet*, eller *Koblet, ikke styrt av Ansatte* for en bruker
+  HR koblet for hånd.
 - **Bruker**, og **Styrt av Ansatte** — ja eller nei.
 - Hvorfor kontoen står fast, i en setning, når den gjør det: ikke noe arbeidsforhold å gi en
   konto fra, adressen flagget angir mangler, en eier deaktiverte brukeren (eller den
@@ -436,32 +440,43 @@ eier sluttet å styre — forteller fanen HR at en eier lar Ansatte styre bruker
 **Brukere** (**La Ansatte styre**), med personens ansattnummer, og **Åpne Brukere** går
 dit. En slettet person viser ikke dette steget.
 
-Kortet **Microsoft Entra ID** viser personens konto i katalogen:
+Kortet **Microsoft Entra ID** viser personens konto i katalogen — eller *Ingen konto i
+katalogen ennå: Ansatte har ikke opprettet eller funnet en for denne personen.*:
 
 - **Tilstand** — *Forberedes — Ansatte har bedt katalogen opprette eller finne
   kontoen*, *Aktivert*, *Deaktivert*, *Slettet — kan gjenopprettes i katalogen i tretti
   dager*, *Mislyktes* eller *Stoppet*.
 - **Brukerhovednavn (UPN)** — navnet personen logger inn hos Microsoft med, når Entra
-  har laget kontoen — og **Aktivert siden**.
+  har laget kontoen — og **Aktivert siden** mens den er aktivert, eller **Sist
+  synkronisert** mens den ikke er det.
 - **Pass utstedt** — når Entra utstedte et midlertidig tilgangspass ingen har vist ennå
-  — og **Kunngjort** — når Ansatte ba Vantigo vente kontoen.
+  — **Kunngjort** — når Ansatte ba Vantigo vente kontoen — og **Neste forsøk**.
 - Hvorfor kontoen står fast, i en setning, når den gjør det: Entra ikke tilkoblet eller
   feiler, to kontoer i Entra med personens ansattnummer, e-posten på jobb er allerede en
   annen kontos der, en konto synkronisert fra en lokal katalog, en konto med en
-  administrativ rolle i Entra, kontoen borte fra Entra (Ansatte lager aldri en til); og
-  hva Entra meldte og ikke fikk gjort: ansettelsesdatoen ikke skrevet, ingen lisens
-  igjen, et pass ikke tillatt, personens leder ikke i Entra.
-- **Katalogprofil** — en skrivebeskyttet tabell, **Felt**, **Skrives** og **Verdi i
-  dag**: hvert felt Ansatte skriver på kontoen, og verdien det har fra registeret i dag.
-  Navnene, ansattnummeret, brukerhovednavnet og bruksstedet skrives alltid og vises
-  grå; de andre følger installasjonens [Katalogprofil](#katalogprofil). Personen ser
-  tabellen på sin egen fane også: det er deres opplysninger slik katalogen ser dem.
+  administrativ rolle i Entra, en konto som ikke ble slettet fordi den fortsatt er
+  aktivert der, kontoen borte fra Entra (Ansatte lager aldri en til); og, én setning
+  hver, hva Entra meldte og ikke fikk gjort: ansettelsesdatoen ikke skrevet, ingen
+  lisens igjen (lisensen navngitt i parentes), et pass ikke tillatt, lederens konto ikke
+  funnet, personens leder ikke i Entra. *Mislykkede forsøk på rad: 3. Katalogen kunne
+  ikke nås; arbeideren prøver igjen.* sier at Entra ikke kunne nås.
 
-**Vis passet** (HR) viser passet Entra utstedte for personens første innlogging, i et
-vindu med **Kopier** og utløpstiden: *Det vises ikke igjen.* Det vises **én gang**: når
-du lukker vinduet, kan ingen se det igjen, og knappen sier at det ikke finnes noe. Gi
-det til personen selv; det sendes aldri på e-post. Et pass som har gått ut, eller som
-allerede er vist, er borte — bruk **Kjør nå (nytt pass)**.
+Under den er **Katalogprofil** en skrivebeskyttet tabell, **Felt**, **Skrives** og
+**Verdi i dag**: hvert felt Ansatte skriver på kontoen, og verdien det har fra registeret
+i dag. Navnene, ansattnummeret, brukerhovednavnet og bruksstedet skrives alltid og vises
+grå, **Skrives** *Alltid*; de andre følger installasjonens [Katalogprofil](#katalogprofil),
+**Skrives** *Ja*, eller *Av — tømmes* for et felt som er slått av der, og som Ansatte
+ikke lenger skriver. Personen ser tabellen på sin egen fane også: det er deres
+opplysninger slik katalogen ser dem.
+
+**Vis passet** (HR) tilbys mens Entra har et pass ingen har vist. Det viser passet Entra
+utstedte for personens første innlogging i et vindu, **Midlertidig tilgangspass**, med
+*… skriver inn dette passet ved første pålogging.*, *Virker til …*, **Kopier** og
+**Lukk**: *Det vises ikke igjen.* Det vises **én gang**: når du lukker vinduet, kan ingen
+se det igjen, og knappen er borte. Gi det til personen selv; det sendes aldri på
+e-post. Et pass som har gått ut, eller som allerede er vist, er borte — fanen sier
+*Passet er allerede vist, har utløpt, eller ble aldri utstedt. Kjør nå (nytt pass)
+utsteder et nytt.* — så bruk **Kjør nå (nytt pass)**.
 
 **Kjør nå** (HR, mens flagget er på) gjør kontoens neste steg med en gang, med en ny
 invitasjon til en ventende bruker hvis siste invitasjon ikke kan godtas. Fanen sier
@@ -469,7 +484,10 @@ da *Ferdig: en ny invitasjon ble sendt*, eller *Ferdig: ingen invitasjon ble sen
 ingen var forfalt, en kan fortsatt godtas, eller den siste gikk for under ti minutter
 siden; kjøringen er gjort likevel. For en person av typen Microsoft Entra ID heter den
 **Kjør nå (nytt pass)**: steget kjøres i Entra først, så i Vantigo, og Entra utsteder et
-nytt pass å vise. Når Entra avviser steget, sier fanen hvorfor.
+nytt pass å vise; fanen sier da *Ferdig: når kontoen er aktivert, har katalogen
+utstedt et nytt pass — Vis passet viser det én gang.* Når Entra avviser steget, sier
+fanen *Identitetsleverandøren avviste steget; ingenting mer ble gjort der.* og hvorfor, i
+en setning.
 
 **Deaktiver nå** (HR) spør først — *Dette slår også av kontoflagget, så kontoen forblir
 deaktivert til HR slår flagget på igjen* — deaktiverer så brukeren — for en person av
@@ -480,8 +498,10 @@ ikke for en bruker HR koblet for hånd under Selvbetjening, som ikke er Ansattes
 deaktivere: en eier deaktiverer den kontoen i identitet. Når brukeren ikke kan deaktiveres fra Ansatte, sier
 fanen hvorfor, med flagget allerede av: Ansatte styrer ikke brukeren, brukeren er en
 eier eller en systemadministrator (en eier deaktiverer dem på siden Brukere), eller
-kontoen har et annet ansattnummer. Når identitet ikke kan nås, er flagget av, og
-kontoarbeideren deaktiverer brukeren så snart den kan. Mens arbeideren jobber med
+kontoen har et annet ansattnummer — eller, for Entra-kontoen, at Entra avviste. Når
+identitet eller Entra ikke kan nås, er flagget av, og kontoarbeideren deaktiverer
+kontoen så snart den kan. For en person av typen Microsoft Entra ID tilbys Deaktiver nå
+også mens Entra-kontoen er aktivert, selv med flagget allerede av. Mens arbeideren jobber med
 kontoen, sier Kjør nå og Deaktiver nå fra og endrer ingenting: prøv igjen om noen
 minutter. Etter hver avvisning leser fanen kontoen på nytt.
 
@@ -1230,11 +1250,15 @@ en bryter:
 - Av som standard: **Arbeidsadresse** (stedets gateadresse, postnummer, poststed og
   land) og **Telefoner** (jobbtelefonen og mobilen).
 
-Navnene, ansattnummeret, brukerhovednavnet og arbeidslandet skrives alltid og vises grå.
-Private kontaktopplysninger skrives aldri.
+Navnene, ansattnummeret, brukerhovednavnet og bruksstedet skrives alltid, slik kortet
+sier; de har ingen bryter, og hver persons fane Konto viser dem grå. Private
+kontaktopplysninger skrives aldri.
 
 1. Slå bryterne på eller av.
-2. Trykk **Lagre katalogprofilen**.
+2. Trykk **Lagre katalogprofilen**. En melding sier *Katalogprofilen er lagret*; har noen
+   andre lagret innstillingene siden du åpnet dem, lastes de inn på nytt i stedet, og
+   meldingen sier *Noen andre lagret dette først; det er lastet inn på nytt*.
 
-Et felt du slår av, tømmes i katalogen ved hver persons neste oppdatering; et du slår på,
-skrives da. Hver persons fane Konto viser resultatet som katalogprofilen deres.
+Et felt du slår på, skrives ved hver persons neste oppdatering. Et felt du slår av,
+skrives ikke lenger: Ansatte slutter å sende det, og katalogen beholder verdien den sist
+hadde. Hver persons fane Konto viser resultatet som katalogprofilen deres.

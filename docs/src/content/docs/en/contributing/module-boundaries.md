@@ -283,7 +283,10 @@ Communications' outbox is the working example.
     carries no roles: identity assigns the set an Owner named, only on the `Activate`
     that enables a user Staff disabled (`local`) or once for an adopted user (`entra`),
     so `staff:manage` can never mint an account holding a role it chose, nor give back
-    one an Owner removed. `Expect` refuses a number an unmanaged user holds
+    one an Owner removed. `Expect` and `Unexpect`, like `Deactivate`, read no mode.
+    `Expect` refuses an announcement that is not valid — no object id and no principal
+    name, or a `ReplaceUserID` that is not the managed, pending, credential-less user
+    holding the number — as an invalid spec, a number an unmanaged user holds
     (`ErrEmployeeNumberTaken`) or a managed Owner holds (`ErrAccountPrivileged`), and
     records nothing for a number whose managed user has already arrived.
     `ActivateOpts.FreshInvitation` never re-sends an open invitation, and no
@@ -365,7 +368,10 @@ Communications' outbox is the working example.
     `ErrExternalSyncedOnPremises`, `ErrExternalPrivileged`, `ErrExternalEnabled`,
     `ErrPassGone`, `ErrProviderUnavailable`, `ErrGroupNotManageable`) and a reported
     fact a code that never carries an address; anything else is a failure to retry.
-    Staff writes the provider first and identity second, under one claim, so the
+    `Deactivate` runs whatever `Provider`'s status says, as long as a credential works,
+    so Staff writes nothing but a `Deactivate` to a provider that is not `connected`.
+    Staff writes the provider first and identity second, under the one claim it holds
+    on the person's identity link — the provider link is never claimed itself — so the
     account is announced (rule 11's `Expect`) before it arrives
     ([the provider link](/en/reference/staff/#the-provider-link)).
 

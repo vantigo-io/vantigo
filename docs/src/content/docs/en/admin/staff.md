@@ -178,9 +178,12 @@ every call:
 **On the upgrade** that brought the kinds, Staff set every person's kind and the
 default from the installation's authority mode, once, the first time it started —
 `local` from local, `external` from federated (SSO or SCIM on) — and logs `staff: the
-account kinds were seeded from the authority mode`. If identity could not be asked at
-that moment, it tries again at the next start or accounts cycle. Nothing changes
-anyone's kind afterwards but HR.
+account kinds were seeded from the authority mode` with the kind. If identity could
+not be asked at that moment — or a worker's settings disagreed with the recorded
+mode — it logs a warning and tries again at the next start or accounts cycle. The
+settings' revision moves only when the default became `external`, so a Settings page
+open during a seed that left `local` saves as usual. Nothing changes anyone's kind
+afterwards but HR.
 
 **To change the default**: Staff settings → **Accounts** → **Default account kind**,
 then **Save the account settings** (`defaultAccountKind` on `PUT /settings`). Only new
@@ -194,9 +197,11 @@ that one over.
 
 **The `entra` kind needs** the provider module installed and its connection working:
 the **Accounts** card reads *Microsoft Entra ID: connected.* Until then — *not
-connected yet* or *failing* — the worker writes nothing to the directory for those people
-(it still disables leavers in Vantigo), and the dashboard shows one item for the
-installation. Set **SCIM** up from Entra to Vantigo as
+connected yet* or *failing* — the worker makes and changes nothing in the directory for
+those people but a leaver's disable (which Entra may still refuse while its credential
+is not working), does nothing for them in Vantigo but disable leavers, and the
+dashboard shows one item for the installation. A person whose kind names a provider no
+enabled module offers is held the same way. Set **SCIM** up from Entra to Vantigo as
 [SSO and SCIM operations](/en/admin/sso-scim/#the-enterprise-extension-and-the-employee-number)
 says, or have the people sign in with Entra: the announced account is adopted on its
 arrival either way.
@@ -354,7 +359,9 @@ until HR turns the flag on again.
    for, then identity disables the user (`account_deactivated`) and ends their
    sessions. For an `entra` person the Entra account is disabled first
    (`account_external_deactivated`), then the Vantigo user; a refusal from Entra is
-   `provider_refused` (409) with its code, the flag already off. The person's own
+   `provider_refused` (409) with its code, and Entra unreachable `accounts_unavailable`
+   (503), the flag already off either way — identity's own refusal is answered first.
+   The person's own
    revision does not move. If the browser gives up waiting,
    the disable still goes on; whatever does not reach identity, the worker finishes at
    its next polls.
@@ -410,7 +417,7 @@ erased person" — and for a leaver whose account the worker could not disable.
 | `accountUserGone` | The user was deleted in identity | Unlink, or an Owner restores the account |
 | `accountPrivileged` | The user is an Owner or a SystemAdmin — also after a Disable now refused for them, tried again daily; a leaver who is one stays enabled, since Staff never disables an Owner or a SystemAdmin | Another Owner demotes and disables them in identity (once demoted, the next try disables them) |
 | `accountMismatch` | The user carries another employee number: someone else's account — also after a Disable now that did nothing for it | Check the person's employee number; once it is right the disable runs |
-| `accountModeChanged` | A pending user made for the `local` kind, the person's kind now one that never invites | An Owner finishes or deletes the user |
+| `accountModeChanged` | A pending user made for the `local` kind, the person's kind now `external`, which never invites | An Owner finishes or deletes the user |
 | `accountEmailDiffers` | The user's address in identity differs from the person's | An Owner changes it in identity (Staff changes it only while the user is pending and no invitation has been delivered to them) |
 | `accountEmailTaken` | Another user in identity holds the address | Resolve the duplicate in identity, or change the person's address |
 | `accountNumberTaken` | A user Staff does not manage holds the employee number | An Owner adopts that user for Staff, or resolves the number |
@@ -430,9 +437,9 @@ erased person" — and for a leaver whose account the worker could not disable.
 | `hireDateNotWritten` | Entra refused the hire date | Nothing is needed for sign-in; turn **Hire date** off in the directory profile if it keeps failing |
 | `licenceUnavailable` | A licence could not be assigned, none being left | Buy or free a licence in Microsoft 365 |
 | `passUnrevealed` | A pass was issued a day ago or more and nobody has shown it | Show it to the person, or Run now (new pass) when they are ready |
-| `managerNotInEntra` | The person's manager has no account in Entra, so the account carries no manager | Give the manager the Microsoft Entra ID kind, or accept it |
-| `entraNotConnected` | The Entra provider has no connection yet (one item, counting the `entra` people) | Connect it in the Entra module |
-| `entraFailing` | The Entra provider's last check failed — a credential refused, consent withdrawn (one item) | Fix the connection in the Entra module |
+| `managerNotInEntra` | The person's manager has no account in Entra, or Entra could not find it, so the account carries no manager | Give the manager the Microsoft Entra ID kind, or accept it |
+| `entraNotConnected` | The Entra provider has no connection yet, or no enabled module offers it (one item, counting the `entra` people whose flag is on) | Connect it in the Entra module, or enable the module |
+| `entraFailing` | The Entra provider's last check failed — a credential refused, consent withdrawn — or Staff could not ask it (one item) | Fix the connection in the Entra module |
 | `secretExpiring` | The newest valid client secret ends within thirty days (one item) | Add a new secret in the Entra module |
 | `secretExpired` | The client secret has ended (one item) | Add a new secret in the Entra module |
 
@@ -1403,8 +1410,8 @@ changing the settings at once cannot overwrite each other unseen.
   `employeeLeaveDateTime`, `employeeType`, `jobTitle`, `department`, `companyName`,
   `employeeOrgData`, `officeLocation`, `preferredLanguage` and `manager` on by default,
   `workAddress` and `phones` off. A field left out keeps its value; an unknown one is
-  refused on `directoryFields.<field>`. A field turned off is cleared in Entra at each
-  person's next update. The names, the employee number, the user principal name and
+  refused on `directoryFields.<field>`. A field turned off is no longer sent: Staff
+  stops writing it, and Entra keeps whatever it last held. The names, the employee number, the user principal name and
   the work country are always written ([the mapping](/en/reference/staff/#the-directory-profile)).
 - **Retention state** (`retention`, read-only): the deletion ledger's pending and
   failing files, the oldest pending, and the last erase ([The deletion
