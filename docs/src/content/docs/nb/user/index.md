@@ -46,7 +46,8 @@ eller en adresse en annen konto har, invitasjoner som ikke er besvart eller er
 tilbakekalt, forsøk som feiler — som åpner kontofanen til personen, og kontoene som
 venter på installasjonen (ingen roller Ansatte kan gi, en rolle blant dem som gir
 administrasjon, en påloggingsmodus jobben er uenig i), som åpner innstillingene i
-Ansatte.
+Ansatte, og hver gruppe som ikke er synkronisert med katalogen, som åpner gruppens
+side.
 
 Inne i en app lister sidemenyen appens områder. Mange av dem vises bare til den som har
 den tilhørende rettigheten — og noen få, som **Hurtigfaktura** i Fakturaer, bare til den
@@ -60,7 +61,7 @@ kortere enn din:
 | [Timer](/nb/user/time/) | Min uke, Godkjenning, Personer, Timeinnstillinger |
 | [Kalender](/nb/user/calendar/) | Kalender (din egen, og en kollegas med velgeren), Min kalender (kalenderen din på mobilen, og kalendere fra andre steder) |
 | [Utlegg](/nb/user/expenses/) | Mine utlegg, Godkjenning av utlegg, Refusjoner, Utleggsinnstillinger |
-| [Ansatte](/nb/user/staff/) | Min side (fanen **Fravær** og, for en leder, **Mitt team**), Ansattoversikt, Fravær (kalenderen og godkjenningene), Ansatteinnstillinger |
+| [Ansatte](/nb/user/staff/) | Min side (fanen **Fravær** og, for en leder, **Mitt team**), Ansattoversikt, Fravær (kalenderen og godkjenningene), Grupper, Ansatteinnstillinger |
 | [Fakturaer](/nb/user/invoices/) | Fakturaer, Hurtigfaktura, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |

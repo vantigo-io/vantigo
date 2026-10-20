@@ -271,7 +271,7 @@ sletting, får en ny konto.
 HR holder grupper i Ansatte og slår på Microsoft Entra ID for en gruppe på gruppens side
 ([Grupper](/nb/user/staff/#grupper)). Ansattes kontoarbeider får da modulen til å lage
 gruppen i leietakeren — en sikkerhetsgruppe eller en Microsoft 365-gruppe, etter
-gruppens **Type** — med gruppens eiere som eiere, og holde navnet, beskrivelsen og
+gruppens **Gruppetype** — med gruppens eiere som eiere, og holde navnet, beskrivelsen og
 medlemmene i samsvar med Ansatte ved hver runde. En Microsoft 365-gruppe kan gjøres til et
 team. Ingenting annet trengs i leietakeren: `Group.ReadWrite.All`, en av de åtte
 tillatelsene, dekker gruppene, eierne, medlemmene og teamet.
@@ -281,17 +281,41 @@ tjenestekontohaver (service principal) — applikasjonen fra steg 1, slik **Ente
 applications** viser den — som eier av hver gruppe, ved siden av personene HR har angitt.
 Microsoft lar ikke en applikasjon endre en gruppe den opprettet uten eier, så **ikke fjern
 applikasjonen fra en gruppes eiere i portalen**: Vantigo fjerner den aldri, og en gruppe
-uten den kan det hende Vantigo ikke lenger kan endre. En gruppe modulen fant etter
-e-postkallenavnet (mail nickname) i stedet for å lage den — en laget for hånd tidligere
-med samme kallenavn — tas over: applikasjonen og eierne legges til. En dynamisk eller
-rolletildelbar gruppe med kallenavnet røres aldri, og gruppens side i Ansatte sier at
-katalogen har en gruppe Vantigo ikke får skrive til: gi den gruppen et annet kallenavn i
-portalen, eller gi Ansatte-gruppen et annet kallenavn.
+uten den kan det hende Vantigo ikke lenger kan endre. En eier HR angir, blir eier i
+leietakeren først når kontoen deres der er aktivert.
+
+**En gruppe som allerede finnes i leietakeren, tas over.** Før modulen lager en gruppe,
+ser den etter en som har e-postaliaset (mail nickname) — en laget for hånd tidligere med
+samme alias — og tar den over: Ansattes navn, beskrivelse og synlighet skrives til den,
+og applikasjonen og HRs eiere legges til. **Gruppens egne eiere blir bare stående til
+Ansatte neste gang endrer gruppen**: fra da av er eierne nøyaktig HRs og applikasjonen,
+og alle andre fjernes. Sjekk hvem som eier en gruppe før du lar Ansatte ta den over.
+Modulen rører aldri en gruppe med aliaset som er dynamisk, rolletildelbar, en
+distribusjonsliste eller en e-postaktivert sikkerhetsgruppe (som Exchange holder), eller
+som en annen Ansatte-gruppe alt bruker, heller ikke et alias to grupper har; og den
+avviser en gruppe av en annen type enn Ansatte-gruppens **Gruppetype**. Gruppens side i
+Ansatte sier da hvorfor: gi den gruppen et annet alias i portalen, eller gi
+Ansatte-gruppen et annet **E-postalias** før den lages.
 
 **Endringer i portalen** varer til Ansatte neste gang endrer gruppen: navnet,
-beskrivelsen og synligheten skrives på nytt når HR endrer gruppens verdier eller eiere, og
-medlemmene settes til nøyaktig Ansattes hver gang Ansattes medlemmer endres. Hold
-gruppens medlemskap i Ansatte, ikke i portalen.
+beskrivelsen og synligheten skrives på nytt, og eierne settes til Ansattes, når HR endrer
+gruppens navn, beskrivelse, innstillinger eller eiere; medlemmene settes til nøyaktig
+Ansattes hver gang Ansattes medlemmer endres — en nestet gruppe eller en enhet du legger
+til som medlem, blir stående. Hold gruppens medlemskap og eiere i Ansatte, ikke i
+portalen. En gruppe som slettes i portalen, lages på nytt neste gang Ansatte sender
+innstillingene; til da kan gruppens side si at katalogen har en gruppe Vantigo ikke får
+skrive til — lagre gruppens innstillinger på nytt for å få den laget.
+
+**Lisensene kommer fra gruppene.** En person med aktivert konto tildeles direkte
+lisensene til hver gruppe de er med i som har Microsoft Entra ID slått på, og **alle
+andre lisenser som er tildelt dem direkte, fjernes** neste gang Ansatte bringer kontoen
+deres i samsvar — også en lisens en administrator har tildelt for hånd. En lisens som
+kommer fra en gruppe i leietakeren (gruppebasert lisensiering), blir stående. Når
+Ansatte holder en persons konto, gir du altså lisenser gjennom Ansattes grupper, eller
+gjennom leietakerens egen gruppebaserte lisensiering, aldri direkte. Valgene en gruppes
+**Lisenser** gir, er leietakerens lisenser slik den siste tilkoblingstesten, eller det
+siste blikket på **Leietakerens lisenser** i steg 4, leste dem: test igjen etter at du
+har kjøpt en ny lisens.
 
 **En arkivert gruppe, eller en HR har slått av Microsoft Entra ID for**, følger Ansattes
 **Slett en ekstern konto (dager etter slutt)**:
@@ -379,7 +403,9 @@ sletter den mykt. Den logger hva Graph svarte for de tre faktaene (`UNCERTAIN FA
 til `3`) og modulens hendelser, aldri hemmeligheten eller et pass. Feiler et steg først,
 deaktiverer og sletter oppryddingen brukeren den laget; en slettet bruker kan
 gjenopprettes under **Deleted users** i 30 dager. Den lager også en gruppe med
-applikasjonen og brukeren som eiere, setter medlemmene i én omgang og sletter den —
+applikasjonen og brukeren som eiere (en sikkerhetsgruppe med e-postalias som begynner
+med `vt-test-`), lager den igjen for å sjekke at den finner den samme gruppen, legger
+brukeren til som medlem og fjerner dem igjen i en `$batch`, og sletter den —
 teamet prøves ikke, siden en gruppe først må være femten minutter gammel. Den
 går gjennom den samme bevoktede transporten som produksjon. Hold hemmeligheten utenfor
 skallhistorikken.
@@ -421,6 +447,9 @@ leietakeren:
 
 | På kortet | Betyr | Gjør |
 | --- | --- | --- |
-| *Mislyktes* ved en innstilling | Leietakeren avviste gruppens verdi — en type som ikke kan endres når gruppen finnes, et team på en gruppe uten noen person blant eierne, en synlighet på en sikkerhetsgruppe. | Endre verdien på gruppens side, eller legg til en person som eier; Ansatte sender den ved neste runde. |
-| Katalogen har en gruppe Vantigo ikke får skrive til (`group_not_manageable`) | En dynamisk eller rolletildelbar gruppe, eller en annen av Vantigos grupper, har e-postkallenavnet. | Endre kallenavnet på en av dem. |
-| Medlemmer som ikke kunne endres (`members_failed`) | Leietakeren avviste å legge til eller fjerne noen medlemmer. | Vanligvis ingenting: Ansatte prøver dem igjen ved neste runde. |
+| *Mislyktes: dette kan ikke endres når gruppen er laget* ved **Gruppetype** eller **E-postalias** | Verdien er en annen enn den gruppen ble laget eller tatt over med (`trait_immutable`). | Sett den tilbake; en gruppe av en annen type er en ny Ansatte-gruppe. |
+| *Mislyktes: den trenger en person som eier* ved **Team i Microsoft Teams** | Et team trenger en person blant eierne (`trait_needs_owner`). | Legg til en eier på gruppens side; Ansatte sender den ved neste runde. |
+| *Mislyktes: verdien er ikke en katalogen godtar* ved en innstilling | `trait_invalid` — for eksempel en synlighet eller et team på en sikkerhetsgruppe. | Endre verdien og lagre. |
+| *Mislyktes: katalogen har en gruppe med denne nøkkelen som Ansatte ikke får skrive …* | `group_not_manageable`: en gruppe med e-postaliaset er dynamisk, rolletildelbar eller Exchanges, en annen Ansatte-gruppes, har aliaset sammen med en annen, eller er borte fra leietakeren. | Gi den andre gruppen et annet alias i portalen, eller gi Ansatte-gruppen et annet **E-postalias** før den lages; for en gruppe slettet i portalen, lagre innstillingene på nytt. |
+| *Mislyktes: katalogen kunne ikke nås; arbeideren prøver igjen* | Tre kall på rad mislyktes (`call_failed`). | Se tilkoblingens kort **Status** og loggen. |
+| *… medlemmer kunne ikke endres; de prøves igjen ved neste synkronisering* | Leietakeren avviste å legge til eller fjerne noen medlemmer (`members_failed`). | Vanligvis ingenting: Ansatte prøver dem igjen ved neste runde. |
