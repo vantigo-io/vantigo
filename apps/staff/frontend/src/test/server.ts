@@ -32,6 +32,7 @@ import {
   assignableUsers as defaultAssignableUsers,
   businessUnits as defaultBusinessUnits,
   departments as defaultDepartments,
+  defaultDirectoryFields,
   documentCategories as defaultDocumentCategories,
   documents as defaultDocuments,
   employments as defaultEmployments,
@@ -89,6 +90,8 @@ export interface StaffServer {
    * the stub's `state`.
    */
   accounts?: Record<number, Schemas["StaffPersonAccount"]>;
+  /** What `POST /people/{id}/account/pass` answers the once it answers (Entra B); a fake pass by default. */
+  pass?: Schemas["StaffAccountPass"];
   /** Absence as the server answers it for the caller (delivery B): the fake hands it out as it is. */
   absence?: AbsenceServer;
   pageSize?: number;
@@ -152,6 +155,8 @@ export interface StaffState {
   absenceTypes: Schemas["StaffAbsenceType"][];
   holidaySchemes: Schemas["StaffHolidayScheme"][];
   accounts: Record<number, Schemas["StaffPersonAccount"]>;
+  /** How many passes `POST …/account/pass` has answered (Entra B). */
+  passesRevealed: number;
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -482,6 +487,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     absenceTypes: server.absence?.types ?? allAbsenceTypes(defaultMeta(role).absenceTypes),
     holidaySchemes: server.absence?.schemes ?? defaultHolidaySchemes(),
     accounts: server.accounts ?? {},
+    passesRevealed: 0,
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -511,6 +517,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         }
       : base;
   };
+
+  /** The providers the fake's `/meta` lists (Entra B): a provider's kind is refused without its provider. */
+  const providersOffered = () =>
+    (server.meta instanceof Response ? undefined : (server.meta ?? metaOf()).providers) ?? [];
 
   const staleRevision = (init: RequestInit | undefined, current: number, what: string): Response | undefined => {
     const supplied = new Headers(init?.headers).get("If-Match");
@@ -559,6 +569,16 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     // An erase setting is true or false; a null is refused, never read as false (Task 5b).
     for (const key of ["erasePregnancyHealthTypes", "eraseSickCaseDates"])
       if ((body as Record<string, unknown>)[key] === null) errors[key] = ["An erase setting is true or false"];
+    // A provider's kind needs its provider; the switches are the switchable fields' (Entra B).
+    const kind = body.defaultAccountKind;
+    if (kind && kind !== "local" && kind !== "external" && !providersOffered().some((one) => one.key === kind))
+      return staffProblem(400, {
+        code: "provider_missing",
+        title: "Invalid Staff settings",
+        errors: { defaultAccountKind: ["No enabled module offers this provider"] },
+      });
+    for (const key of Object.keys(body.directoryFields ?? {}))
+      if (!(key in defaultDirectoryFields)) errors[`directoryFields.${key}`] = ["Not a switchable field"];
     if (Object.keys(errors).length > 0) return staffProblem(400, { title: "Invalid Staff settings", errors });
     const longest = `${body.employeeNumberPrefix ?? ""}${body.nextEmployeeNumber}`;
     if (longest.length <= 16) return undefined;
@@ -727,7 +747,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     return derivedAccount(stored, {
       provisionAccount: false,
       accountEmailKind: "work",
-      mode: "local",
+      accountKind: state.settings.defaultAccountKind,
       revision: 1,
       ...(user ? { link: { state: "linked", managed: false, attempts: 0, user } } : {}),
     });
@@ -1217,7 +1237,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           return jsonResponse(200, linkOf());
         }
       }
-      if (sub === "account" || sub === "account/run" || sub === "account/disable") {
+      if (sub === "account" || sub === "account/run" || sub === "account/disable" || sub === "account/pass") {
         // The links group's (plan reading 11): the person, HR and personal-data; anyone else the 404.
         if (!audience.self && !audience.hr && !audience.personalData) return notFound();
         // Every write is staff:access+staff:manage's: the access layer's 403 for the person and personal-data alone.
@@ -1225,7 +1245,12 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         const current = accountOf(stored);
         if (sub === "account" && method === "GET") return jsonResponse(200, current);
         if (sub === "account" && method === "PUT") {
-          const strict = unknownProperties(body, ["provisionAccount", "provisionFrom", "accountEmailKind"]);
+          const strict = unknownProperties(body, [
+            "provisionAccount",
+            "provisionFrom",
+            "accountEmailKind",
+            "accountKind",
+          ]);
           if (strict) return strict;
           const stale = staleRevision(init, current.revision, "account flag");
           if (stale) return stale;
@@ -1235,6 +1260,24 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
               title: "Invalid account",
               errors: { provisionAccount: ["provisionAccount is true or false"] },
             });
+          // The kind left out is kept (Entra B); a provider's kind needs its
+          // provider, and leaving entra waits while its link holds an account.
+          const kind = input.accountKind ?? current.accountKind;
+          if (kind !== current.accountKind) {
+            if (kind !== "local" && kind !== "external" && !providersOffered().some((one) => one.key === kind))
+              return staffProblem(400, {
+                code: "provider_missing",
+                title: "Invalid account",
+                errors: { accountKind: ["No enabled module offers this provider"] },
+              });
+            const held = current.providerLink?.state === "enabled" || current.providerLink?.state === "disabled";
+            if (current.accountKind === "entra" && held)
+              return staffProblem(409, {
+                code: "account_kind_locked",
+                title: "Account kind locked",
+                detail: "The person's entra account is enabled or disabled.",
+              });
+          }
           // A full replace: a day left out is cleared.
           const kept: Partial<Schemas["StaffPersonAccount"]> = { ...current };
           delete kept.provisionFrom;
@@ -1243,6 +1286,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
             provisionAccount: input.provisionAccount,
             ...(input.provisionFrom ? { provisionFrom: input.provisionFrom } : {}),
             accountEmailKind: input.accountEmailKind ?? "work",
+            accountKind: kind,
             revision: current.revision + 1,
           });
           return jsonResponse(200, state.accounts[stored.id]);
@@ -1266,6 +1310,23 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           };
           state.accounts[stored.id] = after;
           return jsonResponse(200, { invitationSent: true, account: after });
+        }
+        if (sub === "account/pass" && method === "POST") {
+          // The pass once (Entra B): a second call is pass_gone; never cached.
+          const link = current.providerLink;
+          if (!link) return notFound();
+          if (!link.hasPass)
+            return staffProblem(409, { code: "pass_gone", title: "Pass gone", detail: "The pass was shown already." });
+          const shown: Schemas["StaffProviderLink"] = { ...link, hasPass: false };
+          delete shown.passIssuedAt;
+          state.accounts[stored.id] = { ...current, providerLink: shown };
+          state.passesRevealed += 1;
+          const answer = jsonResponse(
+            200,
+            server.pass ?? { pass: "Fjord-7Q2k-9xPa", expiresAt: "2026-10-12T14:00:00Z" },
+          );
+          answer.headers.set("Cache-Control", "no-store");
+          return answer;
         }
         if (sub === "account/disable" && method === "POST") {
           // The flag goes off first, committed whatever identity answers then.
@@ -2319,6 +2380,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           deleteExternalAfterDays,
           erasePregnancyHealthTypes,
           eraseSickCaseDates,
+          defaultAccountKind,
+          directoryFields,
           ...kept
         } = state.settings;
         // The self-certification policy and the carry-over left out keep theirs too.
@@ -2333,7 +2396,12 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         } = kept;
         // The account settings left out keep theirs; a null
         // deleteExternalAfterDays is "never", answered absent.
-        const { deleteExternalAfterDays: sentDelete, ...sent } = body as StaffSettingsInput;
+        const {
+          deleteExternalAfterDays: sentDelete,
+          directoryFields: sentFields,
+          defaultAccountKind: sentKind,
+          ...sent
+        } = body as StaffSettingsInput;
         const keptDelete = "deleteExternalAfterDays" in (body as object) ? sentDelete : deleteExternalAfterDays;
         state.settings = {
           retentionGraceDays,
@@ -2351,6 +2419,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           ...(autoCarryOverSince ? { autoCarryOverSince } : {}),
           employeeNumberPrefix: "",
           ...sent,
+          // The kind and the switches left out keep theirs (Entra B); a switch left out keeps its value.
+          defaultAccountKind: sentKind ?? defaultAccountKind,
+          directoryFields: { ...directoryFields, ...sentFields },
           // The workspace's, answered but never taken by a replace.
           timeZone: state.settings.timeZone,
           ...(typeof keptDelete === "number" ? { deleteExternalAfterDays: keptDelete } : {}),

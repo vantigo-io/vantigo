@@ -779,8 +779,26 @@ describe("the dashboard's staff account attention items", () => {
     "accountFailing",
     "invitationUnanswered",
     "invitationRevoked",
+    // The provider link's (Entra delivery B).
+    "accountNotArrived",
+    "accountAmbiguousInEntra",
+    "accountAddressTakenInEntra",
+    "accountSyncedOnPremises",
+    "accountPrivilegedInEntra",
+    "hireDateNotWritten",
+    "licenceUnavailable",
+    "passUnrevealed",
+    "managerNotInEntra",
   ];
-  const installationTypes = ["employeeRoleMissing", "employeeRoleUnsafe", "accountModeMismatch"];
+  const installationTypes = [
+    "employeeRoleMissing",
+    "employeeRoleUnsafe",
+    "accountModeMismatch",
+    "entraNotConnected",
+    "entraFailing",
+    "secretExpiring",
+    "secretExpired",
+  ];
 
   it("opens the person's Account tab for an account item", () => {
     for (const type of accountTypes) {

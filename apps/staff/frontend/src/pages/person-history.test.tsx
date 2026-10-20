@@ -233,6 +233,78 @@ describe("History — the account events", () => {
   });
 });
 
+/** Ada's provider link history (Entra delivery B): the worker's steps on the directory, the kind changed, a pass shown. */
+const providerHistory = (): Record<number, StaffEvent[]> => ({
+  101: [
+    {
+      id: 706,
+      kind: "pass_revealed",
+      at: "2026-10-06T08:00:00Z",
+      actor: hr,
+      payload: {},
+    },
+    {
+      id: 705,
+      kind: "account_external_blocked",
+      at: "2026-10-05T08:00:00Z",
+      actor: { kind: "system", displayName: "Staff accounts" },
+      payload: { step: "prepare", state: "blocked", code: "external_ambiguous" },
+    },
+    {
+      id: 704,
+      kind: "account_external_activated",
+      at: "2026-10-04T08:00:00Z",
+      actor: { kind: "system", displayName: "Staff accounts" },
+      payload: { step: "activate", state: "enabled", codes: ["hire_date_not_written", "licence_unavailable:SPE_E3"] },
+    },
+    {
+      id: 703,
+      kind: "work_email_set_by_provider",
+      at: "2026-10-03T08:00:00Z",
+      actor: { kind: "system", displayName: "Staff accounts" },
+      payload: { step: "prepare", state: "disabled" },
+    },
+    {
+      id: 702,
+      kind: "account_announced",
+      at: "2026-10-02T08:00:00Z",
+      actor: { kind: "system", displayName: "Staff accounts" },
+      payload: { step: "announce", state: "disabled" },
+    },
+    {
+      id: 701,
+      kind: "account_flag_updated",
+      at: "2026-10-01T08:00:00Z",
+      actor: hr,
+      payload: { fields: { accountKind: { from: "local", to: "entra" } } },
+    },
+  ],
+});
+
+describe("History — the provider link's events", () => {
+  it("names each provider event and says its step, state and codes in words", async () => {
+    stubStaffApi({ role: "manage", events: providerHistory() });
+    renderRoute("/staff/people/101?tab=history");
+
+    const [revealed, blocked, activated, email, announced, kind] = await events();
+    expect(within(kind).getByText("Account kind: Local → Microsoft Entra ID")).toBeInTheDocument();
+    expect(within(announced).getByText("Account announced to identity")).toBeInTheDocument();
+    expect(within(announced).getByText("Step: Announce the account to identity")).toBeInTheDocument();
+    expect(within(email).getByText("Work email set by the identity provider")).toBeInTheDocument();
+    expect(within(activated).getByText("Directory account enabled")).toBeInTheDocument();
+    expect(within(activated).getByText("State: Enabled")).toBeInTheDocument();
+    expect(within(activated).getByText("The directory refused the hire date.")).toBeInTheDocument();
+    expect(within(activated).getByText(/A licence of the person's groups could not be assigned/)).toBeInTheDocument();
+    expect(within(blocked).getByText("Directory account held up")).toBeInTheDocument();
+    expect(
+      within(blocked).getByText(/Two accounts in the directory hold the person's employee number/),
+    ).toBeInTheDocument();
+    expect(within(revealed).getByText("Pass shown")).toBeInTheDocument();
+    for (const raw of ["external_ambiguous", "hire_date_not_written", "announce", "enabled"])
+      expect(screen.queryByText(raw)).not.toBeInTheDocument();
+  });
+});
+
 describe("History — the account events' readers", () => {
   it("lists a manager none of the account events, which are the links group's", async () => {
     stubStaffApi({

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import staffYaml from "../../../../openapi/staff.yaml?raw";
+import identityProvisionerGo from "../../../server/internal/contracts/identity_provisioner.go?raw";
 import accountFlagGo from "../../../server/internal/staff/account_flag.go?raw";
 import accountsDecideGo from "../../../server/internal/staff/accounts_decide.go?raw";
+import accountsProviderGo from "../../../server/internal/staff/accounts_provider.go?raw";
 import accountsWorkerGo from "../../../server/internal/staff/accounts_worker.go?raw";
 import eventsGo from "../../../server/internal/staff/events.go?raw";
 import retentionGo from "../../../server/internal/staff/retention.go?raw";
@@ -114,7 +116,9 @@ describe("the staff catalog", () => {
 
   it("words every reason the accounts worker records on a link, in both languages", () => {
     const reasons = [
-      ...`${accountsDecideGo}\n${accountsWorkerGo}`.matchAll(/^\s*(?:const\s+)?reason\w+\s*=\s*"(\w+)"/gm),
+      ...`${accountsDecideGo}\n${accountsWorkerGo}\n${accountsProviderGo}`.matchAll(
+        /^\s*(?:const\s+)?reason\w+\s*=\s*"(\w+)"/gm,
+      ),
     ].map((m) => m[1]);
     // The decision table's twelve and the calls' seven (accounts_decide.go, accounts_worker.go).
     expect(reasons.length).toBeGreaterThanOrEqual(19);
@@ -153,9 +157,62 @@ describe("the staff catalog", () => {
         expect((catalog as Record<string, string>)[`accountLinkState_${state}`], `${language} ${state}`).toBeDefined();
       for (const state of invitations)
         expect((catalog as Record<string, string>)[`accountInvitation_${state}`], `${language} ${state}`).toBeDefined();
-      for (const mode of ["local", "federated", "unavailable"])
-        expect((catalog as Record<string, string>)[`accountMode_${mode}`], `${language} ${mode}`).toBeDefined();
+      for (const kind of ["local", "external", "entra", "unavailable"])
+        expect((catalog as Record<string, string>)[`accountKind_${kind}`], `${language} ${kind}`).toBeDefined();
+      for (const kind of ["local", "external", "entra"])
+        expect((catalog as Record<string, string>)[`accountKindChoice_${kind}`], `${language} ${kind}`).toBeDefined();
     }
+  });
+
+  it("words every state, reason and reported code of a provider link, in both languages", () => {
+    const states = [...accountsProviderGo.matchAll(/^\s*providerState\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]);
+    expect(states.sort()).toEqual(["blocked", "deleted", "disabled", "enabled", "failed", "preparing"]);
+    const reported = [...identityProvisionerGo.matchAll(/^\s*Reported\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1]);
+    expect(reported.length).toBeGreaterThanOrEqual(5);
+    const staffCodes = [...accountsProviderGo.matchAll(/^\s*(?:const\s+)?codeManager\w+\s*=\s*"(\w+)"/gm)].map(
+      (m) => m[1],
+    );
+    expect(staffCodes).toEqual(["manager_not_in_entra"]);
+    const steps = ["prepare", "announce", "activate", "deactivate", "update", "delete", "unexpect", "report"];
+    for (const [language, catalog] of Object.entries(staffCatalog)) {
+      const words = catalog as Record<string, string>;
+      for (const state of states) {
+        expect(words[`providerLinkState_${state}`], `${language} providerLinkState_${state}`).toBeDefined();
+        expect(words[`accountLinkState_${state}`], `${language} accountLinkState_${state}`).toBeDefined();
+      }
+      for (const code of [...reported, ...staffCodes, "user_gone", "invalid_actor"])
+        expect(words[`accountReason_${code}`], `${language} accountReason_${code}`).toBeDefined();
+      for (const step of steps) expect(words[`accountStep_${step}`], `${language} accountStep_${step}`).toBeDefined();
+      for (const status of ["unconfigured", "connected", "failing"])
+        expect(words[`providerStatus_${status}`], `${language} providerStatus_${status}`).toBeDefined();
+    }
+  });
+
+  it("names every field of the directory profile the contract lists, in both languages", () => {
+    const keys = [
+      "givenName",
+      "familyName",
+      "displayName",
+      "employeeId",
+      "userPrincipalName",
+      "usageLocation",
+      "employeeHireDate",
+      "employeeLeaveDateTime",
+      "employeeType",
+      "jobTitle",
+      "department",
+      "companyName",
+      "employeeOrgData",
+      "officeLocation",
+      "workAddress",
+      "phones",
+      "preferredLanguage",
+      "manager",
+    ];
+    for (const key of keys.slice(6)) expect(staffYaml, `the contract names ${key}`).toContain(key);
+    for (const [language, catalog] of Object.entries(staffCatalog))
+      for (const key of keys)
+        expect((catalog as Record<string, string>)[`directoryField_${key}`], `${language} ${key}`).toBeDefined();
   });
 
   it("words every refusal of the accounts the contract names, in both languages", () => {
@@ -166,6 +223,10 @@ describe("the staff catalog", () => {
       "account_not_managed",
       "account_privileged",
       "account_mismatch",
+      "account_kind_locked",
+      "provider_missing",
+      "pass_gone",
+      "provider_refused",
     ];
     for (const code of codes) {
       expect(staffYaml, `the contract names ${code}`).toContain(code);
@@ -175,7 +236,11 @@ describe("the staff catalog", () => {
   });
 
   it("knows every kind of event the server writes, and no other", () => {
-    const written = [...`${eventsGo}\n${accountFlagGo}\n${accountsWorkerGo}`.matchAll(/^\s*event\w+\s*=\s*"(\w+)"/gm)]
+    const written = [
+      ...`${eventsGo}\n${accountFlagGo}\n${accountsWorkerGo}\n${accountsProviderGo}`.matchAll(
+        /^\s*event\w+\s*=\s*"(\w+)"/gm,
+      ),
+    ]
       .map((m) => m[1])
       .sort();
     expect(written.length).toBeGreaterThan(0);
