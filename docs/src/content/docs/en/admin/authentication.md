@@ -398,7 +398,11 @@ pending user without a credential is recorded only when the announcement names t
 very user to replace. A user to replace named when nobody holds the number, or who is
 not that pending, credential-less holder, is an invalid announcement. The same
 announcement again changes nothing; any change replaces it whole, audited
-`account.expected` with the number, the names of its keys and the user it replaces.
+`account.expected` with the number, the names of its keys and the user it replaces. An
+announcement that records a user to replace revokes that user's open invitations
+`replaced` in the same transaction — the person cannot accept a local invitation while
+the provider's account is on its way — and the audit's after counts them
+(`replacedInvitations`).
 Staff records `ErrEmployeeNumberTaken` and `ErrAccountPrivileged` on the person's
 provider link and retries an invalid announcement as a failure. `Unexpect` deletes an
 announcement and is audited `account.unexpected` when one went; with none — never
@@ -408,13 +412,18 @@ announced, or fulfilled already, which consumed it — it succeeds and writes no
 them; `identity.users.provisioning_roles_at` records when Staff's `Activate` gave a
 user the employee roles. For the `entra` kind the first `Activate` that finds it empty
 gives them and sets it — once: an Owner's later removal of a role is not undone. The
-`local` path sets it too when it gives them.
+`local` path sets it too when it gives them. Migration 00059 sets it, on the upgrade,
+for every Staff-managed user who is not pending: the previous release's `Activate` or
+an Owner's adoption gave them their roles already, so the once-only grant is spent for
+them and a later `entra` activation gives nothing back over what an Owner has removed.
+A pending user keeps it empty.
 
 An announcement nobody fulfils stays until Staff withdraws it; after ninety days Staff
 reports the person's account as not arrived (`accountNotArrived`). The Owner's manual
 [adoption](#adopt-an-existing-user-for-staff) stays for the `external` kind and for any
 user the provider made without an announcement. Migration
-`00059_identity_expected_accounts.sql` adds the table and `provisioning_roles_at`; its
+`00059_identity_expected_accounts.sql` adds the table and `provisioning_roles_at`
+(filled for the managed users who are not pending, as above); its
 Down drops both, and an unfulfilled announcement is made again after the provider's
 next `Prepare`.
 

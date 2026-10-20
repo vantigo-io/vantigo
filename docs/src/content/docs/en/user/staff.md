@@ -393,12 +393,16 @@ day, at which address and who holds the account. HR changes it:
      between.
 
    A new person gets the **Default account kind** from [Accounts](#accounts). Changing a
-   person away from Microsoft Entra ID while their Entra account is enabled or disabled
-   is refused — *The account kind cannot leave Microsoft Entra ID while the person's
+   person away from Microsoft Entra ID while Entra holds an account for them — enabled,
+   disabled or held up, until Entra has deleted it or reported it gone — is refused —
+   *The account kind cannot leave Microsoft Entra ID while the person's
    account there is enabled or disabled. The person leaves the directory by Disable now
    or by the end of their employment.* A person whose
    Vantigo user still waits for its invitation can be moved from Local to Microsoft
-   Entra ID: the account that arrives from Entra takes over that user.
+   Entra ID: the account that arrives from Entra takes over that user. Until Staff has
+   set everyone's kind on the upgrade that brought the kinds, a change of kind is not
+   saved: *Could not save* — *Identity could not be reached, or no module provides
+   accounts. Nothing was changed; …* — try again later.
 5. Press **Save the account flag**. The fields are saved together. If somebody
    else changed the flag since you opened the tab, the tab reloads and says
    *Somebody else saved this; it has been reloaded*.
@@ -469,7 +473,8 @@ Below it, **Directory profile** is a read-only table, **Field**, **Written** and
 the register today. The names, the employee number, the user principal name and the
 usage location are always written and shown greyed, **Written** *Always*; the others
 follow the installation's [Directory profile](#directory-profile), **Written** *Yes*, or
-*Off — cleared* for a field switched off there, which Staff no longer writes. The person
+*Off — not sent* for a field switched off there, which Staff no longer writes and the
+directory keeps as it is. The person
 sees this table on their own tab too: it is their data as the directory sees it.
 
 **Show the pass** (HR) is offered while Entra holds a pass nobody has shown. It shows
@@ -486,8 +491,10 @@ fresh invitation for a pending user whose last one cannot be accepted. The tab t
 says *Done: a new invitation was sent*, or *Done: no invitation was sent* — none was
 due, one can still be accepted, or the last went less than ten minutes ago; the run is
 done all the same. For a person of the Microsoft Entra ID kind it is **Run now (new
-pass)**: the step runs in Entra first, then in Vantigo, and Entra issues a new pass to
-show; the tab then says *Done: when the account is enabled, the directory issued a new
+pass)**: the step runs in Entra first, then in Vantigo, and a new pass is issued only
+when the run enables the account — on the person's first day, or when they are hired
+again; an account already enabled gets no new pass, only its details brought in line.
+The tab then says *Done: when the account is enabled, the directory issued a new
 pass — Show the pass shows it once.* When Entra refuses the step, the tab says *The
 identity provider refused the step; nothing more was done there.* and why, in a
 sentence.
@@ -495,16 +502,17 @@ sentence.
 **Disable now** (HR) asks first — *This also turns the account flag off, so the account
 stays disabled until HR turns the flag on again* — then disables the user — for a
 person of the Microsoft Entra ID kind the Entra account first, then the Vantigo user —
-and says *The
-account is disabled and the account flag is off* — or, when Staff had made or found no
-user yet, *The account flag is off; there was no account to disable*. It is not offered
+and says *The account is disabled and the account flag is off.*, *The account and the
+directory account are disabled and the account flag is off.* when both were, *The
+account flag is off and the directory account is disabled.* when there was no Vantigo
+user yet, or *The account flag is off; there was no account to disable.* It is not offered
 for a user HR linked by hand under Self-service, which is not Staff's to disable: an
 Owner disables that account in identity. When the user cannot be disabled
 from Staff, the tab says why, the flag already off: Staff does not manage the user, the
 user is an Owner or a system administrator (an Owner disables them on the Users page),
 or the account carries another employee number — or, for the Entra account, Entra
 refused. When identity or Entra cannot be reached, the flag is off and the accounts
-worker disables the account as soon as it can. For a person of the Microsoft Entra ID
+worker disables the account at its next run, as soon as it can. For a person of the Microsoft Entra ID
 kind, Disable now is offered too while their Entra account is enabled, even with the
 flag already off. While the
 worker is acting on the account, Run now and Disable now say so and change nothing:

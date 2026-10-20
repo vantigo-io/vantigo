@@ -392,12 +392,15 @@ på hvilken adresse og hvem som har kontoen. HR endrer det:
      vente den, så brukeren den bringer, er personens uten en eier imellom.
 
    En ny person får **Standard kontotype** fra [Kontoer](#kontoer). Å flytte en person bort
-   fra Microsoft Entra ID mens Entra-kontoen deres er aktivert eller deaktivert, avvises
-   — *Kontotypen kan ikke forlate Microsoft Entra ID mens personens konto der er
+   fra Microsoft Entra ID mens Entra har en konto for dem — aktivert, deaktivert eller
+   stoppet, til Entra har slettet den eller meldt den borte — avvises — *Kontotypen kan ikke forlate Microsoft Entra ID mens personens konto der er
    aktivert eller deaktivert. Personen forlater katalogen med Deaktiver nå eller når
    arbeidsforholdet slutter.* En person med en
    Vantigo-bruker som fortsatt venter på invitasjonen, kan flyttes fra Lokal til
-   Microsoft Entra ID: kontoen som kommer fra Entra, overtar den brukeren.
+   Microsoft Entra ID: kontoen som kommer fra Entra, overtar den brukeren. Til Ansatte
+   har satt alles type ved oppgraderingen som innførte typene, lagres ikke en endring av
+   type: *Kunne ikke lagre* — *Identitet kunne ikke nås, eller ingen modul gir kontoer.
+   Ingenting ble endret; …* — prøv igjen senere.
 5. Trykk **Lagre kontoflagget**. Feltene lagres sammen. Har noen andre endret
    flagget siden du åpnet fanen, lastes fanen inn på nytt og sier *Noen andre lagret
    dette først; det er lastet inn på nytt*.
@@ -465,7 +468,8 @@ Under den er **Katalogprofil** en skrivebeskyttet tabell, **Felt**, **Skrives** 
 **Verdi i dag**: hvert felt Ansatte skriver på kontoen, og verdien det har fra registeret
 i dag. Navnene, ansattnummeret, brukerhovednavnet og bruksstedet skrives alltid og vises
 grå, **Skrives** *Alltid*; de andre følger installasjonens [Katalogprofil](#katalogprofil),
-**Skrives** *Ja*, eller *Av — tømmes* for et felt som er slått av der, og som Ansatte
+**Skrives** *Ja*, eller *Av — sendes ikke* for et felt som er slått av der, som katalogen
+beholder som det er, og som Ansatte
 ikke lenger skriver. Personen ser tabellen på sin egen fane også: det er deres
 opplysninger slik katalogen ser dem.
 
@@ -483,8 +487,10 @@ invitasjon til en ventende bruker hvis siste invitasjon ikke kan godtas. Fanen s
 da *Ferdig: en ny invitasjon ble sendt*, eller *Ferdig: ingen invitasjon ble sendt* —
 ingen var forfalt, en kan fortsatt godtas, eller den siste gikk for under ti minutter
 siden; kjøringen er gjort likevel. For en person av typen Microsoft Entra ID heter den
-**Kjør nå (nytt pass)**: steget kjøres i Entra først, så i Vantigo, og Entra utsteder et
-nytt pass å vise; fanen sier da *Ferdig: når kontoen er aktivert, har katalogen
+**Kjør nå (nytt pass)**: steget kjøres i Entra først, så i Vantigo, og et nytt pass
+utstedes bare når kjøringen aktiverer kontoen — på personens første dag, eller når de
+ansettes på nytt; en konto som allerede er aktivert, får ikke noe nytt pass, bare
+opplysningene sine brakt i samsvar. Fanen sier da *Ferdig: når kontoen er aktivert, har katalogen
 utstedt et nytt pass — Vis passet viser det én gang.* Når Entra avviser steget, sier
 fanen *Identitetsleverandøren avviste steget; ingenting mer ble gjort der.* og hvorfor, i
 en setning.
@@ -492,8 +498,10 @@ en setning.
 **Deaktiver nå** (HR) spør først — *Dette slår også av kontoflagget, så kontoen forblir
 deaktivert til HR slår flagget på igjen* — deaktiverer så brukeren — for en person av
 typen Microsoft Entra ID først Entra-kontoen, så Vantigo-brukeren — og sier *Kontoen er
-deaktivert og kontoflagget er av* — eller, når Ansatte ennå ikke hadde opprettet eller
-funnet en bruker, *Kontoflagget er av; det fantes ingen konto å deaktivere*. Den tilbys
+deaktivert og kontoflagget er av.*, *Kontoen og kontoen i katalogen er deaktivert, og
+kontoflagget er av.* når begge ble det, *Kontoflagget er av og kontoen i katalogen er
+deaktivert.* når det ikke fantes noen Vantigo-bruker ennå, eller *Kontoflagget er av; det
+fantes ingen konto å deaktivere.* Den tilbys
 ikke for en bruker HR koblet for hånd under Selvbetjening, som ikke er Ansattes å
 deaktivere: en eier deaktiverer den kontoen i identitet. Når brukeren ikke kan deaktiveres fra Ansatte, sier
 fanen hvorfor, med flagget allerede av: Ansatte styrer ikke brukeren, brukeren er en

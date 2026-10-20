@@ -185,13 +185,27 @@ Innstillingenes revisjon flytter seg bare når standarden ble `external`, så en
 innstillingsside som var åpen under en seeding som lot `local` stå, lagrer som vanlig.
 Ingenting endrer noens type etterpå, bortsett fra HR.
 
+**Til seedingen har kjørt**, leser hver person `local`, som kanskje ikke er regelen
+deres, så Ansatte vurderer ingenting ut fra en type: arbeideren kjører bare
+deaktiveringer, lar alle andre koblinger være som de var og logger `staff: the account
+kinds are not yet seeded; only deactivations run` én gang per runde; **Kjør nå** for en
+person, og en endring av en persons **Kontotype** eller av **Standard kontotype**,
+svarer 503 `accounts_unavailable`, som sier at typene ikke er seedet ennå, og endrer
+ingenting. Hver av dem prøver seedingen igjen først, så de virker så snart identity
+svarer; kontroller med logglinjen over.
+
 **For å endre standarden**: Ansatteinnstillinger → **Kontoer** → **Standard kontotype**,
 så **Lagre kontoinnstillingene** (`defaultAccountKind` på `PUT /settings`). Bare nye
 personer får den. **For å endre én persons**: Konto-fanen deres → **Kontotype**. Typen
 `entra` avvises `provider_missing` med mindre en aktivert modul tilbyr leverandøren; å
-forlate `entra` avvises `account_kind_locked` (409) mens personens Entra-konto er
-aktivert eller deaktivert — deaktiver dem med **Deaktiver nå**, eller la arbeidsforholdet
-ta slutt, og endre den så. Å flytte en person fra `local` til `entra` mens
+forlate `entra` avvises `account_kind_locked` (409) mens personens Entra-kobling navngir
+en konto Entra ikke har slettet — aktivert, deaktivert, eller stoppet på den, med mindre
+Entra meldte den borte — så deaktiver dem med **Deaktiver nå**, eller la arbeidsforholdet
+ta slutt, og endre typen når kontoen er slettet. En endring som går gjennom før Entra
+laget en konto, trekker tilbake kunngjøringen av kontoen til Vantigo når ingen
+Vantigo-bruker har kommet ennå; en kobling personen beholder under Entra, deaktiveres
+fortsatt for en som slutter eller med **Deaktiver nå**, og ingenting annet gjøres med
+den. Å flytte en person fra `local` til `entra` mens
 Vantigo-brukeren deres fortsatt venter på invitasjonen, er tillatt: brukeren Entra
 bringer, tar over den.
 
@@ -328,9 +342,12 @@ identity registrerer og historikken navngir.
   Identity sender aldri på nytt en invitasjon som fortsatt kan godtas, og sender ingen
   innen ti minutter etter den forrige; kjøringen er like fullt gjort — prøv igjen etter
   ti minutter om det trengs. En person med flagget av får ingenting kjørt, og fanen
-  tilbyr ikke Kjør nå. For en `entra`-person er det **Kjør nå (nytt pass)**: Entra
-  utsteder et nytt pass, som vises med **Vis passet**; en avvisning fra Entra er
-  `provider_refused` (409) med koden sin.
+  tilbyr ikke Kjør nå. For en `entra`-person er det **Kjør nå (nytt pass)**: et nytt
+  pass bes om fra Entra bare når kjøringen aktiverer en deaktivert konto — en nyansatt
+  på første dag, en som ansettes på nytt — og vises med **Vis passet**; en konto som
+  allerede er aktivert, får ikke noe nytt pass og bringes bare i samsvar. En avvisning
+  fra Entra er `provider_refused` (409) med koden sin. Så lenge kontotypene ikke er
+  seedet, svarer Kjør nå 503 og kjører ingenting.
 - **Grenser**: fra én klientadresse høyst 30 kjøringer av alle kontoer i timen, og
   høyst 120 av en persons Kjør nå, Deaktiver nå og Vis passet til sammen i timen; over grensen
   avvises forespørselen (429) — vent, eller la arbeiderens egen runde gjøre det. Antallet
@@ -363,11 +380,17 @@ HR slår flagget på igjen.
    identity brukeren (`account_deactivated`) og avslutter øktene. For en `entra`-person
    deaktiveres Entra-kontoen først (`account_external_deactivated`), så
    Vantigo-brukeren; en avvisning fra Entra er `provider_refused` (409) med koden sin, og
-   Entra utilgjengelig `accounts_unavailable` (503), med flagget allerede av uansett —
-   identitys egen avvisning svares først. Personens egen revisjon
+   en deaktivering Entra ikke bekreftet — Entra ikke tilgjengelig, kontoen ikke lesbar,
+   eller ingen aktivert modul som tilbyr den — `accounts_unavailable` (503), som sier at
+   katalogen ikke kunne nås. Flagget er allerede av uansett, identitys egen avvisning
+   svares først, og deaktiveringen står som bedt om: arbeideren gjør den ferdig ved neste
+   kjøring. Personens egen revisjon
    flytter seg ikke. Gir nettleseren opp å vente, fortsetter deaktiveringen likevel; det
    som ikke når fram til identity, gjør arbeideren ferdig ved de neste kjøringene.
-2. Kontroller: fanen sier *Kontoen er deaktivert og kontoflagget er av*, **Ansatte gir
+2. Kontroller: fanen sier *Kontoen er deaktivert og kontoflagget er av* — for en
+   `entra`-person *Kontoen og kontoen i katalogen er deaktivert, og kontoflagget er av*,
+   eller *Kontoflagget er av og kontoen i katalogen er deaktivert.* når det ikke fantes
+   noen Vantigo-bruker ennå — **Ansatte gir
    en konto** er av, og **Tilstand** viser *Deaktivert av Ansatte* (svaret har
    `provisionAccount: false` og koblingen `state: disabled`). En person uten kobling, eller der brukeren ikke er opprettet ennå,
    får bare flagget slått av.

@@ -110,7 +110,10 @@ Communications' outbox is the working example.
    to drive and Staff's accounts worker drives the providers in worker mode as the API
    does. Each provider is keyed by `Key()`, answered with no context and no network;
    **a key two providers claim fails composition**, naming both — `Compose` answers the
-   error, `Workers` panics, as for `InvoicedWork` — and a nil provider is dropped.
+   error, `Workers` panics, as for `InvoicedWork` — and so does a **reserved key**:
+   `""`, `identity` (the provider Staff's own identity link names in
+   `staff.identity_links`), `local` and `external` (the two account kinds that name no
+   provider), naming the module; a nil provider is dropped.
    Providers preset on `Deps` (a test's fake, through
    `modtest.WithIdentityProvisioners`, which `modtest.FakeIdentityProvisioner` fills)
    come first and keep their place. A provider's gate is asked for a user with no request
@@ -288,8 +291,9 @@ Communications' outbox is the working example.
     name, or a `ReplaceUserID` that is not the managed, pending, credential-less user
     holding the number — as an invalid spec, a number an unmanaged user holds
     (`ErrEmployeeNumberTaken`) or a managed Owner holds (`ErrAccountPrivileged`), and
-    records nothing for a number whose managed user has already arrived.
-    `ActivateOpts.FreshInvitation` never re-sends an open invitation, and no
+    records nothing for a number whose managed user has already arrived; one recording a
+    `ReplaceUserID` revokes that user's open invitations `replaced` in the same
+    transaction. `ActivateOpts.FreshInvitation` never re-sends an open invitation, and no
     `Activate` invites within ten minutes of the last invitation naming the user. The employee number decides whose
     account a user is: `Prepare` finds by it, and a caller acts on a user only when
     identity's number is the same as its record's by `contracts.SameEmployeeNumber`
@@ -356,14 +360,18 @@ Communications' outbox is the working example.
     employee number or creates it disabled, `Activate`, `Deactivate`, `Update`,
     `Delete` (a soft delete; `ErrExternalEnabled` on an enabled account), `Account`,
     `RevealPass` (once, then `ErrPassGone`), and the group calls a later delivery uses;
-    `Provider` names its key, display name and status (`unconfigured`, `connected`,
-    `failing`). It is held to rule 11's lock discipline: every call reaches the network
+    `Provider` names its key — never a reserved one (rule 5) — display name and status
+    (`unconfigured`, `connected`, `failing`). It is held to rule 11's lock discipline: every call reaches the network
     on the provider's own pool, so **Staff never calls it inside a transaction or
     holding a connection**, only through accessors in its `contractscalls.go` that
     refuse such a call, keyed by the provider. Every write names its `Actor` and is
     idempotent. The provider answers only facts about the external object — its id,
     principal name, state, whether a pass waits, and `Reported` codes — and **never an
     address Staff did not give it, except the one it made** for a person who had none.
+    Staff bounds what it answers before storing it: a code or a status reason outside
+    `^[a-z_]{1,40}(:[A-Za-z0-9_.-]{1,64})?$` is dropped, a principal name over 254
+    characters is not recorded, and the made address must pass Staff's email rule —
+    each drop logged by field name, never by value.
     Each refusal is a sentinel (`ErrExternalAmbiguous`, `ErrExternalAddressTaken`,
     `ErrExternalSyncedOnPremises`, `ErrExternalPrivileged`, `ErrExternalEnabled`,
     `ErrPassGone`, `ErrProviderUnavailable`, `ErrGroupNotManageable`) and a reported

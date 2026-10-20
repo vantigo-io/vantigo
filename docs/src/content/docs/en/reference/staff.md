@@ -185,7 +185,7 @@ acknowledged thresholds.
 | `autoCarryOver` | false | Carry holiday left at a year's end into the next as forced, without HR's action; left out, kept. |
 | `createBeforeDays` | 14 | 0 to 90 days before the account's effective date that the accounts worker prepares it, disabled ([accounts](#accounts)); left out, kept. |
 | `deleteExternalAfterDays` | — | 1 to 3650 days after the last employment ended that a person's account in a provider's directory is deleted — soft-deleted there, once it is disabled and no legal hold is on the person ([the provider link](#the-provider-link)) — or `null` for never; left out, kept, and absent on the wire when never. |
-| `defaultAccountKind` | `local`, seeded once from identity's recorded mode | The [account kind](#the-account-kind) a new person takes: `local`, `external` or a provider's key (`entra`), which is `provider_missing` on the field unless an enabled module offers that provider; left out, kept. People already registered keep theirs. |
+| `defaultAccountKind` | `local`, seeded once from identity's recorded mode | The [account kind](#the-account-kind) a new person takes: `local`, `external` or a provider's key (`entra`), which is `provider_missing` on the field unless an enabled module offers that provider; left out, kept. People already registered keep theirs. While the kinds are [not yet seeded](#the-account-kind), a change of it is 503 `accounts_unavailable` and nothing is saved. |
 | `directoryFields` | every switchable field on but `workAddress` and `phones` | `{"<key>": boolean}` over the [directory profile's](#the-directory-profile) switchable fields; a key left out keeps its value, a key that is not a switchable field is a field error on `directoryFields.<key>`. |
 | `erasePregnancyHealthTypes` | false | Put the pregnancy and health-appointment rows on the health schedule ([what is due](#what-is-due)); left out, kept; `null` refused on the field (400), never read as false. |
 | `eraseSickCaseDates` | false | Make a closed case's erase remove the case itself ([what an erase does](#what-an-erase-does)); left out, kept; `null` refused on the field (400). |
@@ -1062,7 +1062,8 @@ manager, an Approver, a colleague and anyone else get the person's 404.
   accepted — the worker waits, and HR is told. It answers the account as `GET` does.
   `accountKind` is **the one field the replace keeps when it is left out**; a change of
   it is judged as [the account kind](#the-account-kind) says — `provider_missing` (400
-  on `accountKind`) and `account_kind_locked` (409) — and named in the same event. A
+  on `accountKind`), `account_kind_locked` (409) and, while the kinds are not yet
+  seeded, 503 `accounts_unavailable` — and named in the same event. A
   change of the kind alone writes the kind alone; a change of the kind and of the flag's
   own fields in one replace moves the flag's revision by two, one for each write.
 
@@ -1158,7 +1159,8 @@ and `directoryFields` are under [Settings](#settings). **Meta** answers `staff:m
 `defaultAccountKind` — the settings' value, absent when no module provides accounts —
 `providers` — every provider in the slot, `{key, name, status, reason?}`, its status
 asked now (`Provider`, on no connection, before any snapshot), a provider that could
-not be asked answered `failing` with the reason `unreachable` (logged); empty when no
+not be asked answered `failing` with the reason `unreachable` (logged), and a reason
+outside a provider code's form left out (logged by field name); empty when no
 enabled module offers one — and `provisioningRolesSet` — whether an Owner has named the
 roles Staff may give in identity, without which a local account cannot be enabled,
 absent when no module provides accounts or identity could not answer. The previous
@@ -1182,10 +1184,10 @@ identity), `account_external_prepared`, `account_external_activated`,
 `account_external_deactivated`, `account_external_updated`,
 `account_external_deleted`, `account_external_blocked` and `account_external_failed`
 (the first call of a run of failures, its code `accounts_unavailable`) — codes only,
-never the principal name, the address or the provider's words. Each also stores
-`codes`, the provider link's reported codes after the step, which the history does not
-answer. `pass_revealed` is one of them too: the viewer is its actor, its payload names
-the provider and never the pass, and the history answers it empty.
+never the principal name, the address or the provider's words. Each also carries
+`codes`, the provider link's reported codes after the step, answered to the links group
+when there are any. `pass_revealed` is one of them too: the viewer is its actor, and its
+payload names the `provider` — answered to the links group alone — and never the pass.
 `work_email_set_by_provider`, when the address the provider made is written to a person
 who had none, is **not** among the account events: it is a change of the person, listed
 to every reader of their history, its payload `{step: "provider", state}` read by the
@@ -1220,10 +1222,19 @@ changes a person's kind** on the Account tab, `accountKind` on
 - a provider's key — `entra` — is `provider_missing`, a field error on `accountKind`,
   unless an enabled module offers that provider (`Deps.IdentityProvisioners` holds its
   `Key()`); the same for `defaultAccountKind` on `PUT /settings`;
-- a change **away from `entra`** is `account_kind_locked` (409) while the person's
-  `entra` link is `enabled` or `disabled`: a person leaves the directory by *Disable
-  now* or by the end of their employment, never by a change of kind. Once the link is
-  `deleted`, `failed`, `blocked` or `preparing`, or there is none, the kind may change;
+- a change **away from a provider's kind** (`entra`) is `account_kind_locked` (409)
+  while the person's link under that provider names an account (`external_id` set) in
+  any state but `deleted`, unless it is blocked `user_gone` — a `Prepare`'s answer is
+  all it takes, so a link `blocked` or `failed` on an account the directory holds locks
+  too: a person leaves the directory by *Disable now* or by the end of their employment,
+  never by a change of kind. A link naming no account yet, one `deleted` or reported
+  gone, or none, locks nothing. When such a change goes through and the link recorded an
+  announcement while the identity link names no user yet, the announcement is withdrawn
+  after the commit (`Unexpect`, the caller the actor, on no connection) and the link's
+  `announced_at` cleared; a withdrawal that fails is logged, and the worker's deactivate
+  of the link withdraws it too. A link the person keeps under a provider their kind no
+  longer names is still worked, for a deactivate only ([the provider
+  link](#the-provider-link));
 - a change **from `local` to `entra`** while the person's user is Staff-managed,
   pending and holds no credential is carried by the next announcement as
   `ReplaceUserID`: the account's arrival completes that user rather than creating a
@@ -1243,6 +1254,25 @@ revision and `updated_at` move only when the default changes (to `external`), so
 settings form read before a seed that left `local` as it was is no conflict. It never
 runs again: a later change of the single sign-on settings changes no one's kind.
 
+**Nothing is judged on a kind before the seed.** Until it has run, every person's
+column reads `local`, its default, which is not the rule a federated installation had.
+So while the kinds are unseeded — the seed tried and failed: no module provides
+accounts, identity could not say its mode, or the write failed — the seed is tried
+again by every request that would read or change a kind, and meanwhile:
+
+- an accounts cycle runs no step but a deactivate, on both links: nothing is prepared,
+  activated, updated or reported, no preparing link is written, and a link held keeps
+  its state and reason, records no event and is claimed again at the next poll — logged
+  once per cycle, `staff: the account kinds are not yet seeded; only deactivations run`;
+- `POST /people/{id}/account/run` is 503 `accounts_unavailable`, its detail saying the
+  kinds are not yet seeded, and nothing runs;
+- `PUT /people/{id}/account` changing `accountKind`, and `PUT /settings` changing
+  `defaultAccountKind`, are the same 503 and change nothing. Either sends the field to
+  try the seed first; sending back the current value is no change, and saves.
+
+The seed is tried at an API process's mount, at the start of every cycle, by
+`POST /people/{id}/account/run`, and by either `PUT` that names the field.
+
 ### The accounts worker
 
 `staff-accounts` (`accounts_worker.go`) runs every `STAFF_WORKERS_POLL` (default an
@@ -1253,13 +1283,16 @@ lease connection** (pre-flight B2): a cycle shares its work with any other — a
 worker process, a run beside the ticker — through the link rows alone.
 
 1. **The seed, the mode and the providers.** While the kinds are unseeded, the cycle
-   first [seeds them](#the-account-kind). Then the mode is asked once, on no
-   connection. Identity unable to answer fails the cycle, which the next poll runs
-   again. `ErrModeMismatch` (this process's OIDC or SCIM settings derive another mode
+   first [seeds them](#the-account-kind); a seed that fails holds every step but a
+   deactivate for the whole cycle ([nothing is judged on a kind before the
+   seed](#the-account-kind)). Then the mode is asked once, on no connection. Identity
+   unable to answer fails the cycle, which the next poll runs again — unless the kinds
+   are unseeded, when the deactivations still run. `ErrModeMismatch` (this process's OIDC or SCIM settings derive another mode
    than the API process recorded) holds every step but a deactivation: see below. Then
    each provider in the slot is asked its status once (`Provider`, on no connection,
    under the call timeout) — a provider that could not be asked is `failing`,
-   `unreachable`, logged — and each provider kind held by a person whose flag is on and
+   `unreachable`, logged; a reason outside the form of a provider code (below) is
+   dropped and logged by field name — and each provider kind held by a person whose flag is on and
    who is not erased, but offered by no enabled module, is `unconfigured`,
    `provider_missing`. Each is recorded on `settings.provider_status` (`{status,
    reason, checkedAt}` under the provider's key) when its status or reason changed,
@@ -1421,14 +1454,20 @@ and a person's `/account/run` and `/account/disable` together at most 120 an hou
   holds them (`CountDueAccountLinks`). No provider, or a mode identity cannot say, is
   503 `accounts_unavailable` and nothing runs. A mode mismatch runs the deactivations
   alone, as the worker does.
-- **`POST /people/{id}/account/run`** works one person: when their flag is on, the
-  preparing link written if the table says they are due and they have none, then their
+- **`POST /people/{id}/account/run`** works one person. No module providing accounts
+  is 503 `accounts_unavailable`, and so are account kinds that are not yet seeded (the
+  seed is tried first; the detail says so) — nothing runs. Then, when their flag is on,
+  the preparing link written if the table says they are due and they have none, then their
   link claimed **whatever its `next_attempt_at`** (`ClaimPersonAccountLink`, which waits
   out another cycle's claim statement rather than skipping it), and worked with
-  `Fresh` — identity's `ActivateOpts.FreshInvitation`, and for a person of a provider's
-  kind the provider's `SpecFlags.Fresh`, a new pass (*Run now (new pass)*) — on the
-  **first** `decide` of the claim only — the provider's chain keeps it until a call has
-  been carried out. A flag that is off runs nothing. For a person of a provider's kind
+  `Fresh`: identity's `ActivateOpts.FreshInvitation` on the **first** `decide` of the
+  claim only. For a person of a provider's kind, the provider's `SpecFlags.Fresh` — a
+  new pass (*Run now (new pass)*) — reaches the provider **only on the `Activate` that
+  enables a disabled account**: a joiner on their first day, a rehire, perhaps after the
+  announcement in the same run. An account already enabled is never activated again by
+  Run now, so `staff:manage` cannot mint a Temporary Access Pass over a working
+  account; it is updated when its spec changed, else left as it is. A flag that is off
+  runs nothing. For a person of a provider's kind
   the provider's status is asked first, as a cycle asks it. A provider's refusal is 409
   `provider_refused`, its code in the detail and on the provider link as its reason —
   but not `provider_unavailable`, nor a refusal of the announcement, which identity
@@ -1462,10 +1501,18 @@ and a person's `/account/run` and `/account/disable` together at most 120 an hou
   failure is answered first; otherwise a provider's refusal is 409 `provider_refused`,
   its code in the detail and on the provider link, and a provider call that could not
   be made 503 `accounts_unavailable` — the flag already off either way. A provider that
-  answers `ErrProviderUnavailable` is neither: the provider link records
-  `provider_unavailable`, and the answer is identity's. When the identity link names
-  no user, `disable_requested_at` is cleared unless the provider's call could not be
-  made. With the flag off no
+  The provider link is the person's under their kind, or one they still have under a
+  provider their kind no longer names. **A disable the directory did not confirm is
+  kept**: a provider `Deactivate` that failed — any error, `ErrProviderUnavailable`
+  included — or was refused, a failed read of the account, a lease lost before the
+  call, or no enabled module offering the provider while the link names an account not
+  yet `disabled` or `deleted` keeps `disable_requested_at`, whatever identity answered,
+  marks the claim failed and brings the link back at the next poll, where the worker
+  finishes the disable. *Disable now* then answers — after identity's own refusal or
+  failure, which is answered first — 409 `provider_refused` for a refusal, else 503
+  `accounts_unavailable` whose detail says the external directory could not be reached
+  and the accounts worker finishes the disable; the flag is off either way. With the
+  flag off no
   cycle claims the link again — once the disable is done — so the user stays disabled
   until HR turns the flag on. **The disable asked for is the worker's to finish**:
   `disable_requested_at` is cleared only when the user is disabled — a `Deactivate`
@@ -1511,7 +1558,8 @@ and a person's `/account/run` and `/account/disable` together at most 120 an hou
 ### The provider link
 
 A person of a provider's [kind](#the-account-kind) (`entra`) has a second row in
-`staff.identity_links`, **the provider link**: `provider` the provider's key, beside the
+`staff.identity_links`, **the provider link** — and keeps it if HR later changes the
+kind: `provider` the provider's key, beside the
 identity link's `identity` (Entra design D7). It reuses the row's worker columns —
 `external_id` (the directory's immutable id of the account), `state`,
 `blocked_reason`, `last_spec_hash`, `attempts`, `next_attempt_at`, `last_synced_at` —
@@ -1557,7 +1605,7 @@ function as `decide` is. With `T` today, `F` the effective date, `E` the last en
 | 9 | No account — no `P`, a `P` `deleted`, or one no `Prepare` has answered | `Prepare` (the provider finds the account by the number or creates it disabled) |
 | 10 | The account not announced, and the identity link's user not arrived | announce: identity's `Expect` (below) |
 | 11 | In the window (`F − createBeforeDays ≤ T < F`) | `Update` an `enabled` account whose external spec changed (`last_spec_hash`); otherwise nothing |
-| 12 | Due (`T ≥ F`) | a `disabled` account: `Activate` — a rehire too — unless the worker left it enabled earlier today (an account an administrator disabled today is not re-enabled before tomorrow); an `enabled` one: `Activate` again with a fresh pass on *Run now*, `Update` when the spec changed, otherwise nothing |
+| 12 | Due (`T ≥ F`) | a `disabled` account: `Activate` — a joiner on their first day, a rehire — with a fresh pass when *Run now* asked for one, unless the worker left it enabled earlier today (an account an administrator disabled today is not re-enabled before tomorrow); an `enabled` one: `Update` when the spec changed, otherwise nothing — never an `Activate`, so *Run now* asks no new pass for an account already enabled |
 
 **The identity link beside it** keeps [the decision table](#accounts) with the person's
 kind: `Prepare` finds the user by the number — `ErrAccountNotFound` until the announced
@@ -1569,6 +1617,14 @@ connected, or no enabled module offers it, the identity link runs nothing but a 
 deactivation and is claimed again at the next poll. A provider no enabled module offers
 is neither read nor called: a provider link there is records `provider_unavailable`
 while the flag is on.
+
+**A link the person's kind no longer names** — HR changed the kind while a link under
+a provider stayed, one the [kind lock](#the-account-kind) let go — is still worked
+(`personProviderKey`: the person's kind when it names a provider, else their first
+link under one, those not `deleted` first). On it nothing runs but a deactivate — a
+leaver's, or the one *Disable now* asked for — it never reports
+`provider_unavailable`, and it never holds the identity link, which runs by the
+person's own kind.
 
 **The announce.** After a `Prepare` the provider answered, the chain calls identity's
 `Expect` ([the announced account](/en/admin/authentication/#the-announced-account))
@@ -1616,8 +1672,20 @@ directory's words:
 Anything else is a failure to retry, as with identity: `last_error`
 `accounts_unavailable`, `attempts` counted, the first of a run recorded as
 `account_external_failed`; a failed read of the account is one too. The provider
-link's own `next_attempt_at` is written but claims nothing — it is worked again when the
-identity link next is. A step that answers nothing more resets the reason, so
+link's own `next_attempt_at` is written but claims nothing — the identity link's claim
+brings it back — so **a provider `Deactivate` that did not happen, or a `Delete` that
+could not be made** (as a failed read when a deactivation is due or asked for), sets
+the identity link's next attempt to the next poll, not the next civil day: a leaver
+loses access as soon as the directory answers.
+
+**What a provider answers is bounded** before it is stored or shown (review L2): a
+reported code, and a status's reason (before `settings.provider_status` and
+`GET /meta`), must have the form `^[a-z_]{1,40}(:[A-Za-z0-9_.-]{1,64})?$` — a
+lower-case name, and for a fact naming a thing (a licence's SKU) one part after a
+colon — or it is dropped; a principal name longer than 254 characters is not recorded;
+and the address the provider made is recorded on the link, and given to the person, only
+when it passes Staff's own email rule (an address of at most 254 characters, stored
+lower-cased). What is dropped is logged by its field's name alone, never its value. A step that answers nothing more resets the reason, so
 `provider_unavailable` lifts once the provider is connected again. The provider's
 reported codes are `hire_date_not_written`, `privileged`, `pass_not_allowed`,
 `licence_unavailable:<SKU part number>` and `manager_not_found`; Staff adds its own
@@ -1625,7 +1693,8 @@ reported codes are `hire_date_not_written`, `privileged`, `pass_not_allowed`,
 directory.
 
 **The address the provider made.** When the account answers an address
-(`ExternalAccount.Email`) and the person has no work email, the address is written to
+(`ExternalAccount.Email`) that passes Staff's email rule and the person has no work
+email, the address is written to
 the person's `work_email`, after the link's result and in a transaction of its own
 under their lock, with the event `work_email_set_by_provider` — the one write to a
 person the accounts worker makes, which moves the person's `revision` and
@@ -3770,11 +3839,11 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `accounts_busy` | 409 | `DELETE /people/{id}` while the accounts worker holds the person's `preparing` link; `POST /people/{id}/account/run` and `/disable` while a live lease holds the person's link. |
 | `account_not_managed` | 409 | `POST /people/{id}/account/disable` on HR's self-service link (nothing more is done) or on a user Staff does not manage. The flag is off. |
 | `account_privileged` | 409 | `POST /people/{id}/account/disable` on an Owner, a SystemAdmin or the last active Owner. The flag is off. |
-| `account_kind_locked` | 409 | `PUT /people/{id}/account` changing the kind away from `entra` while the person's `entra` link is `enabled` or `disabled`. |
+| `account_kind_locked` | 409 | `PUT /people/{id}/account` changing the kind away from a provider's (`entra`) while the person's link under it names an account the directory has not deleted and not reported gone (`user_gone`). |
 | `provider_missing` | 400 | `accountKind` on `PUT /people/{id}/account`, or `defaultAccountKind` on `PUT /settings`, naming a kind that is neither `local` nor `external` nor a provider an enabled module offers (a field error). |
 | `pass_gone` | 409 | `POST /people/{id}/account/pass` when the pass was shown already, has expired, or none was issued. |
 | `provider_refused` | 409 | `POST /people/{id}/account/run` and `/disable` when the person's provider refused a step; the detail carries its code, never its words. |
-| `accounts_unavailable` | 503 | `PUT /people/{id}/user` when identity cannot say whether the user is Staff-managed (nothing changed); `POST /accounts/run` and `/people/{id}/account/run` with no provider or identity unreachable, and `/people/{id}/account/run` when a call of identity's or of the person's provider could not be made; `POST /people/{id}/account/disable` when identity or the person's provider could not be reached — the flag already off; `POST /people/{id}/account/pass` when no enabled module offers the person's provider or it failed to answer. |
+| `accounts_unavailable` | 503 | `PUT /people/{id}/user` when identity cannot say whether the user is Staff-managed (nothing changed); `POST /accounts/run` and `/people/{id}/account/run` with no provider or identity unreachable, and `/people/{id}/account/run` when a call of identity's or of the person's provider could not be made; `POST /people/{id}/account/disable` when identity could not be reached, or the directory did not confirm the external account's disable — the flag already off; `POST /people/{id}/account/pass` when no enabled module offers the person's provider or it failed to answer; `/people/{id}/account/run`, and `PUT /people/{id}/account` or `PUT /settings` changing `accountKind` or `defaultAccountKind`, while the account kinds are not yet seeded (nothing changed). |
 
 An unknown id is a bare 404 with no body.
 
