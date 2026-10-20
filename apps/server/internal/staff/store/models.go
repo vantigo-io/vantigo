@@ -236,6 +236,11 @@ type StaffIdentityLink struct {
 	UpdatedAt            time.Time
 	SyncedEmployeeNumber *string
 	DisableRequestedAt   *time.Time
+	ExternalUpn          *string
+	ExternalEmail        *string
+	AnnouncedAt          *time.Time
+	PassIssuedAt         *time.Time
+	ReportedCodes        []string
 }
 
 type StaffLegalEntity struct {
@@ -331,6 +336,7 @@ type StaffPerson struct {
 	UpdatedAt               time.Time
 	SelfCertWithdrawnFrom   pgtype.Date
 	AccountRevision         int32
+	AccountKind             string
 }
 
 type StaffPersonRole struct {
@@ -365,6 +371,10 @@ type StaffSetting struct {
 	AutoCarryOverSince         pgtype.Date
 	ErasePregnancyHealthTypes  bool
 	EraseSickCaseDates         bool
+	DefaultAccountKind         string
+	AccountKindSeeded          bool
+	DirectoryFields            []byte
+	ProviderStatus             []byte
 }
 
 type StaffSickCase struct {

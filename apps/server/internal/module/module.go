@@ -159,6 +159,20 @@ type Deps struct {
 	// projects anything onto the calendar. Not to be confused with Calendar,
 	// the business calendar.
 	CalendarSources []contracts.CalendarSource
+	// IdentityProvisioners are every enabled module's
+	// contracts.IdentityProvisioner (Entra design D6), in the order the
+	// modules were given — the fifth many-provider slot, collected from
+	// enabled modules only as CalendarSources is, for its reason: a
+	// disabled provider module has no connection to drive. Compose collects
+	// them before any Mount runs, after every single-provider slot and the
+	// calendar sources, so a provider may read deps.Users and deps.Accounts
+	// while it is built; Workers collects them too, because Staff's accounts
+	// worker drives them and worker mode never composes. Both append to
+	// whatever the caller preset here (the seam
+	// modtest.WithIdentityProvisioners fills) and refuse a Key two providers
+	// claim. Only Staff calls them, never inside a transaction. nil when no
+	// enabled module provides one.
+	IdentityProvisioners []contracts.IdentityProvisioner
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -337,4 +351,13 @@ type Module struct {
 	// single-provider slot is resolved, and put the list on Deps as
 	// CalendarSources. A nil result contributes nothing.
 	CalendarSource func(Deps) contracts.CalendarSource
+	// IdentityProvisioner builds this module's contracts.IdentityProvisioner,
+	// if it drives an external identity provider's directory for Staff
+	// (Entra design D6). Like CalendarSource, any number of enabled modules
+	// may set it, and a module MODULES leaves out contributes nothing:
+	// Compose and Workers call it for the enabled modules only, in mods
+	// order, after the calendar sources, and put the list on Deps as
+	// IdentityProvisioners; no two providers may answer one Key. A nil
+	// result contributes nothing.
+	IdentityProvisioner func(Deps) contracts.IdentityProvisioner
 }

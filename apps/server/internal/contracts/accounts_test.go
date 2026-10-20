@@ -81,10 +81,11 @@ func TestActor_Valid(t *testing.T) {
 
 // TestAccountConstants pins the wire-stable values a caller records: the
 // states, who disabled a user (a directory's deactivation its own value), the
-// modes and the invitation states.
+// modes, the account kinds and the invitation states.
 func TestAccountConstants(t *testing.T) {
 	for _, c := range []struct{ got, want string }{
 		{AccountModeLocal, "local"}, {AccountModeFederated, "federated"},
+		{AccountKindLocal, "local"}, {AccountKindExternal, "external"}, {AccountKindEntra, "entra"},
 		{AccountStatePending, "pending"}, {AccountStateActive, "active"}, {AccountStateDisabled, "disabled"},
 		{DisabledByOwner, "owner"}, {DisabledByStaff, "staff"}, {DisabledByDirectory, "directory"},
 		{InvitationNone, "none"}, {InvitationActive, "active"}, {InvitationExpired, "expired"},
@@ -93,6 +94,22 @@ func TestAccountConstants(t *testing.T) {
 	} {
 		if c.got != c.want {
 			t.Errorf("constant = %q, want %q", c.got, c.want)
+		}
+	}
+}
+
+// TestValidAccountKind admits the three kinds exactly as spelled, and
+// nothing else: not the modes' federated, not another case, not "".
+func TestValidAccountKind(t *testing.T) {
+	for _, tc := range []struct {
+		kind string
+		want bool
+	}{
+		{"local", true}, {"external", true}, {"entra", true},
+		{"", false}, {"federated", false}, {"Entra", false}, {" local", false}, {"google", false},
+	} {
+		if got := ValidAccountKind(tc.kind); got != tc.want {
+			t.Errorf("ValidAccountKind(%q) = %v, want %v", tc.kind, got, tc.want)
 		}
 	}
 }

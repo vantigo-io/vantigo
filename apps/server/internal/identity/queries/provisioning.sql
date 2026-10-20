@@ -52,9 +52,10 @@ SELECT EXISTS (SELECT 1 FROM identity.provisioning_roles WHERE role_id = @role_i
 -- passkey or an OIDC link (a credential), Owner, SystemAdmin, and whether the
 -- directory deactivated them (scim_inactive: a mapping whose upstream is
 -- inactive; the caller counts it only while SCIM is configured and the user
--- is no Owner).
+-- is no Owner), and when Staff's Activate last gave them the provisioning
+-- roles (provisioning_roles_at, null until it has).
 SELECT u.id, u.email, u.normalized_email, u.display_name, u.preferred_language, u.is_disabled,
-       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since,
+       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since, u.provisioning_roles_at,
        (u.password_hash IS NOT NULL)::boolean AS has_password,
        EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
        EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
@@ -72,7 +73,7 @@ WHERE u.id = @id;
 -- (LockUserInvitations), as acceptance orders them. Its columns are
 -- GetProvisioningUser's, in the same order.
 SELECT u.id, u.email, u.normalized_email, u.display_name, u.preferred_language, u.is_disabled,
-       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since,
+       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since, u.provisioning_roles_at,
        (u.password_hash IS NOT NULL)::boolean AS has_password,
        EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
        EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
@@ -139,6 +140,24 @@ INSERT INTO identity.users (
 UPDATE identity.users
 SET display_name = @display_name, preferred_language = sqlc.narg(preferred_language)::text,
     email = @email, normalized_email = @normalized_email, invitations_since = sqlc.narg(invitations_since)::timestamptz,
+    version = @version, updated_at = @now::timestamptz
+WHERE id = @id;
+
+-- name: SetProvisioningRolesAt :exec
+-- SetProvisioningRolesAt records that Staff's Activate gave the user the
+-- provisioning roles at @now (plan reading 3): an entra kind's Activate gives
+-- them only while it is null, once.
+UPDATE identity.users SET provisioning_roles_at = @now::timestamptz WHERE id = @id;
+
+-- name: CompleteExpectedUser :exec
+-- CompleteExpectedUser completes the pending user an announcement names to
+-- replace (ExpectedAccount.ReplaceUserID) on the provider's arrival: no
+-- longer pending, no invitation spell, and the address the provider sent —
+-- the person signs in from the tenant now, under the caller's owner lock and
+-- the user's row lock.
+UPDATE identity.users
+SET pending_since = NULL, invitations_since = NULL,
+    email = @email, normalized_email = @normalized_email,
     version = @version, updated_at = @now::timestamptz
 WHERE id = @id;
 

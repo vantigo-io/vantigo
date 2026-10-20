@@ -68,7 +68,8 @@ var columnClasses = map[string]string{
 	"people.children_under_12": "D", "people.sole_carer": "D", "people.chronically_ill_children": "D",
 	"people.self_cert_withdrawn_until": "E", "people.self_cert_withdrawn_reason": "E", "people.self_cert_withdrawn_from": "E",
 	"people.provision_account": "C", "people.provision_from": "C", "people.account_email_kind": "C", "people.account_revision": "C",
-	"people.legal_hold": "F", "people.legal_hold_reason": "F", "people.legal_hold_by_user_id": "F", "people.legal_hold_at": "F",
+	"people.account_kind": "C",
+	"people.legal_hold":   "F", "people.legal_hold_reason": "F", "people.legal_hold_by_user_id": "F", "people.legal_hold_at": "F",
 	"people.erased_at": "C", "people.reassessed_at": "C", "people.reassessed_by_user_id": "C",
 	"people.notes": "D", "people.revision": "C", "people.created_at": "C", "people.updated_at": "C",
 
@@ -79,7 +80,7 @@ var columnClasses = map[string]string{
 	"next_of_kin.created_at": "D", "next_of_kin.updated_at": "D",
 
 	// The roles, the employments and the link are class C whole (§3.1,
-	// §3.2, §3.6).
+	// §3.2, §3.6), but for a provider link's two addresses.
 	"person_roles.id": "C", "person_roles.person_id": "C", "person_roles.role": "C", "person_roles.from_date": "C",
 	"person_roles.to_date": "C", "person_roles.created_at": "C", "person_roles.updated_at": "C",
 
@@ -95,7 +96,12 @@ var columnClasses = map[string]string{
 	"identity_links.next_attempt_at": "C", "identity_links.lease_id": "C", "identity_links.lease_until": "C",
 	"identity_links.last_synced_at": "C", "identity_links.last_spec_hash": "C", "identity_links.synced_employee_number": "C",
 	"identity_links.disable_requested_at": "C",
-	"identity_links.created_at":           "C", "identity_links.updated_at": "C",
+	// A provider link's (00060): the principal name and the address the
+	// provider answered are addresses, D as the person's own work email is;
+	// the rest says what the worker did and when.
+	"identity_links.external_upn": "D", "identity_links.external_email": "D", "identity_links.announced_at": "C",
+	"identity_links.pass_issued_at": "C", "identity_links.reported_codes": "C",
+	"identity_links.created_at": "C", "identity_links.updated_at": "C",
 
 	// The terms (§3.3): what the job was is C; the pay, the seniority date
 	// and the pay grade are A, kept five years past the end year; the note is

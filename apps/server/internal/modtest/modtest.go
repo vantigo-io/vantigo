@@ -139,6 +139,7 @@ type setup struct {
 	personalData    []contracts.CustomerPersonalDataHolder
 	invoicedWork    []contracts.InvoicedWorkHolder
 	calendarSources []contracts.CalendarSource
+	provisioners    []contracts.IdentityProvisioner
 	hours           contracts.BillableHours
 	billExpenses    contracts.BillableExpenses
 	milestones      contracts.BillableMilestones
@@ -319,6 +320,18 @@ func WithInvoicedWork(holders ...contracts.InvoicedWorkHolder) Option {
 // survives; given more than once, the sources accumulate in order.
 func WithCalendarSources(sources ...contracts.CalendarSource) Option {
 	return func(s *setup) { s.calendarSources = append(s.calendarSources, sources...) }
+}
+
+// WithIdentityProvisioners adds providers to Deps.IdentityProvisioners, for
+// Staff to be tested against a fake external identity provider
+// (FakeIdentityProvisioner) — its accounts, its status and its refusals set
+// by the test — before any provider module exists. module.Compose and
+// module.Workers append the enabled modules' own after these (Entra design
+// D6), so a value set here survives both and reaches the accounts worker;
+// given more than once, the providers accumulate in order, and two with one
+// Key fail the composition.
+func WithIdentityProvisioners(providers ...contracts.IdentityProvisioner) Option {
+	return func(s *setup) { s.provisioners = append(s.provisioners, providers...) }
 }
 
 // WithBillableHours sets Deps.BillableHours directly to p, for a module under
@@ -570,6 +583,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		CustomerPersonalData:     s.personalData,
 		InvoicedWork:             s.invoicedWork,
 		CalendarSources:          s.calendarSources,
+		IdentityProvisioners:     s.provisioners,
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,
 		BillableMilestones:       s.milestones,

@@ -56,11 +56,14 @@ SELECT EXISTS (
 -- name: CountScimUsers :one
 -- CountScimUsers counts the Users a list's filter admits. Each filter clause
 -- is an equality every row must meet (SV/ScimProtocolService.cs:208-214); an
--- empty array admits every row.
+-- empty array admits every row (a nil one admits none: pass an empty one).
+-- @employee_numbers is the enterprise extension's employeeNumber as the
+-- mapping's profile keeps it (Entra design D3), compared exactly as stored.
 SELECT count(*)
 FROM identity.scim_user_mappings m
 WHERE m.user_name = ALL (@user_names::text[])
-  AND m.external_id = ALL (@external_ids::text[]);
+  AND m.external_id = ALL (@external_ids::text[])
+  AND (m.source_profile->'enterprise'->>'employeeNumber') = ALL (@employee_numbers::text[]);
 
 -- name: ListScimUsers :many
 -- ListScimUsers is one page of CountScimUsers' rows, by resource id
@@ -71,6 +74,7 @@ FROM identity.scim_user_mappings m
 JOIN identity.users u ON u.id = m.user_id
 WHERE m.user_name = ALL (@user_names::text[])
   AND m.external_id = ALL (@external_ids::text[])
+  AND (m.source_profile->'enterprise'->>'employeeNumber') = ALL (@employee_numbers::text[])
 ORDER BY m.resource_id
 OFFSET @skip::bigint LIMIT @take::bigint;
 

@@ -235,11 +235,11 @@ func TestAccount_TheEffectiveDate(t *testing.T) {
 	}
 }
 
-// The link as identity reports it, from a provider the test shapes: the
-// mode, a pending managed user's invitation and the worker's state. identity
-// is asked once per read, outside every transaction, and with no address to
-// compare: the view shows none. A mode mismatch or no provider leaves the
-// mode out; identity failing leaves the invitation out and still answers.
+// The link as identity reports it, from a provider the test shapes: a
+// pending managed user's invitation and the worker's state. identity is
+// asked once per read, outside every transaction, and with no address to
+// compare: the view shows none. Identity failing, or no provider, leaves the
+// invitation out and still answers.
 func TestAccount_TheLinkAsIdentityReportsIt(t *testing.T) {
 	t.Parallel()
 	fake := newFakeAccounts()
@@ -255,9 +255,7 @@ func TestAccount_TheLinkAsIdentityReportsIt(t *testing.T) {
 	})
 
 	got := getAccount(t, hr, p.Id)
-	if got.Mode == nil || *got.Mode != "federated" {
-		t.Errorf("mode = %v, want federated", got.Mode)
-	}
+	// Task 4: the account kind, seeded from the mode, in place of the mode.
 	if !got.Address.Present || got.Address.Kind != "work" {
 		t.Errorf("address = %+v, want the work address, present", got.Address)
 	}
@@ -274,27 +272,23 @@ func TestAccount_TheLinkAsIdentityReportsIt(t *testing.T) {
 		}
 	}
 
-	fake.set(func(f *fakeAccounts) { f.modeErr = contracts.ErrModeMismatch })
-	if got := getAccount(t, hr, p.Id); got.Mode != nil {
-		t.Errorf("on a mode mismatch mode = %v, want it absent", *got.Mode)
-	}
-	fake.set(func(f *fakeAccounts) { f.modeErr = nil; f.accountErr = errors.New("identity is down") })
-	if got := getAccount(t, hr, p.Id); got.Link == nil || got.Link.Invitation != nil || got.Mode == nil {
-		t.Errorf("identity failing: %+v, want the link and the mode, no invitation", got.Link)
+	fake.set(func(f *fakeAccounts) { f.accountErr = errors.New("identity is down") })
+	if got := getAccount(t, hr, p.Id); got.Link == nil || got.Link.Invitation != nil {
+		t.Errorf("identity failing: %+v, want the link, no invitation", got.Link)
 	}
 
 	bare := newHarness(t, modtest.WithoutAccounts())
 	hr2, _ := signIn(t, bare, "staff:manage")
 	q := createPerson(t, hr2, newPerson("Ola", "Hansen"))
 	managedLink(t, bare, q.Id, uuid.New(), "pending")
-	if got := getAccount(t, hr2, q.Id); got.Mode != nil || got.Link == nil || got.Link.Invitation != nil {
-		t.Errorf("without a provider: %+v, want no mode, the link without an invitation", got)
+	if got := getAccount(t, hr2, q.Id); got.Link == nil || got.Link.Invitation != nil {
+		t.Errorf("without a provider: %+v, want the link without an invitation", got)
 	}
 }
 
 // Against identity's real provider: a Staff-managed pending user, as
-// identity holds one, reads pending with no invitation yet, and the mode is
-// the local one identity's mount recorded.
+// identity holds one, reads pending with no invitation yet, and the person's
+// kind is local, the default.
 func TestAccount_AgainstIdentitysProvider(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -310,15 +304,15 @@ func TestAccount_AgainstIdentitysProvider(t *testing.T) {
 	managedLink(t, h, p.Id, user, "pending")
 
 	got := getAccount(t, hr, p.Id)
-	if got.Mode == nil || *got.Mode != "local" {
-		t.Errorf("mode = %v, want local, as identity recorded it", got.Mode)
+	if got.AccountKind != "local" {
+		t.Errorf("accountKind = %v, want local", got.AccountKind)
 	}
 	if got.Link == nil || got.Link.Invitation == nil || got.Link.Invitation.State != "none" || got.Link.Invitation.Issued != 0 {
 		t.Errorf("link = %+v, want the pending user's invitation none, 0 issued", got.Link)
 	}
 	meta := raw(t, hr.Do(http.MethodGet, metaPath, nil))
-	if meta["accountMode"] != "local" || meta["provisioningRolesSet"] != false {
-		t.Errorf("meta = accountMode %v provisioningRolesSet %v, want local and false", meta["accountMode"], meta["provisioningRolesSet"])
+	if meta["provisioningRolesSet"] != false {
+		t.Errorf("meta = provisioningRolesSet %v, want false", meta["provisioningRolesSet"])
 	}
 }
 

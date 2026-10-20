@@ -53,18 +53,22 @@ SELECT count(*)
 FROM identity.scim_user_mappings m
 WHERE m.user_name = ALL ($1::text[])
   AND m.external_id = ALL ($2::text[])
+  AND (m.source_profile->'enterprise'->>'employeeNumber') = ALL ($3::text[])
 `
 
 type CountScimUsersParams struct {
-	UserNames   []string
-	ExternalIds []string
+	UserNames       []string
+	ExternalIds     []string
+	EmployeeNumbers []string
 }
 
 // CountScimUsers counts the Users a list's filter admits. Each filter clause
 // is an equality every row must meet (SV/ScimProtocolService.cs:208-214); an
-// empty array admits every row.
+// empty array admits every row (a nil one admits none: pass an empty one).
+// @employee_numbers is the enterprise extension's employeeNumber as the
+// mapping's profile keeps it (Entra design D3), compared exactly as stored.
 func (q *Queries) CountScimUsers(ctx context.Context, arg CountScimUsersParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countScimUsers, arg.UserNames, arg.ExternalIds)
+	row := q.db.QueryRow(ctx, countScimUsers, arg.UserNames, arg.ExternalIds, arg.EmployeeNumbers)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -255,15 +259,17 @@ FROM identity.scim_user_mappings m
 JOIN identity.users u ON u.id = m.user_id
 WHERE m.user_name = ALL ($1::text[])
   AND m.external_id = ALL ($2::text[])
+  AND (m.source_profile->'enterprise'->>'employeeNumber') = ALL ($3::text[])
 ORDER BY m.resource_id
-OFFSET $3::bigint LIMIT $4::bigint
+OFFSET $4::bigint LIMIT $5::bigint
 `
 
 type ListScimUsersParams struct {
-	UserNames   []string
-	ExternalIds []string
-	Skip        int64
-	Take        int64
+	UserNames       []string
+	ExternalIds     []string
+	EmployeeNumbers []string
+	Skip            int64
+	Take            int64
 }
 
 type ListScimUsersRow struct {
@@ -286,6 +292,7 @@ func (q *Queries) ListScimUsers(ctx context.Context, arg ListScimUsersParams) ([
 	rows, err := q.db.Query(ctx, listScimUsers,
 		arg.UserNames,
 		arg.ExternalIds,
+		arg.EmployeeNumbers,
 		arg.Skip,
 		arg.Take,
 	)

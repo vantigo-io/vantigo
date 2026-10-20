@@ -13,7 +13,7 @@ import (
 )
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates FROM staff.settings WHERE id = 1
+SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates, default_account_kind, account_kind_seeded, directory_fields, provider_status FROM staff.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row (design §3.6). The
@@ -43,12 +43,16 @@ func (q *Queries) GetSettings(ctx context.Context) (StaffSetting, error) {
 		&i.AutoCarryOverSince,
 		&i.ErasePregnancyHealthTypes,
 		&i.EraseSickCaseDates,
+		&i.DefaultAccountKind,
+		&i.AccountKindSeeded,
+		&i.DirectoryFields,
+		&i.ProviderStatus,
 	)
 	return i, err
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates FROM staff.settings WHERE id = 1 FOR UPDATE
+SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates, default_account_kind, account_kind_seeded, directory_fields, provider_status FROM staff.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings reads the settings row and holds it for the rest of the
@@ -80,8 +84,70 @@ func (q *Queries) LockSettings(ctx context.Context) (StaffSetting, error) {
 		&i.AutoCarryOverSince,
 		&i.ErasePregnancyHealthTypes,
 		&i.EraseSickCaseDates,
+		&i.DefaultAccountKind,
+		&i.AccountKindSeeded,
+		&i.DirectoryFields,
+		&i.ProviderStatus,
 	)
 	return i, err
+}
+
+const markAccountKindsSeeded = `-- name: MarkAccountKindsSeeded :exec
+UPDATE staff.settings SET
+    default_account_kind = $1,
+    account_kind_seeded = true,
+    revision = revision + 1,
+    updated_at = $2::timestamptz
+WHERE id = 1 AND NOT account_kind_seeded
+`
+
+type MarkAccountKindsSeededParams struct {
+	DefaultAccountKind string
+	Now                time.Time
+}
+
+// MarkAccountKindsSeeded records that the kinds were seeded, the default
+// kind with them, and moves the revision on, so a settings form read before
+// the seed is a conflict rather than a write of the old default. Nothing
+// when they were seeded already.
+func (q *Queries) MarkAccountKindsSeeded(ctx context.Context, arg MarkAccountKindsSeededParams) error {
+	_, err := q.db.Exec(ctx, markAccountKindsSeeded, arg.DefaultAccountKind, arg.Now)
+	return err
+}
+
+const seedAccountKinds = `-- name: SeedAccountKinds :exec
+UPDATE staff.people SET account_kind = $1
+WHERE NOT (SELECT s.account_kind_seeded FROM staff.settings s WHERE s.id = 1)
+`
+
+// SeedAccountKinds gives every person the kind the recorded authority mode
+// reads as (plan reading 4: local → local, federated → external), once:
+// nothing while the settings say the kinds were seeded. The caller holds the
+// settings row's lock (LockSettings) and marks the seed done in the same
+// transaction (MarkAccountKindsSeeded).
+func (q *Queries) SeedAccountKinds(ctx context.Context, accountKind string) error {
+	_, err := q.db.Exec(ctx, seedAccountKinds, accountKind)
+	return err
+}
+
+const setProviderStatus = `-- name: SetProviderStatus :exec
+UPDATE staff.settings SET
+    provider_status = provider_status || jsonb_build_object($1::text, $2::jsonb)
+WHERE id = 1
+`
+
+type SetProviderStatusParams struct {
+	Provider string
+	Status   []byte
+}
+
+// SetProviderStatus records what the accounts worker last saw of one
+// provider under its key — {"status", "reason", "checkedAt"} — the other
+// providers' kept. The revision and updated_at are left alone: no one's
+// settings changed.
+func (q *Queries) SetProviderStatus(ctx context.Context, arg SetProviderStatusParams) error {
+	_, err := q.db.Exec(ctx, setProviderStatus, arg.Provider, arg.Status)
+	return err
 }
 
 const setThresholdsAcknowledged = `-- name: SetThresholdsAcknowledged :exec
@@ -125,10 +191,12 @@ UPDATE staff.settings SET
         THEN $16::smallint ELSE delete_external_after_days END,
     erase_pregnancy_health_types = coalesce($17::boolean, erase_pregnancy_health_types),
     erase_sick_case_dates = coalesce($18::boolean, erase_sick_case_dates),
+    default_account_kind = coalesce($19::varchar, default_account_kind),
+    directory_fields = coalesce($20::jsonb, directory_fields),
     revision = revision + 1,
-    updated_at = $19::timestamptz
+    updated_at = $21::timestamptz
 WHERE id = 1
-RETURNING id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates
+RETURNING id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates, default_account_kind, account_kind_seeded, directory_fields, provider_status
 `
 
 type UpdateSettingsParams struct {
@@ -150,6 +218,8 @@ type UpdateSettingsParams struct {
 	DeleteExternalAfterDays    *int16
 	ErasePregnancyHealthTypes  *bool
 	EraseSickCaseDates         *bool
+	DefaultAccountKind         *string
+	DirectoryFields            []byte
 	Now                        time.Time
 }
 
@@ -160,7 +230,8 @@ type UpdateSettingsParams struct {
 // (delivery C) keep their values when left out: create_before_days when
 // NULL, delete_external_after_days unless @set_delete_external_after_days —
 // its NULL is a value, "never". The two erase settings (Task 5b) keep their
-// values when NULL.
+// values when NULL, and so do the default account kind and the directory
+// profile's switches (00060), which the caller merges over the row's.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (StaffSetting, error) {
 	row := q.db.QueryRow(ctx, updateSettings,
 		arg.EmployeeNumberPrefix,
@@ -181,6 +252,8 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.DeleteExternalAfterDays,
 		arg.ErasePregnancyHealthTypes,
 		arg.EraseSickCaseDates,
+		arg.DefaultAccountKind,
+		arg.DirectoryFields,
 		arg.Now,
 	)
 	var i StaffSetting
@@ -206,6 +279,10 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.AutoCarryOverSince,
 		&i.ErasePregnancyHealthTypes,
 		&i.EraseSickCaseDates,
+		&i.DefaultAccountKind,
+		&i.AccountKindSeeded,
+		&i.DirectoryFields,
+		&i.ProviderStatus,
 	)
 	return i, err
 }

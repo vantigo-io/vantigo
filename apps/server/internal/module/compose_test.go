@@ -874,6 +874,12 @@ func (*fakeAccounts) ProvisioningRoles(context.Context) ([]contracts.RoleRef, er
 	return nil, nil
 }
 
+func (*fakeAccounts) Expect(context.Context, contracts.Actor, contracts.ExpectedAccount) error {
+	return nil
+}
+
+func (*fakeAccounts) Unexpect(context.Context, contracts.Actor, string) error { return nil }
+
 type fakeProductCatalog struct{}
 
 func (*fakeProductCatalog) Variant(context.Context, int32) (*contracts.VariantEntry, error) {
@@ -2219,4 +2225,91 @@ func (fakeBusinessCalendar) Today(_ context.Context, now time.Time) (time.Time, 
 
 func (fakeBusinessCalendar) Day(_ context.Context, t time.Time) (time.Time, error) {
 	return t.UTC().Truncate(24 * time.Hour), nil
+}
+
+// fakeIdentityProvisioner is a contracts.IdentityProvisioner that answers
+// nothing but its key: these tests only need distinct values to collect and
+// assert on, and what Deps carried when each was built. The embedded nil
+// interface panics on any other call, which no test here makes.
+type fakeIdentityProvisioner struct {
+	contracts.IdentityProvisioner
+	key      string
+	accounts contracts.AccountProvisioning // whatever Deps carried when it was built
+}
+
+func (f *fakeIdentityProvisioner) Key() string { return f.key }
+
+// Identity provisioners are the fifth many-provider slot (Entra design D6),
+// collected from the enabled modules only as the calendar sources are: an
+// enabled module's provider reaches every Mount, a disabled one's does not,
+// the order is the modules' own, a nil provider is dropped, and a preset
+// list is kept ahead of them without being written through.
+func TestCompose_CollectsIdentityProvisionersFromEnabledModulesOnly(t *testing.T) {
+	alpha := &fakeIdentityProvisioner{key: "alpha-directory"}
+	gamma := &fakeIdentityProvisioner{key: "gamma-directory"}
+	disabled := &fakeIdentityProvisioner{key: "beta-directory"}
+	preset := &fakeIdentityProvisioner{key: "preset-directory"}
+	presetList := []contracts.IdentityProvisioner{preset}
+	var got Deps
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha", "gamma", "delta"}}, IdentityProvisioners: presetList},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract, "gamma": gammaContract, "delta": deltaContract}),
+		Module{Name: "alpha", IdentityProvisioner: func(Deps) contracts.IdentityProvisioner { return alpha }, Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", IdentityProvisioner: func(Deps) contracts.IdentityProvisioner { return disabled }, Mount: staticHandler("beta")},
+		Module{Name: "gamma", IdentityProvisioner: func(Deps) contracts.IdentityProvisioner { return gamma }, Mount: staticHandler("gamma")},
+		Module{Name: "delta", IdentityProvisioner: func(Deps) contracts.IdentityProvisioner { return nil }, Mount: staticHandler("delta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if want := []contracts.IdentityProvisioner{preset, alpha, gamma}; !slices.Equal(got.IdentityProvisioners, want) {
+		t.Errorf("Deps.IdentityProvisioners = %v, want the preset, then alpha's and gamma's (beta is disabled, delta's is nil)", got.IdentityProvisioners)
+	}
+	if len(presetList) != 1 || cap(presetList) != 1 {
+		t.Errorf("the preset list was written through: %v", presetList)
+	}
+}
+
+// A provider is built after the single-provider slots are resolved, so it
+// may read the account provisioning while it is built.
+func TestCompose_IdentityProvisionerSeesTheAccounts(t *testing.T) {
+	var built *fakeIdentityProvisioner
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Accounts: func(Deps) contracts.AccountProvisioning { return &fakeAccounts{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", IdentityProvisioner: func(d Deps) contracts.IdentityProvisioner {
+			built = &fakeIdentityProvisioner{key: "beta-directory", accounts: d.Accounts}
+			return built
+		}, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if built == nil || built.accounts == nil {
+		t.Errorf("the identity provisioner was built without Deps.Accounts; want it resolved before")
+	}
+}
+
+// Two providers answering one Key fail composition, naming the key and
+// both — a preset one as Deps.IdentityProvisioners: Staff writes one
+// provider's links under each key.
+func TestCompose_TwoIdentityProvisionersWithOneKeyFail(t *testing.T) {
+	provider := func(Deps) contracts.IdentityProvisioner { return &fakeIdentityProvisioner{key: "entra"} }
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", IdentityProvisioner: provider, Mount: staticHandler("alpha")},
+		Module{Name: "beta", IdentityProvisioner: provider, Mount: staticHandler("beta")},
+	)
+	if err == nil || !strings.Contains(err.Error(), `"entra"`) || !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("compose = %v, want an error naming entra, alpha and beta", err)
+	}
+
+	_, err = compose(Deps{Access: &fakeAccess{}, IdentityProvisioners: []contracts.IdentityProvisioner{&fakeIdentityProvisioner{key: "entra"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", IdentityProvisioner: provider, Mount: staticHandler("alpha")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "Deps.IdentityProvisioners") || !strings.Contains(err.Error(), "alpha") {
+		t.Errorf("compose with a preset = %v, want an error naming Deps.IdentityProvisioners and alpha", err)
+	}
 }
