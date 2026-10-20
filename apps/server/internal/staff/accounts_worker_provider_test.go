@@ -778,3 +778,90 @@ func TestAccountsWorker_TheProvidersStringsAreBounded(t *testing.T) {
 		t.Error("a log line carries what the provider answered")
 	}
 }
+
+// hasItemOfType reports whether items hold one of kind.
+func hasItemOfType(items []gen.StaffStatsAttentionItem, kind gen.StaffStatsAttentionItemType) bool {
+	return slices.ContainsFunc(items, func(i gen.StaffStatsAttentionItem) bool { return i.Type == kind })
+}
+
+// An account the directory holds under the person's number that the
+// provider did not create, its adoption unconfirmed: the Prepare is refused
+// ErrExternalUnconfirmed, the link blocked external_unconfirmed naming no
+// account and raising accountUnconfirmedInEntra, nothing activated; once
+// confirmed, Run now prepares it at once.
+func TestAccountsWorker_AnUnconfirmedAdoptionBlocksThePrepare(t *testing.T) {
+	t.Parallel()
+	w := newProviderWorld(t)
+	p := w.entraEmployee(t, "Funnet", "2026-09-01", nil)
+	held := w.prov.SetAccount(p.EmployeeNumber, contracts.ExternalAccount{
+		UserPrincipalName: "funnet@fake.example", Email: "funnet@fake.example", State: "disabled",
+	})
+	w.prov.SetUnconfirmed(p.EmployeeNumber, true)
+	w.cycle(t)
+	if got, want := providerMethods(w.prov), []string{"Prepare"}; !slices.Equal(got, want) {
+		t.Errorf("provider calls = %v, want %v", got, want)
+	}
+	if l := mustExtLink(t, w, p.Id); l.State != "blocked" || l.Reason != "external_unconfirmed" || l.ExternalID != "" || l.Announced != nil {
+		t.Errorf("the provider link = %+v, want blocked external_unconfirmed, no account, nothing announced", l)
+	}
+	if !slices.Contains(eventKinds(t, w, p.Id), "account_external_blocked") {
+		t.Errorf("events = %v, want account_external_blocked", eventKinds(t, w, p.Id))
+	}
+	if !hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInEntra) {
+		t.Errorf("attention = %+v, want accountUnconfirmedInEntra", attentionItems(t, w.hr))
+	}
+
+	w.prov.SetUnconfirmed(p.EmployeeNumber, false)
+	w.h.Advance(time.Minute)
+	do(t, w.hr, http.MethodPost, accountRunPath(p.Id), nil, http.StatusOK, nil)
+	if l := mustExtLink(t, w, p.Id); l.State != "enabled" || l.Reason != "" || l.ExternalID != held.ExternalID {
+		t.Errorf("the provider link after the confirmation = %+v, want enabled, the account found", l)
+	}
+	if hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInEntra) {
+		t.Error("accountUnconfirmedInEntra stands after the confirmation")
+	}
+}
+
+// A leaver whose account's adoption is unconfirmed: the Deactivate is
+// refused ErrExternalUnconfirmed, the account left enabled and the link
+// blocked external_unconfirmed — not disabled, no deactivation recorded as
+// done — raising accountUnconfirmedInEntra; once confirmed, the next run
+// deactivates it.
+func TestAccountsWorker_AnUnconfirmedAdoptionIsNotDeactivatedUntilConfirmed(t *testing.T) {
+	t.Parallel()
+	w := newProviderWorld(t)
+	p := w.entraEmployee(t, "Uavklart", "2026-09-01", nil)
+	w.cycle(t)
+	if l := mustExtLink(t, w, p.Id); l.State != "enabled" {
+		t.Fatalf("the provider link = %+v, want enabled", l)
+	}
+	w.prov.SetUnconfirmed(p.EmployeeNumber, true)
+	w.h.Exec(t, `UPDATE staff.employments SET end_date = '2026-09-12', end_reason = 'contract_ended' WHERE person_id = $1`, p.Id)
+	w.nextDay()
+	w.cycle(t)
+	if acc, _ := w.prov.ByNumber(p.EmployeeNumber); acc.State != "enabled" {
+		t.Fatalf("the external account = %+v, want left enabled", acc)
+	}
+	if l := mustExtLink(t, w, p.Id); l.State != "blocked" || l.Reason != "external_unconfirmed" {
+		t.Errorf("the provider link = %+v, want blocked external_unconfirmed", l)
+	}
+	if slices.Contains(eventKinds(t, w, p.Id), "account_external_deactivated") {
+		t.Errorf("events = %v, want no deactivation recorded", eventKinds(t, w, p.Id))
+	}
+	if !hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInEntra) {
+		t.Errorf("attention = %+v, want accountUnconfirmedInEntra", attentionItems(t, w.hr))
+	}
+
+	w.prov.SetUnconfirmed(p.EmployeeNumber, false)
+	w.nextDay()
+	w.cycle(t)
+	if acc, _ := w.prov.ByNumber(p.EmployeeNumber); acc.State != "disabled" {
+		t.Errorf("the external account once confirmed = %+v, want disabled", acc)
+	}
+	if l := mustExtLink(t, w, p.Id); l.State != "disabled" || l.Reason != "" {
+		t.Errorf("the provider link once confirmed = %+v, want disabled", l)
+	}
+	if hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInEntra) {
+		t.Error("accountUnconfirmedInEntra stands after the confirmation")
+	}
+}

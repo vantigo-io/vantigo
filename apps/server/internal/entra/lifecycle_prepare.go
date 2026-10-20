@@ -32,10 +32,10 @@ var errConnectionMoved = errors.New("entra: the connection changed while the use
 //   - One: linked (created_by_us false, unless the module made it) and
 //     brought to the spec by the update path; one synchronised from
 //     on-premises is ErrExternalSyncedOnPremises. A user the module did not
-//     make is adopted untrusted (plan reading 8): linked and answered as it
-//     is, adoption_unconfirmed reported and nothing written to it, until a
-//     holder of entra:manage confirms it; the next Prepare then brings it to
-//     the spec.
+//     make is adopted untrusted (plan reading 8): linked, adoption_unconfirmed
+//     reported on its row and nothing written to it, and answered
+//     ErrExternalUnconfirmed until a holder of entra:manage confirms it; the
+//     next Prepare then brings it to the spec and answers it.
 //   - None (and the module's own row names no user the tenant still holds —
 //     the filter may lag a create by seconds): created, Created true.
 func (p *provisioner) Prepare(ctx context.Context, actor contracts.Actor, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
@@ -151,7 +151,7 @@ func (p *provisioner) link(ctx context.Context, s session, actor contracts.Actor
 		return contracts.ExternalAccount{}, fmt.Errorf("entra: record the account: %w", err)
 	}
 	if !trusted(row) {
-		return p.unconfirmed(ctx, s, actor, actionUserPrepared, id, u, row, "found")
+		return contracts.ExternalAccount{}, p.unconfirmed(ctx, s, actor, actionUserPrepared, id, u, row, "found")
 	}
 	reported, changed, err := p.bringToSpec(ctx, s, id, u, spec)
 	if r, ok := asRefused(err); ok {
@@ -326,7 +326,7 @@ func (p *provisioner) recordCreated(ctx context.Context, s session, id uuid.UUID
 
 // Update writes the properties of the spec that differ and the manager —
 // never the employee id or the UPN (contracts.IdentityProvisioner.Update).
-// An unconfirmed adoption is answered as it is, nothing written.
+// An unconfirmed adoption is ErrExternalUnconfirmed, nothing written.
 func (p *provisioner) Update(ctx context.Context, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
 	if !actor.Valid() {
 		return contracts.ExternalAccount{}, contracts.ErrInvalidActor
@@ -339,7 +339,7 @@ func (p *provisioner) Update(ctx context.Context, actor contracts.Actor, externa
 		return contracts.ExternalAccount{}, p.refused(ctx, s, actor, actionUserUpdated, &id, u.UserPrincipalName, syncedRefusal())
 	}
 	if !trusted(row) {
-		return p.unconfirmed(ctx, s, actor, actionUserUpdated, id, u, row)
+		return contracts.ExternalAccount{}, p.unconfirmed(ctx, s, actor, actionUserUpdated, id, u, row)
 	}
 	reported, changed, err := p.bringToSpec(ctx, s, id, u, spec)
 	if r, ok := asRefused(err); ok {

@@ -104,6 +104,14 @@ describe("EntraPage — the Status card", () => {
           upn: "ola.nordmann@contoso.no",
           codes: ["licence_unavailable:ENTERPRISEPACK"],
         },
+        {
+          id: 8,
+          at: "2026-10-19T10:00:00Z",
+          actor: "system:staff-accounts",
+          action: "entra.user.deactivated",
+          upn: "kari@contoso.no",
+          codes: ["refused:adoption_unconfirmed"],
+        },
       ],
     });
     const status = region("Status");
@@ -122,6 +130,11 @@ describe("EntraPage — the Status card", () => {
       within(events).getByText("An account was enabled · ola.nordmann@contoso.no · by Staff's accounts run"),
     ).toBeInTheDocument();
     expect(within(events).getByText("licence ENTERPRISEPACK has no seat free")).toBeInTheDocument();
+    expect(
+      within(events).getByText(
+        "refused: the account was found in the tenant, not created, and its adoption is not yet confirmed",
+      ),
+    ).toBeInTheDocument();
   });
 });
 

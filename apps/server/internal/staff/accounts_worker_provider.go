@@ -357,6 +357,7 @@ func providerCallCode(err error) (code, state string, answer bool) {
 		{contracts.ErrExternalAddressTaken, reasonExternalAddressTaken, providerStateBlocked},
 		{contracts.ErrExternalSyncedOnPremises, reasonExternalSyncedOnPremises, providerStateBlocked},
 		{contracts.ErrExternalPrivileged, reasonExternalPrivileged, providerStateBlocked},
+		{contracts.ErrExternalUnconfirmed, reasonExternalUnconfirmed, providerStateBlocked},
 		{contracts.ErrExternalEnabled, reasonExternalEnabled, ""},
 		{contracts.ErrProviderUnavailable, reasonProviderUnavailable, ""},
 		{errProviderUnavailable, reasonProviderUnavailable, ""},
