@@ -254,10 +254,11 @@ permissionsMissing, roleKnown, reason? }`. **`roleKnown` is always false**: whet
 application holds the User Administrator role cannot be read without a further
 permission, so the wizard asks the Owner to check it in the portal, and the module
 learns it from the first [sensitive action](#the-sensitive-actions-and-role_missing).
-On a token, the test also writes the service principal's object id — the token's `oid`
-claim — to `service_principal_id`, and, when `subscribedSkus` answers, the tenant's
-licences to `skus` ([the traits](#the-traits)). The test does not move the connection's
-`version`. Recorded as the event
+When the test connects, it also writes the service principal's object id — the
+token's `oid` claim, when it carries one — to `service_principal_id`, and reads
+`subscribedSkus`, writing the tenant's licences to `skus` when it answers
+([the traits](#the-traits)); a read that fails leaves the cache, and the status the
+test found, as they were. The test does not move the connection's `version`. Recorded as the event
 `entra.connection.tested`, with the status, the reason and a `missing:<permission>` code
 for each permission missing.
 
@@ -347,7 +348,8 @@ manager in this release; a later one gives Staff the setting and the notice toge
 `GET /connection/skus` (`entra:manage`) answers the licences the tenant subscribes to,
 read from `GET /subscribedSkus` through the connection: `skuId`, `skuPartNumber` (the
 part number a Staff group's licences name, such as `ENTERPRISEPACK`), `enabled` (the
-seats bought, `prepaidUnits.enabled`) and `consumed`, sorted by part number, and on success writes them to `connection.skus`, the cache the
+seats bought, `prepaidUnits.enabled`) and `consumed`, sorted by part number — a licence with no part number or a `skuId` that is
+not a GUID left out — and on success writes them to `connection.skus`, the cache the
 [licences trait](#the-traits) is declared from. It
 answers `503 credential_invalid` when no secret fetched a token (or no tenant or client
 is saved) and `503 tenant_unreachable` when the tenant did not answer. The wizard shows
@@ -378,19 +380,24 @@ Staff's worker calls:
 - **Throttling.** A 429 waits its `Retry-After` once (a second when it names none); a
   second 429, or a `Retry-After` over 60 seconds, fails the call, and Staff's worker
   tries again at its next poll.
-- **A 5xx is retried once**, after a second — except on the two creates that must not
-  happen twice, `POST /users` and the pass's create: their 5xx is the answer, and the
-  caller reads back instead ([Prepare](#prepare)). A 429 and a 401, which the tenant
-  answers before it acts, are retried on them as on any call.
+- **A 5xx is retried once**, after a second — except on the three creates that must
+  not happen twice, `POST /users`, the pass's create and `POST /groups`: their 5xx is
+  the answer, and the caller reads back instead ([Prepare](#prepare),
+  [EnsureGroup](#ensuregroup)). A 429 and a 401, which the tenant answers before it
+  acts, are retried on them as on any call.
 - **A 401 drops the cached token** and the call is retried once with a fresh one.
 - **Every response body is read through a 1 MiB cap**; a larger one is refused.
 - **Graph's errors** (`{ error: { code, message, details } }`) are mapped to a
   sentinel or a reported code by the status, the code and the first detail's code (a
-  taken UPN is `ObjectConflict` there). The message is logged at debug level with the
+  taken UPN is `ObjectConflict` there); of the message the client reads one fact
+  alone, whether it says a reference added "already exist[s]", which Graph names by no
+  code of its own. The message is logged at debug level with the
   tenant's id, the method and the path — never the query, which may carry an employee
-  number — except for the user's create and the pass's create, whose refusal is logged
-  by its status and codes alone, since the message could echo the password or the pass
-  the call carried; the token endpoint's refusal is likewise logged by its status and
+  number — except for the three creates, whose refusal is logged by its status and
+  codes alone, since the message could echo the password or the pass the call carried,
+  and the calls that add or remove a group's member or owner by its reference — the
+  members' `PATCH`, the `$ref` posts and the `$batch` — whose message could echo a
+  user's id; the token endpoint's refusal is likewise logged by its status and
   OAuth code, never its `error_description`. **The body is never stored**: not in a
   row, an event or anything a person sees.
 
@@ -519,8 +526,13 @@ On the first day:
    `licenseAssignmentStates[].error` (such as `CountViolation`, no seat left), reports
    `licence_unavailable:<part number>`; the rest are assigned. A 4xx on the whole call
    reports every licence it carried. Then the direct licences — `assignedByGroup` null —
-   that Staff no longer names are removed by `assignLicense`'s `removeLicenses`; a
-   licence the tenant assigned through a group is left alone (design reading 9).
+   whose part number Staff does not name are removed in one `assignLicense` with
+   `removeLicenses` — every direct one when Staff names none; a licence the tenant
+   assigned through a group is left alone (design reading 9), and so is one whose SKU
+   `subscribedSkus` no longer lists. A 4xx on the removal records
+   `licences_not_removed` in the event and leaves the user as it is; the removal records
+   `licences_removed:<n>`. With no licence named and no direct licence held, nothing is
+   asked of the tenant.
 3. The pass, **only when this call enabled the account**, and then when Staff's step
    asks for a fresh one — **Run now (new pass)**, `Flags.Fresh` — or no unrevealed,
    unexpired pass waits. An `Activate` of an account already enabled issues none,
@@ -535,8 +547,9 @@ On the first day:
    reports `pass_forbidden`; either way there is no pass and the enable stands.
 
 An enabled user with nothing missing is answered as it is. Recorded as the event
-`entra.user.activated` with `enabled`, `hire_date_written`, `licences_assigned:<n>`
-and `pass_issued` as each happened, and the reported codes.
+`entra.user.activated` with `enabled`, `hire_date_written`, `licences_assigned:<n>`,
+`licences_removed:<n>` or `licences_not_removed`, and `pass_issued` as each happened,
+and the reported codes.
 
 ### Deactivate
 
@@ -563,9 +576,11 @@ by the connection unless named always:
    distribution list (mail-enabled, neither security-enabled nor Microsoft 365, which
    Exchange keeps), groups the module never made included, each by `DELETE
    /groups/{id}/members/{userId}/$ref`, a membership already gone counting as done;
-   **`managed`** from the module's own groups only — the `memberOf` page intersected
-   with the module's groups present in the tenant (`entra.groups`, `state` `present`)
-   before the same `$ref` deletes, so a group the module never made keeps the person;
+   **`managed`** from the module's own groups only — the `memberOf` pages intersected
+   with the groups the module made or adopted and holds present in the tenant
+   (`entra.groups`, `state` `present`) before the same `$ref` deletes, so a group the
+   module never made keeps the person; with no such group, nothing is read or removed
+   and the step records nothing;
    **`none`** leaves every membership.
 
 **A step that fails stops the steps after it**: it is logged, reported as
@@ -588,11 +603,14 @@ found. A phone (`mobilePhone`, `businessPhones`) is a sensitive property: a 403 
 `PATCH` carrying one is `ErrExternalPrivileged`. **On an enabled user the licences are
 reconciled** as on [Activate](#activate) (Entra design D10, plan reading 6): the
 licences Staff names that the user lacks are assigned — `licence_unavailable:<part
-number>` when one cannot be, `CountViolation` included — and the direct ones Staff no
-longer names are removed; a licence a group gave is left alone. Staff's list is the
-union of the person's groups' licences, so a membership's change reaches the user
-here. Recorded as the event `entra.user.updated` with a `changed:<property>` code for
-each, `changed:manager`, and the reported codes.
+number>` when one cannot be, `CountViolation` included — and the direct ones Staff does
+not name are removed, every direct one when Staff names none; a licence a group gave
+is left alone. Staff's list is the union of the person's groups' licences, so a
+membership's change reaches the user here — and a licence an administrator assigned
+directly by hand to a person Staff keeps is removed at their next `Update`. On a
+disabled user the licences are not touched. Recorded as the event `entra.user.updated`
+with a `changed:<property>` code for each, `changed:manager`, `licences_assigned:<n>`,
+`licences_removed:<n>` or `licences_not_removed`, and the reported codes.
 
 ### Delete
 
@@ -726,95 +744,151 @@ keeps it in line, and records it in `entra.groups` by its object id, one row per
 group id. Staff calls `EnsureGroup` when a group's values changed, `SetMembers` when its
 members did, and `DeleteGroup` to retire it ([Staff's sync](/en/reference/staff/#the-sync)).
 Each write checks its actor, needs the status `connected` — `ErrProviderUnavailable`
-otherwise — makes its Graph calls on no transaction and writes the row after, and
-records an [event](#the-events). A user's object id is never logged.
+otherwise, but for a `DeleteGroup` with nothing to delete — makes its Graph calls on no
+transaction and writes the row after, and records an [event](#the-events). A user's
+object id is never logged, and a member or an owner is only ever removed by its
+reference (`/$ref`): without it, Graph deletes the user.
+
+**A group the module may not write** is `contracts.ErrGroupNotManageable`, which Staff
+shows as `group_not_manageable`: a group that is dynamic (`membershipRule` set, or
+`DynamicMembership` among its `groupTypes`), role-assignable (`isAssignableToRole`), or
+mail-enabled without being a Microsoft 365 group — a distribution list or a
+mail-enabled security group, which Exchange keeps; a group found by the nickname that
+another of the module's rows holds, or two groups holding it; and, at `SetMembers`, a
+group the module keeps no row for, or one gone from the tenant. A refusal judged on a
+group the module read is recorded under the write's action with
+`refused:group_not_manageable`.
 
 ### The traits
 
 `GroupTraits(ctx)` declares the six traits a group's Entra section carries, reading the
 connection's row alone — never the network (plan reading 1) — each with its label and
-description in English and Norwegian and Microsoft's page about it as `DocURL`:
+description in English and Norwegian and Microsoft's page about it as `DocURL`, in this
+order:
 
-| Key | Type | Rule |
-| --- | --- | --- |
-| `type` | choice: `security`, `microsoft365` | Required; `security` by default. **Immutable**: a value other than the one the group was made with is `trait_immutable`. |
-| `mailNickname` | string, at most 64 | The group's mail nickname; when empty, made from the key — the key as it is (its hyphens kept), cut at 64. |
-| `visibility` | choice: `private`, `public` | Microsoft 365 groups only: a value on a security group is `trait_invalid`. |
-| `description` | string, at most 1024 | The description written to the group. |
-| `team` | bool | Microsoft 365 groups only: the group [becomes a team](#the-team). |
-| `licences` | list | The licences the group's members get, each a part number the tenant subscribes to. |
+| Key | Label (`en` / `nb`) | Type | Default | Rule |
+| --- | --- | --- | --- | --- |
+| `type` | Group type / Gruppetype | choice: `security` (Security / Sikkerhet), `microsoft365` (Microsoft 365) | `security` | Required: none is `trait_required`, another value `trait_invalid`. **Immutable**: a value other than the one the group was made or adopted with is `trait_immutable`. |
+| `mailNickname` | Mail nickname / E-postalias | string, at most 64 | none | The group's mail nickname. A value is folded and lower-cased — a–z, 0–9 and hyphens kept, every run of other characters one hyphen — and cut at 64; one that folds to nothing is `trait_invalid`. Empty, it is made from the key the same way: the key as it is. **Immutable too**: once the group exists, a value other than the nickname it was made or adopted with is `trait_immutable`; left empty, the group keeps its own. |
+| `visibility` | Visibility / Synlighet | choice: `private` (Private / Privat), `public` (Public / Offentlig) | none | Microsoft 365 groups only: a value on a security group is `trait_invalid`. Left empty, nothing is written and the tenant's default stands. |
+| `description` | Description in the tenant / Beskrivelse i tenanten | string, at most 1024 | none | The description written to the group; empty, the Staff group's own description, cut at 1024. |
+| `team` | Team in Microsoft Teams / Team i Microsoft Teams | bool | `false` | Microsoft 365 groups only: `true` on a security group is `trait_invalid`. The group [becomes a team](#the-team). |
+| `licences` | Licences / Lisenser | list | none | The licences the group's members get: each a part number (`[A-Za-z0-9_.-]`, at most 64), else `trait_invalid`. Whether the tenant subscribes to it is judged when it is assigned (`licence_unavailable`). |
+
+`EnsureGroup` checks the values against the same rules, in that order, and answers the
+first refusal; a key no trait declares is ignored, and a string is trimmed.
 
 **The licences' choices are the tenant's SKUs as the module last read them**: the
-connection test and `GET /connection/skus` write what `subscribedSkus` answered to
-`connection.skus` — at most 200, each `{skuId, skuPartNumber, enabled, consumed}` — and
-the trait lists them, the part number as the value and `<part number> (<enabled −
-consumed> of <enabled> available)` as the label in both languages. While the row holds
-none, the trait has no choices. What the licences do is Staff's: a person is sent the
-union of their groups' ([the licences](/en/reference/staff/#the-licences)), and
-[Update](#update) reconciles them.
+connection test, when it connects, and `GET /connection/skus` write what
+`subscribedSkus` answered to `connection.skus` — sorted by part number, at most 200,
+each `{skuId, skuPartNumber, enabled, consumed}` — and the trait lists them, the part
+number as the value and the seats left, never below 0, as the label:
+`<part number> (<enabled − consumed> of <enabled> available)` in English and
+`<part number> (<enabled − consumed> av <enabled> ledige)` in Norwegian. While the row
+holds none, the trait has no choices. What the licences do is Staff's: a person is sent
+the union of their groups' ([the licences](/en/reference/staff/#the-licences)), and
+[Activate](#activate) and [Update](#update) reconcile them.
 
 ### EnsureGroup
 
-**The first call** finds the module's row by the Staff group id. With none, it looks
-for a group holding the mail nickname — `GET /groups?$filter=mailNickname eq
-'<nickname>'`, the nickname's `'` escaped as `''`:
-
-- **A group that is dynamic** (`membershipRule` set, or `DynamicMembership` among its
-  `groupTypes`), **role-assignable**, or whose nickname another of the module's rows
-  holds is `contracts.ErrGroupNotManageable`, and nothing is written to it — dynamic and
-  role-assignable groups are out of the module's reach for good.
-- **Any other group found is adopted**: its row is written `created_by_us` false, and
-  the owners it lacks are added by `POST /groups/{id}/owners/$ref` — the service
-  principal among them. The event is `entra.group.adopted`.
-- **None** is a create, `POST /groups`, with `displayName` (Staff's name, at most 256),
-  `mailNickname` (the trait, else made from the key), by `type` — `security`:
-  `mailEnabled` false, `securityEnabled` true, no `groupTypes`; `microsoft365`:
-  `mailEnabled` true, `securityEnabled` true, `groupTypes: ["Unified"]` — `description`,
-  `visibility` (a Microsoft 365 group's), and **`owners@odata.bind` naming the module's
-  own service principal and the owners' accounts**
-  (`https://graph.microsoft.com/v1.0/servicePrincipals/<id>` and
-  `https://graph.microsoft.com/v1.0/users/<id>`), at most twenty in the create and the
-  rest by `$ref` after. It answers `Created` true, writes the row `created_by_us` true,
-  and records `entra.group.created` with `type:<type>` and `owners:<n>`.
+**The spec.** A spec with no group id or key, or one over 60 characters, is a plain
+error. The name is Staff's, trimmed and cut at 256 — the key when empty; the
+description is the `description` trait's, else Staff's, cut at 1024. A value the
+traits refuse is a `contracts.GroupTraitError` naming the trait and its code, recorded
+as `refused:<code>` under `entra.group.updated` when the module has the group, else
+`entra.group.created`; nothing is written to the tenant.
 
 **The service principal owns every group the module makes** (design reading 10): a
 group an application creates with no owner cannot be changed by it later. Its object
 id is the token's `oid` claim — an application's token names its service principal in
-the tenant, so no further permission is needed (plan reading 2) — written to
-`connection.service_principal_id` at each connection test, and at a write that finds it
-empty.
+the tenant, so no further permission is needed (plan reading 2). Every group write
+takes it from the token it was opened with and writes it to
+`connection.service_principal_id` when the row has none or names another — **the
+token's `oid` wins over the row** — as the connection test does; a token without one
+falls back to the row, and with neither the write fails.
 
-**A later call** reads the group (`GET /groups/{id}`) and `PATCH`es what differs of
-`displayName`, `description` and `visibility`; a `type` other than the row's is
-`GroupTraitError{type, trait_immutable}`, and nothing is written. The owners are
-reconciled — `GET /groups/{id}/owners?$select=id`, the missing added by `$ref`, the
-people no longer owners removed by `DELETE /groups/{id}/owners/{id}/$ref` — **never the
-service principal**. Recorded as `entra.group.updated` with a `changed:<property>` code
-for each property, `owners_added:<n>` and `owners_removed:<n>`. Staff's archive arrives
-here too: when a group is kept rather than deleted, Staff sends its name with
-` (archived)` after it (plan reading 5).
+**With no row for the Staff group** — or only a deleted one — the module looks for a
+group holding the mail nickname, `GET /groups?$filter=mailNickname eq '<nickname>'`,
+the nickname's `'` escaped as `''`:
 
-A trait value the module refuses is a `contracts.GroupTraitError` naming the trait and
-its code — `trait_required`, `trait_invalid`, `trait_immutable` or `trait_needs_owner` —
-recorded as `refused:<code>`. Staff keeps it beside the field and does not call again
-until the values change.
+- **Two or more** is `ErrGroupNotManageable`: the module cannot tell which is Staff's
+  (a security group's nickname need not be unique).
+- **One** is adopted, unless the module [may not write it](#groups-in-the-tenant) or
+  another of its rows holds its object id or, present, its nickname
+  (`ErrGroupNotManageable`), or its type is not the `type` trait's (`GroupTraitError
+  {type, trait_immutable}`) — each recorded under `entra.group.adopted`. An adopted
+  group's row is written at once, `created_by_us` false; then Staff's name, description
+  and visibility are written where they differ (`PATCH /groups/{id}`), and the owners it
+  lacks are added by `POST /groups/{id}/owners/$ref` — the service principal among them.
+  **No owner is removed on adoption**: the group's own owners stay until the next
+  `EnsureGroup`, which removes the people Staff does not name. Recorded as
+  `entra.group.adopted` with `type:<type>`, a `changed:<property>` code for each property
+  written and `owners_added:<n>`.
+- **None** is a create, `POST /groups`, with `displayName`, `mailNickname`, by `type` —
+  `security`: `mailEnabled` false, `securityEnabled` true, `groupTypes: []`;
+  `microsoft365`: `mailEnabled` true, `securityEnabled` true, `groupTypes: ["Unified"]`
+  and `visibility` (`Private` or `Public`) when the trait has one — `description` when
+  there is one, and **`owners@odata.bind` naming the module's own service principal
+  and the first nineteen owners' accounts**
+  (`https://graph.microsoft.com/v1.0/servicePrincipals/<id>` and
+  `https://graph.microsoft.com/v1.0/users/<id>`), the rest added by `$ref` after. A
+  create carrying owners that is refused 400 or 404 — an owner the tenant does not
+  hold — is made again with the service principal alone, and the owners added one by
+  one, a person the tenant does not hold (a 404) skipped. **The create is made once**,
+  never retried on a 5xx: when its answer is lost, the module reads the nickname back
+  and takes the group as its own only when exactly one holds it, one it may write, of
+  the type asked; otherwise the call fails. It answers `Created` true, writes the row
+  `created_by_us` true, and records `entra.group.created` with `type:<type>`,
+  `owners_added:<n>` for the owners added after the create, and `owners:<n>`, the
+  people owning the group.
+
+**The row is recorded under the connection's share lock**, at once after the create or
+the adoption, so a failure after it finds the group next time: when the tenant or the
+client moved since the call began, nothing is recorded, the group is left in the
+tenant, and the call answers `ErrProviderUnavailable`. A deleted row for the same Staff
+group gives way to the new one (`ForgetDeletedGroup`); the deleted group's events keep
+its object id.
+
+**With the row**, a `type` other than the row's, or a `mailNickname` other than the
+row's, is `GroupTraitError{…, trait_immutable}`, and nothing is written. The module
+reads the group (`GET /groups/{id}`): **a group gone from the tenant** — a 404, deleted
+by someone else — has its row marked `deleted` and is looked for by its nickname and
+made again as above; a group it [may not write](#groups-in-the-tenant) any more is
+`ErrGroupNotManageable`. Otherwise it `PATCH`es what differs of `displayName`,
+`description` (an empty one cleared) and a Microsoft 365 group's `visibility`, and
+reconciles the owners — `GET /groups/{id}/owners?$select=id`, at most 10 pages: the
+service principal added back when it is missing, the people missing added by `$ref` (a
+person the tenant does not hold skipped), and the users among the owners Staff no
+longer names removed by `DELETE /groups/{id}/owners/{id}/$ref` in `$batch` requests of
+twenty — **never the service principal**, nor an owner that is not a user. Recorded as
+`entra.group.updated` with `changed:displayName`, `changed:description` and
+`changed:visibility` as each was written, `owners_added:<n>` and `owners_removed:<n>`.
+Staff's archive arrives here too: when a group is kept rather than deleted, Staff sends
+its name with ` (archived)` after it (plan reading 5).
+
+A write that fails after it changed something records its event with the codes so far
+and `failed`. A trait refused here is kept beside the field by Staff, which does not
+call again until HR changes the group.
 
 ### The team
 
 `team: true` on a Microsoft 365 group makes it a team in Microsoft Teams, on a call
-that finds the row without `team_created_at`:
+that finds the row without `team_created_at`, after the group's own writes:
 
 - **The group younger than fifteen minutes** (its `createdDateTime`) is not attempted:
   the answer carries `ExternalGroup.Pending: ["team"]` and the event the code
   `team_pending`, and Staff asks again at its next cycle (plan reading 7). A team
   cannot be made on a group the directory has not finished creating.
-- **No person among the owners** is `GroupTraitError{team, trait_needs_owner}`: the
-  service principal alone cannot own a team.
+- **No person among the owners** is `GroupTraitError{team, trait_needs_owner}`, the
+  event carrying `refused:trait_needs_owner`: the service principal alone cannot own a
+  team.
 - **Otherwise** `PUT /groups/{id}/team` with
   `{"template@odata.bind": "https://graph.microsoft.com/v1.0/teamsTemplates('standard')"}`,
   tried three times ten seconds apart while it answers 404, a 409 saying the group has
   a team already read as done. `team_created_at` is written and
-  `entra.group.team_created` recorded.
+  `entra.group.team_created` recorded after the write's own event. Still 404 after the
+  third try, the answer is `Pending` as above; any other refusal fails the call after
+  the row and the event are written.
 
 `team: false` on a group that has a team changes nothing: the module never deletes a
 team.
@@ -822,31 +896,40 @@ team.
 ### SetMembers
 
 Reconciles the group's members to exactly the accounts Staff names. A group the module
-keeps no row for is `ErrGroupNotManageable`. It reads the current members, `GET
-/groups/{id}/members?$select=id&$top=999`, page by page, and de-duplicates the wanted
-set:
+keeps no row for, or one marked deleted, is `ErrGroupNotManageable`; an id that is not
+a GUID is a failure `not_found`. It reads the group: one gone from the tenant (a 404)
+has its row marked `deleted` and is `ErrGroupNotManageable`; one that became
+role-assignable or Exchange's is refused `group_not_manageable`; **one that became
+dynamic** changes nothing, each member to add or remove answered failed `dynamic`. It
+reads the current members, `GET /groups/{id}/members?$select=id&$top=999`, page by
+page, at most 100 pages — a longer list fails the call, never a partial reconcile — and
+leaves a member that is not a user (a nested group, a device) alone:
 
 - **Adds** in `PATCH /groups/{id}` with `members@odata.bind`, twenty to a request. A
-  400 saying a member is there already falls back, for that batch, to one `POST
-  /groups/{id}/members/$ref` per account.
+  `PATCH` refused 400 or 404 falls back, for that batch, to one `POST
+  /groups/{id}/members/$ref` per account: one already a member is no failure, a 404 is
+  `not_found`, a 400 or 403 `refused`, another 4xx `other`, and a 5xx fails the call.
 - **Removes** in `$batch` requests of twenty, each `DELETE
   /groups/{id}/members/{userId}/$ref` — **always with `/$ref`**, which removes the
   membership: the same path without it would delete the user. Each response is read on
-  its own: 204 is removed, 404 is removed already, anything else a failure.
+  its own: 204 (or 200) is removed, 404 is removed already, 400 or 403 is `refused`,
+  and anything else — a throttled one included — is `other`.
 
 It answers `MembersResult{Added, Removed, Failed}`, each failure the account's id and a
 code — `not_found`, `dynamic`, `refused` or `other` — and never an error for one; Staff
-tries the failed ones again at its next cycle. The row's `last_members_at` is written
-and `entra.group.members_set` recorded with `added:<n>`, `removed:<n>` and
-`failed:<n>`.
+tries the failed ones again at its next cycle. **`last_members_at` is written when the
+call finished** — failures of single members included — and not when a request failed.
+`entra.group.members_set` is recorded with `added:<n>`, `removed:<n>` and `failed:<n>`,
+and `failed` when a request failed after something changed.
 
 ### DeleteGroup
 
-`DELETE /groups/{id}` — a soft delete: a deleted group stays restorable in the tenant's
-deleted groups for 30 days. A 404 is deleted already. The row is kept, marked
-`deleted`, and `entra.group.deleted` recorded. With no row it answers nil: there is
-nothing to delete. There is no rename here: a group Staff keeps is renamed through
-`EnsureGroup`.
+A group the module keeps no row for, or one marked deleted, answers nil with no
+connection and no call: there is nothing to delete. Otherwise, needing the status
+`connected`, `DELETE /groups/{id}` — a soft delete: a deleted group stays restorable in
+the tenant's deleted groups for 30 days. A 404 is deleted already, recorded with the
+code `gone`. The row is kept, marked `deleted`, and `entra.group.deleted` recorded.
+There is no rename here: a group Staff keeps is renamed through `EnsureGroup`.
 
 ## The events
 
@@ -863,16 +946,18 @@ limit outside that is a 400) on the **Status** card:
 | `entra.user.prepared`, `entra.user.activated`, `entra.user.deactivated`, `entra.user.updated`, `entra.user.deleted` | the lifecycle |
 | `entra.pass.issued`, `entra.pass.revealed` | the pass |
 | `entra.account.adoption_confirmed` | `POST /accounts/{objectId}/confirm` |
-| `entra.group.created`, `entra.group.adopted`, `entra.group.updated`, `entra.group.team_created`, `entra.group.members_set`, `entra.group.deleted` | [the groups](#groups-in-the-tenant), with the group's `objectId` and no UPN |
+| `entra.group.created`, `entra.group.adopted`, `entra.group.updated`, `entra.group.team_created`, `entra.group.members_set`, `entra.group.deleted` | [the groups](#groups-in-the-tenant), with the group's `objectId` — none on a refusal before the module had one — and no UPN |
 
 A lifecycle write the tenant refused is recorded under its own action with
 `refused:<code>`. The codes carry the details each section names — `tenant_before:`,
 `label:`, `expires_at:`, `missing:<permission>`, a changed field's name, `created` or
 `found`, `changed:<property>`, `enabled`, `hire_date_written`, `licences_assigned:<n>`,
-`pass_issued`, `disabled`, `sessions_revoked`, `leave_date_written`,
-`licences_stripped`, `groups_removed`, `gone`, and for a group `type:<type>`,
-`owners:<n>`, `owners_added:<n>`, `owners_removed:<n>`, `team_pending`, `added:<n>`,
-`removed:<n>` and `failed:<n>` — and the reported codes. The trail is
+`licences_removed:<n>`, `licences_not_removed`, `pass_issued`, `disabled`,
+`sessions_revoked`, `leave_date_written`, `licences_stripped`, `groups_removed`, `gone`,
+and for a group `type:<type>`, `changed:<property>`, `owners:<n>`, `owners_added:<n>`,
+`owners_removed:<n>`, `team_pending`, `added:<n>`, `removed:<n>`, `failed:<n>`, `failed`
+(a write that failed after it changed something), `gone` and `refused:<code>` — and the
+reported codes. The trail is
 the module's only record of its writes: nothing goes to the platform's audit log.
 
 Each answers `id`, `at`, `actor` — the user's id, or the system's name
@@ -927,7 +1012,9 @@ A **tagged test**, `tenant_test.go`, settles against a real tenant what the fake
 know — whether an application may write `employeeHireDate`, whether the pass is issued
 with its permission, and what the module answers for a user synchronised from
 on-premises — and runs a group through the tenant: made with the service principal and
-an owner, its members set in a batch, deleted (the team is not attempted, the group being
+an owner (a security group whose nickname starts with `vt-test-`), ensured again to
+find the same group, the user added as a member and removed by `$ref` in a `$batch`,
+deleted (the team is not attempted, the group being
 younger than fifteen minutes): `go test -tags entra -run TestEntraTenant -v ./internal/entra/` with
 `ENTRA_TEST_TENANT_ID`, `ENTRA_TEST_CLIENT_ID`, `ENTRA_TEST_CLIENT_SECRET` and
 `ENTRA_TEST_DOMAIN` set (and `ENTRA_TEST_SYNCED_USER_ID` with

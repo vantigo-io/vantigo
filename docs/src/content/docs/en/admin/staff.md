@@ -289,14 +289,19 @@ the history); a second look, or one after it expired, is `pass_gone` (409): **Ru
 
 **Groups.** Each cycle also materialises the derived [groups](/en/user/staff/#groups) —
 the members a group's rule yields today, each who joins or leaves recorded on their
-history (`group_joined`, `group_left`) — before it works the accounts, and after them
-syncs up to 100 groups with each provider HR turned on for them: the group made in the
-directory with its owners, its name and values written when they change, its members
-set to those of its people whose account there is enabled, and an archived group
-deleted after **Delete an external account (days after the end)** or, when that is
-empty, renamed `… (archived)` and kept ([Staff's groups in the
-tenant](/en/admin/entra/#staffs-groups-in-the-tenant)). A group the provider refused
-raises `groupSyncFailed`. With `STAFF_ACCOUNTS_ENABLED=0` neither happens.
+history (`group_joined`, `group_left`) — before it works the accounts, skipped while
+the account kinds are unseeded, and after them syncs up to 100 group sections — a group
+under one provider HR turned on for it — a cycle, so a person enabled in a cycle is in
+their groups in the same cycle: the group made in the directory with its owners, its
+name, owners and values written when they change, its members set to those of its
+people whose account there is enabled, and an archived group — or one a provider was
+turned off for — deleted after **Delete an external account (days after the end)** or,
+when that is empty, renamed `… (archived)` and kept ([Staff's groups in the
+tenant](/en/admin/entra/#staffs-groups-in-the-tenant)). A provider not connected is
+skipped, and tried again at the next poll. A group the provider refused, or whose calls
+failed three times in a row, raises `groupSyncFailed`; a refused one is not sent again
+until HR changes the group. **Run accounts now** runs the groups too. With
+`STAFF_ACCOUNTS_ENABLED=0` neither happens.
 
 **The mode mismatch.** The worker reads the mode from the single sign-on settings in
 the database, as the API does
@@ -1431,7 +1436,9 @@ changing the settings at once cannot overwrite each other unseen.
   effective date it is prepared, disabled ([Turn on accounts for a
   person](#turn-on-accounts-for-a-person)), and when a person's account in Entra is
   deleted after the last employment ended, once it is disabled and no legal hold is on
-  the person. Left out of a replace, each keeps its value; `null` sets
+  the person — and as many days after a group was archived, or a provider turned off
+  for it, its group in the directory is deleted; never, it is renamed `… (archived)` and
+  kept. Left out of a replace, each keeps its value; `null` sets
   `deleteExternalAfterDays` to never.
 - **Default account kind** (`defaultAccountKind`, on the **Accounts** card): the kind
   a new person gets — `local`, `external` or `entra` — set once from the authority mode

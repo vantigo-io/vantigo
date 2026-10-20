@@ -1659,7 +1659,7 @@ the slot **declares the traits** a group may carry — `GroupTraits` now takes a
 and reads the provider's own state, never the network (reading 1) — which Staff renders
 as a form from the declaration alone, checks at the save (required, choices, types,
 lengths) and stores; the provider's own rules come back from `EnsureGroup` as a
-`GroupTraitError` beside the field, not retried until the values change (reading 3).
+`GroupTraitError` beside the field, not retried until HR changes the group (reading 3).
 The worker **syncs** each group a provider is on for, after the links, under a lease,
 by the hash of its values and owners and the hash of its members' enabled accounts, the
 row's state and code on the group's card and `groupSyncFailed` on the dashboard; a group
@@ -1673,8 +1673,9 @@ assigned, the direct ones no longer named removed, a group-assigned one untouche
 `visibility`; `description`; `team`; `licences`, from the SKUs cached on the connection
 row); the group created with the module's **service principal** — read from its
 token's `oid` (reading 2) — and the owners' accounts as owners, or a group holding the
-nickname adopted, a dynamic, role-assignable or another row's refused; the owners
-reconciled, never the service principal; a team made by `PUT /team` once the group is
+nickname adopted — its own owners kept until the next change — a dynamic,
+role-assignable, Exchange-kept or another row's refused; the owners reconciled, never
+the service principal; a team made by `PUT /team` once the group is
 fifteen minutes old and has a person owner, a younger one answered `Pending` and asked
 again next cycle (reading 7); members added in twenties and removed by `$ref` in
 `$batch`; a soft delete. The leaver's `managed` step now means the module's own groups.

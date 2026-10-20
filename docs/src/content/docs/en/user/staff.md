@@ -5,6 +5,7 @@ sidebar:
   order: 45
 sources:
   - apps/staff/frontend
+  - apps/host/frontend/src/routes/staff
 ---
 
 The Staff app is where HR keeps the company's people: who they are, how to reach them,
@@ -292,6 +293,12 @@ number* — each with the **Step** it took, the **State** it left the account in
 was held up or failed, the **Invitation**, and whether the account flag was turned off
 meanwhile, all in words.
 
+When the person joins or leaves a [group](#groups), the history says *Joined a group*
+or *Left a group*, by HR — or by the accounts worker for a derived group — with the
+group's name and how they came in, *Listed* or *The rule* (*Sales (The rule)*). The
+group's name and how are shown to the person, HR and `staff:personal-data`; a manager
+sees only that the person joined or left a group.
+
 ### Documents
 
 **Documents** is the person's archive: the contract, attests, certificates, letters and
@@ -527,9 +534,11 @@ try again in a few minutes. After any refusal the tab reads the account again.
 On an [erased record](#an-erased-record) the tab is read-only but for **Disable now**:
 the person's access must end too.
 
-A **Groups** card lists the [groups](#groups) the person is in —
-archived groups aside — by **Name**, **Came in by** (*Listed* by HR, or *The rule*) and
-**Since**. It is read-only here: HR changes a group's members on the group's page.
+A **Groups** card lists the [groups](#groups) the person is in — *the groups the
+person is in, and so the groups and licences a directory gives them*, archived groups
+aside — by **Name**, **Came in by** (*Listed* by HR, or *The rule*) and **Since**, or
+says *Not in any group.* It is read-only here: with `staff:manage` a group's name opens
+its page, where HR changes its members.
 
 ### A legal hold
 
@@ -701,73 +710,107 @@ in the company's directory — Microsoft Entra ID — when you turn it on for a 
 they become a security group or a Microsoft 365 group (a team too, if you ask). A group's
 licences are how its members get theirs in Microsoft 365. There are two kinds:
 
-- **Listed** — you name the members.
-- **Derived** — a rule names them, and Staff brings the members in line every day: who
+- **Listed** — *You name the members.*
+- **Derived** — *A rule names the members, brought up to date every business day*: who
   joins and who leaves is written to each person's history.
 
 ### The list
 
-**Groups** lists the groups by **Name**, with **Key**, **Kind**, **Members**,
-**Providers** — a badge for each directory the group is kept in, saying where it stands —
-and **Status**. Archived groups are hidden until you turn on **Show archived**. Press a
-group to open it.
+**Groups** lists the groups by **Name**, with **Key**, **Kind**, **Members** (how many),
+**Providers** — a badge for each directory HR turned on for the group, such as
+*Microsoft Entra ID: In sync*, *Microsoft Entra ID: Failed* or *Microsoft Entra ID: Off*,
+or *—* when there is none — and **Status**, *Archived* for an archived group. Archived
+groups are hidden, and greyed out, until you turn on **Show archived**. Press a group's
+name to open it. With no group yet, the page says *No groups yet* — *Add a group with
+New group.*
 
 ### Add a group
 
 1. Press **New group**.
-2. Fill in the **Key** — lower-case letters, digits and hyphens, at most 60, unique. It is
-   how the directory knows the group (its mail nickname, unless you set another) and
-   **cannot be changed later**. Then the **Name** and, if you like, a **Description**.
-3. Choose the **Kind**. For **Derived**, choose the rule:
-   - **Everyone employed** — everyone with an employment today;
+2. Fill in the **Key** — lower-case letters, digits and hyphens, at most 60, starting
+   with a letter or a digit, unique. It is how the directory knows the group (its mail
+   nickname, unless you set another) and **cannot be changed later**. Then the **Name**
+   and, if you like, a **Description**.
+3. Choose the **Kind**, **Listed** or **Derived**. For **Derived**, choose the **Rule**:
+   - **Everyone employed** — *Everyone with an employment in force today.*;
    - **Department** — the people whose terms place them in the department you pick;
-     turn on *Include departments beneath* to take in the departments under it too;
-   - **Business unit** or **Location** — the people employed in it;
+     turn on **Include departments beneath** to take in *the people in every department
+     under this one too*;
+   - **Business unit** — the people employed in it;
+   - **Location** — the people whose terms place them there;
    - **Employee type** — the people of the type you pick;
-   - **Reports to** — the people the person you pick manages today, one level down.
+   - **Reports to** — pick the **Manager**: *the manager's direct reports today, one
+     level down*.
+
+   A person with several employments is judged on the one that started first.
 4. Press **Save**. A key already taken, or a rule without what it needs, is marked on its
-   field. A derived group fills at the accounts worker's next run, within the hour; a
-   listed one starts empty.
+   field. The page says *… is saved* and opens the new group. A derived group fills at
+   the accounts worker's next run, within the hour; a listed one starts empty.
 
 ### A group's page
 
-The page's header shows the group's name, its kind and its rule in words. **Edit** opens
-the same form without the key. **Archive** asks first. **Delete** is there only while the
-group has never reached a directory; after that, archive it.
+The page's header shows the group's name, its kind, its key and its rule in words —
+*the department Sales and those beneath it*, *reports to Kari Nordmann* — and its
+description. **Edit** opens the form, which shows *Key: … — it never changes.* in place
+of the key; the kind can change there too. If someone else saved the group since you
+opened it, the page says so and reads it again. **Archive** asks first. **Delete** is
+there only while no directory has ever made or found the group, archived or not; after
+that, archive it. It asks *Delete …?* — *The group, its members, owners and settings are
+deleted. No directory has it yet.* — and each member is recorded on their history as
+having left the group.
 
-- **Members** — for a listed group, pick the people and press **Save**; each who joins
-  or leaves is written to their history. For a derived group the list is read-only,
-  *Materialised daily by the rule*, each member with the day they joined.
-- **Owners** — the people who own the group in the directory: pick them and press
-  **Save**. An owner needs an account in the directory to be one there.
+- **Members** — for a listed group, *The people you name, from the day you save them*:
+  pick them under **The members** and press **Save the members**; each who joins or
+  leaves is written to their history. For a derived group the list is read-only,
+  *Materialised daily by the rule*. Each member is listed with their **Employee
+  number**, **Came in by** — *Listed* or *The rule* — and **Since**; an empty group says
+  *Nobody is in the group.*
+- **Owners** — *The people who own the group in each directory, beside Staff itself*:
+  pick them under **The owners** and press **Save the owners**, for a listed or a derived
+  group. An owner needs an enabled account in the directory to be one there; the
+  change reaches it at the accounts worker's next run.
 
 Below them is a card for each directory Staff can keep groups in, titled with its name —
-**Microsoft Entra ID**. Turn on *In Microsoft Entra ID* and the card shows the group's
-settings there, which the directory itself describes: each with its label in your
-language, *About this setting* linking to Microsoft's page, the required ones marked and
-the defaults filled in. For Microsoft Entra ID they are the group's type — a security
-group or a Microsoft 365 group, which cannot change once the group is made — its mail
-nickname, its visibility and description, whether a Microsoft 365 group is also a team
-in Microsoft Teams, and the licences its members get, each with the seats left. Press
-**Save**: a value that does not fit is marked beside its field, and the rest is sent at
-the accounts worker's next run.
+**Microsoft Entra ID**. Until the directory is connected, the card says *Microsoft
+Entra ID is not connected yet; the group is made there once it is.* Turn on **In
+Microsoft Entra ID** and the card shows the group's settings there, which the directory
+itself describes: each with its label in your language, *About this setting* linking to
+Microsoft's page, the required ones marked and the defaults filled in. For Microsoft
+Entra ID they are the **Group type** — *Security* or *Microsoft 365*, which cannot change
+once the group is made — the **Mail nickname**, which cannot change either, the
+**Visibility** of a Microsoft 365 group, the **Description in the tenant**, **Team in
+Microsoft Teams** for a Microsoft 365 group, and the **Licences** its members get, each
+with the seats left. Press
+**Save**: a value that does not fit is marked beside its field, and otherwise the page
+says *Saved for Microsoft Entra ID; the group follows at the accounts worker's next run*.
 
-The card then says where the group stands: *Waiting* until it is sent, *In sync since …*
-with *Staff's in Microsoft Entra ID too*, *Failed* and why — beside the setting, when the
-directory refused one, such as a type changed after the group was made or a team with no
-person among the owners — *Kept, renamed* or *Deleted*. Change the value and save again
-to have it tried again. A team is made once the group is fifteen minutes old, so it
-appears a run after the group.
+The card's badge then says where the group stands: *Waiting* until it is sent, *In sync
+since …* with *Staff's in Microsoft Entra ID too*, *Failed*, *Kept, renamed* or
+*Deleted*. When the directory refused a setting — a type or a mail nickname changed
+after the group was made, a team with no person among the owners — the card says
+*Failed:* and why beside that setting; a refusal of the group itself — *the directory
+holds a group by this key that Staff may not write* — is said at the top of the card.
+Members the directory could not change are said there too, and tried again at the next
+run. Change the value and save again — or change the group's name, description or
+owners — to have it tried again. A team is made once the group is fifteen minutes old,
+so it appears a run after the group. When the directory could not say what a group can
+carry, the card says *Microsoft Entra ID could not say what a group can carry there.
+Try again later.*
 
 **Turning the switch off** asks *Turn off Microsoft Entra ID for …?* and says what
 happens, by **Delete an external account (days after the end)** under
 [Accounts](#accounts): *The group will be deleted in Microsoft Entra ID after N days.*,
-or, when that is empty, *The group will be kept in Microsoft Entra ID, renamed "…
-(archived)".* The settings are kept.
+or, when that is empty, *The group will be kept in Microsoft Entra ID, renamed “…
+(archived)”.* **Turn off** confirms, and the page says *Microsoft Entra ID is off for
+the group*. The settings are kept. A directory you turned on but never saved for is
+just turned off again, without asking.
 
-**Archive** does the same for every directory, and makes the group read-only: its
-members stay as they were, and nothing on the page can be changed any more. Nothing in
-Staff is deleted.
+**Archive** asks *Archive …?* — *The group keeps its members and becomes read-only. In
+each directory it is deleted after the days Staff's settings say, or renamed
+“… (archived)” and kept when they say never.* — and does that for every directory. The
+page then says *The group is archived: it keeps its members as they stood and can no
+longer be changed.*, shows the owners as a list, and offers no **Edit**, **Archive**,
+**Save** or switch. Nothing in Staff is deleted.
 
 ## My page
 
@@ -778,7 +821,9 @@ a person's four tabs, then **Absence**, **Account** and, when you manage anyone,
 
 - **Profile** — your work details, your private details, your national identity number
   as **On file** and your bank account's last four digits, your next of kin, your roles
-  and where you sit in the organisation. Press **Edit my details** to change your
+  and where you sit in the organisation, and under them **Your groups**: by name, the
+  groups you are in, as HR keeps them (*You are not in any group.* when there are none).
+  Press **Edit my details** to change your
   mobile and private phone, your private email, your home address and your next of
   kin, then **Save**. Everything else — your name, your work details, your birth date
   and gender, your national identity number and your bank account — is HR's to change:
@@ -801,8 +846,8 @@ a person's four tabs, then **Absence**, **Account** and, when you manage anyone,
   [Request absence](#request-absence-from-your-phone) below).
 - **Account** — whether Staff gives you a user to sign in with, from which day and at
   which address, and how your account stands: pending your password, active,
-  disabled, with your invitation. It is read-only: ask HR to change it.
-  **Your groups** lists by name the groups you are in, as HR keeps them.
+  disabled, with your invitation, and the **Groups** card: the groups you are in, how
+  you came in and since when. It is read-only: ask HR to change it.
 - **My team** — only when you manage someone today: the requests you decide, your
   reports' absence this month and their open sick-leave cases (see
   [My team](#my-team) below).
@@ -1047,7 +1092,7 @@ type is counted only for `staff:personal-data`:
 | Too little holiday in the main period | From April to September: someone has fewer approved holiday days between 1 June and 30 September than their scheme's main period (three weeks under the Holiday Act). | The person |
 | Approved their own absence | Someone approved their own absence, as the only decider there was. | The person |
 | Sick during approved holiday | A 100 % sykmelding lies over approved ferie: the employee may demand to postpone it. | The person |
-| The group … is not in sync with its directory | A group could not be kept in the directory — a setting the directory refused, or a group there holding its key that Vantigo may not change; the group's page says why. One per group, for HR. | The group |
+| The group … is not in sync with its directory | A group could not be kept in the directory — a setting the directory refused, a group there holding its key that Vantigo may not change, or a directory that could not be reached three times in a row; the group's page says why. One per group and directory, for HR. | The group |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
 acknowledges the threshold — once, for good — under [Thresholds](#thresholds) in the
@@ -1334,7 +1379,9 @@ may give**.
 - **Delete an external account (days after the end)** — how many days after the last
   employment ended Staff deletes the person's account in Entra, once it is disabled and
   no legal hold is on the person: 1 to 3650, or empty for never. Entra keeps a deleted
-  account restorable for thirty days.
+  account restorable for thirty days. The same days after a [group](#groups) is
+  archived, or Microsoft Entra ID turned off for it, the group is deleted in Entra; empty,
+  it is renamed “… (archived)” and kept.
 
 Press **Save the account settings**. A number outside its bounds is refused on its
 field before anything is saved; the other settings are saved as they were.

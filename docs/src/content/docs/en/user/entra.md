@@ -63,17 +63,24 @@ that, and again after step 1 changes, it is not shown:
   ([below](#confirm-an-account-vantigo-did-not-create));
 - **Recent events**: what Vantigo did in the tenant or to the connection, when, the
   user principal name, *by Staff's accounts run* when Staff's worker did it, and what
-  was reported. Never a secret, a password or a pass.
+  was reported. Never a secret, a password or a pass. A group's event is listed by its
+  action's name as it is — `entra.group.created`, `entra.group.adopted`,
+  `entra.group.updated`, `entra.group.team_created`, `entra.group.members_set` or
+  `entra.group.deleted` — with its codes, such as `added:3` or `team_pending`.
 
 ### The Groups table
 
-Under the **Status** card, **Groups** lists the groups Vantigo keeps in the tenant for
-Staff's groups ([Groups in Staff](/en/user/staff/#groups)), deleted ones included:
-each group's **Name**, its **Type** — security or Microsoft 365 — **Team**, whether it
-has become a team in Microsoft Teams, its **State**, present or deleted, and **Last
-members sync**, when Vantigo last brought its members in line. It is read-only: HR
-creates, changes and archives groups in Staff, and Staff's accounts worker brings them
-here.
+Under the **Status** card, shown with it, **Groups** lists the groups Vantigo keeps in
+the tenant for Staff's groups ([Groups in Staff](/en/user/staff/#groups)), deleted ones
+included, greyed out: each group's **Name** as Vantigo last wrote it, with its mail
+nickname under it; its **Type**, *Security* or *Microsoft 365*; **Team**, *Yes* once it
+has become a team in Microsoft Teams, else *No*; its **State**, *Present* or *Deleted*,
+with *Found in the tenant and adopted* under it for a group Vantigo found holding the
+nickname rather than made; and **Last members sync**, when Vantigo last brought its
+members in line, or *Never*. Before there is any it says *No groups yet. A Staff group
+turned on for Microsoft Entra ID appears here once the accounts worker has made it.* It
+is read-only: HR creates, changes and archives groups in Staff, and Staff's accounts
+worker brings them here.
 
 ### 1 Register the application
 
@@ -154,7 +161,9 @@ the reason. If someone else saved the connection since you opened the page, the 
 says so and reloads it: check what is there now and make your change again.
 
 Once the connection is connected, the card also lists **The tenant's licences**, each
-with its seats assigned and bought — what a Staff group's licences can name.
+with its seats assigned and bought — what a Staff group's licences can name. Reading
+the list here also refreshes the choices a Staff group's **Licences** offer, as each
+connection test does.
 
 *Done* once a domain is saved.
 

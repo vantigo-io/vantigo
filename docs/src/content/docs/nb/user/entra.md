@@ -64,17 +64,25 @@ etter at steg 1 endres, vises det ikke:
   ([under](#bekreft-en-konto-vantigo-ikke-opprettet));
 - **Siste hendelser**: hva Vantigo gjorde i leietakeren eller med tilkoblingen, når,
   brukerhovednavnet, *av Ansattes kontokjøring* når Ansattes kontojobb gjorde det, og
-  hva som ble meldt. Aldri en hemmelighet, et passord eller et pass.
+  hva som ble meldt. Aldri en hemmelighet, et passord eller et pass. En gruppes
+  hendelse vises med handlingens navn slik det er — `entra.group.created`,
+  `entra.group.adopted`, `entra.group.updated`, `entra.group.team_created`,
+  `entra.group.members_set` eller `entra.group.deleted` — med kodene sine, for
+  eksempel `added:3` eller `team_pending`.
 
 ### Tabellen Grupper
 
-Under kortet **Status** viser **Grupper** gruppene Vantigo holder i leietakeren for
-Ansattes grupper ([Grupper i Ansatte](/nb/user/staff/#grupper)), slettede medregnet:
-hver gruppes **Navn**, **Type** — sikkerhet eller Microsoft 365 — **Team**, om den er
-blitt et team i Microsoft Teams, **Tilstand**, til stede eller slettet, og **Siste
-medlemssynkronisering**, når Vantigo sist brakte medlemmene i samsvar. Den er
-skrivebeskyttet: HR oppretter, endrer og arkiverer grupper i Ansatte, og Ansattes
-kontoarbeider bringer dem hit.
+Under kortet **Status**, og vist sammen med det, viser **Grupper** gruppene Vantigo
+holder i leietakeren for Ansattes grupper ([Grupper i Ansatte](/nb/user/staff/#grupper)),
+slettede medregnet og nedtonet: hver gruppes **Navn** slik Vantigo sist skrev det, med
+e-postaliaset under; **Type**, *Sikkerhet* eller *Microsoft 365*; **Team**, *Ja* når den
+er blitt et team i Microsoft Teams, ellers *Nei*; **Tilstand**, *Finnes* eller
+*Slettet*, med *Funnet i tenanten og overtatt* under for en gruppe Vantigo fant med
+aliaset i stedet for å lage den; og **Siste medlemssynkronisering**, når Vantigo sist
+brakte medlemmene i samsvar, eller *Aldri*. Før det finnes noen, står det *Ingen
+grupper ennå. En gruppe i Ansatte som er slått på for Microsoft Entra ID, vises her når
+kontoarbeideren har laget den.* Den er skrivebeskyttet: HR oppretter, endrer og
+arkiverer grupper i Ansatte, og Ansattes kontoarbeider bringer dem hit.
 
 ### 1 Registrer applikasjonen
 
@@ -155,7 +163,9 @@ noen andre lagret tilkoblingen siden du åpnet siden, sier siden fra og laster d
 nytt: se hva som står der nå, og gjør endringen din på nytt.
 
 Når tilkoblingen er tilkoblet, viser kortet også **Leietakerens lisenser**, hver med
-setene som er tildelt og kjøpt — det en Ansatte-gruppes lisenser kan peke på.
+setene som er tildelt og kjøpt — det en Ansatte-gruppes lisenser kan peke på. Når
+listen leses her, oppdateres også valgene en Ansatte-gruppes **Lisenser** gir, slik
+hver tilkoblingstest gjør.
 
 *Ferdig* når et domene er lagret.
 

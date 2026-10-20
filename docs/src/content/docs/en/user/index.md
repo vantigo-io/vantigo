@@ -43,7 +43,8 @@ an Owner disabled, stopped managing or that belongs to someone else, a number or
 address another account holds, invitations unanswered or revoked, attempts that keep
 failing — which opens the person's Account tab, and the accounts that wait on the
 installation (no roles Staff may give, a role among them that grants administration,
-a sign-in mode the worker disagrees with), which open Staff's settings.
+a sign-in mode the worker disagrees with), which open Staff's settings, and each group
+not in sync with its directory, which opens the group's page.
 
 Inside an app, the sidebar lists its areas. Many of them are only shown to people who
 hold the matching permission — and a few, such as Invoices' **Quick invoice**, only to
@@ -57,7 +58,7 @@ shorter than yours:
 | [Time](/en/user/time/) | My week, Approvals, People, Time settings |
 | [Calendar](/en/user/calendar/) | Calendar (your own, and a colleague's with the picker), My calendar (your calendar on your phone, and calendars from elsewhere) |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
-| [Staff](/en/user/staff/) | My page (its **Absence** tab and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Staff settings |
+| [Staff](/en/user/staff/) | My page (its **Absence** tab and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Groups, Staff settings |
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |

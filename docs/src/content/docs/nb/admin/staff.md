@@ -292,14 +292,20 @@ pass)** utsteder et nytt.
 
 **Grupper.** Hver runde henter også de avledede [gruppene](/nb/user/staff/#grupper) —
 medlemmene en gruppes regel gir i dag, hver som kommer inn eller går ut, registrert i
-historikken deres (`group_joined`, `group_left`) — før den arbeider med kontoene, og
-etter dem synkroniserer den opptil 100 grupper med hver leverandør HR har slått på for
-dem: gruppen lages i katalogen med eierne, navnet og verdiene skrives når de endres,
-medlemmene settes til de av personene som har en aktivert konto der, og en arkivert
-gruppe slettes etter **Slett en ekstern konto (dager etter slutt)** eller, når den står
-tom, får `… (archived)` etter navnet og beholdes ([Ansattes grupper i
-leietakeren](/nb/admin/entra/#ansattes-grupper-i-leietakeren)). En gruppe leverandøren
-avviste, gir `groupSyncFailed`. Med `STAFF_ACCOUNTS_ENABLED=0` skjer ingen av delene.
+historikken deres (`group_joined`, `group_left`) — før den arbeider med kontoene, men
+ikke før seedingen av kontotypene har kjørt, og etter dem synkroniserer den opptil 100
+gruppeseksjoner — en gruppe under én leverandør HR har slått på for den — per runde, så
+en person som aktiveres i en runde, er med i gruppene sine i samme runde: gruppen lages
+i katalogen med eierne, navnet, eierne og verdiene skrives når de endres, medlemmene
+settes til de av personene som har en aktivert konto der, og en arkivert gruppe — eller
+en en leverandør er slått av for — slettes etter **Slett en ekstern konto (dager etter
+slutt)** eller, når den står tom, får `… (archived)` etter navnet og beholdes ([Ansattes
+grupper i leietakeren](/nb/admin/entra/#ansattes-grupper-i-leietakeren)). En leverandør
+som ikke er tilkoblet, hoppes over og prøves igjen ved neste kjøring. En gruppe
+leverandøren avviste, eller der kallene mislyktes tre ganger på rad, gir
+`groupSyncFailed`; en avvist gruppe sendes ikke igjen før HR endrer gruppen. **Kjør
+kontoer nå** kjører gruppene også. Med `STAFF_ACCOUNTS_ENABLED=0` skjer ingen av
+delene.
 
 **Ulik modus.** Arbeideren leser modusen fra innstillingene for single sign-on i
 databasen, slik API-et gjør
@@ -1443,8 +1449,10 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   virkningsdato den klargjøres, deaktivert ([Slå på konto for en
   person](#slå-på-konto-for-en-person)), og når en persons konto i Entra slettes etter
   at det siste arbeidsforholdet sluttet, når den er deaktivert og ingen slettesperre er
-  på personen. Utelatt fra en erstatning beholder hver sin verdi; `null` setter
-  `deleteExternalAfterDays` til aldri.
+  på personen — og like mange dager etter at en gruppe ble arkivert, eller en
+  leverandør slått av for den, slettes gruppen i katalogen; aldri, får den
+  `… (archived)` etter navnet og beholdes. Utelatt fra en erstatning beholder hver sin
+  verdi; `null` setter `deleteExternalAfterDays` til aldri.
 - **Standard kontotype** (`defaultAccountKind`, på kortet **Kontoer**): typen en ny
   person får — `local`, `external` eller `entra` — satt én gang fra autoritetsmodusen ved
   oppgraderingen ([kontotypen](#kontotypen)). `entra` avvises `provider_missing` på
