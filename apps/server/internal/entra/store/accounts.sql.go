@@ -57,6 +57,18 @@ func (q *Queries) CountAccounts(ctx context.Context) (CountAccountsRow, error) {
 	return i, err
 }
 
+const deleteAccount = `-- name: DeleteAccount :exec
+DELETE FROM entra.accounts WHERE object_id = $1
+`
+
+// DeleteAccount forgets the row of a user the tenant no longer holds, so the
+// employee number can name the new user a rehire after a delete is given
+// (D13: a new account). The events keep the old object id and its UPN.
+func (q *Queries) DeleteAccount(ctx context.Context, objectID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAccount, objectID)
+	return err
+}
+
 const getAccount = `-- name: GetAccount :one
 
 SELECT object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, created_at, updated_at FROM entra.accounts WHERE object_id = $1
