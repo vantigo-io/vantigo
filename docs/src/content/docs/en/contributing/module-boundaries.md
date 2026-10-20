@@ -5,11 +5,26 @@ sources:
   - apps/server/internal/module
   - apps/server/internal/contracts
   - apps/server/internal/modtest
+  - apps/server/.golangci.yml
+  - apps/server/generate.go
+  - apps/server/internal/openapi/openapi.go
+  - apps/server/internal/openapi/gen
+  - apps/calendar/frontend/eslint.config.js
+  - apps/communications/frontend/eslint.config.js
+  - apps/customers/frontend/eslint.config.js
+  - apps/energy/frontend/eslint.config.js
+  - apps/entra/frontend/eslint.config.js
+  - apps/expenses/frontend/eslint.config.js
+  - apps/invoices/frontend/eslint.config.js
+  - apps/products/frontend/eslint.config.js
+  - apps/projects/frontend/eslint.config.js
+  - apps/staff/frontend/eslint.config.js
+  - apps/time/frontend/eslint.config.js
 ---
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications,
-Projects, Time, Expenses, Invoices, Staff and Calendar are vertical-slice modules composed only
+Projects, Time, Expenses, Invoices, Staff, Calendar and Entra are vertical-slice modules composed only
 by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
@@ -354,7 +369,15 @@ Communications' outbox is the working example.
     direction, Staff → a provider module, made for the accounts and groups of the
     people Staff registers: `contracts.IdentityProvisioner`, in the many-provider slot
     `IdentityProvisioners` (rule 5), which a module offering an external identity
-    provider fills — Entra's, and another directory's later. Staff is the authority: it
+    provider fills. The first filler is `internal/entra`, under the key `entra`
+    ([Microsoft Entra ID](/en/reference/entra/)); another directory's comes later.
+    Its tests run against a fake Graph, `internal/entra/graphtest` — an
+    `http.RoundTripper` wired through `modtest.WithTransport` in the guarded
+    transport's place, so the module's real client runs against it — kept under the module's own package rather
+    than in `modtest`, because it is Entra's shape alone: only the module's tests import
+    it (depguard lets a module import its own subpackages, and no other module's). Its
+    `Provider` reads the module's own row and makes no network call, since Staff asks it
+    on every `GET /meta`. Staff is the authority: it
     decides what exists and when, from the register, and the provider executes against
     its directory and answers what it did — `Prepare` finds the account holding the
     employee number or creates it disabled, `Activate`, `Deactivate`, `Update`,
@@ -511,7 +534,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -534,7 +557,10 @@ customer data through `contracts.CustomerDirectory`, which only Customers implem
 so enabling any of them without `customers` is rejected at startup with a message
 naming both (`projects requires customers`). Time hangs its hours off projects and
 reads them through `contracts.ProjectDirectory`, so `time` without `projects` is
-rejected the same way (`time requires projects`). A module that starts requiring
+rejected the same way (`time requires projects`). Entra reads nothing of Staff's but
+is called only by Staff's accounts worker, the slot's one consumer, so `entra` without
+`staff` would hold a tenant's credential nothing uses and is rejected too (`entra
+requires staff`). A module that starts requiring
 another module's contract adds its own check in `internal/config`.
 
 A contract can also be **optional**. `contracts.ProductCatalog` is the first:
@@ -787,6 +813,16 @@ holder deadlocked the customers worker with a pool of four (PR #124) — and the
 pass over `staff.object_deletions` takes no lease and holds no connection across
 `objectDelete`. See [Staff](/en/reference/staff/#locks).
 
+**Entra depends on nobody but identity, and is called by Staff.** It reads no other
+module — in its first release not even identity: the Owner's and `entra:manage`'s
+checks are the router's — and writes nothing outside the `entra` schema. It fills one
+slot, `IdentityProvisioner` (rule 13), and has no worker: Staff's accounts worker calls
+it, in the API and in worker mode alike, never inside a transaction. It reaches the
+network in one place, its Graph client, through `internal/netguard` with no proxy and
+no redirect, to two fixed hosts no setting changes; the client's transport is built
+once per process, and `Deps.HTTPTransport` is the test seam. See [Microsoft Entra
+ID](/en/reference/entra/#the-graph-client).
+
 ## Adding a module
 
 **Backend**
@@ -805,7 +841,9 @@ pass over `staff.object_deletions` takes no lease and holds no connection across
    paths to every other module's deny list, so every pairwise isolation rule covers
    it.
 6. Add its schema to `moduleSchemas` in `internal/db/schema_test.go`, and its name to
-   the known set and any `MODULES` dependency check in `internal/config`.
+   the known set and any `MODULES` dependency check in `internal/config` — with the
+   known and default lists in `config_test.go` — and to the `Modules` literal in
+   `internal/module/compose_test.go`.
 
 A module that fills a many-provider slot sets the field on its `module.Module` and
 keeps that slot's rule: `CustomerReferences`, `CustomerPersonalData` and `InvoicedWork`
@@ -848,4 +886,15 @@ operations are exercised.
 11. Wire the dashboard (`routes/dashboard.tsx`: the module card, its metric and its
     attention items, all gated on the module and its permissions) and the spotlight
     (`components/app-spotlight.tsx`: navigation comes from the registry, but a result
-    group and any quick action are hand-added).
+    group and any quick action are hand-added). An administration module with nothing
+    to count — Entra — adds no dashboard card; it still joins the spotlight test's list.
+
+**Documentation and deployment**
+
+12. Add the module to `contracts` in `docs/astro.config.mjs`, so its API reference is
+    generated, and write its pages ([documentation](/en/contributing/documentation/)).
+13. Add its name and schema where installations are told about modules: the
+    `MODULES` line in `deploy/compose/vantigo.env.example`, the module list and the
+    `GRANT` lines in `deploy/compose/README.md`, the module tables, layout trees and `MODULES` default in
+    `README.md` and `CONTRIBUTING.md`, and the [installation
+    guide's](/en/admin/installation/#database-roles) `GRANT` lines.

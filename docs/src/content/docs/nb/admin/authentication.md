@@ -792,7 +792,7 @@ oppstarten feiler.
 | `MIGRATIONS_DATABASE_URL` | Tilkoblingen `migrate` bruker (eierrollen) | `DATABASE_URL` |
 | `SHUTDOWN_TIMEOUT` | Budsjett for å tømme pågående forespørsler og arbeidere | `30s` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
-| `MODULES` | Kommaseparert liste over forretningsmoduler som skal betjenes | `customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar` |
+| `MODULES` | Kommaseparert liste over forretningsmoduler som skal betjenes; `entra` krever `staff` ([Microsoft Entra ID](/nb/admin/entra/), som ikke har noen egen variabel: innstillingene ligger i databasen) | `customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra` |
 | `WORKERS_IN_PROCESS` | Om `api` også kjører bakgrunnsarbeidere i samme prosess | `1` |
 
 ### Hemmeligheter og identitet
@@ -1032,8 +1032,8 @@ informasjonskapslene `Secure`, og `APP_URL` må være `https`.
 ## Databasemigreringer
 
 Én PostgreSQL-database holder ett skjema per modul — `identity`, `customers`,
-`products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices` og
-`staff` — migrert av rene SQL-filer innebygd i binærfilen. Alle skjemaer migreres uansett hvilke moduler `MODULES` slår på,
+`products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`,
+`staff`, `calendar` og `entra` — migrert av rene SQL-filer innebygd i binærfilen. Alle skjemaer migreres uansett hvilke moduler `MODULES` slår på,
 så det å slå på en modul senere krever ingen migrering. Se
 [migreringsveiledningen for bidragsytere](https://github.com/vantigo-io/vantigo/blob/main/CONTRIBUTING.md#database-migrations)
 for hvordan migreringer skrives og anvendes.

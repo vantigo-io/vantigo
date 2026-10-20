@@ -15,7 +15,8 @@ rollene dine gir deg. En modul du ikke har rettighet til vises rett og slett ikk
 ## Apper og app-velgeren
 
 Hver modul er en **app** med sin egen sidemeny: Kunder, Prosjekter, Timer, Kalender,
-Utlegg, Ansatte, Fakturaer, Kommunikasjon, Produkter og Energi. App-velgeren i toppfeltet lister appene
+Utlegg, Ansatte, Fakturaer, Kommunikasjon, Produkter og Energi — og Microsoft Entra ID,
+der en administrator kobler til selskapets leietaker. App-velgeren i toppfeltet lister appene
 du kan åpne; **Hjem** er dashbordet, som åpner med agendaen **I dag og denne uken** fra
 Kalender når du bruker Kalender ([dashbordet](/nb/user/calendar/#dashbordet)), og der
 hver app du bruker viser sitt eget kort med
@@ -64,6 +65,7 @@ kortere enn din:
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
 | [Energi](/nb/user/energy/) | Målepunkter |
+| [Microsoft Entra ID](/nb/user/entra/) | Microsoft Entra ID (tilkoblingens status og de seks stegene i oppsettet), for `entra:manage` |
 
 Noen få skjermbilder hører til et område uten å ha en egen oppføring i sidefeltet, og
 åpnes i stedet fra en knapp i områdets toppfelt — **Importer kunder**, for eksempel,

@@ -16,7 +16,8 @@ shown.
 ## Apps and the switcher
 
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Calendar,
-Expenses, Staff, Invoices, Communications, Products and Energy. The app switcher in the top bar lists
+Expenses, Staff, Invoices, Communications, Products and Energy — and Microsoft Entra ID,
+where an administrator connects the company's tenant. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, which opens with Calendar's **Today and
 this week** agenda when you use Calendar ([the dashboard](/en/user/calendar/#the-dashboard)),
 and where every app you use shows its own card with the numbers that need your attention — Staff's, the people employed today
@@ -61,6 +62,7 @@ shorter than yours:
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
 | [Energy](/en/user/energy/) | Metering points |
+| [Microsoft Entra ID](/en/user/entra/) | Microsoft Entra ID (the connection's status and its six setup steps), for `entra:manage` |
 
 A few screens belong to an area without a sidebar entry of their own, and are opened
 from a button in that area's header instead — **Import customers**, for example, from

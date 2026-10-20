@@ -83,11 +83,12 @@ engangsjobb, og starter deretter Vantigo:
 - **Vantigo** — <http://localhost:8080>
 - **API-kontrakten** — `GET http://localhost:8080/api/openapi.json` (krever en sesjon)
 
-Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter, Fakturaer
-og Ansatte er aktivert som standard (`MODULES` i `vantigo.env`). De deler én
-PostgreSQL-database ved navn `vantigo`, med uavhengige skjemaer `identity`,
-`customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`,
-`invoices` og `staff`, hver med sin egen migreringshistorikk.
+Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter,
+Fakturaer, Ansatte, Kalender og Microsoft Entra ID er aktivert som standard (`MODULES`
+i `vantigo.env`). De deler én PostgreSQL-database ved navn `vantigo`, med uavhengige
+skjemaer `identity`, `customers`, `products`, `energy`, `communications`, `projects`,
+`time`, `expenses`, `invoices`, `staff`, `calendar` og `entra`, hver med sin egen
+migreringshistorikk.
 
 ## Hva stacken inneholder
 
@@ -185,11 +186,13 @@ prosedyrene og gjenopprettingen.
 - **`MODULES`** (`vantigo.env`) — den kommaseparerte listen over forretningsmoduler
   denne installasjonen aktiverer. `identity` er alltid montert og listes aldri. Usatt
   aktiverer hver modul binæren kan montere: `customers`, `products`, `energy`,
-  `communications`, `projects`, `time`, `expenses`, `invoices` og `staff`. `energy`,
-  `communications`, `projects` og `invoices` krever hver `customers`, og `time` krever
-  `projects`; `projects` bruker også `products` når den er aktivert og svarer 409 på
-  endepunktene for faktureringslinjer når den ikke er det; `expenses` krever ingenting
-  og leser `projects` bare når den tilfeldigvis er aktivert; `staff` krever ingenting.
+  `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar` og
+  `entra`. `energy`, `communications`, `projects` og `invoices` krever hver
+  `customers`, `time` krever `projects`, og `entra` krever `staff`; `projects` bruker
+  også `products` når den er aktivert og svarer 409 på endepunktene for
+  faktureringslinjer når den ikke er det; `expenses` krever ingenting og leser
+  `projects` bare når den tilfeldigvis er aktivert; `staff` og `calendar` krever
+  ingenting.
   For en mindre installasjon lister du bare det du vil ha, for eksempel
   `MODULES=customers,products`.
 - **`OWNERS_REQUIRE_MFA=0` og `OWNERS_ALLOW_INSECURE_NO_MFA=1`** (`vantigo.env`) —
@@ -264,9 +267,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Standardrettigheter dekker bare objekter som opprettes etterpå; gi rettigheter
 -- på skjemaene de aktiverte modulene allerede har opprettet (legg til/fjern
 -- skjemaer så de stemmer med MODULES aktivert i din installasjon).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering
@@ -292,6 +295,11 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
    kontomodusen (lokal eller føderert) følger begge innstillingene for single sign-on i
    databasen, som workeren leser slik API-et gjør, innen 20 sekunder etter en Owners
    endring (se [autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen)).
+   Den trenger heller ingenting for Microsoft Entra ID: med modulen på når
+   kontojobben i Ansatte leietakeren gjennom den, med tilkoblingen, hemmelighetene og
+   kontoreglene den leser fra databasen — så worker-containeren trenger, som API-et,
+   utgående https til `login.microsoftonline.com` og `graph.microsoft.com`, uten proxy
+   ([Microsoft Entra ID](/nb/admin/entra/#før-du-begynner)).
 4. Hold klokkene på API- og worker-vertene synkronisert (NTP). Kontojobben i Ansatte
    tar koblinger med leieavtaler som hver prosess sammenligner med sin egen klokke, så
    en klokke som går for fort kan ta over en kobling en annen prosess fortsatt arbeider
@@ -486,6 +494,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   kontoflagget ber om, på den samme kjøringsfrekvensen
   ([Ansatte](/nb/admin/staff/#kontoarbeideren)). Den leser kontomodusen fra
   innstillingene for single sign-on i databasen, slik API-et gjør.
+- Det finnes **ingen `ENTRA_*`-variabel**. Leietakeren og klienten til Microsoft Entra
+  ID-modulen, klienthemmelighetene (forseglet under `APP_SECRET`) og kontoreglene
+  ligger i databasen, satt av en eier og `entra:manage` på modulens side; modulen når
+  to faste verter som ingen innstilling endrer
+  ([Microsoft Entra ID](/nb/admin/entra/)).
 - OIDC-leverandøren for arbeidsstyrken og SCIM-tokenet settes på kortet **Single
   sign-on**, ikke i `vantigo.env`: `OIDC_*` og `SCIM_*` der importeres i databasen én
   gang, ved første oppstart av utgivelsen som kom med kortet, og varsles deretter bare
@@ -630,6 +643,17 @@ trenger dem ikke lenger. Å rulle migreringen tilbake dropper raden med den fors
 klienthemmeligheten og tokensammendragene, så sett variablene igjen først, med et nytt
 `SCIM_TOKEN` når kortet utstedte det nåværende. Prosedyren står i
 [Før kortet](/nb/admin/sso-scim/#før-kortet-miljøvariablene).
+
+**Utgivelsen med Microsoft Entra ID.** Den har `00061_entra_baseline.sql`, skjemaet
+`entra`. En installasjon som lar `MODULES` stå usatt, får modulen, og flisen dens for
+eiere, ved oppgradering; en som lister `MODULES`, får den når `entra` legges til ved
+siden av `staff`, som den krever — `entra` uten `staff` nekter å starte. Ingenting når
+en leietaker før en eier registrerer en på modulens side, og Ansatte lager kontoer der
+bare for personer med kontotypen **Microsoft Entra ID**. En rolle med minste privilegium
+trenger tilgang til skjemaet `entra` ([Databaseroller](#databaseroller)). Å rulle
+migreringen tilbake dropper skjemaet med de forseglede hemmelighetene og et pass som
+ikke er vist ennå, og rører ingenting i leietakeren. Se
+[Microsoft Entra ID](/nb/admin/entra/).
 
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

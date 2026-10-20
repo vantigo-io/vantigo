@@ -52,6 +52,13 @@ applikasjonen.
   til den offentlige verten, med en grense, og med tokenet i stien; arbeideren
   `calendar-subscriptions` henter kalenderne folk abonnerer på fra internett, gjennom
   vakten for utgående adresser.
+- **Microsoft Entra ID.** [Microsoft Entra ID](/nb/admin/entra/) kobler Vantigo til
+  selskapets leietaker slik at kontoene Ansatte gir, lages der: `entra` i `MODULES` ved
+  siden av `staff`, som den krever; en appregistrering med åtte
+  applikasjonstillatelser, administratorsamtykke og rollen User Administrator;
+  klienthemmeligheter som en eier legger til og roterer; policyen for midlertidig
+  tilgangspass; og hva stegene for en som slutter og en sletting gjør i leietakeren.
+  Ingenting av det står i `vantigo.env`.
 
 ## Den komplette konfigurasjonsreferansen
 

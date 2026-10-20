@@ -59,6 +59,13 @@ gjelder hele installasjonen.
   stående til neste endring som gjøres på kortet — en lagring, et utstedt token, en del
   som slås av — og å slå av noe som allerede er av endrer ingenting.
 
+**Med Microsoft Entra ID-modulen** er kortets to deler også de to siste stegene i
+modulens veiviser: steg 5, **Innlogging**, er leverandørskjemaet, fylt ut med
+leietakerens autoritet og klient-ID-en veiviseren registrerte (bare på et tomt
+skjema), og steg 6, **Provisjonering**, er SCIM-delen. De er de samme skjemaene over
+den samme raden og de samme operasjonene; lagre på hvilket som helst av stedene
+([Microsoft Entra ID](/nb/admin/entra/#5-innlogging)).
+
 Bak kortet ligger seks operasjoner under `/api/v1/identity/owner/sso`, i kontrakten
 [`openapi/identity.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/identity.yaml):
 
@@ -125,6 +132,10 @@ må ha med en legitimasjon, siden den gamle applikasjonens hemmelighet aldri ove
 til en ny. Hemmeligheten er forseglet under `APP_SECRET` og vises aldri igjen.
 
 ### Microsoft Entra ID: klienthemmelighet
+
+Med Microsoft Entra ID-modulen, følg veiviseren dens i stedet: registreringen,
+leietakeren og klient-ID-en er steg 1 til 3, og dette skjemaet er steg 5
+([Microsoft Entra ID](/nb/admin/entra/)). For hånd:
 
 1. Opprett eller velg én Entra-appregistrering for denne installasjonen. Bruk en
    konfidensiell webapplikasjon og opprett en klienthemmelighet. Kopier verdien: du
