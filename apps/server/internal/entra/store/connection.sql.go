@@ -29,7 +29,7 @@ func (q *Queries) AddSensitiveDenied(ctx context.Context) (int32, error) {
 
 const getConnection = `-- name: GetConnection :one
 
-SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id FROM entra.connection WHERE id = 1
+SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus FROM entra.connection WHERE id = 1
 `
 
 // The connection (Entra design D11): the installation's one row, id 1, seeded
@@ -67,12 +67,14 @@ func (q *Queries) GetConnection(ctx context.Context) (EntraConnection, error) {
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.ServicePrincipalID,
+		&i.Skus,
 	)
 	return i, err
 }
 
 const lockConnection = `-- name: LockConnection :one
-SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id FROM entra.connection WHERE id = 1 FOR UPDATE
+SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus FROM entra.connection WHERE id = 1 FOR UPDATE
 `
 
 // LockConnection takes the row's lock for a write of the registration or the
@@ -107,12 +109,14 @@ func (q *Queries) LockConnection(ctx context.Context) (EntraConnection, error) {
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.ServicePrincipalID,
+		&i.Skus,
 	)
 	return i, err
 }
 
 const lockConnectionShare = `-- name: LockConnectionShare :one
-SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id FROM entra.connection WHERE id = 1 FOR SHARE
+SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus FROM entra.connection WHERE id = 1 FOR SHARE
 `
 
 // LockConnectionShare takes the row's share lock in the transaction that
@@ -148,6 +152,8 @@ func (q *Queries) LockConnectionShare(ctx context.Context) (EntraConnection, err
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.ServicePrincipalID,
+		&i.Skus,
 	)
 	return i, err
 }
@@ -173,7 +179,7 @@ UPDATE entra.connection SET
     last_checked_at = COALESCE($6::timestamptz, last_checked_at),
     updated_at = $7::timestamptz
 WHERE id = 1
-RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id
+RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus
 `
 
 type SetConnectionStatusParams struct {
@@ -225,8 +231,37 @@ func (q *Queries) SetConnectionStatus(ctx context.Context, arg SetConnectionStat
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.ServicePrincipalID,
+		&i.Skus,
 	)
 	return i, err
+}
+
+const setServicePrincipal = `-- name: SetServicePrincipal :exec
+UPDATE entra.connection SET service_principal_id = $1::uuid
+WHERE id = 1 AND service_principal_id IS DISTINCT FROM $1::uuid
+`
+
+// SetServicePrincipal records the application's service principal in the
+// tenant, read from its token's oid claim (plan reading 2), which every
+// group the module makes names as an owner. Like the status, it leaves
+// version alone.
+func (q *Queries) SetServicePrincipal(ctx context.Context, servicePrincipalID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, setServicePrincipal, servicePrincipalID)
+	return err
+}
+
+const setSkus = `-- name: SetSkus :exec
+UPDATE entra.connection SET skus = $1::jsonb WHERE id = 1
+`
+
+// SetSkus caches the tenant's licences as the connection test or the
+// licences read found them — at most 200 of { skuId, skuPartNumber, enabled,
+// consumed }, which the caller bounds — so GroupTraits declares the licences
+// trait with no network (plan reading 1). It leaves version alone.
+func (q *Queries) SetSkus(ctx context.Context, skus []byte) error {
+	_, err := q.db.Exec(ctx, setSkus, skus)
+	return err
 }
 
 const updateConnectionRegistration = `-- name: UpdateConnectionRegistration :one
@@ -244,7 +279,7 @@ UPDATE entra.connection SET
     updated_at = $3::timestamptz,
     updated_by_user_id = $4
 WHERE id = 1
-RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id
+RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus
 `
 
 type UpdateConnectionRegistrationParams struct {
@@ -290,6 +325,8 @@ func (q *Queries) UpdateConnectionRegistration(ctx context.Context, arg UpdateCo
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.ServicePrincipalID,
+		&i.Skus,
 	)
 	return i, err
 }
@@ -311,7 +348,7 @@ UPDATE entra.connection SET
     updated_at = $12::timestamptz,
     updated_by_user_id = $13
 WHERE id = 1
-RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id
+RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus
 `
 
 type UpdateConnectionSettingsParams struct {
@@ -375,6 +412,8 @@ func (q *Queries) UpdateConnectionSettings(ctx context.Context, arg UpdateConnec
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.ServicePrincipalID,
+		&i.Skus,
 	)
 	return i, err
 }

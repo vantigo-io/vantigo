@@ -15,6 +15,25 @@ import (
 // it): this gate is what proves every operation is exercised.
 var recorder = contracttest.NewForModule("staff")
 
+// pendingOperations are the contract's operations no test covers yet: the
+// group operations, stubbed by Entra delivery D's task 2 (groups_stub.go)
+// until task 3a implements and tests them and empties this list.
+// RequireCoverage fails the run if an operation is never answered with a
+// success, or if an entry listed here was in fact exercised.
+var pendingOperations = []string{
+	"getStaffGroups",
+	"postStaffGroups",
+	"deleteStaffGroupsById",
+	"getStaffGroupsById",
+	"putStaffGroupsById",
+	"postStaffGroupsByIdArchive",
+	"putStaffGroupsByIdMembers",
+	"putStaffGroupsByIdOwners",
+	"getStaffGroupsByIdTraits",
+	"putStaffGroupsByIdTraitsByProvider",
+	"getStaffMeGroups",
+}
+
 func TestMain(m *testing.M) {
 	// The whole suite's lock rule, installed once before any test runs: every
 	// call this module makes out of its own database — the user directory, the
@@ -23,5 +42,5 @@ func TestMain(m *testing.M) {
 	// for the harness to fail on (newHarness). Installing it per harness would
 	// race with the parallel tests already making requests.
 	staff.SetContractCallHook(noteContractCall)
-	os.Exit(contracttest.RequireCoverage(m, recorder))
+	os.Exit(contracttest.RequireCoverage(m, recorder, pendingOperations...))
 }

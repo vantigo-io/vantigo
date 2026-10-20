@@ -188,6 +188,52 @@ type StaffEvent struct {
 	PayloadClasses []string
 }
 
+type StaffGroup struct {
+	ID               int64
+	Key              string
+	Name             string
+	Description      *string
+	Kind             string
+	Rule             []byte
+	ArchivedAt       *time.Time
+	ArchivedByUserID *uuid.UUID
+	Revision         int32
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type StaffGroupMember struct {
+	GroupID  int64
+	PersonID int64
+	Source   string
+	Since    pgtype.Date
+}
+
+type StaffGroupOwner struct {
+	GroupID  int64
+	PersonID int64
+}
+
+type StaffGroupTrait struct {
+	GroupID         int64
+	Provider        string
+	Values          []byte
+	Enabled         bool
+	DisabledAt      *time.Time
+	ExternalID      *string
+	State           string
+	LastValuesHash  []byte
+	LastMembersHash []byte
+	LastError       *string
+	LastErrorField  *string
+	SyncedAt        *time.Time
+	RetiredAt       *time.Time
+	Attempts        int32
+	NextAttemptAt   *time.Time
+	LeaseID         *uuid.UUID
+	LeaseUntil      *time.Time
+}
+
 type StaffHolidayAdjustment struct {
 	ID        int64
 	PersonID  int64

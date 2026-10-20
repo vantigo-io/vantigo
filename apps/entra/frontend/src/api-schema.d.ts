@@ -186,6 +186,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/entra/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The module's groups
+         * @description Every group the module keeps in the tenant for Staff's groups, deleted ones included, by display name — a read-only list. Staff decides what exists; the module page shows the tenant's side.
+         */
+        get: operations["getEntraGroups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -229,7 +249,7 @@ export interface components {
             /** Format: int32 */
             enabled: number;
         };
-        /** @description The installation's one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done. */
+        /** @description The installation's one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts and groups the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done. */
         EntraConnection: {
             accounts: components["schemas"]["EntraAccountCounts"];
             /**
@@ -239,6 +259,7 @@ export interface components {
             clientId?: string;
             /** @description Every client secret ever added, revoked ones included, newest first. The secret itself is sealed and never answered. */
             credentials: components["schemas"]["EntraCredential"][];
+            groups: components["schemas"]["EntraGroupCounts"];
             /**
              * Format: date-time
              * @description When the connection was last tested. Absent until it has been, and again after the tenant or the client changes.
@@ -359,6 +380,44 @@ export interface components {
             objectId?: string;
             /** @description The user principal name the module made or found. Absent on a connection's event. */
             upn?: string;
+        };
+        /** @description One group the module keeps in the tenant for a Staff group (Entra design D14), by the directory's immutable object id: made by the module, or found by its mail nickname and adopted. Its members and its traits are Staff's; this is the tenant's side. A deleted group stays, marked deleted. */
+        EntraGroup: {
+            /** Format: date-time */
+            createdAt: string;
+            /** @description True when the module created the group; false when it found one holding the mail nickname that it may write, and adopted it. */
+            createdByUs: boolean;
+            /** @description The name the module last wrote — Staff's name, with " (archived)" after it once Staff archived the group and keeps it. */
+            displayName: string;
+            /** @description The Staff group's id. */
+            groupId: string;
+            /** @description The Staff group's key. */
+            key: string;
+            /**
+             * Format: date-time
+             * @description When the module last reconciled the group's members. Absent until it has.
+             */
+            lastMembersAt?: string;
+            mailNickname: string;
+            /**
+             * Format: uuid
+             * @description The group's object id in the tenant, immutable.
+             */
+            objectId: string;
+            /** @enum {string} */
+            state: "present" | "deleted";
+            /** @description True once the group became a team in Microsoft Teams. */
+            team: boolean;
+            /**
+             * @description security or microsoft365, as the group was made; it never changes.
+             * @enum {string}
+             */
+            type: "security" | "microsoft365";
+        };
+        /** @description How many groups the module keeps present in the tenant; deleted ones are not counted. */
+        EntraGroupCounts: {
+            /** Format: int32 */
+            count: number;
         };
         /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         EntraProblem: {
@@ -1004,6 +1063,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getEntraGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraGroup"][];
                 };
             };
             /** @description Unauthorized */

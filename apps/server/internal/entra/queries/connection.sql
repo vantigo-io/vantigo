@@ -92,3 +92,18 @@ RETURNING sensitive_denied_streak;
 -- ResetSensitiveDenied ends the streak on a sensitive write that succeeded.
 UPDATE entra.connection SET sensitive_denied_streak = 0
 WHERE id = 1 AND sensitive_denied_streak <> 0;
+
+-- name: SetServicePrincipal :exec
+-- SetServicePrincipal records the application's service principal in the
+-- tenant, read from its token's oid claim (plan reading 2), which every
+-- group the module makes names as an owner. Like the status, it leaves
+-- version alone.
+UPDATE entra.connection SET service_principal_id = @service_principal_id::uuid
+WHERE id = 1 AND service_principal_id IS DISTINCT FROM @service_principal_id::uuid;
+
+-- name: SetSkus :exec
+-- SetSkus caches the tenant's licences as the connection test or the
+-- licences read found them — at most 200 of { skuId, skuPartNumber, enabled,
+-- consumed }, which the caller bounds — so GroupTraits declares the licences
+-- trait with no network (plan reading 1). It leaves version alone.
+UPDATE entra.connection SET skus = @skus::jsonb WHERE id = 1;

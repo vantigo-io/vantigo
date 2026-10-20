@@ -3240,6 +3240,10 @@ holds every payload field to its column's class, and a third holds this table to
 | `sick_case_milestones` | E | `done_at`, `done_by_user_id`, `waived`, `waived_reason`, `waived_by_user_id`, `note` — `waived` cannot be null and is erased to `false` |
 | `absence_types` | C | every column: `id`, `key`, `name_en`, `name_nb`, `kind`, `unit`, `paid`, `draws_holiday`, `allows_percent`, `needs_decision`, `visibility`, `amelding_leave`, `seeded`, `hidden`, `sort`, `revision`, `created_at`, `updated_at` |
 | `holiday_schemes` | C | every column: `id`, `name`, `entitlement_virkedager`, `extra_from_60_virkedager`, `main_period_virkedager`, `after_september_virkedager`, `max_carry_over_virkedager`, `is_default`, `seeded`, `archived_at`, `revision`, `created_at`, `updated_at` |
+| `groups` | C | every column: `id`, `key`, `name`, `description`, `kind`, `rule`, `archived_at`, `archived_by_user_id`, `revision`, `created_at`, `updated_at` |
+| `group_members` | C | every column: `group_id`, `person_id`, `source`, `since` — a person's rows go with the person on an erase or a delete |
+| `group_owners` | C | every column: `group_id`, `person_id` — a person's rows go with the person on an erase or a delete |
+| `group_traits` | C | every column: `group_id`, `provider`, `values`, `enabled`, `disabled_at`, `external_id`, `state`, `last_values_hash`, `last_members_hash`, `last_error`, `last_error_field`, `synced_at`, `retired_at`, `attempts`, `next_attempt_at`, `lease_id`, `lease_until` |
 
 Ids, foreign keys, revisions and timestamps are C: they say that a row existed and
 when. An event's `payload_classes` are its fields' classes (`fieldClasses` in

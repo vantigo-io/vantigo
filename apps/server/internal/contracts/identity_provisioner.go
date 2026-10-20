@@ -69,14 +69,34 @@ type IdentityProvisioner interface {
 	// call, and a call after its lifetime, answer ErrPassGone — and audits it.
 	RevealPass(ctx context.Context, actor Actor, externalID string) (Pass, error)
 
-	// Groups (delivery D). GroupTraits declares the traits a group may carry
-	// for this provider; EnsureGroup creates or updates the external group
-	// for the caller's group id with its trait values and owners;
-	// SetMembers reconciles its members to exactly these; DeleteGroup
-	// deletes it.
-	GroupTraits() []GroupTrait
+	// Groups (delivery D).
+	//
+	// GroupTraits declares the traits a group may carry for this provider.
+	// It reads the provider's own state — the tenant's licences as its last
+	// connection check cached them — and never the network, so it takes a
+	// context and may fail; an error is the provider's state unreadable.
+	GroupTraits(ctx context.Context) ([]GroupTrait, error)
+	// EnsureGroup creates or updates the external group for the caller's
+	// group id. Idempotent: the first call creates the group with
+	// spec.OwnerExternalIDs and the provider's own identity as its owners;
+	// later calls write the name, the description and the mutable traits,
+	// and reconcile the owners. A value the provider refuses answers a
+	// *GroupTraitError naming the trait (a caller tests it with errors.As,
+	// keeps the field and the code, and calls again only when the values
+	// changed); ErrGroupNotManageable for a group the provider found that it
+	// may not write (dynamic membership, role-assignable, or another's);
+	// ErrProviderUnavailable. What the provider could not do yet and will
+	// try again is ExternalGroup.Pending, never an error.
 	EnsureGroup(ctx context.Context, actor Actor, spec GroupSpec) (ExternalGroup, error)
+	// SetMembers reconciles the external group's members to exactly these
+	// external ids: the missing added, the extra removed. Idempotent; a
+	// member it could not change is in MembersResult.Failed with a code, and
+	// the call answers no error for it. ErrGroupNotManageable for a group
+	// EnsureGroup never made.
 	SetMembers(ctx context.Context, actor Actor, groupID string, memberExternalIDs []string) (MembersResult, error)
+	// DeleteGroup deletes the external group (restorable by an
+	// administrator for thirty days where the directory allows).
+	// Idempotent: a group already gone, or never made, answers nil.
 	DeleteGroup(ctx context.Context, actor Actor, groupID string) error
 }
 
@@ -184,6 +204,7 @@ type GroupTrait struct {
 	DocURL      string        // the vendor's page
 	Default     any
 	Required    bool
+	MaxLength   int // "string": the longest value admitted, in characters; 0 for no bound
 }
 
 // TraitChoice is one value a "choice" or "list" trait admits.
@@ -206,6 +227,38 @@ type GroupSpec struct {
 type ExternalGroup struct {
 	ExternalID string
 	Created    bool // true only on the EnsureGroup that created it
+	// Pending names the traits the provider could not act on yet and will
+	// on a later call ("team" on a group too young for one) — never an
+	// error. A caller that sees it calls EnsureGroup again next cycle.
+	Pending []string
+}
+
+// The codes of GroupTraitError.Code.
+const (
+	// TraitRequired: a required trait has no value.
+	TraitRequired = "trait_required"
+	// TraitInvalid: the value is not one the trait admits — a choice not
+	// among its choices, a string too long, a value another trait forbids.
+	TraitInvalid = "trait_invalid"
+	// TraitImmutable: the trait cannot change once the group exists, and
+	// the value differs from the one it was made with.
+	TraitImmutable = "trait_immutable"
+	// TraitNeedsOwner: the trait needs the group to have a person as its
+	// owner, and it has none.
+	TraitNeedsOwner = "trait_needs_owner"
+)
+
+// GroupTraitError is EnsureGroup's refusal of one trait value: the trait's
+// key and a code (TraitRequired, TraitInvalid, TraitImmutable,
+// TraitNeedsOwner), never the directory's words. It does not go away until
+// the values change, so a caller keeps it beside the field and does not
+// retry.
+type GroupTraitError struct {
+	Field, Code string
+}
+
+func (e *GroupTraitError) Error() string {
+	return "contracts: group trait " + e.Field + ": " + e.Code
 }
 
 // MembersResult is what SetMembers did: the members it added and removed,
@@ -216,10 +269,24 @@ type MembersResult struct {
 }
 
 // MemberFailure is one member SetMembers could not change: its external id
-// and a code, never the directory's words.
+// and a code, never the directory's words — one of MemberNotFound,
+// MemberDynamic, MemberRefused, MemberOther.
 type MemberFailure struct {
 	ID, Code string
 }
+
+// The codes of MemberFailure.Code.
+const (
+	// MemberNotFound: the directory has no account with the id.
+	MemberNotFound = "not_found"
+	// MemberDynamic: the group's membership is the directory's rule, not a
+	// list the provider may write.
+	MemberDynamic = "dynamic"
+	// MemberRefused: the directory refused the change.
+	MemberRefused = "refused"
+	// MemberOther: the change failed for another reason.
+	MemberOther = "other"
+)
 
 // The errors a provider answers. A caller tests them with errors.Is; anything
 // else is a failure to retry ("the call could not be made"), never an answer.

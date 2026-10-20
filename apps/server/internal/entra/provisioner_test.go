@@ -27,9 +27,9 @@ func TestProvisioner_TheKeyTheTraitsAndTheGroups(t *testing.T) {
 	if p.Key() != "entra" {
 		t.Errorf("Key() = %q, want entra", p.Key())
 	}
-	traits := p.GroupTraits()
-	if len(traits) != 2 {
-		t.Fatalf("GroupTraits() = %+v, want type and mailNickname", traits)
+	traits, err := p.GroupTraits(context.Background())
+	if err != nil || len(traits) != 2 {
+		t.Fatalf("GroupTraits() = %+v, %v; want type and mailNickname", traits, err)
 	}
 	kind, nickname := traits[0], traits[1]
 	if kind.Key != "type" || kind.Type != "choice" || !kind.Required || len(kind.Choices) != 2 ||

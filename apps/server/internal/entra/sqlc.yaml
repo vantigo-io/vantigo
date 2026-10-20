@@ -7,6 +7,7 @@ sql:
   - engine: postgresql
     schema:
       - ../db/migrations/00061_entra_baseline.sql
+      - ../db/migrations/00063_entra_groups.sql
     queries: queries
     gen:
       go:

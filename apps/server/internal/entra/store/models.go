@@ -53,6 +53,8 @@ type EntraConnection struct {
 	Version               int32
 	UpdatedAt             time.Time
 	UpdatedByUserID       *uuid.UUID
+	ServicePrincipalID    *uuid.UUID
+	Skus                  []byte
 }
 
 type EntraCredential struct {
@@ -77,4 +79,19 @@ type EntraEvent struct {
 	ObjectID    *uuid.UUID
 	Upn         *string
 	Codes       []string
+}
+
+type EntraGroup struct {
+	ObjectID      uuid.UUID
+	GroupID       string
+	Key           string
+	DisplayName   string
+	MailNickname  string
+	Type          string
+	TeamCreatedAt *time.Time
+	CreatedByUs   bool
+	State         string
+	LastMembersAt *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }

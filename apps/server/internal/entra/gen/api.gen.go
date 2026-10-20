@@ -21,19 +21,19 @@ import (
 
 // Defines values for EntraAccountState.
 const (
-	Deleted  EntraAccountState = "deleted"
-	Disabled EntraAccountState = "disabled"
-	Enabled  EntraAccountState = "enabled"
+	EntraAccountStateDeleted  EntraAccountState = "deleted"
+	EntraAccountStateDisabled EntraAccountState = "disabled"
+	EntraAccountStateEnabled  EntraAccountState = "enabled"
 )
 
 // Valid indicates whether the value is a known member of the EntraAccountState enum.
 func (e EntraAccountState) Valid() bool {
 	switch e {
-	case Deleted:
+	case EntraAccountStateDeleted:
 		return true
-	case Disabled:
+	case EntraAccountStateDisabled:
 		return true
-	case Enabled:
+	case EntraAccountStateEnabled:
 		return true
 	default:
 		return false
@@ -106,6 +106,42 @@ const (
 func (e EntraCredentialRequestKind) Valid() bool {
 	switch e {
 	case EntraCredentialRequestKindClientSecret:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntraGroupState.
+const (
+	EntraGroupStateDeleted EntraGroupState = "deleted"
+	EntraGroupStatePresent EntraGroupState = "present"
+)
+
+// Valid indicates whether the value is a known member of the EntraGroupState enum.
+func (e EntraGroupState) Valid() bool {
+	switch e {
+	case EntraGroupStateDeleted:
+		return true
+	case EntraGroupStatePresent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntraGroupType.
+const (
+	Microsoft365 EntraGroupType = "microsoft365"
+	Security     EntraGroupType = "security"
+)
+
+// Valid indicates whether the value is a known member of the EntraGroupType enum.
+func (e EntraGroupType) Valid() bool {
+	switch e {
+	case Microsoft365:
+		return true
+	case Security:
 		return true
 	default:
 		return false
@@ -276,7 +312,7 @@ type EntraAccountCounts struct {
 	Enabled  int32 `json:"enabled"`
 }
 
-// EntraConnection The installation's one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done.
+// EntraConnection The installation's one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts and groups the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done.
 type EntraConnection struct {
 	// Accounts How many accounts the module keeps in the tenant, by state; count is all of them, deleted included.
 	Accounts EntraAccountCounts `json:"accounts"`
@@ -286,6 +322,9 @@ type EntraConnection struct {
 
 	// Credentials Every client secret ever added, revoked ones included, newest first. The secret itself is sealed and never answered.
 	Credentials []EntraCredential `json:"credentials"`
+
+	// Groups How many groups the module keeps present in the tenant; deleted ones are not counted.
+	Groups EntraGroupCounts `json:"groups"`
 
 	// LastCheckedAt When the connection was last tested. Absent until it has been, and again after the tenant or the client changes.
 	LastCheckedAt *time.Time `json:"lastCheckedAt,omitempty"`
@@ -413,6 +452,48 @@ type EntraEvent struct {
 
 	// Upn The user principal name the module made or found. Absent on a connection's event.
 	Upn *string `json:"upn,omitempty"`
+}
+
+// EntraGroup One group the module keeps in the tenant for a Staff group (Entra design D14), by the directory's immutable object id: made by the module, or found by its mail nickname and adopted. Its members and its traits are Staff's; this is the tenant's side. A deleted group stays, marked deleted.
+type EntraGroup struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CreatedByUs True when the module created the group; false when it found one holding the mail nickname that it may write, and adopted it.
+	CreatedByUs bool `json:"createdByUs"`
+
+	// DisplayName The name the module last wrote — Staff's name, with " (archived)" after it once Staff archived the group and keeps it.
+	DisplayName string `json:"displayName"`
+
+	// GroupId The Staff group's id.
+	GroupId string `json:"groupId"`
+
+	// Key The Staff group's key.
+	Key string `json:"key"`
+
+	// LastMembersAt When the module last reconciled the group's members. Absent until it has.
+	LastMembersAt *time.Time `json:"lastMembersAt,omitempty"`
+	MailNickname  string     `json:"mailNickname"`
+
+	// ObjectId The group's object id in the tenant, immutable.
+	ObjectId openapi_types.UUID `json:"objectId"`
+	State    EntraGroupState    `json:"state"`
+
+	// Team True once the group became a team in Microsoft Teams.
+	Team bool `json:"team"`
+
+	// Type security or microsoft365, as the group was made; it never changes.
+	Type EntraGroupType `json:"type"`
+}
+
+// EntraGroupState defines model for EntraGroup.State.
+type EntraGroupState string
+
+// EntraGroupType security or microsoft365, as the group was made; it never changes.
+type EntraGroupType string
+
+// EntraGroupCounts How many groups the module keeps present in the tenant; deleted ones are not counted.
+type EntraGroupCounts struct {
+	Count int32 `json:"count"`
 }
 
 // EntraProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
@@ -570,6 +651,9 @@ type ServerInterface interface {
 	// GetEntraEvents The module's recent events
 	// (GET /api/v1/entra/events)
 	GetEntraEvents(w http.ResponseWriter, r *http.Request, params GetEntraEventsParams)
+	// GetEntraGroups The module's groups
+	// (GET /api/v1/entra/groups)
+	GetEntraGroups(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -826,6 +910,20 @@ func (siw *ServerInterfaceWrapper) GetEntraEvents(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetEntraGroups operation middleware
+func (siw *ServerInterfaceWrapper) GetEntraGroups(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEntraGroups(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -956,6 +1054,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/connection/skus", wrapper.GetEntraConnectionSkus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/connection/test", wrapper.PostEntraConnectionTest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/events", wrapper.GetEntraEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/groups", wrapper.GetEntraGroups)
 
 	return m
 }
@@ -1734,6 +1833,55 @@ func (response GetEntraEvents403JSONResponse) VisitGetEntraEventsResponse(w http
 	return err
 }
 
+type GetEntraGroupsRequestObject struct {
+}
+
+type GetEntraGroupsResponseObject interface {
+	VisitGetEntraGroupsResponse(w http.ResponseWriter) error
+}
+
+type GetEntraGroups200JSONResponse []EntraGroup
+
+func (response GetEntraGroups200JSONResponse) VisitGetEntraGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraGroups401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEntraGroups401JSONResponse) VisitGetEntraGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraGroups403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEntraGroups403JSONResponse) VisitGetEntraGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetEntraAccounts The module's accounts
@@ -1766,6 +1914,9 @@ type StrictServerInterface interface {
 	// GetEntraEvents The module's recent events
 	// (GET /api/v1/entra/events)
 	GetEntraEvents(ctx context.Context, request GetEntraEventsRequestObject) (GetEntraEventsResponseObject, error)
+	// GetEntraGroups The module's groups
+	// (GET /api/v1/entra/groups)
+	GetEntraGroups(ctx context.Context, request GetEntraGroupsRequestObject) (GetEntraGroupsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -2071,6 +2222,30 @@ func (sh *strictHandler) GetEntraEvents(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetEntraEventsResponseObject); ok {
 		if err := validResponse.VisitGetEntraEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEntraGroups operation middleware
+func (sh *strictHandler) GetEntraGroups(w http.ResponseWriter, r *http.Request) {
+	var request GetEntraGroupsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEntraGroups(ctx, request.(GetEntraGroupsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEntraGroups")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEntraGroupsResponseObject); ok {
+		if err := validResponse.VisitGetEntraGroupsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
