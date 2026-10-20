@@ -22,6 +22,9 @@ const (
 	// codeCredentialInUse is the revoke of the only valid secret while the
 	// module keeps accounts (409).
 	codeCredentialInUse = "credential_in_use"
+	// codeAdoptionConfirmed is the confirmation of an adoption confirmed
+	// already, or of an account the module created (409).
+	codeAdoptionConfirmed = "adoption_confirmed"
 	// codeVersionMismatch is a PUT whose If-Match version has moved on (412).
 	codeVersionMismatch = "version_mismatch"
 	// codeCredentialInvalid is a call to the tenant no secret could fetch a
@@ -66,10 +69,20 @@ func problem(status int, code, title, detail string) gen.EntraProblem {
 }
 
 // connectionInUse is the 409 a change of the tenant or the client answers
-// while the module keeps accounts and confirmChange is not true.
+// while the module keeps accounts and confirmChange is not true. It says
+// what confirming costs: the accounts stay in the old tenant, and Vantigo no
+// longer disables or deletes them when their people leave.
 func connectionInUse(accounts int32) gen.EntraProblem {
 	return problem(http.StatusConflict, codeConnectionInUse, "Connection in use",
-		fmt.Sprintf("The module keeps %d accounts in the current tenant. Confirm the change to proceed; nothing in the tenant is deleted.", accounts))
+		fmt.Sprintf("The module keeps %d accounts in the current tenant. Confirm the change to proceed: nothing in the tenant is deleted, "+
+			"but the accounts of the current tenant will no longer be disabled or deleted by Vantigo when their people leave.", accounts))
+}
+
+// adoptionConfirmed is the 409 the confirmation of an account answers when
+// there is nothing to confirm: confirmed already, or created by the module.
+func adoptionConfirmed() gen.EntraProblem {
+	return problem(http.StatusConflict, codeAdoptionConfirmed, "Adoption confirmed",
+		"The account is the module's already: its adoption was confirmed, or the module created it.")
 }
 
 // credentialInUse is the 409 the revoke of the only valid secret answers

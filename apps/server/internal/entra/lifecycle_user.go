@@ -409,7 +409,57 @@ const (
 	// step's name follows the colon (revoke_sessions, leave_date,
 	// strip_licences, remove_groups).
 	reportedLeaverStepFailed = "leaver_step_failed"
+	// reportedAdoptionUnconfirmed: the user is one the module found holding
+	// the employee number, not one it created, and no holder of
+	// entra:manage has confirmed its adoption; nothing is written to it
+	// until one does (plan reading 8).
+	reportedAdoptionUnconfirmed = "adoption_unconfirmed"
+	// reportedPassForbidden: the tenant refused the pass's create alone (a
+	// 403): the user is enabled all the same, and gets no pass. It is no
+	// privileged refusal and does not lengthen the streak — the enable,
+	// the sensitive action, was allowed.
+	reportedPassForbidden = "pass_forbidden"
 )
+
+// trusted reports whether the module may write to row's user: one it
+// created, or one it found whose adoption a holder of entra:manage
+// confirmed (plan reading 8). A user Staff names that the module keeps no
+// row for is not.
+func trusted(row store.EntraAccount) bool {
+	return row.CreatedByUs || row.AdoptionConfirmedAt != nil
+}
+
+// adoptionJudges is the code an unconfirmed adoption's answer judges.
+func adoptionJudges(c string) bool { return c == reportedAdoptionUnconfirmed }
+
+// unconfirmed answers u, an adopted user nobody has confirmed, as the tenant
+// has it: nothing written there, adoption_unconfirmed reported on the row,
+// and the write's event with codes and the code. A leaver's safety does not
+// reach a user the module never owned: Deactivate answers it so too.
+func (p *provisioner) unconfirmed(ctx context.Context, s session, actor contracts.Actor, action string, id uuid.UUID, u graphUser, row store.EntraAccount, codes ...string) (contracts.ExternalAccount, error) {
+	state := stateDisabled
+	if u.AccountEnabled {
+		state = stateEnabled
+	}
+	if row.State == stateDeleted {
+		state = stateDeleted
+	}
+	reported := mergeCodes(row.Reported, adoptionJudges, []string{reportedAdoptionUnconfirmed})
+	row, err := p.settle(ctx, s, actor, action, id, u.UserPrincipalName, state, reported, append(codes, reportedAdoptionUnconfirmed))
+	if err != nil {
+		return contracts.ExternalAccount{}, err
+	}
+	return account(u, &row, p.client.now()), nil
+}
+
+// adoptionRefusal is Delete's answer for an unconfirmed adoption: the
+// contract's Delete answers no account to carry the code, so it is a
+// refusal — ErrExternalEnabled, the sentinel that leaves Staff's link as it
+// was and tries again the next day — with adoption_unconfirmed reported on
+// the row.
+func adoptionRefusal() *refusedError {
+	return &refusedError{code: reportedAdoptionUnconfirmed, report: true, sentinel: contracts.ErrExternalEnabled}
+}
 
 // codeSuffix is what may follow a code's colon (Staff's bound).
 var codeSuffix = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
@@ -447,7 +497,8 @@ func updateJudges(c string) bool { return c == contracts.ReportedManagerNotFound
 // activateJudges are the codes Activate judges: the hire date, the
 // licences, the pass, the role, and a leaver's step a rehire leaves behind.
 func activateJudges(c string) bool {
-	return c == contracts.ReportedHireDateNotWritten || c == contracts.ReportedPassNotAllowed || c == contracts.ReportedPrivileged ||
+	return c == contracts.ReportedHireDateNotWritten || c == contracts.ReportedPassNotAllowed || c == reportedPassForbidden ||
+		c == contracts.ReportedPrivileged ||
 		c == contracts.ReportedLicenceUnavailable || strings.HasPrefix(c, contracts.ReportedLicenceUnavailable+":") ||
 		strings.HasPrefix(c, reportedLeaverStepFailed+":")
 }

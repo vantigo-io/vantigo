@@ -53,14 +53,21 @@ var permissions = []contracts.Permission{
 // guessing secrets would.
 var ownerLimit = ratelimit.Policy{Name: "entra-owner", Limit: 30, Window: time.Minute}
 
+// skusLimit is the tenant's licences' read, entra:manage's: the same figures
+// in a bucket of its own. It reaches the tenant on every request, but the
+// wizard's licence list must not spend the Owner's budget for registering
+// the tenant, nor the Owner's clicks the list's.
+var skusLimit = ratelimit.Policy{Name: "entra-skus", Limit: 30, Window: time.Minute}
+
 // limits maps each rate-limited operationId to its policy; the router hits it
 // per client address before access is checked, and a bucket is the policy's
-// Name and the address, so the four share one.
+// Name and the address, so the four Owner operations share one.
 var limits = map[string]ratelimit.Policy{
 	"putEntraConnection":                   ownerLimit,
 	"postEntraConnectionCredentials":       ownerLimit,
 	"deleteEntraConnectionCredentialsById": ownerLimit,
 	"postEntraConnectionTest":              ownerLimit,
+	"getEntraConnectionSkus":               skusLimit,
 }
 
 // Module is entra as a platform module: its contract mounted under

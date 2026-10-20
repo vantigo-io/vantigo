@@ -11,19 +11,21 @@ import (
 )
 
 type EntraAccount struct {
-	ObjectID          uuid.UUID
-	EmployeeNumber    string
-	UserPrincipalName string
-	State             string
-	PassSealed        []byte
-	PassExpiresAt     *time.Time
-	PassRevealedAt    *time.Time
-	CreatedByUs       bool
-	Reported          []string
-	LastError         *string
-	LastSyncedAt      *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ObjectID                  uuid.UUID
+	EmployeeNumber            string
+	UserPrincipalName         string
+	State                     string
+	PassSealed                []byte
+	PassExpiresAt             *time.Time
+	PassRevealedAt            *time.Time
+	CreatedByUs               bool
+	Reported                  []string
+	LastError                 *string
+	LastSyncedAt              *time.Time
+	AdoptionConfirmedAt       *time.Time
+	AdoptionConfirmedByUserID *uuid.UUID
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 }
 
 type EntraConnection struct {

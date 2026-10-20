@@ -43,6 +43,12 @@ func TestDecideProvider(t *testing.T) {
 		}
 	}
 	days := func(n int) *int { return &n }
+	stepFailed := func(in *providerDecision) {
+		in.Account.Reported = []string{"privileged", "leaver_step_failed:remove_groups"}
+	}
+	made := func(kinds ...accountStepKind) func(*providerDecision) {
+		return func(in *providerDecision) { in.Made = kinds }
+	}
 	step := func(kind accountStepKind) accountStep { return accountStep{Kind: kind} }
 	report := func(reason, state string) accountStep {
 		return accountStep{Kind: accountStepReport, Reason: reason, State: state}
@@ -117,6 +123,30 @@ func TestDecideProvider(t *testing.T) {
 			in.DisableRequested, in.Person.Flag, in.Person.Erased = true, false, true
 		}), step(accountStepDeactivate)},
 		{"erased", all(withAccount(providerStateEnabled), func(in *providerDecision) { in.Person.Erased = true }), none},
+		// A leaver's step the provider could not run (Entra C's deviation 5):
+		// the disabled account is deactivated again, once a chain, until the
+		// code clears.
+		{"leaver, disabled, a leaver's step failed: deactivated again", all(employed(span("2026-01-01", "2026-10-10")),
+			withAccount(providerStateDisabled), stepFailed), step(accountStepDeactivate)},
+		{"leaver, disabled, a leaver's step failed, deactivated in this chain: the next day's", all(employed(span("2026-01-01", "2026-10-10")),
+			withAccount(providerStateDisabled), stepFailed, made(accountStepDeactivate)), none},
+		{"leaver, disabled, a leaver's step failed, the delete due: the delete", all(employed(span("2026-01-01", "2026-09-10")),
+			withAccount(providerStateDisabled), stepFailed, func(in *providerDecision) { in.DeleteAfterDays = days(30) }), step(accountStepDelete)},
+		{"leaver, disabled, another code: nothing", all(employed(span("2026-01-01", "2026-10-10")), withAccount(providerStateDisabled),
+			func(in *providerDecision) { in.Account.Reported = []string{"privileged", "leaver_step_failed"} }), none},
+		{"between employments, disabled, a leaver's step failed", all(employed(span("2026-01-01", "2026-10-10"), span("2026-12-01", "")),
+			withAccount(providerStateDisabled), stepFailed), step(accountStepDeactivate)},
+		{"Disable now, disabled, a leaver's step failed", all(withAccount(providerStateDisabled), stepFailed,
+			func(in *providerDecision) { in.DisableRequested = true }), step(accountStepDeactivate)},
+		{"due, disabled, a leaver's step failed: the rehire's activate", all(withAccount(providerStateDisabled), stepFailed),
+			step(accountStepActivate)},
+		// No call twice in a chain: an account the provider answered
+		// unchanged (an adoption nobody confirmed) waits for the next claim.
+		{"leaver, enabled, deactivated in this chain", all(employed(span("2026-01-01", "2026-10-10")), withAccount(providerStateEnabled),
+			made(accountStepDeactivate)), none},
+		{"due, disabled, activated in this chain", all(withAccount(providerStateDisabled), made(accountStepPrepare, accountStepActivate)), none},
+		{"due, disabled, prepared in this chain: the activate", all(withAccount(providerStateDisabled), made(accountStepPrepare)),
+			step(accountStepActivate)},
 	} {
 		in := providerDecision{
 			Person: accountPersonFacts{

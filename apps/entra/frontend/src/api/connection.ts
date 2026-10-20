@@ -73,6 +73,10 @@ export const eventsQueryOptions = (limit = 10) =>
     queryFn: ({ signal }) => request<EntraEvent[]>(`${base}/events?limit=${limit}`, { signal }),
   });
 
+/** Confirms the adoption of an account the module found rather than created; 409 `adoption_confirmed` when there is nothing to confirm. */
+export const confirmAdoption = (objectId: string) =>
+  request<EntraAccount>(`${base}/accounts/${objectId}/confirm`, { method: "POST" });
+
 export const accountsQueryOptions = () =>
   queryOptions({
     queryKey: [ENTRA_QUERY_KEY, "accounts"],

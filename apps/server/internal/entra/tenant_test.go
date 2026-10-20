@@ -242,8 +242,10 @@ func TestEntraTenant(t *testing.T) {
 		t.Logf("UNCERTAIN FACT 2: a Temporary Access Pass was ISSUED with UserAuthMethod-TAP.ReadWrite.All")
 	case slices.Contains(account.Reported, contracts.ReportedPassNotAllowed):
 		t.Logf("UNCERTAIN FACT 2: the pass was NOT issued: the tenant's policy does not allow it (%s reported); enable Temporary Access Pass in the authentication methods policy", contracts.ReportedPassNotAllowed)
+	case slices.Contains(account.Reported, "pass_forbidden"):
+		t.Logf("UNCERTAIN FACT 2: the pass was NOT issued: the tenant answered 403 (pass_forbidden reported); the application lacks UserAuthMethod-TAP.ReadWrite.All or the role to issue one to this user")
 	default:
-		t.Errorf("UNCERTAIN FACT 2: no pass and no %s reported; reported=%v", contracts.ReportedPassNotAllowed, account.Reported)
+		t.Errorf("UNCERTAIN FACT 2: no pass and neither %s nor pass_forbidden reported; reported=%v", contracts.ReportedPassNotAllowed, account.Reported)
 	}
 
 	if account.HasPass {

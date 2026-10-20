@@ -22,6 +22,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/entra/accounts/{objectId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm an adopted account
+         * @description Confirms the adoption of a user the module found holding a person's employee number rather than created. Until it is confirmed the module writes nothing to that user — no property, no pass, no disable, no delete — and reports adoption_unconfirmed; from then on it manages the user as one it created, and the next write brings it to the person's spec. Audited entra.account.adoption_confirmed with the actor. 404 for an account the module does not keep, 409 adoption_confirmed for one confirmed already or one the module created.
+         */
+        post: operations["postEntraAccountsByObjectIdConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/entra/connection": {
         parameters: {
             query?: never;
@@ -36,7 +56,7 @@ export interface paths {
         get: operations["getEntraConnection"];
         /**
          * Set the tenant and the client
-         * @description Step 1: sets the tenant and the client, under If-Match on the connection's version, and sends the status back to unconfigured until the next test. While the module keeps accounts a change is refused 409 connection_in_use unless confirmChange is true; a change deletes nothing in the tenant. The Owner's, as the single sign-on settings are: a tenant-wide application credential is an Owner's to hold. Audited entra.connection.changed with the ids before and after. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.
+         * @description Step 1: sets the tenant and the client, under If-Match on the connection's version, and sends the status back to unconfigured until the next test. While the module keeps accounts a change is refused 409 connection_in_use unless confirmChange is true; a change deletes nothing in the tenant, but the accounts of the old tenant are no longer disabled or deleted by Vantigo, and a change of the tenant forgets every pass not yet revealed. The Owner's, as the single sign-on settings are: a tenant-wide application credential is an Owner's to hold. Audited entra.connection.changed with the ids before and after. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.
          */
         put: operations["putEntraConnection"];
         post?: never;
@@ -115,7 +135,7 @@ export interface paths {
         };
         /**
          * The tenant's licences
-         * @description The licences the tenant subscribes to, with the seats bought and assigned, read from the tenant through the connection — the choices for a Staff group's licences. 503 when the tenant cannot be asked.
+         * @description The licences the tenant subscribes to, with the seats bought and assigned, read from the tenant through the connection — the choices for a Staff group's licences. 503 when the tenant cannot be asked. Rate limited to 30 per client address a minute, a bucket of its own.
          */
         get: operations["getEntraConnectionSkus"];
         put?: never;
@@ -172,9 +192,11 @@ export interface components {
     schemas: {
         /** @description One account the module keeps in the tenant (Entra design D11, D13): the user it found or created for a person Staff registers, by the directory's immutable object id. A deleted account stays, marked deleted, for the events' sake. The pass itself is never answered here; hasPass says one waits to be revealed on the person's Account tab in Staff. */
         EntraAccount: {
+            /** @description True when a holder of entra:manage confirmed the adoption of a user the module found (POST /accounts/{objectId}/confirm). Until then the module writes nothing to that user and reports adoption_unconfirmed. False, and of no matter, for a user the module created. */
+            adoptionConfirmed: boolean;
             /** Format: date-time */
             createdAt: string;
-            /** @description True when the module created the user; false when it found one already holding the employee number and linked it. */
+            /** @description True when the module created the user; false when it found one already holding the employee number and linked it — an adopted account, untrusted until confirmed (adoptionConfirmed). */
             createdByUs: boolean;
             /** @description The employee number the user holds as employeeId, at most 16 characters. */
             employeeNumber: string;
@@ -190,7 +212,7 @@ export interface components {
              * @description The user's object id in the tenant, immutable.
              */
             objectId: string;
-            /** @description The codes of what the module could not act on at its last write — hire_date_not_written, privileged, pass_not_allowed, licence_unavailable:<part number>, manager_not_found — never the directory's words. */
+            /** @description The codes of what the module could not act on at its last write — hire_date_not_written, privileged, pass_not_allowed, pass_forbidden, licence_unavailable:<part number>, manager_not_found, leaver_step_failed:<step>, adoption_unconfirmed — never the directory's words. */
             reported: string[];
             /** @enum {string} */
             state: "disabled" | "enabled" | "deleted";
@@ -320,7 +342,7 @@ export interface components {
         };
         /** @description One write the module made, in the tenant or to its own connection — the module's own append-only trail. It carries the codes and the UPN the module made, never an address beyond it, a secret or a pass. */
         EntraEvent: {
-            /** @description entra.connection.changed, entra.connection.tested, entra.settings.changed, entra.credential.added, entra.credential.revoked, entra.user.prepared, entra.user.activated, entra.user.deactivated, entra.user.updated, entra.user.deleted, entra.pass.issued or entra.pass.revealed. */
+            /** @description entra.connection.changed, entra.connection.tested, entra.settings.changed, entra.credential.added, entra.credential.revoked, entra.user.prepared, entra.user.activated, entra.user.deactivated, entra.user.updated, entra.user.deleted, entra.pass.issued, entra.pass.revealed or entra.account.adoption_confirmed. */
             action: string;
             /** @description Who acted — the user's id, or the system's name (system:staff-accounts). */
             actor: string;
@@ -338,7 +360,7 @@ export interface components {
             /** @description The user principal name the module made or found. Absent on a connection's event. */
             upn?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         EntraProblem: {
             code?: string | null;
             detail?: string | null;
@@ -479,6 +501,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postEntraAccountsByObjectIdConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                objectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the account as confirmed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the module keeps no account by that object id. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — adoption_confirmed, the adoption is confirmed already, or the module created the user and there is nothing to confirm. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
                 };
             };
         };
@@ -823,6 +901,16 @@ export interface operations {
             /** @description Forbidden */
             403: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — entra-skus's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {

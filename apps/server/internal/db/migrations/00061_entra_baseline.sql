@@ -25,7 +25,12 @@
 -- their immutable object id, one per employee number (case-folded, as Staff's
 -- numbers are). pass_sealed is a Temporary Access Pass sealed under the
 -- purpose entra/pass until it is revealed once or expires; last_error is the
--- account's last refusal code. A deleted account is kept, marked deleted.
+-- account's last refusal code. A deleted account is kept, marked deleted. An
+-- account the module found rather than created (created_by_us false) is
+-- adopted untrusted: the module writes nothing to it until a holder of
+-- entra:manage confirms the adoption, which sets adoption_confirmed_at and
+-- adoption_confirmed_by_user_id (plan reading 8). One it created needs no
+-- confirmation, and keeps both null.
 --
 -- entra.events is the module's own append-only trail of its writes: who (a
 -- user or a system, exactly one, as the audit names it), what, which user by
@@ -52,7 +57,7 @@ CREATE TABLE entra.connection (
     status_reason           varchar(60),
     permissions_present     text[]       NOT NULL DEFAULT '{}',
     verified_domains        text[]       NOT NULL DEFAULT '{}',
-    organisation_name       varchar(200),
+    organisation_name       varchar(256),
     last_checked_at         timestamptz,
     sensitive_denied_streak integer      NOT NULL DEFAULT 0,
     version                 integer      NOT NULL DEFAULT 1,
@@ -81,19 +86,21 @@ CREATE TABLE entra.credentials (
 );
 
 CREATE TABLE entra.accounts (
-    object_id           uuid         PRIMARY KEY,
-    employee_number     varchar(16)  NOT NULL,
-    user_principal_name varchar(254) NOT NULL,
-    state               varchar(10)  NOT NULL,
-    pass_sealed         bytea,
-    pass_expires_at     timestamptz,
-    pass_revealed_at    timestamptz,
-    created_by_us       boolean      NOT NULL,
-    reported            text[]       NOT NULL DEFAULT '{}',
-    last_error          varchar(60),
-    last_synced_at      timestamptz,
-    created_at          timestamptz  NOT NULL,
-    updated_at          timestamptz  NOT NULL,
+    object_id                     uuid         PRIMARY KEY,
+    employee_number               varchar(16)  NOT NULL,
+    user_principal_name           varchar(254) NOT NULL,
+    state                         varchar(10)  NOT NULL,
+    pass_sealed                   bytea,
+    pass_expires_at               timestamptz,
+    pass_revealed_at              timestamptz,
+    created_by_us                 boolean      NOT NULL,
+    reported                      text[]       NOT NULL DEFAULT '{}',
+    last_error                    varchar(60),
+    last_synced_at                timestamptz,
+    adoption_confirmed_at         timestamptz,
+    adoption_confirmed_by_user_id uuid,
+    created_at                    timestamptz  NOT NULL,
+    updated_at                    timestamptz  NOT NULL,
     CONSTRAINT accounts_state_check CHECK (state IN ('disabled', 'enabled', 'deleted')),
     CONSTRAINT accounts_pass_check CHECK (pass_sealed IS NULL OR pass_expires_at IS NOT NULL)
 );

@@ -59,7 +59,7 @@ type providerLinkFacts struct {
 // signed in). DeleteAfterDays is delete_external_after_days (nil: never),
 // LegalHold the person's, DisableRequested HR's Disable now, Fresh HR's Run
 // now (a new pass, asked for only on the activation that enables the
-// account: row 12).
+// account: row 12). Made is the calls this claim's chain has made so far.
 type providerDecision struct {
 	Person           accountPersonFacts
 	Status           string
@@ -73,11 +73,37 @@ type providerDecision struct {
 	CreateBeforeDays int
 	Today            time.Time
 	Fresh            bool
+	Made             []accountStepKind
+}
+
+// providerCodeLeaverStepFailed is the code a provider reports, with the
+// step's name after the colon, when a leaver's step after the disable
+// failed: the account is disabled, and the steps that follow wait for the
+// next Deactivate.
+const providerCodeLeaverStepFailed = "leaver_step_failed:"
+
+// leaverUnfinished is whether acc, disabled, reports a leaver's step failed.
+func leaverUnfinished(acc *contracts.ExternalAccount) bool {
+	if acc == nil || acc.State != providerStateDisabled {
+		return false
+	}
+	for _, c := range acc.Reported {
+		if len(c) > len(providerCodeLeaverStepFailed) && c[:len(providerCodeLeaverStepFailed)] == providerCodeLeaverStepFailed {
+			return true
+		}
+	}
+	return false
 }
 
 // decideProvider is D7's column for the provider link, first match wins:
 //
-//  1. HR's Disable now: deactivate an account that is enabled, else nothing.
+//  0. A call this claim's chain has made already (Made) is not made again:
+//     what it left undone — a leaver's step that failed again, an account
+//     the provider answered unchanged (an adoption nobody confirmed) —
+//     waits for the link's next claim, the next day's, rather than spending
+//     the chain's calls and bringing the link back at every poll.
+//  1. HR's Disable now: deactivate an account that is enabled, or a
+//     disabled one whose leaver's steps did not all run, else nothing.
 //  2. Erased: nothing (the erase of the external account is delivery E's).
 //  3. The link names an account the directory no longer has: report failed
 //     user_gone, never re-created (S reading 18).
@@ -88,7 +114,11 @@ type providerDecision struct {
 //     enabled account — whatever the provider's status, since Deactivate
 //     runs as long as a credential works; after delete_external_after_days
 //     from the last end, no legal hold and the account disabled, delete it
-//     (a leaver only, never between employments); otherwise nothing.
+//     (a leaver only, never between employments); a disabled account that
+//     reports a leaver's step failed (leaver_step_failed:<step>) is
+//     deactivated again, once a day, the provider finishing the steps left
+//     and the code clearing when they succeed — the delete, when due, first;
+//     otherwise nothing.
 //  6. The flag off: nothing.
 //  7. The provider not connected (unconfigured or failing): report
 //     provider_unavailable on a link there is, the link's state kept.
@@ -107,6 +137,17 @@ type providerDecision struct {
 //     account. The provider's own rule — a pass on an activation when none
 //     unrevealed is waiting (D13) — is the provider's, untouched.
 func decideProvider(in providerDecision) accountStep {
+	step := providerRow(in)
+	for _, made := range in.Made {
+		if made == step.Kind {
+			return accountStep{Kind: accountStepNone}
+		}
+	}
+	return step
+}
+
+// providerRow is decideProvider's rows 1 to 12.
+func providerRow(in providerDecision) accountStep {
 	none := accountStep{Kind: accountStepNone}
 	p := in.Person
 	link := in.Link
@@ -114,8 +155,9 @@ func decideProvider(in providerDecision) accountStep {
 	deleted := link != nil && link.State == providerStateDeleted
 	hasAccount := link != nil && link.ExternalID != nil && !deleted && acc != nil && acc.State != providerStateDeleted
 	enabled := hasAccount && acc.State == providerStateEnabled
+	unfinished := hasAccount && leaverUnfinished(acc)
 	if in.DisableRequested {
-		if enabled {
+		if enabled || unfinished {
 			return accountStep{Kind: accountStepDeactivate}
 		}
 		return none
@@ -141,6 +183,8 @@ func decideProvider(in providerDecision) accountStep {
 		case phase == phaseEnded && hasAccount && acc.State == providerStateDisabled &&
 			providerDeleteDue(p.Employments, today, in.DeleteAfterDays) && !in.LegalHold:
 			return accountStep{Kind: accountStepDelete}
+		case unfinished:
+			return accountStep{Kind: accountStepDeactivate}
 		}
 		if phase == phaseEnded || phase == phaseBefore {
 			return none

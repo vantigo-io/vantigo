@@ -80,6 +80,26 @@ FROM taken
 WHERE a.object_id = taken.object_id
 RETURNING taken.pass_sealed AS taken_sealed, taken.pass_expires_at AS taken_expires_at;
 
+-- name: ClearAllPasses :exec
+-- ClearAllPasses forgets every pass not yet revealed, in the transaction of a
+-- confirmed change of tenant: a pass of the old tenant's users is no longer
+-- the module's to reveal.
+UPDATE entra.accounts SET pass_sealed = NULL, pass_expires_at = NULL, updated_at = @now::timestamptz
+WHERE pass_sealed IS NOT NULL OR pass_expires_at IS NOT NULL;
+
+-- name: ConfirmAdoption :one
+-- ConfirmAdoption records that a holder of entra:manage confirmed an adopted
+-- account (plan reading 8), and takes adoption_unconfirmed out of its
+-- codes. No row is answered for an account the module created or one
+-- confirmed already: the handler tells the two from an unknown id.
+UPDATE entra.accounts SET
+    adoption_confirmed_at = @now::timestamptz,
+    adoption_confirmed_by_user_id = @confirmed_by_user_id,
+    reported = array_remove(reported, 'adoption_unconfirmed'),
+    updated_at = @now::timestamptz
+WHERE object_id = @object_id AND NOT created_by_us AND adoption_confirmed_at IS NULL
+RETURNING *;
+
 -- name: CountAccounts :one
 SELECT
     count(*)::integer AS total,

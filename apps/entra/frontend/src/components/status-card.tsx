@@ -1,8 +1,17 @@
-import { Alert, Badge, Group, List, SimpleGrid, Stack, Table, Text, Title } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
+import { Alert, Badge, Button, Group, List, SimpleGrid, Stack, Table, Text, Title } from "@mantine/core";
+import { modals } from "@mantine/modals";
+import { notifications } from "@mantine/notifications";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
-import { accountsQueryOptions, type EntraConnection, eventsQueryOptions } from "../api/connection";
-import { actionText, codeText, reasonText } from "../lib/words";
+import {
+  accountsQueryOptions,
+  confirmAdoption,
+  type EntraAccount,
+  type EntraConnection,
+  eventsQueryOptions,
+} from "../api/connection";
+import { ENTRA_QUERY_KEY } from "../api/request";
+import { actionText, codeText, reasonText, refusalText } from "../lib/words";
 import { CredentialList } from "./credentials";
 import { SectionCard } from "./step-card";
 
@@ -21,15 +30,39 @@ const Subheading = ({ children }: { children: string }) => (
   </Title>
 );
 
+/** An account the module found holding the employee number rather than created, nobody has confirmed yet. */
+const awaitsConfirmation = (account: EntraAccount) => !account.createdByUs && !account.adoptionConfirmed;
+
 /**
  * The **Status** card (Entra design D15), shown once the connection is more
  * than unconfigured: the organisation, the permissions by name, the secrets,
- * the last check, the accounts the module keeps and its recent events.
+ * the last check, the accounts the module keeps and its recent events. An
+ * account the module found rather than created reads *Adopted — confirm*:
+ * the module writes nothing to it until somebody confirms it is the person's.
  */
 export const StatusCard = ({ connection, owner }: { connection: EntraConnection; owner: boolean }) => {
   const { t, formatters } = useI18n("entra");
   const events = useQuery(eventsQueryOptions());
   const accounts = useQuery({ ...accountsQueryOptions(), enabled: connection.accounts.count > 0 });
+  const queryClient = useQueryClient();
+
+  const confirm = useMutation({
+    mutationFn: (account: EntraAccount) => confirmAdoption(account.objectId),
+    onSuccess: async () => {
+      notifications.show({ color: "teal", title: t("adoptionConfirmed"), message: t("adoptionConfirmedBody") });
+      await queryClient.invalidateQueries({ queryKey: [ENTRA_QUERY_KEY] });
+    },
+    onError: (error) =>
+      notifications.show({ color: "red", title: t("couldNotConfirm"), message: refusalText(error, t) }),
+  });
+
+  const askConfirm = (account: EntraAccount) =>
+    modals.openConfirmModal({
+      title: t("confirmAdoptionTitle", { upn: account.userPrincipalName }),
+      children: <Text size="sm">{t("confirmAdoptionBody", { upn: account.userPrincipalName })}</Text>,
+      labels: { confirm: t("confirmAdoption"), cancel: t("cancel") },
+      onConfirm: () => confirm.mutate(account),
+    });
   const dateTime = (value: string) =>
     formatters.formatDate(new Date(value), { dateStyle: "medium", timeStyle: "short" });
   const connected = connection.status === "connected";
@@ -107,7 +140,29 @@ export const StatusCard = ({ connection, owner }: { connection: EntraConnection;
                   {accounts.data.map((account) => (
                     <Table.Tr key={account.objectId}>
                       <Table.Td>{account.userPrincipalName}</Table.Td>
-                      <Table.Td>{t(`accountState_${account.state}`)}</Table.Td>
+                      <Table.Td>
+                        {awaitsConfirmation(account) ? (
+                          <Stack gap={4} align="flex-start">
+                            <Text size="sm">{t(`accountState_${account.state}`)}</Text>
+                            <Group gap="xs" wrap="nowrap">
+                              <Badge color="orange" variant="light">
+                                {t("accountAdopted")}
+                              </Badge>
+                              <Button
+                                size="compact-sm"
+                                variant="light"
+                                aria-label={t("confirmAdoptionNamed", { upn: account.userPrincipalName })}
+                                loading={confirm.isPending && confirm.variables?.objectId === account.objectId}
+                                onClick={() => askConfirm(account)}
+                              >
+                                {t("confirmAdoption")}
+                              </Button>
+                            </Group>
+                          </Stack>
+                        ) : (
+                          t(`accountState_${account.state}`)
+                        )}
+                      </Table.Td>
                       <Table.Td>{account.reported.map((code) => codeText(code, t)).join("; ")}</Table.Td>
                     </Table.Tr>
                   ))}

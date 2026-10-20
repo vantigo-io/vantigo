@@ -27,10 +27,13 @@ import (
 // This file is the module's Microsoft Graph client (Entra design D12): one
 // transport for the process, dialling through netguard with no proxy and no
 // redirects; each call under a 30-second budget; a 429 waits Retry-After
-// once, a 5xx is retried once after a second, a 401 fetches a fresh token
-// once; every answer read through a 1 MiB cap; and Graph's refusal parsed
-// into a graphError carrying the status and the codes, its words logged at
-// debug level with the tenant's id and never stored or answered. The hosts
+// once, a 5xx is retried once after a second — never for a call made
+// noRetry, the create of a user or of a pass, which the tenant may have
+// carried out before it failed —, a 401 fetches a fresh token once; every
+// answer read through a 1 MiB cap; and Graph's refusal parsed into a
+// graphError carrying the status and the codes, its words logged at debug
+// level with the tenant's id — except a noRetry call's, which may echo the
+// password or the pass it carried — and never stored or answered. The hosts
 // are constants: no setting reaches them, and a test's fake comes in through
 // Deps.HTTPTransport, never as a base URL.
 //
@@ -266,6 +269,18 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
+// callOption changes how one call is made.
+type callOption int
+
+// noRetry is a call that creates what must not be created twice and carries
+// a secret: POST /users with the create's password, and the pass's create,
+// whose answer is the pass. A 5xx is the tenant's answer, not retried — the
+// first attempt may have been carried out (the caller re-reads instead) —
+// and Graph's message on a refusal is not logged, the status and the codes
+// only. A 429 and a 401, which the tenant answers before it acts, are
+// retried as for any call.
+const noRetry callOption = 1
+
 // get reads path into into. path is everything after /v1.0, its query
 // already escaped (url.Values.Encode).
 func (c *graphClient) get(ctx context.Context, cred graphCredential, path string, into any) error {
@@ -273,8 +288,8 @@ func (c *graphClient) get(ctx context.Context, cred graphCredential, path string
 }
 
 // post sends body to path and reads the answer into into (nil discards it).
-func (c *graphClient) post(ctx context.Context, cred graphCredential, path string, body, into any) error {
-	return c.do(ctx, cred, http.MethodPost, path, body, into)
+func (c *graphClient) post(ctx context.Context, cred graphCredential, path string, body, into any, opts ...callOption) error {
+	return c.do(ctx, cred, http.MethodPost, path, body, into, opts...)
 }
 
 // patch sends body to path; Graph answers 204.
@@ -295,9 +310,11 @@ func (c *graphClient) del(ctx context.Context, cred graphCredential, path string
 // do is one call to Graph with cred: body sent as JSON when not nil, a 2xx
 // answer decoded into into when not nil. A 429 waits Retry-After once (at
 // most graphMaxRetryAfter), then fails errThrottled; a 5xx is retried once
-// after graphServerErrorDelay; a 401 drops the cached token and is retried
-// once with a fresh one. Any other answer is a *graphError.
-func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path string, body, into any) error {
+// after graphServerErrorDelay, unless opts holds noRetry; a 401 drops the
+// cached token and is retried once with a fresh one. Any other answer is a
+// *graphError.
+func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path string, body, into any, opts ...callOption) error {
+	once := slices.Contains(opts, noRetry)
 	target, err := graphURL(path)
 	if err != nil {
 		return err
@@ -338,7 +355,7 @@ func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path
 			if err := c.pause(ctx, attempt, wait); err != nil {
 				return err
 			}
-		case status >= http.StatusInternalServerError && !retried:
+		case status >= http.StatusInternalServerError && !retried && !once:
 			retried = true
 			if err := c.pause(ctx, attempt, graphServerErrorDelay); err != nil {
 				return err
@@ -347,7 +364,7 @@ func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path
 			reauthorised = true
 			c.tokens.drop(cred)
 		default:
-			return c.refusal(ctx, cred, method, target, status, data)
+			return c.refusal(ctx, cred, method, target, status, data, !once)
 		}
 	}
 }
@@ -475,16 +492,21 @@ type graphErrorBody struct {
 
 // refusal is the *graphError of a refused call. Graph's own words are
 // logged at debug level with the tenant's id, the method and the path — not
-// the query, which may carry an employee number — and go nowhere else.
-func (c *graphClient) refusal(ctx context.Context, cred graphCredential, method string, target *url.URL, status int, data []byte) error {
+// the query, which may carry an employee number — when words is true, and
+// go nowhere else; a noRetry call's refusal is logged by its status and
+// codes alone, as its words may echo the password or the pass it carried.
+func (c *graphClient) refusal(ctx context.Context, cred graphCredential, method string, target *url.URL, status int, data []byte, words bool) error {
 	var body graphErrorBody
 	_ = json.Unmarshal(data, &body)
 	e := &graphError{Status: status, Code: body.Error.Code}
 	if len(body.Error.Details) > 0 {
 		e.Detail = body.Error.Details[0].Code
 	}
-	c.logger.DebugContext(ctx, "entra: Graph refused a call",
-		"tenant", cred.tenantID.String(), "method", method, "path", target.Path,
-		"status", status, "code", e.Code, "detail", e.Detail, "message", body.Error.Message)
+	attrs := []any{"tenant", cred.tenantID.String(), "method", method, "path", target.Path,
+		"status", status, "code", e.Code, "detail", e.Detail}
+	if words {
+		attrs = append(attrs, "message", body.Error.Message)
+	}
+	c.logger.DebugContext(ctx, "entra: Graph refused a call", attrs...)
 	return e
 }
