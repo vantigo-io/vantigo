@@ -235,6 +235,7 @@ func (s *server) accountView(ctx context.Context, personID int64, today time.Tim
 		providerLink *gen.StaffProviderLink
 		profile      *[]gen.StaffDirectoryField
 		effective    *openapi_types.Date
+		groups       []gen.StaffPersonGroup
 	)
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
@@ -259,6 +260,9 @@ func (s *server) accountView(ctx context.Context, personID int64, today time.Tim
 			rows := directoryProfile(directoryFieldsOf(set), values)
 			profile = &rows
 		}
+		if groups, err = personGroups(ctx, q, personID); err != nil {
+			return err
+		}
 		effective, err = effectiveProvisionFrom(ctx, q, p, today)
 		return err
 	})
@@ -277,6 +281,7 @@ func (s *server) accountView(ctx context.Context, personID int64, today time.Tim
 		Revision:               p.revision,
 		ProviderLink:           providerLink,
 		DirectoryProfile:       profile,
+		Groups:                 &groups,
 	}
 	if link == nil {
 		return out, nil

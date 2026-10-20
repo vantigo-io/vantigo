@@ -324,6 +324,52 @@ func (s *server) providerRevealPass(ctx context.Context, p contracts.IdentityPro
 	return p.RevealPass(ctx, actor, externalID)
 }
 
+// providerGroupTraits, providerEnsureGroup, providerSetMembers and
+// providerDeleteGroup are a provider's groups (contracts.IdentityProvisioner,
+// Entra delivery D): the traits it declares, the external group made or
+// brought to the spec, its members reconciled, and the group deleted. Each
+// reaches the network like the accounts' calls, so each refuses a call inside
+// a transaction; p nil answers errProviderUnavailable.
+func (s *server) providerGroupTraits(ctx context.Context, p contracts.IdentityProvisioner) ([]contracts.GroupTrait, error) {
+	if err := noteContractCall(ctx, "Provisioner.GroupTraits"); err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return nil, errProviderUnavailable
+	}
+	return p.GroupTraits(ctx)
+}
+
+func (s *server) providerEnsureGroup(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, spec contracts.GroupSpec) (contracts.ExternalGroup, error) {
+	if err := noteContractCall(ctx, "Provisioner.EnsureGroup"); err != nil {
+		return contracts.ExternalGroup{}, err
+	}
+	if p == nil {
+		return contracts.ExternalGroup{}, errProviderUnavailable
+	}
+	return p.EnsureGroup(ctx, actor, spec)
+}
+
+func (s *server) providerSetMembers(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, groupID string, memberExternalIDs []string) (contracts.MembersResult, error) {
+	if err := noteContractCall(ctx, "Provisioner.SetMembers"); err != nil {
+		return contracts.MembersResult{}, err
+	}
+	if p == nil {
+		return contracts.MembersResult{}, errProviderUnavailable
+	}
+	return p.SetMembers(ctx, actor, groupID, memberExternalIDs)
+}
+
+func (s *server) providerDeleteGroup(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, groupID string) error {
+	if err := noteContractCall(ctx, "Provisioner.DeleteGroup"); err != nil {
+		return err
+	}
+	if p == nil {
+		return errProviderUnavailable
+	}
+	return p.DeleteGroup(ctx, actor, groupID)
+}
+
 // smtpSend hands one mail to the installation's SMTP server: Deps.SMTPSend
 // when a harness set one, otherwise mail.SendOutbound, the platform's guarded
 // path (module-boundaries rule 1). It is Invoices' accessor
