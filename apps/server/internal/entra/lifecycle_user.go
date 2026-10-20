@@ -501,6 +501,12 @@ func mergeCodes(old []string, evaluated func(string) bool, fresh []string) []str
 // updateJudges are the codes Prepare's update path and Update judge.
 func updateJudges(c string) bool { return c == contracts.ReportedManagerNotFound }
 
+// licenceJudges are the codes a reconcile of the licences judges: Update's
+// on an enabled user, besides updateJudges'.
+func licenceJudges(c string) bool {
+	return c == contracts.ReportedLicenceUnavailable || strings.HasPrefix(c, contracts.ReportedLicenceUnavailable+":")
+}
+
 // activateJudges are the codes Activate judges: the hire date, the
 // licences, the pass, the role, and a leaver's step a rehire leaves behind.
 func activateJudges(c string) bool {

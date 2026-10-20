@@ -2,8 +2,6 @@ package entra_test
 
 import (
 	"context"
-	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -12,50 +10,17 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
-// TestProvisioner_TheKeyTheTraitsAndTheGroups is the provider's shape: it
-// claims the key "entra" with no context and no network, declares the two
-// group traits delivery C can name — the type, a required choice of
-// security or microsoft365, and the mail nickname — and leaves the groups
-// themselves to delivery D. The lifecycle's writes are lifecycle_test.go's.
-func TestProvisioner_TheKeyTheTraitsAndTheGroups(t *testing.T) {
+// TestProvisioner_TheKey is the provider's shape: it fills the slot and
+// claims the key "entra" with no context and no network. The traits and the
+// groups are groups_test.go's, the lifecycle's writes lifecycle_test.go's.
+func TestProvisioner_TheKey(t *testing.T) {
 	t.Parallel()
 	build := entra.Module().IdentityProvisioner
 	if build == nil {
 		t.Fatal("Module().IdentityProvisioner is nil; want the module to fill the slot")
 	}
-	p := build(module.Deps{})
-	if p.Key() != "entra" {
+	if p := build(module.Deps{}); p.Key() != "entra" {
 		t.Errorf("Key() = %q, want entra", p.Key())
-	}
-	traits, err := p.GroupTraits(context.Background())
-	if err != nil || len(traits) != 2 {
-		t.Fatalf("GroupTraits() = %+v, %v; want type and mailNickname", traits, err)
-	}
-	kind, nickname := traits[0], traits[1]
-	if kind.Key != "type" || kind.Type != "choice" || !kind.Required || len(kind.Choices) != 2 ||
-		kind.Choices[0].Value != "security" || kind.Choices[1].Value != "microsoft365" ||
-		kind.Label["en"] == "" || kind.Label["nb"] == "" || !strings.HasPrefix(kind.DocURL, "https://learn.microsoft.com/") {
-		t.Errorf("the type trait: %+v", kind)
-	}
-	for _, c := range kind.Choices {
-		if c.Label["en"] == "" || c.Label["nb"] == "" {
-			t.Errorf("a choice without both labels: %+v", c)
-		}
-	}
-	if nickname.Key != "mailNickname" || nickname.Type != "string" || nickname.Required || nickname.Label["en"] == "" || nickname.Label["nb"] == "" {
-		t.Errorf("the mailNickname trait: %+v", nickname)
-	}
-
-	ctx := context.Background()
-	user := contracts.Actor{System: contracts.SystemActorStaffAccounts}
-	_, ensure := p.EnsureGroup(ctx, user, contracts.GroupSpec{})
-	_, members := p.SetMembers(ctx, user, "g", nil)
-	for name, err := range map[string]error{
-		"EnsureGroup": ensure, "SetMembers": members, "DeleteGroup": p.DeleteGroup(ctx, user, "g"),
-	} {
-		if !errors.Is(err, contracts.ErrGroupNotManageable) {
-			t.Errorf("%s: %v, want ErrGroupNotManageable", name, err)
-		}
 	}
 }
 

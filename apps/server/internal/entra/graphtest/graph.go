@@ -16,11 +16,13 @@
 // 400 Request_BadRequest with an ObjectConflict detail; GET /users/{id}
 // without $select answers Graph's default property set, not every property;
 // a soft-deleted user leaves /users but keeps its UPN; a licence needs a
-// usage location first; a sensitive write on a privileged user, or by an
+// usage location first; the token's oid claim names the application's
+// service principal, the one owner besides users a group may have; a sensitive write on a privileged user, or by an
 // application without the User Administrator role, is 403
 // Authorization_RequestDenied; a user synchronised from on-premises refuses
 // every write with 400 Request_BadRequest; a member removed without /$ref
 // deletes the user; a Team on a group younger than TeamReadyAfter is 404; a
+// group's members are listed in pages of $top with an @odata.nextLink; a
 // $batch holds at most twenty requests. Every error body is Graph's
 // { "error": { "code", "message" } }, the token endpoint's OAuth's
 // { "error", "error_description" }.
@@ -37,6 +39,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -101,6 +104,13 @@ type FakeGraph struct {
 	// TeamReadyAfter is how old a group must be before PUT /team stops
 	// answering 404; fifteen minutes in the tenant, zero here unless set.
 	TeamReadyAfter time.Duration
+	// TeamNotFound makes the next n PUT /team answer 404 whatever the
+	// group's age, as a Teams backend that has not seen the group yet does.
+	TeamNotFound int
+	// ServicePrincipalID is the application's service principal in the
+	// tenant: the token's oid claim, and the one owner of a group that is
+	// not a user. New sets a fresh one.
+	ServicePrincipalID string
 	// Now is the fake's clock, for the token's expiry, the pass's and the
 	// group's age; time.Now when nil.
 	Now func() time.Time
@@ -216,9 +226,12 @@ type Group struct {
 	IsAssignableToRole bool
 	Owners             []string
 	Members            []string
-	CreatedAt          time.Time
-	Team               bool
-	Deleted            bool
+	// StaleMembers are ids the members list still answers although they
+	// left — Graph's replication lag: removing one by $ref is 404.
+	StaleMembers []string
+	CreatedAt    time.Time
+	Team         bool
+	Deleted      bool
 }
 
 // Call is one request the fake answered: never a body, a header or a
@@ -234,7 +247,7 @@ type Call struct {
 
 // New is an empty tenant answering any tenant id, with no client yet.
 func New() *FakeGraph {
-	return &FakeGraph{Secrets: map[string][]string{}}
+	return &FakeGraph{Secrets: map[string][]string{}, ServicePrincipalID: uuid.NewString()}
 }
 
 // Configure runs fn under the fake's lock, for a change of configuration
@@ -346,6 +359,32 @@ func (g *FakeGraph) AddGroup(gr Group) Group {
 	stored := gr
 	g.groups = append(g.groups, &stored)
 	return copyGroup(&stored)
+}
+
+// EditGroup runs fn on the group with id under the fake's lock — making a
+// group the module made dynamic, say. It reports whether the group exists.
+func (g *FakeGraph) EditGroup(id string, fn func(gr *Group)) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	gr := g.groupByID(id, true)
+	if gr == nil {
+		return false
+	}
+	fn(gr)
+	return true
+}
+
+// Groups is every group not deleted, in the order they were made.
+func (g *FakeGraph) Groups() []Group {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var out []Group
+	for _, gr := range g.groups {
+		if !gr.Deleted {
+			out = append(out, copyGroup(gr))
+		}
+	}
+	return out
 }
 
 // Group is the group with id, deleted or not.
@@ -477,6 +516,9 @@ func (g *FakeGraph) token(req *http.Request, body []byte) answer {
 	}
 	if len(g.Roles) > 0 {
 		claims["roles"] = slices.Clone(g.Roles)
+	}
+	if g.ServicePrincipalID != "" {
+		claims["oid"] = g.ServicePrincipalID
 	}
 	token := unsignedJWT(claims)
 	if g.tokens == nil {
@@ -1078,11 +1120,33 @@ func (g *FakeGraph) groupsRoute(method string, seg []string, query url.Values, b
 		gr.Deleted = true
 		return answer{status: http.StatusNoContent}
 	case len(rest) == 1 && rest[0] == "members" && method == http.MethodGet:
+		return g.listMembers(gr, query)
+	case len(rest) == 1 && rest[0] == "owners" && method == http.MethodGet:
 		out := []any{}
-		for _, id := range gr.Members {
-			out = append(out, map[string]any{"@odata.type": "#microsoft.graph.user", "id": id})
+		for _, id := range gr.Owners {
+			out = append(out, map[string]any{"@odata.type": g.directoryType(id), "id": id})
 		}
 		return answer{status: http.StatusOK, body: map[string]any{"value": out}}
+	case len(rest) == 2 && rest[0] == "owners" && rest[1] == "$ref" && method == http.MethodPost:
+		id, ok := refID(body)
+		if !ok {
+			return graphError(http.StatusBadRequest, "Request_BadRequest", "The @odata.id is missing or invalid.")
+		}
+		if !g.ownerExists(id) {
+			return notFound(id)
+		}
+		if slices.ContainsFunc(gr.Owners, func(o string) bool { return strings.EqualFold(o, id) }) {
+			return graphError(http.StatusBadRequest, "Request_BadRequest", "One or more added object references already exist for the following modified properties: 'owners'.")
+		}
+		gr.Owners = append(gr.Owners, id)
+		return answer{status: http.StatusNoContent}
+	case len(rest) == 3 && rest[0] == "owners" && rest[2] == "$ref" && method == http.MethodDelete:
+		i := slices.IndexFunc(gr.Owners, func(o string) bool { return strings.EqualFold(o, rest[1]) })
+		if i < 0 {
+			return notFound(rest[1])
+		}
+		gr.Owners = slices.Delete(gr.Owners, i, i+1)
+		return answer{status: http.StatusNoContent}
 	case len(rest) == 2 && rest[0] == "members" && rest[1] == "$ref" && method == http.MethodPost:
 		id, ok := refID(body)
 		if !ok {
@@ -1090,8 +1154,9 @@ func (g *FakeGraph) groupsRoute(method string, seg []string, query url.Values, b
 		}
 		return g.addMembers(gr, []string{id})
 	case len(rest) == 3 && rest[0] == "members" && rest[2] == "$ref" && method == http.MethodDelete:
-		i := slices.Index(gr.Members, rest[1])
+		i := slices.IndexFunc(gr.Members, func(m string) bool { return strings.EqualFold(m, rest[1]) })
 		if i < 0 {
+			gr.StaleMembers = slices.DeleteFunc(gr.StaleMembers, func(m string) bool { return strings.EqualFold(m, rest[1]) })
 			return notFound(rest[1])
 		}
 		if gr.MembershipRule != "" {
@@ -1110,7 +1175,15 @@ func (g *FakeGraph) groupsRoute(method string, seg []string, query url.Values, b
 		gr.Members = slices.DeleteFunc(gr.Members, func(id string) bool { return id == u.ID })
 		return answer{status: http.StatusNoContent}
 	case len(rest) == 1 && rest[0] == "team" && method == http.MethodPut:
+		var team struct {
+			Template string `json:"template@odata.bind"`
+		}
 		switch {
+		case json.Unmarshal(body, &team) != nil || team.Template != teamsTemplate:
+			return graphError(http.StatusBadRequest, "BadRequest", "The template@odata.bind is missing or names no template.")
+		case g.TeamNotFound > 0:
+			g.TeamNotFound--
+			return graphError(http.StatusNotFound, "NotFound", "Failed to execute Templates backend request CreateTeamFromGroupWithTemplateRequest.")
 		case g.now().Sub(gr.CreatedAt) < g.TeamReadyAfter:
 			return graphError(http.StatusNotFound, "NotFound", "Failed to execute Templates backend request CreateTeamFromGroupWithTemplateRequest.")
 		case len(gr.Owners) == 0:
@@ -1156,7 +1229,11 @@ func (g *FakeGraph) createGroup(body []byte) answer {
 		gr.Visibility = *w.Visibility
 	}
 	for _, ref := range w.Owners {
-		gr.Owners = append(gr.Owners, lastSegment(ref))
+		id := lastSegment(ref)
+		if !g.ownerExists(id) {
+			return notFound(id)
+		}
+		gr.Owners = append(gr.Owners, id)
 	}
 	for _, ref := range w.Members {
 		id := lastSegment(ref)
@@ -1216,6 +1293,60 @@ func (g *FakeGraph) addMembers(gr *Group, ids []string) answer {
 	}
 	gr.Members = append(gr.Members, ids...)
 	return answer{status: http.StatusNoContent}
+}
+
+// teamsTemplate is the template a team is made from a group with.
+const teamsTemplate = "https://graph.microsoft.com/v1.0/teamsTemplates('standard')"
+
+// listMembers is GET /groups/{id}/members: $top of them a page (100 when
+// absent, 999 at most), the next page named by @odata.nextLink with a
+// $skiptoken. The stale members are listed after the members.
+func (g *FakeGraph) listMembers(gr *Group, query url.Values) answer {
+	top := 100
+	if v := query.Get("$top"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 999 {
+			return graphError(http.StatusBadRequest, "Request_BadRequest", "Invalid page size specified.")
+		}
+		top = n
+	}
+	skip := 0
+	if v := query.Get("$skiptoken"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return graphError(http.StatusBadRequest, "Request_BadRequest", "Invalid skip token.")
+		}
+		skip = n
+	}
+	all := append(slices.Clone(gr.Members), gr.StaleMembers...)
+	out := []any{}
+	for i := skip; i < len(all) && i < skip+top; i++ {
+		out = append(out, map[string]any{"@odata.type": g.directoryType(all[i]), "id": all[i]})
+	}
+	body := map[string]any{"value": out}
+	if skip+top < len(all) {
+		next := url.Values{"$top": {strconv.Itoa(top)}, "$skiptoken": {strconv.Itoa(skip + top)}}
+		if s := query.Get("$select"); s != "" {
+			next.Set("$select", s)
+		}
+		body["@odata.nextLink"] = "https://" + GraphHost + "/v1.0/groups/" + gr.ID + "/members?" + next.Encode()
+	}
+	return answer{status: http.StatusOK, body: body}
+}
+
+// directoryType is the @odata.type of the directory object id: the
+// service principal, or a user.
+func (g *FakeGraph) directoryType(id string) string {
+	if g.ServicePrincipalID != "" && strings.EqualFold(id, g.ServicePrincipalID) {
+		return "#microsoft.graph.servicePrincipal"
+	}
+	return "#microsoft.graph.user"
+}
+
+// ownerExists reports whether id may be an owner: the service principal, or
+// a user not deleted.
+func (g *FakeGraph) ownerExists(id string) bool {
+	return (g.ServicePrincipalID != "" && strings.EqualFold(id, g.ServicePrincipalID)) || g.userByID(id, false) != nil
 }
 
 func groupJSON(gr *Group) map[string]any {
@@ -1368,6 +1499,7 @@ func copyGroup(gr *Group) Group {
 	c.GroupTypes = slices.Clone(gr.GroupTypes)
 	c.Owners = slices.Clone(gr.Owners)
 	c.Members = slices.Clone(gr.Members)
+	c.StaleMembers = slices.Clone(gr.StaleMembers)
 	return c
 }
 

@@ -57,8 +57,8 @@ const (
 // lifecycle_*.go. Every write checks the actor first, then takes the
 // connection and a credential on the pool (open), makes its Graph calls on
 // no transaction, and writes its rows and its event in short transactions
-// after the calls. The groups are delivery D's and answer
-// ErrGroupNotManageable.
+// after the calls. The groups are groups.go's, their traits
+// groups_traits.go's.
 type provisioner struct {
 	deps   module.Deps
 	client *graphClient
@@ -260,55 +260,4 @@ func account(u graphUser, row *store.EntraAccount, now time.Time) contracts.Exte
 // is ahead of now.
 func livePass(row store.EntraAccount, now time.Time) bool {
 	return row.PassSealed != nil && row.PassExpiresAt != nil && row.PassExpiresAt.After(now)
-}
-
-// GroupTraits declares the traits a group may carry for Entra (design D10):
-// its type, which D's EnsureGroup creates and never changes, and its mail
-// nickname. Staff renders the form from this alone. It reads nothing yet,
-// so it never fails.
-func (p *provisioner) GroupTraits(context.Context) ([]contracts.GroupTrait, error) {
-	return []contracts.GroupTrait{
-		{
-			Key:   "type",
-			Type:  "choice",
-			Label: map[string]string{"en": "Group type", "nb": "Gruppetype"},
-			Description: map[string]string{
-				"en": "A security group grants access to apps and resources; a Microsoft 365 group adds a shared mailbox, calendar and files, and can become a team.",
-				"nb": "En sikkerhetsgruppe gir tilgang til apper og ressurser; en Microsoft 365-gruppe gir i tillegg felles postboks, kalender og filer, og kan bli et team.",
-			},
-			Choices: []contracts.TraitChoice{
-				{Value: "security", Label: map[string]string{"en": "Security", "nb": "Sikkerhet"}},
-				{Value: "microsoft365", Label: map[string]string{"en": "Microsoft 365", "nb": "Microsoft 365"}},
-			},
-			DocURL:   "https://learn.microsoft.com/en-us/entra/fundamentals/concept-learn-about-groups",
-			Default:  "security",
-			Required: true,
-		},
-		{
-			Key:   "mailNickname",
-			Type:  "string",
-			Label: map[string]string{"en": "Mail nickname", "nb": "E-postalias"},
-			Description: map[string]string{
-				"en": "The group's alias in the tenant, at most 64 characters; made from the group's key when left empty.",
-				"nb": "Gruppens alias i tenanten, høyst 64 tegn; lages av gruppens nøkkel når feltet er tomt.",
-			},
-			DocURL: "https://learn.microsoft.com/en-us/graph/api/resources/group?view=graph-rest-1.0",
-		},
-	}, nil
-}
-
-// EnsureGroup answers ErrGroupNotManageable: the module manages no group in
-// delivery C; delivery D (Entra design D14) creates and updates them.
-func (p *provisioner) EnsureGroup(context.Context, contracts.Actor, contracts.GroupSpec) (contracts.ExternalGroup, error) {
-	return contracts.ExternalGroup{}, contracts.ErrGroupNotManageable
-}
-
-// SetMembers answers ErrGroupNotManageable until delivery D (design D14).
-func (p *provisioner) SetMembers(context.Context, contracts.Actor, string, []string) (contracts.MembersResult, error) {
-	return contracts.MembersResult{}, contracts.ErrGroupNotManageable
-}
-
-// DeleteGroup answers ErrGroupNotManageable until delivery D (design D14).
-func (p *provisioner) DeleteGroup(context.Context, contracts.Actor, string) error {
-	return contracts.ErrGroupNotManageable
 }

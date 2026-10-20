@@ -22,7 +22,8 @@ import (
 // opened for this one request, the scope https://graph.microsoft.com/.default
 // and grant_type client_credentials; the token kept in the process until five
 // minutes before its expires_in, per credential, under a mutex; its roles
-// claim read for the connection test. A refusal of the secret
+// claim read for the connection test, and its oid claim — the application's
+// service principal in the tenant (plan reading 2) — for the groups' owner. A refusal of the secret
 // (invalid_client, unauthorized_client) is errCredentialInvalid, which
 // credentialFor answers by marking the secret failed and trying the next.
 
@@ -50,11 +51,13 @@ func keyOf(cred graphCredential) tokenKey {
 	return tokenKey{id: cred.id, tenantID: cred.tenantID, clientID: cred.clientID, sealed: sha256.Sum256(cred.sealed)}
 }
 
-// cachedToken is a token and what it says: its roles claim, and the instant
-// it is no longer used (expires_in less tokenEarlyExpiry).
+// cachedToken is a token and what it says: its roles claim, its oid claim
+// (the service principal's object id, nil when absent), and the instant it
+// is no longer used (expires_in less tokenEarlyExpiry).
 type cachedToken struct {
 	value string
 	roles []string
+	oid   *uuid.UUID
 	until time.Time
 }
 
@@ -193,33 +196,49 @@ func (c *graphClient) fetchToken(ctx context.Context, cred graphCredential) (cac
 		}
 		return cachedToken{}, fmt.Errorf("%w: the token endpoint answered %d %s", errTenantUnreachable, resp.StatusCode, answer.Error)
 	}
+	roles, oid := claimsOf(answer.AccessToken)
 	return cachedToken{
 		value: answer.AccessToken,
-		roles: rolesOf(answer.AccessToken),
+		roles: roles,
+		oid:   oid,
 		until: now.Add(time.Duration(answer.ExpiresIn)*time.Second - tokenEarlyExpiry),
 	}, nil
 }
 
-// rolesOf is the roles claim of an access token, sorted: the payload
-// decoded and read with no signature checked — the token is the one the
-// tenant just handed this client, and the roles are read for the connection
-// test's report alone. A token whose payload does not decode has none.
+// rolesOf is the roles claim of an access token, sorted (claimsOf).
 func rolesOf(token string) []string {
+	roles, _ := claimsOf(token)
+	return roles
+}
+
+// claimsOf is the roles claim of an access token, sorted, and its oid claim:
+// the payload decoded and read with no signature checked — the token is the
+// one the tenant just handed this client. The roles are read for the
+// connection test's report; the oid of an app-only token is the
+// application's service principal in the tenant, which every group the
+// module makes names as an owner (plan reading 2). A token whose payload
+// does not decode has neither; an oid that is not a GUID is none.
+func claimsOf(token string) ([]string, *uuid.UUID) {
 	parts := strings.Split(token, ".")
 	if len(parts) < 2 {
-		return nil
+		return nil, nil
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	var claims struct {
 		Roles []string `json:"roles"`
+		OID   string   `json:"oid"`
 	}
 	if json.Unmarshal(payload, &claims) != nil {
-		return nil
+		return nil, nil
 	}
 	roles := slices.Clone(claims.Roles)
 	slices.Sort(roles)
-	return slices.Compact(roles)
+	var oid *uuid.UUID
+	if id, ok := objectID(claims.OID); ok {
+		oid = &id
+	}
+	return slices.Compact(roles), oid
 }

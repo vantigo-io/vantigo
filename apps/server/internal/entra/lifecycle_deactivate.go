@@ -35,9 +35,13 @@ const (
 // maxMemberOfPages bounds the pages of memberOf one leaver reads.
 const maxMemberOfPages = 50
 
-// leaverGroupsAll is leaver_remove_groups' "all"; "managed" names the
-// module's own groups, none before delivery D, and "none" leaves them.
-const leaverGroupsAll = "all"
+// leaver_remove_groups' values: "all" removes a leaver from every group
+// removable admits, "managed" from the module's own groups alone, "none"
+// from none.
+const (
+	leaverGroupsAll     = "all"
+	leaverGroupsManaged = "managed"
+)
 
 // Deactivate disables the user and runs the leaver's steps
 // (contracts.IdentityProvisioner.Deactivate), whatever the connection's
@@ -114,8 +118,8 @@ func (p *provisioner) Deactivate(ctx context.Context, actor contracts.Actor, ext
 		{stepStripLicences, s.conn.LeaverStripLicences, func() (string, error) {
 			return p.stripLicences(ctx, s, id, u)
 		}},
-		{stepRemoveGroups, s.conn.LeaverRemoveGroups == leaverGroupsAll, func() (string, error) {
-			return p.removeGroups(ctx, s, id)
+		{stepRemoveGroups, s.conn.LeaverRemoveGroups == leaverGroupsAll || s.conn.LeaverRemoveGroups == leaverGroupsManaged, func() (string, error) {
+			return p.removeGroups(ctx, s, id, s.conn.LeaverRemoveGroups == leaverGroupsManaged)
 		}},
 	}
 	var reported []string
@@ -182,15 +186,21 @@ func (p *provisioner) stripLicences(ctx context.Context, s session, id uuid.UUID
 	return "licences_stripped", nil
 }
 
-// graphGroup is a group as memberOf lists it.
+// graphGroup is a group as memberOf lists it, and as the groups' calls read
+// it (groupSelect).
 type graphGroup struct {
-	ODataType          string   `json:"@odata.type"`
-	ID                 string   `json:"id"`
-	GroupTypes         []string `json:"groupTypes"`
-	MembershipRule     *string  `json:"membershipRule"`
-	IsAssignableToRole *bool    `json:"isAssignableToRole"`
-	MailEnabled        *bool    `json:"mailEnabled"`
-	SecurityEnabled    *bool    `json:"securityEnabled"`
+	ODataType          string     `json:"@odata.type"`
+	ID                 string     `json:"id"`
+	DisplayName        string     `json:"displayName"`
+	Description        *string    `json:"description"`
+	MailNickname       string     `json:"mailNickname"`
+	Visibility         *string    `json:"visibility"`
+	GroupTypes         []string   `json:"groupTypes"`
+	MembershipRule     *string    `json:"membershipRule"`
+	IsAssignableToRole *bool      `json:"isAssignableToRole"`
+	MailEnabled        *bool      `json:"mailEnabled"`
+	SecurityEnabled    *bool      `json:"securityEnabled"`
+	CreatedDateTime    *time.Time `json:"createdDateTime"`
 }
 
 // removable reports whether the leaver's "all" removes the user from g: a
@@ -212,9 +222,21 @@ func (g graphGroup) removable() bool {
 }
 
 // removeGroups removes the user from every group memberOf lists that
-// removable admits, by $ref — never the member's object itself. A member
-// already gone (404) is done.
-func (p *provisioner) removeGroups(ctx context.Context, s session, id uuid.UUID) (string, error) {
+// removable admits — when managed, from those of them the module keeps
+// present in entra.groups alone — by $ref (membersRefPath), never the
+// member's object itself. A member already gone (404) is done.
+func (p *provisioner) removeGroups(ctx context.Context, s session, id uuid.UUID, managed bool) (string, error) {
+	var ours []uuid.UUID
+	if managed {
+		ids, err := s.q.ListGroupObjectIDs(ctx)
+		if err != nil {
+			return "", fmt.Errorf("entra: read the module's groups: %w", err)
+		}
+		if len(ids) == 0 {
+			return "", nil
+		}
+		ours = ids
+	}
 	path := userPath(id, "/memberOf?", query(url.Values{"$select": {"id,groupTypes,membershipRule,isAssignableToRole,mailEnabled,securityEnabled"}}))
 	var groups []graphGroup
 	for page := 0; path != "" && page < maxMemberOfPages; page++ {
@@ -234,10 +256,10 @@ func (p *provisioner) removeGroups(ctx context.Context, s session, id uuid.UUID)
 	removed := 0
 	for _, g := range groups {
 		gid, ok := objectID(g.ID)
-		if !ok || !g.removable() {
+		if !ok || !g.removable() || (managed && !slices.Contains(ours, gid)) {
 			continue
 		}
-		err := p.client.del(ctx, s.cred, "/groups/"+gid.String()+"/members/"+id.String()+"/$ref")
+		err := p.client.del(ctx, s.cred, membersRefPath(gid, id))
 		if err != nil && !isStatus(err, http.StatusNotFound) {
 			return "", err
 		}

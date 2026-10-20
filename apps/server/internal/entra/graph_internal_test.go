@@ -256,7 +256,7 @@ func TestGraphToken_FetchedOnceAndReusedUntilFiveMinutesBeforeExpiry(t *testing.
 	}
 }
 
-func TestGraphToken_TheRolesClaimIsRead(t *testing.T) {
+func TestGraphToken_TheRolesAndTheOidClaimsAreRead(t *testing.T) {
 	f := newClientFixture(t, nil)
 	fake := fakeTenant(f)
 	fake.Roles = []string{"Organization.Read.All", "User.ReadWrite.All"}
@@ -268,8 +268,14 @@ func TestGraphToken_TheRolesClaimIsRead(t *testing.T) {
 	if strings.Join(tok.roles, ",") != "Organization.Read.All,User.ReadWrite.All" {
 		t.Errorf("roles = %v", tok.roles)
 	}
+	if tok.oid == nil || tok.oid.String() != fake.ServicePrincipalID {
+		t.Errorf("oid = %v, want the service principal %s", tok.oid, fake.ServicePrincipalID)
+	}
 	if rolesOf("not-a-jwt") != nil || rolesOf("a.!!!.c") != nil {
 		t.Error("a token that does not decode has roles")
+	}
+	if _, oid := claimsOf("e30." + "eyJvaWQiOiJub3QtYS1ndWlkIn0" + "."); oid != nil {
+		t.Errorf("an oid that is not a GUID: %v, want none", oid)
 	}
 }
 

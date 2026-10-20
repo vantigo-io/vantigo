@@ -38,7 +38,8 @@ import (
 // The tenant needs (research §9):
 //   - a dedicated tenant, never a production one: the test creates, enables,
 //     updates, disables and deletes one user whose employee number starts
-//     with VT- and whose family name starts with Test;
+//     with VT- and whose family name starts with Test, and creates and
+//     deletes one security group whose mail nickname starts with vt-test-;
 //   - an app registration holding the eight application permissions, admin
 //     consented: User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All,
 //     User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All,
@@ -54,13 +55,16 @@ import (
 // sealed with the harness's key and goes with that database; what the test
 // makes in the tenant is removed in t.Cleanup if a step failed first (a
 // disabled user is soft-deleted, restorable for thirty days from the portal's
-// Deleted users). The test logs ids, the UPN of the prefixed user and codes,
-// never the secret or a pass. The module's own events, which carry the codes
-// the tenant's answers became, are logged at the end.
+// Deleted users; a group likewise from Deleted groups). The test logs ids,
+// the UPN of the prefixed user and codes, never the secret or a pass. The
+// module's own events, which carry the codes the tenant's answers became, are
+// logged at the end.
 //
-// A group is skipped: groups are delivery D's, and the provisioner answers
-// ErrGroupNotManageable for them in C. When D lands, add here a prefixed group
-// created with the service principal as owner, its members set, then deleted.
+// The group (delivery D): a prefixed security group made with the
+// application's service principal — the token's oid, which the connection
+// test records — and the test user as its owners, the user added as its
+// member and removed again by $ref in a $batch, then deleted. A team is not
+// attempted: it needs a Microsoft 365 group fifteen minutes old.
 
 // tenantEnv reads the variable name, skipping the test when it is empty.
 func tenantEnv(t *testing.T, name string) string {
@@ -271,6 +275,59 @@ func TestEntraTenant(t *testing.T) {
 		t.Fatalf("Update: %v", err)
 	}
 	t.Logf("Update: state=%s reported=%v", account.State, account.Reported)
+
+	// The group: owners, members in a batch, deleted.
+	if n := modtest.One[int](t, h.Harness, `SELECT count(*)::int FROM entra.connection WHERE service_principal_id IS NOT NULL`); n != 1 {
+		t.Error("the connection test did not record the service principal (the token's oid claim)")
+	}
+	groupSpec := contracts.GroupSpec{
+		GroupID: "vt-" + token, Key: "vt-test-" + token, Name: "Vantigo test " + token,
+		Description: "Made by Vantigo's tenant test; safe to delete.",
+		Values:      map[string]any{"type": "security"}, OwnerExternalIDs: []string{id},
+	}
+	group, err := p.EnsureGroup(ctx, actor, groupSpec)
+	if err != nil {
+		t.Fatalf("EnsureGroup: %v", err)
+	}
+	groupDeleted := false
+	t.Cleanup(func() {
+		if groupDeleted {
+			return
+		}
+		cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := p.DeleteGroup(cleanup, actor, groupSpec.GroupID); err != nil {
+			t.Logf("cleanup: DeleteGroup %s: %v", group.ExternalID, err)
+			return
+		}
+		t.Logf("cleanup: deleted the group %s", group.ExternalID)
+	})
+	t.Logf("EnsureGroup: id=%s created=%t pending=%v", group.ExternalID, group.Created, group.Pending)
+	if !group.Created || len(group.Pending) != 0 {
+		t.Errorf("EnsureGroup: %+v, want a group created with nothing pending", group)
+	}
+	if again, err := p.EnsureGroup(ctx, actor, groupSpec); err != nil || again.Created || again.ExternalID != group.ExternalID {
+		t.Errorf("EnsureGroup again: %+v %v, want the same group", again, err)
+	}
+	members, err := p.SetMembers(ctx, actor, groupSpec.GroupID, []string{id})
+	t.Logf("SetMembers (add): %+v %v", members, err)
+	if err != nil || members.Added != 1 || len(members.Failed) != 0 {
+		t.Errorf("SetMembers (add): %+v %v, want the user added (a 400 here can be the new group's few seconds of replication; run again)", members, err)
+	}
+	members, err = p.SetMembers(ctx, actor, groupSpec.GroupID, nil)
+	t.Logf("SetMembers (remove): %+v %v", members, err)
+	if err != nil || members.Removed != 1 || len(members.Failed) != 0 {
+		t.Errorf("SetMembers (remove): %+v %v, want the user removed by $ref in a batch", members, err)
+	}
+	if read, err := p.Account(ctx, id); err != nil || read == nil {
+		t.Errorf("Account after the member's removal: %+v %v — the user must still exist", read, err)
+	}
+	if err := p.DeleteGroup(ctx, actor, groupSpec.GroupID); err != nil {
+		t.Errorf("DeleteGroup: %v", err)
+	} else {
+		groupDeleted = true
+		t.Logf("DeleteGroup: %s soft-deleted (restorable for thirty days)", group.ExternalID)
+	}
 
 	// Deactivate: disabled, the leave date.
 	spec.LeaveDate = &today

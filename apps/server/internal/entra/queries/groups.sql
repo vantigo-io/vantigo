@@ -75,3 +75,10 @@ SELECT count(*)::integer FROM entra.groups WHERE state = 'present';
 -- ListGroupObjectIDs is the object ids of the module's groups present in the
 -- tenant: the groups the leaver's managed step removes a user from.
 SELECT object_id FROM entra.groups WHERE state = 'present' ORDER BY object_id;
+
+-- name: ForgetDeletedGroup :exec
+-- ForgetDeletedGroup removes the row of Staff's group id when it names a
+-- group the module deleted in the tenant, so the group made anew for the
+-- same Staff group takes its place (ux_entra_groups_group_id). The deleted
+-- group's events keep its object id.
+DELETE FROM entra.groups WHERE group_id = @group_id AND state = 'deleted';
