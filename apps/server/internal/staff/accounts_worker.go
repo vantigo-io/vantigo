@@ -52,6 +52,13 @@ import (
 //     again under the lock: one turned off meanwhile is recorded on the
 //     events (flagOffMeanwhile), and the next cycle claims the link no more.
 //
+// Two steps about groups frame the links (Entra delivery D): before step 1,
+// the derived groups' members are materialised as of the business day
+// (groups_members.go), each change an event on the person, so the specs
+// the claims read carry today's licences; after step 4, up to a hundred
+// due group sections are claimed and synced to their providers the same
+// way, under a lease each (groups_sync.go).
+//
 // The worker writes only the link and the account events: never the person
 // (their revision and updated_at, which a manager reads, stay as they are),
 // never user_linked or user_unlinked. last_error and every event hold codes
@@ -203,7 +210,10 @@ func (s *server) workersPoll() time.Duration {
 // is asked once, on no connection — identity unable to answer fails the
 // cycle, which the next poll runs again, unless the kinds are unseeded, when
 // the deactivations still run — and so is every identity provider's info
-// (providerStatuses), recorded when it changed.
+// (providerStatuses), recorded when it changed. The derived groups are
+// materialised before the links are prepared (not while the kinds are
+// unseeded), and the groups synced to their providers after the claims
+// (groups_sync.go).
 func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTally, error) {
 	var tally accountsTally
 	if s.deps.Accounts == nil {
@@ -229,14 +239,19 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 		return tally, err
 	}
 	run.providers = s.providerStatuses(ctx, keys...)
-	if !run.unseeded {
-		if err := s.prepareAccountLinks(ctx, run.until); err != nil {
-			return tally, err
-		}
-	}
 	zone, err := s.settingsZone(ctx)
 	if err != nil {
 		return tally, err
+	}
+	if !run.unseeded {
+		// The derived groups' members as of today, before any spec is read:
+		// a person's licences are their groups' (accounts_spec.go).
+		if err := s.materialiseGroups(ctx, run.who, civilToday(s.deps.Clock(), zone)); err != nil {
+			s.logger().ErrorContext(ctx, "staff: materialise the derived groups", "worker", accountsWorkerName, "error", err.Error())
+		}
+		if err := s.prepareAccountLinks(ctx, run.until); err != nil {
+			return tally, err
+		}
 	}
 	for tally.attempted < accountsBatch {
 		now := s.deps.Clock()
@@ -259,6 +274,11 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 		} else {
 			tally.failed++
 		}
+	}
+	// The groups after the links, so a member's account enabled in this
+	// cycle is in their groups in this cycle too (groups_sync.go).
+	if err := s.syncGroups(ctx, run); err != nil {
+		return tally, err
 	}
 	return tally, nil
 }

@@ -17,7 +17,8 @@ import (
 // error (plan reading 5) — no employment, no link, no document, no absence
 // or holiday adjustment (delivery B), named as nobody's manager, not under a
 // legal hold — with their next of kin, their
-// roles and their own history, in one transaction. It is the one exception to
+// roles, their group memberships and ownerships, and their own history, in
+// one transaction. It is the one exception to
 // the events table's append-only rule, and it leaves one installation-level
 // event behind carrying the employee number and nothing else. Anything that names the person keeps
 // them; the retention run (A2) is the only other way a person's data leaves.
@@ -116,9 +117,14 @@ func (s *server) DeleteStaffPeopleById(ctx context.Context, req gen.DeleteStaffP
 				return fmt.Errorf("staff: delete person %d's preparing link: %w", req.Id, err)
 			}
 		}
+		// The person's group rows go before the person, with no event
+		// (Entra delivery D, reading 9): the next sync of each group removes
+		// them in the provider's directory.
 		for name, del := range map[string]func(context.Context, int64) error{
-			"next of kin": txq.DeleteNextOfKin,
-			"roles":       txq.DeletePersonRoles,
+			"next of kin":  txq.DeleteNextOfKin,
+			"roles":        txq.DeletePersonRoles,
+			"groups":       txq.DeletePersonGroupMembers,
+			"group owners": txq.DeletePersonGroupOwners,
 		} {
 			if err := del(ctx, req.Id); err != nil {
 				return fmt.Errorf("staff: delete person %d's %s: %w", req.Id, name, err)
