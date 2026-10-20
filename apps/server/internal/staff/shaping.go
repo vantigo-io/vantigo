@@ -494,6 +494,13 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 		// HR was shown — the links group's too.
 		Codes    []string `json:"codes"`
 		Provider *string  `json:"provider"`
+		// A group event (Entra delivery D, groups_members.go): the group a
+		// person joined or left and how — the links group's, as the Account
+		// tab's groups are.
+		GroupID   *int64  `json:"groupId"`
+		GroupName *string `json:"groupName"`
+		GroupKey  *string `json:"groupKey"`
+		Source    *string `json:"source"`
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal(stored, &payload); err != nil {
@@ -520,6 +527,25 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 				}
 				if len(payload.Codes) > 0 {
 					out["codes"] = payload.Codes
+				}
+			}
+			return out
+		}
+		if payload.GroupID != nil {
+			// group_joined and group_left: the group and the source to the
+			// links group — the person, staff:manage, staff:personal-data,
+			// who read the person's groups on the Account tab — and the bare
+			// kind to anyone else.
+			if a.reads(groupLinks) {
+				out["groupId"] = *payload.GroupID
+				if payload.GroupName != nil {
+					out["groupName"] = *payload.GroupName
+				}
+				if payload.GroupKey != nil {
+					out["groupKey"] = *payload.GroupKey
+				}
+				if payload.Source != nil {
+					out["source"] = *payload.Source
 				}
 			}
 			return out

@@ -114,6 +114,16 @@ const (
 	eventThresholdAcknowledged = "threshold_acknowledged"
 )
 
+// The group events (Entra design D9, delivery D): a person joined or left a
+// group — a listed group's members written by HR, or a derived group's
+// materialised by the accounts worker on the business day. Each names the
+// group and how the person came in or went — {groupId, groupName, groupKey,
+// source} — class C, as the group's own columns are.
+const (
+	eventGroupJoined = "group_joined"
+	eventGroupLeft   = "group_left"
+)
+
 // holdEventKinds are the hold's kinds: about the record's retention and who
 // exported it rather than about the person's work, so they are listed only to
 // an audience that reads the hold group — and to the person themselves, who

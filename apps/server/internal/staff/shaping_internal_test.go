@@ -303,3 +303,23 @@ func TestShapePayload_TheProviderEvents(t *testing.T) {
 		}
 	}
 }
+
+// A group event names the group and the source to the links group — the
+// person, staff:manage, staff:personal-data, who read the Account tab's
+// groups — and nothing to a manager, an Approver or a colleague, who keep
+// the bare kind.
+func TestShapePayload_TheGroupEvents(t *testing.T) {
+	t.Parallel()
+	stored := []byte(`{"groupId":1001,"groupName":"Sales","groupKey":"sales","source":"derived"}`)
+	want := map[string]any{"groupId": int64(1001), "groupName": "Sales", "groupKey": "sales", "source": "derived"}
+	for name, a := range map[string]audience{"self": {Self: true}, "staff:manage": {Manage: true}, "staff:personal-data": {PersonalData: true}} {
+		if got := shapePayload(stored, []string{"C"}, a); fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s reads %v, want %v", name, got, want)
+		}
+	}
+	for name, a := range map[string]audience{"manager": {Manager: true}, "approver": {Approver: true}, "colleague": {Colleague: true}} {
+		if got := shapePayload(stored, []string{"C"}, a); len(got) != 0 {
+			t.Errorf("%s reads %v, want nothing", name, got)
+		}
+	}
+}
