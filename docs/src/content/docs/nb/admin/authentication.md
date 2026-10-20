@@ -302,7 +302,7 @@ kontoen til og [kunngjør](#den-kunngjorte-kontoen), med ansattrollene gitt én 
 
 | Steg | `local` | `external` | `entra` | Revisjonslogg |
 | --- | --- | --- | --- | --- |
-| Klargjør | Finner brukeren Ansatte styrer med ansattnummeret, ellers oppretter den en: styrt av Ansatte, ventende, deaktivert av Ansatte, med den innebygde rollen `User`, uten innloggingsmetode og med ubekreftet adresse. En eiers åpne invitasjon til adressen trekkes tilbake `replaced` og navngis i revisjonsloggen — men en åpen invitasjon til å bli eier holder adressen for den inviterte. Svaret sier om kallet opprettet brukeren (`Created`), så Ansatte aldri omgjør en bruker den bare fant. | Finner brukeren Ansatte styrer med nummeret; oppretter ingenting (`Ikke funnet` til en eier tar en inn) | Finner brukeren Ansatte styrer med nummeret — den den kunngjorte kontoens ankomst laget; oppretter ingenting | `user.staff-prepared` |
+| Klargjør | Finner brukeren Ansatte styrer med ansattnummeret, ellers oppretter den en: styrt av Ansatte, ventende, deaktivert av Ansatte, med den innebygde rollen `User`, uten innloggingsmetode og med ubekreftet adresse. En eiers åpne invitasjon til adressen trekkes tilbake `replaced` og navngis i revisjonsloggen — men en åpen invitasjon til å bli eier holder adressen for den inviterte. Svaret sier om kallet opprettet brukeren (`Created`), så Ansatte aldri omgjør en bruker den bare fant. | Finner brukeren Ansatte styrer med nummeret; oppretter ingenting (`Ikke funnet` til en eier tar en inn) | Finner brukeren Ansatte styrer med nummeret — den den kunngjorte kontoens ankomst laget; oppretter ingenting (`Ikke funnet` til den har kommet) | `user.staff-prepared` |
 | Aktiver | Aktiverer en bruker Ansatte har deaktivert — også en klargjort bruker — og gir dem [ansattrollene](#ansattrollene) bare ved det kallet, så en rolle en eier fjerner senere, forblir fjernet, og registrerer når (`provisioning_roles_at`); inviterer en ventende bruker uten innloggingsmetode ved navn | Aktiverer igjen en bruker Ansatte deaktiverte; gir ingen rolle og sender ingen invitasjon | Aktiverer igjen en bruker Ansatte deaktiverte og, så lenge `provisioning_roles_at` er tom, gir ansattrollene og registrerer det — én gang, aktivert eller ikke, aldri igjen; sender ingen invitasjon | `user.staff-activated` |
 | Deaktiver | Deaktiverer brukeren som Ansattes (`disabledBy: staff`) — også en katalogen allerede har deaktivert — avslutter øktene og tilbakestillingslenkene, og trekker tilbake de åpne invitasjonene `deactivated` | Det samme | Det samme | `user.staff-deactivated` |
 | Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter og ingen invitasjon som navngir dem, er levert ennå, og da trekkes invitasjonene tilbake `email_changed` og en eiers åpne invitasjoner til den nye adressen `replaced` (navngitt i revisjonsloggen) | Skriver bare språket og ansattnummeret | Det samme som `external` | `user.staff-updated` |
@@ -377,33 +377,53 @@ identitetsmodulen allerede krever.
 
 **Hva en ankomst gjør.** Under eierlåsen, i ankomstens egen transaksjon:
 
-- **Et treff** oppretter brukeren slik SCIM eller OIDC ville gjort, og merker dem så som
-  styrt av Ansatte med det kunngjorte ansattnummeret, ikke ventende (innloggingsmetoden er
-  leverandørens), med det kunngjorte visningsnavnet bare når leverandøren ikke sendte
-  noe. Kunngjøringen brukes opp og revisjonslogges `account.adopted-from-provider` med
+- **Et treff** der ingen annens bruker har nummeret, oppretter brukeren slik SCIM eller
+  OIDC ville gjort, og merker dem så som styrt av Ansatte med det kunngjorte
+  ansattnummeret, ikke ventende (innloggingsmetoden er leverandørens), på det kunngjorte
+  språket. En SCIM-bruker får det kunngjorte visningsnavnet bare når ressursen verken har
+  visningsnavn eller navnedeler; en OIDC-bruker navngis av kravene, som før.
+  Kunngjøringen brukes opp og revisjonslogges `account.adopted-from-provider` med
   `matchedBy` (`employeeNumber`, `userName`, `externalId` eller `oid`) og
-  ansattnummeret — aldri en adresse — ved siden av SCIMs egen `scim.user.created`.
+  ansattnummeret — aldri en adresse — ved siden av SCIMs egen `scim.user.created`. En
+  innlemmet OIDC-bruker logges så inn etter den koblede kontoens regler, så en bruker
+  Ansatte holder deaktivert, får `account_locked` til Ansatte aktiverer dem.
 - **Et treff som navngir en bruker å erstatte** (`ReplaceUserID`: personen var `local`
   med en ventende bruker uten innloggingsmetode da HR endret typen til `entra`) fullfører
-  den brukeren i stedet for å legge inn en til: brukeren låses, de åpne invitasjonene
-  trekkes tilbake `replaced`, `pending_since` og invitasjonsrunden tømmes, adressen
-  overskrives av den ankommende `userName` — har en annen bruker den, er det fortsatt
-  `DuplicateEmail` — og SCIM-tilordningen eller OIDC-koblingen festes til dem, med
-  ID-en beholdt; `account.adopted-from-provider` navngir `replacedUserId`. For OIDC er
-  e-postkravet som kolliderer med nettopp den brukeren, fullføringen, ikke
-  `oidc_email_conflict`; med noen annen avvises det som før.
+  den brukeren i stedet for å legge inn en til — så lenge brukeren fortsatt har nummeret
+  og fortsatt er styrt, uprivilegert, ventende og uten innloggingsmetode; ellers er
+  ankomsten ikke noe inntak. Brukeren låses, de åpne invitasjonene trekkes tilbake
+  `replaced`, `pending_since` og invitasjonsrunden tømmes, og SCIM-tilordningen eller
+  OIDC-koblingen festes til dem, med ID-en, visningsnavnet og deaktiveringen beholdt;
+  `account.adopted-from-provider` navngir `replacedUserId`. Adressen blir ankomstens:
+  for SCIM ressursens **jobb-e-post** (ingen er `InvalidEmail`, en annen brukers
+  `DuplicateEmail`, og en `userName` en annen tilordning har, er `uniqueness`); for OIDC
+  e-postkravet når det finnes, ellers beholdes adressen. For OIDC er e-postkravet som
+  kolliderer med nettopp den brukeren, fullføringen, ikke `oidc_email_conflict`; med
+  noen annen avvises det som før.
 - **Uten treff** er det som før: en vanlig SCIM- eller OIDC-bruker, som en eier tar inn
   for hånd hvis de hører til Ansatte. Virksomhetsutvidelsens `employeeNumber` beholdes i
   SCIM-profilen og blir **aldri** brukerens ansattnummer: bare Ansattes klargjøring og en
   eiers inntak gjør det kravet.
 
-**Hva `Expect` avviser.** En bruker som ikke styres, og som har nummeret, er
-`ErrEmployeeNumberTaken`; en styrt eier eller SystemAdmin `ErrAccountPrivileged`. En
-styrt bruker som har nummeret og ikke venter, har allerede kommet: ingenting registreres,
-og kallet lykkes. En ventende styrt bruker registreres bare når kunngjøringen navngir dem
-som den som skal erstattes; en bruker å erstatte som ikke styres, ikke venter eller har
-et annet nummer, avvises. `Unexpect` sletter en kunngjøring og revisjonslogges
-`account.unexpected` når en ble slettet; uten noen lykkes den og skriver ingenting.
+**Hva `Expect` avviser.** Den leser ingen modus, og den vurderer kunngjøringen først:
+et ansattnummer i Ansattes alfabet, et visningsnavn på 1 til 200 tegn, språket `en`,
+`nb` eller ingen, en utsteder og en objekt-ID på høyst 200 tegn, et brukerhovednavn som
+er en adresse på høyst 254 — og minst én av objekt-ID-en og brukerhovednavnet, nøklene
+en ankomst kan ha med seg; alt annet er en ugyldig kunngjøring. Så avgjør brukeren som
+har nummeret: en bruker som ikke styres, er `ErrEmployeeNumberTaken`; en styrt eier
+eller SystemAdmin `ErrAccountPrivileged`; en styrt bruker som ikke venter, har allerede
+kommet, eller en eier har tatt dem inn: ingenting registreres og kallet lykkes, så
+Ansattes neste `Prepare` finner dem. En styrt, ventende bruker uten innloggingsmetode
+registreres bare når kunngjøringen navngir nettopp den brukeren som den som skal
+erstattes. En bruker å erstatte som navngis når ingen har nummeret, eller som ikke er den
+ventende innehaveren uten innloggingsmetode, er en ugyldig kunngjøring. Den samme
+kunngjøringen igjen endrer ingenting; enhver endring erstatter den helt og
+revisjonslogges `account.expected` med nummeret, navnene på nøklene og brukeren den
+erstatter. Ansatte registrerer `ErrEmployeeNumberTaken` og `ErrAccountPrivileged` på
+personens leverandørkobling og prøver en ugyldig kunngjøring igjen som en feil.
+`Unexpect` sletter en kunngjøring og revisjonslogges `account.unexpected` når en ble
+slettet; uten noen — aldri kunngjort, eller allerede oppfylt, som brukte den opp — lykkes
+den og skriver ingenting.
 
 **Rollene, én gang.** En innlemmet bruker kommer aktivert, så ingen `Activate` aktiverer
 dem noen gang; `identity.users.provisioning_roles_at` registrerer når Ansattes
@@ -955,15 +975,22 @@ gjennom en mellomlagring på 20 sekunder. Prosedyrene står i
 Ressursen User godtar **virksomhetsutvidelsen**,
 `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` (RFC 7643 §4.3):
 `employeeNumber`, `costCenter`, `organization`, `division`, `department` og `manager`
-(`value`, `displayName`, og `$ref` svart som denne serverens sti), hver på høyst 256
-tegn. En opprettelse eller en erstatning med blokken, og en PATCH på hvilken som helst av
-stiene dens (`urn:…:User:department`, `urn:…:User:manager.value`, …), godtas og beholdes i
-brukerens SCIM-profil under `enterprise`; en erstatning uten den tømmer den. `GET` svarer
-med den, `Schemas` og `ResourceTypes` annonserer den (`schemaExtensions`, ikke påkrevd),
-og `GET /Users` filtrerer på `urn:…:User:employeeNumber eq "…"`. En sti utenfor de to
-skjemaene er fortsatt `invalidPath`. Ingenting i `identity.users` endres av den:
-`employeeNumber` er det en [kunngjort konto](#den-kunngjorte-kontoen) matches på, aldri
-brukerens ansattnummer.
+(`value`, `displayName`, og `$ref` svart som denne serverens sti for den ID-en), hver en
+streng, trimmet, på høyst 256 tegn, ellers `invalidValue`. Blokken navngis nøyaktig ved
+URN-en sin; attributtene leses uansett ASCII-store/små bokstaver, slik kjerneattributtene
+gjør. En opprettelse med blokken, en erstatning — som setter den helt, og tømmer den når
+den utelates — og en PATCH godtas og beholdes i brukerens SCIM-profil under
+`enterprise`. En PATCH kan navngi en av stiene dens (`urn:…:User:department`,
+`urn:…:User:manager`, `urn:…:User:manager.value`, …), eller ha ingen sti og et objekt der
+medlemmet under URN-en setter hvert attributt det navngir; `manager` tar et objekt med en
+streng `value`, eller en ren streng som verdien, slik Microsofts klargjøringstjeneste
+sender den. Et attributt utvidelsen ikke har noen sti for, og en sti utenfor de to
+skjemaene, er fortsatt `invalidPath`. `GET` svarer med blokken, med URN-en blant
+`schemas`, når den har en verdi; `Schemas` og `ResourceTypes` annonserer den
+(`schemaExtensions`, ikke påkrevd); og `GET /Users` filtrerer på
+`urn:…:User:employeeNumber eq "…"` — URN-en stavet nøyaktig, verdien sammenlignet slik
+profilen har den. Ingenting i `identity.users` endres av den: `employeeNumber` er det en
+[kunngjort konto](#den-kunngjorte-kontoen) matches på, aldri brukerens ansattnummer.
 
 ## Videresendte headere og HTTPS
 

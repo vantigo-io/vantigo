@@ -455,7 +455,7 @@ Owner [sets both up](#set-up-single-sign-on). The operator runbook is in
 An account the provider creates for someone in Staff whose account Staff had the
 provider make — the **Microsoft Entra ID** account kind — arrives on the Users page
 already marked **Managed by Staff · no.** with the person's employee number, and no
-invitation pending: Staff announced it, and Vantigo recognises it by the employee number the
-provider sends. You do not adopt it for Staff. An account nobody announced arrives as
+invitation pending: Staff announced it, and Vantigo recognises it by what the provider
+sends — the employee number, the user principal name or the account's object id. You do not adopt it for Staff. An account nobody announced arrives as
 before, and an Owner adopts it if it is Staff's
 ([the announced account](/en/admin/authentication/#the-announced-account)).

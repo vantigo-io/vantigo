@@ -460,7 +460,8 @@ Driftshåndboken finnes i [SSO- og SCIM-drift](/nb/admin/sso-scim/).
 En konto leverandøren oppretter for noen i Ansatte som Ansatte lot leverandøren lage
 kontoen til — kontotypen **Microsoft Entra ID** — kommer til brukersiden allerede
 merket **Styres av Ansatte · nr.** med personens ansattnummer, og ingen ventende invitasjon: Ansatte
-kunngjorde den, og Vantigo kjenner den igjen på ansattnummeret leverandøren sender. Du
+kunngjorde den, og Vantigo kjenner den igjen på det leverandøren sender — ansattnummeret,
+brukerhovednavnet eller kontoens objekt-ID. Du
 trenger ikke ta den inn under Ansatte. En konto ingen kunngjorde, kommer som før, og en
 eier tar den inn hvis den hører til Ansatte
 ([den kunngjorte kontoen](/nb/admin/authentication/#den-kunngjorte-kontoen)).

@@ -361,7 +361,8 @@ off the case. A document in any other category belongs to no case.
 The **Account** tab is HR's (`staff:manage`). The person themselves and a holder of
 `staff:personal-data` read it and change nothing. A manager, `staff:approve` and a
 colleague do not have it. It has two
-groups.
+groups — three for a person of the Microsoft Entra ID kind, whose **Directory profile**
+follows.
 
 **Account flag** says whether Staff gives the person a user to sign in with, from which
 day, at which address and who holds the account. HR changes it:
@@ -386,7 +387,7 @@ day, at which address and who holds the account. HR changes it:
    - **External identity provider** — the company's identity provider owns the account:
      Staff finds the user it created once an Owner has adopted it, enables what Staff
      disabled and disables, but never creates or invites.
-   - **Microsoft Entra ID** — offered only when the Entra module is installed: Staff has
+   - **Microsoft Entra ID** — offered only while an enabled module offers it: Staff has
      Entra create the person's account, enables and disables it there, and tells
      Vantigo to expect it, so the user it brings is the person's with no Owner in
      between.
@@ -402,18 +403,23 @@ day, at which address and who holds the account. HR changes it:
    else changed the flag since you opened the tab, the tab reloads and says
    *Somebody else saved this; it has been reloaded*.
 
-**User account** shows the person's accounts as cards side by side: **Vantigo**, the
-user the person signs in to Vantigo with, and — for a person of the Microsoft Entra ID
-kind — a card titled with the provider's name, **Microsoft Entra ID**, for their account
-in the company's directory.
+**User account** first says the person's account kind in a sentence — *Local account —
+Staff creates the user and invites the person to choose a password.*, *External
+identity provider — the provider owns the account: …* or *Microsoft Entra ID — Staff
+creates the person's account in the directory, …* — or *Accounts are unavailable — …*
+when no module provides them. For a person of the Microsoft Entra ID kind it then shows
+the person's accounts as cards side by side: **Vantigo**, the user the person signs in
+to Vantigo with, and a card titled with the provider's name, **Microsoft Entra ID**, for
+their account in the company's directory. For anyone else it shows the Vantigo user
+alone.
 
-The **Vantigo** card first says the account kind in words — *Local*, *External identity
-provider* or *Microsoft Entra ID* — or *Accounts are unavailable*, when no module
-provides them. Then, once Staff has created or found a user:
+Until Staff has created or found a user, the Vantigo part says *No user yet: Staff has
+not created or found one for this person.* Then:
 
-- **State** — *Being prepared*, *Pending — waiting for the person to choose a
-  password*, *Active*, *Disabled by Staff* or *Disabled by an Owner*, *Failed*,
-  *Blocked*, or *Linked, not managed by Staff* for a user HR linked by hand.
+- **State** — *Being prepared — Staff is creating or finding the user*, *Pending —
+  waiting for the person to choose a password*, *Active*, *Disabled by Staff* or
+  *Disabled by an Owner*, *Failed*, *Blocked*, or *Linked, not managed by Staff* for a
+  user HR linked by hand.
 - **User**, and **Managed by Staff** — yes or no.
 - Why the account is held up, in a sentence, when it is: no employment to give an
   account from, the address the flag names missing, an Owner disabled the user (or the
@@ -436,33 +442,44 @@ an Owner stopped managing — the tab tells HR that an Owner adopts the user for
 **Users** page (**Adopt for Staff**), with the person's employee number, and **Open
 Users** goes there. An erased record shows no such step.
 
-The **Microsoft Entra ID** card shows the person's account in the directory:
+The **Microsoft Entra ID** card shows the person's account in the directory — or *No
+account in the directory yet: Staff has not created or found one for this person.*:
 
 - **State** — *Being prepared — Staff asked the directory to create or find the
   account*, *Enabled*, *Disabled*, *Deleted — restorable in the directory for thirty
   days*, *Failed* or *Blocked*.
 - **User principal name** — the name the person signs in to Microsoft with, once Entra
-  has made the account — and **Enabled since**.
+  has made the account — and **Enabled since** while it is enabled, or **Last brought in
+  line** while it is not.
 - **Pass issued** — when Entra issued a Temporary Access Pass nobody has shown yet —
-  and **Announced** — when Staff told Vantigo to expect the account.
+  **Announced** — when Staff told Vantigo to expect the account — and **Next attempt**.
 - Why the account is held up, in a sentence, when it is: Entra not connected or failing,
   two accounts in Entra with the person's employee number, the work email already
   another account's there, an account synchronised from an on-premises directory, an
-  account with an administrative role in Entra, the account gone from Entra (Staff never
-  makes a second); and what Entra reported and could not do: the hire date not written,
-  no licence left, a pass not allowed, the person's manager not in Entra.
-- **Directory profile** — a read-only table, **Field**, **Written** and **Value today**:
-  every field Staff writes on the account and the value it carries from the register
-  today. The names, the employee number, the user principal name and the usage location
-  are always written and shown greyed; the others follow the installation's
-  [Directory profile](#directory-profile). The person sees this table on their own tab
-  too: it is their data as the directory sees it.
+  account with an administrative role in Entra, an account not deleted because it is
+  still enabled there, the account gone from Entra (Staff never makes a second); and,
+  one sentence each, what Entra reported and could not do: the hire date not written,
+  no licence left (the licence named in brackets), a pass not allowed, the manager's
+  account not found, the person's manager not in Entra. *Failed attempts in a row: 3.
+  The directory could not be reached; the worker tries again.* says Entra could not be
+  reached.
 
-**Show the pass** (HR) shows the pass Entra issued for the person's first sign-in, in a
-window with **Copy** and its expiry: *It will not be shown again.* It is shown **once**:
-after you close the window nobody can see it again, and the button says there is none.
-Give it to the person yourself; it is never mailed. A pass that has run out, or one
-already shown, is gone — use **Run now (new pass)**.
+Below it, **Directory profile** is a read-only table, **Field**, **Written** and
+**Value today**: every field Staff writes on the account and the value it carries from
+the register today. The names, the employee number, the user principal name and the
+usage location are always written and shown greyed, **Written** *Always*; the others
+follow the installation's [Directory profile](#directory-profile), **Written** *Yes*, or
+*Off — cleared* for a field switched off there, which Staff no longer writes. The person
+sees this table on their own tab too: it is their data as the directory sees it.
+
+**Show the pass** (HR) is offered while Entra holds a pass nobody has shown. It shows
+the pass Entra issued for the person's first sign-in in a window, **Temporary Access
+Pass**, with *… types this pass at their first sign-in.*, *Works until …*, **Copy** and
+**Close**: *It will not be shown again.* It is shown **once**: after you close the window
+nobody can see it again, and the button is gone. Give it to the person yourself; it is
+never mailed. A pass that has run out, or one already shown, is gone — the tab says
+*The pass was shown already, has expired, or none was issued. Run now (new pass) issues
+a new one.* — so use **Run now (new pass)**.
 
 **Run now** (HR, while the flag is on) does the account's next step at once, with a
 fresh invitation for a pending user whose last one cannot be accepted. The tab then
@@ -470,7 +487,10 @@ says *Done: a new invitation was sent*, or *Done: no invitation was sent* — no
 due, one can still be accepted, or the last went less than ten minutes ago; the run is
 done all the same. For a person of the Microsoft Entra ID kind it is **Run now (new
 pass)**: the step runs in Entra first, then in Vantigo, and Entra issues a new pass to
-show. When Entra refuses the step, the tab says why.
+show; the tab then says *Done: when the account is enabled, the directory issued a new
+pass — Show the pass shows it once.* When Entra refuses the step, the tab says *The
+identity provider refused the step; nothing more was done there.* and why, in a
+sentence.
 
 **Disable now** (HR) asks first — *This also turns the account flag off, so the account
 stays disabled until HR turns the flag on again* — then disables the user — for a
@@ -482,8 +502,11 @@ for a user HR linked by hand under Self-service, which is not Staff's to disable
 Owner disables that account in identity. When the user cannot be disabled
 from Staff, the tab says why, the flag already off: Staff does not manage the user, the
 user is an Owner or a system administrator (an Owner disables them on the Users page),
-or the account carries another employee number. When identity cannot be reached, the
-flag is off and the accounts worker disables the user as soon as it can. While the
+or the account carries another employee number — or, for the Entra account, Entra
+refused. When identity or Entra cannot be reached, the flag is off and the accounts
+worker disables the account as soon as it can. For a person of the Microsoft Entra ID
+kind, Disable now is offered too while their Entra account is enabled, even with the
+flag already off. While the
 worker is acting on the account, Run now and Disable now say so and change nothing:
 try again in a few minutes. After any refusal the tab reads the account again.
 
@@ -1239,12 +1262,15 @@ kind. Each field has a switch:
 - Off by default: **Work address** (the location's street, postal code, city and
   country) and **Phones** (the work phone and the mobile).
 
-The names, the employee number, the user principal name and the work country are always
-written and listed greyed. Private contact details are never written.
+The names, the employee number, the user principal name and the usage location are
+always written, as the card says; they have no switch, and each person's Account tab
+lists them greyed. Private contact details are never written.
 
 1. Turn the switches on or off.
-2. Press **Save the directory profile**.
+2. Press **Save the directory profile**. A notice says *The directory profile is
+   saved*; if somebody else saved the settings since you opened them, they are reloaded
+   instead and the notice says *Somebody else saved this; it has been reloaded*.
 
-A field you turn off is cleared in the directory at each person's next update; one you
-turn on is written then. Each person's Account tab shows the result as their
-directory profile.
+A field you turn on is written at each person's next update. A field you turn off is no
+longer written: Staff stops sending it, and the directory keeps the value it last held.
+Each person's Account tab shows the result as their directory profile.
