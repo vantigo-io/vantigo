@@ -438,31 +438,93 @@ func accountFlagChanges(current accountPerson, next parsedAccountFlag) changes {
 // the person's lock: provider_missing (400, on accountKind) when next is
 // neither local nor external nor a provider an enabled module offers, and
 // account_kind_locked (409) when current names a provider and the person's
-// link under it is enabled or disabled — a person leaves the directory by
-// Disable now or by the end of their employment, never by a change of kind
-// (D5). A link deleted, failed, blocked, preparing or absent locks nothing.
-func (s *server) judgeAccountKind(ctx context.Context, txq *store.Queries, current accountPerson, next string) error {
+// link under it names an account (kindLocked) — a person leaves the
+// directory by Disable now or by the end of their employment, never by a
+// change of kind (D5). It answers the link under current's provider, nil
+// for none.
+func (s *server) judgeAccountKind(ctx context.Context, txq *store.Queries, current accountPerson, next string) (*store.PersonProviderLinkRow, error) {
 	if !s.accountKindOffered(next) {
 		var f fieldErrors
 		providerMissing(&f, "accountKind", next)
-		return refuseInvalid(invalidAccountFlagTitle, f)
+		return nil, refuseInvalid(invalidAccountFlagTitle, f)
 	}
 	if !providerKind(current.accountKind) {
-		return nil
+		return nil, nil
 	}
 	link, err := txq.PersonProviderLink(ctx, store.PersonProviderLinkParams{PersonID: current.id, Provider: current.accountKind})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return fmt.Errorf("staff: read person %d's %s link: %w", current.id, current.accountKind, err)
+		return nil, fmt.Errorf("staff: read person %d's %s link: %w", current.id, current.accountKind, err)
 	}
-	if link.State == providerStateEnabled || link.State == providerStateDisabled {
-		return refuseConflict(conflict(codeAccountKindLocked, "Account kind locked",
+	if kindLocked(link) {
+		return nil, refuseConflict(conflict(codeAccountKindLocked, "Account kind locked",
 			"The person has an account in the external directory, so their account kind stays as it is. "+
 				"Use Disable now, or end their employment, to take them out of the directory first."))
 	}
-	return nil
+	return &link, nil
+}
+
+// kindLocked is whether a provider link holds its person's kind (review
+// M3): it names an account — whatever its state, a Prepare's answer being
+// all it takes, so a link blocked or failed on an account the directory
+// holds locks too — unless the directory deleted it or reported it gone
+// (user_gone): only then is there no account left to keep the person in.
+func kindLocked(link store.PersonProviderLinkRow) bool {
+	return link.ExternalID != nil && link.State != providerStateDeleted && deref(link.BlockedReason) != reasonUserGone
+}
+
+// announcementToWithdraw is what a change of kind away from a provider's
+// withdraws after its commit: the announcement the person's link under that
+// provider records (link, read by judgeAccountKind; nil for none), while the
+// identity link names no user — nothing arrived to fulfil it, and the
+// provider's account the arrival would come from is no longer the person's
+// (review M3). nil when there is nothing to withdraw.
+func announcementToWithdraw(ctx context.Context, txq *store.Queries, personID int64, link *store.PersonProviderLinkRow) (*withdrawal, error) {
+	if link == nil || link.AnnouncedAt == nil {
+		return nil, nil
+	}
+	identityLink, err := readAccountLink(ctx, txq, personID)
+	if err != nil {
+		return nil, err
+	}
+	if identityLink != nil && identityLink.ExternalID != nil {
+		return nil, nil
+	}
+	row, err := txq.GetPerson(ctx, personID)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read person %d: %w", personID, err)
+	}
+	return &withdrawal{linkID: link.ID, announcedAt: *link.AnnouncedAt, number: row.EmployeeNumber}, nil
+}
+
+// withdrawal is an announcement a change of kind withdraws: the provider
+// link that records it, when, and the employee number it was made for.
+type withdrawal struct {
+	linkID      int64
+	announcedAt time.Time
+	number      string
+}
+
+// withdrawAnnouncement withdraws w for actor (Unexpect, on no connection
+// under the call timeout) and, once identity has, forgets it on the link
+// under the person's lock. A failure is logged: the worker's deactivate of
+// the link withdraws it too.
+func (s *server) withdrawAnnouncement(ctx context.Context, actor contracts.Actor, personID int64, w withdrawal) {
+	log := s.logger().With(slog.Int64("person_id", personID))
+	if _, err := withCallTimeout(ctx, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, s.accountsUnexpect(ctx, actor, w.number)
+	}); err != nil {
+		log.WarnContext(ctx, "staff: withdraw the announcement of a person whose account kind changed", slog.String("error", err.Error()))
+		return
+	}
+	err := s.withPersonLock(ctx, personID, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		return txq.ClearProviderLinkAnnouncement(ctx, store.ClearProviderLinkAnnouncementParams{ID: w.linkID, AnnouncedAt: w.announcedAt})
+	})
+	if err != nil && !errors.Is(err, errPersonNotFound) {
+		log.ErrorContext(ctx, "staff: forget a withdrawn announcement on the provider link", slog.String("error", err.Error()))
+	}
 }
 
 // invalidAccountFlagTitle is the title of a refused replace of the flag.
@@ -475,10 +537,13 @@ const invalidAccountFlagTitle = "The account flag was not changed"
 // revision — no account write moves the person's — and written under the
 // person's lock; an erased person is person_erased. The account kind (Entra
 // design D5) is kept when left out; a change is judged by judgeAccountKind,
-// recorded among the changes and moves the flag's revision.
-// A replace that changes nothing writes nothing. Nothing is asked of
-// identity here but the response's mode and link, after the commit: acting
-// on the flag is the accounts worker's.
+// recorded among the changes and moves the flag's revision; while the
+// account kinds are unseeded (account_seed.go, tried first) a change of kind
+// is 503 accounts_unavailable. A replace that changes nothing writes
+// nothing. Nothing is asked of identity here but the seed's mode, the
+// response's link and — after the commit, for a kind that left a provider's
+// before anything arrived — the announcement's withdrawal: acting on the
+// flag is the accounts worker's.
 func (s *server) PutStaffPeopleByIdAccount(ctx context.Context, req gen.PutStaffPeopleByIdAccountRequestObject) (gen.PutStaffPeopleByIdAccountResponseObject, error) {
 	var body gen.StaffPersonAccountRequest
 	if req.Body != nil {
@@ -511,6 +576,11 @@ func (s *server) PutStaffPeopleByIdAccount(ctx context.Context, req gen.PutStaff
 	if err != nil {
 		return nil, err
 	}
+	seeded := true
+	if parsed.accountKind != nil {
+		seeded = s.seedAccountKinds(ctx)
+	}
+	var withdraw *withdrawal
 	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := readAccountPerson(ctx, txq, req.Id)
 		if err != nil {
@@ -525,7 +595,14 @@ func (s *server) PutStaffPeopleByIdAccount(ctx context.Context, req gen.PutStaff
 		}
 		_, kindChanged := c["accountKind"]
 		if kindChanged {
-			if err := s.judgeAccountKind(ctx, txq, current, *parsed.accountKind); err != nil {
+			if !seeded {
+				return &refusal{status: http.StatusServiceUnavailable, problem: accountKindsUnseeded()}
+			}
+			link, err := s.judgeAccountKind(ctx, txq, current, *parsed.accountKind)
+			if err != nil {
+				return err
+			}
+			if withdraw, err = announcementToWithdraw(ctx, txq, req.Id, link); err != nil {
 				return err
 			}
 			if _, err := txq.UpdatePersonAccountKind(ctx, store.UpdatePersonAccountKindParams{
@@ -554,12 +631,17 @@ func (s *server) PutStaffPeopleByIdAccount(ctx context.Context, req gen.PutStaff
 			return gen.PutStaffPeopleByIdAccount404Response{}, nil
 		case http.StatusConflict:
 			return gen.PutStaffPeopleByIdAccount409ApplicationProblemPlusJSONResponse(r.problem), nil
+		case http.StatusServiceUnavailable:
+			return gen.PutStaffPeopleByIdAccount503ApplicationProblemPlusJSONResponse(r.problem), nil
 		default:
 			return gen.PutStaffPeopleByIdAccount400ApplicationProblemPlusJSONResponse(r.problem), nil
 		}
 	}
 	if err != nil {
 		return nil, err
+	}
+	if withdraw != nil {
+		s.withdrawAnnouncement(context.WithoutCancel(ctx), contracts.Actor{UserID: who.UserID}, req.Id, *withdraw)
 	}
 	out, err := s.accountView(ctx, req.Id, caller.Today)
 	if err != nil {

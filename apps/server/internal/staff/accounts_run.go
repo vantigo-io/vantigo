@@ -159,13 +159,23 @@ func (s *server) claimPersonLink(ctx context.Context, personID int64, now time.T
 // PostStaffPeopleByIdAccountRun Run a person's account now
 // (POST /api/v1/staff/people/{id}/account/run)
 //
-// The person's preparing link written when due, then their link claimed
-// whatever its next attempt and worked with a fresh invitation on the first
-// step. A flag that is off runs nothing.
+// The account kinds seeded first, as the cycle seeds them: while they are
+// not, the person's kind is not known and nothing is run (503,
+// accountKindsUnseeded). Then the person's preparing link written when due,
+// then their link claimed whatever its next attempt and worked with a fresh
+// invitation on the first step — and a fresh pass only on the provider's
+// activation that enables the account (decideProvider). A flag that is off
+// runs nothing.
 func (s *server) PostStaffPeopleByIdAccountRun(ctx context.Context, req gen.PostStaffPeopleByIdAccountRunRequestObject) (gen.PostStaffPeopleByIdAccountRunResponseObject, error) {
 	run, err := s.callerRun(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if s.deps.Accounts == nil {
+		return gen.PostStaffPeopleByIdAccountRun503ApplicationProblemPlusJSONResponse(accountsUnavailable()), nil
+	}
+	if !s.seedAccountKinds(ctx) {
+		return gen.PostStaffPeopleByIdAccountRun503ApplicationProblemPlusJSONResponse(accountKindsUnseeded()), nil
 	}
 	run.fresh = true
 	_, mismatch, unavailable := s.runMode(ctx)
@@ -249,20 +259,25 @@ func (s *server) PostStaffPeopleByIdAccountDisable(ctx context.Context, req gen.
 	// the user in identity.
 	handLink := false
 	// external is whether the person's provider link names an account in the
-	// directory not deleted (Entra design D7): Disable now deactivates it
-	// first, then the identity link's user.
+	// directory not deleted (Entra design D7) — the link under their kind, or
+	// one they still have under a provider their kind no longer names (review
+	// M3): Disable now deactivates it first, then the identity link's user.
 	external := false
 	err = s.withPersonLock(ctx, req.Id, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := readAccountPerson(ctx, txq, req.Id)
 		if err != nil {
 			return err
 		}
-		if providerKind(current.accountKind) {
-			pl, err := txq.PersonProviderLink(ctx, store.PersonProviderLinkParams{PersonID: req.Id, Provider: current.accountKind})
+		key, err := personProviderKey(ctx, txq, req.Id, current.accountKind)
+		if err != nil {
+			return err
+		}
+		if key != "" {
+			pl, err := txq.PersonProviderLink(ctx, store.PersonProviderLinkParams{PersonID: req.Id, Provider: key})
 			switch {
 			case errors.Is(err, pgx.ErrNoRows):
 			case err != nil:
-				return fmt.Errorf("staff: read person %d's %s link: %w", req.Id, current.accountKind, err)
+				return fmt.Errorf("staff: read person %d's %s link: %w", req.Id, key, err)
 			default:
 				external = pl.ExternalID != nil && pl.State != providerStateDeleted
 			}
@@ -381,10 +396,14 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 			s.releaseAccountLease(ctx, claim.ID, lease)
 			return nil, provider.err
 		}
+		// A disable the directory did not confirm stays asked for, whatever
+		// identity answers, and the worker finishes it at its next poll.
+		r.keepDisable = provider.disablePending || provider.failed
+		r.soon = r.soon || provider.soon
 	}
 	var refusal error
 	if claim.ExternalID == nil {
-		if !provider.failed {
+		if !r.keepDisable {
 			r.disableRequested = nil
 		}
 		if err := s.writeAccountResult(ctx, run, r, lease, f, now); err != nil {
@@ -437,15 +456,17 @@ func (s *server) disableLinkedUser(ctx context.Context, run accountsRun, personI
 
 // providerDisableAnswer is Disable now's answer for the provider's part:
 // nil when its account is disabled (or there was none), provider_refused
-// with the code of a refusal, accounts_unavailable for a call that could not
-// be made — the flag is off either way, and the worker finishes the disable.
+// with the code of a refusal, accounts_unavailable for a disable the
+// directory did not confirm otherwise — it could not be reached, said it is
+// unavailable, or no module offers it. The flag is off either way, the
+// disable stays asked for, and the worker finishes it.
 func providerDisableAnswer(p providerOutcome) gen.PostStaffPeopleByIdAccountDisableResponseObject {
 	switch {
 	case p.refusal != "":
 		return gen.PostStaffPeopleByIdAccountDisable409ApplicationProblemPlusJSONResponse(providerRefused(p.refusal))
-	case p.failed:
+	case p.failed, p.disablePending:
 		problem := accountsUnavailable()
-		detail := "The identity provider could not be reached. The account flag is off; the external account is not yet disabled. Try again."
+		detail := "The external directory could not be reached. The account flag is off; the external account is not yet disabled, and the accounts worker finishes the disable when the directory answers."
 		problem.Detail = &detail
 		return gen.PostStaffPeopleByIdAccountDisable503ApplicationProblemPlusJSONResponse(problem)
 	}

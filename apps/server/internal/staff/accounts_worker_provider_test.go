@@ -3,6 +3,7 @@ package staff_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -483,9 +484,12 @@ func attentionItems(t *testing.T, c *modtest.Client) []gen.StaffStatsAttentionIt
 	return items
 }
 
-// HR's Run now on an enabled account issues a new pass (Flags.Fresh on the
-// provider's Activate); the worker's own cycle never sets it.
-func TestAccountsRun_RunNowIssuesAFreshPass(t *testing.T) {
+// HR's Run now asks the provider for a new pass only on the activation that
+// enables the account (review M2): on an account already enabled it calls
+// no Activate at all when nothing else is due, so staff:manage cannot mint a
+// pass over a colleague's working account; on a rehire's disabled account
+// the enable carries Fresh. The worker's own cycle never sets it.
+func TestAccountsRun_RunNowAsksAFreshPassOnlyWhenItEnables(t *testing.T) {
 	t.Parallel()
 	w := newProviderWorld(t)
 	p := w.entraEmployee(t, "Fersk", "2026-09-01", nil)
@@ -495,17 +499,37 @@ func TestAccountsRun_RunNowIssuesAFreshPass(t *testing.T) {
 			t.Errorf("the worker's %s set Fresh", c.Method)
 		}
 	}
+	issued := mustExtLink(t, w, p.Id).PassIssued
 	before := len(w.prov.Calls())
+	w.h.Advance(time.Minute)
+	do(t, w.hr, http.MethodPost, accountRunPath(p.Id), nil, http.StatusOK, nil)
+	if calls := providerMethods(w.prov)[before:]; slices.Contains(calls, "Activate") {
+		t.Errorf("Run now on an enabled account called %v, want no Activate", calls)
+	}
+	if l := mustExtLink(t, w, p.Id); l.PassIssued == nil || issued == nil || !l.PassIssued.Equal(*issued) {
+		t.Errorf("the provider link = %+v, want the pass issued at %v kept, no new one", l, issued)
+	}
+
+	// The rehire: the account disabled as a leaver's, then enabled by Run
+	// now with a new pass.
+	w.h.Exec(t, `UPDATE staff.employments SET end_date = '2026-09-10', end_reason = 'contract_ended' WHERE person_id = $1`, p.Id)
+	w.h.Advance(time.Hour + time.Minute)
+	w.cycle(t)
+	if acc, _ := w.prov.ByNumber(p.EmployeeNumber); acc.State != "disabled" {
+		t.Fatalf("the leaver's account = %+v, want disabled", acc)
+	}
+	w.h.Exec(t, `UPDATE staff.employments SET end_date = NULL, end_reason = NULL WHERE person_id = $1`, p.Id)
+	before = len(w.prov.Calls())
 	w.h.Advance(time.Minute)
 	do(t, w.hr, http.MethodPost, accountRunPath(p.Id), nil, http.StatusOK, nil)
 	calls := w.prov.Calls()[before:]
 	if !slices.ContainsFunc(calls, func(c modtest.ProvisionerCall) bool {
 		return c.Method == "Activate" && c.Spec != nil && c.Spec.Flags.Fresh
 	}) {
-		t.Errorf("Run now's provider calls = %+v, want a fresh Activate", calls)
+		t.Errorf("Run now on the rehire's provider calls = %+v, want a fresh Activate", calls)
 	}
-	if l := mustExtLink(t, w, p.Id); l.PassIssued == nil || !l.PassIssued.Equal(w.h.Now()) {
-		t.Errorf("the provider link = %+v, want the new pass issued now", l)
+	if l := mustExtLink(t, w, p.Id); l.State != "enabled" || l.PassIssued == nil || !l.PassIssued.Equal(w.h.Now()) {
+		t.Errorf("the provider link = %+v, want enabled with the new pass issued now", l)
 	}
 }
 
@@ -545,5 +569,212 @@ func TestAccountsWorker_TheManagerIsTheirExternalAccount(t *testing.T) {
 	}
 	if l := mustExtLink(t, w, p.Id); len(l.Codes) != 0 {
 		t.Errorf("the provider link's codes = %v, want none once the manager has an account", l.Codes)
+	}
+}
+
+// putKind changes personID's account kind to kind, the flag on, as HR.
+func putKind(t *testing.T, w providerWorld, personID int64, kind string) *modtest.Response {
+	t.Helper()
+	acc := getAccount(t, w.hr, personID)
+	return w.hr.Do(http.MethodPut, accountPath(personID), map[string]any{"provisionAccount": true, "accountKind": kind}, ifMatch(acc.Revision))
+}
+
+// The kind is locked while the person's provider link names an account the
+// directory has not deleted, whatever the link's state — a blocked one too
+// (review M3) — unless the directory reported it gone (user_gone); a link
+// deleted, or one no Prepare answered yet, locks nothing.
+func TestAccountFlag_TheKindLockReadsTheAccount(t *testing.T) {
+	t.Parallel()
+	w := newProviderWorld(t)
+	blocked := w.entraEmployee(t, "Sperret", "2026-09-01", nil)
+	gone := w.entraEmployee(t, "Borte", "2026-09-01", nil)
+	deleted := w.entraEmployee(t, "Slettet", "2026-09-01", nil)
+	unprepared := w.entraEmployee(t, "Uforberedt", "2026-09-01", nil)
+	w.cycle(t)
+	w.h.Exec(t, `UPDATE staff.identity_links SET state = 'blocked', blocked_reason = 'external_ambiguous' WHERE person_id = $1 AND provider = 'entra'`, blocked.Id)
+	w.h.Exec(t, `UPDATE staff.identity_links SET state = 'failed', blocked_reason = 'user_gone' WHERE person_id = $1 AND provider = 'entra'`, gone.Id)
+	w.h.Exec(t, `UPDATE staff.identity_links SET state = 'deleted' WHERE person_id = $1 AND provider = 'entra'`, deleted.Id)
+	w.h.Exec(t, `UPDATE staff.identity_links SET state = 'preparing', external_id = NULL, announced_at = NULL WHERE person_id = $1 AND provider = 'entra'`, unprepared.Id)
+
+	refused(t, putKind(t, w, blocked.Id, "local"), http.StatusConflict, "account_kind_locked")
+	for name, p := range map[string]gen.StaffPerson{"user_gone": gone, "deleted": deleted, "no account": unprepared} {
+		if r := putKind(t, w, p.Id, "local"); r.Status != http.StatusOK {
+			t.Errorf("%s: the change of kind = %d %s, want 200", name, r.Status, r.Body)
+		}
+	}
+}
+
+// A person whose provider link names an account though their kind no longer
+// names the provider (a kind changed while the account was on its way) has
+// that link worked for a deactivate alone (review M3): nothing else is asked
+// of the provider while they are employed, and as a leaver their external
+// account is deactivated.
+func TestAccountsWorker_AForeignProviderLinkIsDeactivatedForALeaver(t *testing.T) {
+	t.Parallel()
+	w := newProviderWorld(t)
+	p := w.entraEmployee(t, "Byttet", "2026-09-01", nil)
+	w.cycle(t)
+	if acc, _ := w.prov.ByNumber(p.EmployeeNumber); acc.State != "enabled" {
+		t.Fatalf("the external account = %+v, want enabled", acc)
+	}
+	w.h.Exec(t, `UPDATE staff.people SET account_kind = 'local' WHERE id = $1`, p.Id)
+	w.h.Exec(t, `UPDATE staff.identity_links SET last_spec_hash = NULL WHERE person_id = $1 AND provider = 'entra'`, p.Id)
+	before := len(w.prov.Calls())
+	w.nextDay()
+	w.cycle(t)
+	if got := providerMethods(w.prov)[before:]; len(got) != 0 {
+		t.Errorf("provider calls for an employed person whose kind is local = %v, want none", got)
+	}
+
+	w.h.Exec(t, `UPDATE staff.employments SET end_date = '2026-09-12', end_reason = 'contract_ended' WHERE person_id = $1`, p.Id)
+	w.nextDay()
+	w.cycle(t)
+	if got := providerMethods(w.prov)[before:]; !slices.Equal(got, []string{"Deactivate"}) {
+		t.Errorf("provider calls for the leaver = %v, want [Deactivate]", got)
+	}
+	if l := mustExtLink(t, w, p.Id); l.State != "disabled" {
+		t.Errorf("the provider link = %+v, want disabled", l)
+	}
+}
+
+// A change of kind away from entra while the provider link records an
+// announcement and the identity link names no user withdraws the
+// announcement after the commit (Unexpect), and the link forgets it.
+func TestAccountFlag_LeavingAProviderKindWithdrawsTheAnnouncement(t *testing.T) {
+	t.Parallel()
+	w := newProviderWorld(t)
+	p := w.entraEmployee(t, "Angret", "2026-09-01", nil)
+	w.cycle(t)
+	if l := mustExtLink(t, w, p.Id); l.Announced == nil {
+		t.Fatalf("the provider link = %+v, want announced", l)
+	}
+	// The link as it stands before a Prepare answered: nothing locks the kind.
+	w.h.Exec(t, `UPDATE staff.identity_links SET state = 'preparing', external_id = NULL WHERE person_id = $1 AND provider = 'entra'`, p.Id)
+	do(t, w.hr, http.MethodPut, accountPath(p.Id), map[string]any{"provisionAccount": true, "accountKind": "local"}, http.StatusOK, nil,
+		ifMatch(getAccount(t, w.hr, p.Id).Revision))
+	if got := w.fake.writeCalls(); !slices.Contains(got, "Unexpect:"+p.EmployeeNumber) {
+		t.Errorf("identity writes = %v, want the announcement withdrawn", got)
+	}
+	if _, ok := w.fake.announcements()[contracts.NormalizeEmployeeNumber(p.EmployeeNumber)]; ok {
+		t.Error("identity still holds the announcement")
+	}
+	if l := mustExtLink(t, w, p.Id); l.Announced != nil {
+		t.Errorf("the provider link = %+v, want the announcement forgotten", l)
+	}
+}
+
+// Disable now whose provider Deactivate answers that the directory is
+// unavailable answers 503 and keeps the disable asked for, the identity user
+// disabled meanwhile; the worker claims the link at its next poll, though
+// the flag is off and the person no leaver, and finishes the disable there.
+func TestAccountsRun_DisableNowKeepsADisableTheDirectoryDidNotConfirm(t *testing.T) {
+	t.Parallel()
+	w := newProviderWorld(t)
+	p := w.entraEmployee(t, "Utilgjengelig", "2026-09-01", nil)
+	w.cycle(t)
+	user := uuid.New()
+	w.fake.setUser(contracts.AccountRef{UserID: user, State: contracts.AccountStateActive, Managed: true,
+		EmployeeNumber: p.EmployeeNumber, HasCredential: true})
+	w.nextDay()
+	w.cycle(t)
+
+	w.prov.FailWith("Deactivate", contracts.ErrProviderUnavailable)
+	pr := refused(t, w.hr.Do(http.MethodPost, accountDisablePath(p.Id), nil), http.StatusServiceUnavailable, "accounts_unavailable")
+	if !strings.Contains(pr.Detail, "directory") {
+		t.Errorf("the detail = %q, want it to name the directory", pr.Detail)
+	}
+	if acc, _ := w.prov.ByNumber(p.EmployeeNumber); acc.State != "enabled" {
+		t.Fatalf("the external account = %+v, want still enabled", acc)
+	}
+	if !w.fake.staffDisabledUser(user) {
+		t.Error("the identity user is not disabled")
+	}
+	requested := func() bool {
+		return modtest.One[bool](t, w.h.Harness, `SELECT disable_requested_at IS NOT NULL FROM staff.identity_links WHERE person_id = $1 AND provider = 'identity'`, p.Id)
+	}
+	if !requested() {
+		t.Fatal("the disable asked for was cleared")
+	}
+
+	w.prov.FailWith("Deactivate", nil)
+	w.h.Advance(time.Hour + time.Minute)
+	w.cycle(t)
+	if acc, _ := w.prov.ByNumber(p.EmployeeNumber); acc.State != "disabled" {
+		t.Errorf("the external account after the next poll = %+v, want disabled", acc)
+	}
+	if requested() {
+		t.Error("the disable asked for is still there once the directory confirmed it")
+	}
+}
+
+// A leaver whose provider Deactivate fails is retried at the next poll, not
+// the next day: the identity link's claim brings the provider link back.
+func TestAccountsWorker_AFailedProviderDeactivateIsRetriedAtTheNextPoll(t *testing.T) {
+	t.Parallel()
+	w := newProviderWorld(t)
+	p := w.entraEmployee(t, "Igjen", "2026-09-01", nil)
+	w.cycle(t)
+	w.h.Exec(t, `UPDATE staff.employments SET end_date = '2026-09-12', end_reason = 'contract_ended' WHERE person_id = $1`, p.Id)
+	w.prov.FailWith("Deactivate", errors.New("the directory timed out"))
+	w.nextDay()
+	w.cycle(t)
+	if acc, _ := w.prov.ByNumber(p.EmployeeNumber); acc.State != "enabled" {
+		t.Fatalf("the external account = %+v, want still enabled", acc)
+	}
+	if l := mustLink(t, w.h, p.Id); l.NextAttempt == nil || l.NextAttempt.After(w.h.Now().Add(time.Hour)) {
+		t.Errorf("the identity link's next attempt = %v, want within the poll", l.NextAttempt)
+	}
+	w.prov.FailWith("Deactivate", nil)
+	w.h.Advance(time.Hour + time.Minute)
+	w.cycle(t)
+	if acc, _ := w.prov.ByNumber(p.EmployeeNumber); acc.State != "disabled" {
+		t.Errorf("the external account at the next poll = %+v, want disabled", acc)
+	}
+}
+
+// What a provider answers is bounded before it is stored (review L2): a
+// reported code outside the allowed form is dropped and logged — the code
+// itself never — a status reason likewise is neither recorded nor answered
+// by GET /meta, a user principal name past an address's length is not
+// recorded, and an address that fails Staff's email rule is neither
+// recorded on the link nor given to the person.
+func TestAccountsWorker_TheProvidersStringsAreBounded(t *testing.T) {
+	t.Parallel()
+	w := newProviderWorld(t)
+	p := createPerson(t, w.hr, newPerson("Uten", "Adresse"))
+	seedEmploymentDated(t, w.h, p.Id, 0, "2026-09-01", nil)
+	flagOn(t, w.hr, p.Id)
+	w.h.Exec(t, `UPDATE staff.people SET account_kind = 'entra' WHERE id = $1`, p.Id)
+	w.prov.SetAccount(p.EmployeeNumber, contracts.ExternalAccount{
+		UserPrincipalName: strings.Repeat("u", 250) + "@fake.example", Email: "Kari <kari@leak.example>", State: "disabled",
+		Reported: []string{"licence_unavailable:EMS", "leak@leak.example", "Upper_Case", "hire_date_not_written"},
+	})
+	w.prov.SetStatus(contracts.ProviderConnected, "token of admin@leak.example expiring")
+	w.cycle(t)
+
+	l := mustExtLink(t, w, p.Id)
+	if !slices.Equal(l.Codes, []string{"licence_unavailable:EMS", "hire_date_not_written"}) {
+		t.Errorf("the provider link's codes = %v, want the two of the allowed form", l.Codes)
+	}
+	if l.UPN != "" || l.Email != "" {
+		t.Errorf("the provider link's UPN %q and address %q, want neither recorded", l.UPN, l.Email)
+	}
+	if got := modtest.One[string](t, w.h.Harness, `SELECT coalesce(work_email, '') FROM staff.people WHERE id = $1`, p.Id); got != "" {
+		t.Errorf("the person's work email = %q, want none", got)
+	}
+	if got := modtest.One[string](t, w.h.Harness, `SELECT coalesce(provider_status->'entra'->>'reason', '') FROM staff.settings`); got != "" {
+		t.Errorf("the recorded reason = %q, want none", got)
+	}
+	var meta gen.StaffMeta
+	do(t, w.hr, http.MethodGet, metaPath, nil, http.StatusOK, &meta)
+	if meta.Providers == nil || len(*meta.Providers) != 1 || (*meta.Providers)[0].Reason != nil {
+		t.Errorf("GET /meta's providers = %+v, want entra with no reason", meta.Providers)
+	}
+	logs := w.h.Logs()
+	if !strings.Contains(logs, "staff: a provider reported a code outside the allowed form") {
+		t.Error("the dropped code was not logged")
+	}
+	if strings.Contains(logs, "leak.example") {
+		t.Error("a log line carries what the provider answered")
 	}
 }

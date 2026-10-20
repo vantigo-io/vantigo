@@ -14040,6 +14040,20 @@ func (response PutStaffPeopleByIdAccount409ApplicationProblemPlusJSONResponse) V
 	return err
 }
 
+type PutStaffPeopleByIdAccount503ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdAccount503ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostStaffPeopleByIdAccountDisableRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -16527,6 +16541,20 @@ func (response PutStaffSettings409ApplicationProblemPlusJSONResponse) VisitPutSt
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffSettings503ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffSettings503ApplicationProblemPlusJSONResponse) VisitPutStaffSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }

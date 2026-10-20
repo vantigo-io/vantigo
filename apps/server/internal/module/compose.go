@@ -750,7 +750,8 @@ func withCalendarSources(deps Deps, mods []Module) Deps {
 // Staff never calls a nil one. It refuses a Key two providers claim, naming
 // the key and both — a preset provider as "Deps.IdentityProvisioners",
 // whose keys are claimed first: Staff writes one provider's links under each
-// key.
+// key. It refuses a reserved Key too (reservedProviderKey), naming the
+// provider's module.
 func withIdentityProvisioners(deps Deps, mods []Module) (Deps, error) {
 	var providers []contracts.IdentityProvisioner
 	claimedBy := make(map[string]string)
@@ -759,6 +760,9 @@ func withIdentityProvisioners(deps Deps, mods []Module) (Deps, error) {
 			continue
 		}
 		key := preset.Key()
+		if reservedProviderKey(key) {
+			return deps, fmt.Errorf("module: Deps.IdentityProvisioners provides an identity provider under the reserved key %q", key)
+		}
 		if _, ok := claimedBy[key]; ok {
 			return deps, fmt.Errorf("module: two modules both provide the identity provider %q: Deps.IdentityProvisioners, Deps.IdentityProvisioners", key)
 		}
@@ -774,6 +778,9 @@ func withIdentityProvisioners(deps Deps, mods []Module) (Deps, error) {
 			continue
 		}
 		key := provider.Key()
+		if reservedProviderKey(key) {
+			return deps, fmt.Errorf("module: %s provides an identity provider under the reserved key %q", mod.Name, key)
+		}
 		if other, ok := claimedBy[key]; ok {
 			return deps, fmt.Errorf("module: two modules both provide the identity provider %q: %s, %s", key, other, mod.Name)
 		}
@@ -782,4 +789,18 @@ func withIdentityProvisioners(deps Deps, mods []Module) (Deps, error) {
 	}
 	deps.IdentityProvisioners = providers
 	return deps, nil
+}
+
+// reservedProviderKey is whether key is one no identity provider may answer:
+// none at all, "identity" — the provider Staff's own identity link names in
+// staff.identity_links — and the two account kinds that name no provider,
+// local and external (Entra design D5). A provider under any of them would
+// have its links taken for the identity link, or a person's kind for a
+// provider's.
+func reservedProviderKey(key string) bool {
+	switch key {
+	case "", "identity", contracts.AccountKindLocal, contracts.AccountKindExternal:
+		return true
+	}
+	return false
 }

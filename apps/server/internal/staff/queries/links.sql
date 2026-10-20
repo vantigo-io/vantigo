@@ -95,6 +95,23 @@ SELECT id, external_id, state, managed, blocked_reason, last_error, attempts, ne
 FROM staff.identity_links
 WHERE person_id = @person_id AND provider = @provider;
 
+-- name: PersonProviderLinkKeys :many
+-- PersonProviderLinkKeys is the providers a person has a link under, the
+-- identity link aside: those not deleted first, then by age. A person whose
+-- kind no longer names a provider can still have one (review M3), which the
+-- worker deactivates for a leaver or a disable asked for.
+SELECT provider FROM staff.identity_links
+WHERE person_id = @person_id AND provider <> 'identity'
+ORDER BY (state = 'deleted'), id;
+
+-- name: ClearProviderLinkAnnouncement :exec
+-- ClearProviderLinkAnnouncement forgets that the account a provider link
+-- names was announced, once the announcement was withdrawn (Unexpect) on a
+-- change of the person's kind — only when the link still records the one
+-- withdrawn.
+UPDATE staff.identity_links SET announced_at = NULL
+WHERE id = @id AND announced_at = @announced_at::timestamptz;
+
 -- name: InsertPreparingProviderLink :exec
 -- InsertPreparingProviderLink writes the worker's preparing link under
 -- @provider — no external account yet, managed — under the person's lock,

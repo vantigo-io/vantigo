@@ -336,3 +336,14 @@ func TestWorkers_PanicsOnAnIdentityProviderKeyClaimedTwice(t *testing.T) {
 	}()
 	Workers(Deps{}, Module{Name: "alpha", IdentityProvisioner: provider}, Module{Name: "beta", IdentityProvisioner: provider})
 }
+
+// Workers panics on a provider under a reserved key, as Compose refuses it.
+func TestWorkers_PanicsOnAReservedIdentityProviderKey(t *testing.T) {
+	provider := func(Deps) contracts.IdentityProvisioner { return &fakeIdentityProvisioner{key: "identity"} }
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "alpha") || !strings.Contains(fmt.Sprint(r), "reserved") {
+			t.Errorf("recover() = %v, want a panic naming alpha and the reserved key", r)
+		}
+	}()
+	Workers(Deps{}, Module{Name: "alpha", IdentityProvisioner: provider})
+}

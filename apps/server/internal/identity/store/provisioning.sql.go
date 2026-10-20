@@ -492,7 +492,7 @@ func (q *Queries) LockUserInvitations(ctx context.Context, userID *uuid.UUID) er
 	return err
 }
 
-const revokeUserInvitations = `-- name: RevokeUserInvitations :exec
+const revokeUserInvitations = `-- name: RevokeUserInvitations :execrows
 UPDATE identity.invitations
 SET revoked_at = $1::timestamptz, revoked_reason = $2::text
 WHERE user_id = $3 AND accepted_at IS NULL AND revoked_at IS NULL
@@ -505,10 +505,14 @@ type RevokeUserInvitationsParams struct {
 }
 
 // RevokeUserInvitations revokes every invitation naming the user that could
-// still be accepted, recording why (deactivated, email_changed).
-func (q *Queries) RevokeUserInvitations(ctx context.Context, arg RevokeUserInvitationsParams) error {
-	_, err := q.db.Exec(ctx, revokeUserInvitations, arg.Now, arg.RevokedReason, arg.UserID)
-	return err
+// still be accepted, recording why (deactivated, email_changed, replaced),
+// and answers how many it revoked.
+func (q *Queries) RevokeUserInvitations(ctx context.Context, arg RevokeUserInvitationsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeUserInvitations, arg.Now, arg.RevokedReason, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setInvitationsSince = `-- name: SetInvitationsSince :exec

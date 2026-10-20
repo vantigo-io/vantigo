@@ -116,11 +116,14 @@ func validExpected(s contracts.ExpectedAccount) (cleanExpected, error) {
 
 // expectedAudit is account.expected's after: the number, the names of the
 // match keys the announcement carries beside it (never their values: a
-// user principal name is an address), and the pending user it replaces.
+// user principal name is an address), the pending user it replaces, and
+// how many of that user's open invitations it revoked (only beside a user
+// replaced).
 type expectedAudit struct {
-	EmployeeNumber string     `json:"employeeNumber"`
-	Keys           []string   `json:"keys"`
-	ReplaceUserID  *uuid.UUID `json:"replaceUserId"`
+	EmployeeNumber      string     `json:"employeeNumber"`
+	Keys                []string   `json:"keys"`
+	ReplaceUserID       *uuid.UUID `json:"replaceUserId"`
+	ReplacedInvitations *int64     `json:"replacedInvitations,omitempty"`
 }
 
 // unexpectedAudit is account.unexpected's before: the number withdrawn.
@@ -152,7 +155,10 @@ type adoptedAudit struct {
 //
 // A ReplaceUserID naming anyone but such a holder — a user not managed, not
 // pending, with a credential, or holding another number or none — is
-// errInvalidSpec. Issuer "" is filled from the single sign-on row while OIDC
+// errInvalidSpec. An announcement recording a ReplaceUserID revokes that
+// user's open invitations replaced in the same transaction: the person
+// cannot accept a local invitation while the provider's account is on its
+// way. Issuer "" is filled from the single sign-on row while OIDC
 // is on: the configured authority normalised, the issuer every OIDC link and
 // so the oid match compares by (plan reading 8). The same announcement again
 // changes nothing; any change replaces it whole and is audited
@@ -222,6 +228,14 @@ func (p *provisioning) Expect(ctx context.Context, actor contracts.Actor, spec c
 		}); err != nil {
 			return err
 		}
+		var revoked *int64
+		if s.replace != nil {
+			n, err := q.RevokeUserInvitations(ctx, store.RevokeUserInvitationsParams{UserID: s.replace, Now: now, RevokedReason: revokedReplaced})
+			if err != nil {
+				return err
+			}
+			revoked = &n
+		}
 		keys := []string{}
 		if s.object != nil {
 			keys = append(keys, "objectId")
@@ -231,7 +245,7 @@ func (p *provisioning) Expect(ctx context.Context, actor contracts.Actor, spec c
 		}
 		return writeAudit(ctx, q, nil, now, auditEvent{
 			actor: by, system: system, targetUser: s.replace, action: "account.expected",
-			after: expectedAudit{EmployeeNumber: s.number, Keys: keys, ReplaceUserID: s.replace},
+			after: expectedAudit{EmployeeNumber: s.number, Keys: keys, ReplaceUserID: s.replace, ReplacedInvitations: revoked},
 		})
 	})
 }
@@ -365,7 +379,7 @@ func adoptable(ctx context.Context, q *store.Queries, e store.IdentityExpectedAc
 // replace, on q: their acceptable invitations revoked replaced, no longer
 // pending, no invitation spell, and the address email the arrival brought.
 func completeExpectedUser(ctx context.Context, q *store.Queries, u provisionedUser, email string, now time.Time) error {
-	if err := q.RevokeUserInvitations(ctx, store.RevokeUserInvitationsParams{UserID: &u.ID, Now: now, RevokedReason: revokedReplaced}); err != nil {
+	if _, err := q.RevokeUserInvitations(ctx, store.RevokeUserInvitationsParams{UserID: &u.ID, Now: now, RevokedReason: revokedReplaced}); err != nil {
 		return err
 	}
 	return q.CompleteExpectedUser(ctx, store.CompleteExpectedUserParams{

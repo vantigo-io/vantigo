@@ -489,6 +489,11 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 		Code             *string        `json:"code"`
 		Invitation       map[string]any `json:"invitation"`
 		FlagOffMeanwhile bool           `json:"flagOffMeanwhile"`
+		// A provider link's event (Entra design D7): the codes the provider
+		// reported after the step; and pass_revealed's provider, whose pass
+		// HR was shown — the links group's too.
+		Codes    []string `json:"codes"`
+		Provider *string  `json:"provider"`
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal(stored, &payload); err != nil {
@@ -513,6 +518,16 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 				if payload.FlagOffMeanwhile {
 					out["flagOffMeanwhile"] = true
 				}
+				if len(payload.Codes) > 0 {
+					out["codes"] = payload.Codes
+				}
+			}
+			return out
+		}
+		if payload.Provider != nil {
+			// pass_revealed: the provider alone, the links group's.
+			if a.reads(groupLinks) {
+				out["provider"] = *payload.Provider
 			}
 			return out
 		}

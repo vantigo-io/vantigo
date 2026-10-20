@@ -35,6 +35,25 @@ func (q *Queries) ClearPassIssued(ctx context.Context, arg ClearPassIssuedParams
 	return result.RowsAffected(), nil
 }
 
+const clearProviderLinkAnnouncement = `-- name: ClearProviderLinkAnnouncement :exec
+UPDATE staff.identity_links SET announced_at = NULL
+WHERE id = $1 AND announced_at = $2::timestamptz
+`
+
+type ClearProviderLinkAnnouncementParams struct {
+	ID          int64
+	AnnouncedAt time.Time
+}
+
+// ClearProviderLinkAnnouncement forgets that the account a provider link
+// names was announced, once the announcement was withdrawn (Unexpect) on a
+// change of the person's kind — only when the link still records the one
+// withdrawn.
+func (q *Queries) ClearProviderLinkAnnouncement(ctx context.Context, arg ClearProviderLinkAnnouncementParams) error {
+	_, err := q.db.Exec(ctx, clearProviderLinkAnnouncement, arg.ID, arg.AnnouncedAt)
+	return err
+}
+
 const deletePersonLink = `-- name: DeletePersonLink :exec
 DELETE FROM staff.identity_links WHERE person_id = $1 AND provider = 'identity'
 `
@@ -282,6 +301,36 @@ func (q *Queries) PersonProviderLink(ctx context.Context, arg PersonProviderLink
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const personProviderLinkKeys = `-- name: PersonProviderLinkKeys :many
+SELECT provider FROM staff.identity_links
+WHERE person_id = $1 AND provider <> 'identity'
+ORDER BY (state = 'deleted'), id
+`
+
+// PersonProviderLinkKeys is the providers a person has a link under, the
+// identity link aside: those not deleted first, then by age. A person whose
+// kind no longer names a provider can still have one (review M3), which the
+// worker deactivates for a leaver or a disable asked for.
+func (q *Queries) PersonProviderLinkKeys(ctx context.Context, personID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, personProviderLinkKeys, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var provider string
+		if err := rows.Scan(&provider); err != nil {
+			return nil, err
+		}
+		items = append(items, provider)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const providerLinksOfPeople = `-- name: ProviderLinksOfPeople :many

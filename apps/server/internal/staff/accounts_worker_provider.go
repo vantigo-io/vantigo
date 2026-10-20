@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,11 +35,15 @@ import (
 // holds every step but a deactivate, on both links.
 
 // providerFacts is what a claim reads of a person's provider link in its
-// snapshot: the provider's key (the person's kind), the link (nil: none),
-// the external spec, the settings' delete_external_after_days and the
-// person's legal hold.
+// snapshot: the provider's key (the person's kind, or the provider of a link
+// they still have: personProviderKey), the link (nil: none), the external
+// spec, the settings' delete_external_after_days and the person's legal
+// hold. foreign is a link under a provider the person's kind no longer
+// names (review M3): only a deactivate runs on it — a leaver's, or the one
+// Disable now asked for — and the identity link never waits on it.
 type providerFacts struct {
 	key             string
+	foreign         bool
 	link            *store.PersonProviderLinkRow
 	spec            externalSpecFacts
 	deleteAfterDays *int
@@ -50,10 +56,29 @@ func providerKind(kind string) bool {
 	return linkOnly(kind) && kind != contracts.AccountKindExternal
 }
 
+// personProviderKey is the provider whose link the worker works for the
+// person of kind, on q: the kind itself when it names a provider, else the
+// provider of a link the person still has under one — their kind changed
+// while the provider's account was on its way, say (review M3) — and ""
+// when neither.
+func personProviderKey(ctx context.Context, q *store.Queries, personID int64, kind string) (string, error) {
+	if providerKind(kind) {
+		return kind, nil
+	}
+	keys, err := q.PersonProviderLinkKeys(ctx, personID)
+	if err != nil {
+		return "", fmt.Errorf("staff: read person %d's provider links: %w", personID, err)
+	}
+	if len(keys) == 0 {
+		return "", nil
+	}
+	return keys[0], nil
+}
+
 // readProviderFacts reads the provider column's facts on q, the claim's
-// snapshot.
-func readProviderFacts(ctx context.Context, q *store.Queries, set store.StaffSetting, row store.GetPersonRow, key string, today time.Time) (*providerFacts, error) {
-	pf := &providerFacts{key: key, legalHold: row.LegalHold}
+// snapshot, for the link under key of a person of kind.
+func readProviderFacts(ctx context.Context, q *store.Queries, set store.StaffSetting, row store.GetPersonRow, key, kind string, today time.Time) (*providerFacts, error) {
+	pf := &providerFacts{key: key, foreign: key != kind, legalHold: row.LegalHold}
 	if set.DeleteExternalAfterDays != nil {
 		days := int(*set.DeleteExternalAfterDays)
 		pf.deleteAfterDays = &days
@@ -105,6 +130,7 @@ func (s *server) providerStatuses(ctx context.Context, extra ...string) map[stri
 			info = contracts.ProviderInfo{Key: key, Status: contracts.ProviderFailing, Reason: providerReasonUnreachable}
 		}
 		info.Key = key
+		info.Reason = s.providerReason(ctx, key, info.Reason)
 		out[key] = info
 	}
 	for _, key := range extra {
@@ -116,6 +142,16 @@ func (s *server) providerStatuses(ctx context.Context, extra ...string) map[stri
 		s.logger().ErrorContext(ctx, "staff: record the identity providers' status", "error", err.Error())
 	}
 	return out
+}
+
+// providerReason is a provider's status reason as Staff records and answers
+// it: "" for one outside providerCodePattern's form (review L2), logged.
+func (s *server) providerReason(ctx context.Context, key, reason string) string {
+	if reason == "" || providerCode(reason) {
+		return reason
+	}
+	s.logger().WarnContext(ctx, "staff: a provider reported a code outside the allowed form", "provider", key, "fields", []string{"reason"})
+	return ""
 }
 
 // recordProviderStatuses writes each provider's status on the settings row
@@ -190,7 +226,10 @@ type providerResult struct {
 	// madeEmail is the address the provider answered, which the person is
 	// given when they have no work email.
 	madeEmail string
-	events    []accountEvent
+	// dropped is what the provider answered outside the allowed form and so
+	// was not recorded (review L2): the fields' names, logged once per link.
+	dropped []string
+	events  []accountEvent
 }
 
 func newProviderResult(pf *providerFacts) *providerResult {
@@ -237,14 +276,24 @@ func (r *providerResult) account(acc contracts.ExternalAccount, fresh bool, mana
 	case providerStateEnabled, providerStateDisabled, providerStateDeleted:
 		r.state = acc.State
 	}
-	if acc.UserPrincipalName != "" {
-		upn := acc.UserPrincipalName
-		r.upn = &upn
+	// The provider's strings are bounded before they are stored (review
+	// L2): a UPN past an address's length is not recorded, and the address
+	// it made only when it passes Staff's own email rule — anything else is
+	// neither written to the link nor given to the person.
+	if upn := strings.TrimSpace(acc.UserPrincipalName); upn != "" {
+		if utf8.RuneCountInString(upn) <= emailMaxLength {
+			r.upn = &upn
+		} else {
+			r.dropped = append(r.dropped, "userPrincipalName")
+		}
 	}
 	if acc.Email != "" {
-		email := acc.Email
-		r.email = &email
-		r.madeEmail = email
+		if email, msg := parseEmail("The address the provider made", &acc.Email); msg == "" && email != nil {
+			r.email = email
+			r.madeEmail = *email
+		} else {
+			r.dropped = append(r.dropped, "email")
+		}
 	}
 	switch {
 	case !acc.HasPass:
@@ -252,23 +301,47 @@ func (r *providerResult) account(acc contracts.ExternalAccount, fresh bool, mana
 	case r.passIssuedAt == nil || fresh:
 		r.passIssuedAt = &now
 	}
-	r.codes = reportedCodes(acc.Reported, managerMissing)
+	r.setCodes(acc.Reported, managerMissing)
+}
+
+// providerCodePattern is the form a provider's code — a reported fact, a
+// status's reason — must have to be stored or answered (review L2): a
+// lower-case name, and for a fact that names a thing (a licence's SKU) one
+// part after a colon. Nothing of that form carries an address.
+var providerCodePattern = regexp.MustCompile(`^[a-z_]{1,40}(:[A-Za-z0-9_.-]{1,64})?$`)
+
+// providerCode is whether c has providerCodePattern's form.
+func providerCode(c string) bool { return providerCodePattern.MatchString(c) }
+
+// setCodes records reported as the link's reported_codes (reportedCodes),
+// noting a code it dropped.
+func (r *providerResult) setCodes(reported []string, managerMissing bool) {
+	codes, dropped := reportedCodes(reported, managerMissing)
+	r.codes = codes
+	if dropped {
+		r.dropped = append(r.dropped, "reportedCodes")
+	}
 }
 
 // reportedCodes is the link's reported_codes: the provider's facts as it
-// reported them, and manager_not_in_entra once when the manager has no
-// external account, without repeats.
-func reportedCodes(reported []string, managerMissing bool) []string {
-	codes := make([]string, 0, len(reported)+1)
+// reported them, those of providerCodePattern's form alone (dropped: one
+// was not), and manager_not_in_entra once when the manager has no external
+// account, without repeats.
+func reportedCodes(reported []string, managerMissing bool) (codes []string, dropped bool) {
+	codes = make([]string, 0, len(reported)+1)
 	for _, c := range reported {
-		if c != "" && !slices.Contains(codes, c) {
+		switch {
+		case c == "" || slices.Contains(codes, c):
+		case !providerCode(c):
+			dropped = true
+		default:
 			codes = append(codes, c)
 		}
 	}
 	if managerMissing && !slices.Contains(codes, codeManagerNotInEntra) {
 		codes = append(codes, codeManagerNotInEntra)
 	}
-	return codes
+	return codes, dropped
 }
 
 // providerCallCode maps a provider call's error to the code it is recorded
@@ -325,12 +398,20 @@ func providerReportEvent(state string) string {
 // providerOutcome is how the provider column ended for the identity column:
 // whether the provider is not connected (the identity link then runs nothing
 // but a deactivate), whether a call could not be made, and the code of a
-// provider's refusal.
+// provider's refusal. soon is a provider link to work again at the next
+// poll (its deactivate or delete failed, say): the identity link's claim is
+// what brings it back, so the identity link is claimed then too — the
+// provider link's own next attempt drives nothing. disablePending is a
+// disable asked for (Disable now) the directory did not confirm — it could
+// not be reached, it refused, or no module offers it — which the identity
+// link's disable_requested_at keeps for the worker to finish.
 type providerOutcome struct {
-	unavailable bool
-	failed      bool
-	refusal     string
-	err         error
+	unavailable    bool
+	failed         bool
+	refusal        string
+	err            error
+	soon           bool
+	disablePending bool
 }
 
 // providerIdentity is what the provider column knows of the identity link:
@@ -373,15 +454,19 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 	if !ok || p == nil {
 		info = contracts.ProviderInfo{Key: pf.key, Status: contracts.ProviderUnconfigured, Reason: providerReasonMissing}
 	}
-	out := providerOutcome{unavailable: info.Status != contracts.ProviderConnected}
+	// A foreign link's provider holds nothing of the identity link's.
+	out := providerOutcome{unavailable: info.Status != contracts.ProviderConnected && !pf.foreign}
 	r := newProviderResult(pf)
 	spec := pf.spec.spec
 
 	if p == nil {
 		// No enabled module offers the provider: nothing can be read or
 		// called, and the link says so.
-		if pf.link != nil && f.decide.Flag && !f.decide.Erased {
+		if pf.link != nil && f.decide.Flag && !f.decide.Erased && !pf.foreign {
 			r.reported(accountStep{Kind: accountStepReport, Reason: reasonProviderUnavailable})
+		}
+		if l := pf.link; disable && l != nil && l.ExternalID != nil && l.State != providerStateDisabled && l.State != providerStateDeleted {
+			out.disablePending, out.soon = true, true
 		}
 		out.err = s.writeProviderResult(ctx, run, claim, lease, r, f, now)
 		return out
@@ -394,7 +479,7 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 		})
 		if err != nil {
 			if code, _, answer := providerCallCode(err); answer && code == reasonProviderUnavailable {
-				out.unavailable = true
+				out.unavailable = !pf.foreign
 			} else {
 				log.WarnContext(ctx, "staff: read an external account", "error", err.Error())
 			}
@@ -402,16 +487,16 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 			if deactivationDue(f) || disable {
 				r.soon = true
 			}
-			out.failed = r.failed
+			out.failed, out.soon, out.disablePending = r.failed, r.soon, disable
 			out.err = s.writeProviderResult(ctx, run, claim, lease, r, f, now)
 			return out
 		}
 		acc = got
 		if acc != nil {
-			r.codes = reportedCodes(acc.Reported, pf.spec.managerMissing)
+			r.setCodes(acc.Reported, pf.spec.managerMissing)
 		}
 	} else if pf.link != nil {
-		r.codes = reportedCodes(pf.link.ReportedCodes, pf.spec.managerMissing)
+		r.setCodes(pf.link.ReportedCodes, pf.spec.managerMissing)
 	}
 
 	linkFacts := func() *providerLinkFacts {
@@ -431,6 +516,14 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 	}
 	for calls := 0; ; calls++ {
 		step := decideProvider(in)
+		if (run.unseeded || pf.foreign) && step.Kind != accountStepDeactivate && (calls == 0 || step.Kind != accountStepNone) {
+			// The kinds unseeded (account_seed.go), or a link the person's
+			// kind no longer names: nothing but a deactivate, and what follows
+			// one, is judged; the link as it was — worked again soon while
+			// unseeded.
+			r.soon = run.unseeded
+			break
+		}
 		if !step.isCall() && step.Kind != accountStepAnnounce && step.Kind != accountStepDelete {
 			r.reported(step)
 			break
@@ -441,6 +534,7 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 		}
 		if !s.renewAccountLease(ctx, claim.ID, lease) {
 			log.InfoContext(ctx, "staff: an account claim's lease lapsed; the provider chain stops", "step", string(step.Kind))
+			out.disablePending = disable
 			return out
 		}
 		if step.Kind == accountStepPrepare && r.id == 0 {
@@ -469,22 +563,37 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 				out.refusal = code
 			}
 			if code == reasonProviderUnavailable {
-				out.unavailable = true
+				out.unavailable = !pf.foreign
 			}
 			r.failCall(step.Kind, err)
-			if step.Kind == accountStepDeactivate {
+			// A deactivate that did not happen is tried at the next poll, as
+			// identity's is — a leaver loses access as soon as the directory
+			// answers — and so is a delete that could not be made.
+			if step.Kind == accountStepDeactivate || (step.Kind == accountStepDelete && !answer) {
 				r.soon = true
 			}
+			out.disablePending = disable
 			break
 		}
 		r.succeeded(step, got, pf.spec.managerMissing, spec, now)
 		if got != nil {
 			acc = got
 		}
-		in.Link, in.Account, in.Fresh = linkFacts(), acc, false
+		in.Link, in.Account = linkFacts(), acc
+		if step.Kind == accountStepActivate {
+			// Run now's new pass is asked once, on the enable it rides with —
+			// which may follow the announcement of an account Run now finds
+			// disabled.
+			in.Fresh = false
+		}
 		in.SpecChanged = !slices.Equal(externalSpecHash(spec), r.specHash)
 	}
-	out.failed = r.failed
+	out.failed, out.soon = r.failed, out.soon || r.soon
+	if len(r.dropped) > 0 {
+		// Names only: what was dropped is never logged.
+		slices.Sort(r.dropped)
+		log.WarnContext(ctx, "staff: a provider reported a code outside the allowed form", "fields", slices.Compact(r.dropped))
+	}
 	if err := s.writeProviderResult(ctx, run, claim, lease, r, f, now); err != nil {
 		out.err = err
 	}

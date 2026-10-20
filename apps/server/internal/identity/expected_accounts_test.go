@@ -192,6 +192,17 @@ func TestExpectedAccounts_SCIMCompletesTheUserToReplace(t *testing.T) {
 	expected := announced("R-1", "kari@tenant.example", uuid.NewString())
 	expected.ReplaceUserID = &pending.UserID
 	mustExpect(t, p, expected)
+	// The announcement revoked the local invitation at once (review L5): the
+	// person cannot accept it while the provider's account is on its way.
+	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE user_id = $1 AND revoked_at IS NULL`, pending.UserID); n != 0 {
+		t.Errorf("%d open invitations after the announcement, want none", n)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE user_id = $1 AND revoked_reason = 'replaced'`, pending.UserID); n != 1 {
+		t.Error("the announcement did not revoke the open invitation replaced")
+	}
+	if events := h.auditEvents(t, "account.expected"); len(events) != 1 || !strings.Contains(events[0].After, `"replacedInvitations":1`) {
+		t.Errorf("account.expected = %+v, want one naming one invitation revoked", events)
+	}
 	users := h.count(t, `SELECT count(*) FROM identity.users`)
 
 	user := scimOf[scimUser](t, "the arrival", h.scim(t, scimToken).do(http.MethodPost, "/Users", scimArrival("kari@tenant.example", "kari", nil)), http.StatusCreated)

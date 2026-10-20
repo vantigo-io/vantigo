@@ -179,3 +179,64 @@ func TestIdentityExpectedAccounts_DownDropsBoth(t *testing.T) {
 		t.Errorf("identity.users.provisioning_roles_at after the down = %v, want it gone", got)
 	}
 }
+
+// TestIdentityExpectedAccounts_BackfillsTheRolesGiven proves the up path
+// records the provisioning roles as given for every user Staff manages who
+// is not pending — the previous release's Activate, or an Owner's adoption,
+// gave them — and for no one else: a pending managed user and an unmanaged
+// user keep null, so the once-only grant is still theirs to receive.
+func TestIdentityExpectedAccounts_BackfillsTheRolesGiven(t *testing.T) {
+	url := testdb.URL(t)
+	migrateTo(t, url, identityExpectedAccountsVersion-1)
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	insert := func(email string, managed, pending bool) uuid.UUID {
+		t.Helper()
+		id := uuid.New()
+		var managedBy *string
+		if managed {
+			staff := "staff"
+			managedBy = &staff
+		}
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO identity.users (id, email, normalized_email, display_name, managed_by, pending_since, version, created_at, updated_at)
+			VALUES ($1, $2, upper($2), 'Kari Nordmann', $3, CASE WHEN $4::boolean THEN now() END, gen_random_uuid(), now(), now())`,
+			id, email, managedBy, pending); err != nil {
+			t.Fatalf("insert %s: %v", email, err)
+		}
+		return id
+	}
+	active := insert("active@example.test", true, false)
+	pending := insert("pending@example.test", true, true)
+	plain := insert("plain@example.test", false, false)
+	pool.Close()
+
+	migrateTo(t, url, identityExpectedAccountsVersion)
+
+	pool, err = db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("reopen pool: %v", err)
+	}
+	defer pool.Close()
+	for _, c := range []struct {
+		name string
+		id   uuid.UUID
+		want bool
+	}{
+		{"a managed user who is not pending", active, true},
+		{"a managed pending user", pending, false},
+		{"an unmanaged user", plain, false},
+	} {
+		var given bool
+		if err := pool.QueryRow(ctx, `SELECT provisioning_roles_at IS NOT NULL FROM identity.users WHERE id = $1`, c.id).Scan(&given); err != nil {
+			t.Fatalf("read %s: %v", c.name, err)
+		}
+		if given != c.want {
+			t.Errorf("%s: provisioning_roles_at set = %v, want %v", c.name, given, c.want)
+		}
+	}
+}
