@@ -113,7 +113,7 @@ func pickCredential(ctx context.Context, q *store.Queries, c *graphClient, fresh
 					return graphCredential{}, fmt.Errorf("entra: mark the secret used: %w", err)
 				}
 			}
-			cred.roles = tok.roles
+			cred.roles, cred.oid = tok.roles, tok.oid
 			return cred, nil
 		case errors.Is(err, errCredentialInvalid):
 			if err := q.MarkCredentialFailed(ctx, store.MarkCredentialFailedParams{Now: c.now(), ID: row.ID}); err != nil {

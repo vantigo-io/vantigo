@@ -325,8 +325,10 @@ func (p *provisioner) recordCreated(ctx context.Context, s session, id uuid.UUID
 }
 
 // Update writes the properties of the spec that differ and the manager —
-// never the employee id or the UPN (contracts.IdentityProvisioner.Update).
-// An unconfirmed adoption is ErrExternalUnconfirmed, nothing written.
+// never the employee id or the UPN (contracts.IdentityProvisioner.Update) —
+// and, on an enabled user, brings its direct licences to the spec's
+// (reconcileLicences, design D10). An unconfirmed adoption is
+// ErrExternalUnconfirmed, nothing written.
 func (p *provisioner) Update(ctx context.Context, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
 	if !actor.Valid() {
 		return contracts.ExternalAccount{}, contracts.ErrInvalidActor
@@ -347,7 +349,18 @@ func (p *provisioner) Update(ctx context.Context, actor contracts.Actor, externa
 	} else if err != nil {
 		return contracts.ExternalAccount{}, err
 	}
-	reported = mergeCodes(row.Reported, updateJudges, reported)
+	codes := changedCodes(changed)
+	judges := updateJudges
+	if u.AccountEnabled {
+		licences, licenceCodes, err := p.reconcileLicences(ctx, s, id, u, spec.Licences)
+		if err != nil {
+			return contracts.ExternalAccount{}, err
+		}
+		reported = append(reported, licences...)
+		codes = append(codes, licenceCodes...)
+		judges = func(c string) bool { return updateJudges(c) || licenceJudges(c) }
+	}
+	reported = mergeCodes(row.Reported, judges, reported)
 	state := row.State
 	if state != stateDeleted {
 		state = stateDisabled
@@ -355,7 +368,7 @@ func (p *provisioner) Update(ctx context.Context, actor contracts.Actor, externa
 			state = stateEnabled
 		}
 	}
-	row, err = p.settle(ctx, s, actor, actionUserUpdated, id, u.UserPrincipalName, state, reported, append(changedCodes(changed), reported...))
+	row, err = p.settle(ctx, s, actor, actionUserUpdated, id, u.UserPrincipalName, state, reported, append(codes, reported...))
 	if err != nil {
 		return contracts.ExternalAccount{}, err
 	}

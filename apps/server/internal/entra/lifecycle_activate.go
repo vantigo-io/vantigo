@@ -34,7 +34,8 @@ const (
 // Activate enables the user (contracts.IdentityProvisioner.Activate):
 // accountEnabled with the hire day's 01:00 when write_hire_date — a refusal
 // of the hire date alone retried without it and reported
-// hire_date_not_written —, the spec's licences not yet assigned, then a pass
+// hire_date_not_written —, the direct licences brought to the spec's
+// (reconcileLicences), then a pass
 // when this call enabled the user and HR asked for a fresh one or no pass
 // waits unrevealed — never on a user enabled already, whatever the flag: a
 // Temporary Access Pass over a working account would be a way into it. A
@@ -107,14 +108,12 @@ func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, exter
 		u.AccountEnabled = true
 	}
 
-	licences, assigned, err := p.assignLicences(ctx, s, id, u, spec.Licences)
+	licences, licenceCodes, err := p.reconcileLicences(ctx, s, id, u, spec.Licences)
 	if err != nil {
 		return contracts.ExternalAccount{}, err
 	}
 	reported = append(reported, licences...)
-	if assigned > 0 {
-		codes = append(codes, fmt.Sprintf("licences_assigned:%d", assigned))
-	}
+	codes = append(codes, licenceCodes...)
 
 	if !wasEnabled && (spec.Flags.Fresh || !livePass(row, p.client.now())) {
 		code, err := p.issuePass(ctx, s, actor, id, u.UserPrincipalName)
@@ -136,26 +135,76 @@ func (p *provisioner) Activate(ctx context.Context, actor contracts.Actor, exter
 	return account(u, &row, p.client.now()), nil
 }
 
-// assignLicences assigns the part numbers the spec names that the user does
-// not hold yet, directly (research §3.2): resolved through subscribedSkus —
-// an unknown part number reported licence_unavailable:<part> —, then one
-// assignLicense, after which a licenseAssignmentStates error on a SKU (a
-// CountViolation) is reported for it while the rest stay assigned. A refusal
-// of the whole call reports every part it carried. It answers the codes and
-// how many SKUs it asked for.
-func (p *provisioner) assignLicences(ctx context.Context, s session, id uuid.UUID, u graphUser, parts []string) ([]string, int, error) {
+// reconcileLicences brings the user's direct licences to the part numbers
+// parts names (design D10, plan reading 6): the missing assigned
+// (assignLicences), then every licence assigned directly — assignedByGroup
+// null — whose part number parts does not name removed in one
+// assignLicense; a licence a group assigns is the tenant's and is left, and
+// so is one whose SKU the tenant no longer lists. A refusal of the removal
+// is the event's licences_not_removed, the user left as it is. It answers
+// the codes reported (licence_unavailable:<part>) and the event's codes.
+// With no part named and no direct licence held it asks nothing.
+func (p *provisioner) reconcileLicences(ctx context.Context, s session, id uuid.UUID, u graphUser, parts []string) ([]string, []string, error) {
 	var wanted []string
 	for _, part := range parts {
 		if part = strings.TrimSpace(part); part != "" && !slices.Contains(wanted, part) {
 			wanted = append(wanted, part)
 		}
 	}
-	if len(wanted) == 0 {
-		return nil, 0, nil
+	var direct []string
+	for _, st := range u.LicenseAssignmentStates {
+		if st.AssignedByGroup == nil && st.SkuID != "" && !slices.Contains(direct, strings.ToLower(st.SkuID)) {
+			direct = append(direct, strings.ToLower(st.SkuID))
+		}
+	}
+	if len(wanted) == 0 && len(direct) == 0 {
+		return nil, nil, nil
 	}
 	var skus subscribedSkus
 	if err := p.client.get(ctx, s.cred, "/subscribedSkus", &skus); err != nil {
-		return nil, 0, err
+		return nil, nil, err
+	}
+	reported, assigned, err := p.assignLicences(ctx, s, id, u, wanted, skus)
+	if err != nil {
+		return nil, nil, err
+	}
+	var codes []string
+	if assigned > 0 {
+		codes = append(codes, fmt.Sprintf("licences_assigned:%d", assigned))
+	}
+	var remove []string
+	for _, sku := range direct {
+		i := slices.IndexFunc(skus.Value, func(v subscribedSku) bool { return strings.EqualFold(v.SkuID, sku) })
+		if i < 0 || slices.ContainsFunc(wanted, func(part string) bool { return strings.EqualFold(part, skus.Value[i].SkuPartNumber) }) {
+			continue
+		}
+		remove = append(remove, skus.Value[i].SkuID)
+	}
+	if len(remove) == 0 {
+		return reported, codes, nil
+	}
+	err = p.client.post(ctx, s.cred, userPath(id, "/assignLicense"), map[string]any{"addLicenses": []any{}, "removeLicenses": remove}, nil)
+	switch g, ok := asGraphError(err); {
+	case ok && g.Status >= 400 && g.Status < 500:
+		codes = append(codes, "licences_not_removed")
+	case err != nil:
+		return nil, nil, err
+	default:
+		codes = append(codes, fmt.Sprintf("licences_removed:%d", len(remove)))
+	}
+	return reported, codes, nil
+}
+
+// assignLicences assigns the part numbers wanted that the user does not
+// hold yet, directly (research §3.2): resolved through skus — an unknown
+// part number reported licence_unavailable:<part> —, then one
+// assignLicense, after which a licenseAssignmentStates error on a SKU (a
+// CountViolation) is reported for it while the rest stay assigned. A refusal
+// of the whole call reports every part it carried. It answers the codes and
+// how many SKUs it asked for.
+func (p *provisioner) assignLicences(ctx context.Context, s session, id uuid.UUID, u graphUser, wanted []string, skus subscribedSkus) ([]string, int, error) {
+	if len(wanted) == 0 {
+		return nil, 0, nil
 	}
 	held := map[string]bool{}
 	for _, l := range u.AssignedLicenses {

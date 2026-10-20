@@ -19,6 +19,7 @@ const (
 	clientID = "0f1e2d3c-4b5a-4968-8776-655443322110"
 	secret   = "the-secret"
 	skuE3    = "6fd2c87f-b296-42f0-b197-1e91e994b900"
+	uuidLike = "11111111-2222-4333-8444-555555555555"
 )
 
 // tenantFake is a tenant with one client, two domains (one verified) and an
@@ -434,12 +435,37 @@ func TestGroups(t *testing.T) {
 
 	status, _, created := c.do(http.MethodPost, "/groups", map[string]any{
 		"displayName": "Engineering", "mailNickname": "engineering", "mailEnabled": false, "securityEnabled": true,
-		"groupTypes": []any{}, "owners@odata.bind": []any{"https://graph.microsoft.com/v1.0/servicePrincipals/sp-1"},
+		"groupTypes": []any{}, "owners@odata.bind": []any{"https://graph.microsoft.com/v1.0/servicePrincipals/" + g.ServicePrincipalID},
 	})
 	if status != http.StatusCreated {
 		t.Fatalf("create: %d %v", status, created)
 	}
 	id := created["id"].(string)
+	if status, _, _ := c.do(http.MethodPost, "/groups", map[string]any{
+		"displayName": "Nobody's", "mailNickname": "nobody", "mailEnabled": false, "securityEnabled": true,
+		"owners@odata.bind": []any{"https://graph.microsoft.com/v1.0/users/" + uuidLike},
+	}); status != http.StatusNotFound {
+		t.Errorf("a create naming an owner the tenant lacks: %d, want 404", status)
+	}
+
+	// The owners: the service principal, a user added and removed by $ref.
+	if status, _, _ := c.do(http.MethodPost, "/groups/"+id+"/owners/$ref", map[string]any{"@odata.id": "https://graph.microsoft.com/v1.0/users/" + members[0]}); status != http.StatusNoContent {
+		t.Errorf("an owner by $ref: %d", status)
+	}
+	if status, _, body := c.do(http.MethodPost, "/groups/"+id+"/owners/$ref", map[string]any{"@odata.id": "https://graph.microsoft.com/v1.0/users/" + members[0]}); status != http.StatusBadRequest {
+		t.Errorf("the owner again: %d %v, want 400", status, body)
+	}
+	_, _, owners := c.do(http.MethodGet, "/groups/"+id+"/owners?$select=id", nil)
+	if list := owners["value"].([]any); len(list) != 2 || list[0].(map[string]any)["@odata.type"] != "#microsoft.graph.servicePrincipal" ||
+		list[1].(map[string]any)["@odata.type"] != "#microsoft.graph.user" {
+		t.Errorf("the owners: %v", owners)
+	}
+	if status, _, _ := c.do(http.MethodDelete, "/groups/"+id+"/owners/"+members[0]+"/$ref", nil); status != http.StatusNoContent {
+		t.Errorf("an owner removed by $ref: %d", status)
+	}
+	if gr, _ := g.Group(id); len(gr.Owners) != 1 || gr.Owners[0] != g.ServicePrincipalID {
+		t.Errorf("the owners after the removal: %v", gr.Owners)
+	}
 	bind := func(ids []string) map[string]any {
 		refs := make([]any, len(ids))
 		for i, m := range ids {
@@ -456,6 +482,16 @@ func TestGroups(t *testing.T) {
 	_, _, list := c.do(http.MethodGet, "/groups/"+id+"/members?$select=id", nil)
 	if len(list["value"].([]any)) != 20 {
 		t.Errorf("members = %d, want 20", len(list["value"].([]any)))
+	}
+	// Paged: $top of them, the rest behind @odata.nextLink.
+	_, _, page := c.do(http.MethodGet, "/groups/"+id+"/members?$select=id&$top=15", nil)
+	next, _ := page["@odata.nextLink"].(string)
+	if len(page["value"].([]any)) != 15 || !strings.HasPrefix(next, "https://graph.microsoft.com/v1.0/groups/"+id+"/members?") {
+		t.Fatalf("the first page: %v", page)
+	}
+	_, _, page = c.do(http.MethodGet, strings.TrimPrefix(next, "https://graph.microsoft.com/v1.0"), nil)
+	if len(page["value"].([]any)) != 5 || page["@odata.nextLink"] != nil {
+		t.Errorf("the second page: %v", page)
 	}
 	_, _, of := c.do(http.MethodGet, "/users/"+members[0]+"/memberOf", nil)
 	if len(of["value"].([]any)) != 1 {
@@ -476,6 +512,15 @@ func TestGroups(t *testing.T) {
 		t.Errorf("a batch of 21: %d, want 400", status)
 	}
 
+	// A stale member: listed, and 404 when removed.
+	g.EditGroup(id, func(gr *graphtest.Group) { gr.StaleMembers = []string{members[0]} })
+	if _, _, list := c.do(http.MethodGet, "/groups/"+id+"/members?$select=id", nil); len(list["value"].([]any)) != 1 {
+		t.Errorf("the stale member is not listed: %v", list)
+	}
+	if status, _, _ := c.do(http.MethodDelete, "/groups/"+id+"/members/"+members[0]+"/$ref", nil); status != http.StatusNotFound {
+		t.Errorf("a stale member removed: %d, want 404", status)
+	}
+
 	// The trap: a member removed without $ref deletes the user.
 	if status, _, _ := c.do(http.MethodPost, "/groups/"+id+"/members/$ref", map[string]any{"@odata.id": "https://graph.microsoft.com/v1.0/directoryObjects/" + members[20]}); status != http.StatusNoContent {
 		t.Errorf("add by $ref: %d", status)
@@ -485,13 +530,25 @@ func TestGroups(t *testing.T) {
 		t.Error("a DELETE without $ref did not delete the user")
 	}
 
-	// The Team: 404 while the group is younger than TeamReadyAfter.
-	if status, _, _ := c.do(http.MethodPut, "/groups/"+id+"/team", map[string]any{}); status != http.StatusNotFound {
+	// The Team: the template named, 404 while the group is younger than
+	// TeamReadyAfter, and TeamNotFound more times after.
+	template := map[string]any{"template@odata.bind": "https://graph.microsoft.com/v1.0/teamsTemplates('standard')"}
+	if status, _, _ := c.do(http.MethodPut, "/groups/"+id+"/team", map[string]any{}); status != http.StatusBadRequest {
+		t.Errorf("a team without the template: %d, want 400", status)
+	}
+	if status, _, _ := c.do(http.MethodPut, "/groups/"+id+"/team", template); status != http.StatusNotFound {
 		t.Errorf("a team at once: %d, want 404", status)
 	}
 	now = now.Add(15 * time.Minute)
+	g.Configure(func(g *graphtest.FakeGraph) { g.TeamNotFound = 1 })
 	c = newClient(t, g)
-	if status, _, _ := c.do(http.MethodPut, "/groups/"+id+"/team", map[string]any{}); status != http.StatusCreated {
+	if status, _, _ := c.do(http.MethodPut, "/groups/"+id+"/team", template); status != http.StatusNotFound {
+		t.Errorf("a team the backend has not seen: %d, want 404", status)
+	}
+	if status, _, _ := c.do(http.MethodPut, "/groups/"+id+"/team", template); status != http.StatusCreated {
 		t.Errorf("a team after fifteen minutes: %d, want 201", status)
+	}
+	if status, _, _ := c.do(http.MethodPut, "/groups/"+id+"/team", template); status != http.StatusConflict {
+		t.Errorf("a second team: %d, want 409", status)
 	}
 }

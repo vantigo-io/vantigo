@@ -36,6 +36,7 @@ func TestAccess_EveryOperation(t *testing.T) {
 		{http.MethodGet, skusPath, nil, nil, false},
 		{http.MethodGet, eventsPath + "?limit=10", nil, nil, false},
 		{http.MethodGet, accountsPath, nil, nil, false},
+		{http.MethodGet, groupsPath, nil, nil, false},
 		{http.MethodPost, accountsPath + "/" + uuid.NewString() + "/confirm", nil, nil, false},
 	} {
 		name := op.method + " " + op.path

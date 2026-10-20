@@ -108,8 +108,9 @@ func uuidPtr(u *uuid.UUID) *openapi_types.UUID {
 	return &v
 }
 
-// connectionBody is the connection as GET /connection answers it at now.
-func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, counts store.CountAccountsRow, now time.Time) gen.EntraConnection {
+// connectionBody is the connection as GET /connection answers it at now,
+// with the counts of its accounts and of its groups present in the tenant.
+func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, counts store.CountAccountsRow, groups int32, now time.Time) gen.EntraConnection {
 	status, reason := statusOf(conn, creds, now)
 	body := gen.EntraConnection{
 		Status:             gen.EntraConnectionStatus(status),
@@ -135,6 +136,7 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 		},
 		Credentials: credentialsBody(creds, now),
 		Accounts:    gen.EntraAccountCounts{Count: counts.Total, Enabled: counts.Enabled, Disabled: counts.Disabled, Deleted: counts.Deleted},
+		Groups:      gen.EntraGroupCounts{Count: groups},
 		Version:     conn.Version,
 	}
 	if reason != "" {
@@ -153,7 +155,11 @@ func readConnection(ctx context.Context, q *store.Queries, conn store.EntraConne
 	if err != nil {
 		return gen.EntraConnection{}, fmt.Errorf("entra: count the accounts: %w", err)
 	}
-	return connectionBody(conn, creds, counts, now), nil
+	groups, err := q.CountGroups(ctx)
+	if err != nil {
+		return gen.EntraConnection{}, fmt.Errorf("entra: count the groups: %w", err)
+	}
+	return connectionBody(conn, creds, counts, groups, now), nil
 }
 
 // GetEntraConnection answers the connection from the module's rows; nothing
@@ -449,7 +455,11 @@ type organisation struct {
 // to the connection and audited entra.connection.tested; the answer is 200
 // whatever it found. Whether the application holds the User Administrator
 // role cannot be read without a further permission: roleKnown is false.
-// (POST /api/v1/entra/connection/test)
+// A token that came also names the application's service principal (its
+// oid claim), written to the connection for the groups' owner; and a test
+// that connected reads the tenant's licences, cached on the connection for
+// the licences trait — a read that fails leaves the cache and the status
+// as they were. (POST /api/v1/entra/connection/test)
 func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraConnectionTestRequestObject) (gen.PostEntraConnectionTestResponseObject, error) {
 	actor, err := requestActor(ctx)
 	if err != nil {
@@ -514,6 +524,22 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 	if err != nil {
 		return nil, fmt.Errorf("entra: record the test: %w", err)
 	}
+	if status == contracts.ProviderConnected {
+		if cred.oid != nil {
+			if err := s.q.SetServicePrincipal(ctx, *cred.oid); err != nil {
+				return nil, fmt.Errorf("entra: record the service principal: %w", err)
+			}
+		}
+		_, cache, err := s.readSkus(ctx, cred)
+		switch {
+		case err != nil && ctx.Err() != nil:
+			return nil, ctx.Err()
+		case err == nil:
+			if err := cacheSkus(ctx, s.q, cache); err != nil {
+				return nil, err
+			}
+		}
+	}
 	missing := missingPermissions(updated.PermissionsPresent)
 	codes := []string{status}
 	if reason != "" {
@@ -539,38 +565,30 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 	return gen.PostEntraConnectionTest200JSONResponse(answer), nil
 }
 
-// subscribedSkus is what GET /subscribedSkus answers of each licence.
+// subscribedSkus is what GET /subscribedSkus answers.
 type subscribedSkus struct {
-	Value []struct {
-		SkuID         string `json:"skuId"`
-		SkuPartNumber string `json:"skuPartNumber"`
-		ConsumedUnits int32  `json:"consumedUnits"`
-		PrepaidUnits  struct {
-			Enabled int32 `json:"enabled"`
-		} `json:"prepaidUnits"`
-	} `json:"value"`
+	Value []subscribedSku `json:"value"`
 }
 
-// GetEntraConnectionSkus answers the tenant's licences through the
-// connection, by part number: 503 credential_invalid when no secret fetched
-// a token, tenant_unreachable when the tenant did not answer.
-// (GET /api/v1/entra/connection/skus)
-func (s *server) GetEntraConnectionSkus(ctx context.Context, _ gen.GetEntraConnectionSkusRequestObject) (gen.GetEntraConnectionSkusResponseObject, error) {
-	cred, err := credentialFor(ctx, s.q, s.client)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return gen.GetEntraConnectionSkus503ApplicationProblemPlusJSONResponse(tenantUnavailable(reasonFor(err))), nil
-	}
+// subscribedSku is what GET /subscribedSkus answers of each licence.
+type subscribedSku struct {
+	SkuID         string `json:"skuId"`
+	SkuPartNumber string `json:"skuPartNumber"`
+	ConsumedUnits int32  `json:"consumedUnits"`
+	PrepaidUnits  struct {
+		Enabled int32 `json:"enabled"`
+	} `json:"prepaidUnits"`
+}
+
+// readSkus reads the tenant's licences through cred: as the contract
+// answers them, by part number, and as cacheSkus keeps them.
+func (s *server) readSkus(ctx context.Context, cred graphCredential) ([]gen.EntraSku, []cachedSku, error) {
 	var skus subscribedSkus
 	if err := s.client.get(ctx, cred, "/subscribedSkus", &skus); err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return gen.GetEntraConnectionSkus503ApplicationProblemPlusJSONResponse(tenantUnavailable(codeTenantUnreachable)), nil
+		return nil, nil, err
 	}
-	out := make(gen.GetEntraConnectionSkus200JSONResponse, 0, len(skus.Value))
+	out := make([]gen.EntraSku, 0, len(skus.Value))
+	cache := make([]cachedSku, 0, len(skus.Value))
 	for _, v := range skus.Value {
 		id, err := uuid.Parse(v.SkuID)
 		if err != nil || v.SkuPartNumber == "" {
@@ -580,7 +598,33 @@ func (s *server) GetEntraConnectionSkus(ctx context.Context, _ gen.GetEntraConne
 			SkuId: openapi_types.UUID(id), SkuPartNumber: v.SkuPartNumber,
 			Enabled: v.PrepaidUnits.Enabled, Consumed: v.ConsumedUnits,
 		})
+		cache = append(cache, cachedSku{SkuID: id.String(), SkuPartNumber: v.SkuPartNumber, Enabled: v.PrepaidUnits.Enabled, Consumed: v.ConsumedUnits})
 	}
 	slices.SortFunc(out, func(a, b gen.EntraSku) int { return strings.Compare(a.SkuPartNumber, b.SkuPartNumber) })
-	return out, nil
+	return out, cache, nil
+}
+
+// GetEntraConnectionSkus answers the tenant's licences through the
+// connection, by part number, and caches them for the licences trait: 503
+// credential_invalid when no secret fetched a token, tenant_unreachable
+// when the tenant did not answer. (GET /api/v1/entra/connection/skus)
+func (s *server) GetEntraConnectionSkus(ctx context.Context, _ gen.GetEntraConnectionSkusRequestObject) (gen.GetEntraConnectionSkusResponseObject, error) {
+	cred, err := credentialFor(ctx, s.q, s.client)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return gen.GetEntraConnectionSkus503ApplicationProblemPlusJSONResponse(tenantUnavailable(reasonFor(err))), nil
+	}
+	out, cache, err := s.readSkus(ctx, cred)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return gen.GetEntraConnectionSkus503ApplicationProblemPlusJSONResponse(tenantUnavailable(codeTenantUnreachable)), nil
+	}
+	if err := cacheSkus(ctx, s.q, cache); err != nil {
+		return nil, err
+	}
+	return gen.GetEntraConnectionSkus200JSONResponse(out), nil
 }

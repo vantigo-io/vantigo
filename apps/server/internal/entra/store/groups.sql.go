@@ -25,6 +25,19 @@ func (q *Queries) CountGroups(ctx context.Context) (int32, error) {
 	return column_1, err
 }
 
+const forgetDeletedGroup = `-- name: ForgetDeletedGroup :exec
+DELETE FROM entra.groups WHERE group_id = $1 AND state = 'deleted'
+`
+
+// ForgetDeletedGroup removes the row of Staff's group id when it names a
+// group the module deleted in the tenant, so the group made anew for the
+// same Staff group takes its place (ux_entra_groups_group_id). The deleted
+// group's events keep its object id.
+func (q *Queries) ForgetDeletedGroup(ctx context.Context, groupID string) error {
+	_, err := q.db.Exec(ctx, forgetDeletedGroup, groupID)
+	return err
+}
+
 const getGroup = `-- name: GetGroup :one
 SELECT object_id, group_id, key, display_name, mail_nickname, type, team_created_at, created_by_us, state, last_members_at, created_at, updated_at FROM entra.groups WHERE object_id = $1
 `

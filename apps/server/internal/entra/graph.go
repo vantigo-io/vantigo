@@ -28,13 +28,14 @@ import (
 // transport for the process, dialling through netguard with no proxy and no
 // redirects; each call under a 30-second budget; a 429 waits Retry-After
 // once, a 5xx is retried once after a second — never for a call made
-// noRetry, the create of a user or of a pass, which the tenant may have
-// carried out before it failed —, a 401 fetches a fresh token once; every
-// answer read through a 1 MiB cap; and Graph's refusal parsed into a
+// noRetry, the create of a user, a group or a pass, which the tenant may
+// have carried out before it failed —, a 401 fetches a fresh token once;
+// every answer read through a 1 MiB cap; and Graph's refusal parsed into a
 // graphError carrying the status and the codes, its words logged at debug
 // level with the tenant's id — except a noRetry call's, which may echo the
-// password or the pass it carried — and never stored or answered. The hosts
-// are constants: no setting reaches them, and a test's fake comes in through
+// password or the pass it carried, and a noWords call's, which may echo a
+// user's id — and never stored or answered. The hosts are constants: no
+// setting reaches them, and a test's fake comes in through
 // Deps.HTTPTransport, never as a base URL.
 //
 // The lifecycle (provisioner) and the connection's endpoints call Graph
@@ -105,11 +106,15 @@ var (
 
 // graphError is a refusal Graph answered: the status, error.code and the
 // first error.details[].code (a taken UPN is Request_BadRequest with the
-// detail ObjectConflict). The message is logged, never kept here.
+// detail ObjectConflict). The message is logged, never kept here; Exists
+// alone is read from it — a reference added that is there already ("One or
+// more added object references already exist"), which Graph names by no
+// code of its own.
 type graphError struct {
 	Status int
 	Code   string
 	Detail string
+	Exists bool
 }
 
 func (e *graphError) Error() string {
@@ -154,14 +159,15 @@ func isStatus(err error, status int) bool {
 
 // graphCredential is what a call to the tenant is made with: the tenant and
 // the client, and the secret's row id and sealed value — opened only for a
-// token request, never held open. roles is the roles claim of the token
-// credentialFor last fetched or found with it.
+// token request, never held open. roles and oid are the roles and the oid
+// claims of the token credentialFor last fetched or found with it.
 type graphCredential struct {
 	id       int64
 	tenantID uuid.UUID
 	clientID uuid.UUID
 	sealed   []byte
 	roles    []string
+	oid      *uuid.UUID
 }
 
 // graphClient is the client: the transport, the process's token cache, the
@@ -272,14 +278,19 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 // callOption changes how one call is made.
 type callOption int
 
-// noRetry is a call that creates what must not be created twice and carries
-// a secret: POST /users with the create's password, and the pass's create,
-// whose answer is the pass. A 5xx is the tenant's answer, not retried — the
+// noRetry is a call that creates what must not be created twice: POST
+// /users with the create's password, the pass's create, whose answer is the
+// pass, and POST /groups. A 5xx is the tenant's answer, not retried — the
 // first attempt may have been carried out (the caller re-reads instead) —
 // and Graph's message on a refusal is not logged, the status and the codes
 // only. A 429 and a 401, which the tenant answers before it acts, are
 // retried as for any call.
 const noRetry callOption = 1
+
+// noWords is a call whose refusal may echo a user's id in Graph's words — a
+// member or an owner added or removed by its reference: retried as any
+// call, its refusal logged by its status and codes alone.
+const noWords callOption = 2
 
 // get reads path into into. path is everything after /v1.0, its query
 // already escaped (url.Values.Encode).
@@ -293,8 +304,8 @@ func (c *graphClient) post(ctx context.Context, cred graphCredential, path strin
 }
 
 // patch sends body to path; Graph answers 204.
-func (c *graphClient) patch(ctx context.Context, cred graphCredential, path string, body any) error {
-	return c.do(ctx, cred, http.MethodPatch, path, body, nil)
+func (c *graphClient) patch(ctx context.Context, cred graphCredential, path string, body any, opts ...callOption) error {
+	return c.do(ctx, cred, http.MethodPatch, path, body, nil, opts...)
 }
 
 // put sends body to path (a manager's $ref); Graph answers 204.
@@ -315,6 +326,7 @@ func (c *graphClient) del(ctx context.Context, cred graphCredential, path string
 // *graphError.
 func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path string, body, into any, opts ...callOption) error {
 	once := slices.Contains(opts, noRetry)
+	words := !once && !slices.Contains(opts, noWords)
 	target, err := graphURL(path)
 	if err != nil {
 		return err
@@ -364,7 +376,7 @@ func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path
 			reauthorised = true
 			c.tokens.drop(cred)
 		default:
-			return c.refusal(ctx, cred, method, target, status, data, !once)
+			return c.refusal(ctx, cred, method, target, status, data, words)
 		}
 	}
 }
@@ -498,7 +510,8 @@ type graphErrorBody struct {
 func (c *graphClient) refusal(ctx context.Context, cred graphCredential, method string, target *url.URL, status int, data []byte, words bool) error {
 	var body graphErrorBody
 	_ = json.Unmarshal(data, &body)
-	e := &graphError{Status: status, Code: body.Error.Code}
+	e := &graphError{Status: status, Code: body.Error.Code,
+		Exists: strings.Contains(strings.ToLower(body.Error.Message), "already exist")}
 	if len(body.Error.Details) > 0 {
 		e.Detail = body.Error.Details[0].Code
 	}

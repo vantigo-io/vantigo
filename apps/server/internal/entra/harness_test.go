@@ -46,6 +46,7 @@ const (
 	skusPath        = "/api/v1/entra/connection/skus"
 	eventsPath      = "/api/v1/entra/events"
 	accountsPath    = "/api/v1/entra/accounts"
+	groupsPath      = "/api/v1/entra/groups"
 )
 
 // manager is a caller holding entra:manage, and nothing else.
