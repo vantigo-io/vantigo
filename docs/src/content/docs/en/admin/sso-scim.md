@@ -59,6 +59,13 @@ Open the avatar menu, choose **Workspace admin**, and stay on **Overview**: the
   the next change made on the card — a save, a token issued, a part turned off — and
   a turn-off with nothing to turn off changes nothing.
 
+**With the Microsoft Entra ID module** the card's two parts are also the last two
+steps of the module's wizard: step 5, **Sign-in**, is the provider form, filled in
+with the tenant's authority and the client id the wizard registered (on an empty form
+only), and step 6, **Provisioning**, is the SCIM block. They are the same forms over
+the same row and the same operations; save in either place
+([Microsoft Entra ID](/en/admin/entra/#5-sign-in)).
+
 Behind the card are six operations under `/api/v1/identity/owner/sso`, in the
 contract [`openapi/identity.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/identity.yaml):
 
@@ -124,6 +131,10 @@ credential, since the old application's secret is never carried over to a new on
 The secret is sealed at rest under `APP_SECRET` and never shown again.
 
 ### Microsoft Entra ID: client secret
+
+With the Microsoft Entra ID module, follow its wizard instead: the registration, the
+tenant and the client id are steps 1 to 3, and this form is step 5
+([Microsoft Entra ID](/en/admin/entra/)). By hand:
 
 1. Create or select one Entra app registration for this installation. Use a
    confidential web application and create a client secret. Copy its value: you

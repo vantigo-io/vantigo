@@ -764,7 +764,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `MIGRATIONS_DATABASE_URL` | Connection `migrate` uses (the owner role) | `DATABASE_URL` |
 | `SHUTDOWN_TIMEOUT` | Drain budget for in-flight requests and workers | `30s` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
-| `MODULES` | Comma list of business modules to serve | `customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar` |
+| `MODULES` | Comma list of business modules to serve; `entra` requires `staff` ([Microsoft Entra ID](/en/admin/entra/), which has no variable of its own: its settings are in the database) | `customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra` |
 | `WORKERS_IN_PROCESS` | Whether `api` also runs background workers in-process | `1` |
 
 ### Secrets and identity
@@ -1002,8 +1002,8 @@ OIDC callback on that HTTPS origin. Outside development cookies are `Secure` and
 ## Database migrations
 
 One PostgreSQL database holds one schema per module — `identity`, `customers`,
-`products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices` and
-`staff` — migrated by plain SQL files embedded in the binary. Every schema is migrated regardless of which modules `MODULES` enables,
+`products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`,
+`staff`, `calendar` and `entra` — migrated by plain SQL files embedded in the binary. Every schema is migrated regardless of which modules `MODULES` enables,
 so enabling a module later needs no migration. See the
 [contributor migration guide](https://github.com/vantigo-io/vantigo/blob/main/CONTRIBUTING.md#database-migrations) for how
 migrations are written and applied.

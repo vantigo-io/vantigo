@@ -12,21 +12,21 @@ its routes, navigation items, settings panels, command-palette actions, and tran
 
 ```text
 apps/
-  host/frontend/               # Application shell, router, auth session, command palette
-modules/
-  customers/frontend/          # @vantigo/customers-frontend
-  products/frontend/           # @vantigo/products-frontend
-  energy/frontend/             # @vantigo/energy-frontend
-  communications/frontend/     # @vantigo/communications-frontend
-  projects/frontend/           # @vantigo/projects-frontend
-  time/frontend/               # @vantigo/time-frontend
-  expenses/frontend/           # @vantigo/expenses-frontend
-  invoices/frontend/           # @vantigo/invoices-frontend
-  staff/frontend/              # @vantigo/staff-frontend
+  host/frontend/               # @vantigo/app — the application shell, router, auth session, command palette
+  customers/frontend/          # @vantigo/customers-ui
+  products/frontend/           # @vantigo/products-ui
+  energy/frontend/             # @vantigo/energy-ui
+  communications/frontend/     # @vantigo/communications-ui
+  projects/frontend/           # @vantigo/projects-ui
+  time/frontend/               # @vantigo/time-ui
+  expenses/frontend/           # @vantigo/expenses-ui
+  invoices/frontend/           # @vantigo/invoices-ui
+  staff/frontend/              # @vantigo/staff-ui
+  calendar/frontend/           # @vantigo/calendar-ui
+  entra/frontend/              # @vantigo/entra-ui — Microsoft Entra ID's wizard
 packages/
-  api-client/                  # @vantigo/api-client — generated OpenAPI client + CSRF/ETag fetch wrapper
-  module-registry/             # @vantigo/module-registry — FrontendModuleManifest contract
-  ui/                          # @vantigo/ui — shared Mantine theme, layout primitives, error boundary
+  frontend-api-client/         # @vantigo/frontend-api-client — the fetch client every module's API calls go through
+  frontend-shell/              # @vantigo/frontend-shell — the shell's layout, app switcher, spotlight and i18n catalog registry
 ```
 
 ## Module manifests (`@vantigo/module-registry`)

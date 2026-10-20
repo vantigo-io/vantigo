@@ -83,11 +83,11 @@ job, and then starts Vantigo:
 - **Vantigo** — <http://localhost:8080>
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
-The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices and
-Staff modules are enabled by default (`MODULES` in `vantigo.env`). They share one
-PostgreSQL database named `vantigo`, with independent `identity`, `customers`,
-`products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices` and
-`staff` schemas and migration histories.
+The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices,
+Staff, Calendar and Microsoft Entra ID modules are enabled by default (`MODULES` in
+`vantigo.env`). They share one PostgreSQL database named `vantigo`, with independent
+`identity`, `customers`, `products`, `energy`, `communications`, `projects`, `time`,
+`expenses`, `invoices`, `staff`, `calendar` and `entra` schemas and migration histories.
 
 ## What the stack contains
 
@@ -184,11 +184,12 @@ and the recovery.
 - **`MODULES`** (`vantigo.env`) — the comma-separated list of business modules this
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,
-  `communications`, `projects`, `time`, `expenses`, `invoices` and `staff`. `energy`,
-  `communications`, `projects` and `invoices` each require `customers`, and `time`
-  requires `projects`; `projects` also uses `products` when it is enabled and answers
-  409 on its billing-line endpoints when it is not; `expenses` requires nothing and
-  reads `projects` only when it happens to be enabled; `staff` requires nothing. To run
+  `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar` and
+  `entra`. `energy`, `communications`, `projects` and `invoices` each require
+  `customers`, `time` requires `projects`, and `entra` requires `staff`; `projects` also
+  uses `products` when it is enabled and answers 409 on its billing-line endpoints when
+  it is not; `expenses` requires nothing and reads `projects` only when it happens to be
+  enabled; `staff` and `calendar` require nothing. To run
   a smaller install, list only what you want, for example `MODULES=customers,products`.
 - **`OWNERS_REQUIRE_MFA=0` and `OWNERS_ALLOW_INSECURE_NO_MFA=1`** (`vantigo.env`) —
   shipped in the example because a fresh installation has nobody around to enrol an
@@ -261,9 +262,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
 ```
 
 ## Background workers and scaling
@@ -288,7 +289,12 @@ HTTP replica does not multiply the pollers:
    directory's deactivation counts only while SCIM is on) and the accounts mode (local
    or federated) both follow the single sign-on settings in the database, which the
    worker reads like the API, within 20 seconds of an Owner's change (see
-   [the authority mode](/en/admin/authentication/#the-authority-mode)).
+   [the authority mode](/en/admin/authentication/#the-authority-mode)). Nor does it
+   need anything for Microsoft Entra ID: with the module on, the Staff accounts worker
+   reaches the tenant through it, with the connection, the secrets and the account
+   rules it reads from the database — so the worker container, like the API, needs
+   outbound https to `login.microsoftonline.com` and `graph.microsoft.com`, without a
+   proxy ([Microsoft Entra ID](/en/admin/entra/#before-you-start)).
 4. Keep the clocks of the API and worker hosts in sync (NTP). The Staff accounts
    worker's claims are leases that each process compares with its own clock, so a
    clock that runs ahead can take over a link another process is still working on.
@@ -475,6 +481,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   enables and disables the users the account flag asks for on the poll it shares
   ([Staff](/en/admin/staff/#the-accounts-worker)). It reads the accounts mode from the
   single sign-on settings in the database, as the API does.
+- There is **no `ENTRA_*` variable**. The Microsoft Entra ID module's tenant and
+  client, its client secrets (sealed under `APP_SECRET`) and its account rules are in
+  the database, set by an Owner and `entra:manage` on the module's page; the module
+  reaches two fixed hosts that no setting changes
+  ([Microsoft Entra ID](/en/admin/entra/)).
 - The workforce OIDC provider and the SCIM token are set on the **Single sign-on**
   card, not in `vantigo.env`: `OIDC_*` and `SCIM_*` there are imported into the
   database once, at the first start of the release that brought the card, and then
@@ -611,6 +622,16 @@ needs them. Rolling the migration back drops the row with the sealed client secr
 and the token digests, so set the variables again first, with a new `SCIM_TOKEN` when
 the card issued the current one. The procedure is in
 [Before the card](/en/admin/sso-scim/#before-the-card-the-environment-variables).
+
+**The release with Microsoft Entra ID.** It brings `00061_entra_baseline.sql`, the
+`entra` schema. An installation that leaves `MODULES` unset gets the module, and its
+tile for Owners, on upgrade; one that lists `MODULES` gets it once `entra` is added
+beside `staff`, which it requires — `entra` without `staff` refuses to start. Nothing
+reaches a tenant until an Owner registers one on the module's page, and Staff makes
+accounts there only for people of the **Microsoft Entra ID** kind. A least-privilege
+role needs the `entra` schema granted ([Database roles](#database-roles)). Rolling the
+migration back drops the schema with the sealed secrets and any pass not yet shown, and
+touches nothing in the tenant. See [Microsoft Entra ID](/en/admin/entra/).
 
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).

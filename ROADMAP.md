@@ -1540,7 +1540,7 @@ Calendar and Staff it **depends on nobody but identity** for what it reads; Staf
 it through a new many-provider slot, `contracts.IdentityProvisioner`, and identity's
 accounts stay identity's. It follows [Staff](#staff)'s phase 1, done.
 
-### Phase 1 — The tenant follows the register (A and B done)
+### Phase 1 — The tenant follows the register (A, B and C done)
 
 Five deliveries, five pull requests, one migration per schema each. A, B and C are
 specified in full by the design; D and E are decided there and planned on their own.
@@ -1599,18 +1599,41 @@ provider's, with *Show the pass* once and *Run now (new pass)*. Migrations
 (staff).
 
 *Unblocks:* C's provider, dropped into the slot with nothing in Staff or identity left
-to build; HR choosing per person who holds the account.
+to build; HR choosing per person who holds the account**C — The module, built** on `feat/entra-module`
+([the plan](docs/superpowers/plans/2026-10-20-entra-module.md);
+[the reference](docs/src/content/docs/en/reference/entra.md);
+[the operations page](docs/src/content/docs/en/admin/entra.md)): the `entra` module,
+Microsoft Entra ID as the first provider in B's slot, under the key `entra`, which
+`MODULES` refuses without `staff`. Its schema holds the one connection — the tenant and
+the client, the account rules, what the last test found — the client secrets in the
+plural, sealed under `entra/client-secret`, the newest valid one used and the next tried
+on `invalid_client`, revoked never deleted, with `secret_expiring` thirty days ahead and
+`secret_expired` after; the accounts it found or made, by object id, with a Temporary
+Access Pass sealed under `entra/pass` until it is shown once; and its own append-only
+trail of events. One permission, `entra:manage` (sensitive, not delegable), for the
+status and the account rules; the registration, the secrets and the connection test are
+the Owner's, as the single sign-on settings are. The Graph client is guarded — two fixed
+hosts, `netguard`, no proxy, no redirect, a token cached per secret until five minutes
+before it ends, `Retry-After` honoured once, one 5xx retry, a 1 MiB cap, the body never
+stored — and `Provider` reads the row with no network call, its reasons Staff's
+attention items. The lifecycle: found by employee id or created disabled under an
+address made from the work email or a pattern over the folded names; enabled on the
+first day with the hire date, the licences and the pass; kept in step; disabled first,
+then the sessions revoked, the leave date written, the direct licences stripped and the
+groups left as the connection says; soft-deleted when Staff asks; every refusal a
+sentinel or a reported code, and a streak of three refused sensitive actions read as
+`role_missing`, the User Administrator role not assigned. The tile **Microsoft Entra
+ID** carries the **Status** card and the six-step wizard with every portal path,
+embedding A's two forms as its sign-in and provisioning steps. A fake Graph under the
+module proves it, and a tagged test against a real tenant settles the research's three
+uncertain facts. The pass is shown to HR on the Account tab; the manager's notice waits
+for a later delivery. Migration `00061_entra_baseline.sql` (entra).
 
-**C — The module**, on `feat/entra-module`: the `entra` module, its schema — the
-connection, the sealed credentials, the accounts, the events — and one permission; the
-Graph client, guarded, with a cached token, `Retry-After` and batches; the user
-lifecycle in the tenant — prepared without licences under an address made from the
-work email or a pattern, enabled on the start day with the licences and a Temporary
-Access Pass the manager is told about, kept in step as the person moves, disabled the
-day after the end with its sessions revoked and its licences and groups stripped,
-deleted later or never; the tile and the wizard that carries every portal step,
-including A's two forms; a fake Graph, and a tagged test against a real tenant.
-Migration `00061` (entra).
+*Unblocks:* an Owner connecting the company's tenant without a deployment; HR's joiners,
+movers and leavers reaching Microsoft 365 with no second place to type; D's groups,
+whose traits the provider already declares.
+
+.
 
 **D — Groups and traits**, on `feat/entra-groups`: groups in Staff, listed or derived
 from the register, with owners and members materialised daily; **traits** a provider

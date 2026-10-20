@@ -1,0 +1,307 @@
+---
+title: Microsoft Entra ID
+description: Å koble Vantigo til en Microsoft Entra ID-leietaker slik at kontoene Ansatte gir, lages der — appregistreringen, klienthemmeligheten, de åtte applikasjonstillatelsene og rollen User Administrator, administratorsamtykket, policyen for midlertidig tilgangspass, kontoreglene, innlogging og provisjonering; hva stegene for en som slutter gjør, og hva sletting mister; rotasjon av hemmeligheter; den merkede testen mot en ekte leietaker; og hva hver årsakskode betyr.
+sidebar:
+  order: 46
+sources:
+  - apps/server/internal/entra/module.go
+  - apps/server/internal/entra/graph.go
+  - apps/server/internal/entra/credentials.go
+  - apps/server/internal/entra/status.go
+  - apps/server/internal/entra/lifecycle.go
+  - apps/server/internal/entra/tenant_test.go
+---
+
+Microsoft Entra ID-modulen lager kontoene til personene Ansatte registrerer, i
+selskapets Microsoft Entra ID-leietaker: opprettet deaktivert før starten, aktivert
+første dag med et midlertidig tilgangspass, holdt i takt når personen flytter seg,
+deaktivert dagen etter slutt, slettet senere eller aldri. Ansatte bestemmer; modulen
+utfører det gjennom Microsoft Graph. Denne siden er driftssiden: hva leietakeren
+trenger, de seks stegene i modulens veiviser, hva stegene for en som slutter gjør, og
+hva du gjør når noe feiler. Hva modulen gjør og reglene den sjekker, står i
+[referansen](/en/reference/entra/); skjermbildene i veiviseren står i
+[brukerveiledningen](/nb/user/entra/).
+
+## Før du begynner
+
+- **En Microsoft Entra ID-leietaker**, og noen der som kan registrere en applikasjon,
+  gi administratorsamtykke til Microsoft Graphs applikasjonstillatelser og tildele en
+  katalogrolle — en Global Administrator eller en Privileged Role Administrator.
+- **En eier** i Vantigo, innlogget med en andre faktor mens `OWNERS_REQUIRE_MFA` er på.
+  Registreringen, hemmelighetene og tilkoblingstesten er bare en eiers; en person med
+  `entra:manage` ser dem skrivebeskyttet.
+- **Ansatte på.** Modulen er Ansattes leverandør og gjør ingenting uten den: `MODULES`
+  avviser `entra` uten `staff` ved oppstart (`entra requires staff`).
+- **Kortet Single sign-on**, under administrasjon av arbeidsområdet, for de to siste
+  stegene: modulens veiviser bygger inn skjemaene for innlogging og provisjonering
+  ([SSO- og SCIM-drift](/nb/admin/sso-scim/)).
+- **Utgående https** fra hver prosess som kjører API-et eller bakgrunnsjobbene, til
+  `login.microsoftonline.com` og `graph.microsoft.com`, uten proxy: modulen bruker
+  ingen og følger ingen omdirigering.
+- Migreringene lager skjemaet `entra` enten modulen er slått på eller ikke; en
+  applikasjonsrolle med minste privilegium trenger tilgang til det som til alle andre
+  ([Installasjon](/nb/admin/installation/#databaseroller)).
+
+Ingenting ved modulen står i `vantigo.env`: det finnes ingen `ENTRA_*`-variabel.
+Leietakeren, klienten, hemmelighetene og kontoreglene ligger i databasen, satt på
+modulens side.
+
+## Slå på modulen
+
+1. La `MODULES` være usatt, eller legg til `entra` ved siden av `staff`.
+2. Start Vantigo på nytt (`docker compose up -d`).
+3. Verifiser: flisen **Microsoft Entra ID** står i appvelgeren for en eier, og
+   `GET /api/v1/entra/connection` svarer 401 uten økt i stedet for 404-en en avslått
+   moduls sti svarer.
+
+Modulen har ingen bakgrunnsjobb selv: Ansattes kontoarbeider, `staff-accounts`, kaller
+den ([Ansatte](/nb/admin/staff/#kontoarbeideren)).
+
+## Koble til leietakeren
+
+Åpne **Microsoft Entra ID** fra appvelgeren. Siden er veiviseren: seks steg, hvert et
+kort med stien i portalen, hva du skal kopiere, og *Ferdig* når Vantigo har det det
+trenger; et kort **Status** står over dem når tilkoblingen er testet. Gå gjennom dem i
+rekkefølge, med portalen i en annen fane.
+
+### 1. Registrer
+
+1. I **Microsoft Entra admin center**, åpne **App registrations** › **New
+   registration**.
+2. Gi den et navn (for eksempel `Vantigo`), velg **Accounts in this organizational
+   directory only**, og la **Redirect URI** stå tom inntil videre. Velg **Register**.
+3. På registreringens **Overview**, kopier **Directory (tenant) ID** og
+   **Application (client) ID**.
+4. I steg 1 i veiviseren, lim dem inn i de to feltene og velg **Lagre**.
+
+Én registrering kan tjene både Vantigos Graph-tilkobling og innloggingen (steg 5); du
+kan bruke to om du vil.
+
+### 2. En hemmelighet
+
+1. I registreringen, åpne **Certificates & secrets** › **Client secrets** › **New
+   client secret**. Gi den en beskrivelse og en utløpstid: høyst 24 måneder, og
+   Microsoft anbefaler under 12.
+2. Kopier hemmelighetens **Value** med en gang — ikke **Secret ID**. Portalen viser den
+   bare nå.
+3. I steg 2, velg **Legg til en hemmelighet**: en etikett (beskrivelsen du ga den),
+   verdien og utløpsdatoen portalen viser. Velg **Lagre**. Vantigo forsegler verdien med
+   en gang og viser den aldri igjen.
+
+### 3. Tillatelser og rollen
+
+1. I registreringen, åpne **API permissions** › **Add a permission** › **Microsoft
+   Graph** › **Application permissions**, og legg til disse åtte — veiviseren lister dem
+   til kopiering:
+   - `User.ReadWrite.All`
+   - `User-LifeCycleInfo.ReadWrite.All`
+   - `User.RevokeSessions.All`
+   - `UserAuthMethod-TAP.ReadWrite.All`
+   - `LicenseAssignment.ReadWrite.All`
+   - `Group.ReadWrite.All`
+   - `Domain.Read.All`
+   - `Organization.Read.All`
+2. Velg **Grant admin consent for** organisasjonen deres, og bekreft. Statusen til hver
+   tillatelse blir *Granted*.
+3. **Tildel rollen User Administrator** til applikasjonen. Åpne **Roles & admins** ›
+   **User Administrator** › **Add assignments**, og velg applikasjonen etter navnet
+   (tjenestekontohaveren, listet under bedriftsapplikasjoner). Uten rollen avviser Graph
+   å aktivere, deaktivere eller slette en konto selv med tillatelsene — steget et halvferdig
+   oppsett feiler på første dag til den første personen.
+4. I steg 3, velg **Test tilkoblingen**. Vantigo henter et token med hemmeligheten,
+   leser organisasjonen og de verifiserte domenene, og sammenligner tokenets
+   tillatelser med de åtte.
+
+Verifiser: testen sier at tilkoblingen virker, navngir organisasjonen og viser ingen
+tillatelse som mangler. En som mangler, navngis: legg den til, gi samtykke igjen og test
+på nytt. Testen kan ikke se katalogrollen — Vantigo kan ikke lese den uten en ytterligere
+tillatelse — så sjekk tildelingen selv under **Roles & admins**.
+
+### 4. Kontoer
+
+Kontoreglene, som en med `entra:manage` kan sette i tillegg til en eier:
+
+- **Domenet** brukerhovednavnene lages under, valgt blant leietakerens verifiserte
+  domener (testen leser dem).
+- **Mønsteret** for en person hvis e-post på jobb ikke kan være brukerhovednavnet —
+  `given.family`, `g.family` eller `given`. En e-post på jobb på et verifisert domene
+  brukes som den er.
+- **Bruksstedet**, landet som skrives når Ansatte ikke har noe for personen (`NO` om
+  ikke endret). Microsoft nekter en bruker uten bruksted en lisens.
+- **Stegene for en som slutter** — tilbakekall øktene, skriv sluttdatoen, fjern
+  lisensene, og hvilke grupper personen skal forlate — og om ansettelsesdatoen skal
+  skrives; hvert er på om du ikke slår det av ([hva de gjør](#hva-stegene-for-en-som-slutter-gjør)).
+- **Det midlertidige tilgangspasset**: levetiden (10 minutter til 30 dager, 8 timer om
+  ikke endret), om det virker én gang, og hvem som gir det videre. HR viser det én gang,
+  på personens fane Konto i Ansatte; innstillingen for hvem som gir det videre lagres for
+  en senere utgivelse og sender ennå ingenting til lederen.
+
+Velg **Lagre**.
+
+**Passet trenger leietakerens policy.** Vantigo kan lage et pass for hvilken som helst
+bruker, men personen kan logge inn med det bare om leietakerens **policy for
+autentiseringsmetoder** slår det på for dem: i **Microsoft Entra admin center**, åpne
+**Authentication methods** › **Policies** › **Temporary Access Pass**, slå det på, og
+rett det mot alle brukere eller en gruppe de nye personene er i. Policyen har sin egen
+lengste levetid (åtte timer som standard): hold modulens levetid innenfor den. Uten
+policyen avviser Graph passet, og personens fane Konto i Ansatte sier *et pass ikke
+tillatt*.
+
+### 5. Innlogging
+
+Valgfritt. Veiviseren bygger inn leverandørskjemaet fra kortet **Single sign-on**, fylt
+ut med leietakerens autoritet (`https://login.microsoftonline.com/<tenant id>/v2.0`) og
+klient-ID-en, slik at folk logger inn i Vantigo med Microsoft-kontoen sin:
+
+1. I registreringen, åpne **Authentication** › **Add a platform** › **Web**, og lim inn
+   **Tilbakekalls-URL**-en skjemaet viser.
+2. Skjemaet trenger også en klienthemmelighet fra registreringen — en ny, siden portalen
+   viser en verdi bare én gang — eller en tokenfil.
+3. Fyll ut skjemaet og velg **Lagre**, slik [SSO- og
+   SCIM-drift](/nb/admin/sso-scim/#microsoft-entra-id-klienthemmelighet) beskriver.
+
+Uten dette lager Ansatte fortsatt Microsoft-kontoene, og ingen logger inn i Vantigo med
+dem.
+
+### 6. Provisjonering
+
+Valgfritt. Veiviseren bygger inn kortets SCIM-del: velg **Nytt token**, og i portalen,
+åpne **Enterprise applications** › applikasjonen deres › **Provisioning**, sett
+**Provisioning Mode** til **Automatic**, lim inn **Endepunkt-URL** som **Tenant URL** og
+tokenet som **Secret Token**, test og lagre ([SCIM](/nb/admin/sso-scim/#scim)). Vantigo
+godtar attributtene i virksomhetsutvidelsen som Entra tilordner som standard,
+ansattnummeret blant dem
+([virksomhetsutvidelsen](/nb/admin/sso-scim/#virksomhetsutvidelsen-og-ansattnummeret)).
+
+Uten dette dukker personens Vantigo-bruker opp ved første innlogging i stedet for innen
+Entras provisjoneringssyklus etter at kontoen er aktivert. Uansett blir brukeren som
+kommer, tatt opp for Ansatte som kontoen Ansatte kunngjorde.
+
+Steget tilbyr også en lenke til Ansatteinnstillinger, der **Standard kontotype** kan
+settes til **Microsoft Entra ID** for nye personer ([Kontoer](/nb/user/staff/#kontoer)).
+Modulen setter den aldri selv.
+
+### Verifiser tilkoblingen
+
+- Kortet **Status** viser tilkoblet, med organisasjonen, ingen tillatelse som mangler,
+  hemmeligheten i bruk og utløpet dens.
+- Ansatteinnstillinger, **Kontoer**, sier *Microsoft Entra ID: tilkoblet.*
+- Gi én testperson kontotypen **Microsoft Entra ID** og kontoflagget, og velg **Kjør
+  nå** på fanen Konto: kortet **Microsoft Entra ID** viser kontoen med brukerhovednavnet,
+  og modulens siste hendelser viser `entra.user.prepared`.
+
+## Hva stegene for en som slutter gjør
+
+Dagen etter at en persons siste arbeidsforhold slutter, får Ansatte modulen til å
+deaktivere kontoen. I denne rekkefølgen, alle unntatt det første slått av eller på i
+steg 4:
+
+| Steg | Hva som skjer i leietakeren |
+| --- | --- |
+| Deaktiver | Alltid, først: kontoen kan ikke lenger logge inn. Apper som støtter kontinuerlig tilgangsevaluering, reagerer innen minutter. |
+| Tilbakekall øktene | Hvert oppdateringstoken og hver nettleserøkt slutter innen noen minutter; et tilgangstoken som allerede er utstedt, lever ut timen sin. |
+| Skriv sluttdatoen | `employeeLeaveDateTime` settes til siste dag kl. 23.00 i forretningstidssonen — det en utløser for Lifecycle Workflows leser. |
+| Fjern lisensene | Hver lisens tildelt personen direkte fjernes, og plassen frigjøres. En lisens som kommer fra en gruppe, går med gruppen. |
+| Forlat gruppene | **Alle**: hver gruppe unntatt dynamiske, rolletildelbare og rene e-postgrupper, også grupper Vantigo aldri laget. **Administrerte**: bare Vantigos egne grupper. **Ingen**: alle medlemskap blir stående. |
+
+Et steg som feiler, prøves igjen i neste runde; kontoen deaktiveres først uansett hva
+annet som feiler. Et pass som ikke er vist ennå, forkastes.
+
+**Sletting** kommer senere, når Ansattes **Slett en ekstern konto (dager etter slutt)**
+sier det, og aldri mens kontoen er aktivert eller personen har en slettesperre. Det er
+en myk sletting: kontoen ligger i leietakerens **Deleted users** i 30 dager og kan
+gjenopprettes der. **Etter de 30 dagene er den borte, med postboksen og OneDrive.** For
+å beholde e-posten til en som har sluttet, gjør postboksen om til en delt postboks eller
+overlever OneDrive i Microsoft 365 admin center før det — Vantigo gjør ingen av delene —
+eller la innstillingen stå tom, som aldri sletter. En person som ansettes igjen etter en
+sletting, får en ny konto.
+
+## Roter en hemmelighet
+
+1. I registreringen, legg til en ny klienthemmelighet, og kopier verdien.
+2. I steg 2, **Legg til en hemmelighet** med den. Den nyeste gyldige hemmeligheten er den
+   som brukes, så den nye tar over med en gang; **I bruk** flytter seg til den.
+3. Velg **Tilbakekall** på den gamle, og slett den så i portalen. Vantigo nekter å
+   tilbakekalle den eneste gyldige hemmeligheten mens modulen holder kontoer
+   (`credential_in_use`), siden ingenting da kunne deaktivere en som slutter.
+
+Tretti dager før den nyeste gyldige hemmeligheten utløper, viser Ansattes dashbord
+`secretExpiring`; når den har utløpt, `secretExpired`, og tilkoblingen feiler: Ansatte
+skriver da ingenting til leietakeren før en ny hemmelighet er lagt til — ikke engang en
+deaktivering. En hemmelighet leietakeren avviser (`invalid_client`, for eksempel en som
+er slettet i portalen), merkes som feilet, og den neste gyldige prøves.
+
+## Bytt leietaker eller applikasjon
+
+**Lagre** i steg 1 med en annen leietaker- eller klient-ID sender tilkoblingen tilbake
+til *ikke tilkoblet* til den er testet igjen. Mens modulen holder kontoer, spør Vantigo
+først (`connection_in_use`): kontoene ble laget i den gamle leietakeren, og modulen vil
+lete etter folk i den nye. Ingenting slettes i noen av leietakerne.
+
+## Den merkede testen
+
+For en bidragsyter: modulens tester kjører mot en falsk Graph, og én merket test kjører
+det ekte mot en egen leietaker, for å avgjøre det den falske ikke kan vite — om en
+applikasjon kan skrive `employeeHireDate`, passets tillatelse, og hvilke egenskaper en
+bruker synkronisert fra lokal katalog avviser.
+
+**Leietakeren trenger:**
+
+- En egen leietaker — Entra ID Free dekker brukere og grupper gjennom Graph. (Om
+  sandkassen i Microsoft 365 Developer Program fortsatt er tilgjengelig uten et Visual
+  Studio-abonnement, er usikkert; en prøveleietaker eller en med betaling per bruk
+  holder.)
+- En appregistrering med de åtte applikasjonstillatelsene, med administratorsamtykke,
+  og **rollen User Administrator tildelt tjenestekontohaveren** (steg 1 til 3).
+- Midlertidig tilgangspass slått på i policyen for autentiseringsmetoder for alle
+  brukere.
+- En klienthemmelighet, leietaker-ID-en, klient-ID-en og et verifisert domene
+  (`<navn>.onmicrosoft.com` holder).
+- For det tredje faktumet, en bruker synkronisert fra lokal katalog, etter objekt-ID.
+
+**Kjør den** fra `apps/server`:
+
+```sh
+ENTRA_TEST_TENANT_ID=<tenant id> \
+ENTRA_TEST_CLIENT_ID=<client id> \
+ENTRA_TEST_CLIENT_SECRET=<secret value> \
+ENTRA_TEST_DOMAIN=<verified domain> \
+go test -tags entra -run TestEntraTenant ./internal/entra/
+```
+
+`ENTRA_TEST_SYNCED_USER_ID` legger til sjekken av den synkroniserte brukeren. Uten de
+fire variablene hoppes testen over. Den lager en bruker med prefikset `vantigo-test-`,
+aktiverer den med ansettelsesdatoen, utsteder et pass, oppdaterer den, deaktiverer den
+med sluttdatoen og sletter den, og lager og sletter en gruppe med prefiks; den logger hva
+Graph svarte for de tre faktaene, og fjerner alt den laget når den er ferdig. Den går
+gjennom den samme bevoktede transporten som produksjon. Hold hemmeligheten utenfor
+skallhistorikken.
+
+## Hva som kan gå galt
+
+Kortet **Status** navngir årsaken; Ansattes innstillinger og dashbord sier det samme med
+Ansattes ord.
+
+| Årsak | Betyr | Gjør |
+| --- | --- | --- |
+| `credential_invalid` | Ingen hemmelighet fikk et token: verdien ble skrevet feil, hemmeligheten ble slettet i portalen, eller klient-ID-en er feil. | Legg til riktig hemmelighet (steg 2), sjekk ID-ene (steg 1), og test igjen. |
+| `tenant_unreachable` | Leietakeren svarte ikke. | Sjekk utgående https til `login.microsoftonline.com` og `graph.microsoft.com` fra hver prosess, og test igjen. |
+| `consent_missing` | Tokenet bærer ingen tillatelse: administratorsamtykke ble aldri gitt, eller ble trukket tilbake. | **Grant admin consent** (steg 3) og test igjen. |
+| `secret_expired` | Alle hemmelighetene har utløpt. | Legg til en ny (steg 2). |
+| `secret_expiring` | Den nyeste gyldige hemmeligheten utløper innen 30 dager. | [Roter](#roter-en-hemmelighet). |
+| `role_missing` | Tre aktiveringer, deaktiveringer, pass eller slettinger på rad ble avvist, uten at noen har lyktes siden: rollen User Administrator er mest sannsynlig ikke tildelt. | Tildel rollen (steg 3), og **Kjør nå** på en av personene som står fast; et vellykket steg fjerner årsaken. |
+| Tillatelser mangler | Testens token mangler én eller flere av de åtte. | Legg dem til, gi samtykke igjen, test igjen. |
+
+På en persons fane Konto i Ansatte sier kortet **Microsoft Entra ID** hva leietakeren
+meldte for dem:
+
+| På fanen | Betyr | Gjør |
+| --- | --- | --- |
+| To kontoer med ansattnummeret | To brukere i leietakeren har det som ansatt-ID. | Fjern det fra den gale i portalen. |
+| E-posten på jobb er allerede en annen kontos | En annen bruker har den som brukerhovednavn. | Endre personens e-post på jobb i Ansatte, eller rydd opp i den andre kontoen. |
+| Synkronisert fra en lokal katalog | Brukeren styres av Active Directory, som Graph ikke vil skrive. | Administrer kontoen lokalt; hybride leietakere støttes ikke. |
+| En administrativ rolle i Entra | Brukeren har en rolle (eller er i en rolletildelbar gruppe) applikasjonen ikke får røre — eller applikasjonen mangler rollen. | En administrator håndterer kontoen for hånd; se `role_missing` over. |
+| Ansettelsesdatoen ikke skrevet | Graph avviste `employeeHireDate`. | Ingenting trengs for innloggingen; slå av skrivingen av ansettelsesdatoen om det fortsetter å feile. |
+| Ingen lisens igjen (lisensen navngitt) | Ingen plass var ledig. | Kjøp plasser eller frigjør én, og **Kjør nå**. |
+| Et pass ikke tillatt | Leietakerens policy for autentiseringsmetoder slår ikke på passet for personen. | [Slå på policyen](#4-kontoer) for dem, og **Kjør nå (nytt pass)**. |
+| Lederens konto ikke funnet | Lederen har ingen konto i leietakeren. | Gi lederen kontotypen Microsoft Entra ID, eller godta det. |

@@ -52,6 +52,12 @@ application.
   public host's list, rate limited, with its token in the path; the
   `calendar-subscriptions` worker fetches the calendars people subscribe to from the
   internet, through the outbound address guard.
+- **Microsoft Entra ID.** [Microsoft Entra ID](/en/admin/entra/) connects Vantigo to the
+  company's tenant so the accounts Staff gives are made there: `entra` in `MODULES`
+  beside `staff`, which it requires; an app registration with eight application
+  permissions, admin consent and the User Administrator role; client secrets added and
+  rotated by an Owner; the Temporary Access Pass policy; and what a leaver's steps and a
+  delete do in the tenant. Nothing of it is in `vantigo.env`.
 
 ## The complete configuration reference
 

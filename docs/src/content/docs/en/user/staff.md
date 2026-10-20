@@ -481,7 +481,9 @@ sees this table on their own tab too: it is their data as the directory sees it.
 the pass Entra issued for the person's first sign-in in a window, **Temporary Access
 Pass**, with *… types this pass at their first sign-in.*, *Works until …*, **Copy** and
 **Close**: *It will not be shown again.* It is shown **once**: after you close the window
-nobody can see it again, and the button is gone. Give it to the person yourself; it is
+nobody can see it again, and the button is gone. How long a pass works, and whether it
+works for one sign-in only, is the Microsoft Entra ID connection's setting — eight hours
+unless changed — under its [Accounts step](/en/user/entra/#4-accounts). Give it to the person yourself; it is
 never mailed. A pass that has run out, or one already shown, is gone — the tab says
 *The pass was shown already, has expired, or none was issued. Run now (new pass) issues
 a new one.* — so use **Run now (new pass)**.
