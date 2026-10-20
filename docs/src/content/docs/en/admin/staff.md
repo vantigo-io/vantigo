@@ -185,13 +185,25 @@ settings' revision moves only when the default became `external`, so a Settings 
 open during a seed that left `local` saves as usual. Nothing changes anyone's kind
 afterwards but HR.
 
+**Until the seed has run**, every person reads `local`, which may not be their rule, so
+Staff judges nothing on a kind: the worker runs nothing but deactivations, leaving every
+other link as it was and logging `staff: the account kinds are not yet seeded; only
+deactivations run` once a cycle; **Run now** for a person, and a change of a person's
+**Account kind** or of the **Default account kind**, answer 503 `accounts_unavailable`,
+saying the kinds are not yet seeded, and change nothing. Each tries the seed again
+first, so they work as soon as identity answers; verify with the log line above.
+
 **To change the default**: Staff settings → **Accounts** → **Default account kind**,
 then **Save the account settings** (`defaultAccountKind` on `PUT /settings`). Only new
 people get it. **To change one person's**: their Account tab → **Account kind**. The
 `entra` kind is refused `provider_missing` unless an enabled module offers the
 provider; leaving `entra` is refused `account_kind_locked` (409) while the person's
-Entra account is enabled or disabled — disable them with **Disable now**, or let the
-employment end, then change it. Moving a person from `local` to `entra` while their
+Entra link names an account Entra has not deleted — enabled, disabled, or held up on
+it, unless Entra reported it gone — so disable them with **Disable now**, or let the
+employment end, and change it once the account is deleted. A change that goes through
+before Entra made an account withdraws the account's announcement to Vantigo when no
+Vantigo user has arrived yet; a link the person keeps under Entra is still disabled for
+a leaver or by **Disable now**, and nothing else is done to it. Moving a person from `local` to `entra` while their
 Vantigo user still waits for its invitation is allowed: the user Entra brings takes
 that one over.
 
@@ -324,9 +336,11 @@ identity records and the history names.
   sent* or *Done: no invitation was sent* (`{invitationSent, account}`). Identity never
   re-sends an invitation that can still be accepted and sends none within ten minutes of
   the last; the run is done all the same — try again after ten minutes if one is needed.
-  For an `entra` person it is **Run now (new pass)**: Entra issues a new pass, shown
-  with **Show the pass**; a refusal from Entra is `provider_refused` (409) with its
-  code.
+  For an `entra` person it is **Run now (new pass)**: a new pass is asked of Entra only
+  when the run enables a disabled account — a joiner on their first day, a rehire —
+  and shown with **Show the pass**; an account already enabled gets no new pass and is
+  only brought in line. A refusal from Entra is `provider_refused` (409) with its code.
+  While the account kinds are not yet seeded, Run now answers 503 and runs nothing.
   A person whose flag is off has nothing run, and the tab offers no Run now.
 - **Limits**: from one client address, Run accounts now at most 30 times an hour, and a
   person's Run now, Disable now and Show the pass together at most 120 times an hour; past either the
@@ -359,13 +373,19 @@ until HR turns the flag on again.
    for, then identity disables the user (`account_deactivated`) and ends their
    sessions. For an `entra` person the Entra account is disabled first
    (`account_external_deactivated`), then the Vantigo user; a refusal from Entra is
-   `provider_refused` (409) with its code, and Entra unreachable `accounts_unavailable`
-   (503), the flag already off either way — identity's own refusal is answered first.
+   `provider_refused` (409) with its code, and a disable Entra did not confirm — Entra
+   unreachable or unavailable, its account not readable, or no enabled module offering
+   it — `accounts_unavailable` (503), saying the directory could not be reached. The
+   flag is already off either way, identity's own refusal is answered first, and the
+   disable stays asked for: the worker finishes it at its next poll.
    The person's own
    revision does not move. If the browser gives up waiting,
    the disable still goes on; whatever does not reach identity, the worker finishes at
    its next polls.
-2. Verify: the tab says *The account is disabled and the account flag is off*, **Staff
+2. Verify: the tab says *The account is disabled and the account flag is off* — for an
+   `entra` person *The account and the directory account are disabled and the account
+   flag is off*, or *The account flag is off and the directory account is disabled.*
+   when there was no Vantigo user yet — **Staff
    provides an account** is off and the **State** reads *Disabled by Staff* (the answer
    has `provisionAccount: false` and the link `state: disabled`). A person with no link, or whose user is not created yet, only has
    the flag turned off.

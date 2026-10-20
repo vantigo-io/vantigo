@@ -419,7 +419,10 @@ erstattes. En bruker å erstatte som navngis når ingen har nummeret, eller som 
 ventende innehaveren uten innloggingsmetode, er en ugyldig kunngjøring. Den samme
 kunngjøringen igjen endrer ingenting; enhver endring erstatter den helt og
 revisjonslogges `account.expected` med nummeret, navnene på nøklene og brukeren den
-erstatter. Ansatte registrerer `ErrEmployeeNumberTaken` og `ErrAccountPrivileged` på
+erstatter. En kunngjøring som registrerer en bruker å erstatte, trekker tilbake den
+brukerens åpne invitasjoner `replaced` i samme transaksjon — personen kan ikke godta en
+lokal invitasjon mens leverandørens konto er på vei — og revisjonsloggens etter-verdi
+teller dem (`replacedInvitations`). Ansatte registrerer `ErrEmployeeNumberTaken` og `ErrAccountPrivileged` på
 personens leverandørkobling og prøver en ugyldig kunngjøring igjen som en feil.
 `Unexpect` sletter en kunngjøring og revisjonslogges `account.unexpected` når en ble
 slettet; uten noen — aldri kunngjort, eller allerede oppfylt, som brukte den opp — lykkes
@@ -429,13 +432,18 @@ den og skriver ingenting.
 dem noen gang; `identity.users.provisioning_roles_at` registrerer når Ansattes
 `Activate` ga en bruker ansattrollene. For typen `entra` gir den første `Activate` som
 finner den tom, rollene og setter den — én gang: en eiers senere fjerning av en rolle
-omgjøres ikke. Den lokale veien setter den også når den gir dem.
+omgjøres ikke. Den lokale veien setter den også når den gir dem. Migrering 00059 setter
+den ved oppgraderingen for hver bruker Ansatte styrer som ikke venter: forrige utgaves
+`Activate` eller en eiers inntak har allerede gitt dem rollene, så engangstildelingen er
+brukt opp for dem, og en senere `entra`-aktivering gir ingenting tilbake over det en
+eier har fjernet. En ventende bruker beholder den tom.
 
 En kunngjøring ingen oppfyller, står til Ansatte trekker den tilbake; etter nitti dager
 melder Ansatte personens konto som ikke kommet (`accountNotArrived`). Eierens manuelle
 [inntak](#ta-en-eksisterende-bruker-inn-under-ansatte) står igjen for typen `external` og
 for enhver bruker leverandøren laget uten kunngjøring. Migreringen
-`00059_identity_expected_accounts.sql` legger til tabellen og `provisioning_roles_at`;
+`00059_identity_expected_accounts.sql` legger til tabellen og `provisioning_roles_at`
+(fylt for de styrte brukerne som ikke venter, som over);
 Down fjerner begge, og en kunngjøring som ikke er oppfylt, gjøres på nytt etter
 leverandørens neste `Prepare`.
 
