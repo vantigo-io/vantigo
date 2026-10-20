@@ -408,7 +408,7 @@ export const staffCatalog = {
     "refusal.account_mismatch":
       "The account flag is off, but the user was not disabled: the account carries another employee number — someone else's account. It is disabled once the number is right.",
     "refusal.account_kind_locked":
-      "The account kind cannot leave Microsoft Entra ID while the person's account there is enabled or disabled. The person leaves the directory by Disable now or by the end of their employment.",
+      "The account kind cannot leave Microsoft Entra ID while Microsoft Entra ID holds an account for the person. The person leaves the directory by Disable now or by the end of their employment.",
     "refusal.provider_missing": "No enabled module offers this identity provider, so it cannot be chosen.",
     "refusal.pass_gone":
       "The pass was shown already, has expired, or none was issued. Run now (new pass) issues a new one.",
@@ -587,7 +587,7 @@ export const staffCatalog = {
     accountKindChoice_external: "External identity provider",
     accountKindChoice_entra: "Microsoft Entra ID",
     accountKindChoiceDescription:
-      "Who owns the person's account. Leaving Microsoft Entra ID is refused while the person's account there is enabled or disabled.",
+      "Who owns the person's account. Leaving Microsoft Entra ID is refused while it holds an account for the person.",
     defaultAccountKind: "Default account kind",
     defaultAccountKindDescription: "The kind a new person takes. People already registered keep theirs.",
     providersNone: "No identity provider is offered: no enabled module provides one.",
@@ -1960,7 +1960,7 @@ export const staffCatalog = {
     "refusal.account_mismatch":
       "Kontoflagget er av, men brukeren ble ikke deaktivert: kontoen har et annet ansattnummer — den er noen andres. Den deaktiveres når nummeret stemmer.",
     "refusal.account_kind_locked":
-      "Kontotypen kan ikke forlate Microsoft Entra ID mens personens konto der er aktivert eller deaktivert. Personen forlater katalogen med Deaktiver nå eller når arbeidsforholdet slutter.",
+      "Kontotypen kan ikke forlate Microsoft Entra ID mens Microsoft Entra ID har en konto for personen. Personen forlater katalogen med Deaktiver nå eller når arbeidsforholdet slutter.",
     "refusal.provider_missing": "Ingen aktivert modul tilbyr denne identitetsleverandøren, så den kan ikke velges.",
     "refusal.pass_gone":
       "Passet er allerede vist, har utløpt, eller ble aldri utstedt. Kjør nå (nytt pass) utsteder et nytt.",
@@ -2138,7 +2138,7 @@ export const staffCatalog = {
     accountKindChoice_external: "Ekstern identitetsleverandør",
     accountKindChoice_entra: "Microsoft Entra ID",
     accountKindChoiceDescription:
-      "Hvem som eier personens konto. Å forlate Microsoft Entra ID avvises mens personens konto der er aktivert eller deaktivert.",
+      "Hvem som eier personens konto. Å forlate Microsoft Entra ID avvises mens den har en konto for personen.",
     defaultAccountKind: "Standard kontotype",
     defaultAccountKindDescription: "Kontotypen en ny person får. Personer som allerede er registrert, beholder sin.",
     providersNone: "Ingen identitetsleverandør tilbys: ingen aktivert modul gir en.",

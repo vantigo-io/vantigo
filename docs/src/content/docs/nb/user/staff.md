@@ -393,8 +393,8 @@ på hvilken adresse og hvem som har kontoen. HR endrer det:
 
    En ny person får **Standard kontotype** fra [Kontoer](#kontoer). Å flytte en person bort
    fra Microsoft Entra ID mens Entra har en konto for dem — aktivert, deaktivert eller
-   stoppet, til Entra har slettet den eller meldt den borte — avvises — *Kontotypen kan ikke forlate Microsoft Entra ID mens personens konto der er
-   aktivert eller deaktivert. Personen forlater katalogen med Deaktiver nå eller når
+   stoppet, til Entra har slettet den eller meldt den borte — avvises — *Kontotypen kan ikke forlate Microsoft Entra ID mens Microsoft Entra ID har en
+   konto for personen. Personen forlater katalogen med Deaktiver nå eller når
    arbeidsforholdet slutter.* En person med en
    Vantigo-bruker som fortsatt venter på invitasjonen, kan flyttes fra Lokal til
    Microsoft Entra ID: kontoen som kommer fra Entra, overtar den brukeren. Til Ansatte
