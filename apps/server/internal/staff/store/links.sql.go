@@ -8,6 +8,8 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const deletePersonLink = `-- name: DeletePersonLink :exec
@@ -20,6 +22,27 @@ DELETE FROM staff.identity_links WHERE person_id = $1 AND provider = 'identity'
 // one naming any user (person_in_use).
 func (q *Queries) DeletePersonLink(ctx context.Context, personID int64) error {
 	_, err := q.db.Exec(ctx, deletePersonLink, personID)
+	return err
+}
+
+const insertPreparingProviderLink = `-- name: InsertPreparingProviderLink :exec
+INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
+VALUES ($1, $2, NULL, 'preparing', true, $3::timestamptz, $3::timestamptz)
+ON CONFLICT (person_id, provider) DO NOTHING
+`
+
+type InsertPreparingProviderLinkParams struct {
+	PersonID int64
+	Provider string
+	Now      time.Time
+}
+
+// InsertPreparingProviderLink writes the worker's preparing link under
+// @provider — no external account yet, managed — under the person's lock,
+// before the provider's Prepare is called. A link already there is left as
+// it is.
+func (q *Queries) InsertPreparingProviderLink(ctx context.Context, arg InsertPreparingProviderLinkParams) error {
+	_, err := q.db.Exec(ctx, insertPreparingProviderLink, arg.PersonID, arg.Provider, arg.Now)
 	return err
 }
 
@@ -173,6 +196,111 @@ func (q *Queries) PersonLink(ctx context.Context, personID int64) (PersonLinkRow
 	return i, err
 }
 
+const personProviderLink = `-- name: PersonProviderLink :one
+
+SELECT id, external_id, state, managed, blocked_reason, last_error, attempts, next_attempt_at,
+    last_synced_at, last_spec_hash, external_upn, external_email, announced_at, pass_issued_at,
+    reported_codes, updated_at
+FROM staff.identity_links
+WHERE person_id = $1 AND provider = $2
+`
+
+type PersonProviderLinkParams struct {
+	PersonID int64
+	Provider string
+}
+
+type PersonProviderLinkRow struct {
+	ID            int64
+	ExternalID    *string
+	State         string
+	Managed       bool
+	BlockedReason *string
+	LastError     *string
+	Attempts      int32
+	NextAttemptAt *time.Time
+	LastSyncedAt  *time.Time
+	LastSpecHash  []byte
+	ExternalUpn   *string
+	ExternalEmail *string
+	AnnouncedAt   *time.Time
+	PassIssuedAt  *time.Time
+	ReportedCodes []string
+	UpdatedAt     time.Time
+}
+
+// The provider links (Entra design D7, delivery B): a person's second row in
+// staff.identity_links, its provider an IdentityProvisioner's key ('entra'),
+// which the accounts worker writes under the claim it holds on the person's
+// identity link — the identity link stays the claim, so the two are worked
+// in one chain under one lease.
+// PersonProviderLink is a person's link under @provider with every column
+// the worker and the Account tab read. No row is a person with no link
+// under it.
+func (q *Queries) PersonProviderLink(ctx context.Context, arg PersonProviderLinkParams) (PersonProviderLinkRow, error) {
+	row := q.db.QueryRow(ctx, personProviderLink, arg.PersonID, arg.Provider)
+	var i PersonProviderLinkRow
+	err := row.Scan(
+		&i.ID,
+		&i.ExternalID,
+		&i.State,
+		&i.Managed,
+		&i.BlockedReason,
+		&i.LastError,
+		&i.Attempts,
+		&i.NextAttemptAt,
+		&i.LastSyncedAt,
+		&i.LastSpecHash,
+		&i.ExternalUpn,
+		&i.ExternalEmail,
+		&i.AnnouncedAt,
+		&i.PassIssuedAt,
+		&i.ReportedCodes,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const providerLinksOfPeople = `-- name: ProviderLinksOfPeople :many
+SELECT person_id, external_id::text AS external_id FROM staff.identity_links
+WHERE person_id = ANY($1::bigint[]) AND provider = $2
+  AND state IN ('enabled', 'disabled') AND external_id IS NOT NULL
+`
+
+type ProviderLinksOfPeopleParams struct {
+	PersonIds []int64
+	Provider  string
+}
+
+type ProviderLinksOfPeopleRow struct {
+	PersonID   int64
+	ExternalID string
+}
+
+// ProviderLinksOfPeople is the external account of each of @person_ids'
+// people under @provider that exists in the directory — enabled or
+// disabled — by person: a manager's external id, which a report's spec
+// names (ExternalSpec.ManagerExternalID).
+func (q *Queries) ProviderLinksOfPeople(ctx context.Context, arg ProviderLinksOfPeopleParams) ([]ProviderLinksOfPeopleRow, error) {
+	rows, err := q.db.Query(ctx, providerLinksOfPeople, arg.PersonIds, arg.Provider)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProviderLinksOfPeopleRow
+	for rows.Next() {
+		var i ProviderLinksOfPeopleRow
+		if err := rows.Scan(&i.PersonID, &i.ExternalID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setPersonLink = `-- name: SetPersonLink :exec
 INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
 VALUES ($1, 'identity', $2::text, 'linked', false, $3::timestamptz, $3::timestamptz)
@@ -215,4 +343,76 @@ type SetPersonLinkParams struct {
 func (q *Queries) SetPersonLink(ctx context.Context, arg SetPersonLinkParams) error {
 	_, err := q.db.Exec(ctx, setPersonLink, arg.PersonID, arg.ExternalID, arg.Now)
 	return err
+}
+
+const writeProviderLinkResult = `-- name: WriteProviderLinkResult :execrows
+UPDATE staff.identity_links AS pl SET
+    external_id = $1::text,
+    state = $2,
+    managed = true,
+    blocked_reason = $3::varchar,
+    last_error = $4::varchar,
+    attempts = $5,
+    next_attempt_at = $6::timestamptz,
+    last_synced_at = $7::timestamptz,
+    last_spec_hash = $8::bytea,
+    external_upn = $9::varchar,
+    external_email = $10::varchar,
+    announced_at = $11::timestamptz,
+    pass_issued_at = $12::timestamptz,
+    reported_codes = $13::text[],
+    updated_at = $14::timestamptz
+WHERE pl.id = $15 AND pl.provider <> 'identity'
+  AND EXISTS (SELECT 1 FROM staff.identity_links il
+              WHERE il.person_id = pl.person_id AND il.provider = 'identity' AND il.lease_id = $16::uuid)
+`
+
+type WriteProviderLinkResultParams struct {
+	ExternalID    *string
+	State         string
+	BlockedReason *string
+	LastError     *string
+	Attempts      int32
+	NextAttemptAt *time.Time
+	LastSyncedAt  *time.Time
+	LastSpecHash  []byte
+	ExternalUpn   *string
+	ExternalEmail *string
+	AnnouncedAt   *time.Time
+	PassIssuedAt  *time.Time
+	ReportedCodes []string
+	Now           time.Time
+	ID            int64
+	LeaseID       uuid.UUID
+}
+
+// WriteProviderLinkResult records what a claim did on a provider link, every
+// provider column replaced, guarded by the claim's lease — held on the
+// person's identity link, not on this row: no row is a link gone, a link
+// under the identity provider (never written here), or a claim lost — the
+// identity link's lease lapsed and taken by another cycle, or the identity
+// link gone. Neither the person's revision nor updated_at moves.
+func (q *Queries) WriteProviderLinkResult(ctx context.Context, arg WriteProviderLinkResultParams) (int64, error) {
+	result, err := q.db.Exec(ctx, writeProviderLinkResult,
+		arg.ExternalID,
+		arg.State,
+		arg.BlockedReason,
+		arg.LastError,
+		arg.Attempts,
+		arg.NextAttemptAt,
+		arg.LastSyncedAt,
+		arg.LastSpecHash,
+		arg.ExternalUpn,
+		arg.ExternalEmail,
+		arg.AnnouncedAt,
+		arg.PassIssuedAt,
+		arg.ReportedCodes,
+		arg.Now,
+		arg.ID,
+		arg.LeaseID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

@@ -18,7 +18,8 @@ SELECT * FROM staff.settings WHERE id = 1 FOR UPDATE;
 -- (delivery C) keep their values when left out: create_before_days when
 -- NULL, delete_external_after_days unless @set_delete_external_after_days —
 -- its NULL is a value, "never". The two erase settings (Task 5b) keep their
--- values when NULL.
+-- values when NULL, and so do the default account kind and the directory
+-- profile's switches (00060), which the caller merges over the row's.
 UPDATE staff.settings SET
     employee_number_prefix = @employee_number_prefix,
     next_employee_number = @next_employee_number,
@@ -38,6 +39,8 @@ UPDATE staff.settings SET
         THEN sqlc.narg(delete_external_after_days)::smallint ELSE delete_external_after_days END,
     erase_pregnancy_health_types = coalesce(sqlc.narg(erase_pregnancy_health_types)::boolean, erase_pregnancy_health_types),
     erase_sick_case_dates = coalesce(sqlc.narg(erase_sick_case_dates)::boolean, erase_sick_case_dates),
+    default_account_kind = coalesce(sqlc.narg(default_account_kind)::varchar, default_account_kind),
+    directory_fields = coalesce(sqlc.narg(directory_fields)::jsonb, directory_fields),
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = 1
@@ -52,3 +55,33 @@ UPDATE staff.settings SET
     thresholds_acknowledged = @thresholds_acknowledged::jsonb,
     updated_at = @now::timestamptz
 WHERE id = 1;
+
+-- name: SetProviderStatus :exec
+-- SetProviderStatus records what the accounts worker last saw of one
+-- provider under its key — {"status", "reason", "checkedAt"} — the other
+-- providers' kept. The revision and updated_at are left alone: no one's
+-- settings changed.
+UPDATE staff.settings SET
+    provider_status = provider_status || jsonb_build_object(@provider::text, @status::jsonb)
+WHERE id = 1;
+
+-- name: SeedAccountKinds :exec
+-- SeedAccountKinds gives every person the kind the recorded authority mode
+-- reads as (plan reading 4: local → local, federated → external), once:
+-- nothing while the settings say the kinds were seeded. The caller holds the
+-- settings row's lock (LockSettings) and marks the seed done in the same
+-- transaction (MarkAccountKindsSeeded).
+UPDATE staff.people SET account_kind = @account_kind
+WHERE NOT (SELECT s.account_kind_seeded FROM staff.settings s WHERE s.id = 1);
+
+-- name: MarkAccountKindsSeeded :exec
+-- MarkAccountKindsSeeded records that the kinds were seeded, the default
+-- kind with them, and moves the revision on, so a settings form read before
+-- the seed is a conflict rather than a write of the old default. Nothing
+-- when they were seeded already.
+UPDATE staff.settings SET
+    default_account_kind = @default_account_kind,
+    account_kind_seeded = true,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE id = 1 AND NOT account_kind_seeded;

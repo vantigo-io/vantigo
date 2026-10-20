@@ -87,6 +87,7 @@ type accountPerson struct {
 	workEmail        *string
 	privateEmail     *string
 	revision         int32
+	kind             string // the account kind (00060), Entra design D5
 }
 
 // accountEmailKindOf is p's address choice, null read as work.
@@ -125,7 +126,7 @@ func readAccountPerson(ctx context.Context, q *store.Queries, id int64) (account
 	return accountPerson{
 		id: row.ID, provisionAccount: row.ProvisionAccount, provisionFrom: row.ProvisionFrom,
 		accountEmailKind: row.AccountEmailKind, workEmail: row.WorkEmail, privateEmail: row.PrivateEmail,
-		revision: row.AccountRevision,
+		revision: row.AccountRevision, kind: row.AccountKind,
 	}, nil
 }
 
@@ -190,32 +191,13 @@ func (c *callerContext) readsAccount(personID int64) bool {
 	return c.Manage || c.PersonalData || (c.Person != nil && *c.Person == personID)
 }
 
-// accountMode is the authority mode for a response: nil when no module
-// provides accounts, when this process's configuration derives another mode
-// than the recorded one (contracts.ErrModeMismatch), and when identity could
-// not answer — which is logged, so a fault there never takes a read of
-// Staff's own data down with it.
-func (s *server) accountMode(ctx context.Context) *gen.StaffAccountMode {
-	mode, err := s.accountsMode(ctx)
-	switch {
-	case errors.Is(err, errAccountsUnavailable), errors.Is(err, contracts.ErrModeMismatch):
-		return nil
-	case err != nil:
-		s.logger().WarnContext(ctx, "staff: read the authority mode", slog.String("error", err.Error()))
-		return nil
-	}
-	out := gen.StaffAccountMode(mode)
-	return &out
-}
-
 // accountView is personID's account as the contract answers it, at today.
-// identity is asked first, on no snapshot — the mode, and the link's user as
-// identity reports them — then the person, the link and the employments are
+// identity is asked first, on no snapshot — the link's user as identity
+// reports them — then the person, the link and the employments are
 // read in one snapshot, and the linked user is named by the directory after
 // it. What identity reported is used only when the snapshot's link still
 // names the user it was asked about.
 func (s *server) accountView(ctx context.Context, personID int64, today time.Time) (gen.StaffPersonAccount, error) {
-	mode := s.accountMode(ctx)
 	before, err := readAccountLink(ctx, store.New(s.deps.Pool), personID)
 	if err != nil {
 		return gen.StaffPersonAccount{}, err
@@ -266,8 +248,9 @@ func (s *server) accountView(ctx context.Context, personID int64, today time.Tim
 		ProvisionFromEffective: effective,
 		AccountEmailKind:       kind,
 		Address:                gen.StaffPersonAccountAddress{Kind: kind, Present: accountAddress(p) != ""},
-		Mode:                   mode,
+		AccountKind:            gen.StaffAccountKind(p.kind),
 		Revision:               p.revision,
+		// Task 4: the provider link and the directory profile.
 	}
 	if link == nil {
 		return out, nil

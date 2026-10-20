@@ -11,12 +11,11 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
-// GET /meta's account fields are staff:manage's (design §6): the authority
-// mode identity records and whether an Owner has named the roles Staff may
-// give, both asked of identity before any snapshot, and canRunAccounts.
-// Anyone else reads none of them and canRunAccounts false. A mode mismatch
-// leaves the mode out; no provider, both; identity failing, both, and meta
-// still answers.
+// GET /meta's account fields are staff:manage's (design §6): whether an
+// Owner has named the roles Staff may give, asked of identity before any
+// snapshot, and canRunAccounts. Anyone else reads none of them and
+// canRunAccounts false. No provider, or identity failing, leaves the roles
+// out, and meta still answers; accountMode is gone from the contract.
 func TestMeta_TheAccountFields(t *testing.T) {
 	t.Parallel()
 	fake := newFakeAccounts()
@@ -27,9 +26,10 @@ func TestMeta_TheAccountFields(t *testing.T) {
 
 	meta := raw(t, hr.Do(http.MethodGet, metaPath, nil))
 	caps, _ := meta["capabilities"].(map[string]any)
-	if meta["accountMode"] != "federated" || meta["provisioningRolesSet"] != false || caps["canRunAccounts"] != true {
-		t.Errorf("HR's meta = accountMode %v, provisioningRolesSet %v, canRunAccounts %v; want federated, false, true",
-			meta["accountMode"], meta["provisioningRolesSet"], caps["canRunAccounts"])
+	// Task 4: defaultAccountKind and providers in place of accountMode.
+	if meta["provisioningRolesSet"] != false || caps["canRunAccounts"] != true {
+		t.Errorf("HR's meta = provisioningRolesSet %v, canRunAccounts %v; want false, true",
+			meta["provisioningRolesSet"], caps["canRunAccounts"])
 	}
 	for _, c := range contractCalls.by(hrID) {
 		if c.inTx {

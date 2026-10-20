@@ -29,8 +29,9 @@ import (
 // (naming both) — customer reference holders, customer personal-data providers
 // and invoiced-work holders, the three many-provider contract slots, are
 // collected from every module given instead, enabled or not, and calendar
-// sources, the fourth, from the enabled modules only — a source kind
-// two invoiced-work holders claim, or a nil Deps.Config:
+// sources and identity provisioners, the fourth and the fifth, from the
+// enabled modules only — a source kind two invoiced-work holders claim, a
+// key two identity provisioners claim, or a nil Deps.Config:
 // enablement (which modules MODULES turns on) is meaningless without one, and
 // every real caller already loads one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
@@ -343,6 +344,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// only, by the helper Workers uses too: a disabled module's gate could
 	// only fail closed.
 	deps = withCalendarSources(deps, mods)
+
+	// Identity provisioners are the fifth many-provider slot (Entra design
+	// D6), collected from the enabled modules only, as the calendar
+	// sources, by the helper Workers uses too: Staff's accounts worker
+	// drives them in worker mode as the API does.
+	if deps, err = withIdentityProvisioners(deps, mods); err != nil {
+		return nil, err
+	}
 
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
@@ -731,4 +740,46 @@ func withCalendarSources(deps Deps, mods []Module) Deps {
 		deps.CalendarSources = append(slices.Clone(deps.CalendarSources), sources...)
 	}
 	return deps
+}
+
+// withIdentityProvisioners is deps with every module's
+// contracts.IdentityProvisioner appended to Deps.IdentityProvisioners, in
+// mods order, after whatever the caller preset, in a new slice, so a
+// harness's own slice is never written through. mods is the enabled modules
+// only (Entra design D6); a nil provider is dropped, preset or built, so
+// Staff never calls a nil one. It refuses a Key two providers claim, naming
+// the key and both — a preset provider as "Deps.IdentityProvisioners",
+// whose keys are claimed first: Staff writes one provider's links under each
+// key.
+func withIdentityProvisioners(deps Deps, mods []Module) (Deps, error) {
+	var providers []contracts.IdentityProvisioner
+	claimedBy := make(map[string]string)
+	for _, preset := range deps.IdentityProvisioners {
+		if preset == nil {
+			continue
+		}
+		key := preset.Key()
+		if _, ok := claimedBy[key]; ok {
+			return deps, fmt.Errorf("module: two modules both provide the identity provider %q: Deps.IdentityProvisioners, Deps.IdentityProvisioners", key)
+		}
+		claimedBy[key] = "Deps.IdentityProvisioners"
+		providers = append(providers, preset)
+	}
+	for _, mod := range mods {
+		if mod.IdentityProvisioner == nil {
+			continue
+		}
+		provider := mod.IdentityProvisioner(deps)
+		if provider == nil {
+			continue
+		}
+		key := provider.Key()
+		if other, ok := claimedBy[key]; ok {
+			return deps, fmt.Errorf("module: two modules both provide the identity provider %q: %s, %s", key, other, mod.Name)
+		}
+		claimedBy[key] = mod.Name
+		providers = append(providers, provider)
+	}
+	deps.IdentityProvisioners = providers
+	return deps, nil
 }

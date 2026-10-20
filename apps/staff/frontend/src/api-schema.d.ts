@@ -1267,12 +1267,12 @@ export interface paths {
         };
         /**
          * Get a person's account flag
-         * @description A person's account flag, the dates it derives, the address it would use and the link it drives, with the authority mode and the pending account's invitation as identity reports them (design S22, S27). The person themselves, staff:manage and staff:personal-data read it; anyone else gets a 404 identical to an unknown id. identity is asked before the person is read, never while their record is held: mode is absent when accounts are unavailable or this process's configuration disagrees with the recorded mode, and the invitation when identity knows no such user.
+         * @description A person's account flag, the dates it derives, the address it would use, the account kind and the links it drives, with the pending account's invitation as identity reports it (design S22, S27), and for a kind a provider holds the provider link and the directory profile (Entra design D7, D8) — read from Staff's own rows, the provider never asked. The person themselves, staff:manage and staff:personal-data read it; anyone else gets a 404 identical to an unknown id. identity is asked before the person is read, never while their record is held: the invitation is absent when accounts are unavailable or identity knows no such user.
          */
         get: operations["getStaffPeopleByIdAccount"];
         /**
          * Change a person's account flag
-         * @description Replaces the account flag's three fields (design S22): provisionAccount, provisionFrom and accountEmailKind, guarded by the flag's own revision (StaffPersonAccount.revision), never the person's, which this write does not move. A change is one account_flag_updated event naming each field that changed; a replace that changes nothing writes nothing. Turning the flag on for a person without the chosen address is accepted — the worker waits, and HR is told (accountEmailMissing). Nothing is asked of identity until the accounts worker acts.
+         * @description Replaces the account flag's three fields (design S22): provisionAccount, provisionFrom and accountEmailKind, and the account kind when the request names one (Entra design D5), guarded by the flag's own revision (StaffPersonAccount.revision), never the person's, which this write does not move. A change is one account_flag_updated event naming each field that changed, the kind among them; a replace that changes nothing writes nothing. Turning the flag on for a person without the chosen address is accepted — the worker waits, and HR is told (accountEmailMissing). Nothing is asked of identity or a provider until the accounts worker acts.
          */
         put: operations["putStaffPeopleByIdAccount"];
         post?: never;
@@ -1296,6 +1296,26 @@ export interface paths {
          * @description Disable now (the owner's answer 2): turns the person's account flag off — one account_flag_updated event, the flag's own revision moved, never the person's — and commits that first, then claims the person's link and asks identity to disable its user with the caller as the actor, writing the result on the link (account_deactivated). The flag off is what keeps the account disabled: the worker leaves it alone until HR turns the flag on again. The disable asked for is recorded on the link with the flag (disable_requested_at), and the work after the commit goes on if the client goes away; whatever does not reach identity — the client gone, identity down, the link claimed meanwhile — the accounts worker finishes at its next polls, and accountFailing is raised while it waits. A person with no link, or a link naming no user yet, has the flag turned off and nothing more. Allowed on an erased person, whose access must end too.
          */
         post: operations["postStaffPeopleByIdAccountDisable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/account/pass": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show a person's pass
+         * @description Shows the Temporary Access Pass the person's provider issued for their external account (Entra design D7) — once: the provider answers it a single time and keeps it sealed until then, so a second call, a call after its lifetime and a call when none was issued are pass_gone. Answered with Cache-Control no-store; the link's passIssuedAt is cleared, and each reveal is a pass_revealed event naming the viewer and never the pass. The provider is called with the caller as the actor, on no transaction. Rate-limited with Run now and Disable now.
+         */
+        post: operations["postStaffPeopleByIdAccountPass"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2162,6 +2182,11 @@ export interface components {
              */
             state: "none" | "active" | "expired" | "revoked_by_owner" | "exhausted";
         };
+        /**
+         * @description Who holds a person's account authority (Entra design D5): local — identity holds the credentials, so Staff creates the user, invites them and gives the provisioning roles; external — an identity provider owns the account, so Staff only finds the user it created (an Owner adopts it), re-enables what Staff disabled and disables; entra — the provider in the IdentityProvisioner slot keyed entra holds the account, which Staff has it create, enable, update and disable, and announces to identity so the user it creates is adopted with no Owner in between, the provisioning roles given once. The kind travels on every call to identity, in place of the installation's authority mode.
+         * @enum {string}
+         */
+        StaffAccountKind: "local" | "external" | "entra";
         /** @description The person's link to a user under the identity provider, as the accounts worker and HR left it (design S27, §3.6). Codes only: the reason and the invitation never carry an address or a driver's words. */
         StaffAccountLink: {
             /**
@@ -2188,11 +2213,16 @@ export interface components {
             state: string;
             user?: components["schemas"]["StaffPersonUser"];
         };
-        /**
-         * @description The installation's authority mode as identity records it: local (identity holds the passwords, so Staff creates and invites) or federated (an identity provider owns the accounts, so Staff only finds, re-enables what it disabled and disables).
-         * @enum {string}
-         */
-        StaffAccountMode: "local" | "federated";
+        /** @description The Temporary Access Pass the provider issued for the person's external account, answered once (POST /people/{id}/account/pass) with Cache-Control no-store and never again — the provider keeps it sealed until then. Each reveal is a pass_revealed event naming the viewer and never the pass. */
+        StaffAccountPass: {
+            /**
+             * Format: date-time
+             * @description When the pass stops working, as the provider says.
+             */
+            expiresAt: string;
+            /** @description The pass itself, as the person types it at their first sign-in. */
+            pass: string;
+        };
         /** @description What one accounts cycle run by hand did (POST /accounts/run): the links it claimed, those whose step identity answered — carried out, or refused with a reason the link now records — those that failed to be called and are retried, and the due links it did not reach. */
         StaffAccountsRun: {
             /**
@@ -2541,6 +2571,17 @@ export interface components {
             id: number;
             name: string;
         };
+        /** @description One row of the directory profile (Entra design D8): a field the provider writes on the person's external account, whether the installation writes it, and the value it would carry today. The non-switchable rows — givenName, familyName, displayName, employeeId, userPrincipalName, usageLocation — are always written and listed greyed; the switchable ones — employeeHireDate, employeeLeaveDateTime, employeeType, jobTitle, department, companyName, employeeOrgData, officeLocation, workAddress, phones, preferredLanguage, manager — follow the settings' directoryFields. */
+        StaffDirectoryField: {
+            /** @description The row's key, one of the eighteen above. */
+            key: string;
+            /** @description Whether the provider writes it — always true for a row that is not switchable. A row switched off is cleared in the directory on the next update. */
+            on: boolean;
+            /** @description Whether the installation may switch it off (Settings, directoryFields). */
+            switchable: boolean;
+            /** @description The value the row would carry today, from the register: the terms' title for jobTitle, the department's name, the legal entity's name for companyName, the terms' employee type, the cost centre and division for employeeOrgData, the location's name for officeLocation and its street, postal code, city and country for workAddress, the work and mobile phones, nb-NO or en-GB for preferredLanguage, the manager's display name. Absent when the register holds none — the provider then clears the field. */
+            value?: string;
+        };
         /** @description One document in a person's archive (design S14, §3.6). The bytes are never in a JSON body: they are read from GET /documents/{id}, with the document's own visibility. Optional fields are absent when not recorded. */
         StaffDocument: {
             category: components["schemas"]["StaffDocumentCategorySummary"];
@@ -2795,7 +2836,7 @@ export interface components {
             at: string;
             /** Format: int64 */
             id: number;
-            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the kinds grow with the module. */
+            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed and account_mismatched for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the kinds grow with the module. */
             kind: string;
             /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}. An erase records up to two: the health kinds (health, cases, childSick, withdrawal, pregnancyHealth) in one of class E, listed to the person and staff:personal-data alone, and D and A in one read by HR and listed as the hold's kinds are — not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone. */
             payload: {
@@ -2934,6 +2975,20 @@ export interface components {
              * @description The day the employee demanded it; today when left out. Never after today.
              */
             demandedOn?: string;
+        };
+        /** @description An external identity provider in the IdentityProvisioner slot (Entra design D6), as the accounts worker and GET /meta see it. Codes only — the reason never carries an address or the provider's words. */
+        StaffIdentityProvider: {
+            /** @description The provider's key, the account kind that names it and the provider link's provider — entra. */
+            key: string;
+            /** @description The provider's display name, Microsoft Entra ID. */
+            name: string;
+            /** @description A code for a failing status — unreachable (the provider could not be asked), credential_invalid, secret_expired — or a fact about a connected one, secret_expiring. Absent when there is none. */
+            reason?: string;
+            /**
+             * @description unconfigured — the provider has no connection yet; connected — its last check succeeded; failing — its last check failed, the reason says why. Only a connected provider is written to, but for a deactivation.
+             * @enum {string}
+             */
+            status: "unconfigured" | "connected" | "failing";
         };
         /** @description One problem with one row of an import. No message carries a digit of a national identity number or a bank account. */
         StaffImportError: {
@@ -3171,14 +3226,16 @@ export interface components {
             /** @description Up to 200 characters. */
             street?: string;
         };
-        /** @description What the Staff app needs before it draws anything. accountMode is staff:manage's — the authority mode identity records — and absent to anyone else, when no module provides accounts, and when this process's configuration derives another mode than the recorded one. */
+        /** @description What the Staff app needs before it draws anything. defaultAccountKind — the kind a new person takes, as the settings hold it — and providers are staff:manage's and absent to anyone else; defaultAccountKind is absent too when no module provides accounts. */
         StaffMeta: {
             /** @description The absence types that are not hidden, in their order, names in both languages — every caller's. */
             absenceTypes: components["schemas"]["StaffAbsenceType"][];
-            accountMode?: components["schemas"]["StaffAccountMode"];
             capabilities: components["schemas"]["StaffCapabilities"];
             /** @description Every holiday scheme, archived ones included, with its figures converted to working days. */
             holidaySchemes: components["schemas"]["StaffHolidayScheme"][];
+            defaultAccountKind?: components["schemas"]["StaffAccountKind"];
+            /** @description staff:manage only — every external identity provider an enabled module offers (the IdentityProvisioner slot), each with the status the provider answers now, asked before any snapshot; a provider that could not be asked reads failing, unreachable. The entra kind is offered only when its provider is among them. Empty when no enabled module offers one; absent to anyone else. */
+            providers?: components["schemas"]["StaffIdentityProvider"][];
             /** @description staff:manage only — whether an Owner has named the roles Staff may give (identity's employee roles), without which a local account cannot be enabled. Absent to anyone else, and when accounts are unavailable. */
             provisioningRolesSet?: boolean;
             structure?: components["schemas"]["StaffStructure"];
@@ -3378,12 +3435,15 @@ export interface components {
             /** @description The caller's self-service link names the person — the person themselves. */
             self: boolean;
         };
-        /** @description A person's account flag (design S22) with the dates it derives and the link it drives: whether Staff provides the person with a user, from when, at which of their addresses, the authority mode, and the link's state. The person themselves, staff:manage and staff:personal-data read it (the links group); anyone else gets the unknown id's 404. */
+        /** @description A person's account flag (design S22) with the dates it derives and the links it drives: whether Staff provides the person with a user, from when, at which of their addresses, under which account kind — which carries the rule the installation's authority mode did — the identity link's state and, for a kind a provider holds, the provider link's and the directory profile. The person themselves, staff:manage and staff:personal-data read it (the links group); anyone else gets the unknown id's 404. */
         StaffPersonAccount: {
             accountEmailKind: components["schemas"]["StaffAccountEmailKind"];
+            accountKind: components["schemas"]["StaffAccountKind"];
             address: components["schemas"]["StaffPersonAccountAddress"];
+            /** @description The directory profile (Entra design D8): every field the provider writes on the person's external account, in its order, with whether the installation writes it and the value it would carry today — the person's own data as the directory would see it. Absent when the person's kind names no provider. */
+            directoryProfile?: components["schemas"]["StaffDirectoryField"][];
             link?: components["schemas"]["StaffAccountLink"];
-            mode?: components["schemas"]["StaffAccountMode"];
+            providerLink?: components["schemas"]["StaffProviderLink"];
             /** @description Whether Staff provides the person with a user. */
             provisionAccount: boolean;
             /**
@@ -3414,13 +3474,18 @@ export interface components {
             /** @description Whether the person has that address on file. A flag turned on without it waits (accountEmailMissing). */
             present: boolean;
         };
-        /** @description A full replace of the account flag's three fields: what is left out is cleared — provisionFrom to none, accountEmailKind to work. */
+        /** @description A full replace of the account flag's three fields: what is left out is cleared — provisionFrom to none, accountEmailKind to work. accountKind is the one field the replace keeps when it is left out. */
         StaffPersonAccountRequest: {
             /**
              * @description work or private; null or left out reads work.
              * @enum {string|null}
              */
             accountEmailKind?: "work" | "private" | null;
+            /**
+             * @description The person's account kind; left out, it keeps the kind they have. entra — or any provider's key — is a provider_missing field error unless an enabled module offers that provider; a change from entra to local or external is account_kind_locked (409) while the person's entra link is enabled or disabled — a person leaves the directory by Disable now or by the end of their employment, never by a change of kind. A change from local to entra while the person's user is pending and has no credential completes that user when the external account arrives.
+             * @enum {string}
+             */
+            accountKind?: "local" | "external" | "entra";
             provisionAccount: boolean;
             /**
              * Format: date
@@ -3698,7 +3763,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's) and accounts_busy (409: the accounts worker holds the person's link right now). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued) and provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -3710,6 +3775,46 @@ export interface components {
             status?: number | null;
             title?: string | null;
             type?: string | null;
+        };
+        /** @description The person's link to their account in an external provider's directory (Entra design D7) — the provider link, which the accounts worker drives under the claim it holds on the identity link, provider first, identity second. Codes only: the reason and the reported codes never carry an address or the provider's words. */
+        StaffProviderLink: {
+            /**
+             * Format: date-time
+             * @description When Staff announced the account to identity (Expect), so the user the provider creates is adopted with no Owner in between. Absent until it has; an announcement older than ninety days that no user fulfilled raises accountNotArrived.
+             */
+            announcedAt?: string;
+            /**
+             * Format: int32
+             * @description The worker's failed attempts at its last provider step; 0 after a success.
+             */
+            attempts: number;
+            /** @description The user principal name the provider answered for the account. Absent until the provider has prepared it. */
+            externalUpn?: string;
+            /** @description Whether the provider issued a pass for the account that nobody has revealed yet (POST /people/{id}/account/pass). */
+            hasPass: boolean;
+            /**
+             * Format: date-time
+             * @description When the worker last brought the external account in line with the record. Absent when it never has.
+             */
+            lastSyncedAt?: string;
+            /**
+             * Format: date-time
+             * @description When the worker next looks at the person's links. Absent when it has no attempt planned.
+             */
+            nextAttemptAt?: string;
+            /**
+             * Format: date-time
+             * @description When the provider issued the pass not yet revealed. Absent when there is none; one unrevealed for a day raises passUnrevealed.
+             */
+            passIssuedAt?: string;
+            /** @description The provider's key, entra. */
+            provider: string;
+            /** @description Why the worker is blocked on the link, a code, absent when it is not: external_ambiguous (two accounts in the directory hold the employee number), external_address_taken (the work email is another account's), external_synced_on_premises, external_privileged, external_enabled (a delete of an account still enabled), provider_unavailable, user_gone (the account is gone from the directory; the worker never creates a second), invalid_actor, manager_not_in_entra. */
+            reason?: string;
+            /** @description The facts the provider reported about the account and could not act on, verbatim: hire_date_not_written, privileged, pass_not_allowed, licence_unavailable:<SKU part number>, manager_not_found; and Staff's own manager_not_in_entra (the manager has no account in the directory). Empty when there are none. */
+            reportedCodes: string[];
+            /** @description preparing (the worker asked the provider to create or find the account — none yet), enabled, disabled, deleted (soft-deleted in the directory, delete_external_after_days after the last employment ended), failed or blocked. */
+            state: string;
         };
         /**
          * @description The a-melding's kind of arbeidsforhold.
@@ -3824,7 +3929,7 @@ export interface components {
              */
             withdrawnFrom?: string;
         };
-        /** @description The Staff settings (design §3.6) as far as the deliveries so far expose them, the retention run's state, derived, and when each threshold was acknowledged, read-only. The other columns of the settings row reach the contract with the deliveries that use them. */
+        /** @description The Staff settings (design §3.6) as far as the deliveries so far expose them, the retention run's state, derived, and when each threshold was acknowledged, read-only. The other columns of the settings row reach the contract with the deliveries that use them. defaultAccountKind is the account kind a new person takes (Entra design D5), seeded once from the authority mode identity records — local from local, external from federated. */
         StaffSettings: {
             /** @description Whether holiday left at a year's end is carried into the next as forced, without HR's action (design S9). false by default. */
             autoCarryOver: boolean;
@@ -3838,11 +3943,16 @@ export interface components {
              * @description How many days before the account's effective date the accounts worker prepares it, disabled (design S22); 0 to 90, 14 by default.
              */
             createBeforeDays: number;
+            defaultAccountKind: components["schemas"]["StaffAccountKind"];
             /**
              * Format: int32
-             * @description How many days after a person's last employment ended an external directory's account is deleted; 1 to 3650, or absent for never. Inert: no module reads it yet (the Entra module will).
+             * @description How many days after a person's last employment ended their external account in a provider's directory is deleted — soft-deleted, restorable there for thirty days — once it is disabled and no legal hold is on the person; 1 to 3650, or absent for never.
              */
             deleteExternalAfterDays?: number;
+            /** @description Which switchable fields of the directory profile (Entra design D8) a provider writes on a person's external account, by key — employeeHireDate, employeeLeaveDateTime, employeeType, jobTitle, department, companyName, employeeOrgData, officeLocation, workAddress, phones, preferredLanguage, manager. By default every one but workAddress and phones. A field switched off is cleared in the directory on the next update. */
+            directoryFields: {
+                [key: string]: boolean;
+            };
             /** @description What a generated employee number starts with, up to eight letters, digits or hyphens; empty for none. */
             employeeNumberPrefix: string;
             /** @description Whether the retention run erases the pregnancy and health-appointment rows — svangerskapskontroll, svangerskapspermisjon, fødselspermisjon and helse — on the health schedule (B's open question 11, decided by the owner): healthRetentionDays after the year a row ended, its type becomes a reserved one — absent_hr_only or absent_hr_only_hours for an HR-only type, so it still reads as leave to everyone who read it so, absent_hours for helse, an hour row keeping its hours — and every type value of its events is replaced, whatever class they were written in; the days stay. false by default. Turned on, it applies from the next retention cycle to every row already due; turned off, it restores nothing. */
@@ -3899,7 +4009,7 @@ export interface components {
             /** @description The workspace's business time zone, an IANA name — answered here, never set here (an Owner sets it under Workspace administration, PUT /api/v1/identity/owner/workspace). Every date in Staff — a start, an end, "today" — is a calendar day in it. */
             timeZone: string;
         };
-        /** @description A replace of the settings. The two retention periods, the self-certification policy, the carry-over, the two account settings and the two erase settings left out keep the values they have; everything else is replaced. */
+        /** @description A replace of the settings. The two retention periods, the self-certification policy, the carry-over, the four account settings and the two erase settings left out keep the values they have; everything else is replaced. */
         StaffSettingsRequest: {
             /** @description Left out, it keeps its value. Turning it on records today as autoCarryOverSince. */
             autoCarryOver?: boolean;
@@ -3909,10 +4019,19 @@ export interface components {
              */
             createBeforeDays?: number;
             /**
+             * @description The kind a new person takes. Left out, it keeps its value. entra — or any provider's key — is a provider_missing field error unless an enabled module offers that provider. People already registered keep theirs.
+             * @enum {string}
+             */
+            defaultAccountKind?: "local" | "external" | "entra";
+            /**
              * Format: int32
              * @description 1 to 3650 days, or null for never. Left out, it keeps its value.
              */
             deleteExternalAfterDays?: number | null;
+            /** @description Switches of the directory profile, by key, over the switchable fields only; a key left out keeps its value. A key that is not a switchable field is a field error (directoryFields.<key>). */
+            directoryFields?: {
+                [key: string]: boolean;
+            };
             /** @description Up to eight letters, digits or hyphens. Left out, there is none. */
             employeeNumberPrefix?: string;
             /** @description Left out, it keeps its value; null is refused, never read as false. */
@@ -4013,7 +4132,7 @@ export interface components {
         /**
          * @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. The host words the sentence from `type`; `title` is the name of the thing — a person's name — or, for the three items about the installation, an English sentence the host replaces. "Today" is the day in the settings' time zone; a date-only occurredAt is that day at midnight UTC.
          *
-         *     Thirty-six types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie''s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt the ferie''s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (federated mode): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created in local mode, now under federated mode, which never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
+         *     Forty-nine types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie''s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt the ferie''s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (the external kind): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created for the local kind, the person's kind now one that never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). The provider items (delivery B, Entra design D7; staff:manage alone, the same way) are read from the person's provider link as the worker wrote it, and from what the worker last saw of each provider (the settings' provider_status), never by asking the provider at read time; they are named for Entra, though their codes are the slot's. One per person, as above, unless said: `accountNotArrived`: Staff announced the external account to identity more than ninety days ago and no user has arrived for it; occurredAt the announcement. `accountAmbiguousInEntra`: two accounts in the directory hold the person's employee number. `accountAddressTakenInEntra`: the person's work email is another account's in the directory. `accountSyncedOnPremises`: the account is synchronised from an on-premises directory, whose attributes the provider cannot write. `accountPrivilegedInEntra`: the account holds an administrative role in the directory (refused, or reported privileged), which an administrator handles by hand. `hireDateNotWritten`: the directory refused the hire date. `licenceUnavailable`: a licence of the person's groups could not be assigned, none being left — one per person whatever the licences; no title names the licence. `passUnrevealed`: the provider issued a pass for the person a day ago or more and nobody has shown it; occurredAt when it was issued. `managerNotInEntra`: the person's manager has no account in the directory, so the account carries no manager. Four are the installation's, one each with entityId the literal 'settings', id the type, count the people of a provider's kind whose flag is on and occurredAt when the worker last checked the provider, raised only while someone has that kind: `entraNotConnected` (the provider has no connection yet), `entraFailing` (its last check failed — a credential refused or consent withdrawn), `secretExpiring` (the newest valid client secret ends within thirty days), `secretExpired` (it has ended). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items; on a provider link, provider_unavailable to entraNotConnected or entraFailing by the provider's status, external_ambiguous, external_address_taken, external_synced_on_premises and external_privileged to their items, the reported privileged to accountPrivilegedInEntra, hire_date_not_written to hireDateNotWritten, licence_unavailable to licenceUnavailable, manager_not_in_entra to managerNotInEntra, user_gone to accountUserGone and invalid_actor to accountFailing. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
          */
         StaffStatsAttentionItem: {
             /**
@@ -4028,7 +4147,7 @@ export interface components {
             occurredAt: string;
             title: string;
             /** @enum {string} */
-            type: "contractOverdue" | "probationEnding" | "temporaryNoticeDue" | "temporaryConverts" | "reportsWithoutManager" | "reassessmentDue" | "retentionFailing" | "otpThreshold" | "headcountThreshold" | "selfApproved" | "holidayAffectedBySickness" | "absenceAwaitingDecision" | "hrOnlyAwaitingDecision" | "hrOnlySelfApproved" | "sickMilestoneDue" | "holidayUntaken" | "mainPeriodShort" | "accountNoEmployment" | "accountEmailMissing" | "accountNotFound" | "accountNotManaged" | "accountBlockedByOwner" | "accountDisabledByOwner" | "accountUserGone" | "accountPrivileged" | "accountMismatch" | "accountModeChanged" | "accountEmailDiffers" | "accountEmailTaken" | "accountNumberTaken" | "accountFailing" | "invitationUnanswered" | "invitationRevoked" | "employeeRoleMissing" | "employeeRoleUnsafe" | "accountModeMismatch";
+            type: "contractOverdue" | "probationEnding" | "temporaryNoticeDue" | "temporaryConverts" | "reportsWithoutManager" | "reassessmentDue" | "retentionFailing" | "otpThreshold" | "headcountThreshold" | "selfApproved" | "holidayAffectedBySickness" | "absenceAwaitingDecision" | "hrOnlyAwaitingDecision" | "hrOnlySelfApproved" | "sickMilestoneDue" | "holidayUntaken" | "mainPeriodShort" | "accountNoEmployment" | "accountEmailMissing" | "accountNotFound" | "accountNotManaged" | "accountBlockedByOwner" | "accountDisabledByOwner" | "accountUserGone" | "accountPrivileged" | "accountMismatch" | "accountModeChanged" | "accountEmailDiffers" | "accountEmailTaken" | "accountNumberTaken" | "accountFailing" | "invitationUnanswered" | "invitationRevoked" | "employeeRoleMissing" | "employeeRoleUnsafe" | "accountModeMismatch" | "entraNotConnected" | "entraFailing" | "accountNotArrived" | "accountAmbiguousInEntra" | "accountAddressTakenInEntra" | "accountSyncedOnPremises" | "accountPrivilegedInEntra" | "hireDateNotWritten" | "licenceUnavailable" | "passUnrevealed" | "secretExpiring" | "secretExpired" | "managerNotInEntra";
         };
         /** @description The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out. */
         StaffStructure: {
@@ -8799,7 +8918,7 @@ export interface operations {
                     "application/json": components["schemas"]["StaffPersonAccount"];
                 };
             };
-            /** @description Bad Request — a field did not pass, or a property the request does not name. */
+            /** @description Bad Request — a field did not pass, or a property the request does not name; provider_missing on accountKind when no enabled module offers the provider it names. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -8833,7 +8952,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict; person_erased when the person has been erased. */
+            /** @description Conflict — revision_conflict; person_erased when the person has been erased; account_kind_locked when the kind would leave entra while the person's entra link is enabled or disabled. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8889,7 +9008,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — accounts_busy while the accounts worker holds the person's link (nothing was changed, unless the worker took the link between the flag's write and the claim: then the flag is off and the user not yet disabled — try again); account_not_managed on HR's self-service link — Disable now acts only on accounts Staff manages: the flag is turned off and nothing else is recorded, called or tried again; unlink the person, or an Owner disables the user in identity — or when the worker's link names a user no longer managed by Staff, and account_privileged when the user is an Owner or a SystemAdmin, or the last active Owner — an Owner disables them in identity. In the last two the flag is off and the refusal stays the link's reason and raises its attention item; the disable is tried again daily, so it runs once an Owner has adopted the user again or demoted them. account_mismatch when the user carries another employee number — someone else's account, left alone; the disable runs once the number is right. */
+            /** @description Conflict — accounts_busy while the accounts worker holds the person's link (nothing was changed, unless the worker took the link between the flag's write and the claim: then the flag is off and the user not yet disabled — try again); account_not_managed on HR's self-service link — Disable now acts only on accounts Staff manages: the flag is turned off and nothing else is recorded, called or tried again; unlink the person, or an Owner disables the user in identity — or when the worker's link names a user no longer managed by Staff, and account_privileged when the user is an Owner or a SystemAdmin, or the last active Owner — an Owner disables them in identity. In the last two the flag is off and the refusal stays the link's reason and raises its attention item; the disable is tried again daily, so it runs once an Owner has adopted the user again or demoted them. account_mismatch when the user carries another employee number — someone else's account, left alone; the disable runs once the number is right. provider_refused when the person's provider refused to disable their external account, with its code — the flag is off and the refusal is the provider link's reason. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8909,6 +9028,83 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — accounts_unavailable: identity could not be reached. The flag is already off; the link records the error (last_error) and the disable asked for, which the accounts worker retries at every poll, and accountFailing is raised meanwhile. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffPeopleByIdAccountPass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the pass, shown this once. */
+            200: {
+                headers: {
+                    /** @description no-store — the pass is never kept by a cache. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAccountPass"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or the person has no provider link naming an external account. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — pass_gone when the pass was shown already, has expired, or none was issued; Run now on the person issues a new one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Too Many Requests — at most 120 of a person's Run now, Disable now and pass reveals together an hour from one client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — accounts_unavailable: no enabled module offers the person's provider, or the provider could not be reached. Nothing was shown, and the pass is still there. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -8964,7 +9160,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — person_erased when the person has been erased; accounts_busy while the accounts worker holds the person's link. Nothing was run. */
+            /** @description Conflict — person_erased when the person has been erased; accounts_busy while the accounts worker holds the person's link — nothing was run; provider_refused when the person's provider refused a step, with its code, which is the provider link's reason. */
             409: {
                 headers: {
                     [name: string]: unknown;

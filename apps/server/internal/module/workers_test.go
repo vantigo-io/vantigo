@@ -304,3 +304,35 @@ func TestWorkers_CollectCalendarSourcesFromEnabledModulesOnly(t *testing.T) {
 		t.Errorf("alpha's workers saw Deps.CalendarSources = %v, want alpha's alone (beta is disabled)", seen)
 	}
 }
+
+// Worker mode never composes, so Workers collects the identity provisioners
+// itself, as Compose does: from the enabled modules only (Entra design D6),
+// after a preset list, which Staff's accounts worker then drives.
+func TestWorkers_CollectIdentityProvisionersFromEnabledModulesOnly(t *testing.T) {
+	alpha := &fakeIdentityProvisioner{key: "alpha-directory"}
+	preset := &fakeIdentityProvisioner{key: "preset-directory"}
+	var seen []contracts.IdentityProvisioner
+	Workers(Deps{Config: &config.Config{Modules: []string{"alpha"}}, IdentityProvisioners: []contracts.IdentityProvisioner{preset}},
+		Module{Name: "alpha", IdentityProvisioner: func(Deps) contracts.IdentityProvisioner { return alpha }, Workers: func(d Deps) []worker.Worker {
+			seen = d.IdentityProvisioners
+			return nil
+		}},
+		Module{Name: "beta", IdentityProvisioner: func(Deps) contracts.IdentityProvisioner { return &fakeIdentityProvisioner{key: "beta-directory"} }},
+	)
+	if want := []contracts.IdentityProvisioner{preset, alpha}; !slices.Equal(seen, want) {
+		t.Errorf("alpha's workers saw Deps.IdentityProvisioners = %v, want the preset and alpha's alone (beta is disabled)", seen)
+	}
+}
+
+// Workers has no error to return, so a key two providers claim — a bug in
+// the binary's own module list, which Compose refuses at startup — panics
+// rather than hand the accounts worker an ambiguous slot.
+func TestWorkers_PanicsOnAnIdentityProviderKeyClaimedTwice(t *testing.T) {
+	provider := func(Deps) contracts.IdentityProvisioner { return &fakeIdentityProvisioner{key: "entra"} }
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), `"entra"`) {
+			t.Errorf("recover() = %v, want a panic naming entra", r)
+		}
+	}()
+	Workers(Deps{}, Module{Name: "alpha", IdentityProvisioner: provider}, Module{Name: "beta", IdentityProvisioner: provider})
+}

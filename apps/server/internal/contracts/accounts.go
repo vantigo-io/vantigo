@@ -20,6 +20,39 @@ const (
 	AccountModeFederated = "federated"
 )
 
+// The account kinds: who holds a person's account authority (Entra design
+// D5), which Staff records per person and passes on every call that creates,
+// enables or updates (AccountSpec.Kind, ActivateOpts.Kind), so the person's
+// kind — not the installation's mode alone — decides what identity creates,
+// gives and invites.
+const (
+	// AccountKindLocal: identity holds the credentials. Prepare creates the
+	// user, Activate enables, invites and gives the provisioning roles.
+	AccountKindLocal = "local"
+	// AccountKindExternal: an identity provider owns the account and an
+	// Owner adopts the user it creates. Prepare only finds, Activate only
+	// re-enables a user Staff disabled, Update writes the language and the
+	// number alone — the federated mode's rules, for one person.
+	AccountKindExternal = "external"
+	// AccountKindEntra: an external provider in the IdentityProvisioner slot
+	// (keyed "entra") holds the account, which Staff has it create and
+	// announces (Expect), so no Owner adopts it. Link-only as
+	// AccountKindExternal, except that Activate gives the provisioning
+	// roles once, on the first activation of the adopted user.
+	AccountKindEntra = "entra"
+)
+
+// ValidAccountKind reports whether s is one of the three account kinds,
+// exactly as spelled.
+func ValidAccountKind(s string) bool {
+	switch s {
+	case AccountKindLocal, AccountKindExternal, AccountKindEntra:
+		return true
+	default:
+		return false
+	}
+}
+
 // The states of AccountRef.State.
 const (
 	// AccountStatePending is a Staff-managed user who has not yet chosen a
@@ -117,6 +150,13 @@ type AccountSpec struct {
 	// EmployeeNumber correlates the user with the caller's record and is kept
 	// on the user. See SameEmployeeNumber for how two numbers compare.
 	EmployeeNumber string
+	// Kind is the person's account kind (AccountKindLocal,
+	// AccountKindExternal or AccountKindEntra), which decides whether
+	// Prepare may create the user and what Update writes. "" reads the mode
+	// — AccountKindLocal when Mode answers AccountModeLocal, else
+	// AccountKindExternal — as a caller of the previous release, which
+	// passes none, expects.
+	Kind string
 }
 
 // Invitation is the state of a pending user's invitation to choose a
@@ -189,6 +229,30 @@ type ActivateOpts struct {
 	// minutes (within them the call is an ordinary one). Set only by an
 	// explicit request of a person (Staff's Run now), never by a worker.
 	FreshInvitation bool
+	// Kind is the person's account kind, as AccountSpec.Kind: it decides
+	// whether the call invites and gives the provisioning roles. "" reads
+	// the mode, as there.
+	Kind string
+}
+
+// ExpectedAccount is a Vantigo user the caller knows will arrive from the
+// identity provider for a person it registers: Staff has had the provider
+// create the external account, and announces it so that identity adopts the
+// user the provider's SCIM push or the person's first sign-in creates, with
+// no Owner in between. Matched by EmployeeNumber (the enterprise extension's
+// employeeNumber), by UserPrincipalName (SCIM's userName), or by ObjectID
+// (OIDC's oid; SCIM's externalId when the tenant maps it so).
+type ExpectedAccount struct {
+	EmployeeNumber    string
+	DisplayName       string
+	PreferredLanguage string
+	Issuer            string // the OIDC issuer the user will sign in under
+	ObjectID          string // the provider's immutable id of the user
+	UserPrincipalName string
+	// ReplaceUserID names a pending, credential-less managed user of the
+	// same employee number (the person's kind changed from local): the
+	// arrival completes that user instead of creating one.
+	ReplaceUserID *uuid.UUID
 }
 
 // RoleRef is a role as ProvisioningRoles names it.
@@ -227,8 +291,10 @@ var (
 	// only possible by a write outside identity's own checks), so a local
 	// Activate gives none of the set until an Owner takes it out.
 	ErrEmployeeRoleUnsafe = errors.New("contracts: a role named for Staff grants administration")
-	// ErrAccountNotFound: in federated mode, no managed user holds the
-	// employee number — the identity provider has not created one yet.
+	// ErrAccountNotFound: in link-only kinds (AccountKindExternal,
+	// AccountKindEntra, or federated mode when the call names no kind), no
+	// managed user holds the employee number — the identity provider has
+	// not created one yet.
 	ErrAccountNotFound = errors.New("contracts: no account holds the employee number")
 	// ErrUserGone: the user the caller names no longer exists.
 	ErrUserGone = errors.New("contracts: the user no longer exists")
@@ -256,7 +322,7 @@ var (
 // provides one, which a caller answers as "accounts are unavailable".
 //
 // It is a write direction, staff → identity, unlike every other contract,
-// which reads. Four rules hold:
+// which reads. Five rules hold:
 //
 //   - The lock rule. A caller never calls it inside one of its own
 //     transactions or read-only snapshots, and holds no connection or lease
@@ -268,8 +334,15 @@ var (
 //     audits each change with it.
 //   - The roles are identity's. AccountSpec carries none; Activate assigns
 //     the set an Owner named (ProvisioningRoles), only on the call that
-//     enables a user Staff disabled, so an Owner's later removal of a role is
-//     not undone.
+//     enables a user Staff disabled (AccountKindLocal) or once, on the first
+//     activation of an adopted user (AccountKindEntra), so an Owner's later
+//     removal of a role is not undone.
+//   - The kind travels on the call. The person's account kind
+//     (AccountSpec.Kind, ActivateOpts.Kind) decides what identity creates,
+//     gives and invites, never the installation's mode alone: a local person
+//     in an installation whose single sign-on is on is still created and
+//     invited, and an entra person still given the roles. A call naming no
+//     kind reads the mode, as the previous release did.
 //   - The employee number decides whose account it is. Prepare finds a
 //     managed user by number; a caller acts on a user only when the number
 //     identity reports is the same as its record's, by SameEmployeeNumber.
@@ -280,24 +353,30 @@ var (
 // Actor that is not Valid with ErrInvalidActor before it writes anything.
 type AccountProvisioning interface {
 	// Mode answers AccountModeLocal or AccountModeFederated, the mode
-	// identity's single sign-on settings derive. (A provider of the
+	// identity's single sign-on settings derive: what a call naming no kind
+	// reads its kind from, and what Staff seeds its people's kinds from
+	// once. (A provider of the
 	// previous release answered ErrModeMismatch when this process's own
 	// configuration derived another, and every write but Deactivate then
 	// did too; identity answers it no more.)
 	Mode(ctx context.Context) (string, error)
-	// Prepare finds the managed user holding spec.EmployeeNumber or, in local
-	// mode only, creates one: Staff-managed, disabled by Staff, pending, with
-	// no credential. ErrAccountEmailTaken when another user holds the
-	// address, ErrEmployeeNumberTaken when an unmanaged user holds the
-	// number, ErrAccountPrivileged when the user found is an Owner or a
-	// SystemAdmin, ErrAccountNotFound in federated mode when none is found.
+	// Prepare finds the managed user holding spec.EmployeeNumber or, for
+	// AccountKindLocal only, creates one: Staff-managed, disabled by Staff,
+	// pending, with no credential. ErrAccountEmailTaken when another user
+	// holds the address, ErrEmployeeNumberTaken when an unmanaged user holds
+	// the number, ErrAccountPrivileged when the user found is an Owner or a
+	// SystemAdmin, ErrAccountNotFound for a link-only kind when none is
+	// found.
 	Prepare(ctx context.Context, actor Actor, spec AccountSpec) (AccountRef, error)
-	// Activate enables a managed user. In local mode the call that enables
-	// them assigns the provisioning roles (ErrEmployeeRoleMissing when there
-	// are none), and it invites a pending user who has no credential and no
-	// acceptable invitation — never within ten minutes of the last invitation
-	// naming them — delivering after its commit; in federated mode it only
-	// re-enables a user Staff disabled. ErrAccountNotManaged,
+	// Activate enables a managed user. For AccountKindLocal the call that
+	// enables them assigns the provisioning roles (ErrEmployeeRoleMissing
+	// when there are none), and it invites a pending user who has no
+	// credential and no acceptable invitation — never within ten minutes of
+	// the last invitation naming them — delivering after its commit; for
+	// AccountKindExternal it only re-enables a user Staff disabled; for
+	// AccountKindEntra it re-enables a user Staff disabled and, the first
+	// time it is called for the user, assigns the provisioning roles — once,
+	// enabled or not, never again. ErrAccountNotManaged,
 	// ErrAccountPrivileged, ErrBlockedByOwner, ErrEmployeeRoleMissing,
 	// ErrEmployeeRoleUnsafe, ErrUserGone.
 	Activate(ctx context.Context, actor Actor, userID uuid.UUID, opts ActivateOpts) (AccountRef, error)
@@ -310,8 +389,8 @@ type AccountProvisioning interface {
 	Deactivate(ctx context.Context, actor Actor, userID uuid.UUID) (AccountRef, error)
 	// Update writes the display name, language and employee number of a
 	// managed user, and the email only while it follows the caller's record
-	// (AccountRef.EmailFollows: pending, no invitation delivered yet); in
-	// federated mode the language and the employee number only.
+	// (AccountRef.EmailFollows: pending, no invitation delivered yet); for a
+	// link-only kind the language and the employee number only.
 	// ErrAccountNotManaged, ErrAccountEmailTaken, ErrEmployeeNumberTaken,
 	// ErrUserGone.
 	Update(ctx context.Context, actor Actor, userID uuid.UUID, spec AccountSpec) (AccountRef, error)
@@ -324,6 +403,12 @@ type AccountProvisioning interface {
 	// ProvisioningRoles lists the roles an Owner named for Staff to give,
 	// ordered by name; empty when none is named.
 	ProvisioningRoles(ctx context.Context) ([]RoleRef, error)
+	// Expect records or replaces the announcement for spec.EmployeeNumber.
+	// ErrEmployeeNumberTaken when an unmanaged user holds the number,
+	// ErrAccountPrivileged when the managed one is an Owner.
+	Expect(ctx context.Context, actor Actor, spec ExpectedAccount) error
+	// Unexpect withdraws an announcement nobody fulfilled.
+	Unexpect(ctx context.Context, actor Actor, employeeNumber string) error
 }
 
 // NormalizeEmployeeNumber is the one key two employee numbers are compared

@@ -3,8 +3,10 @@ package staff_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"sync"
+	"testing"
 
 	"github.com/google/uuid"
 
@@ -20,10 +22,12 @@ import (
 // users it holds (Task 4b): Prepare finds the managed user holding the
 // number or creates one pending and disabled by Staff; Activate enables a
 // user Staff disabled and invites a pending one; Deactivate disables for
-// Staff; Update writes the number — unless a test shaped an error for the
-// method (failWith) or a hook (onWrite), run before the write outside the
-// lock, which is how a test acts at the moment the worker is inside a call.
-// It is safe for concurrent use.
+// Staff; Update writes the number; Expect holds the announcement by the
+// number's key, replacing one it had, and Unexpect withdraws it (Entra
+// delivery B: announcements reads them) — unless a test shaped an error for
+// the method (failWith) or a hook (onWrite), run before the write outside
+// the lock, which is how a test acts at the moment the worker is inside a
+// call. It is safe for concurrent use.
 //
 // The harness installs it with withAccounts (modtest.WithAccounts), which
 // replaces identity's provider in the composition: identity always provides
@@ -57,6 +61,9 @@ type fakeAccounts struct {
 	// blocks holds a method's calls, after they are recorded, until the
 	// channel is closed or the call's context ends — which they then answer.
 	blocks map[string]chan struct{}
+	// expected is the announcements Expect holds, by
+	// contracts.NormalizeEmployeeNumber's key, until Unexpect withdraws one.
+	expected map[string]contracts.ExpectedAccount
 }
 
 // blockUntil holds every call of method until release is closed or the
@@ -186,7 +193,7 @@ func (f *fakeAccounts) ProvisioningRoles(context.Context) ([]contracts.RoleRef, 
 }
 
 // failWith makes every call of method ("Prepare", "Activate", "Deactivate",
-// "Update") answer err, nil to stop.
+// "Update", "Expect", "Unexpect") answer err, nil to stop.
 func (f *fakeAccounts) failWith(method string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -205,7 +212,7 @@ func (f *fakeAccounts) whenWriting(fn func(method string, user uuid.UUID)) {
 }
 
 // writeCalls is every write so far, "Method" or "Method:<employee number>"
-// for Prepare and Update, in order.
+// for Prepare, Update, Expect and Unexpect, in order.
 func (f *fakeAccounts) writeCalls() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -402,4 +409,81 @@ func (f *fakeAccounts) Update(_ context.Context, actor contracts.Actor, id uuid.
 	ref.EmailDiffers = ref.EmailDiffers && !ref.EmailFollows
 	f.users[id] = ref
 	return ref, nil
+}
+
+// announcements is the announcements the fake holds, by the employee
+// number's key (contracts.NormalizeEmployeeNumber).
+func (f *fakeAccounts) announcements() map[string]contracts.ExpectedAccount {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return maps.Clone(f.expected)
+}
+
+// Expect records the announcement under the number's key, replacing one it
+// held, as a write "Expect:<employee number>".
+func (f *fakeAccounts) Expect(_ context.Context, actor contracts.Actor, spec contracts.ExpectedAccount) error {
+	if !actor.Valid() {
+		return contracts.ErrInvalidActor
+	}
+	if err := f.begin("Expect", spec.EmployeeNumber, uuid.Nil, actor); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.expected == nil {
+		f.expected = map[string]contracts.ExpectedAccount{}
+	}
+	if spec.ReplaceUserID != nil {
+		id := *spec.ReplaceUserID
+		spec.ReplaceUserID = &id
+	}
+	f.expected[contracts.NormalizeEmployeeNumber(spec.EmployeeNumber)] = spec
+	return nil
+}
+
+// Unexpect withdraws the announcement for the number, if the fake holds
+// one, as a write "Unexpect:<employee number>".
+func (f *fakeAccounts) Unexpect(_ context.Context, actor contracts.Actor, employeeNumber string) error {
+	if !actor.Valid() {
+		return contracts.ErrInvalidActor
+	}
+	if err := f.begin("Unexpect", employeeNumber, uuid.Nil, actor); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.expected, contracts.NormalizeEmployeeNumber(employeeNumber))
+	return nil
+}
+
+// The fake's announcements, which Task 4's tests read: held by the number's
+// key, replaced by a second Expect, withdrawn by Unexpect, each a write.
+func TestFakeAccounts_ExpectHoldsTheAnnouncementByNumber(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFakeAccounts()
+	worker := contracts.Actor{System: contracts.SystemActorStaffAccounts}
+	pending := uuid.New()
+	if err := f.Expect(ctx, worker, contracts.ExpectedAccount{EmployeeNumber: "e-1", ObjectID: "oid-1"}); err != nil {
+		t.Fatalf("Expect: %v", err)
+	}
+	if err := f.Expect(ctx, worker, contracts.ExpectedAccount{EmployeeNumber: "E-1", ObjectID: "oid-2", ReplaceUserID: &pending}); err != nil {
+		t.Fatalf("Expect again: %v", err)
+	}
+	got := f.announcements()
+	if len(got) != 1 || got["E-1"].ObjectID != "oid-2" || got["E-1"].ReplaceUserID == nil || *got["E-1"].ReplaceUserID != pending {
+		t.Errorf("announcements = %+v, want E-1's second alone", got)
+	}
+	if err := f.Unexpect(ctx, worker, "e-1"); err != nil {
+		t.Fatalf("Unexpect: %v", err)
+	}
+	if got := f.announcements(); len(got) != 0 {
+		t.Errorf("announcements after Unexpect = %+v, want none", got)
+	}
+	if want := []string{"Expect:e-1", "Expect:E-1", "Unexpect:e-1"}; !slices.Equal(f.writeCalls(), want) {
+		t.Errorf("writes = %v, want %v", f.writeCalls(), want)
+	}
+	if err := f.Expect(ctx, contracts.Actor{}, contracts.ExpectedAccount{EmployeeNumber: "E-2"}); !errors.Is(err, contracts.ErrInvalidActor) {
+		t.Errorf("Expect with no actor = %v, want ErrInvalidActor", err)
+	}
 }

@@ -5,9 +5,11 @@
 
 -- name: GetPersonAccount :one
 -- GetPersonAccount is a person's account flag with the two addresses it may
--- name and the flag's own revision, which a change of it is guarded by (00051:
--- never people.revision, which a manager reads).
-SELECT id, provision_account, provision_from, account_email_kind, work_email, private_email, account_revision
+-- name, the account kind (00060), and the flag's own revision, which a
+-- change of either is guarded by (00051: never people.revision, which a
+-- manager reads).
+SELECT id, provision_account, provision_from, account_email_kind, work_email, private_email, account_revision,
+    account_kind
 FROM staff.people
 WHERE id = @id;
 
@@ -19,6 +21,16 @@ UPDATE staff.people SET
     provision_account = @provision_account,
     provision_from = sqlc.narg(provision_from)::date,
     account_email_kind = sqlc.narg(account_email_kind)::varchar,
+    account_revision = account_revision + 1
+WHERE id = @id
+RETURNING account_revision;
+
+-- name: UpdatePersonAccountKind :one
+-- UpdatePersonAccountKind writes the person's account kind and moves the
+-- flag's own revision on, as UpdatePersonAccount does: the kind is the
+-- links group's, read by nobody the flag is hidden from.
+UPDATE staff.people SET
+    account_kind = @account_kind,
     account_revision = account_revision + 1
 WHERE id = @id
 RETURNING account_revision;
@@ -72,7 +84,10 @@ ON CONFLICT (person_id, provider) DO NOTHING;
 -- leaver's: the worker's own link (not HR's self-service link, linked) to a
 -- Staff-managed user, every employment ended before @today and none later,
 -- which the decision table deactivates whatever the flag (the owner's
--- decision D2): the link row alone is locked (OF l), and one another cycle
+-- decision D2) — or a leaver's who has a provider link not deleted (00060,
+-- Entra design D7), whose external account the chain deactivates and,
+-- after delete_external_after_days, deletes, though the identity link
+-- names no user: the link row alone is locked (OF l), and one another cycle
 -- is claiming is skipped. Blocked and failed links are claimed on their
 -- schedule like any other: the decision table never reads blocked as an
 -- input, so a link recovers when what blocked it is gone. LIMIT 1 with SKIP
@@ -86,7 +101,10 @@ WHERE id = (
     JOIN staff.people p ON p.id = l.person_id
     WHERE l.provider = 'identity'
       AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
-        OR (p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
+        OR (p.erased_at IS NULL
+            AND ((l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
+                OR EXISTS (SELECT 1 FROM staff.identity_links x
+                    WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.state <> 'deleted'))
             AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
             AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
                 AND (e.end_date IS NULL OR e.end_date >= @today::date))))
@@ -187,12 +205,16 @@ WHERE id = @id AND lease_id = @lease_id::uuid;
 
 -- name: CountDueAccountLinks :one
 -- CountDueAccountLinks is the due links ClaimAccountLink would still take,
--- leased or not: what POST /accounts/run reports as remaining.
+-- leased or not, by the same branches (keep the two identical): what POST
+-- /accounts/run reports as remaining.
 SELECT count(*) FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
 WHERE l.provider = 'identity'
   AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
-    OR (p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
+    OR (p.erased_at IS NULL
+        AND ((l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
+            OR EXISTS (SELECT 1 FROM staff.identity_links x
+                WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.state <> 'deleted'))
         AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
         AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
             AND (e.end_date IS NULL OR e.end_date >= @today::date))))
@@ -207,20 +229,33 @@ WHERE l.provider = 'identity'
 -- erased one whose link carries a disable requested (Task 4c review M2) —
 -- with the person's name, flag and erasure, and whether the link is a
 -- leaver's the worker deactivates whatever the flag (the owner's decision
--- D2; ClaimAccountLink's branch): the worker's link to a Staff-managed user,
--- every employment ended before @today and none later.
+-- D2; ClaimAccountLink's branches): the worker's link to a Staff-managed
+-- user, or a person's link of either provider while they have a provider
+-- link not deleted, every employment ended before @today and none later.
+-- A provider link (00060, Entra design D7) is listed too when it carries
+-- reported codes, a pass not yet revealed or an announcement, with its
+-- provider's columns and whether the person's identity link names a user
+-- yet (identity_linked: an announcement nothing fulfilled is
+-- accountNotArrived).
 SELECT l.person_id, p.display_name, p.provision_account, (p.erased_at IS NOT NULL)::boolean AS erased,
     l.blocked_reason, l.last_error, l.attempts, l.disable_requested_at, l.updated_at,
-    (l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
-        AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+    (EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
         AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
-            AND (e.end_date IS NULL OR e.end_date >= @today::date)))::boolean AS leaver
+            AND (e.end_date IS NULL OR e.end_date >= @today::date))
+        AND ((l.provider = 'identity' AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
+            OR (l.provider <> 'identity' AND l.state <> 'deleted')
+            OR (l.provider = 'identity' AND EXISTS (SELECT 1 FROM staff.identity_links x
+                WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.state <> 'deleted'))))::boolean AS leaver,
+    l.provider, l.state, l.announced_at, l.pass_issued_at, l.reported_codes,
+    EXISTS (SELECT 1 FROM staff.identity_links i
+        WHERE i.person_id = p.id AND i.provider = 'identity' AND i.external_id IS NOT NULL)::boolean AS identity_linked
 FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
-WHERE l.provider = 'identity'
-  AND (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL)
-  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL OR l.disable_requested_at IS NOT NULL)
-ORDER BY l.person_id;
+WHERE (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL)
+  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL OR l.disable_requested_at IS NOT NULL
+    OR (l.provider <> 'identity'
+        AND (cardinality(l.reported_codes) > 0 OR l.pass_issued_at IS NOT NULL OR l.announced_at IS NOT NULL)))
+ORDER BY l.person_id, l.provider;
 
 -- name: AccountPersonAttention :many
 -- AccountPersonAttention is every person not erased whose flag is on with

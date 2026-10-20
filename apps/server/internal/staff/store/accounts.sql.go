@@ -53,16 +53,23 @@ const accountLinkAttention = `-- name: AccountLinkAttention :many
 
 SELECT l.person_id, p.display_name, p.provision_account, (p.erased_at IS NOT NULL)::boolean AS erased,
     l.blocked_reason, l.last_error, l.attempts, l.disable_requested_at, l.updated_at,
-    (l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
-        AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
+    (EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
         AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
-            AND (e.end_date IS NULL OR e.end_date >= $1::date)))::boolean AS leaver
+            AND (e.end_date IS NULL OR e.end_date >= $1::date))
+        AND ((l.provider = 'identity' AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
+            OR (l.provider <> 'identity' AND l.state <> 'deleted')
+            OR (l.provider = 'identity' AND EXISTS (SELECT 1 FROM staff.identity_links x
+                WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.state <> 'deleted'))))::boolean AS leaver,
+    l.provider, l.state, l.announced_at, l.pass_issued_at, l.reported_codes,
+    EXISTS (SELECT 1 FROM staff.identity_links i
+        WHERE i.person_id = p.id AND i.provider = 'identity' AND i.external_id IS NOT NULL)::boolean AS identity_linked
 FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
-WHERE l.provider = 'identity'
-  AND (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL)
-  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL OR l.disable_requested_at IS NOT NULL)
-ORDER BY l.person_id
+WHERE (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL)
+  AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL OR l.disable_requested_at IS NOT NULL
+    OR (l.provider <> 'identity'
+        AND (cardinality(l.reported_codes) > 0 OR l.pass_issued_at IS NOT NULL OR l.announced_at IS NOT NULL)))
+ORDER BY l.person_id, l.provider
 `
 
 type AccountLinkAttentionRow struct {
@@ -76,6 +83,12 @@ type AccountLinkAttentionRow struct {
 	DisableRequestedAt *time.Time
 	UpdatedAt          time.Time
 	Leaver             bool
+	Provider           string
+	State              string
+	AnnouncedAt        *time.Time
+	PassIssuedAt       *time.Time
+	ReportedCodes      []string
+	IdentityLinked     bool
 }
 
 // The account attention items (Task 4c, accounts_attention.go), from Staff's
@@ -85,8 +98,14 @@ type AccountLinkAttentionRow struct {
 // erased one whose link carries a disable requested (Task 4c review M2) —
 // with the person's name, flag and erasure, and whether the link is a
 // leaver's the worker deactivates whatever the flag (the owner's decision
-// D2; ClaimAccountLink's branch): the worker's link to a Staff-managed user,
-// every employment ended before @today and none later.
+// D2; ClaimAccountLink's branches): the worker's link to a Staff-managed
+// user, or a person's link of either provider while they have a provider
+// link not deleted, every employment ended before @today and none later.
+// A provider link (00060, Entra design D7) is listed too when it carries
+// reported codes, a pass not yet revealed or an announcement, with its
+// provider's columns and whether the person's identity link names a user
+// yet (identity_linked: an announcement nothing fulfilled is
+// accountNotArrived).
 func (q *Queries) AccountLinkAttention(ctx context.Context, today pgtype.Date) ([]AccountLinkAttentionRow, error) {
 	rows, err := q.db.Query(ctx, accountLinkAttention, today)
 	if err != nil {
@@ -107,6 +126,12 @@ func (q *Queries) AccountLinkAttention(ctx context.Context, today pgtype.Date) (
 			&i.DisableRequestedAt,
 			&i.UpdatedAt,
 			&i.Leaver,
+			&i.Provider,
+			&i.State,
+			&i.AnnouncedAt,
+			&i.PassIssuedAt,
+			&i.ReportedCodes,
+			&i.IdentityLinked,
 		); err != nil {
 			return nil, err
 		}
@@ -186,7 +211,10 @@ WHERE id = (
     JOIN staff.people p ON p.id = l.person_id
     WHERE l.provider = 'identity'
       AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
-        OR (p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
+        OR (p.erased_at IS NULL
+            AND ((l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
+                OR EXISTS (SELECT 1 FROM staff.identity_links x
+                    WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.state <> 'deleted'))
             AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
             AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
                 AND (e.end_date IS NULL OR e.end_date >= $3::date))))
@@ -230,7 +258,10 @@ type ClaimAccountLinkRow struct {
 // leaver's: the worker's own link (not HR's self-service link, linked) to a
 // Staff-managed user, every employment ended before @today and none later,
 // which the decision table deactivates whatever the flag (the owner's
-// decision D2): the link row alone is locked (OF l), and one another cycle
+// decision D2) — or a leaver's who has a provider link not deleted (00060,
+// Entra design D7), whose external account the chain deactivates and,
+// after delete_external_after_days, deletes, though the identity link
+// names no user: the link row alone is locked (OF l), and one another cycle
 // is claiming is skipped. Blocked and failed links are claimed on their
 // schedule like any other: the decision table never reads blocked as an
 // input, so a link recovers when what blocked it is gone. LIMIT 1 with SKIP
@@ -335,7 +366,10 @@ SELECT count(*) FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
 WHERE l.provider = 'identity'
   AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
-    OR (p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL
+    OR (p.erased_at IS NULL
+        AND ((l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
+            OR EXISTS (SELECT 1 FROM staff.identity_links x
+                WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.state <> 'deleted'))
         AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
         AND NOT EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
             AND (e.end_date IS NULL OR e.end_date >= $1::date))))
@@ -348,7 +382,8 @@ type CountDueAccountLinksParams struct {
 }
 
 // CountDueAccountLinks is the due links ClaimAccountLink would still take,
-// leased or not: what POST /accounts/run reports as remaining.
+// leased or not, by the same branches (keep the two identical): what POST
+// /accounts/run reports as remaining.
 func (q *Queries) CountDueAccountLinks(ctx context.Context, arg CountDueAccountLinksParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countDueAccountLinks, arg.Today, arg.Now)
 	var count int64
@@ -358,7 +393,8 @@ func (q *Queries) CountDueAccountLinks(ctx context.Context, arg CountDueAccountL
 
 const getPersonAccount = `-- name: GetPersonAccount :one
 
-SELECT id, provision_account, provision_from, account_email_kind, work_email, private_email, account_revision
+SELECT id, provision_account, provision_from, account_email_kind, work_email, private_email, account_revision,
+    account_kind
 FROM staff.people
 WHERE id = $1
 `
@@ -371,6 +407,7 @@ type GetPersonAccountRow struct {
 	WorkEmail        *string
 	PrivateEmail     *string
 	AccountRevision  int32
+	AccountKind      string
 }
 
 // The account flag (design S22, §3.1) and the link it drives (S27, §3.6),
@@ -378,8 +415,9 @@ type GetPersonAccountRow struct {
 // the identity provider's row in staff.identity_links, which the accounts
 // worker writes and HR's self-service link shares (plan reading 8).
 // GetPersonAccount is a person's account flag with the two addresses it may
-// name and the flag's own revision, which a change of it is guarded by (00051:
-// never people.revision, which a manager reads).
+// name, the account kind (00060), and the flag's own revision, which a
+// change of either is guarded by (00051: never people.revision, which a
+// manager reads).
 func (q *Queries) GetPersonAccount(ctx context.Context, id int64) (GetPersonAccountRow, error) {
 	row := q.db.QueryRow(ctx, getPersonAccount, id)
 	var i GetPersonAccountRow
@@ -391,6 +429,7 @@ func (q *Queries) GetPersonAccount(ctx context.Context, id int64) (GetPersonAcco
 		&i.WorkEmail,
 		&i.PrivateEmail,
 		&i.AccountRevision,
+		&i.AccountKind,
 	)
 	return i, err
 }
@@ -617,6 +656,29 @@ func (q *Queries) UpdatePersonAccount(ctx context.Context, arg UpdatePersonAccou
 		arg.AccountEmailKind,
 		arg.ID,
 	)
+	var account_revision int32
+	err := row.Scan(&account_revision)
+	return account_revision, err
+}
+
+const updatePersonAccountKind = `-- name: UpdatePersonAccountKind :one
+UPDATE staff.people SET
+    account_kind = $1,
+    account_revision = account_revision + 1
+WHERE id = $2
+RETURNING account_revision
+`
+
+type UpdatePersonAccountKindParams struct {
+	AccountKind string
+	ID          int64
+}
+
+// UpdatePersonAccountKind writes the person's account kind and moves the
+// flag's own revision on, as UpdatePersonAccount does: the kind is the
+// links group's, read by nobody the flag is hidden from.
+func (q *Queries) UpdatePersonAccountKind(ctx context.Context, arg UpdatePersonAccountKindParams) (int32, error) {
+	row := q.db.QueryRow(ctx, updatePersonAccountKind, arg.AccountKind, arg.ID)
 	var account_revision int32
 	err := row.Scan(&account_revision)
 	return account_revision, err

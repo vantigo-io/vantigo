@@ -1853,6 +1853,21 @@ export interface components {
             type?: string;
             value?: string;
         };
+        /** @description The user's manager as the identity provider sent it (RFC 7643 §4.3). value is kept as the provider's own id of the manager and resolved to nothing here; $ref is this server's path for it. */
+        ScimEnterpriseManager: {
+            $ref?: string;
+            displayName?: string;
+            value: string;
+        };
+        /** @description The enterprise extension (urn:ietf:params:scim:schemas:extension:enterprise:2.0:User, RFC 7643 §4.3), accepted on a create, a replace and a patch and kept in the mapping's profile beside the name parts, each value at most 256 characters. employeeNumber is what an account Staff announced is matched on; it never becomes the user's employee number — only Staff's provisioning writes that. */
+        ScimEnterpriseUser: {
+            costCenter?: string;
+            department?: string;
+            division?: string;
+            employeeNumber?: string;
+            manager?: components["schemas"]["ScimEnterpriseManager"];
+            organization?: string;
+        };
         ScimError: {
             detail: string;
             schemas: string[];
@@ -1925,12 +1940,18 @@ export interface components {
             id: string;
             name: string;
             schema: string;
+            /** @description The schema extensions the resource type admits — the enterprise extension on User, not required. */
+            schemaExtensions?: components["schemas"]["ScimSchemaExtension"][];
         };
         ScimResourceTypesResponse: {
             resources: components["schemas"]["ScimResourceType"][];
             schemas: string[];
             /** Format: int32 */
             totalResults: number;
+        };
+        ScimSchemaExtension: {
+            required: boolean;
+            schema: string;
         };
         ScimSchemaAttribute: {
             caseExact?: boolean;
@@ -2000,6 +2021,7 @@ export interface components {
             meta: components["schemas"]["ScimMeta"];
             name?: components["schemas"]["ScimName"];
             schemas: string[];
+            "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"?: components["schemas"]["ScimEnterpriseUser"];
             userName: string;
         };
         ScimUserListResponse: {

@@ -23,12 +23,11 @@ import (
 // manages anyone today by the one manager rule (effectiveManager), so a
 // manager who has left manages nobody — and canDecide — staff:approve,
 // staff:manage, or managesAnyone: who may decide absence (design S12).
-// Delivery C adds, for staff:manage alone, the authority mode identity
-// records (accountMode) and whether an Owner has named the roles Staff may
-// give (provisioningRolesSet), both asked of identity first, before any
-// snapshot — absent when no module provides accounts, accountMode also on a
-// mode mismatch (contracts.ErrModeMismatch) — and the capability
-// canRunAccounts.
+// Delivery C adds, for staff:manage alone, whether an Owner has named the
+// roles Staff may give (provisioningRolesSet), asked of identity first,
+// before any snapshot — absent when no module provides accounts — and the
+// capability canRunAccounts. Task 4 (Entra delivery B) adds
+// defaultAccountKind and providers in place of the authority mode.
 
 // GetStaffMeta Get the Staff metadata
 // (GET /api/v1/staff/meta)
@@ -37,12 +36,8 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 	if err != nil {
 		return nil, err
 	}
-	var (
-		accountMode *gen.StaffAccountMode
-		rolesSet    *bool
-	)
+	var rolesSet *bool
 	if caller.Manage {
-		accountMode = s.accountMode(ctx)
 		rolesSet = s.provisioningRolesSet(ctx)
 	}
 	q := store.New(s.deps.Pool)
@@ -73,7 +68,6 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 		},
 		AbsenceTypes:         mapRows(types, absenceTypeResponse),
 		HolidaySchemes:       mapRows(schemes, holidaySchemeResponse),
-		AccountMode:          accountMode,
 		ProvisioningRolesSet: rolesSet,
 	}
 	// HR without the directory still names units and departments (plan

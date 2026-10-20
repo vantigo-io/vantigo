@@ -11,6 +11,7 @@ sql:
       - ../db/migrations/00047_staff_absence.sql
       - ../db/migrations/00051_staff_accounts.sql
       - ../db/migrations/00053_staff_time_zone_to_workspace.sql
+      - ../db/migrations/00060_staff_account_kind.sql
     queries: queries
     gen:
       go:

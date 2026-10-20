@@ -12,6 +12,38 @@ import (
 	"github.com/google/uuid"
 )
 
+const completeExpectedUser = `-- name: CompleteExpectedUser :exec
+UPDATE identity.users
+SET pending_since = NULL, invitations_since = NULL,
+    email = $1, normalized_email = $2,
+    version = $3, updated_at = $4::timestamptz
+WHERE id = $5
+`
+
+type CompleteExpectedUserParams struct {
+	Email           string
+	NormalizedEmail string
+	Version         uuid.UUID
+	Now             time.Time
+	ID              uuid.UUID
+}
+
+// CompleteExpectedUser completes the pending user an announcement names to
+// replace (ExpectedAccount.ReplaceUserID) on the provider's arrival: no
+// longer pending, no invitation spell, and the address the provider sent —
+// the person signs in from the tenant now, under the caller's owner lock and
+// the user's row lock.
+func (q *Queries) CompleteExpectedUser(ctx context.Context, arg CompleteExpectedUserParams) error {
+	_, err := q.db.Exec(ctx, completeExpectedUser,
+		arg.Email,
+		arg.NormalizedEmail,
+		arg.Version,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
 const deleteProvisioningRolesExcept = `-- name: DeleteProvisioningRolesExcept :exec
 DELETE FROM identity.provisioning_roles WHERE role_id <> ALL ($1::uuid[])
 `
@@ -53,7 +85,7 @@ func (q *Queries) FirstDeniedRolePermission(ctx context.Context, arg FirstDenied
 
 const getProvisioningUser = `-- name: GetProvisioningUser :one
 SELECT u.id, u.email, u.normalized_email, u.display_name, u.preferred_language, u.is_disabled,
-       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since,
+       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since, u.provisioning_roles_at,
        (u.password_hash IS NOT NULL)::boolean AS has_password,
        EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
        EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
@@ -67,23 +99,24 @@ WHERE u.id = $1
 `
 
 type GetProvisioningUserRow struct {
-	ID                uuid.UUID
-	Email             string
-	NormalizedEmail   string
-	DisplayName       string
-	PreferredLanguage *string
-	IsDisabled        bool
-	ManagedBy         *string
-	EmployeeNumber    *string
-	PendingSince      *time.Time
-	DisabledBy        *string
-	InvitationsSince  *time.Time
-	HasPassword       bool
-	HasPasskey        bool
-	HasOidcLink       bool
-	IsOwner           bool
-	Privileged        bool
-	ScimInactive      bool
+	ID                  uuid.UUID
+	Email               string
+	NormalizedEmail     string
+	DisplayName         string
+	PreferredLanguage   *string
+	IsDisabled          bool
+	ManagedBy           *string
+	EmployeeNumber      *string
+	PendingSince        *time.Time
+	DisabledBy          *string
+	InvitationsSince    *time.Time
+	ProvisioningRolesAt *time.Time
+	HasPassword         bool
+	HasPasskey          bool
+	HasOidcLink         bool
+	IsOwner             bool
+	Privileged          bool
+	ScimInactive        bool
 }
 
 // GetProvisioningUser is a user as the account provisioning provider judges
@@ -91,7 +124,8 @@ type GetProvisioningUserRow struct {
 // passkey or an OIDC link (a credential), Owner, SystemAdmin, and whether the
 // directory deactivated them (scim_inactive: a mapping whose upstream is
 // inactive; the caller counts it only while SCIM is configured and the user
-// is no Owner).
+// is no Owner), and when Staff's Activate last gave them the provisioning
+// roles (provisioning_roles_at, null until it has).
 func (q *Queries) GetProvisioningUser(ctx context.Context, id uuid.UUID) (GetProvisioningUserRow, error) {
 	row := q.db.QueryRow(ctx, getProvisioningUser, id)
 	var i GetProvisioningUserRow
@@ -107,6 +141,7 @@ func (q *Queries) GetProvisioningUser(ctx context.Context, id uuid.UUID) (GetPro
 		&i.PendingSince,
 		&i.DisabledBy,
 		&i.InvitationsSince,
+		&i.ProvisioningRolesAt,
 		&i.HasPassword,
 		&i.HasPasskey,
 		&i.HasOidcLink,
@@ -379,7 +414,7 @@ func (q *Queries) LockProvisioningRoleIDs(ctx context.Context) ([]uuid.UUID, err
 
 const lockProvisioningUser = `-- name: LockProvisioningUser :one
 SELECT u.id, u.email, u.normalized_email, u.display_name, u.preferred_language, u.is_disabled,
-       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since,
+       u.managed_by, u.employee_number, u.pending_since, u.disabled_by, u.invitations_since, u.provisioning_roles_at,
        (u.password_hash IS NOT NULL)::boolean AS has_password,
        EXISTS (SELECT 1 FROM identity.passkeys p WHERE p.user_id = u.id)::boolean AS has_passkey,
        EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id)::boolean AS has_oidc_link,
@@ -394,23 +429,24 @@ FOR UPDATE OF u
 `
 
 type LockProvisioningUserRow struct {
-	ID                uuid.UUID
-	Email             string
-	NormalizedEmail   string
-	DisplayName       string
-	PreferredLanguage *string
-	IsDisabled        bool
-	ManagedBy         *string
-	EmployeeNumber    *string
-	PendingSince      *time.Time
-	DisabledBy        *string
-	InvitationsSince  *time.Time
-	HasPassword       bool
-	HasPasskey        bool
-	HasOidcLink       bool
-	IsOwner           bool
-	Privileged        bool
-	ScimInactive      bool
+	ID                  uuid.UUID
+	Email               string
+	NormalizedEmail     string
+	DisplayName         string
+	PreferredLanguage   *string
+	IsDisabled          bool
+	ManagedBy           *string
+	EmployeeNumber      *string
+	PendingSince        *time.Time
+	DisabledBy          *string
+	InvitationsSince    *time.Time
+	ProvisioningRolesAt *time.Time
+	HasPassword         bool
+	HasPasskey          bool
+	HasOidcLink         bool
+	IsOwner             bool
+	Privileged          bool
+	ScimInactive        bool
 }
 
 // LockProvisioningUser is GetProvisioningUser holding the user's row FOR
@@ -432,6 +468,7 @@ func (q *Queries) LockProvisioningUser(ctx context.Context, id uuid.UUID) (LockP
 		&i.PendingSince,
 		&i.DisabledBy,
 		&i.InvitationsSince,
+		&i.ProvisioningRolesAt,
 		&i.HasPassword,
 		&i.HasPasskey,
 		&i.HasOidcLink,
@@ -487,6 +524,23 @@ type SetInvitationsSinceParams struct {
 // (ActivateOpts.FreshInvitation).
 func (q *Queries) SetInvitationsSince(ctx context.Context, arg SetInvitationsSinceParams) error {
 	_, err := q.db.Exec(ctx, setInvitationsSince, arg.Now, arg.ID)
+	return err
+}
+
+const setProvisioningRolesAt = `-- name: SetProvisioningRolesAt :exec
+UPDATE identity.users SET provisioning_roles_at = $1::timestamptz WHERE id = $2
+`
+
+type SetProvisioningRolesAtParams struct {
+	Now time.Time
+	ID  uuid.UUID
+}
+
+// SetProvisioningRolesAt records that Staff's Activate gave the user the
+// provisioning roles at @now (plan reading 3): an entra kind's Activate gives
+// them only while it is null, once.
+func (q *Queries) SetProvisioningRolesAt(ctx context.Context, arg SetProvisioningRolesAtParams) error {
+	_, err := q.db.Exec(ctx, setProvisioningRolesAt, arg.Now, arg.ID)
 	return err
 }
 

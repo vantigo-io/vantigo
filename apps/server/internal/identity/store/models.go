@@ -76,6 +76,20 @@ type IdentityBootstrapState struct {
 	CompletedAt time.Time
 }
 
+type IdentityExpectedAccount struct {
+	EmployeeNumberKey string
+	EmployeeNumber    string
+	DisplayName       string
+	PreferredLanguage *string
+	Issuer            *string
+	ObjectID          *string
+	UserPrincipalName *string
+	ReplaceUserID     *uuid.UUID
+	CreatedAt         time.Time
+	CreatedByUserID   *uuid.UUID
+	CreatedBySystem   *string
+}
+
 type IdentityInvitation struct {
 	ID              uuid.UUID
 	Email           string
@@ -237,29 +251,30 @@ type IdentitySystemSetting struct {
 }
 
 type IdentityUser struct {
-	ID                uuid.UUID
-	Email             string
-	NormalizedEmail   string
-	EmailConfirmed    bool
-	DisplayName       string
-	PreferredLanguage *string
-	PasswordHash      *string
-	IsDisabled        bool
-	LockoutEnd        *time.Time
-	FailedLoginCount  int32
-	TotpSecret        []byte
-	TotpEnabled       bool
-	TotpLastStep      *int64
-	Version           uuid.UUID
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	ManagedBy         *string
-	EmployeeNumber    *string
-	EmployeeNumberKey *string
-	PendingSince      *time.Time
-	InvitationsSince  *time.Time
-	DisabledBy        *string
-	TimeZone          *string
+	ID                  uuid.UUID
+	Email               string
+	NormalizedEmail     string
+	EmailConfirmed      bool
+	DisplayName         string
+	PreferredLanguage   *string
+	PasswordHash        *string
+	IsDisabled          bool
+	LockoutEnd          *time.Time
+	FailedLoginCount    int32
+	TotpSecret          []byte
+	TotpEnabled         bool
+	TotpLastStep        *int64
+	Version             uuid.UUID
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	ManagedBy           *string
+	EmployeeNumber      *string
+	EmployeeNumberKey   *string
+	PendingSince        *time.Time
+	InvitationsSince    *time.Time
+	DisabledBy          *string
+	TimeZone            *string
+	ProvisioningRolesAt *time.Time
 }
 
 type IdentityUserRole struct {

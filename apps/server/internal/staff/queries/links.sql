@@ -78,3 +78,64 @@ SELECT l.external_id::text AS user_id, p.display_name, p.preferred_language
 FROM staff.identity_links l JOIN staff.people p ON p.id = l.person_id
 WHERE l.provider = 'identity' AND l.external_id = ANY(@user_ids::text[])
   AND (l.state = 'linked' OR coalesce(l.blocked_reason, '') NOT IN ('mismatch', 'account_not_managed'));
+
+-- The provider links (Entra design D7, delivery B): a person's second row in
+-- staff.identity_links, its provider an IdentityProvisioner's key ('entra'),
+-- which the accounts worker writes under the claim it holds on the person's
+-- identity link — the identity link stays the claim, so the two are worked
+-- in one chain under one lease.
+
+-- name: PersonProviderLink :one
+-- PersonProviderLink is a person's link under @provider with every column
+-- the worker and the Account tab read. No row is a person with no link
+-- under it.
+SELECT id, external_id, state, managed, blocked_reason, last_error, attempts, next_attempt_at,
+    last_synced_at, last_spec_hash, external_upn, external_email, announced_at, pass_issued_at,
+    reported_codes, updated_at
+FROM staff.identity_links
+WHERE person_id = @person_id AND provider = @provider;
+
+-- name: InsertPreparingProviderLink :exec
+-- InsertPreparingProviderLink writes the worker's preparing link under
+-- @provider — no external account yet, managed — under the person's lock,
+-- before the provider's Prepare is called. A link already there is left as
+-- it is.
+INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, created_at, updated_at)
+VALUES (@person_id, @provider, NULL, 'preparing', true, @now::timestamptz, @now::timestamptz)
+ON CONFLICT (person_id, provider) DO NOTHING;
+
+-- name: WriteProviderLinkResult :execrows
+-- WriteProviderLinkResult records what a claim did on a provider link, every
+-- provider column replaced, guarded by the claim's lease — held on the
+-- person's identity link, not on this row: no row is a link gone, a link
+-- under the identity provider (never written here), or a claim lost — the
+-- identity link's lease lapsed and taken by another cycle, or the identity
+-- link gone. Neither the person's revision nor updated_at moves.
+UPDATE staff.identity_links AS pl SET
+    external_id = sqlc.narg(external_id)::text,
+    state = @state,
+    managed = true,
+    blocked_reason = sqlc.narg(blocked_reason)::varchar,
+    last_error = sqlc.narg(last_error)::varchar,
+    attempts = @attempts,
+    next_attempt_at = sqlc.narg(next_attempt_at)::timestamptz,
+    last_synced_at = sqlc.narg(last_synced_at)::timestamptz,
+    last_spec_hash = sqlc.narg(last_spec_hash)::bytea,
+    external_upn = sqlc.narg(external_upn)::varchar,
+    external_email = sqlc.narg(external_email)::varchar,
+    announced_at = sqlc.narg(announced_at)::timestamptz,
+    pass_issued_at = sqlc.narg(pass_issued_at)::timestamptz,
+    reported_codes = @reported_codes::text[],
+    updated_at = @now::timestamptz
+WHERE pl.id = @id AND pl.provider <> 'identity'
+  AND EXISTS (SELECT 1 FROM staff.identity_links il
+              WHERE il.person_id = pl.person_id AND il.provider = 'identity' AND il.lease_id = @lease_id::uuid);
+
+-- name: ProviderLinksOfPeople :many
+-- ProviderLinksOfPeople is the external account of each of @person_ids'
+-- people under @provider that exists in the directory — enabled or
+-- disabled — by person: a manager's external id, which a report's spec
+-- names (ExternalSpec.ManagerExternalID).
+SELECT person_id, external_id::text AS external_id FROM staff.identity_links
+WHERE person_id = ANY(@person_ids::bigint[]) AND provider = @provider
+  AND state IN ('enabled', 'disabled') AND external_id IS NOT NULL;

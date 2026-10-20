@@ -532,11 +532,14 @@ func (s *server) GetIdentityScimV2Users(ctx context.Context, _ gen.GetIdentitySc
 		return scimOr[gen.GetIdentityScimV2UsersResponseObject](err)
 	}
 	userNames, externalIDs := scimFilterValues(clauses, "userName")
-	total, err := s.q.CountScimUsers(ctx, store.CountScimUsersParams{UserNames: userNames, ExternalIds: externalIDs})
+	// The enterprise employeeNumber's filter is Task 3's (Entra design D3);
+	// an empty list admits every row, as a nil one would admit none.
+	employeeNumbers := []string{}
+	total, err := s.q.CountScimUsers(ctx, store.CountScimUsersParams{UserNames: userNames, ExternalIds: externalIDs, EmployeeNumbers: employeeNumbers})
 	if err != nil {
 		return nil, fmt.Errorf("identity: count SCIM users: %w", err)
 	}
-	rows, err := s.q.ListScimUsers(ctx, store.ListScimUsersParams{UserNames: userNames, ExternalIds: externalIDs, Skip: int64(startIndex - 1), Take: int64(count)})
+	rows, err := s.q.ListScimUsers(ctx, store.ListScimUsersParams{UserNames: userNames, ExternalIds: externalIDs, EmployeeNumbers: employeeNumbers, Skip: int64(startIndex - 1), Take: int64(count)})
 	if err != nil {
 		return nil, fmt.Errorf("identity: list SCIM users: %w", err)
 	}

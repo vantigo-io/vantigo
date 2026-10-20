@@ -718,6 +718,25 @@ type ScimEmailInput struct {
 	Value   *string `json:"value,omitempty"`
 }
 
+// ScimEnterpriseManager The user's manager as the identity provider sent it (RFC 7643 §4.3). value is kept as the provider's own id of the manager and resolved to nothing here; $ref is this server's path for it.
+type ScimEnterpriseManager struct {
+	Ref         *string `json:"$ref,omitempty"`
+	DisplayName *string `json:"displayName,omitempty"`
+	Value       string  `json:"value"`
+}
+
+// ScimEnterpriseUser The enterprise extension (urn:ietf:params:scim:schemas:extension:enterprise:2.0:User, RFC 7643 §4.3), accepted on a create, a replace and a patch and kept in the mapping's profile beside the name parts, each value at most 256 characters. employeeNumber is what an account Staff announced is matched on; it never becomes the user's employee number — only Staff's provisioning writes that.
+type ScimEnterpriseUser struct {
+	CostCenter     *string `json:"costCenter,omitempty"`
+	Department     *string `json:"department,omitempty"`
+	Division       *string `json:"division,omitempty"`
+	EmployeeNumber *string `json:"employeeNumber,omitempty"`
+
+	// Manager The user's manager as the identity provider sent it (RFC 7643 §4.3). value is kept as the provider's own id of the manager and resolved to nothing here; $ref is this server's path for it.
+	Manager      *ScimEnterpriseManager `json:"manager,omitempty"`
+	Organization *string                `json:"organization,omitempty"`
+}
+
 // ScimError defines model for ScimError.
 type ScimError struct {
 	Detail   string   `json:"detail"`
@@ -806,6 +825,9 @@ type ScimResourceType struct {
 	Id          string `json:"id"`
 	Name        string `json:"name"`
 	Schema      string `json:"schema"`
+
+	// SchemaExtensions The schema extensions the resource type admits — the enterprise extension on User, not required.
+	SchemaExtensions *[]ScimSchemaExtension `json:"schemaExtensions,omitempty"`
 }
 
 // ScimResourceTypesResponse defines model for ScimResourceTypesResponse.
@@ -834,6 +856,12 @@ type ScimSchemaDocument struct {
 	Description string                `json:"description"`
 	Id          string                `json:"id"`
 	Name        string                `json:"name"`
+}
+
+// ScimSchemaExtension defines model for ScimSchemaExtension.
+type ScimSchemaExtension struct {
+	Required bool   `json:"required"`
+	Schema   string `json:"schema"`
 }
 
 // ScimSchemasResponse defines model for ScimSchemasResponse.
@@ -888,7 +916,10 @@ type ScimUser struct {
 	Meta        ScimMeta     `json:"meta"`
 	Name        *ScimName    `json:"name,omitempty"`
 	Schemas     []string     `json:"schemas"`
-	UserName    string       `json:"userName"`
+
+	// UrnIetfParamsScimSchemasExtensionEnterprise20User The enterprise extension (urn:ietf:params:scim:schemas:extension:enterprise:2.0:User, RFC 7643 §4.3), accepted on a create, a replace and a patch and kept in the mapping's profile beside the name parts, each value at most 256 characters. employeeNumber is what an account Staff announced is matched on; it never becomes the user's employee number — only Staff's provisioning writes that.
+	UrnIetfParamsScimSchemasExtensionEnterprise20User *ScimEnterpriseUser `json:"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User,omitempty"`
+	UserName                                          string              `json:"userName"`
 }
 
 // ScimUserListResponse defines model for ScimUserListResponse.
