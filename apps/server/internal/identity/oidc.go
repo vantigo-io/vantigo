@@ -556,9 +556,14 @@ func (rp *oidcRelyingParty) lifetimeProblem(idToken *oidc.IDToken) string {
 //     factor), otherwise it is signed in;
 //  4. no link, but the email belongs to an account: account_locked when
 //     that account is unavailable, else oidc_email_conflict. An email never
-//     links an identity to an existing account: that is the takeover guard;
+//     links an identity to an existing account: that is the takeover guard
+//     — but for the pending user an account Staff announced for this oid
+//     under this issuer names to replace (Entra design D4), whose
+//     completion it is;
 //  5. otherwise a new User account is provisioned with its link, in one
-//     serializable transaction. Losing a race to a concurrent provisioning
+//     serializable transaction — or, when Staff announced the account, the
+//     announced one adopted (adoptExpectedOIDCAccount), and signed in as 3
+//     signs a linked account in. Losing a race to a concurrent provisioning
 //     of the same identity re-reads the link and signs that account in, as
 //     3 does; without one it is oidc_sign_in_unavailable.
 //
@@ -604,12 +609,22 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 		return nil, fmt.Errorf("identity: OIDC link: %w", err)
 	}
 
+	// The pending user an announcement for this identity names to replace
+	// holds the address by design: the collision is the completion.
+	replacing := uuid.Nil
+	expected, err := oidcExpected(ctx, s.q, account)
+	if err != nil {
+		return nil, fmt.Errorf("identity: OIDC announced account: %w", err)
+	}
+	if expected != nil && expected.expected.ReplaceUserID != nil {
+		replacing = *expected.expected.ReplaceUserID
+	}
 	if account.email != "" {
 		u, taken, err := emailTaken(ctx, s.q, account.email)
 		if err != nil {
 			return nil, fmt.Errorf("identity: OIDC email: %w", err)
 		}
-		if taken {
+		if taken && u.ID != replacing {
 			// A completion racing this one for the same identity may have
 			// committed its account and link between the two reads: then
 			// the email is that account's, and the link, which only a
@@ -639,9 +654,10 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 	// winner has committed it reports the email taken
 	// (errOIDCProvisioningLost), and the committed link decides below.
 	var userID uuid.UUID
+	var adopted bool
 	err = db.RetrySerializable(ctx, serializableAttempts, func() error {
 		var err error
-		userID, err = s.provisionOIDCAccount(ctx, account)
+		userID, adopted, err = s.provisionOIDCAccount(ctx, r, account)
 		return err
 	})
 	if errors.Is(err, errOIDCProvisioningLost) || db.IsSerializationConflict(err) || db.IsUniqueViolation(err, "") {
@@ -659,6 +675,15 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 	}
 	if err != nil {
 		return nil, err
+	}
+	if adopted {
+		// An adopted user may be one Staff keeps disabled until it
+		// activates them: the linked account's rules decide.
+		linked, err := s.q.GetOidcLinkedUser(ctx, store.GetOidcLinkedUserParams{Issuer: account.issuer, Subject: account.subject})
+		if err != nil {
+			return nil, fmt.Errorf("identity: OIDC link: %w", err)
+		}
+		return s.oidcSignInLinked(ctx, r, linked, consumed)
 	}
 	return s.oidcSignIn(ctx, r, userID, consumed)
 }
@@ -713,38 +738,61 @@ var errOIDCProvisioningLost = errors.New("identity: OIDC provisioning lost a rac
 // claims never become roles. A concurrent provisioning of the same identity
 // makes this one fail on the email's unique index, the link's primary key,
 // or serialization, and roll back.
-func (s *server) provisionOIDCAccount(ctx context.Context, a externalAccount) (uuid.UUID, error) {
+//
+// The transaction takes the owner lock first and then reads whether Staff
+// announced the account (Entra design D4): if so, and the announcement may
+// be fulfilled, the user is adopted instead (adoptExpectedOIDCAccount) and
+// adopted is true.
+func (s *server) provisionOIDCAccount(ctx context.Context, r *http.Request, a externalAccount) (userID uuid.UUID, adopted bool, err error) {
 	now := s.deps.Clock()
-	userID := uuid.New()
-	email := a.email
-	if email == "" {
-		email = opaqueEmail(a.issuer, a.subject)
-	}
-	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.Serializable}, func(tx pgx.Tx) error {
+	newID := uuid.New()
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.Serializable}, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		if _, taken, err := emailTaken(ctx, q, email); err != nil {
-			return err
-		} else if taken {
-			return errOIDCProvisioningLost
-		}
-		if err := q.InsertUser(ctx, store.InsertUserParams{
-			ID:              userID,
-			Email:           email,
-			NormalizedEmail: normalizeEmail(email),
-			EmailConfirmed:  a.emailVerified,
-			DisplayName:     a.displayName,
-			Version:         uuid.New(),
-			CreatedAt:       now,
-			UpdatedAt:       now,
-		}); err != nil {
+		if err := lockOwners(ctx, q); err != nil {
 			return err
 		}
-		if _, err := q.AssignUserRole(ctx, store.AssignUserRoleParams{UserID: userID, RoleID: RoleUserID}); err != nil {
+		var err error
+		if userID, adopted, err = adoptExpectedOIDCAccount(ctx, q, r, a, newID, now); err != nil || adopted {
+			return err
+		}
+		userID = newID
+		if err := insertOIDCUser(ctx, q, a, userID, nil, now); err != nil {
 			return err
 		}
 		return q.InsertOidcLink(ctx, store.InsertOidcLinkParams{Issuer: a.issuer, Subject: a.subject, UserID: userID, Now: now})
 	})
-	return userID, err
+	return userID, adopted, err
+}
+
+// insertOIDCUser inserts a's account as id on q, in language (nil for none),
+// with the User role: the email re-checked (errOIDCProvisioningLost when it
+// is taken), the claimed email else the opaque one, confirmed only when the
+// provider verified it, and no password.
+func insertOIDCUser(ctx context.Context, q *store.Queries, a externalAccount, id uuid.UUID, language *string, now time.Time) error {
+	email := a.email
+	if email == "" {
+		email = opaqueEmail(a.issuer, a.subject)
+	}
+	if _, taken, err := emailTaken(ctx, q, email); err != nil {
+		return err
+	} else if taken {
+		return errOIDCProvisioningLost
+	}
+	if err := q.InsertUser(ctx, store.InsertUserParams{
+		ID:                id,
+		Email:             email,
+		NormalizedEmail:   normalizeEmail(email),
+		EmailConfirmed:    a.emailVerified,
+		DisplayName:       a.displayName,
+		PreferredLanguage: language,
+		Version:           uuid.New(),
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		return err
+	}
+	_, err := q.AssignUserRole(ctx, store.AssignUserRoleParams{UserID: id, RoleID: RoleUserID})
+	return err
 }
 
 // maxAssertionBytes bounds the workload identity token file: a projected

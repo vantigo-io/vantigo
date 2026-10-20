@@ -28,6 +28,7 @@ const (
 	scimUserSchema        = "urn:ietf:params:scim:schemas:core:2.0:User"
 	scimGroupSchema       = "urn:ietf:params:scim:schemas:core:2.0:Group"
 	scimPatchSchema       = "urn:ietf:params:scim:api:messages:2.0:PatchOp"
+	scimEnterpriseSchema  = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"
 	scimErrorSchema       = "urn:ietf:params:scim:api:messages:2.0:Error"
 	scimUnauthorizedText  = "A valid SCIM bearer token is required."
 	scimStaleText         = "The resource version is stale."
@@ -441,15 +442,24 @@ func TestScim_DiscoveryAnswersTheBearerToken(t *testing.T) {
 	if r.status != http.StatusOK || r.header("Content-Type") != "application/scim+json" || !config.Patch.Supported || !config.Etag.Supported || config.Filter.MaxResults != 100 {
 		t.Errorf("ServiceProviderConfig: %d %s", r.status, r.body)
 	}
-	if schemas := scimOf[scimList[json.RawMessage]](t, "Schemas", c.do(http.MethodGet, "/Schemas", nil), http.StatusOK); schemas.TotalResults != 2 || len(schemas.Resources) != 2 {
-		t.Errorf("Schemas: %+v", schemas)
+	schemas := scimOf[scimList[struct {
+		ID string `json:"id"`
+	}]](t, "Schemas", c.do(http.MethodGet, "/Schemas", nil), http.StatusOK)
+	if schemas.TotalResults != 3 || len(schemas.Resources) != 3 || schemas.Resources[2].ID != scimEnterpriseSchema {
+		t.Errorf("Schemas: %+v, want the enterprise extension's beside the core two", schemas)
+	}
+	type extension struct {
+		Schema   string `json:"schema"`
+		Required bool   `json:"required"`
 	}
 	types := scimOf[scimList[struct {
-		ID       string `json:"id"`
-		Endpoint string `json:"endpoint"`
+		ID         string      `json:"id"`
+		Endpoint   string      `json:"endpoint"`
+		Extensions []extension `json:"schemaExtensions"`
 	}]](t, "ResourceTypes", c.do(http.MethodGet, "/ResourceTypes", nil), http.StatusOK)
-	if types.TotalResults != 2 || types.Resources[0].Endpoint != scimPath+"/Users" || types.Resources[1].Endpoint != scimPath+"/Groups" {
-		t.Errorf("ResourceTypes: %+v", types)
+	if types.TotalResults != 2 || types.Resources[0].Endpoint != scimPath+"/Users" || types.Resources[1].Endpoint != scimPath+"/Groups" ||
+		!slices.Equal(types.Resources[0].Extensions, []extension{{Schema: scimEnterpriseSchema}}) || types.Resources[1].Extensions != nil {
+		t.Errorf("ResourceTypes: %+v, want the enterprise extension on User, not required", types)
 	}
 	for _, path := range []string{"/ServiceProviderConfig", "/Schemas", "/ResourceTypes"} {
 		wantScimError(t, path+" without a token", h.client(t).do(http.MethodGet, scimPath+path, nil), http.StatusUnauthorized, "invalidValue", scimUnauthorizedText)
@@ -1496,4 +1506,148 @@ func TestScim_TheHeartbeatRecordsAuthenticatedRequestsOnly(t *testing.T) {
 	if !status.StaticScimEnabled || strings.Contains(string(r.body), scimToken) {
 		t.Errorf("system status %s", r.body)
 	}
+}
+
+// scimEnterpriseUser is a User's enterprise extension block as a test reads
+// it, and the schemas the User names.
+type scimEnterpriseUser struct {
+	Schemas    []string `json:"schemas"`
+	Enterprise *struct {
+		EmployeeNumber *string `json:"employeeNumber"`
+		CostCenter     *string `json:"costCenter"`
+		Organization   *string `json:"organization"`
+		Division       *string `json:"division"`
+		Department     *string `json:"department"`
+		Manager        *struct {
+			Value       string  `json:"value"`
+			Ref         *string `json:"$ref"`
+			DisplayName *string `json:"displayName"`
+		} `json:"manager"`
+	} `json:"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"`
+}
+
+// enterpriseOf is r's User's enterprise block, which must be status.
+func enterpriseOf(t testing.TB, what string, r *resp, status int) scimEnterpriseUser {
+	t.Helper()
+	return scimOf[scimEnterpriseUser](t, what, r, status)
+}
+
+// New (Entra design D3): a User created with the enterprise extension's
+// block is 201 and answers it, the URN among its schemas and the manager's
+// $ref this server's path for the id; GET answers the same; a PATCH on one
+// of its paths changes that attribute alone; remove clears it; a PUT
+// replaces the block whole and, leaving it out, clears it; a path under the
+// URN it does not list is invalidPath. Nothing of the block reaches the
+// user's employee number.
+func TestScim_TheEnterpriseExtensionIsKeptAndAnswered(t *testing.T) {
+	t.Parallel()
+	h := newScimHarness(t)
+	c := h.scim(t, scimToken)
+	r := c.do(http.MethodPost, "/Users", userResource("ext", map[string]any{
+		"schemas": []string{scimUserSchema, scimEnterpriseSchema},
+		scimEnterpriseSchema: map[string]any{
+			"employeeNumber": " E-1 ", "costCenter": "C-9", "department": "Sales",
+			"manager": map[string]any{"value": "manager-1", "displayName": "Boss"},
+		},
+	}))
+	created := enterpriseOf(t, "create with the block", r, http.StatusCreated)
+	e := created.Enterprise
+	if !slices.Equal(created.Schemas, []string{scimUserSchema, scimEnterpriseSchema}) || e == nil ||
+		deref(e.EmployeeNumber) != "E-1" || deref(e.CostCenter) != "C-9" || deref(e.Department) != "Sales" || e.Division != nil ||
+		e.Manager == nil || e.Manager.Value != "manager-1" || deref(e.Manager.DisplayName) != "Boss" || deref(e.Manager.Ref) != scimPath+"/Users/manager-1" {
+		t.Fatalf("created: %s", r.body)
+	}
+	var user scimUser
+	r.json(&user)
+	id := h.userOf(t, user.ID)
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND employee_number IS NULL AND managed_by IS NULL`, id); n != 1 {
+		t.Error("the block's employeeNumber reached the user")
+	}
+	if got := enterpriseOf(t, "get", c.do(http.MethodGet, "/Users/"+user.ID, nil), http.StatusOK); got.Enterprise == nil || deref(got.Enterprise.Department) != "Sales" {
+		t.Errorf("GET does not answer the block")
+	}
+
+	r = c.do(http.MethodPatch, "/Users/"+user.ID, patchOps(
+		patchOp("replace", scimEnterpriseSchema+":department", "Support"),
+		patchOp("remove", scimEnterpriseSchema+":costCenter", nil),
+		patchOp("add", scimEnterpriseSchema+":manager.value", "manager-2"),
+	))
+	patched := enterpriseOf(t, "patch", r, http.StatusOK).Enterprise
+	if patched == nil || deref(patched.Department) != "Support" || patched.CostCenter != nil || deref(patched.EmployeeNumber) != "E-1" ||
+		patched.Manager == nil || patched.Manager.Value != "manager-2" || deref(patched.Manager.DisplayName) != "Boss" {
+		t.Errorf("patched: %s", r.body)
+	}
+	wantScimError(t, "an unknown enterprise path", c.do(http.MethodPatch, "/Users/"+user.ID, patchOps(patchOp("replace", scimEnterpriseSchema+":unknown", "x"))),
+		http.StatusBadRequest, "invalidPath", "The PatchOp path is not supported.")
+
+	put := userResource("ext", map[string]any{"externalId": user.ExternalID, scimEnterpriseSchema: map[string]any{"division": "North"}})
+	replaced := enterpriseOf(t, "put", c.do(http.MethodPut, "/Users/"+user.ID, put), http.StatusOK).Enterprise
+	if replaced == nil || deref(replaced.Division) != "North" || replaced.Department != nil || replaced.EmployeeNumber != nil || replaced.Manager != nil {
+		t.Errorf("a PUT does not replace the block whole: %+v", replaced)
+	}
+	delete(put, scimEnterpriseSchema)
+	cleared := enterpriseOf(t, "put without the block", c.do(http.MethodPut, "/Users/"+user.ID, put), http.StatusOK)
+	if cleared.Enterprise != nil || !slices.Equal(cleared.Schemas, []string{scimUserSchema}) {
+		t.Errorf("a PUT without the block keeps it: %+v", cleared)
+	}
+	wantScimError(t, "a block not an object", c.do(http.MethodPost, "/Users", userResource("bad", map[string]any{scimEnterpriseSchema: "x"})),
+		http.StatusBadRequest, "invalidValue", "The enterprise extension must be an object.")
+}
+
+// New (Entra design D3, D4's last paragraph): a PATCH of employeeNumber on a
+// Staff-managed user changes the mapping's profile and never the user's
+// employee number, which only Staff's provisioning writes.
+func TestScim_AnEmployeeNumberFromSCIMNeverReachesTheUser(t *testing.T) {
+	t.Parallel()
+	h := newScimHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	c := h.scim(t, scimToken)
+	user, _ := createUser(t, c, userResource("managed", nil))
+	id := h.userOf(t, user.ID)
+	mustManage(t, owner, id, "S-1")
+	r := c.do(http.MethodPatch, "/Users/"+user.ID, patchOps(patchOp("replace", scimEnterpriseSchema+":employeeNumber", "S-2")))
+	if got := enterpriseOf(t, "patch the number", r, http.StatusOK).Enterprise; got == nil || deref(got.EmployeeNumber) != "S-2" {
+		t.Errorf("the profile: %s", r.body)
+	}
+	if got := staffColumns(t, h, id); got != "staff:S-1:false:-" {
+		t.Errorf("the user's Staff columns = %s, want the number Staff gave", got)
+	}
+}
+
+// New (Entra design D3): GET /Users filters on the enterprise extension's
+// employeeNumber, exactly as the profile keeps it, alone and beside
+// userName; the URN must be spelled exactly.
+func TestScim_UsersFilterOnTheEnterpriseEmployeeNumber(t *testing.T) {
+	t.Parallel()
+	h := newScimHarness(t)
+	c := h.scim(t, scimToken)
+	numbered, _ := createUser(t, c, userResource("numbered", map[string]any{scimEnterpriseSchema: map[string]any{"employeeNumber": "N-1"}}))
+	createUser(t, c, userResource("other", map[string]any{scimEnterpriseSchema: map[string]any{"employeeNumber": "N-2"}}))
+	createUser(t, c, userResource("none", nil))
+	list := func(filter string) []string {
+		t.Helper()
+		got := scimOf[scimList[scimUser]](t, filter, c.do(http.MethodGet, "/Users?filter="+url.QueryEscape(filter), nil), http.StatusOK)
+		ids := []string{}
+		for _, u := range got.Resources {
+			ids = append(ids, u.ID)
+		}
+		return ids
+	}
+	if got := list(scimEnterpriseSchema + `:employeeNumber eq "N-1"`); !slices.Equal(got, []string{numbered.ID}) {
+		t.Errorf("by the number: %v, want %s", got, numbered.ID)
+	}
+	if got := list(`userName eq "numbered" and ` + scimEnterpriseSchema + `:employeeNumber eq "N-1"`); !slices.Equal(got, []string{numbered.ID}) {
+		t.Errorf("by userName and the number: %v", got)
+	}
+	if got := list(`userName eq "other" and ` + scimEnterpriseSchema + `:employeeNumber eq "N-1"`); len(got) != 0 {
+		t.Errorf("by another's userName and the number: %v, want none", got)
+	}
+	if got := list(scimEnterpriseSchema + `:employeeNumber eq "n-1"`); len(got) != 0 {
+		t.Errorf("by the number in another case: %v, want none", got)
+	}
+	if got := list(`userName eq "none"`); len(got) != 1 {
+		t.Errorf("the userName filter: %v", got)
+	}
+	wantScimError(t, "the URN in another case", c.do(http.MethodGet, "/Users?filter="+url.QueryEscape(`URN:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber eq "N-1"`), nil),
+		http.StatusBadRequest, "invalidFilter", `Only field eq "value" filters joined by and are supported.`)
 }

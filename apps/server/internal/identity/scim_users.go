@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -33,10 +34,125 @@ import (
 // account.
 type scimUserRow = store.GetScimUserRow
 
-// scimStoredProfile is the name parts a mapping keeps (source_profile).
+// scimStoredProfile is the name parts a mapping keeps (source_profile), and
+// the enterprise extension's block under enterprise when it has one (Entra
+// design D3). Nothing of the block reaches identity.users: its
+// employeeNumber is only what an announced account is matched on and what
+// the list's filter finds (D4's last paragraph).
 type scimStoredProfile struct {
-	GivenName  *string `json:"givenName"`
-	FamilyName *string `json:"familyName"`
+	GivenName  *string         `json:"givenName"`
+	FamilyName *string         `json:"familyName"`
+	Enterprise *scimEnterprise `json:"enterprise,omitempty"`
+}
+
+// scimEnterprise is the enterprise extension's block as a mapping keeps it
+// (RFC 7643 §4.3), every value trimmed and at most
+// scimEnterpriseValueLength; a nil field is one the provider did not send
+// or removed.
+type scimEnterprise struct {
+	EmployeeNumber *string      `json:"employeeNumber,omitempty"`
+	CostCenter     *string      `json:"costCenter,omitempty"`
+	Organization   *string      `json:"organization,omitempty"`
+	Division       *string      `json:"division,omitempty"`
+	Department     *string      `json:"department,omitempty"`
+	Manager        *scimManager `json:"manager,omitempty"`
+}
+
+// scimManager is the block's manager: value is the provider's own id of
+// the manager, kept as sent and resolved to nothing.
+type scimManager struct {
+	Value       *string `json:"value,omitempty"`
+	DisplayName *string `json:"displayName,omitempty"`
+}
+
+// enterpriseField is one of the block's string attributes by its name.
+type enterpriseField struct {
+	name  string
+	value **string
+}
+
+// stringFields are e's five string attributes, by the names a resource and
+// a PATCH path give them.
+func (e *scimEnterprise) stringFields() []enterpriseField {
+	return []enterpriseField{
+		{"employeeNumber", &e.EmployeeNumber}, {"costCenter", &e.CostCenter}, {"organization", &e.Organization},
+		{"division", &e.Division}, {"department", &e.Department},
+	}
+}
+
+// orNil is e, or nil when it sets nothing — a manager with neither value
+// nor display name counting as none.
+func (e *scimEnterprise) orNil() *scimEnterprise {
+	if e == nil {
+		return nil
+	}
+	if m := e.Manager; m != nil && m.Value == nil && m.DisplayName == nil {
+		e.Manager = nil
+	}
+	for _, f := range e.stringFields() {
+		if *f.value != nil {
+			return e
+		}
+	}
+	if e.Manager != nil {
+		return e
+	}
+	return nil
+}
+
+// merge is e with every attribute in sets over it (a POST's block over the
+// state it creates); manager is replaced whole.
+func (e *scimEnterprise) merge(in *scimEnterprise) *scimEnterprise {
+	if in == nil {
+		return e
+	}
+	out := scimEnterprise{}
+	if e != nil {
+		out = *e
+	}
+	theirs := in.stringFields()
+	for i, f := range out.stringFields() {
+		if v := *theirs[i].value; v != nil {
+			*f.value = v
+		}
+	}
+	if in.Manager != nil {
+		out.Manager = in.Manager
+	}
+	return out.orNil()
+}
+
+// apply is one validated enterprise action on e (scimEnterpriseAction): the
+// attribute set, or cleared on remove; manager replaced whole, or one of its
+// parts.
+func (e *scimEnterprise) apply(a scimUserAction) *scimEnterprise {
+	out := scimEnterprise{}
+	if e != nil {
+		out = *e
+	}
+	attribute := strings.TrimPrefix(a.field, enterprisePrefix)
+	switch attribute {
+	case "manager":
+		out.Manager = a.manager
+	case "manager.value", "manager.displayName":
+		m := scimManager{}
+		if out.Manager != nil {
+			m = *out.Manager
+		}
+		if attribute == "manager.value" {
+			m.Value = a.value
+		} else {
+			m.DisplayName = a.value
+		}
+		out.Manager = &m
+	default:
+		for _, f := range out.stringFields() {
+			if f.name == attribute {
+				*f.value = a.value
+			}
+		}
+	}
+	return out.orNil()
 }
 
 // readStoredProfile is ReadProfile (SV/SCIM:1113-1118): an unreadable
@@ -73,7 +189,9 @@ func scimStateOf(row scimUserRow) scimUserState {
 
 // apply is ApplyUserInput (SV/SCIM:928-940). A replacement also clears an
 // email the resource leaves out, and derives the display name from the
-// name parts when it names no display name but a part.
+// name parts when it names no display name but a part. A replacement sets
+// the enterprise extension's block whole (absent clears it); a create
+// merges the resource's over the state's.
 func (st *scimUserState) apply(in scimUserInput, replace bool) {
 	st.userName = *in.userName
 	if in.profile.email != nil || replace {
@@ -95,6 +213,11 @@ func (st *scimUserState) apply(in scimUserInput, replace bool) {
 	if in.profile.familyName != nil {
 		st.profile.FamilyName = in.profile.familyName
 	}
+	if replace {
+		st.profile.Enterprise = in.enterprise
+	} else {
+		st.profile.Enterprise = st.profile.Enterprise.merge(in.enterprise)
+	}
 }
 
 // coalesce is C#'s a ?? b.
@@ -106,8 +229,13 @@ func coalesce(a, b *string) *string {
 }
 
 // applyAction is ApplyUserAction (SV/SCIM:914-926). Removing active or the
-// display name leaves them as they are.
+// display name leaves them as they are. An enterprise extension action
+// changes the block (scimEnterprise.apply), never the account.
 func (st *scimUserState) applyAction(a scimUserAction) {
+	if strings.HasPrefix(a.field, enterprisePrefix) {
+		st.profile.Enterprise = st.profile.Enterprise.apply(a)
+		return
+	}
 	switch a.field {
 	case "userName":
 		st.userName = *a.value
@@ -184,7 +312,10 @@ func scimUserFactsOf(ctx context.Context, q *store.Queries, row scimUserRow) (sc
 }
 
 // scimUser is ReadUserResourceAsync (SV/SCIM:586-610): the name when either
-// part is set, the work email when there is one, and meta with the ETag.
+// part is set, the work email when there is one, and meta with the ETag;
+// and the enterprise extension's block, its URN among the schemas, when it
+// answers any attribute — manager only with its value, and its $ref this
+// server's path for that id (Entra design D3).
 func (s *server) scimUser(row scimUserRow) gen.ScimUser {
 	profile := readStoredProfile(row.SourceProfile)
 	u := gen.ScimUser{
@@ -208,7 +339,30 @@ func (s *server) scimUser(row scimUserRow) gen.ScimUser {
 	if email := publicEmail(row.Email); email != nil && !dotnetBlank(*email) {
 		u.Emails = &[]gen.ScimEmail{{Value: *email, Type: "work", Primary: true}}
 	}
+	if block := s.scimEnterpriseOf(profile.Enterprise); block != nil {
+		u.Schemas = append(u.Schemas, scimEnterpriseSchema)
+		u.UrnIetfParamsScimSchemasExtensionEnterprise20User = block
+	}
 	return u
+}
+
+// scimEnterpriseOf is the block e answers, or nil when it answers nothing.
+func (s *server) scimEnterpriseOf(e *scimEnterprise) *gen.ScimEnterpriseUser {
+	if e == nil {
+		return nil
+	}
+	block := gen.ScimEnterpriseUser{
+		EmployeeNumber: e.EmployeeNumber, CostCenter: e.CostCenter, Organization: e.Organization,
+		Division: e.Division, Department: e.Department,
+	}
+	if m := e.Manager; m != nil && m.Value != nil {
+		ref := s.deps.Config.BasePath + scimBasePath + "/Users/" + url.PathEscape(*m.Value)
+		block.Manager = &gen.ScimEnterpriseManager{Value: *m.Value, DisplayName: m.DisplayName, Ref: &ref}
+	}
+	if block == (gen.ScimEnterpriseUser{}) {
+		return nil
+	}
+	return &block
 }
 
 // validateScimUser is ValidateUserInputAsync (SV/SCIM:677-696) for the User
@@ -368,8 +522,11 @@ func (s *server) scimUserChange(ctx context.Context, id string, ifMatch *string,
 // transaction the externalId is looked up again: a create that raced
 // another for it replaces the User the other made (:156-162), unless it is
 // an Owner; a new User is confirmed, not disabled, and has no role, group
-// or password (:137-155). Either way it is audited scim.user.created, and
-// the answer is 201 with the User, its Location and its ETag.
+// or password (:137-155) — unless an account Staff announced matches it
+// (adoptExpectedScimUser, Entra design D4), which the transaction, taking
+// the owner lock after the SCIM lock, reads and consumes. Either way it is
+// audited scim.user.created, and the answer is 201 with the User, its
+// Location and its ETag.
 func (s *server) PostIdentityScimV2Users(ctx context.Context, _ gen.PostIdentityScimV2UsersRequestObject) (gen.PostIdentityScimV2UsersResponseObject, error) {
 	in, r, err := scimRequest(ctx)
 	if err != nil {
@@ -387,10 +544,16 @@ func (s *server) PostIdentityScimV2Users(ctx context.Context, _ gen.PostIdentity
 	}
 	var saved scimUserRow
 	err = s.scimTx(ctx, func(q *store.Queries, now time.Time) error {
+		if err := lockOwners(ctx, q); err != nil {
+			return err
+		}
 		existing, err := q.LockScimUserByExternalID(ctx, *input.externalID)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
-			saved, err = createScimUser(ctx, q, input, now)
+			var adopted bool
+			if saved, adopted, err = adoptExpectedScimUser(ctx, q, r, input, now); err == nil && !adopted {
+				saved, err = createScimUser(ctx, q, input, now, nil)
+			}
 		case err == nil:
 			saved, err = replaceRacedScimUser(ctx, q, scimUserRow(existing), input, now)
 		}
@@ -426,7 +589,12 @@ func (s *server) PostIdentityScimV2Users(ctx context.Context, _ gen.PostIdentity
 // (:145-147, :1204). Its user-name rules went with ASP.NET's user names
 // (spec *Data model*); the userName is the mapping's, which no other
 // mapping may have, rechecked here in case a create raced this one.
-func createScimUser(ctx context.Context, q *store.Queries, in scimUserInput, now time.Time) (scimUserRow, error) {
+//
+// adopt, when not nil, is the announcement the create fulfils (Entra design
+// D4): the user is made Staff-managed with its employee number — never the
+// resource's — not pending, in its language, and named by it only when the
+// resource names no display name and no name part.
+func createScimUser(ctx context.Context, q *store.Queries, in scimUserInput, now time.Time, adopt *store.IdentityExpectedAccount) (scimUserRow, error) {
 	email := in.profile.email
 	if email == nil || dotnetBlank(*email) || !oneAtSign(*email) {
 		return scimUserRow{}, scimInvalidValue("InvalidEmail")
@@ -439,24 +607,46 @@ func createScimUser(ctx context.Context, q *store.Queries, in scimUserInput, now
 	}
 	st := scimUserState{displayName: scimDisplayName(in), active: true}
 	st.apply(in, false)
+	var language *string
+	if adopt != nil {
+		if scimUnnamed(in) {
+			st.displayName = adopt.DisplayName
+		}
+		language = adopt.PreferredLanguage
+	}
 	userID, resourceID := uuid.New(), uuid.New()
 	if err := q.InsertUser(ctx, store.InsertUserParams{
-		ID:              userID,
-		Email:           *st.email,
-		NormalizedEmail: normalizeEmail(*st.email),
-		EmailConfirmed:  true,
-		DisplayName:     st.displayName,
-		Version:         uuid.New(),
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:                userID,
+		Email:             *st.email,
+		NormalizedEmail:   normalizeEmail(*st.email),
+		EmailConfirmed:    true,
+		DisplayName:       st.displayName,
+		PreferredLanguage: language,
+		Version:           uuid.New(),
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}); err != nil {
 		return scimUserRow{}, err
 	}
-	profile, err := json.Marshal(st.profile)
-	if err != nil {
+	if adopt != nil {
+		if err := setStaffManaged(ctx, q, userID, &adopt.EmployeeNumber, now); err != nil {
+			return scimUserRow{}, err
+		}
+	}
+	if err := insertScimMapping(ctx, q, resourceID, userID, st, now); err != nil {
 		return scimUserRow{}, err
 	}
-	if err := q.InsertScimMapping(ctx, store.InsertScimMappingParams{
+	return q.GetScimUser(ctx, resourceID)
+}
+
+// insertScimMapping maps the User resourceID to userID with st's userName,
+// externalId, upstream state and profile, and a fresh ETag.
+func insertScimMapping(ctx context.Context, q *store.Queries, resourceID, userID uuid.UUID, st scimUserState, now time.Time) error {
+	profile, err := json.Marshal(st.profile)
+	if err != nil {
+		return err
+	}
+	return q.InsertScimMapping(ctx, store.InsertScimMappingParams{
 		ResourceID:     resourceID,
 		UserID:         userID,
 		ExternalID:     st.externalID,
@@ -465,10 +655,17 @@ func createScimUser(ctx context.Context, q *store.Queries, in scimUserInput, now
 		SourceProfile:  profile,
 		Etag:           newScimETag(),
 		Now:            now,
-	}); err != nil {
-		return scimUserRow{}, err
+	})
+}
+
+// scimUnnamed reports whether in names no display name and no name part.
+func scimUnnamed(in scimUserInput) bool {
+	for _, v := range []*string{in.displayName, in.profile.givenName, in.profile.familyName} {
+		if v != nil && !dotnetBlank(*v) {
+			return false
+		}
 	}
-	return q.GetScimUser(ctx, resourceID)
+	return true
 }
 
 // oneAtSign is EmailAddressAttribute.IsValid: exactly one '@', neither the
@@ -515,8 +712,9 @@ func (s *server) GetIdentityScimV2UsersById(ctx context.Context, req gen.GetIden
 }
 
 // GetIdentityScimV2Users is ListUsersAsync (SV/SCIM:196-232): paging, then
-// the filter on userName and externalId, then a page of the Users it
-// admits, by resource id.
+// the filter on userName, externalId and the enterprise extension's
+// employeeNumber (Entra design D3, compared exactly as the profile keeps
+// it), then a page of the Users it admits, by resource id.
 func (s *server) GetIdentityScimV2Users(ctx context.Context, _ gen.GetIdentityScimV2UsersRequestObject) (gen.GetIdentityScimV2UsersResponseObject, error) {
 	in, _, err := scimRequest(ctx)
 	if err != nil {
@@ -527,14 +725,11 @@ func (s *server) GetIdentityScimV2Users(ctx context.Context, _ gen.GetIdentitySc
 		return scimOr[gen.GetIdentityScimV2UsersResponseObject](err)
 	}
 	raw, _ := queryValue(in.query, "filter")
-	clauses, err := scimFilter(raw, "userName", "externalId")
+	clauses, err := scimFilter(raw, "userName", "externalId", scimEnterpriseEmployeeNumber)
 	if err != nil {
 		return scimOr[gen.GetIdentityScimV2UsersResponseObject](err)
 	}
-	userNames, externalIDs := scimFilterValues(clauses, "userName")
-	// The enterprise employeeNumber's filter is Task 3's (Entra design D3);
-	// an empty list admits every row, as a nil one would admit none.
-	employeeNumbers := []string{}
+	userNames, externalIDs, employeeNumbers := scimFilterValues(clauses, "userName")
 	total, err := s.q.CountScimUsers(ctx, store.CountScimUsersParams{UserNames: userNames, ExternalIds: externalIDs, EmployeeNumbers: employeeNumbers})
 	if err != nil {
 		return nil, fmt.Errorf("identity: count SCIM users: %w", err)

@@ -33,6 +33,15 @@ import (
 // own — no cache, no memory of an earlier call: the single sign-on row is
 // read on the caller's own q every time — so any two instances, in an API
 // process or a worker, answer the same.
+//
+// The person's account kind travels on the call (AccountSpec.Kind,
+// ActivateOpts.Kind; Entra design D5, plan reading 1) and decides what
+// Prepare creates, what Activate gives and invites and what Update writes:
+// local is the local path whole; external and entra are link-only, entra
+// also given the provisioning roles once (users.provisioning_roles_at, plan
+// reading 3). A call naming no kind reads it from the mode (kindOf), as the
+// previous release's caller expects. The announced account, Expect and
+// Unexpect, is expected_accounts.go's.
 
 // maxProvisionedInvitations is how many delivered invitations one pending
 // spell gets before Activate stops issuing (InvitationExhausted).
@@ -96,6 +105,22 @@ func validSpec(s contracts.AccountSpec, full bool) (cleanSpec, error) {
 		return out, fmt.Errorf("%w: the display name", errInvalidSpec)
 	}
 	return out, nil
+}
+
+// kindOf is the account kind a call acts by: kind when it names one, else
+// the mode's — AccountKindLocal in local mode, AccountKindExternal in
+// federated. A kind that is none of the three is errInvalidSpec.
+func kindOf(kind, mode string) (string, error) {
+	switch {
+	case kind == "" && mode == contracts.AccountModeLocal:
+		return contracts.AccountKindLocal, nil
+	case kind == "":
+		return contracts.AccountKindExternal, nil
+	case contracts.ValidAccountKind(kind):
+		return kind, nil
+	default:
+		return "", fmt.Errorf("%w: the account kind", errInvalidSpec)
+	}
 }
 
 // auditActor is how actor is written to an audit row.
@@ -332,11 +357,14 @@ type staffPreparedAudit struct {
 }
 
 // Prepare finds the managed user holding spec's employee number, by its key,
-// or in local mode creates one. A user holding the number who is not
-// Staff-managed is ErrEmployeeNumberTaken; a managed Owner or SystemAdmin is
+// or for the local kind (kindOf: spec.Kind, else the mode's) creates one. A
+// user holding the number who is not Staff-managed is
+// ErrEmployeeNumberTaken; a managed Owner or SystemAdmin is
 // ErrAccountPrivileged; a found user is answered as they are (Update
-// changes them). In federated mode nobody holding the number is
-// ErrAccountNotFound. In local mode another user holding the address,
+// changes them). For the external and entra kinds nobody holding the number
+// is ErrAccountNotFound — the provider has not created the user yet, or, for
+// entra, the announcement (Expect) has not been fulfilled. For the local
+// kind another user holding the address,
 // compared normalized, is ErrAccountEmailTaken; otherwise the user is
 // created Staff-managed, pending, disabled by Staff, without a credential or
 // a confirmed email, with the built-in User role (plan reading 5); the open
@@ -349,7 +377,11 @@ type staffPreparedAudit struct {
 func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec contracts.AccountSpec) (contracts.AccountRef, error) {
 	var ref contracts.AccountRef
 	err := p.write(ctx, actor, func(q *store.Queries, mode string, now time.Time) error {
-		s, err := validSpec(spec, mode == contracts.AccountModeLocal)
+		kind, err := kindOf(spec.Kind, mode)
+		if err != nil {
+			return err
+		}
+		s, err := validSpec(spec, kind == contracts.AccountKindLocal)
 		if err != nil {
 			return err
 		}
@@ -372,7 +404,7 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 			ref, err = p.ref(ctx, q, u, "", now)
 			return err
 		}
-		if mode != contracts.AccountModeLocal {
+		if kind != contracts.AccountKindLocal {
 			return contracts.ErrAccountNotFound
 		}
 		if _, taken, err := emailTaken(ctx, q, s.email); err != nil || taken {
@@ -429,12 +461,15 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 // inactive: identity's own record is Staff's to restore, and the directory's
 // deactivation still stops their sessions while SCIM is configured.
 //
-// In local mode, the call that enables a user — one disabled by Staff,
+// The kind (kindOf: opts.Kind, else the mode's) decides what else it does.
+//
+// For the local kind, the call that enables a user — one disabled by Staff,
 // a prepared user among them — gives them the roles Staff may give, read FOR
 // SHARE, as PUT /owner/provisioning-roles reads them, so none is edited
 // before this commits: none named is ErrEmployeeRoleMissing, and one now
 // carrying a denied key (provisioningDeniedKeys) is ErrEmployeeRoleUnsafe;
-// then the user is enabled, with disabled_by cleared and the stamp rotated.
+// when they are given, provisioning_roles_at records it; then the user is
+// enabled, with disabled_by cleared and the stamp rotated.
 // A pending user stays pending, unable to sign in until they accept their
 // invitation. A user already enabled is given nothing, so an Owner's removal
 // of a role — before or after the acceptance — is not undone. A pending user
@@ -448,8 +483,15 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 // within them it is an ordinary call. The invitation is mailed after the commit; a failed delivery revokes
 // it delivery_failed, uncounted, and fails the call.
 //
-// In federated mode, a user disabled by Staff is re-enabled; nothing else is
-// given, issued or changed.
+// For the external kind, a user disabled by Staff is re-enabled; nothing
+// else is given, issued or changed.
+//
+// For the entra kind, a user disabled by Staff is re-enabled, and the first
+// call for the user — provisioning_roles_at still null — gives them the roles
+// Staff may give as the local kind does (ErrEmployeeRoleMissing,
+// ErrEmployeeRoleUnsafe) and records it, whether the user was disabled or
+// arrived enabled from the provider: once, so an Owner's later removal of a
+// role is never undone. Nothing is invited.
 //
 // A change is audited user.staff-activated with the user's snapshot before
 // and after.
@@ -471,13 +513,17 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 		if u.IsDisabled && deref(u.DisabledBy) != disabledByStaffValue {
 			return contracts.ErrBlockedByOwner
 		}
-		local := mode == contracts.AccountModeLocal
+		kind, err := kindOf(opts.Kind, mode)
+		if err != nil {
+			return err
+		}
+		local := kind == contracts.AccountKindLocal
 		before, err := captureUser(ctx, q, userID)
 		if err != nil {
 			return err
 		}
 		changed := false
-		if local && u.IsDisabled {
+		if local && u.IsDisabled || kind == contracts.AccountKindEntra && u.ProvisioningRolesAt == nil {
 			roles, err := q.LockProvisioningRoleIDs(ctx)
 			if err != nil {
 				return err
@@ -494,6 +540,9 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 					return err
 				}
 				changed = changed || n > 0
+			}
+			if err := q.SetProvisioningRolesAt(ctx, store.SetProvisioningRolesAtParams{ID: userID, Now: now}); err != nil {
+				return err
 			}
 		}
 		if u.IsDisabled {
@@ -686,8 +735,9 @@ type staffUpdatedAudit struct {
 	ReplacedInvitations []replacedInvitation `json:"replacedInvitations,omitempty"`
 }
 
-// Update writes a managed user (ErrAccountNotManaged) to spec. In local mode
-// the display name, the language and the employee number, and — only while
+// Update writes a managed user (ErrAccountNotManaged) to spec. For the
+// local kind (kindOf: spec.Kind, else the mode's) the display name, the
+// language and the employee number, and — only while
 // the address follows Staff's record, the user pending and no invitation
 // naming them delivered yet (emailFollows; the owner's decision D1 of
 // 2026-10-18, which narrowed answer 1's "while pending") — the address:
@@ -697,14 +747,18 @@ type staffUpdatedAudit struct {
 // address replaced (named in the audit; an open Owner-role one refuses the
 // address, replaceInvitationsTo), and starts a new invitation spell (the next
 // Activate invites at the new address). A managed Owner or SystemAdmin is
-// ErrAccountPrivileged. In federated mode the language and the
-// employee number only. A number another user holds, by its key, is
+// ErrAccountPrivileged. For the external and entra kinds the language and
+// the employee number only. A number another user holds, by its key, is
 // ErrEmployeeNumberTaken. A change is audited user.staff-updated; the same
 // values again change nothing.
 func (p *provisioning) Update(ctx context.Context, actor contracts.Actor, userID uuid.UUID, spec contracts.AccountSpec) (contracts.AccountRef, error) {
 	var ref contracts.AccountRef
 	err := p.write(ctx, actor, func(q *store.Queries, mode string, now time.Time) error {
-		local := mode == contracts.AccountModeLocal
+		kind, err := kindOf(spec.Kind, mode)
+		if err != nil {
+			return err
+		}
+		local := kind == contracts.AccountKindLocal
 		s, err := validSpec(spec, local)
 		if err != nil {
 			return err
