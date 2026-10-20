@@ -782,7 +782,7 @@ for Microsoft Entra ID; gruppen følger ved kontoarbeiderens neste kjøring*.
 
 Merket på kortet sier så hvordan gruppen står: *Venter* til den er sendt, *Funnet i
 Microsoft Entra ID og venter på bekreftelse der*, *Synkronisert siden …* med *Gruppen
-finnes også i Microsoft Entra ID*, *Mislyktes*, *Beholdt, omdøpt* eller *Slettet*. Når
+finnes også i Microsoft Entra ID*, *Mislyktes*, *Beholdt, omdøpt* eller *Sluppet*. Når
 katalogen avviste en innstilling — en type eller et e-postalias endret etter at gruppen
 ble laget, et team uten noen person blant eierne — sier kortet *Mislyktes:* og hvorfor
 ved den innstillingen; en avvisning av selve gruppen — *katalogen har en gruppe med
@@ -807,22 +807,24 @@ gruppe kan ha, sier kortet *Microsoft Entra ID kunne ikke si hva en gruppe kan h
 Prøv igjen senere.*
 
 **Å slå av bryteren** spør *Slå av Microsoft Entra ID for …?* og sier hva som skjer, etter
-**Slett en ekstern konto (dager etter slutt)** under [Kontoer](#kontoer): *Gruppen
-slettes i Microsoft Entra ID etter N dager.*, eller, når den står tom, *Gruppen beholdes i
+**Slett en ekstern konto (dager etter slutt)** under [Kontoer](#kontoer): *Ansatte
+slipper gruppen i Microsoft Entra ID etter N dager — den slettes, eller tømmes og
+beholdes, slik katalogens regler sier.*, eller, når den står tom, *Gruppen beholdes i
 Microsoft Entra ID, omdøpt til «… (archived)».* **Slå av** bekrefter, og siden sier
 *Microsoft Entra ID er slått av for gruppen*. Innstillingene beholdes. En katalog du slo
 på, men aldri lagret for, slås bare av igjen, uten å spørre.
 
-**Slettet i Microsoft Entra ID** gjelder en Microsoft 365-gruppe Vantigo laget, som
-leietakeren kan gjenopprette i tretti dager. En sikkerhetsgruppe Vantigo laget, slettes
+**Sluppet i Microsoft Entra ID** betyr slettet for en Microsoft 365-gruppe Vantigo
+laget, som leietakeren kan gjenopprette i tretti dager. En sikkerhetsgruppe Vantigo laget, slettes
 aldri der, siden Microsoft ikke kan gjenopprette en: når dagene er gått, fjernes
 personene fra den, den omdøpes «… (archived)» og beholdes. En gruppe Vantigo fant i
-stedet for å lage, blir stående i Microsoft Entra ID som den er. Kortet sier *Slettet* i
+stedet for å lage, blir stående i Microsoft Entra ID som den er. Kortet sier *Sluppet* i
 hvert tilfelle; [administrasjonsveiledningen](/nb/admin/entra/#ansattes-grupper-i-leietakeren)
 har detaljene.
 
 **Arkiver** spør *Arkivere …?* — *Gruppen beholder medlemmene og blir skrivebeskyttet. I
-hver katalog slettes den etter dagene innstillingene i Ansatte sier, eller omdøpes
+hver katalog slipper Ansatte den etter dagene innstillingene i Ansatte sier — den
+slettes, eller tømmes og beholdes, slik katalogens regler sier — eller den omdøpes
 «… (archived)» og beholdes når de sier aldri.* — og gjør det for hver katalog. Siden sier
 så *Gruppen er arkivert: den beholder medlemmene slik de var og kan ikke lenger
 endres.*, viser eierne som en liste, og tilbyr verken **Endre**, **Arkiver**, **Lagre**

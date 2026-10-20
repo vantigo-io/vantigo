@@ -261,11 +261,13 @@ func (p *provisioner) groupRefused(ctx context.Context, s session, actor contrac
 //     Staff group's, which is ErrGroupNotManageable — untrusted: its row is
 //     recorded and nothing written to the tenant, ErrGroupUnconfirmed,
 //     until a holder of entra:manage confirms it (POST
-//     /groups/{objectId}/confirm); the call after the confirmation adds the
-//     missing owners and writes Staff's name. None is created with the
+//     /groups/{objectId}/confirm); the call after the confirmation makes
+//     the owners Staff's and the service principal (the group's own
+//     removed) and writes Staff's name, description and visibility. None is created with the
 //     service principal and the first nineteen owners, the rest by $ref.
 //   - An adopted group nobody has confirmed: ErrGroupUnconfirmed, nothing
-//     written, the event refused:adoption_unconfirmed.
+//     written and no event — the refusal was recorded once, on the
+//     adoption, and Staff's worker calls at every poll.
 //   - team: on a Microsoft 365 group fifteen minutes old with a person
 //     among its owners, PUT /team, three tries ten seconds apart on a 404;
 //     younger, or still 404, the answer's Pending names it; without a person
@@ -291,7 +293,7 @@ func (p *provisioner) EnsureGroup(ctx context.Context, actor contracts.Actor, sp
 		return contracts.ExternalGroup{}, err
 	}
 	if present && !trustedGroup(row) {
-		return contracts.ExternalGroup{}, p.groupRefused(ctx, s, actor, actionGroupUpdated, &row.ObjectID, refusedGroupUnconfirmed, contracts.ErrGroupUnconfirmed)
+		return contracts.ExternalGroup{}, contracts.ErrGroupUnconfirmed
 	}
 	if traitErr != nil {
 		action, id := actionGroupCreated, (*uuid.UUID)(nil)
@@ -874,7 +876,8 @@ func (p *provisioner) batchDelete(ctx context.Context, s session, paths []string
 // own. A member that is not a user (a nested group, a device) is left
 // alone. ErrGroupNotManageable for a group the module never made, or one
 // that became role-assignable or Exchange's; ErrGroupUnconfirmed for an
-// adopted group nobody has confirmed, nothing written; a group that became
+// adopted group nobody has confirmed, nothing written and no event (the
+// refusal was recorded once, on the adoption); a group that became
 // dynamic changes nothing, each member to change failed dynamic. Every failure is
 // a code with the member's id, never Graph's words, and no user id is
 // logged.
@@ -896,7 +899,7 @@ func (p *provisioner) SetMembers(ctx context.Context, actor contracts.Actor, gro
 	}
 	oid := row.ObjectID
 	if !trustedGroup(row) {
-		return result, p.groupRefused(ctx, s, actor, actionGroupMembersSet, &oid, refusedGroupUnconfirmed, contracts.ErrGroupUnconfirmed)
+		return result, contracts.ErrGroupUnconfirmed
 	}
 	// wanted keeps the order the ids came in, each once; wantedSet answers
 	// "is it wanted" at once, for groups of tens of thousands.

@@ -32,6 +32,11 @@ describe("The group page — the header and its actions", () => {
     await userEvent.click(screen.getByRole("button", { name: "Archive" }));
     const dialog = await screen.findByRole("dialog", { name: "Archive Engineering?" });
     expect(within(dialog).getByText(/renamed “… \(archived\)” and kept/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /it is let go after the days Staff's settings say — deleted, or emptied and kept, as the directory's rules say —/,
+      ),
+    ).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/groups\/1001\/archive$/)).toHaveLength(1));
     expect(await screen.findByText(/The group is archived/)).toBeInTheDocument();
@@ -268,12 +273,14 @@ describe("The group page — a provider's traits, from its declaration", () => {
 });
 
 describe("The group page — turning a provider off", () => {
-  it("says the group is deleted after the settings' days, and sends enabled false", async () => {
+  it("says the group is let go after the settings' days, and sends enabled false", async () => {
     const { fetchMock, card } = await openGroup(1001, { settings: { ...settings(), deleteExternalAfterDays: 30 } });
     await userEvent.click(within(card).getByRole("switch", { name: "In Microsoft Entra ID" }));
     const dialog = await screen.findByRole("dialog", { name: "Turn off Microsoft Entra ID for Engineering?" });
     expect(
-      within(dialog).getByText("The group will be deleted in Microsoft Entra ID after 30 days."),
+      within(dialog).getByText(
+        "The group will be let go in Microsoft Entra ID after 30 days — deleted, or emptied and kept, as the directory's rules say.",
+      ),
     ).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Turn off" }));
     await waitFor(() => expect(sent(fetchMock, "PUT", /\/groups\/1001\/traits\/entra$/)).toHaveLength(1));

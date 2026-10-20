@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/entra"
 	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -38,8 +39,9 @@ import (
 // The tenant needs (research §9):
 //   - a dedicated tenant, never a production one: the test creates, enables,
 //     updates, disables and deletes one user whose employee number starts
-//     with VT- and whose family name starts with Test, and creates and
-//     deletes one security group whose mail nickname starts with vt-test-;
+//     with VT- and whose family name starts with Test, and creates one
+//     security group whose mail nickname starts with vt-test-, which
+//     DeleteGroup retires and the test's cleanup then deletes;
 //   - an app registration holding the eight application permissions, admin
 //     consented: User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All,
 //     User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All,
@@ -53,9 +55,10 @@ import (
 //
 // The module runs on a throwaway database of the harness, so the secret is
 // sealed with the harness's key and goes with that database; what the test
-// makes in the tenant is removed in t.Cleanup if a step failed first (a
-// disabled user is soft-deleted, restorable for thirty days from the portal's
-// Deleted users; a group likewise from Deleted groups). The test logs ids,
+// makes in the tenant is removed in t.Cleanup (the user if a step failed
+// first: a disabled user is soft-deleted, restorable for thirty days from the
+// portal's Deleted users; the security group always, since DeleteGroup keeps
+// it: Graph deletes a security group permanently and at once). The test logs ids,
 // the UPN of the prefixed user and codes, never the secret or a pass. The
 // module's own events, which carry the codes the tenant's answers became, are
 // logged at the end.
@@ -63,8 +66,11 @@ import (
 // The group (delivery D): a prefixed security group made with the
 // application's service principal — the token's oid, which the connection
 // test records — and the test user as its owners, the user added as its
-// member and removed again by $ref in a $batch, then deleted. A team is not
-// attempted: it needs a Microsoft 365 group fifteen minutes old.
+// member and removed again by $ref in a $batch, then retired by DeleteGroup:
+// a security group is emptied of its people, renamed "… (archived)" and kept
+// in the tenant (plan reading 13), so the test's cleanup deletes it through
+// the module's Graph client (DELETE /groups/{id}, the test's own object). A
+// team is not attempted: it needs a Microsoft 365 group fifteen minutes old.
 
 // tenantEnv reads the variable name, skipping the test when it is empty.
 func tenantEnv(t *testing.T, name string) string {
@@ -276,7 +282,7 @@ func TestEntraTenant(t *testing.T) {
 	}
 	t.Logf("Update: state=%s reported=%v", account.State, account.Reported)
 
-	// The group: owners, members in a batch, deleted.
+	// The group: owners, members in a batch, retired; the cleanup deletes it.
 	if n := modtest.One[int](t, h.Harness, `SELECT count(*)::int FROM entra.connection WHERE service_principal_id IS NOT NULL`); n != 1 {
 		t.Error("the connection test did not record the service principal (the token's oid claim)")
 	}
@@ -289,18 +295,22 @@ func TestEntraTenant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureGroup: %v", err)
 	}
-	groupDeleted := false
+	// DeleteGroup retires a security group rather than deleting it, so the
+	// cleanup deletes the group the test made in the tenant, whatever the
+	// steps below did.
 	t.Cleanup(func() {
-		if groupDeleted {
+		oid, err := uuid.Parse(group.ExternalID)
+		if err != nil {
+			t.Logf("cleanup: the group's id %q: %v", group.ExternalID, err)
 			return
 		}
 		cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		if err := p.DeleteGroup(cleanup, actor, groupSpec.GroupID); err != nil {
-			t.Logf("cleanup: DeleteGroup %s: %v", group.ExternalID, err)
+		if err := entra.DeleteTenantGroup(cleanup, h.Deps(), oid); err != nil {
+			t.Logf("cleanup: DELETE /groups/%s: %v", oid, err)
 			return
 		}
-		t.Logf("cleanup: deleted the group %s", group.ExternalID)
+		t.Logf("cleanup: deleted the group %s in the tenant (a security group is deleted permanently)", oid)
 	})
 	t.Logf("EnsureGroup: id=%s created=%t pending=%v", group.ExternalID, group.Created, group.Pending)
 	if !group.Created || len(group.Pending) != 0 {
@@ -325,8 +335,10 @@ func TestEntraTenant(t *testing.T) {
 	if err := p.DeleteGroup(ctx, actor, groupSpec.GroupID); err != nil {
 		t.Errorf("DeleteGroup: %v", err)
 	} else {
-		groupDeleted = true
-		t.Logf("DeleteGroup: %s soft-deleted (restorable for thirty days)", group.ExternalID)
+		t.Logf("DeleteGroup: %s retired (a security group is emptied, renamed \"… (archived)\" and kept; the cleanup deletes it)", group.ExternalID)
+	}
+	if n := modtest.One[int](t, h.Harness, `SELECT count(*)::int FROM entra.groups WHERE group_id = $1 AND state = 'retired'`, groupSpec.GroupID); n != 1 {
+		t.Errorf("DeleteGroup: the group's row is not retired")
 	}
 
 	// Deactivate: disabled, the leave date.

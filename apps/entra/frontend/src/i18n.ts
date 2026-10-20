@@ -77,7 +77,7 @@ export const entraCatalog = {
     confirmGroupAdoptionNamed: "Confirm {{name}}",
     confirmGroupAdoptionTitle: "Confirm the adoption of {{name}}?",
     confirmGroupAdoptionBody:
-      "Vantigo found the group {{name}} ({{nickname}}) in the tenant holding the mail nickname of a Staff group; it did not create it, and has written nothing to it. Confirming lets Vantigo manage it for Staff: write Staff's name and description to it, add Staff's owners, and make its members Staff's — removing everyone else. Vantigo never deletes a group it did not create. Confirm only if the group is meant to be this Staff group.",
+      "Vantigo found the group {{name}} ({{nickname}}) in the tenant holding the mail nickname of a Staff group; it did not create it, and has written nothing to it. Confirming lets Vantigo manage it for Staff. Its first write makes the group's owners exactly Staff's owners and the application — the owners it has now are removed — and writes Staff's name, description and visibility to it; Vantigo then makes its members Staff's, removing everyone else. Vantigo never deletes a group it did not create. Confirm only if the group is meant to be this Staff group.",
     groupAdoptionConfirmed: "Adoption confirmed",
     groupAdoptionConfirmedBody: "Vantigo manages the group from Staff's next accounts run.",
     yes: "Yes",
@@ -389,7 +389,7 @@ export const entraCatalog = {
     confirmGroupAdoptionNamed: "Bekreft {{name}}",
     confirmGroupAdoptionTitle: "Bekrefte overtakelsen av {{name}}?",
     confirmGroupAdoptionBody:
-      "Vantigo fant gruppen {{name}} ({{nickname}}) i leietakeren med e-postaliaset til en gruppe i Ansatte; Vantigo opprettet den ikke og har ikke skrevet noe til den. Bekrefter du, forvalter Vantigo den for Ansatte: skriver navnet og beskrivelsen fra Ansatte til den, legger til eierne fra Ansatte og gjør medlemmene til gruppens i Ansatte – og fjerner alle andre. Vantigo sletter aldri en gruppe den ikke har opprettet. Bekreft bare hvis gruppen skal være denne gruppen i Ansatte.",
+      "Vantigo fant gruppen {{name}} ({{nickname}}) i leietakeren med e-postaliaset til en gruppe i Ansatte; Vantigo opprettet den ikke og har ikke skrevet noe til den. Bekrefter du, forvalter Vantigo den for Ansatte. Den første skrivingen gjør gruppens eiere til nøyaktig eierne fra Ansatte og applikasjonen – eierne den har nå, blir fjernet – og skriver navnet, beskrivelsen og synligheten fra Ansatte til den; så gjør Vantigo medlemmene til gruppens i Ansatte og fjerner alle andre. Vantigo sletter aldri en gruppe den ikke har opprettet. Bekreft bare hvis gruppen skal være denne gruppen i Ansatte.",
     groupAdoptionConfirmed: "Overtakelsen er bekreftet",
     groupAdoptionConfirmedBody: "Vantigo forvalter gruppen fra Ansattes neste kontokjøring.",
     yes: "Ja",

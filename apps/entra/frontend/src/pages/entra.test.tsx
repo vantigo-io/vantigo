@@ -509,6 +509,11 @@ describe("EntraPage — the Groups table", () => {
     await userEvent.click(within(found).getByRole("button", { name: "Confirm Sales (found)" }));
     const dialog = await screen.findByRole("dialog", { name: "Confirm the adoption of Sales (found)?" });
     expect(within(dialog).getByText(/never deletes a group it did not create/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /Its first write makes the group's owners exactly Staff's owners and the application — the owners it has now are removed — and writes Staff's name, description and visibility to it/,
+      ),
+    ).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
     await waitFor(() =>

@@ -225,12 +225,14 @@ Microsoft Entra ID og venter på bekreftelse der* så lenge.
 1. Finn gruppen som står som *Overtatt – bekreft* i tabellen **Grupper**.
 2. Sjekk i portalen at det er gruppen som er ment — navnet, eierne, medlemmene.
 3. Velg **Bekreft** ved siden av den, og så **Bekreft** i *Bekrefte overtakelsen av
-   …?*, som sier hva som følger.
+   …?*, som sier hva som følger: *Bekrefter du, forvalter Vantigo den for Ansatte. Den
+   første skrivingen gjør gruppens eiere til nøyaktig eierne fra Ansatte og
+   applikasjonen – eierne den har nå, blir fjernet – og skriver navnet, beskrivelsen og
+   synligheten fra Ansatte til den; så gjør Vantigo medlemmene til gruppens i Ansatte og
+   fjerner alle andre. Vantigo sletter aldri en gruppe den ikke har opprettet.*
 
 Siden sier *Overtakelsen er bekreftet* — *Vantigo forvalter gruppen fra Ansattes neste
-kontokjøring.* Vantigo skriver så Ansattes navn og beskrivelse til gruppen og gjør
-eierne og medlemmene til Ansattes, og fjerner alle andre. Den sletter aldri en gruppe
-den ikke har opprettet. Bekreft bare en gruppe du har sjekket.
+kontokjøring.* Bekreft bare en gruppe du har sjekket.
 
 ## Etter oppsettet
 
