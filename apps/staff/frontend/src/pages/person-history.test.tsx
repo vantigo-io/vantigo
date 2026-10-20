@@ -262,7 +262,7 @@ const providerHistory = (): Record<number, StaffEvent[]> => ({
       kind: "work_email_set_by_provider",
       at: "2026-10-03T08:00:00Z",
       actor: { kind: "system", displayName: "Staff accounts" },
-      payload: { step: "prepare", state: "disabled" },
+      payload: { step: "provider", state: "disabled" },
     },
     {
       id: 702,
@@ -291,6 +291,7 @@ describe("History — the provider link's events", () => {
     expect(within(announced).getByText("Account announced to identity")).toBeInTheDocument();
     expect(within(announced).getByText("Step: Announce the account to identity")).toBeInTheDocument();
     expect(within(email).getByText("Work email set by the identity provider")).toBeInTheDocument();
+    expect(within(email).getByText("Step: The identity provider's answer")).toBeInTheDocument();
     expect(within(activated).getByText("Directory account enabled")).toBeInTheDocument();
     expect(within(activated).getByText("State: Enabled")).toBeInTheDocument();
     expect(within(activated).getByText("The directory refused the hire date.")).toBeInTheDocument();

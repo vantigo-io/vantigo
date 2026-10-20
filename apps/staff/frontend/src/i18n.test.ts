@@ -173,7 +173,18 @@ describe("the staff catalog", () => {
       (m) => m[1],
     );
     expect(staffCodes).toEqual(["manager_not_in_entra"]);
-    const steps = ["prepare", "announce", "activate", "deactivate", "update", "delete", "unexpect", "report"];
+    const steps = [
+      "none",
+      "prepare",
+      "announce",
+      "activate",
+      "deactivate",
+      "update",
+      "delete",
+      "unexpect",
+      "report",
+      "provider",
+    ];
     for (const [language, catalog] of Object.entries(staffCatalog)) {
       const words = catalog as Record<string, string>;
       for (const state of states) {
