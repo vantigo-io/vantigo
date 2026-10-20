@@ -1004,7 +1004,7 @@ type SsoOidcSettingsRequest struct {
 	// Provider entra or google.
 	Provider SsoOidcSettingsRequestProvider `json:"provider"`
 
-	// WorkloadTokenFile Entra only — the absolute path of a workload identity token file, presented as a client assertion in place of a secret. Present, it clears the sealed client secret. The process that saves it must be able to read it, and every replica must see the same file at the same path.
+	// WorkloadTokenFile Entra only — the absolute path of a workload identity token file, presented as a client assertion in place of a secret. Present, it clears the sealed client secret. It must lie in the directory the deployment names (OIDC_WORKLOAD_IDENTITY_TOKEN_DIR), and nothing outside that directory is looked at; the process that saves it must be able to read it, and every replica must see the same file at the same path. It is saved cleaned.
 	WorkloadTokenFile *string `json:"workloadTokenFile,omitempty"`
 }
 

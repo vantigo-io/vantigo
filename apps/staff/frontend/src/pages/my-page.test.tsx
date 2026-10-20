@@ -244,7 +244,7 @@ describe("My page — on a phone", () => {
     for (const grid of grids) {
       const scope = [...grid.classList].find((name) => css.includes(`.${name}`)) as string;
       expect(scope, "a grid without its own column rule").toBeDefined();
-      const escaped = scope.replace(/[-_]/g, "\\$&");
+      const escaped = scope.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       expect(css).toMatch(new RegExp(`\\.${escaped}\\{[^}]*--sg-cols:\\s*1;`));
       expect(css).toMatch(new RegExp(`@media\\(min-width: 48em\\)\\{\\.${escaped}\\{--sg-cols:\\s*2;`));
     }

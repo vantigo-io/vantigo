@@ -147,6 +147,32 @@ func tokenFile(t *testing.T) string {
 	return path
 }
 
+// withTokenDir names the test's temporary directory — the one every
+// tokenFile(t) lies in — as OIDC_WORKLOAD_IDENTITY_TOKEN_DIR, the
+// directory a token file saved on the card must lie in.
+func withTokenDir(t *testing.T) harnessOption {
+	t.Helper()
+	return withEnv("OIDC_WORKLOAD_IDENTITY_TOKEN_DIR", filepath.Dir(t.TempDir()))
+}
+
+// outsideFile is a regular, readable file outside the test's temporary
+// directory — in the system's — which a token file may never be.
+func outsideFile(t *testing.T) string {
+	t.Helper()
+	f, err := os.CreateTemp("", "vantigo-outside-token-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(f.Name()) })
+	if _, err := f.WriteString("eyJ.fake.assertion"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return f.Name()
+}
+
 // digestForms are the ways a token's SHA-256 could leak into text: hex,
 // and base64 with and without padding, standard and URL-safe.
 func digestForms(token string) []string {
@@ -233,9 +259,10 @@ func deref(v *string) string {
 // nothing a refusal received is written or audited.
 func TestSsoSettings_PutHoldsEveryRule(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
+	h := newHarness(t, withTokenDir(t))
 	owner, ownerID := h.bootstrapOwner(t)
 	file := tokenFile(t)
+	outside := outsideFile(t)
 	unreadable := filepath.Join(t.TempDir(), "unreadable")
 	if err := os.WriteFile(unreadable, []byte("x"), 0o000); err != nil {
 		t.Fatal(err)
@@ -291,8 +318,9 @@ func TestSsoSettings_PutHoldsEveryRule(t *testing.T) {
 		{"a missing token file", ssoRequest("entra", map[string]any{"workloadTokenFile": filepath.Join(t.TempDir(), "missing")}), "workloadTokenFile"},
 		{"a directory for a token file", ssoRequest("entra", map[string]any{"workloadTokenFile": t.TempDir()}), "workloadTokenFile"},
 		{"a FIFO for a token file", ssoRequest("entra", map[string]any{"workloadTokenFile": fifo}), "workloadTokenFile"},
-		{"a device for a token file", ssoRequest("entra", map[string]any{"workloadTokenFile": "/dev/zero"}), "workloadTokenFile"},
 		{"a token file of 16 KiB and a byte", ssoRequest("entra", map[string]any{"workloadTokenFile": oversized}), "workloadTokenFile"},
+		{"a token file outside the token directory", ssoRequest("entra", map[string]any{"workloadTokenFile": outside}), "workloadTokenFile"},
+		{"a token file that climbs out of the token directory", ssoRequest("entra", map[string]any{"workloadTokenFile": filepath.Dir(file) + "/../../" + filepath.Base(outside)}), "workloadTokenFile"},
 		{"a display name of 101 characters", ssoRequest("entra", with(secret, map[string]any{"displayName": strings.Repeat("å", 101)})), "displayName"},
 	} {
 		// A client of its own per case, each with its own address, so the
@@ -312,6 +340,17 @@ func TestSsoSettings_PutHoldsEveryRule(t *testing.T) {
 			t.Errorf("an unreadable token file: status %d body %s, want 400 on workloadTokenFile", r.status, r.body)
 		}
 	}
+	// Outside the token directory, the refusal is the same whether or not
+	// the path exists: the Owner's word reaches no stat beyond it, so the
+	// card is no oracle for the server's filesystem.
+	dirMessage := "The workload token file must be a file in " + filepath.Dir(t.TempDir()) + ", the directory the deployment names."
+	for name, path := range map[string]string{"a file": outside, "no file": outside + "-missing"} {
+		r := putOIDC(owner, 0, ssoRequest("entra", map[string]any{"workloadTokenFile": path}))
+		if msgs := fieldErrors(t, r)["workloadTokenFile"]; r.status != http.StatusBadRequest || len(msgs) != 1 || msgs[0] != dirMessage {
+			t.Errorf("%s outside the token directory: status %d fields %v, want %q", name, r.status, fieldErrors(t, r), dirMessage)
+		}
+	}
+
 	if got := getSSO(t, owner); got.Version != 0 || got.Oidc.Enabled {
 		t.Errorf("after the refusals = %+v, want the settings untouched", got)
 	}
@@ -350,7 +389,7 @@ func TestSsoSettings_PutHoldsEveryRule(t *testing.T) {
 func TestSsoSettings_TheCredentialRules(t *testing.T) {
 	t.Parallel()
 	f := newFakeOIDC(t)
-	h := newHarness(t, f.options()...)
+	h := newHarness(t, append(f.options(), withTokenDir(t))...)
 	owner, _ := h.bootstrapOwner(t)
 	before := getSSO(t, owner)
 	sealed := h.sealedClientSecret(t)

@@ -30,7 +30,9 @@ gjelder hele installasjonen.
   opprinnelsen leverandøren omdirigerer til og katalogen kaller. Tilbakekalls-URL-en og
   SCIM-endepunktet kortet viser, utledes av dem.
 - For workload identity i Entra: at plattformen projiserer tokenfilen inn i hver
-  replika som betjener API-et, på samme sti (se
+  replika som betjener API-et, på samme sti, i katalogen
+  `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` navngir — som standard webhookens,
+  `/var/run/secrets/azure/tokens` (se
   [workload identity](#microsoft-entra-id-workload-identity)).
 
 ## Kortet Single sign-on
@@ -229,8 +231,13 @@ spec:
 Deretter, på kortet: **Microsoft Entra ID**, **Autoritet** og **Klient-ID**; velg
 **Tokenfil** under **Legitimasjon** og skriv stien til den projiserte filen. Velg
 **Lagre**. Prosessen som lagrer, kontrollerer før den rører raden at stien er absolutt
-og peker på en vanlig fil på høyst 16 KiB som den kan lese, og avviser den på
-**Tokenfil** ellers; å lagre den fjerner en eventuell lagret klienthemmelighet.
+og ligger i katalogen `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` navngir — katalogen til
+`AZURE_FEDERATED_TOKEN_FILE` når webhooken satte den, ellers
+`/var/run/secrets/azure/tokens`, med mindre distribusjonen setter variabelen selv —
+og først da at den peker på en vanlig fil på høyst 16 KiB som den kan lese. Den
+avviser stien på **Tokenfil** ellers og navngir katalogen; kortets ord når ingen
+undersøkelse utenfor den, så kortet røper ingenting om resten av serverens filsystem.
+Stien lagres normalisert. Å lagre den fjerner en eventuell lagret klienthemmelighet.
 
 **Hver replika må se den samme filen på den samme stien.** Lagringen kontrolleres av
 bare én prosess; en replika som ikke kan lese filen, feiler innloggingene den fullfører
@@ -455,7 +462,10 @@ Prosedyren, én gang, ved oppgraderingen til den utgivelsen:
 3. Fjern hver `OIDC_*`- og `SCIM_*`-variabel fra hver API- og worker-container —
    `vantigo.env`, hemmelighetslageret, plattformens miljø — alle samtidig, og start på
    nytt når det passer. `AZURE_FEDERATED_TOKEN_FILE`, som webhooken for workload
-   identity setter, kan bli stående.
+   identity setter, kan bli stående. En tokenfil importert fra
+   `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` utenfor webhookens katalog trenger
+   `OIDC_WORKLOAD_IDENTITY_TOKEN_DIR` satt til sin katalog før kortet lagres igjen,
+   ellers avvises lagringen på **Tokenfil**.
 4. Verifiser: neste oppstart logger ingen advarsel om variablene, og lokal
    Eier-innlogging, en SSO-innlogging og en SCIM-testtilkobling virker fortsatt.
 

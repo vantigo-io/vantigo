@@ -311,6 +311,11 @@ func TestLoad_Branding(t *testing.T) {
 		t.Errorf("Branding = %+v, want %+v", cfg.Branding, want)
 	}
 
+	// /\host is //host to a browser, so it is no same-origin path either.
+	if msg := loadError(t, with(validEnv(), "APP_LOGO_URL", `/\evil.example`)); !strings.Contains(msg, "APP_LOGO_URL: must be an absolute http or https URL or a path starting with /") {
+		t.Errorf("error = %q", msg)
+	}
+
 	msg := loadError(t, with(validEnv(),
 		"APP_LOGO_URL", "javascript:alert(1)",
 		"APP_SUPPORT_URL", "//evil.example",
@@ -694,6 +699,41 @@ func TestLoad_OIDC_ClientAuthentication(t *testing.T) {
 	fallback := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "AZURE_FEDERATED_TOKEN_FILE", tokenFile)
 	if cfg := mustLoad(t, fallback); cfg.OIDC.WorkloadTokenFile != tokenFile {
 		t.Errorf("WorkloadTokenFile = %q, want the AZURE_FEDERATED_TOKEN_FILE fallback", cfg.OIDC.WorkloadTokenFile)
+	}
+}
+
+// The directory a token file saved on the card must lie in is the
+// deployment's: OIDC_WORKLOAD_IDENTITY_TOKEN_DIR, else the directory of the
+// token file the environment names, else the workload identity webhook's.
+func TestLoad_WorkloadTokenDir(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "federated-token")
+	if err := os.WriteFile(tokenFile, []byte("federated-token-contents"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(tokenFile)
+
+	if cfg := mustLoad(t, validEnv()); cfg.WorkloadTokenDir != "/var/run/secrets/azure/tokens" {
+		t.Errorf("WorkloadTokenDir = %q, want the webhook's directory", cfg.WorkloadTokenDir)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "AZURE_FEDERATED_TOKEN_FILE", tokenFile)); cfg.WorkloadTokenDir != dir {
+		t.Errorf("WorkloadTokenDir = %q, want AZURE_FEDERATED_TOKEN_FILE's directory %q", cfg.WorkloadTokenDir, dir)
+	}
+	imported := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", tokenFile)
+	if cfg := mustLoad(t, imported); cfg.WorkloadTokenDir != dir {
+		t.Errorf("WorkloadTokenDir = %q, want OIDC_WORKLOAD_IDENTITY_TOKEN_FILE's directory %q", cfg.WorkloadTokenDir, dir)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "OIDC_WORKLOAD_IDENTITY_TOKEN_DIR", "/var/run/secrets/tokens/./")); cfg.WorkloadTokenDir != "/var/run/secrets/tokens" {
+		t.Errorf("WorkloadTokenDir = %q, want the variable cleaned", cfg.WorkloadTokenDir)
+	}
+	if msg := loadError(t, with(validEnv(), "OIDC_WORKLOAD_IDENTITY_TOKEN_DIR", "secrets/tokens")); !strings.Contains(msg, "OIDC_WORKLOAD_IDENTITY_TOKEN_DIR: must be an absolute path") {
+		t.Errorf("error = %q", msg)
+	}
+	apart := with(imported, "OIDC_WORKLOAD_IDENTITY_TOKEN_DIR", "/var/run/secrets/tokens")
+	if msg := loadError(t, apart); !strings.Contains(msg, "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE: must be a file in OIDC_WORKLOAD_IDENTITY_TOKEN_DIR") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(imported, "OIDC_WORKLOAD_IDENTITY_TOKEN_DIR", dir+"-sibling")); !strings.Contains(msg, "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE: must be a file in OIDC_WORKLOAD_IDENTITY_TOKEN_DIR") {
+		t.Errorf("a sibling whose name begins with the directory's: error = %q", msg)
 	}
 }
 

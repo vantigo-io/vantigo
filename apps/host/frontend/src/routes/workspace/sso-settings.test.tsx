@@ -11,6 +11,7 @@ import "../../i18n";
 
 const authority = "https://login.microsoftonline.com/11111111-1111-1111-1111-111111111111/v2.0";
 const otherAuthority = "https://login.microsoftonline.com/33333333-3333-3333-3333-333333333333/v2.0";
+const quote = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Entra on with a stored secret, SCIM on in the middle of a rotation's overlap, as GET /owner/sso answers. */
 const entraWithOverlap = (): SsoSettings => ({
@@ -184,7 +185,9 @@ describe("the Single sign-on card", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Change the provider's authority?" });
-    expect(within(dialog).getByText(new RegExp(`linked to the provider under ${authority}`))).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(new RegExp(`linked to the provider under ${quote(authority)}`)),
+    ).toBeInTheDocument();
     expect(writes(fetchMock)).toHaveLength(1);
     expect(writes(fetchMock)[0].body).not.toHaveProperty("confirmIssuerChange");
 

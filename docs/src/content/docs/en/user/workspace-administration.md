@@ -370,7 +370,8 @@ To let people sign in through a provider:
    `https://login.microsoftonline.com/<tenant-guid>/v2.0` for Entra; for Google the
    card fills in `https://accounts.google.com` — and the **Client ID**.
 4. Give the credential: paste the **Client secret**, or, for Entra on a platform that
-   supplies one, choose **Token file** as the **Credential** and enter its path. Once a
+   supplies one, choose **Token file** as the **Credential** and enter its path, inside
+   the directory the deployment allows for it. Once a
    secret is saved the field is blank and reads "Set on _date_. Leave it blank to keep
    it.": type a new one only to replace it. A new **Provider** or **Client ID** needs
    its own secret or token file.
