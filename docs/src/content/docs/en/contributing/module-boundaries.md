@@ -87,10 +87,12 @@ Communications' outbox is the working example.
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
    the project directory or the customer directory (none does, but a future
    provider could).
-   Five slots are *many-provider* instead — any number of modules may fill them,
+   Six slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
-   from the enabled modules too), `CustomerReferences`
+   from the enabled modules too), `IdentityProvisioners`
+   (`contracts.IdentityProvisioner`, rule 13, from the enabled modules too),
+   `CustomerReferences`
    (`contracts.CustomerReferenceHolder`, rule 8), `CustomerPersonalData`
    (`contracts.CustomerPersonalData`, rule 9) and `InvoicedWork`
    (`contracts.InvoicedWorkHolder`, rule 10), the last three from every module
@@ -101,7 +103,17 @@ Communications' outbox is the working example.
    closed, and its tables may be empty — whereas a customer holder must run whether
    or not its module is on, because a switched-off module still holds rows naming the
    customer. The slot is not called `Calendar`, which is `Deps.Calendar`, the business
-   calendar identity provides. A provider's gate is asked for a user with no request
+   calendar identity provides. `IdentityProvisioners` is collected the same way, from
+   enabled modules only, by Compose and by Workers (`withIdentityProvisioners`, after
+   `withCalendarSources`, so after `Users` and `Accounts` and a provider may read the
+   directory while it is built), because a disabled provider module has no connection
+   to drive and Staff's accounts worker drives the providers in worker mode as the API
+   does. Each provider is keyed by `Key()`, answered with no context and no network;
+   **a key two providers claim fails composition**, naming both — `Compose` answers the
+   error, `Workers` panics, as for `InvoicedWork` — and a nil provider is dropped.
+   Providers preset on `Deps` (a test's fake, through
+   `modtest.WithIdentityProvisioners`, which `modtest.FakeIdentityProvisioner` fills)
+   come first and keep their place. A provider's gate is asked for a user with no request
    behind them only through `contracts.AsUser`, and only by a module that has matched a
    token to that user — today the calendar feed's, whose address names one person:
    `HasPermission` then asks `Access.UserHolds` for that user instead of `Check` for a
@@ -158,8 +170,8 @@ Communications' outbox is the working example.
    that already points at the surviving customer. Today's holders are projects,
    energy, communications and invoices ([Merging duplicates](/en/reference/customers/#merging-duplicates)).
    Another write direction needs a design of its own, not a second holder-shaped
-   interface — rule 9 is that design for the second, rule 10 for the third and
-   rule 11 for the fourth.
+   interface — rule 9 is that design for the second, rule 10 for the third,
+   rule 11 for the fourth and rule 13 for the fifth.
 9. **A person's data, handed over and taken out.** The second sanctioned
    cross-module direction, made for the GDPR of private-person customers:
    `contracts.CustomerPersonalData`. A module that holds anything about a
@@ -241,10 +253,23 @@ Communications' outbox is the working example.
     `Accounts` (rule 5), which identity provides. Through it a caller prepares a
     Staff-managed user (`Prepare`), enables it (`Activate`), disables it
     (`Deactivate`), updates it (`Update`), reads it (`Account`) and reads the roles an
-    Owner named for Staff to give (`ProvisioningRoles`); `Mode` says whether identity
-    holds the credentials (`local`) or an identity provider does (`federated`), derived
-    by every process from `identity.sso_settings`, the row the Single sign-on card
-    writes, so an API process and a worker never disagree. Unlike
+    Owner named for Staff to give (`ProvisioningRoles`), and announces the account an
+    external provider will create for a person (`Expect`) or withdraws that
+    announcement (`Unexpect`), so the user the provider's SCIM push or the person's
+    first sign-in creates is adopted as Staff-managed and numbered on arrival, with no
+    Owner in between. **The kind travels on the call**: `AccountSpec.Kind` and
+    `ActivateOpts.Kind` carry the person's account kind — `contracts.AccountKindLocal`,
+    `AccountKindExternal` or `AccountKindEntra` — and that, never the installation's
+    mode alone, decides what identity creates, gives and invites: `Prepare` creates a
+    user only for `local` and only finds for the two link-only kinds (`ErrAccountNotFound`
+    when none holds the number); `Activate` invites and gives the roles for `local`,
+    only re-enables for `external`, and for `entra` re-enables and gives the roles once,
+    on the first activation of the adopted user (`users.provisioning_roles_at`). `Mode`
+    says whether identity holds the credentials (`local`) or an identity provider does
+    (`federated`), derived by every process from `identity.sso_settings`, the row the
+    Single sign-on card writes, so an API process and a worker never disagree; it is
+    what a call naming no kind reads its kind from (a caller of the previous release)
+    and what Staff seeds its people's kinds from, once. Unlike
     rules 8–10 it is **not** a holder that runs on the caller's transaction: every
     method runs on identity's own pool, in identity's own transactions, and mails after
     its own commit. So the rule every locked transaction keeps is strict here — **a
@@ -256,8 +281,11 @@ Communications' outbox is the working example.
     a provider refuses an actor that is not `Actor.Valid` with `ErrInvalidActor`
     before it writes anything. The spec
     carries no roles: identity assigns the set an Owner named, only on the `Activate`
-    that enables a user Staff disabled, so `staff:manage` can never mint an account
-    holding a role it chose, nor give back one an Owner removed.
+    that enables a user Staff disabled (`local`) or once for an adopted user (`entra`),
+    so `staff:manage` can never mint an account holding a role it chose, nor give back
+    one an Owner removed. `Expect` refuses a number an unmanaged user holds
+    (`ErrEmployeeNumberTaken`) or a managed Owner holds (`ErrAccountPrivileged`), and
+    records nothing for a number whose managed user has already arrived.
     `ActivateOpts.FreshInvitation` never re-sends an open invitation, and no
     `Activate` invites within ten minutes of the last invitation naming the user. The employee number decides whose
     account a user is: `Prepare` finds by it, and a caller acts on a user only when
@@ -315,6 +343,31 @@ Communications' outbox is the working example.
     is always checked through `Check` first. A provider reads its own tables only
     ([Calendar](/en/reference/calendar/#the-sources-contract),
     [the feed's read](/en/reference/calendar/#reading-the-providers-for-the-feed)).
+13. **Staff writes a provider's directory.** The fifth sanctioned cross-module
+    direction, Staff → a provider module, made for the accounts and groups of the
+    people Staff registers: `contracts.IdentityProvisioner`, in the many-provider slot
+    `IdentityProvisioners` (rule 5), which a module offering an external identity
+    provider fills — Entra's, and another directory's later. Staff is the authority: it
+    decides what exists and when, from the register, and the provider executes against
+    its directory and answers what it did — `Prepare` finds the account holding the
+    employee number or creates it disabled, `Activate`, `Deactivate`, `Update`,
+    `Delete` (a soft delete; `ErrExternalEnabled` on an enabled account), `Account`,
+    `RevealPass` (once, then `ErrPassGone`), and the group calls a later delivery uses;
+    `Provider` names its key, display name and status (`unconfigured`, `connected`,
+    `failing`). It is held to rule 11's lock discipline: every call reaches the network
+    on the provider's own pool, so **Staff never calls it inside a transaction or
+    holding a connection**, only through accessors in its `contractscalls.go` that
+    refuse such a call, keyed by the provider. Every write names its `Actor` and is
+    idempotent. The provider answers only facts about the external object — its id,
+    principal name, state, whether a pass waits, and `Reported` codes — and **never an
+    address Staff did not give it, except the one it made** for a person who had none.
+    Each refusal is a sentinel (`ErrExternalAmbiguous`, `ErrExternalAddressTaken`,
+    `ErrExternalSyncedOnPremises`, `ErrExternalPrivileged`, `ErrExternalEnabled`,
+    `ErrPassGone`, `ErrProviderUnavailable`, `ErrGroupNotManageable`) and a reported
+    fact a code that never carries an address; anything else is a failure to retry.
+    Staff writes the provider first and identity second, under one claim, so the
+    account is announced (rule 11's `Expect`) before it arrives
+    ([the provider link](/en/reference/staff/#the-provider-link)).
 
 ## How they are enforced
 
@@ -746,7 +799,10 @@ run on the caller's transaction (rules 8–10) and are collected whether or not 
 module is on; `CalendarSource`, for a module with time-bound rows about a person, is
 its own gatekeeper (rule 12), is collected from enabled modules only, and needs a
 `calendar_source_test.go` in the module proving it answers the caller's rows with its
-gate held and nothing without it.
+gate held and nothing without it; `IdentityProvisioner`, for a module driving an
+external identity provider's directory for Staff, keeps rule 13, is collected from
+enabled modules only, answers a `Key()` no other provider claims, and is tested against
+Staff's expectations through `modtest.FakeIdentityProvisioner`'s rules.
 
 A module contributing no recorded exchanges needs nothing in
 `openapi/testdata/exchanges/`: that corpus is frozen evidence from the retired .NET

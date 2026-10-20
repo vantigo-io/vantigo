@@ -363,8 +363,8 @@ Fanen **Konto** er HRs (`staff:manage`). Personen selv og den som har
 `staff:personal-data`, leser den og endrer ingenting. En leder, `staff:approve` og en
 kollega har den ikke. Den har to grupper.
 
-**Kontoflagg** sier om Ansatte gir personen en bruker å logge inn med, fra hvilken dag
-og på hvilken adresse. HR endrer det:
+**Kontoflagg** sier om Ansatte gir personen en bruker å logge inn med, fra hvilken dag,
+på hvilken adresse og hvem som har kontoen. HR endrer det:
 
 1. Slå på **Ansatte gir en konto**. Ansatte oppretter da personens bruker, deaktivert,
    det antallet dager før kontoens dag som **Forbered kontoen (dager før)** under
@@ -380,16 +380,35 @@ og på hvilken adresse. HR endrer det:
 3. Velg **Adresse**: **E-post på jobb** eller **Privat e-post**. Har personen ikke den
    som er valgt, advarer fanen *… har ingen e-post på jobb registrert: kontoen venter
    til en legges inn*.
-4. Trykk **Lagre kontoflagget**. De tre feltene lagres sammen. Har noen andre endret
+4. Velg **Kontotype** — hvem som har personens konto:
+   - **Lokal** — Vantigo har passordet: Ansatte oppretter brukeren og inviterer personen
+     til å velge et.
+   - **Ekstern identitetsleverandør** — selskapets identitetsleverandør eier kontoen:
+     Ansatte finner brukeren den opprettet når en eier har tatt den inn, aktiverer det
+     Ansatte deaktiverte, og deaktiverer, men oppretter og inviterer aldri.
+   - **Microsoft Entra ID** — tilbys bare når Entra-modulen er installert: Ansatte lar
+     Entra opprette personens konto, aktiverer og deaktiverer den der, og ber Vantigo
+     vente den, så brukeren den bringer, er personens uten en eier imellom.
+
+   En ny person får **Standard kontotype** fra [Kontoer](#kontoer). Å flytte en person bort
+   fra Microsoft Entra ID mens Entra-kontoen deres er aktivert eller deaktivert, avvises
+   — *Kontotypen kan ikke forlate Microsoft Entra ID mens personens konto der er
+   aktivert eller deaktivert. Personen forlater katalogen med Deaktiver nå eller når
+   arbeidsforholdet slutter.* En person med en
+   Vantigo-bruker som fortsatt venter på invitasjonen, kan flyttes fra Lokal til
+   Microsoft Entra ID: kontoen som kommer fra Entra, overtar den brukeren.
+5. Trykk **Lagre kontoflagget**. Feltene lagres sammen. Har noen andre endret
    flagget siden du åpnet fanen, lastes fanen inn på nytt og sier *Noen andre lagret
    dette først; det er lastet inn på nytt*.
 
-**Brukerkonto** sier først autoritetsmodusen med ord: *Lokale kontoer* — Ansatte
-oppretter brukeren og inviterer personen til å velge et passord — eller *Føderert* —
-identitetsleverandøren eier kontoene, og Ansatte finner brukeren på ansattnummeret,
-aktiverer brukere den selv har deaktivert, og deaktiverer dem, uten noen gang å opprette eller invitere
-— eller *Kontoer er ikke tilgjengelige*, når ingen modul gir dem eller denne serveren er
-uenig med modusen identitet registrerte. Deretter, når Ansatte har opprettet eller
+**Brukerkonto** viser personens kontoer som kort side om side: **Vantigo**, brukeren
+personen logger inn i Vantigo med, og — for en person av typen Microsoft Entra ID — et
+kort med leverandørens navn, **Microsoft Entra ID**, for kontoen deres i selskapets
+katalog.
+
+Kortet **Vantigo** sier først kontotypen med ord — *Lokal*, *Ekstern
+identitetsleverandør* eller *Microsoft Entra ID* — eller *Kontoer er ikke
+tilgjengelige*, når ingen modul gir dem. Deretter, når Ansatte har opprettet eller
 funnet en bruker:
 
 - **Tilstand** — *Forberedes*, *Venter — på at personen velger et passord*, *Aktiv*,
@@ -400,7 +419,7 @@ funnet en bruker:
   konto fra, adressen flagget angir mangler, en eier deaktiverte brukeren (eller den
   ventende brukeren, som Ansatte da aldri aktiverer), brukeren er borte, kontoen hører
   til et annet ansattnummer (den er noen andres og blir latt være), en ventende bruker
-  opprettet for lokale kontoer under føderert modus, adressen i identitet er en annen
+  opprettet for en lokal konto mens personens type ikke lenger inviterer, adressen i identitet er en annen
   enn personens etter at invitasjonen ble sendt (en eier endrer den i identitet), en
   invitasjon trukket tilbake av en eier eller tre ubesvarte, brukeren styres ikke lenger
   av Ansatte, en eier eller en systemadministrator, ingen bruker med ansattnummeret ennå
@@ -417,14 +436,44 @@ eier sluttet å styre — forteller fanen HR at en eier lar Ansatte styre bruker
 **Brukere** (**La Ansatte styre**), med personens ansattnummer, og **Åpne Brukere** går
 dit. En slettet person viser ikke dette steget.
 
+Kortet **Microsoft Entra ID** viser personens konto i katalogen:
+
+- **Tilstand** — *Forberedes — Ansatte har bedt katalogen opprette eller finne
+  kontoen*, *Aktivert*, *Deaktivert*, *Slettet — kan gjenopprettes i katalogen i tretti
+  dager*, *Mislyktes* eller *Stoppet*.
+- **Brukerhovednavn (UPN)** — navnet personen logger inn hos Microsoft med, når Entra
+  har laget kontoen — og **Aktivert siden**.
+- **Pass utstedt** — når Entra utstedte et midlertidig tilgangspass ingen har vist ennå
+  — og **Kunngjort** — når Ansatte ba Vantigo vente kontoen.
+- Hvorfor kontoen står fast, i en setning, når den gjør det: Entra ikke tilkoblet eller
+  feiler, to kontoer i Entra med personens ansattnummer, e-posten på jobb er allerede en
+  annen kontos der, en konto synkronisert fra en lokal katalog, en konto med en
+  administrativ rolle i Entra, kontoen borte fra Entra (Ansatte lager aldri en til); og
+  hva Entra meldte og ikke fikk gjort: ansettelsesdatoen ikke skrevet, ingen lisens
+  igjen, et pass ikke tillatt, personens leder ikke i Entra.
+- **Katalogprofil** — en skrivebeskyttet tabell, **Felt**, **Skrives** og **Verdi i
+  dag**: hvert felt Ansatte skriver på kontoen, og verdien det har fra registeret i dag.
+  Navnene, ansattnummeret, brukerhovednavnet og bruksstedet skrives alltid og vises
+  grå; de andre følger installasjonens [Katalogprofil](#katalogprofil). Personen ser
+  tabellen på sin egen fane også: det er deres opplysninger slik katalogen ser dem.
+
+**Vis passet** (HR) viser passet Entra utstedte for personens første innlogging, i et
+vindu med **Kopier** og utløpstiden: *Det vises ikke igjen.* Det vises **én gang**: når
+du lukker vinduet, kan ingen se det igjen, og knappen sier at det ikke finnes noe. Gi
+det til personen selv; det sendes aldri på e-post. Et pass som har gått ut, eller som
+allerede er vist, er borte — bruk **Kjør nå (nytt pass)**.
+
 **Kjør nå** (HR, mens flagget er på) gjør kontoens neste steg med en gang, med en ny
 invitasjon til en ventende bruker hvis siste invitasjon ikke kan godtas. Fanen sier
 da *Ferdig: en ny invitasjon ble sendt*, eller *Ferdig: ingen invitasjon ble sendt* —
 ingen var forfalt, en kan fortsatt godtas, eller den siste gikk for under ti minutter
-siden; kjøringen er gjort likevel.
+siden; kjøringen er gjort likevel. For en person av typen Microsoft Entra ID heter den
+**Kjør nå (nytt pass)**: steget kjøres i Entra først, så i Vantigo, og Entra utsteder et
+nytt pass å vise. Når Entra avviser steget, sier fanen hvorfor.
 
 **Deaktiver nå** (HR) spør først — *Dette slår også av kontoflagget, så kontoen forblir
-deaktivert til HR slår flagget på igjen* — deaktiverer så brukeren og sier *Kontoen er
+deaktivert til HR slår flagget på igjen* — deaktiverer så brukeren — for en person av
+typen Microsoft Entra ID først Entra-kontoen, så Vantigo-brukeren — og sier *Kontoen er
 deaktivert og kontoflagget er av* — eller, når Ansatte ennå ikke hadde opprettet eller
 funnet en bruker, *Kontoflagget er av; det fantes ingen konto å deaktivere*. Den tilbys
 ikke for en bruker HR koblet for hånd under Selvbetjening, som ikke er Ansattes å
@@ -886,7 +935,7 @@ Ansatteinnstillinger.
 selskapets struktur, dokumentkategoriene, tre kort for fravær — **Fraværstyper**,
 **Ferieordninger** og **Egenmelding og overføring** — fire kort for dataene —
 **Importer og eksporter personer**, **Lønnseksport**, **Oppbevaring** og **Terskler** — og
-**Kontoer**. Den som ikke har `staff:manage` og åpner siden med adressen, ser ingen av dem.
+**Kontoer** og **Katalogprofil**. Den som ikke har `staff:manage` og åpner siden med adressen, ser ingen av dem.
 
 ### Generelt
 
@@ -1138,18 +1187,27 @@ kommer aldri tilbake, uansett hva antallet ansatte gjør senere. Raden sier da
 ### Kontoer
 
 **Kontoer** er hvordan Ansatte gir folk en bruker å logge inn med — slått på for hver
-person på fanen [Konto](#konto). Kortet sier autoritetsmodusen med ord (*Lokale
-kontoer*, *Føderert* eller *Kontoer er ikke tilgjengelige*), og om en eier har angitt
-rollene Ansatte kan gi. Før en eier har gjort det, advarer kortet *Ingen eier har angitt
+person på fanen [Konto](#konto). Kortet viser hver identitetsleverandør en installert
+modul tilbyr, med status — *Microsoft Entra ID: tilkoblet.*, *Microsoft Entra ID: ikke
+tilkoblet ennå.* eller *Microsoft Entra ID: feiler — Ansatte skriver ingenting til
+katalogen utenom deaktiveringer før det er rettet.*, med årsaken i en setning; uten noen,
+*Ingen identitetsleverandør tilbys: ingen aktivert modul gir en.* Det sier også om en
+eier har angitt rollene Ansatte kan gi. Før en eier har gjort det, advarer kortet *Ingen eier har angitt
 rollene Ansatte kan gi, så ingen lokal konto kan aktiveres*, og **Åpne Roller og
 tilgang** går til identitets side **Roller og tilgang**, der en eier angir dem under
 **Roller Ansatte kan gi**.
 
+- **Standard kontotype** — kontotypen en ny person får: **Lokal**, **Ekstern
+  identitetsleverandør** eller, når Entra-modulen er installert, **Microsoft Entra ID**.
+  Personer som allerede er registrert, beholder sin; endre dem én og én på fanen Konto.
+  Ved oppgraderingen som innførte typene, ble den satt ut fra installasjonen: Lokal,
+  eller Ekstern identitetsleverandør der single sign-on var på.
 - **Forbered kontoen (dager før)** — hvor mange dager før kontoens dag Ansatte
   oppretter brukeren, deaktivert: 0 til 90, 14 om ikke endret.
-- **Slett en ekstern konto (dager etter slutt)** — brukes av Entra-modulen, som ikke er
-  installert ennå: ingenting leser den. 1 til 3650 dager etter at siste arbeidsforhold
-  sluttet, eller tom for aldri.
+- **Slett en ekstern konto (dager etter slutt)** — hvor mange dager etter at siste
+  arbeidsforhold sluttet Ansatte sletter personens konto i Entra, når den er deaktivert
+  og ingen slettesperre er på personen: 1 til 3650, eller tom for aldri. Entra holder en
+  slettet konto gjenopprettbar i tretti dager.
 
 Trykk **Lagre kontoinnstillingene**. Et tall utenfor grensene avvises på feltet før noe
 lagres; de andre innstillingene lagres som de var.
@@ -1159,3 +1217,24 @@ er forfalt, slik arbeideren ville gjort. En runde kan ta minutter når identitet
 e-postserveren er treg. Kortet sier så, med ett tall for hvert, hvor mange kontoer den behandlet, hvor mange som
 ble ferdige, hvor mange som mislyktes og prøves igjen av arbeideren, og hvor mange som
 er igjen til arbeiderens neste runde.
+
+### Katalogprofil
+
+**Katalogprofil** (`staff:manage`) velger hvilke felt Ansatte skriver på en persons konto
+i selskapets katalog — Microsoft Entra ID — for hver person av den typen. Hvert felt har
+en bryter:
+
+- På som standard: **Ansettelsesdato**, **Sluttdato**, **Ansattype**, **Stillingstittel**,
+  **Avdeling**, **Selskapsnavn** (den juridiske enheten), **Kostnadssted og divisjon**,
+  **Kontorsted**, **Foretrukket språk** og **Leder**.
+- Av som standard: **Arbeidsadresse** (stedets gateadresse, postnummer, poststed og
+  land) og **Telefoner** (jobbtelefonen og mobilen).
+
+Navnene, ansattnummeret, brukerhovednavnet og arbeidslandet skrives alltid og vises grå.
+Private kontaktopplysninger skrives aldri.
+
+1. Slå bryterne på eller av.
+2. Trykk **Lagre katalogprofilen**.
+
+Et felt du slår av, tømmes i katalogen ved hver persons neste oppdatering; et du slår på,
+skrives da. Hver persons fane Konto viser resultatet som katalogprofilen deres.

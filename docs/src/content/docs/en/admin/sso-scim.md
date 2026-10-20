@@ -6,6 +6,7 @@ sidebar:
 sources:
   - apps/server/internal/identity
   - apps/server/internal/db/migrations/00058_identity_sso_settings.sql
+  - apps/server/internal/db/migrations/00059_identity_expected_accounts.sql
 ---
 This is the production runbook for Vantigo's workforce single sign-on and SCIM
 provisioning. Each installation has **at most one** workforce OpenID Connect provider
@@ -298,6 +299,42 @@ unprivileged, and **Owner accounts are protected from SCIM mutation** — an upd
 patch or delete targeting an Owner is refused, which keeps the break-glass account
 outside the provisioning system's reach.
 
+### The enterprise extension and the employee number
+
+The User resource accepts the SCIM **enterprise extension**,
+`urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` — `employeeNumber`,
+`costCenter`, `organization`, `division`, `department` and `manager` — kept in the
+user's SCIM profile, answered back on `GET`, advertised by `Schemas` and
+`ResourceTypes`, and patchable on its own paths (`urn:…:User:department`). Each value is
+at most 256 characters. It changes nothing in the user's own record: in particular the
+directory's `employeeNumber` never becomes the user's employee number in Vantigo — only
+Staff's provisioning or an Owner's adoption make that claim
+([details](/en/admin/authentication/#scim)).
+
+Entra's default attribute mapping for a custom application already sends it:
+**`employeeId → employeeNumber`** in the extension, and `userPrincipalName → userName`.
+Note that the same default sends **`mailNickname → externalId`** — the mail nickname,
+not the object id. Leave both as they are. Entra matches a user it provisions against
+the target by one attribute at a time, and the target must filter on it: Vantigo
+answers `GET /Users?filter=urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber eq "1042"`
+as well as `userName eq` and `externalId eq`.
+
+**Accounts Staff announces.** For a person whose account kind in Staff is `entra`,
+Staff has the provider create the account and announces it to identity
+([the announced account](/en/admin/authentication/#the-announced-account)). The SCIM
+create that brings the user is matched, in order, on the extension's
+`employeeNumber`, then on `userName` against the announced principal name, then on
+`externalId` against the announced object id — which matches only if you map
+`objectId` to `externalId`, since the default sends the mail nickname. A match makes
+the user Staff-managed and numbered on arrival, with no adoption; the audit records
+`account.adopted-from-provider`. A create that matches nothing makes a plain user, as
+before.
+
+To verify, after the provider has created a person's account and the provisioning
+cycle has run: the user appears on the **Users** page managed by Staff with the
+person's employee number and not pending, and the person's Account tab in Staff shows
+the Vantigo account active.
+
 ### Token rotation with overlap
 
 1. Choose **New token**. Since a token exists, the card asks first, "Issue a new
@@ -412,9 +449,14 @@ starting it. A SCIM token issued on the card cannot be recovered; set a new
 
 ## Staff in a federated installation
 
-With SSO or SCIM on, the [authority mode](/en/admin/authentication/#the-authority-mode)
-is federated: the identity provider owns the accounts, and Staff's account
-provisioning only links to them. It never creates a user and never sends an
+Staff decides **per person**, by the person's account kind; on the upgrade that
+brought the kinds, every person and the default were set from the
+[authority mode](/en/admin/authentication/#the-authority-mode) once — `external` in a
+federated installation, where SSO or SCIM is on. This section is that `external` kind;
+HR may give a person `local` or, once a provider module is installed, `entra`
+([Staff's account kinds](/en/user/staff/#account)). For a person of the `external`
+kind the identity provider owns the account, and Staff's account provisioning only
+links to it. It never creates a user and never sends an
 invitation. For each person whose account Staff manages, it finds the Staff-managed
 user holding the person's employee number — a user the identity provider created and an
 Owner [adopted](/en/admin/authentication/#adopt-an-existing-user-for-staff) with that
@@ -427,8 +469,10 @@ directory, or SCIM turned off, does not let them back in; a rehire re-enables th
 identity, and while the directory still reports them inactive it keeps them out. Until
 the provider has created the
 account and an Owner has adopted it, Staff reports the person's account as not found.
+For the `entra` kind no adoption is needed: the account is
+[announced](#the-enterprise-extension-and-the-employee-number) and adopted on arrival.
 
-A pending user — one Staff created in local mode, before SSO or SCIM was turned on,
+A pending user — one Staff created for the `local` kind, before SSO or SCIM was turned on,
 who has not accepted their invitation — never becomes the identity provider's account
 by their address alone: OIDC's first sign-in with that address answers
 `account_locked` and links nothing, and SCIM's create of a User with that address is

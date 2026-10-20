@@ -1,10 +1,11 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
   - openapi/staff.yaml
+  - apps/server/internal/db/migrations/00060_staff_account_kind.sql
 ---
 The Staff module is the company's register of the people who work for it: who they
 are, how to reach them and their next of kin, their employments as Norwegian
@@ -17,7 +18,13 @@ It depends on nobody but identity: it reads users through `contracts.UserDirecto
 which identity always provides, sends its one mail through the platform's SMTP seam,
 and keeps its documents' bytes in the platform's object store under its own scope,
 `staff`. `MODULES=staff` alone is a valid installation. It provides no contract and fills
-no slot; nothing in another module reads the register yet.
+no slot; nothing in another module reads the register yet. It reads one many-provider
+slot, `Deps.IdentityProvisioners` (`contracts.IdentityProvisioner`): the external
+identity providers an enabled module offers, whose directory the
+[accounts worker](#the-provider-link) writes for a person of a provider's
+[account kind](#the-account-kind) — rule 13 of the
+[module boundaries](/en/contributing/module-boundaries/). With none, nothing changes but
+that the `entra` kind cannot be chosen.
 
 This page grows with the module. What is here today: the [permissions](#permissions),
 the [settings](#settings), the [business time zone](#the-business-time-zone), the
@@ -111,6 +118,24 @@ again — but refuses, naming them, while any absence names one of those types: 
 cannot give such a row another type without widening who reads it. The Up refuses,
 naming the key, when a company type already holds one of the keys it reserves.
 
+The Entra phase's delivery B adds `00060_staff_account_kind.sql` (00059 is identity's,
+the same delivery's). It adds `people.account_kind` — `local`, `external` or `entra`,
+`local` by default ([the account kind](#the-account-kind)) — and four settings
+columns: `default_account_kind` (`local`), `account_kind_seeded` (false until Staff has
+seeded the kinds from identity's recorded mode, which a migration may not read),
+`directory_fields` (the [directory profile's](#the-directory-profile) switches, a JSON
+object seeded with the defaults) and `provider_status` (what the accounts worker last
+saw of each provider, `{"<key>": {status, reason, checkedAt}}`, from which the
+installation's provider items are judged). And it adds a provider link's columns to
+`identity_links`: `external_upn` and `external_email` (the principal name and the
+address the provider answered), `announced_at`, `pass_issued_at` and `reported_codes`
+(`text[]`, empty by default) — [the provider link](#the-provider-link). A provider
+link is a second row per person, `provider` the provider's key beside `identity`; the
+existing `(person_id, provider)` and `(provider, external_id)` indexes already admit
+it. Still no CHECK constraint: `contracts.ValidAccountKind` and the module's
+validation own the kinds. The Down deletes every provider link — the external
+accounts they name stay in the provider's directory — and drops the columns.
+
 ## Permissions
 
 | Key | Name | Grants | Sensitive |
@@ -135,12 +160,12 @@ so a manager who has left manages nobody) and `canDecide` (`staff:approve`,
 `staff:manage`, or `managesAnyone`: who may decide absence) and `canRunAccounts`
 (`staff:manage`: running the accounts worker by hand and disabling an account now) — so
 the app never re-derives a rule. For `staff:manage` alone it also answers the
-[accounts'](#accounts) `accountMode` and `provisioningRolesSet`.
+[accounts'](#accounts) `defaultAccountKind`, `providers` and `provisioningRolesSet`.
 
 ## Settings
 
 One row, written by the migration. `GET /settings` and `PUT /settings` are
-`staff:manage`'s. The contract exposes seventeen fields, a derived block and the
+`staff:manage`'s. The contract exposes nineteen fields, a derived block and the
 acknowledged thresholds.
 
 | Field | Default | Rule |
@@ -159,7 +184,9 @@ acknowledged thresholds.
 | `selfCertAfterMonths` | 2 | 0 to 2 months of employment before egenmelding may be used; left out, kept. |
 | `autoCarryOver` | false | Carry holiday left at a year's end into the next as forced, without HR's action; left out, kept. |
 | `createBeforeDays` | 14 | 0 to 90 days before the account's effective date that the accounts worker prepares it, disabled ([accounts](#accounts)); left out, kept. |
-| `deleteExternalAfterDays` | — | 1 to 3650 days after the last employment ended that an external directory's account is deleted, or `null` for never; inert — no module reads it yet (the Entra module will); left out, kept, and absent on the wire when never. |
+| `deleteExternalAfterDays` | — | 1 to 3650 days after the last employment ended that a person's account in a provider's directory is deleted — soft-deleted there, once it is disabled and no legal hold is on the person ([the provider link](#the-provider-link)) — or `null` for never; left out, kept, and absent on the wire when never. |
+| `defaultAccountKind` | `local`, seeded once from identity's recorded mode | The [account kind](#the-account-kind) a new person takes: `local`, `external` or a provider's key (`entra`), which is `provider_missing` on the field unless an enabled module offers that provider; left out, kept. People already registered keep theirs. |
+| `directoryFields` | every switchable field on but `workAddress` and `phones` | `{"<key>": boolean}` over the [directory profile's](#the-directory-profile) switchable fields; a key left out keeps its value, a key that is not a switchable field is a field error on `directoryFields.<key>`. |
 | `erasePregnancyHealthTypes` | false | Put the pregnancy and health-appointment rows on the health schedule ([what is due](#what-is-due)); left out, kept; `null` refused on the field (400), never read as false. |
 | `eraseSickCaseDates` | false | Make a closed case's erase remove the case itself ([what an erase does](#what-an-erase-does)); left out, kept; `null` refused on the field (400). |
 
@@ -203,8 +230,8 @@ company's size is nothing and is accepted as such; an employment's `-n` is found
 same way among the employments.
 
 `PUT /settings` is a full replace guarded by `If-Match` (below) — but for the two
-retention periods, the self-certification policy and the carry-over, which a body
-that leaves them out keeps. Every bad field is a 400
+retention periods, the self-certification policy, the carry-over, the four account
+settings and the two erase settings, which a body that leaves them out keeps. Every bad field is a 400
 naming it (a period out of its bounds is a plain field error); the whole request is
 judged before anything is written.
 
@@ -969,7 +996,13 @@ providing accounts, every link and unlink naming a user answers `accounts_unavai
 
 Delivery C's accounts give a person a user in identity on the dates their employments
 set (design S22–S27). This section is the flag and what reads it, the decision table,
-and [the accounts worker](#the-accounts-worker) that acts on them.
+and [the accounts worker](#the-accounts-worker) that acts on them. The Entra phase's
+delivery B (Entra design D3–D8) makes the account's authority each person's own —
+[the account kind](#the-account-kind), in place of the installation's authority mode —
+and adds a second link, to the person's account in an external provider's directory,
+which the same worker drives: [the provider link](#the-provider-link), the
+[directory profile](#the-directory-profile) it writes and [the pass](#the-pass) it
+issues.
 
 **The flag** is three columns of `staff.people` (00042's): `provision_account`,
 `provision_from` and `account_email_kind`, with its own revision,
@@ -983,7 +1016,8 @@ manager, an Approver, a colleague and anyone else get the person's 404.
 - **`GET /people/{id}/account`** (`staff:access`, then the person themselves,
   `staff:manage` or `staff:personal-data`; otherwise the unknown id's 404) answers
   `{provisionAccount, provisionFrom, provisionFromEffective, accountEmailKind,
-  address: {kind, present}, mode, link, revision}` — `revision` the flag's own.
+  address: {kind, present}, accountKind, link, providerLink, directoryProfile,
+  revision}` — `revision` the flag's own.
   - `accountEmailKind` is `work` or `private`; a null column reads `work`.
     `address` says which of the person's addresses the account would be given and
     whether the person has it — never the address itself.
@@ -994,10 +1028,9 @@ manager, an Approver, a colleague and anyone else get the person's 404.
     between employments — one ended, none current, a later one to come — the later
     start, unless the stored date falls after the ended employment's end (an early date
     for the later one, honoured); else absent.
-  - `mode` is the authority mode identity recorded (`local` or `federated`), asked
-    before the person is read. It is absent when no module provides accounts, when
-    this process's configuration derives another mode than the recorded one
-    (`contracts.ErrModeMismatch`), and when identity could not answer (logged).
+  - `accountKind` is the person's [account kind](#the-account-kind) — `local`,
+    `external` or `entra` — always present, read from Staff's own row. It carries the
+    rule the installation's authority mode did: the previous `mode` field is gone.
   - `link` is the person's row in `staff.identity_links`, absent when there is none:
     `state`, `managed`, `reason` (`blocked_reason`, a code), `attempts`,
     `nextAttemptAt`, `lastSyncedAt`, `user` (named by the user directory) and, for a
@@ -1005,6 +1038,13 @@ manager, an Approver, a colleague and anyone else get the person's 404.
     `invitation {state, issued}` — `none`, `active`, `expired`, `revoked_by_owner` or
     `exhausted`, and the invitations delivered in the pending spell. identity is asked
     with no address to compare; the codes never carry an address or a driver's words.
+  - `providerLink` is the person's [provider link](#the-provider-link), absent when
+    there is none: `provider`, `state`, `reason`, `reportedCodes`, `externalUpn`,
+    `hasPass`, `passIssuedAt`, `announcedAt`, `lastSyncedAt`, `nextAttemptAt` and
+    `attempts` — read from Staff's row, the provider never asked.
+  - `directoryProfile` is the [directory profile](#the-directory-profile) — every
+    field the provider writes, in order, `{key, on, switchable, value?}` with the value
+    it would carry today — present when the person's kind names a provider.
 - **`PUT /people/{id}/account`** (`staff:manage`) replaces the three fields,
   `If-Match` on the flag's own revision (the `revision` `GET` answered, never the
   person's), under the person's lock. The body must name `provisionAccount` with a value —
@@ -1017,6 +1057,9 @@ manager, an Approver, a colleague and anyone else get the person's 404.
   `account_flag_updated` event naming each changed field, before and after; a replace
   that changes nothing writes nothing. Turning the flag on without the chosen address is
   accepted — the worker waits, and HR is told. It answers the account as `GET` does.
+  `accountKind` is **the one field the replace keeps when it is left out**; a change of
+  it is judged as [the account kind](#the-account-kind) says — `provider_missing` (400
+  on `accountKind`) and `account_kind_locked` (409) — and named in the same event.
 
 **The address identity compares.** Whenever Staff asks identity whether its address
 for a user differs from Staff's (`AccountRef.EmailDiffers`), it hands identity the
@@ -1040,9 +1083,9 @@ for a worker's claim and judges the row the claim left: a lease set is
 **The decision table** (`accounts_decide.go`) is what the accounts worker does next
 for one person: a pure function of facts already read — the person (erased, the flag,
 the stored `provisionFrom`, whether the chosen address is present, the employee
-number, the employments), the link, what identity reports of the link's user
-(`AccountRef`), the authority mode, `createBeforeDays` and the civil day in the
-business time zone — that reads no database or clock and calls nothing. It answers one
+number, the employments, the [account kind](#the-account-kind)), the link, what
+identity reports of the link's user (`AccountRef`), `createBeforeDays` and the civil
+day in the business time zone — that reads no database or clock and calls nothing. It answers one
 step: nothing, prepare, activate (with a fresh invitation on *Run now*), deactivate,
 update, or a report written as the link's `blocked_reason`. With `T` today and `F` the
 effective date — the stored `provisionFrom`, else the start of the earliest employment
@@ -1076,32 +1119,41 @@ after the earlier employment's end — the first that holds wins:
    need not be present. Otherwise nothing, and no report. Between employments, before
    the later one is due: the same, and before the later one's window nothing else
    either.
-5. Federated mode and a pending user without a credential: `mode_changed`.
+5. A link-only kind — `external` or `entra` — and a pending user without a
+   credential: `mode_changed` (for `entra`, the announcement's `ReplaceUserID` names
+   that user, and the account's arrival completes it — [the provider
+   link](#the-provider-link)).
 6. `T < F − createBeforeDays` with no user yet: nothing. The address missing:
-   `account_email_missing`. No user yet: prepare (in federated mode, find by the
+   `account_email_missing`. No user yet: prepare (for a link-only kind, find by the
    employee number).
 7. The user's state — the same before `T ≥ F` (outside the gap between employments,
    where item 4 has answered) except that nothing is activated early:
    a user the directory deactivated, nothing; disabled by an Owner (or by no
    one recorded), `blocked_by_owner` while pending and `disabled_by_owner` otherwise
-   (the link `blocked`); disabled by Staff, activate — in federated mode a re-enable
-   only, and a pending user is never activated there; a pending user's invitation:
+   (the link `blocked`); disabled by Staff, activate — for a link-only kind a
+   re-enable only (and for `entra` the provisioning roles, once), and a pending user is
+   never activated under one; a pending user's invitation:
    active, nothing; revoked by an Owner, `invitation_revoked`, and three unanswered,
    `invitation_unanswered`, unless HR runs the person now; otherwise activate.
 8. The details: a pending user whose address in identity differs while it still follows
    the person's — no invitation naming the user delivered yet
-   (`AccountRef.EmailFollows`; the owner's decision of 2026-10-18) — update (local
-   mode); any other user whose address differs — pending once the first invitation went
-   out, or past pending — `email_differs` for an Owner to settle in
-   identity (local mode — in federated mode the identity provider owns the address),
+   (`AccountRef.EmailFollows`; the owner's decision of 2026-10-18) — update (the
+   `local` kind); any other user whose address differs — pending once the first
+   invitation went out, or past pending — `email_differs` for an Owner to settle in
+   identity (the `local` kind — under a link-only kind the provider owns the address),
    with an update when the person's other details changed; the details changed, or
    the person renumbered, update — before the window too.
 
-**The settings** `createBeforeDays` and `deleteExternalAfterDays` are under
-[Settings](#settings). **Meta** answers `staff:manage` the `accountMode` (as above)
-and `provisioningRolesSet` — whether an Owner has named the roles Staff may give in
-identity, without which a local account cannot be enabled; both absent when no module
-provides accounts or identity could not answer. Both exports carry `account`
+**The settings** `createBeforeDays`, `deleteExternalAfterDays`, `defaultAccountKind`
+and `directoryFields` are under [Settings](#settings). **Meta** answers `staff:manage`
+`defaultAccountKind` — the settings' value, absent when no module provides accounts —
+`providers` — every provider in the slot, `{key, name, status, reason?}`, its status
+asked now (`Provider`, on no connection, before any snapshot), a provider that could
+not be asked answered `failing` with the reason `unreachable` (logged); empty when no
+enabled module offers one — and `provisioningRolesSet` — whether an Owner has named the
+roles Staff may give in identity, without which a local account cannot be enabled,
+absent when no module provides accounts or identity could not answer. The previous
+`accountMode` is gone. Both exports carry `account`
 (`provisionAccount`, `provisionFrom`, `accountEmailKind` and the link's `linkState`).
 
 **The account events** are class C and listed only to the links group's readers — the
@@ -1115,7 +1167,60 @@ flagOffMeanwhile?}` — the step, the link's state after it, a code, a pending u
 invitation after an activation, and whether the flag was turned off while the step ran
 — and nothing else: no address, no name, no user id beyond the link's own. They name
 no field, so `payload_classes` is `{C}`, written as such; their payload is read whole
-by the links group and empty to anyone else.
+by the links group and empty to anyone else. The provider link's events are the same
+class, shape and readers: `account_announced` (the external account announced to
+identity), `account_external_prepared`, `account_external_activated`,
+`account_external_deactivated`, `account_external_updated`,
+`account_external_deleted`, `account_external_blocked` and `account_external_failed`
+— codes only, never the principal name, the address or the provider's words — and two
+more: `work_email_set_by_provider`, when the address the provider made is written to a
+person who had none, and `pass_revealed`, naming the viewer and never the pass.
+`account_flag_updated` names `accountKind` among its fields when HR changed it.
+
+### The account kind
+
+**Who holds a person's account** is the person's own setting,
+`staff.people.account_kind` (Entra design D5), in place of the installation-wide
+authority mode — `contracts.AccountKindLocal`, `AccountKindExternal`,
+`AccountKindEntra`:
+
+| Kind | The identity link (`provider = 'identity'`) | The provider link |
+| --- | --- | --- |
+| `local` | identity holds the credentials: `Prepare` creates, `Activate` enables, invites and gives the provisioning roles, `Deactivate`, `Update` | none |
+| `external` | an identity provider owns the account: `Prepare` finds only, `Activate` re-enables what Staff disabled, `Deactivate`, `Update` of the language and the number; `accountNotFound` until an Owner adopts the user | none |
+| `entra` | link-only as `external`, but the account is announced (`Expect`) after the provider's `Prepare`, so the user that arrives is adopted with no Owner; `Activate` gives the provisioning roles once, on the first activation of the adopted user | [the provider link](#the-provider-link), the provider keyed `entra` |
+
+**The kind travels on the call.** Every `Prepare`, `Activate` and `Update` the worker
+makes carries the person's kind (`AccountSpec.Kind`, `ActivateOpts.Kind`), so identity
+creates, invites and gives roles by the person, never by the mode alone: a `local`
+person in an installation whose single sign-on is on is still created and invited
+([what Staff's provisioning does](/en/admin/authentication/#what-staffs-provisioning-does-in-identity)).
+
+**A new person takes the default**, `settings.default_account_kind` — `POST /people`
+and the import alike. **HR changes a person's kind** on the Account tab, `accountKind`
+on `PUT /people/{id}/account`, which moves the flag's revision and is recorded in
+`account_flag_updated`:
+
+- a provider's key — `entra` — is `provider_missing`, a field error on `accountKind`,
+  unless an enabled module offers that provider (`Deps.IdentityProvisioners` holds its
+  `Key()`); the same for `defaultAccountKind` on `PUT /settings`;
+- a change **away from `entra`** is `account_kind_locked` (409) while the person's
+  `entra` link is `enabled` or `disabled`: a person leaves the directory by *Disable
+  now* or by the end of their employment, never by a change of kind. Once the link is
+  `deleted` or `failed`, or there is none, the kind may change;
+- a change **from `local` to `entra`** while the person's user is pending and holds no
+  credential is carried by the next announcement as `ReplaceUserID`: the account's
+  arrival completes that user rather than creating a second.
+
+**The seed, once.** The migration writes `local` everywhere, since a migration may not
+read identity's schema. While `settings.account_kind_seeded` is false, Staff seeds the
+kinds itself — at an API process's mount and at the start of an accounts cycle: it asks
+identity's recorded mode on no connection (unavailable: skipped, logged, tried the next
+time), then, under the settings row's lock, sets `default_account_kind` and every
+person's `account_kind` from it — `local` from `local`, `external` from `federated` —
+and `account_kind_seeded` true, and logs `staff: the account kinds were seeded from the
+authority mode`. It never runs again: a later change of the single sign-on settings
+changes no one's kind.
 
 ### The accounts worker
 
@@ -1129,7 +1234,10 @@ worker process, a run beside the ticker — through the link rows alone.
 1. **The mode** is asked once, on no connection. Identity unable to answer fails the
    cycle, which the next poll runs again. `ErrModeMismatch` (this process's OIDC or
    SCIM settings derive another mode than the API process recorded) holds every step
-   but a deactivation: see below.
+   but a deactivation: see below. Before it, while the kinds are unseeded, the cycle
+   [seeds them](#the-account-kind); and each provider in the slot is asked its status
+   once (`Provider`, on no connection), recorded on `settings.provider_status` when it
+   changed — a provider that could not be asked is recorded `failing`, `unreachable`.
 2. **The preparing links.** For each person whose flag is on, who is not erased and has
    no link, the decision table is asked with no link; when it answers *prepare* the
    cycle takes the person's lock, reads the flag again and writes a `preparing` link —
@@ -1175,6 +1283,9 @@ worker process, a run beside the ticker — through the link rows alone.
    person's details hash is the link's `last_spec_hash` — SHA-256 over the address
    (only while it follows the person's, `AccountRef.EmailFollows`), the display name, the language and the employee
    number — so the next run asks for no second update.
+   For a person of a provider's kind, **the provider column runs first**, under the
+   same claim and lease ([the provider link](#the-provider-link)): at most three
+   provider calls, then the identity chain's three.
 5. **The result**, under the person's lock and then the link `WHERE lease_id` is the
    claim's (the lock order: the person, then the link): `state`, `managed`,
    `external_id` (after `Prepare`), `blocked_reason`, `last_error`, `attempts`,
@@ -1215,7 +1326,7 @@ address or a driver's words):
 | --- | --- | --- |
 | `ErrAccountPrivileged`, `ErrLastOwner` | `account_privileged` | `blocked` |
 | `ErrBlockedByOwner` | `blocked_by_owner` | `blocked` |
-| `ErrAccountNotFound` (federated: the identity provider has not created the user yet) | `not_found` | `blocked` |
+| `ErrAccountNotFound` (a link-only kind: the identity provider has not created the user yet) | `not_found` | `blocked` |
 | `ErrUserGone` | `user_gone` | `failed` |
 | `ErrAccountNotManaged` | `account_not_managed` | its state kept |
 | `ErrEmployeeRoleMissing` | `employee_role_missing` | `blocked` |
@@ -1283,8 +1394,11 @@ and a person's `/account/run` and `/account/disable` together at most 120 an hou
   preparing link written if the table says they are due and they have none, then their
   link claimed **whatever its `next_attempt_at`** (`ClaimPersonAccountLink`, which waits
   out another cycle's claim statement rather than skipping it), and worked with
-  `Fresh` — identity's `ActivateOpts.FreshInvitation` — on the **first** `decide` of the
-  claim only. A flag that is off runs nothing. It answers
+  `Fresh` — identity's `ActivateOpts.FreshInvitation`, and for a person of a provider's
+  kind the provider's `SpecFlags.Fresh`, a new pass (*Run now (new pass)*) — on the
+  **first** `decide` of the claim only. A flag that is off runs nothing. A provider's
+  refusal is 409 `provider_refused`, its code the detail and the provider link's
+  reason. It answers
   `StaffPersonAccountRun {invitationSent, account}`: `invitationSent` is whether the
   pending user's invitation became one that can be accepted during the run (none open
   before, one open after). Identity never re-sends an open invitation and, within ten
@@ -1302,7 +1416,13 @@ and a person's `/account/run` and `/account/disable` together at most 120 an hou
   review M1), and committed. Then the link is claimed
   (`ClaimPersonAccountLink`, the flag no longer on), the lease renewed, `Deactivate`
   called for its user with the caller as the actor, and the result written as the
-  worker writes one (`account_deactivated`, the link `disabled`). With the flag off no
+  worker writes one (`account_deactivated`, the link `disabled`). **For a person with a
+  provider link naming an account, both links are disabled, the provider's first**
+  (Entra design D7): after the commit, under the same claim, the provider's
+  `Deactivate` with the caller as the actor (the provider link `disabled`,
+  `account_external_deactivated`), then identity's as above. A provider's refusal is
+  409 `provider_refused`, its code the detail and the provider link's reason, the flag
+  already off. With the flag off no
   cycle claims the link again — once the disable is done — so the user stays disabled
   until HR turns the flag on. **The disable asked for is the worker's to finish**:
   `disable_requested_at` is cleared only when the user is disabled — a `Deactivate`
@@ -1343,6 +1463,157 @@ and a person's `/account/run` and `/account/disable` together at most 120 an hou
   `accountFailing` raised while the worker retries. A link claimed by a cycle in the
   instant between the commit and the claim is 409 `accounts_busy` with the flag off;
   the cycle holding it, or the next, deactivates the user from the marker.
+
+### The provider link
+
+A person of a provider's [kind](#the-account-kind) (`entra`) has a second row in
+`staff.identity_links`, **the provider link**: `provider` the provider's key, beside the
+identity link's `identity` (Entra design D7). It reuses the row's worker columns —
+`external_id` (the directory's immutable id of the account), `state`,
+`blocked_reason`, `last_spec_hash`, `attempts`, `next_attempt_at`, `last_synced_at` —
+and has five of its own (00060's): `external_upn` and `external_email`, the principal
+name and the address the provider answered (class D, as the work email); `announced_at`,
+when Staff announced the account to identity; `pass_issued_at`, when the provider issued
+a pass nobody has revealed yet — never the pass; and `reported_codes`, the facts the
+provider reported and could not act on, codes only. Its states are `preparing` (the
+worker asked the provider to create or find the account, none named yet), `enabled`,
+`disabled`, `deleted` (soft-deleted in the directory), `failed` and `blocked`.
+
+**The identity link stays the claim.** The worker claims a person's identity link as
+before — `ClaimAccountLink` now also claims a leaver's whose provider link is not yet
+`deleted`, for the deletion below — and works both links under that one claim and its
+lease: the provider link's result (`WriteProviderLinkResult`) is written only while the
+identity link holds the claim's lease. For a person of the `entra` kind a cycle reads,
+beside the person's facts, the provider link, the settings' `deleteExternalAfterDays`,
+the person's legal hold, the [directory profile](#the-directory-profile) and the
+manager's own provider link; the external account (`Account`, on no connection, by the
+link's `external_id` — none answered is the account gone); and the provider's status,
+once per cycle. **The provider column runs first, identity second**, so the
+announcement precedes the account's arrival: at most three provider calls — the
+announce among them — then the identity chain's three, each under the two-minute
+timeout with no transaction open and no connection held, the lease renewed before each,
+as [the accounts worker](#the-accounts-worker) does.
+
+**The third column** (`accounts_decide_provider.go`, `decideProvider`) is a pure
+function as `decide` is. With `T` today, `F` the effective date, `E` the last end, `P`
+the provider link and `L` the identity link, the provider `connected`:
+
+| State | Provider link `P` | Identity link `L` |
+| --- | --- | --- |
+| the provider `unconfigured` or `failing` | `provider_unavailable` (an installation item); nothing called | nothing but a due deactivation |
+| the flag off, no `P` | nothing | nothing |
+| the flag on, no employment | `no_employment` | the same |
+| the flag on, `T < F − createBeforeDays` | nothing | nothing |
+| the flag on, `F − createBeforeDays ≤ T < F`, no `P` | `Prepare` → `P` disabled; then `Expect` | `Prepare` (find) → `L` pending, or nothing yet |
+| the flag on, `T ≥ F`, `T ≤ E` or no `E` | `Prepare` if no `P`; `Activate` → `P` enabled, a pass issued | `Prepare` (find); `L` active once the adopted user exists; `Activate` gives the roles once |
+| the flag on, `T > E`, no later employment | `Deactivate` while `P` is enabled → `P` disabled; once `deleteExternalAfterDays` have passed since `E`, no legal hold and `P` disabled, `Delete` → `P` deleted | `Deactivate` → `L` disabled |
+| a rehire: `P` disabled, the flag on, `T ≥ F` | `Activate` (a new pass) | `Activate` re-enables |
+| `P` enabled, the external spec changed (`last_spec_hash`) | `Update` | `Update` of the language and the number |
+| `P` any, `Account` answers none | `user_gone`, `P` failed — never created again | — |
+| HR's *Disable now* | the flag off, then `Deactivate` on `P` | then on `L` |
+
+**The announce.** After a `Prepare` the provider answered, the chain calls identity's
+`Expect` ([the announced account](/en/admin/authentication/#the-announced-account))
+with the person's employee number, display name and language, the account's
+`ExternalID` as `ObjectID` and its principal name as `UserPrincipalName`, `Issuer`
+left empty — identity fills it from its own single sign-on row, since Staff knows no
+issuer — and `ReplaceUserID` the identity link's pending, credential-less user when
+there is one (a person whose kind HR changed from `local`). It records `announced_at`
+and `account_announced`. The user the provider's SCIM push or the person's first
+sign-in then creates is Staff-managed and numbered on arrival, and the identity link's
+next `Prepare` finds it by the number. A `Deactivate` or `Delete` while the identity
+link names no user withdraws the announcement (`Unexpect`). An announcement no user has
+fulfilled ninety days after `announced_at` raises `accountNotArrived`.
+
+**The result** on `P`: `external_id`, `state`, `external_upn`, `external_email`,
+`blocked_reason`, `reported_codes` (the provider's `Reported` facts verbatim),
+`pass_issued_at` (set when the account came back with a pass, cleared when it came back
+with none or the pass was revealed), `last_spec_hash`, `last_synced_at`, and the
+`account_external_*` events. A provider's refusal is recorded as a code, never an
+address or the directory's words:
+
+| The provider's answer | `blocked_reason` | `P` |
+| --- | --- | --- |
+| `ErrExternalAmbiguous` — two accounts hold the number | `external_ambiguous` | `blocked` |
+| `ErrExternalAddressTaken` — the work email is another account's | `external_address_taken` | `blocked` |
+| `ErrExternalSyncedOnPremises` | `external_synced_on_premises` | `blocked` |
+| `ErrExternalPrivileged` — the account holds a directory role | `external_privileged` | `blocked` |
+| `ErrExternalEnabled` — a delete of an account still enabled | `external_enabled` | `blocked` |
+| `ErrProviderUnavailable`, or the status not `connected` | `provider_unavailable` | its state kept |
+| `Account` answers none | `user_gone` | `failed` |
+| `ErrInvalidActor` (a bug of Staff's, logged) | `invalid_actor` | `failed` |
+
+Anything else is a failure to retry, as with identity. The provider's reported codes
+are `hire_date_not_written`, `privileged`, `pass_not_allowed`,
+`licence_unavailable:<SKU part number>` and `manager_not_found`; Staff adds its own
+`manager_not_in_entra` when the person's manager has no account in the directory.
+
+**The address the provider made.** When the account answers an address
+(`ExternalAccount.Email`) and the person has no work email, the address is written to
+the person's `work_email` under their lock, with the event `work_email_set_by_provider`
+— the one write to a person the accounts worker makes.
+
+**The external spec** (`accounts_spec.go`) is what every provider call carries
+(`contracts.ExternalSpec`): the employee number, the given and family names, the
+display name, `WorkEmail` — the work email only, never the private one; empty lets the
+provider make the address — `PreferredLanguage`, `WorkCountry` (the usage location),
+`HireDate` the earliest open employment's start and `LeaveDate` the last end, each only
+while its field of the directory profile is on, `Fields` from the
+[directory profile](#the-directory-profile), `ManagerExternalID` — the effective
+manager's own provider link's `external_id` while that link is `enabled` or `disabled`,
+else empty and `manager_not_in_entra` recorded once — `Licences`, empty until groups
+come (delivery D), and `Flags.Fresh` on *Run now*. `last_spec_hash` is SHA-256 over it,
+so a mover is one `Update` on the day the record changes and nothing on the others.
+
+### The directory profile
+
+**Which fields a provider writes** on a person's external account is a fixed mapping
+the installation switches field by field (Entra design D8): `settings.directory_fields`,
+`directoryFields` on `PUT /settings` (`staff:manage`), its keys the switchable rows
+below. The person's Account tab reads it back as `directoryProfile` on
+`GET /people/{id}/account` — every row, in this order, `{key, on, switchable, value?}`
+with the value it would carry today — to whoever reads the tab, the person included:
+it is their own data as the directory would see it. `ExternalSpec.Fields` carries
+exactly the switched-on fields under their directory attribute names, an empty value
+for a field the register holds nothing for, and nothing for a field switched off; a
+field switched off is cleared in the directory on the next update.
+
+| Key | From the register | Directory attribute | Default |
+| --- | --- | --- | --- |
+| `givenName`, `familyName`, `displayName` | the names | `givenName`, `surname`, `displayName` | on, not switchable |
+| `employeeId` | the employee number | `employeeId`, written on create only | on, not switchable |
+| `userPrincipalName` | the work email | the principal name and `mail` | on, not switchable |
+| `usageLocation` | the work country | `usageLocation` | on, not switchable |
+| `employeeHireDate` | the earliest open employment's start | `employeeHireDate` | on |
+| `employeeLeaveDateTime` | the last employment's end | `employeeLeaveDateTime` | on |
+| `employeeType` | the terms' employee type | `employeeType` | on |
+| `jobTitle` | the terms' title | `jobTitle` | on |
+| `department` | the department's name | `department` | on |
+| `companyName` | the legal entity's name | `companyName` | on |
+| `employeeOrgData` | the cost centre and the division — the terms', else the department's | `employeeOrgData`, both always | on |
+| `officeLocation` | the location's name | `officeLocation` | on |
+| `workAddress` | the location's street, postal code, city and country | `streetAddress`, `postalCode`, `city`, `country` | off |
+| `phones` | the work phone and the mobile | `businessPhones`, `mobilePhone` | off |
+| `preferredLanguage` | the language, as `nb-NO` or `en-GB` | `preferredLanguage` | on |
+| `manager` | the manager — the terms', else the department's, by the [manager rule](#managers-and-the-org-view) — shown by name | `manager`, by the manager's external id | on |
+
+Private contact details are never mapped.
+
+### The pass
+
+**`POST /people/{id}/account/pass`** (`staff:manage`, `account_pass.go`) shows the
+Temporary Access Pass the person's provider issued for their external account —
+**once**. The provider keeps the pass sealed until then and answers it a single time
+(`RevealPass`, on no connection, the caller the actor), so the answer is
+`StaffAccountPass {pass, expiresAt}` with `Cache-Control: no-store`; the link's
+`pass_issued_at` is cleared, and the reveal is the event `pass_revealed`, naming the
+viewer and never the pass. A second call, a call after the pass's lifetime and a call
+when none was issued are 409 `pass_gone`; *Run now* on the person issues a new one. No
+such person, or no provider link naming an account, is 404; no enabled module offering
+the provider, or the provider unreachable, 503 `accounts_unavailable`, with the pass
+still there. It is rate-limited with *Run now* and *Disable now* (one counter, 120 an
+hour from one client address). A pass issued and not shown for a day raises
+`passUnrevealed`.
 
 ## My page
 
@@ -3223,14 +3494,14 @@ once the flag is off.
 | --- | --- | --- |
 | `accountNoEmployment` | the person query | The flag on and no employment at all. |
 | `accountEmailMissing` | the person query | The flag on, an employment not ended by today, and the address the flag names (work or private) missing or empty. |
-| `accountNotFound` | `blocked_reason = not_found` | Federated: no managed user holds the employee number yet. |
+| `accountNotFound` | `blocked_reason = not_found` | The `external` kind: no managed user holds the employee number yet. |
 | `accountNotManaged` | `account_not_managed` | The link's user is no longer Staff-managed; the link gives them no Self until HR links the user again by hand. |
 | `accountBlockedByOwner` | `blocked_by_owner` | An Owner disabled the pending user. |
 | `accountDisabledByOwner` | `disabled_by_owner` | An Owner disabled the user while employed. |
 | `accountUserGone` | `user_gone` | The user no longer exists. |
 | `accountPrivileged` | `account_privileged` | The user is an Owner or a SystemAdmin. |
 | `accountMismatch` | `mismatch` | Identity's employee number is not the person's. |
-| `accountModeChanged` | `mode_changed` | A pending user from local mode under federated mode. |
+| `accountModeChanged` | `mode_changed` | A pending user made for the `local` kind, the person's kind now one that never invites. |
 | `accountEmailDiffers` | `email_differs` | The user's address in identity differs from the person's after the first invitation was delivered (pending or not): Staff no longer writes it, an Owner does. |
 | `accountEmailTaken` | `account_email_taken` | Another user holds the address. |
 | `accountNumberTaken` | `employee_number_taken` | An unmanaged user holds the employee number. |
@@ -3246,11 +3517,43 @@ constants of `accounts_decide.go` and `accounts_worker.go` — and `no_employmen
 `account_email_missing` are judged by the person query rather than read off the link,
 so the item stands while the condition does.
 
+**The provider items** (delivery B, Entra design D7; `accounts_attention.go`) are
+`staff:manage`'s alone, the same way, and read from the person's
+[provider link](#the-provider-link) as the worker wrote it — `AccountLinkAttention`
+answers its `provider`, `announced_at`, `pass_issued_at` and `reported_codes` too —
+and from `settings.provider_status`, what the worker last saw of each provider, never
+by asking the provider at read time. They are named for Entra, as the design names
+them, though their codes are the slot's: a second provider would add its own. One per
+person, as above, unless said:
+
+| `type` | Source | Trigger |
+| --- | --- | --- |
+| `accountNotArrived` | `announced_at` | Staff announced the account more than ninety days ago and the identity link still names no user; `occurredAt` the announcement. |
+| `accountAmbiguousInEntra` | `external_ambiguous` | Two accounts in the directory hold the person's employee number. |
+| `accountAddressTakenInEntra` | `external_address_taken` | The person's work email is another account's in the directory. |
+| `accountSyncedOnPremises` | `external_synced_on_premises` | The account is synchronised from an on-premises directory, whose attributes the provider cannot write. |
+| `accountPrivilegedInEntra` | `external_privileged`, or the reported `privileged` | The account holds an administrative role in the directory; an administrator handles it by hand. |
+| `hireDateNotWritten` | the reported `hire_date_not_written` | The directory refused the hire date. |
+| `licenceUnavailable` | the reported `licence_unavailable:<SKU>` | A licence could not be assigned, none being left — one per person whatever the licences; no title names the licence. |
+| `passUnrevealed` | `pass_issued_at` | A pass issued a day ago or more that nobody has shown; `occurredAt` when it was issued. |
+| `managerNotInEntra` | the code `manager_not_in_entra` | The person's manager has no account in the directory, so the account carries no manager. |
+| `entraNotConnected` | `provider_unavailable`, the status `unconfigured` | Installation item: the provider has no connection yet. |
+| `entraFailing` | `provider_unavailable`, the status `failing`; the reason `credential_invalid` | Installation item: the provider's last check failed — a credential refused, consent withdrawn. |
+| `secretExpiring` | the reason `secret_expiring` | Installation item: the newest valid client secret ends within thirty days. |
+| `secretExpired` | the reason `secret_expired` | Installation item: it has ended. |
+
+The four installation items are one each, `id` the type, `entityId` `settings`,
+`count` the people of the provider's kind whose flag is on and `occurredAt` when the
+worker last checked the provider — raised only while someone has that kind. On a
+provider link `user_gone` raises `accountUserGone` and `invalid_actor`
+`accountFailing`, as on the identity link. The walk over the reasons covers the
+provider's too, so every code the worker records maps to an item.
+
 `id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for
 the person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
 `title` is the person's display name — class C, so it survives the erase — with the
 employment number after it, in brackets, on an employment item of a person who has
-more than one; for the three installation types it is an English sentence, and for the
+more than one; for the installation types it is an English sentence, and for the
 two request counts the type's name. The host words every type from its own catalog, in
 the reader's language, and links a person's item to their page, the two request counts
 to the Absence page and the other three to Settings.
@@ -3363,7 +3666,11 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `accounts_busy` | 409 | `DELETE /people/{id}` while the accounts worker holds the person's `preparing` link; `POST /people/{id}/account/run` and `/disable` while a live lease holds the person's link. |
 | `account_not_managed` | 409 | `POST /people/{id}/account/disable` on HR's self-service link (nothing more is done) or on a user Staff does not manage. The flag is off. |
 | `account_privileged` | 409 | `POST /people/{id}/account/disable` on an Owner, a SystemAdmin or the last active Owner. The flag is off. |
-| `accounts_unavailable` | 503 | `PUT /people/{id}/user` when identity cannot say whether the user is Staff-managed (nothing changed); `POST /accounts/run` and `/people/{id}/account/run` with no provider or identity unreachable; `POST /people/{id}/account/disable` when identity could not be reached — the flag already off. |
+| `account_kind_locked` | 409 | `PUT /people/{id}/account` changing the kind away from `entra` while the person's `entra` link is `enabled` or `disabled`. |
+| `provider_missing` | 400 | `accountKind` on `PUT /people/{id}/account`, or `defaultAccountKind` on `PUT /settings`, naming a provider no enabled module offers (a field error). |
+| `pass_gone` | 409 | `POST /people/{id}/account/pass` when the pass was shown already, has expired, or none was issued. |
+| `provider_refused` | 409 | `POST /people/{id}/account/run` and `/disable` when the person's provider refused a step; the detail carries its code, never its words. |
+| `accounts_unavailable` | 503 | `PUT /people/{id}/user` when identity cannot say whether the user is Staff-managed (nothing changed); `POST /accounts/run` and `/people/{id}/account/run` with no provider or identity unreachable; `POST /people/{id}/account/disable` when identity could not be reached — the flag already off; `POST /people/{id}/account/pass` when no enabled module offers the person's provider or it could not be reached. |
 
 An unknown id is a bare 404 with no body.
 
@@ -3467,7 +3774,7 @@ All under `/api/v1/staff`.
 | `POST /people`, `PUT /people/{id}`, `DELETE /people/{id}`, `PUT /people/{id}/next-of-kin`, `PUT /people/{id}/roles` | `staff:manage` |
 | `GET /people/{id}/user` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `GET /people/{id}/account` | `staff:access`, then the person, `staff:manage` or `staff:personal-data` (otherwise 404) |
-| `PUT /people/{id}/account`, `POST /people/{id}/account/run`, `POST /people/{id}/account/disable`, `POST /accounts/run` | `staff:manage` |
+| `PUT /people/{id}/account`, `POST /people/{id}/account/run`, `POST /people/{id}/account/disable`, `POST /people/{id}/account/pass`, `POST /accounts/run` | `staff:manage` |
 | `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |
 | `PUT /people/{id}/national-id`, `POST /people/{id}/national-id/reveal`, `PUT /people/{id}/bank-account`, `POST /people/{id}/bank-account/reveal` | `staff:personal-data` |
 | `GET /me`, `PUT /me`, `GET /me/events`, `GET /me/documents`, `GET /me/export` | `staff:access`, then a self-service link (otherwise `no_person`) |

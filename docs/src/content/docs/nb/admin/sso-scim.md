@@ -6,6 +6,7 @@ sidebar:
 sources:
   - apps/server/internal/identity
   - apps/server/internal/db/migrations/00058_identity_sso_settings.sql
+  - apps/server/internal/db/migrations/00059_identity_expected_accounts.sql
 ---
 Dette er produksjonsveiledningen for single sign-on for arbeidsstyrken og
 SCIM-provisjonering i Vantigo. Hver installasjon har **høyst én** OpenID
@@ -303,6 +304,42 @@ av SCIM er uprivilegerte, og **Eier-kontoer er beskyttet mot SCIM-endringer** �
 oppdatering, patch eller sletting rettet mot en Eier avvises, noe som holder
 nødtilgangskontoen utenfor provisjoneringssystemets rekkevidde.
 
+### Virksomhetsutvidelsen og ansattnummeret
+
+Ressursen User godtar SCIMs **virksomhetsutvidelse** (enterprise extension),
+`urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` — `employeeNumber`,
+`costCenter`, `organization`, `division`, `department` og `manager` — som beholdes i
+brukerens SCIM-profil, svares tilbake på `GET`, annonseres av `Schemas` og
+`ResourceTypes`, og kan patches på sine egne stier (`urn:…:User:department`). Hver verdi
+er på høyst 256 tegn. Den endrer ingenting i brukerens egen post: særlig blir katalogens
+`employeeNumber` aldri brukerens ansattnummer i Vantigo — bare Ansattes klargjøring eller
+en eiers inntak gjør det kravet ([detaljer](/nb/admin/authentication/#scim)).
+
+Entras standardtilordning av attributter for en egendefinert applikasjon sender den
+allerede: **`employeeId → employeeNumber`** i utvidelsen, og
+`userPrincipalName → userName`. Merk at samme standard sender
+**`mailNickname → externalId`** — e-postkallenavnet, ikke objekt-ID-en. La begge stå som
+de er. Entra matcher en bruker den klargjør, mot målet på ett attributt om gangen, og
+målet må kunne filtrere på det: Vantigo svarer på
+`GET /Users?filter=urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:employeeNumber eq "1042"`
+så vel som `userName eq` og `externalId eq`.
+
+**Kontoer Ansatte kunngjør.** For en person med kontotypen `entra` i Ansatte lar Ansatte
+leverandøren opprette kontoen og kunngjør den for identitetsmodulen
+([den kunngjorte kontoen](/nb/admin/authentication/#den-kunngjorte-kontoen)).
+SCIM-opprettelsen som bringer brukeren, matches i rekkefølge på utvidelsens
+`employeeNumber`, så på `userName` mot det kunngjorte brukerhovednavnet, så på
+`externalId` mot den kunngjorte objekt-ID-en — som bare treffer hvis du tilordner
+`objectId` til `externalId`, siden standarden sender e-postkallenavnet. Et treff gjør
+brukeren styrt av Ansatte og nummerert idet den kommer, uten inntak; revisjonsloggen
+registrerer `account.adopted-from-provider`. En opprettelse uten treff lager en vanlig
+bruker, som før.
+
+For å kontrollere, etter at leverandøren har opprettet en persons konto og
+klargjøringsrunden har kjørt: brukeren vises på siden **Brukere** styrt av Ansatte med
+personens ansattnummer og ikke ventende, og personens fane Konto i Ansatte viser
+Vantigo-kontoen aktiv.
+
 ### Tokenrotasjon med overlapp
 
 1. Velg **Nytt token**. Siden et token finnes, spør kortet først, «Utstede et nytt
@@ -420,9 +457,13 @@ nytt `SCIM_TOKEN` og gi det til katalogen.
 
 ## Ansatte i en føderert installasjon
 
-Med SSO eller SCIM på er [autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen)
-føderert: identitetsleverandøren eier kontoene, og Ansattes kontoklargjøring kobler seg
-bare til dem. Den oppretter aldri en bruker og sender aldri en invitasjon. For hver
+Ansatte bestemmer **per person**, etter personens kontotype; ved oppgraderingen som
+innførte typene, ble hver person og standarden satt fra
+[autoritetsmodusen](/nb/admin/authentication/#autoritetsmodusen) én gang — `external` i
+en føderert installasjon, der SSO eller SCIM er på. Denne delen gjelder typen `external`;
+HR kan gi en person `local` eller, når en leverandørmodul er installert, `entra`
+([Ansattes kontotyper](/nb/user/staff/#konto)). For en person av typen `external` eier
+identitetsleverandøren kontoen, og Ansattes kontoklargjøring kobler seg bare til den. Den oppretter aldri en bruker og sender aldri en invitasjon. For hver
 person Ansatte styrer kontoen til, finner den brukeren Ansatte styrer som har personens
 ansattnummer — en bruker identitetsleverandøren opprettet og en eier
 [tok inn](/nb/admin/authentication/#ta-en-eksisterende-bruker-inn-under-ansatte) med det
@@ -435,8 +476,10 @@ senere aktivering i katalogen, eller SCIM slått av, slipper dem ikke inn igjen;
 ansettelse aktiverer dem igjen i identitetsmodulen, og så lenge katalogen fortsatt
 melder dem inaktive, holder den dem ute. Til leverandøren har opprettet
 kontoen og en eier har tatt den inn, melder Ansatte personens konto som ikke funnet.
+For typen `entra` trengs ikke noe inntak: kontoen
+[kunngjøres](#virksomhetsutvidelsen-og-ansattnummeret) og tas inn idet den kommer.
 
-En ventende bruker — en Ansatte opprettet i lokal modus, før SSO eller SCIM ble slått
+En ventende bruker — en Ansatte opprettet for typen `local`, før SSO eller SCIM ble slått
 på, og som ikke har godtatt invitasjonen — blir aldri identitetsleverandørens konto bare
 ved adressen: OIDCs første innlogging med den adressen svarer `account_locked` og
 kobler ingenting, og SCIMs opprettelse av en User med den adressen avvises
