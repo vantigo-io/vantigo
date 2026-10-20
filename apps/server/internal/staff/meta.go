@@ -8,6 +8,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -26,8 +27,10 @@ import (
 // Delivery C adds, for staff:manage alone, whether an Owner has named the
 // roles Staff may give (provisioningRolesSet), asked of identity first,
 // before any snapshot — absent when no module provides accounts — and the
-// capability canRunAccounts. Task 4 (Entra delivery B) adds
-// defaultAccountKind and providers in place of the authority mode.
+// capability canRunAccounts. Entra delivery B adds, for staff:manage alone,
+// the installation's default account kind — absent when no module provides
+// accounts — and every provider in the IdentityProvisioner slot with the
+// status it answers now, asked before any snapshot as identity is.
 
 // GetStaffMeta Get the Staff metadata
 // (GET /api/v1/staff/meta)
@@ -36,9 +39,14 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 	if err != nil {
 		return nil, err
 	}
-	var rolesSet *bool
+	var (
+		rolesSet  *bool
+		providers *[]gen.StaffIdentityProvider
+	)
 	if caller.Manage {
 		rolesSet = s.provisioningRolesSet(ctx)
+		list := s.identityProviders(ctx)
+		providers = &list
 	}
 	q := store.New(s.deps.Pool)
 	managesAnyone, err := managesAnyoneToday(ctx, q, caller)
@@ -69,6 +77,15 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 		AbsenceTypes:         mapRows(types, absenceTypeResponse),
 		HolidaySchemes:       mapRows(schemes, holidaySchemeResponse),
 		ProvisioningRolesSet: rolesSet,
+		Providers:            providers,
+	}
+	if caller.Manage && s.deps.Accounts != nil {
+		set, err := settings(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		kind := gen.StaffAccountKind(set.DefaultAccountKind)
+		meta.DefaultAccountKind = &kind
 	}
 	// HR without the directory still names units and departments (plan
 	// reading 15), so the structure is staff:manage's to read too.
@@ -96,6 +113,44 @@ func (s *server) provisioningRolesSet(ctx context.Context) *bool {
 	}
 	set := len(roles) > 0
 	return &set
+}
+
+// providerUnreachable is the reason GET /meta answers for a provider that
+// could not be asked (StaffIdentityProvider.reason).
+const providerUnreachable = "unreachable"
+
+// identityProviders is every provider in the IdentityProvisioner slot as
+// GET /meta answers it, in the slot's order, each asked on no connection
+// under the call timeout: its key, name and status, or — when it could not
+// be asked (logged) — failing, unreachable, named by its key. Never nil.
+func (s *server) identityProviders(ctx context.Context) []gen.StaffIdentityProvider {
+	out := []gen.StaffIdentityProvider{}
+	for _, p := range s.deps.IdentityProvisioners {
+		if p == nil {
+			continue
+		}
+		info, err := withCallTimeout(ctx, func(ctx context.Context) (contracts.ProviderInfo, error) {
+			return s.providerInfo(ctx, p)
+		})
+		if err != nil {
+			s.logger().WarnContext(ctx, "staff: ask an identity provider its status",
+				slog.String("provider", p.Key()), slog.String("error", err.Error()))
+			reason := providerUnreachable
+			out = append(out, gen.StaffIdentityProvider{
+				Key: p.Key(), Name: p.Key(), Status: gen.Failing, Reason: &reason,
+			})
+			continue
+		}
+		row := gen.StaffIdentityProvider{
+			Key: p.Key(), Name: info.Name, Status: gen.StaffIdentityProviderStatus(info.Status),
+		}
+		if info.Reason != "" {
+			reason := info.Reason
+			row.Reason = &reason
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // managesAnyoneToday is whether the caller's linked person manages anyone

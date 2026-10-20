@@ -189,12 +189,18 @@ RETURNING id, person_id, external_id, state, managed, blocked_reason, last_error
     last_synced_at, last_spec_hash, synced_employee_number, disable_requested_at;
 
 -- name: RequestAccountDisable :exec
--- RequestAccountDisable records on the person's link, when it names a user,
--- that Disable now asked for the user to be disabled — the first request's
+-- RequestAccountDisable records on the person's link, when it names a user
+-- or the person's provider link names an external account not deleted
+-- (Entra design D7: Disable now deactivates both), that Disable now asked
+-- for the user to be disabled — the first request's
 -- instant kept — in the transaction that turns the flag off, so a disable
 -- that never reaches identity is the worker's to finish (Task 4c review M1).
-UPDATE staff.identity_links SET disable_requested_at = coalesce(disable_requested_at, @now::timestamptz)
-WHERE person_id = @person_id AND provider = 'identity' AND external_id IS NOT NULL;
+UPDATE staff.identity_links AS il SET disable_requested_at = coalesce(il.disable_requested_at, @now::timestamptz)
+WHERE il.person_id = @person_id AND il.provider = 'identity'
+  AND (il.external_id IS NOT NULL
+    OR EXISTS (SELECT 1 FROM staff.identity_links x
+        WHERE x.person_id = il.person_id AND x.provider <> 'identity'
+          AND x.external_id IS NOT NULL AND x.state <> 'deleted'));
 
 -- name: ReleaseAccountLease :exec
 -- ReleaseAccountLease ends a claim that writes no result — its facts could
@@ -260,15 +266,42 @@ ORDER BY l.person_id, l.provider;
 -- name: AccountPersonAttention :many
 -- AccountPersonAttention is every person not erased whose flag is on with
 -- no employment at all, or with one not ended by @today and without the
--- address the flag names.
+-- address the flag names — which a provider's kind (entra) never lacks: its
+-- provider makes the address (Entra design D7).
 SELECT id, display_name, has_employment FROM (
     SELECT p.id, p.display_name,
         EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id) AS has_employment,
         EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id
             AND (e.end_date IS NULL OR e.end_date >= @today::date)) AS employed,
-        coalesce(CASE WHEN p.account_email_kind = 'private' THEN p.private_email ELSE p.work_email END, '') <> '' AS address_present
+        (p.account_kind NOT IN ('local', 'external')
+            OR coalesce(CASE WHEN p.account_email_kind = 'private' THEN p.private_email ELSE p.work_email END, '') <> '') AS address_present
     FROM staff.people p
     WHERE p.provision_account AND p.erased_at IS NULL
 ) c
 WHERE NOT c.has_employment OR (c.employed AND NOT c.address_present)
 ORDER BY id;
+
+-- name: SetWorkEmailFromProvider :execrows
+-- SetWorkEmailFromProvider writes the address a provider made for a person
+-- who had no work email (Entra design D7) — the one person write the
+-- accounts worker makes — moving the person's revision on, as any write of
+-- the person does. No row is a person who has one by now, or an address
+-- another person holds already (ux_people_work_email_lower): nothing
+-- written.
+UPDATE staff.people AS p SET
+    work_email = @work_email::varchar,
+    revision = p.revision + 1,
+    updated_at = @now::timestamptz
+WHERE p.id = @person_id::bigint AND coalesce(p.work_email, '') = ''
+  AND NOT EXISTS (SELECT 1 FROM staff.people o
+      WHERE o.id <> p.id AND lower(o.work_email) = lower(@work_email::varchar));
+
+-- name: FlaggedAccountKinds :many
+-- FlaggedAccountKinds is how many people not erased whose flag is on hold
+-- each provider's kind (any but local and external): the providers a cycle
+-- asks about though no module offers them, and the count the installation's
+-- provider items carry.
+SELECT account_kind, count(*)::bigint AS people FROM staff.people
+WHERE provision_account AND erased_at IS NULL AND account_kind NOT IN ('local', 'external')
+GROUP BY account_kind
+ORDER BY account_kind;

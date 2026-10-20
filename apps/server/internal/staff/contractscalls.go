@@ -15,7 +15,10 @@ import (
 // own schema: the user directory (deps.Users, identity's
 // contracts.UserDirectory, always composed), account provisioning
 // (deps.Accounts, identity's contracts.AccountProvisioning — delivery C's
-// write direction, staff → identity) and the SMTP seam (deps.SMTPSend,
+// write direction, staff → identity), the identity provisioners
+// (deps.IdentityProvisioners, a provider module's
+// contracts.IdentityProvisioner — Entra delivery B's, staff → a provider's
+// directory, module-boundaries rule 13) and the SMTP seam (deps.SMTPSend,
 // or the platform's guarded mail.SendOutbound) here, and the object store the
 // documents' bytes live in there (delivery A2). Every call is made through
 // one of the thin accessors and through nowhere else, so "what does Staff ask
@@ -188,6 +191,137 @@ func (s *server) accountsUpdate(ctx context.Context, actor contracts.Actor, id u
 		return contracts.AccountRef{}, errAccountsUnavailable
 	}
 	return s.deps.Accounts.Update(ctx, actor, id, spec)
+}
+
+// accountsExpect and accountsUnexpect are identity's announcement of an
+// external account (Entra design D4): the account a provider prepared for a
+// person, so identity adopts the user the provider's SCIM push or the
+// person's first sign-in creates, and its withdrawal when nothing came.
+func (s *server) accountsExpect(ctx context.Context, actor contracts.Actor, spec contracts.ExpectedAccount) error {
+	if err := noteContractCall(ctx, "Accounts.Expect"); err != nil {
+		return err
+	}
+	if s.deps.Accounts == nil {
+		return errAccountsUnavailable
+	}
+	return s.deps.Accounts.Expect(ctx, actor, spec)
+}
+
+func (s *server) accountsUnexpect(ctx context.Context, actor contracts.Actor, employeeNumber string) error {
+	if err := noteContractCall(ctx, "Accounts.Unexpect"); err != nil {
+		return err
+	}
+	if s.deps.Accounts == nil {
+		return errAccountsUnavailable
+	}
+	return s.deps.Accounts.Unexpect(ctx, actor, employeeNumber)
+}
+
+// errProviderUnavailable is every provider accessor's answer when no enabled
+// module offers the provider a person's kind names (the slot lacks its key):
+// the worker records provider_unavailable, a request answers 503.
+var errProviderUnavailable = errors.New("staff: no module offers the identity provider")
+
+// provisioner is the provider in the slot (Deps.IdentityProvisioners) under
+// key — Staff writes a provider's directory (module-boundaries rule 13) —
+// false when no enabled module offers it. It reads the slot alone and calls
+// nothing.
+func (s *server) provisioner(key string) (contracts.IdentityProvisioner, bool) {
+	for _, p := range s.deps.IdentityProvisioners {
+		if p != nil && p.Key() == key {
+			return p, true
+		}
+	}
+	return nil, false
+}
+
+// providerInfo, providerAccount, providerPrepare, providerActivate,
+// providerDeactivate, providerUpdate, providerDelete and providerRevealPass
+// are a provider's accounts (contracts.IdentityProvisioner): each reaches
+// the network, so each is called on no connection of this module's, under
+// the worker's call timeout, and refuses a call inside a transaction. p nil
+// (provisioner found none) answers errProviderUnavailable.
+func (s *server) providerInfo(ctx context.Context, p contracts.IdentityProvisioner) (contracts.ProviderInfo, error) {
+	if err := noteContractCall(ctx, "Provisioner.Provider"); err != nil {
+		return contracts.ProviderInfo{}, err
+	}
+	if p == nil {
+		return contracts.ProviderInfo{}, errProviderUnavailable
+	}
+	return p.Provider(ctx)
+}
+
+func (s *server) providerAccount(ctx context.Context, p contracts.IdentityProvisioner, externalID string) (*contracts.ExternalAccount, error) {
+	if err := noteContractCall(ctx, "Provisioner.Account"); err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return nil, errProviderUnavailable
+	}
+	return p.Account(ctx, externalID)
+}
+
+func (s *server) providerPrepare(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
+	if err := noteContractCall(ctx, "Provisioner.Prepare"); err != nil {
+		return contracts.ExternalAccount{}, err
+	}
+	if p == nil {
+		return contracts.ExternalAccount{}, errProviderUnavailable
+	}
+	return p.Prepare(ctx, actor, spec)
+}
+
+func (s *server) providerActivate(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
+	if err := noteContractCall(ctx, "Provisioner.Activate"); err != nil {
+		return contracts.ExternalAccount{}, err
+	}
+	if p == nil {
+		return contracts.ExternalAccount{}, errProviderUnavailable
+	}
+	return p.Activate(ctx, actor, externalID, spec)
+}
+
+func (s *server) providerDeactivate(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
+	if err := noteContractCall(ctx, "Provisioner.Deactivate"); err != nil {
+		return contracts.ExternalAccount{}, err
+	}
+	if p == nil {
+		return contracts.ExternalAccount{}, errProviderUnavailable
+	}
+	return p.Deactivate(ctx, actor, externalID, spec)
+}
+
+func (s *server) providerUpdate(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, externalID string, spec contracts.ExternalSpec) (contracts.ExternalAccount, error) {
+	if err := noteContractCall(ctx, "Provisioner.Update"); err != nil {
+		return contracts.ExternalAccount{}, err
+	}
+	if p == nil {
+		return contracts.ExternalAccount{}, errProviderUnavailable
+	}
+	return p.Update(ctx, actor, externalID, spec)
+}
+
+func (s *server) providerDelete(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, externalID string) error {
+	if err := noteContractCall(ctx, "Provisioner.Delete"); err != nil {
+		return err
+	}
+	if p == nil {
+		return errProviderUnavailable
+	}
+	return p.Delete(ctx, actor, externalID)
+}
+
+// providerRevealPass is the pass the provider issued for the account, once
+// (contracts.ErrPassGone after): the one place a pass passes through this
+// module, answered to the caller and never logged, stored or put on an event.
+func (s *server) providerRevealPass(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, externalID string) (contracts.Pass, error) {
+	if err := noteContractCall(ctx, "Provisioner.RevealPass"); err != nil {
+		return contracts.Pass{}, err
+	}
+	if p == nil {
+		return contracts.Pass{}, errProviderUnavailable
+	}
+	return p.RevealPass(ctx, actor, externalID)
 }
 
 // smtpSend hands one mail to the installation's SMTP server: Deps.SMTPSend

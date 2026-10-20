@@ -66,17 +66,20 @@ UPDATE staff.people SET revision = revision + 1, updated_at = @now::timestamptz 
 UPDATE staff.settings SET next_employee_number = @next_employee_number WHERE id = 1;
 
 -- name: InsertPerson :one
+-- InsertPerson writes a new person, who takes the installation's default
+-- account kind (00060, Entra design D5) as the settings row holds it.
 INSERT INTO staff.people (
     employee_number, given_name, family_name, display_name, birth_date, gender,
     work_email, phone_work, phone_mobile, phone_private, private_email,
     street, postal_code, city, country, work_country, preferred_language, notes,
-    children_under_12, sole_carer, chronically_ill_children,
+    children_under_12, sole_carer, chronically_ill_children, account_kind,
     created_at, updated_at
 ) VALUES (
     @employee_number, @given_name, @family_name, @display_name, @birth_date, @gender,
     @work_email, @phone_work, @phone_mobile, @phone_private, @private_email,
     @street, @postal_code, @city, @country, @work_country, @preferred_language, @notes,
     @children_under_12, @sole_carer, @chronically_ill_children,
+    (SELECT s.default_account_kind FROM staff.settings s WHERE s.id = 1),
     @now::timestamptz, @now::timestamptz
 )
 RETURNING id;

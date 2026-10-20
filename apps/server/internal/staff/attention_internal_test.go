@@ -96,9 +96,11 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 		{"a manager", callerContext{Person: &manager, Today: today}, 6, 1},
 		// staff:manage's statements include the self-approved absences, the
 		// ferie affected by sickness, the requests and the milestones
-		// (delivery B), and the account items' links and people (delivery C);
-		// in October no holiday item is read.
-		{"staff:manage", callerContext{Manage: true, Today: today}, 12, -1},
+		// (delivery B), the account items' links and people (delivery C), and
+		// the identity providers' recorded status with the people of each
+		// provider's kind (Entra delivery B); in October no holiday item is
+		// read.
+		{"staff:manage", callerContext{Manage: true, Today: today}, 14, -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})

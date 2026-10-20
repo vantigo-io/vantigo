@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 )
 
 // Every reason the accounts worker writes as a link's blocked_reason — each
@@ -16,7 +19,7 @@ import (
 func TestAccountAttention_EveryWorkerReasonIsMapped(t *testing.T) {
 	fset := token.NewFileSet()
 	seen := 0
-	for _, file := range []string{"accounts_decide.go", "accounts_worker.go"} {
+	for _, file := range []string{"accounts_decide.go", "accounts_worker.go", "accounts_provider.go"} {
 		f, err := parser.ParseFile(fset, file, nil, 0)
 		if err != nil {
 			t.Fatalf("parse %s: %v", file, err)
@@ -44,7 +47,50 @@ func TestAccountAttention_EveryWorkerReasonIsMapped(t *testing.T) {
 			return true
 		})
 	}
-	if seen < 19 {
-		t.Errorf("walked %d reasons, want every one (at least nineteen)", seen)
+	if seen < 25 {
+		t.Errorf("walked %d reasons, want every one (at least twenty-five)", seen)
+	}
+}
+
+// Every code a provider may report on its link (contracts.Reported*) and
+// Staff's own manager_not_in_entra raises its item — a licence's whatever
+// its SKU — but pass_not_allowed, which the Account tab says beside the
+// pass; and every status the worker records raises its installation item.
+func TestAccountAttention_EveryProviderCodeIsMapped(t *testing.T) {
+	for code, want := range map[string]gen.StaffStatsAttentionItemType{
+		contracts.ReportedHireDateNotWritten:                 gen.HireDateNotWritten,
+		contracts.ReportedPrivileged:                         gen.AccountPrivilegedInEntra,
+		contracts.ReportedLicenceUnavailable:                 gen.LicenceUnavailable,
+		contracts.ReportedLicenceUnavailable + ":ENTERPRISE": gen.LicenceUnavailable,
+		contracts.ReportedManagerNotFound:                    gen.ManagerNotInEntra,
+		codeManagerNotInEntra:                                gen.ManagerNotInEntra,
+	} {
+		if got, ok := providerCodeItem(code); !ok || got != want {
+			t.Errorf("code %q raises %q (%v), want %q", code, got, ok, want)
+		}
+	}
+	if got, ok := providerCodeItem(contracts.ReportedPassNotAllowed); ok {
+		t.Errorf("pass_not_allowed raises %q, want none", got)
+	}
+	for _, c := range []struct {
+		status, reason string
+		want           gen.StaffStatsAttentionItemType
+	}{
+		{contracts.ProviderUnconfigured, "", gen.EntraNotConnected},
+		{contracts.ProviderUnconfigured, "provider_missing", gen.EntraNotConnected},
+		{contracts.ProviderFailing, "credential_invalid", gen.EntraFailing},
+		{contracts.ProviderFailing, "unreachable", gen.EntraFailing},
+		{contracts.ProviderFailing, "secret_expired", gen.SecretExpired},
+		{contracts.ProviderConnected, "secret_expiring", gen.SecretExpiring},
+	} {
+		if got, ok := providerStatusItem(c.status, c.reason); !ok || got != c.want {
+			t.Errorf("status %s/%s raises %q (%v), want %q", c.status, c.reason, got, ok, c.want)
+		}
+		if _, ok := accountInstallationItems[c.want]; !ok {
+			t.Errorf("%q has no installation sentence", c.want)
+		}
+	}
+	if got, ok := providerStatusItem(contracts.ProviderConnected, ""); ok {
+		t.Errorf("a connected provider raises %q, want none", got)
 	}
 }

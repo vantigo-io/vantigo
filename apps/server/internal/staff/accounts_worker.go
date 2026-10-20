@@ -116,6 +116,9 @@ type accountsRun struct {
 	who   actor
 	fresh bool
 	until time.Time
+	// providers is each identity provider's info as this run asked it, once
+	// (providerStatuses): the provider column's status (Entra design D7).
+	providers map[string]contracts.ProviderInfo
 }
 
 // accountsWorkerRun is the worker's own: the system actor in identity, the
@@ -183,26 +186,33 @@ func (s *server) workersPoll() time.Duration {
 	return defaultWorkersPoll
 }
 
-// accountsCycle is one cycle for run. No provider is nothing to do. The mode
-// is asked once, on no connection; identity unable to answer fails the
-// cycle, which the next poll runs again.
+// accountsCycle is one cycle for run. No provider is nothing to do. The
+// account kinds are seeded first when they were not (account_seed.go); the
+// mode is asked once, on no connection — identity unable to answer fails the
+// cycle, which the next poll runs again — and so is every identity
+// provider's info (providerStatuses), recorded when it changed.
 func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTally, error) {
 	var tally accountsTally
 	if s.deps.Accounts == nil {
 		s.logger().DebugContext(ctx, "staff: no module provides accounts; the accounts cycle does nothing", "worker", accountsWorkerName)
 		return tally, nil
 	}
-	mode, err := withCallTimeout(ctx, s.accountsMode)
+	s.seedAccountKinds(ctx)
+	_, err := withCallTimeout(ctx, s.accountsMode)
 	mismatch := errors.Is(err, contracts.ErrModeMismatch)
 	switch {
 	case mismatch:
-		mode = ""
 		s.logger().WarnContext(ctx, "staff: this process's authority mode differs from the recorded one; only deactivations run",
 			"worker", accountsWorkerName)
 	case err != nil:
 		return tally, fmt.Errorf("staff: read the authority mode: %w", err)
 	}
-	if err := s.prepareAccountLinks(ctx, mode, run.until); err != nil {
+	keys, err := s.providerKeysOfPeople(ctx)
+	if err != nil {
+		return tally, err
+	}
+	run.providers = s.providerStatuses(ctx, keys...)
+	if err := s.prepareAccountLinks(ctx, run.until); err != nil {
 		return tally, err
 	}
 	zone, err := s.settingsZone(ctx)
@@ -225,7 +235,7 @@ func (s *server) accountsCycle(ctx context.Context, run accountsRun) (accountsTa
 			return tally, fmt.Errorf("staff: claim an account link: %w", err)
 		}
 		tally.attempted++
-		if s.workAccountLink(ctx, run, claim, lease, mode, mismatch, now).ok() {
+		if s.workAccountLink(ctx, run, claim, lease, mismatch, now).ok() {
 			tally.done++
 		} else {
 			tally.failed++
@@ -248,8 +258,9 @@ func withCallTimeout[T any](ctx context.Context, call func(context.Context) (T, 
 }
 
 // accountFacts is what one claim reads of the person, in one snapshot: the
-// account columns, the person's row, decide's view of them and the civil day
-// in the settings zone.
+// account columns, the person's row, decide's view of them, the civil day
+// in the settings zone, and for a person whose kind is a provider's their
+// provider link's facts (nil otherwise).
 type accountFacts struct {
 	person           accountPerson
 	row              store.GetPersonRow
@@ -257,6 +268,7 @@ type accountFacts struct {
 	today            time.Time
 	zone             *time.Location
 	createBeforeDays int
+	provider         *providerFacts
 }
 
 // readAccountFacts reads personID's facts at now in one read-only snapshot,
@@ -293,19 +305,27 @@ func (s *server) readAccountFacts(ctx context.Context, personID int64, now time.
 			from = &f.person.provisionFrom.Time
 		}
 		f.decide = accountPersonFacts{
+			Kind:   f.person.accountKind,
 			Erased: f.row.ErasedAt != nil, Flag: f.person.provisionAccount, ProvisionFrom: from,
 			AddressPresent: accountAddress(f.person) != "", EmployeeNumber: f.row.EmployeeNumber, Employments: employments,
+		}
+		if providerKind(f.person.accountKind) {
+			if f.provider, err = readProviderFacts(ctx, q, set, f.row, f.person.accountKind, f.today); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 	return f, err
 }
 
-// spec is what the person's user should look like.
+// spec is what the person's user should look like, with the person's kind,
+// which decides what identity creates (Entra design D5, plan reading 1).
 func (f accountFacts) spec() contracts.AccountSpec {
 	return contracts.AccountSpec{
 		Email: accountAddress(f.person), DisplayName: f.row.DisplayName,
 		PreferredLanguage: f.row.PreferredLanguage, EmployeeNumber: f.row.EmployeeNumber,
+		Kind: f.person.accountKind,
 	}
 }
 
@@ -335,7 +355,7 @@ func (f accountFacts) nextMidnight() time.Time {
 // and the erasure judged again there. A run by hand stops at its budget
 // (until; zero for the worker's own cycle): the people left wait for the
 // worker's next cycle (the law-and-locks review, minor 6).
-func (s *server) prepareAccountLinks(ctx context.Context, mode string, until time.Time) error {
+func (s *server) prepareAccountLinks(ctx context.Context, until time.Time) error {
 	ids, err := store.New(s.deps.Pool).AccountCandidates(ctx)
 	if err != nil {
 		return fmt.Errorf("staff: read the people due an account: %w", err)
@@ -354,7 +374,7 @@ func (s *server) prepareAccountLinks(ctx context.Context, mode string, until tim
 				"person_id", id, "error", err.Error())
 			continue
 		}
-		if err := s.prepareAccountLink(ctx, id, f, mode, now); err != nil {
+		if err := s.prepareAccountLink(ctx, id, f, now); err != nil {
 			s.logger().ErrorContext(ctx, "staff: write a preparing link", "worker", accountsWorkerName,
 				"person_id", id, "error", err.Error())
 		}
@@ -366,8 +386,8 @@ func (s *server) prepareAccountLinks(ctx context.Context, mode string, until tim
 // table, on f (read at now), says the account is due to be prepared and the
 // person has no link: under the person's lock, the flag and the erasure
 // judged again there. A person gone or erased meanwhile is nothing to do.
-func (s *server) prepareAccountLink(ctx context.Context, id int64, f accountFacts, mode string, now time.Time) error {
-	step := decide(accountDecision{Person: f.decide, Mode: mode, CreateBeforeDays: f.createBeforeDays, Today: f.today})
+func (s *server) prepareAccountLink(ctx context.Context, id int64, f accountFacts, now time.Time) error {
+	step := decide(accountDecision{Person: f.decide, CreateBeforeDays: f.createBeforeDays, Today: f.today})
 	if step.Kind != accountStepPrepare {
 		return nil
 	}
@@ -398,6 +418,9 @@ type accountEventPayload struct {
 	Code             string                  `json:"code,omitempty"`
 	Invitation       *accountEventInvitation `json:"invitation,omitempty"`
 	FlagOffMeanwhile bool                    `json:"flagOffMeanwhile,omitempty"`
+	// Codes is a provider link's reported codes after the step (Entra
+	// design D7): codes only, never an address.
+	Codes []string `json:"codes,omitempty"`
 }
 
 type accountEventInvitation struct {
@@ -685,7 +708,7 @@ func (s *server) callAccountStep(ctx context.Context, run accountsRun, step acco
 		case accountStepPrepare:
 			return s.accountsPrepare(ctx, run.actor, f.spec())
 		case accountStepActivate:
-			return s.accountsActivate(ctx, run.actor, *user, contracts.ActivateOpts{FreshInvitation: step.Fresh})
+			return s.accountsActivate(ctx, run.actor, *user, contracts.ActivateOpts{FreshInvitation: step.Fresh, Kind: f.person.accountKind})
 		case accountStepDeactivate:
 			return s.accountsDeactivate(ctx, run.actor, *user)
 		default:
@@ -695,12 +718,16 @@ func (s *server) callAccountStep(ctx context.Context, run accountsRun, step acco
 }
 
 // accountWorked is how one claim ended: whether a call could not be made
-// (failed, retried), whether its facts or its result could not be read or
-// written (err), and whether identity sent the person a new invitation.
+// (failed, retried) on either link, whether its facts or its result could
+// not be read or written (err), whether identity sent the person a new
+// invitation, and a provider's refusal.
 type accountWorked struct {
 	failed         bool
 	err            error
 	invitationSent bool
+	// providerRefusal is the code a provider refused a call with (Entra
+	// design D7), which Run now and Disable now answer provider_refused.
+	providerRefusal string
 }
 
 // ok is whether the claim ended without a failure to retry.
@@ -716,8 +743,12 @@ func invitationSent(before, after *contracts.AccountRef) bool {
 	return before == nil || before.Invitation.State != contracts.InvitationActive
 }
 
-// workAccountLink works one claimed link and writes its result.
-func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim store.ClaimAccountLinkRow, lease uuid.UUID, mode string, mismatch bool, now time.Time) accountWorked {
+// workAccountLink works one claimed link and writes its result: for a
+// person whose kind is a provider's, the provider column first
+// (workProviderLink, accounts_worker_provider.go), then the identity link's
+// chain, which holds every step but a deactivate while the provider is not
+// connected.
+func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim store.ClaimAccountLinkRow, lease uuid.UUID, mismatch bool, now time.Time) accountWorked {
 	log := s.logger().With("worker", accountsWorkerName, "person_id", claim.PersonID)
 	r := newAccountResult(claim)
 	f, err := s.readAccountFacts(ctx, claim.PersonID, now)
@@ -742,18 +773,31 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 		user = &id
 	}
 	// A disable Disable now asked for, the flag still off or the person
-	// erased: the table's "flag off, nothing" does not hold for it — the user
-	// is read first, and deactivated unless identity reports them disabled
-	// already (re-check MEDIUM-1), at every poll while it fails, as a
-	// leaver's is (review M1). The flag on again, for a person not erased, is
-	// HR's wish for the account: the request lapses.
+	// erased: the table's "flag off, nothing" does not hold for it — the
+	// provider's account is deactivated first, then the user is read, and
+	// deactivated unless identity reports them disabled already (re-check
+	// MEDIUM-1), at every poll while it fails, as a leaver's is (review M1).
+	// The flag on again, for a person not erased, is HR's wish for the
+	// account: the request lapses.
 	if r.disableRequested != nil {
 		if !f.decide.Flag || f.decide.Erased {
+			var provider providerOutcome
+			if f.provider != nil {
+				provider = s.workProviderLink(ctx, run, claim, lease, f, identityForProvider(user, nil, false), true, now)
+			}
 			if user == nil {
-				r.disableRequested = nil
-				return accountWorked{err: s.writeAccountResult(ctx, run, r, lease, f, now)}
+				if !provider.failed && provider.err == nil {
+					r.disableRequested = nil
+				} else {
+					r.soon = true
+				}
+				err := s.writeAccountResult(ctx, run, r, lease, f, now)
+				return accountWorked{failed: provider.failed, err: errors.Join(provider.err, err), providerRefusal: provider.refusal}
 			}
 			worked, _ := s.finishRequestedDisable(ctx, run, r, lease, *user, f, now)
+			worked.failed = worked.failed || provider.failed
+			worked.err = errors.Join(provider.err, worked.err)
+			worked.providerRefusal = provider.refusal
 			return worked
 		}
 		r.disableRequested = nil
@@ -762,6 +806,12 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 	if user != nil {
 		if ref, err = s.readAccountRef(ctx, *user, f); err != nil {
 			log.WarnContext(ctx, "staff: read a linked account", "error", err.Error())
+			// The provider column still runs: a leaver's external account is
+			// not left enabled because identity could not answer.
+			var provider providerOutcome
+			if f.provider != nil {
+				provider = s.workProviderLink(ctx, run, claim, lease, f, identityForProvider(user, nil, false), false, now)
+			}
 			r.failedCall(accountStep{Kind: accountStepNone}, err)
 			// A leaver's read is retried at every poll, as their Deactivate is
 			// (reading 25): judged on the facts alone, since the user could not
@@ -769,16 +819,23 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 			if claim.State != linkStateDisabled && deactivationDue(f) {
 				r.soon = true
 			}
-			return accountWorked{failed: r.failed, err: s.writeAccountResult(ctx, run, r, lease, f, now)}
+			werr := s.writeAccountResult(ctx, run, r, lease, f, now)
+			return accountWorked{failed: r.failed || provider.failed, err: errors.Join(provider.err, werr), providerRefusal: provider.refusal}
 		}
+	}
+	// The provider column first, so the announcement precedes the arrival.
+	var provider providerOutcome
+	if f.provider != nil {
+		provider = s.workProviderLink(ctx, run, claim, lease, f, identityForProvider(user, ref, true), false, now)
 	}
 	initial := ref
 	link := accountLinkFacts{
 		State: claim.State, ExternalID: claim.ExternalID, Managed: claim.Managed,
 		SpecChanged:          ref != nil && !bytes.Equal(f.specHash(ref.EmailFollows), claim.LastSpecHash),
 		SyncedEmployeeNumber: deref(claim.SyncedEmployeeNumber),
+		Activated:            claim.State == linkStateActive,
 	}
-	in := accountDecision{Person: f.decide, Link: &link, Ref: ref, Mode: mode, CreateBeforeDays: f.createBeforeDays, Today: f.today, Fresh: run.fresh}
+	in := accountDecision{Person: f.decide, Link: &link, Ref: ref, CreateBeforeDays: f.createBeforeDays, Today: f.today, Fresh: run.fresh}
 	for calls := 0; ; calls++ {
 		step := decide(in)
 		if !step.isCall() {
@@ -788,6 +845,12 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 		if mismatch && step.Kind != accountStepDeactivate {
 			log.InfoContext(ctx, "staff: an account step held by the authority mode mismatch", "step", string(step.Kind))
 			r.held(step)
+			break
+		}
+		if provider.unavailable && step.Kind != accountStepDeactivate {
+			// The provider not connected: the identity link waits with it.
+			r.reported(accountStep{Kind: accountStepNone}, ref)
+			r.soon = true
 			break
 		}
 		if calls == accountsMaxCalls {
@@ -801,6 +864,14 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 		}
 		got, err := s.callAccountStep(ctx, run, step, user, f)
 		if err != nil {
+			if f.provider != nil && step.Kind == accountStepPrepare && errors.Is(err, contracts.ErrAccountNotFound) {
+				// The provider's account has not arrived in identity yet (its
+				// SCIM push, or the person's first sign-in, fulfils the
+				// announcement): nothing to report, looked for at the next poll.
+				r.reported(accountStep{Kind: accountStepNone}, nil)
+				r.soon = true
+				break
+			}
 			if errors.Is(err, contracts.ErrInvalidActor) {
 				log.ErrorContext(ctx, "staff: an account call named no valid actor", "step", string(step.Kind))
 			} else if _, _, answer := accountCallCode(err); !answer {
@@ -840,6 +911,9 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 		if step.Kind == accountStepPrepare || step.Kind == accountStepUpdate {
 			link.SyncedEmployeeNumber = f.row.EmployeeNumber
 		}
+		if step.Kind == accountStepActivate {
+			link.Activated = true
+		}
 		// The spec as the link now records it: after an Update the one it
 		// wrote, so the re-run asks for no second; after a Prepare the user
 		// is compared with it for the first time.
@@ -856,7 +930,10 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 		}
 	}
 	err = s.writeAccountResult(ctx, run, r, lease, f, now)
-	return accountWorked{failed: r.failed, err: err, invitationSent: err == nil && invitationSent(initial, ref)}
+	return accountWorked{
+		failed: r.failed || provider.failed, err: errors.Join(provider.err, err),
+		invitationSent: err == nil && invitationSent(initial, ref), providerRefusal: provider.refusal,
+	}
 }
 
 // writeAccountResult writes r under the person's lock, then the link on the

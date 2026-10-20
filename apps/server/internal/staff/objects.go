@@ -96,12 +96,14 @@ var policyDocumentUpload = ratelimit.Policy{
 
 // limits maps each rate-limited operationId to its policy: the upload, the
 // one operation that writes bytes outside the database, and the account runs,
-// which call identity and may mail (accounts_run.go).
+// which call identity and may mail (accounts_run.go), with the pass, which
+// calls the person's provider (account_pass.go).
 var limits = map[string]ratelimit.Policy{
 	"postStaffPeopleByIdDocuments":      policyDocumentUpload,
 	"postStaffAccountsRun":              policyAccountsRun,
 	"postStaffPeopleByIdAccountRun":     policyAccountAction,
 	"postStaffPeopleByIdAccountDisable": policyAccountAction,
+	"postStaffPeopleByIdAccountPass":    policyAccountAction,
 }
 
 // newServer builds the module's operations over d. It never fails: an object

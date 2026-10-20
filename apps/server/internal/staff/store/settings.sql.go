@@ -94,10 +94,10 @@ func (q *Queries) LockSettings(ctx context.Context) (StaffSetting, error) {
 
 const markAccountKindsSeeded = `-- name: MarkAccountKindsSeeded :exec
 UPDATE staff.settings SET
-    default_account_kind = $1,
+    default_account_kind = $1::varchar,
     account_kind_seeded = true,
-    revision = revision + 1,
-    updated_at = $2::timestamptz
+    revision = revision + CASE WHEN default_account_kind <> $1::varchar THEN 1 ELSE 0 END,
+    updated_at = CASE WHEN default_account_kind <> $1::varchar THEN $2::timestamptz ELSE updated_at END
 WHERE id = 1 AND NOT account_kind_seeded
 `
 
@@ -107,9 +107,10 @@ type MarkAccountKindsSeededParams struct {
 }
 
 // MarkAccountKindsSeeded records that the kinds were seeded, the default
-// kind with them, and moves the revision on, so a settings form read before
-// the seed is a conflict rather than a write of the old default. Nothing
-// when they were seeded already.
+// kind with them, and moves the revision on when the default changed, so a
+// settings form read before the seed is a conflict rather than a write of
+// the old default; a seed that leaves the default as it was (local) moves
+// nothing a form could hold. Nothing when they were seeded already.
 func (q *Queries) MarkAccountKindsSeeded(ctx context.Context, arg MarkAccountKindsSeededParams) error {
 	_, err := q.db.Exec(ctx, markAccountKindsSeeded, arg.DefaultAccountKind, arg.Now)
 	return err

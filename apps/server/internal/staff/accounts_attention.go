@@ -2,9 +2,13 @@ package staff
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -16,6 +20,17 @@ import (
 // <type>/<personId>, names the person and nothing more (no address, no
 // reason beyond the type); the three installation items are one each,
 // entity 'settings', counting the links blocked on them (reading 21).
+//
+// A provider link (Entra design D7) raises its own: its reasons
+// (accountReasonItems), the facts the provider reported on it
+// (providerCodeItems — licence_unavailable once per person, its SKU in no
+// title), a pass not shown within passUnrevealedAfter, and an announcement
+// nothing fulfilled within accountNotArrivedAfter. The provider's own state
+// is the installation's: the status the worker last recorded on
+// settings.provider_status (providerStatusItem), counted over the people of
+// that kind whose flag is on and raised only while someone has the kind.
+// The item types are the design's, named for Entra, though the codes and
+// the slot are generic (plan reading 10).
 
 // settingsEntity is the installation items' entityId: what the host links to
 // the settings.
@@ -58,6 +73,42 @@ var accountReasonItems = map[string]gen.StaffStatsAttentionItemType{
 	reasonEmployeeRoleMissing:  gen.EmployeeRoleMissing,
 	reasonEmployeeRoleUnsafe:   gen.EmployeeRoleUnsafe,
 	reasonModeMismatch:         gen.AccountModeMismatch,
+	// The provider link's reasons (accounts_provider.go). Its
+	// provider_unavailable is judged on settings.provider_status instead
+	// (accountStatusReasons); external_enabled — a delete the provider
+	// refused for an account found enabled, which a deactivate settles
+	// next — is a fault to look at, accountFailing.
+	reasonProviderUnavailable:      gen.EntraNotConnected,
+	reasonExternalAmbiguous:        gen.AccountAmbiguousInEntra,
+	reasonExternalAddressTaken:     gen.AccountAddressTakenInEntra,
+	reasonExternalSyncedOnPremises: gen.AccountSyncedOnPremises,
+	reasonExternalPrivileged:       gen.AccountPrivilegedInEntra,
+	reasonExternalEnabled:          gen.AccountFailing,
+}
+
+// accountStatusReasons are the reasons judged on settings.provider_status,
+// never read off a link: the provider's state is the installation's.
+var accountStatusReasons = map[string]bool{reasonProviderUnavailable: true}
+
+// providerCodeItems is the item each code a provider link's reported_codes
+// may carry raises: the provider's (contracts.Reported*, a licence's with
+// ":" and the SKU after it) and Staff's own manager_not_in_entra.
+// pass_not_allowed raises none: the Account tab says it beside the pass,
+// and nothing on the dashboard would let HR act on it.
+var providerCodeItems = map[string]gen.StaffStatsAttentionItemType{
+	contracts.ReportedHireDateNotWritten: gen.HireDateNotWritten,
+	contracts.ReportedPrivileged:         gen.AccountPrivilegedInEntra,
+	contracts.ReportedLicenceUnavailable: gen.LicenceUnavailable,
+	contracts.ReportedManagerNotFound:    gen.ManagerNotInEntra,
+	codeManagerNotInEntra:                gen.ManagerNotInEntra,
+}
+
+// providerCodeItem is the item code raises, false for none: a licence's
+// code is judged on its part before the SKU.
+func providerCodeItem(code string) (gen.StaffStatsAttentionItemType, bool) {
+	base, _, _ := strings.Cut(code, ":")
+	kind, ok := providerCodeItems[base]
+	return kind, ok
 }
 
 // accountDisableRefusals are the answers a disable asked for can meet —
@@ -76,6 +127,28 @@ var accountInstallationItems = map[gen.StaffStatsAttentionItemType]string{
 	gen.EmployeeRoleMissing: "No Owner has named the roles Staff may give, so no account is enabled",
 	gen.EmployeeRoleUnsafe:  "A role named for Staff grants administration, so no account is given roles",
 	gen.AccountModeMismatch: "A worker's authority mode differs from the API's, so only deactivations run",
+	gen.EntraNotConnected:   "The identity provider is not connected, so no external account is made or changed",
+	gen.EntraFailing:        "The identity provider's connection is failing, so no external account is made or changed",
+	gen.SecretExpiring:      "The identity provider's credential expires soon",
+	gen.SecretExpired:       "The identity provider's credential has expired, so no external account is made or changed",
+}
+
+// providerStatusItem is the installation item a provider's recorded status
+// raises, false for none: unconfigured → entraNotConnected; failing →
+// secretExpired when its credential expired, else entraFailing; connected
+// with a credential about to expire → secretExpiring.
+func providerStatusItem(status, reason string) (gen.StaffStatsAttentionItemType, bool) {
+	switch {
+	case status == contracts.ProviderUnconfigured:
+		return gen.EntraNotConnected, true
+	case status == contracts.ProviderFailing && reason == "secret_expired":
+		return gen.SecretExpired, true
+	case status == contracts.ProviderFailing:
+		return gen.EntraFailing, true
+	case reason == "secret_expiring":
+		return gen.SecretExpiring, true
+	}
+	return "", false
 }
 
 // accountAttention is what the account items are judged on: the links the
@@ -84,8 +157,12 @@ var accountInstallationItems = map[gen.StaffStatsAttentionItemType]string{
 type accountAttention struct {
 	links  []store.AccountLinkAttentionRow
 	people []store.AccountPersonAttentionRow
-	today  time.Time
-	now    time.Time
+	// providers is settings.provider_status, and kinds the people whose
+	// flag is on of each provider's kind.
+	providers map[string]providerStatusSeen
+	kinds     map[string]int64
+	today     time.Time
+	now       time.Time
 }
 
 // readAccountAttention reads the account items' rows on q, a snapshot's.
@@ -97,6 +174,23 @@ func readAccountAttention(ctx context.Context, q *store.Queries, today, now time
 	}
 	if a.people, err = q.AccountPersonAttention(ctx, dayParam(today)); err != nil {
 		return a, fmt.Errorf("staff: read the people's accounts for attention: %w", err)
+	}
+	set, err := q.GetSettings(ctx)
+	if err != nil {
+		return a, fmt.Errorf("staff: read the settings for attention: %w", err)
+	}
+	if len(set.ProviderStatus) > 0 {
+		if err := json.Unmarshal(set.ProviderStatus, &a.providers); err != nil {
+			return a, fmt.Errorf("staff: read the providers' status for attention: %w", err)
+		}
+	}
+	kinds, err := q.FlaggedAccountKinds(ctx)
+	if err != nil {
+		return a, fmt.Errorf("staff: read the people's account kinds for attention: %w", err)
+	}
+	a.kinds = make(map[string]int64, len(kinds))
+	for _, k := range kinds {
+		a.kinds[k.AccountKind] = k.People
 	}
 	return a, nil
 }
@@ -119,7 +213,8 @@ func accountLinkFailing(l store.AccountLinkAttentionRow, now time.Time) bool {
 		return l.DisableRequestedAt != nil && !accountDisableRefusals[deref(l.BlockedReason)] &&
 			(l.LastError != nil || !now.Before(l.DisableRequestedAt.Add(disableOverdueAfter)))
 	}
-	return deref(l.BlockedReason) == reasonInvalidActor || (l.LastError != nil && l.Attempts >= accountsMaxAttempts)
+	reason := deref(l.BlockedReason)
+	return reason == reasonInvalidActor || reason == reasonExternalEnabled || (l.LastError != nil && l.Attempts >= accountsMaxAttempts)
 }
 
 // items is the account items.
@@ -141,9 +236,12 @@ func (a accountAttention) items() []gen.StaffStatsAttentionItem {
 			}
 			out = append(out, personItem(gen.AccountFailing, l.PersonID, l.PersonID, title, l.UpdatedAt))
 		}
+		if l.Provider != linkProviderIdentity && !l.Erased && l.ProvisionAccount {
+			out = append(out, a.providerLinkItems(l)...)
+		}
 		reason := deref(l.BlockedReason)
 		kind, ok := accountReasonItems[reason]
-		if !ok || accountPersonReasons[reason] || kind == gen.AccountFailing {
+		if !ok || accountPersonReasons[reason] || accountStatusReasons[reason] || kind == gen.AccountFailing {
 			continue
 		}
 		// A flag that is off, or an erased record, raises only the refusal a
@@ -176,6 +274,63 @@ func (a accountAttention) items() []gen.StaffStatsAttentionItem {
 	}
 	for _, item := range installation {
 		out = append(out, *item)
+	}
+	out = append(out, a.providerItems()...)
+	// One item per type and person: a person's two links may raise the same
+	// (accountFailing on both, a privileged account reported and refused).
+	seen := make(map[string]bool, len(out))
+	return slices.DeleteFunc(out, func(item gen.StaffStatsAttentionItem) bool {
+		if seen[item.Id] {
+			return true
+		}
+		seen[item.Id] = true
+		return false
+	})
+}
+
+// providerLinkItems is what one provider link raises beside its reason: the
+// codes the provider reported (one item per type, licence_unavailable once
+// whatever its SKUs), a pass issued and not shown within
+// passUnrevealedAfter, and an announcement nothing fulfilled within
+// accountNotArrivedAfter. Each names the person only.
+func (a accountAttention) providerLinkItems(l store.AccountLinkAttentionRow) []gen.StaffStatsAttentionItem {
+	var out []gen.StaffStatsAttentionItem
+	for _, code := range l.ReportedCodes {
+		if kind, ok := providerCodeItem(code); ok {
+			out = append(out, personItem(kind, l.PersonID, l.PersonID, l.DisplayName, l.UpdatedAt))
+		}
+	}
+	if l.PassIssuedAt != nil && !a.now.Before(l.PassIssuedAt.Add(passUnrevealedAfter)) {
+		out = append(out, personItem(gen.PassUnrevealed, l.PersonID, l.PersonID, l.DisplayName, *l.PassIssuedAt))
+	}
+	if l.AnnouncedAt != nil && !l.IdentityLinked && !a.now.Before(l.AnnouncedAt.Add(accountNotArrivedAfter)) {
+		out = append(out, personItem(gen.AccountNotArrived, l.PersonID, l.PersonID, l.DisplayName, *l.AnnouncedAt))
+	}
+	return out
+}
+
+// providerItems is the installation's items from each provider's recorded
+// status, raised only while people whose flag is on have its kind, and
+// counting them.
+func (a accountAttention) providerItems() []gen.StaffStatsAttentionItem {
+	var out []gen.StaffStatsAttentionItem
+	keys := make([]string, 0, len(a.providers))
+	for key := range a.providers {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		seen := a.providers[key]
+		people := a.kinds[key]
+		kind, ok := providerStatusItem(seen.Status, seen.Reason)
+		if !ok || people == 0 {
+			continue
+		}
+		count := int32(people)
+		out = append(out, gen.StaffStatsAttentionItem{
+			Id: string(kind), Type: kind, Title: accountInstallationItems[kind], OccurredAt: seen.CheckedAt,
+			EntityId: settingsEntity, Count: &count,
+		})
 	}
 	return out
 }

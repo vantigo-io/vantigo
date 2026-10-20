@@ -12,6 +12,29 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearPassIssued = `-- name: ClearPassIssued :execrows
+UPDATE staff.identity_links SET pass_issued_at = NULL, updated_at = $1::timestamptz
+WHERE person_id = $2 AND provider = $3 AND pass_issued_at IS NOT NULL
+`
+
+type ClearPassIssuedParams struct {
+	Now      time.Time
+	PersonID int64
+	Provider string
+}
+
+// ClearPassIssued records that the pass the provider issued on the person's
+// link under @provider was shown (or is gone): pass_issued_at cleared, so
+// the Account tab no longer offers it and passUnrevealed is not raised.
+// Neither the person's revision nor the claim's lease moves.
+func (q *Queries) ClearPassIssued(ctx context.Context, arg ClearPassIssuedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, clearPassIssued, arg.Now, arg.PersonID, arg.Provider)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deletePersonLink = `-- name: DeletePersonLink :exec
 DELETE FROM staff.identity_links WHERE person_id = $1 AND provider = 'identity'
 `

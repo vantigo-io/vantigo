@@ -20,7 +20,10 @@ import (
 // Account was asked about with the address it was given to compare, and
 // every write (writes). Its writes act as identity's provider would on the
 // users it holds (Task 4b): Prepare finds the managed user holding the
-// number or creates one pending and disabled by Staff; Activate enables a
+// number or, for the local kind (or none named), creates one pending and
+// disabled by Staff — a link-only kind (external, entra) answers
+// ErrAccountNotFound instead, as identity does; Prepare and Activate record
+// the kind they were given (callKinds); Activate enables a
 // user Staff disabled and invites a pending one; Deactivate disables for
 // Staff; Update writes the number; Expect holds the announcement by the
 // number's key, replacing one it had, and Unexpect withdraws it (Entra
@@ -64,6 +67,16 @@ type fakeAccounts struct {
 	// expected is the announcements Expect holds, by
 	// contracts.NormalizeEmployeeNumber's key, until Unexpect withdraws one.
 	expected map[string]contracts.ExpectedAccount
+	// kinds is the account kind each Prepare and Activate named, in order,
+	// as "<method>:<kind>" (Entra design D5: the kind travels on the call).
+	kinds []string
+}
+
+// callKinds is the "<method>:<kind>" of every Prepare and Activate so far.
+func (f *fakeAccounts) callKinds() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.kinds)
 }
 
 // blockUntil holds every call of method until release is closed or the
@@ -283,6 +296,7 @@ func (f *fakeAccounts) Prepare(_ context.Context, actor contracts.Actor, spec co
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.kinds = append(f.kinds, "Prepare:"+spec.Kind)
 	for _, ref := range f.users {
 		if contracts.SameEmployeeNumber(ref.EmployeeNumber, spec.EmployeeNumber) {
 			if !ref.Managed {
@@ -290,6 +304,10 @@ func (f *fakeAccounts) Prepare(_ context.Context, actor contracts.Actor, spec co
 			}
 			return ref, nil
 		}
+	}
+	// A link-only kind finds only, as identity does (contracts.AccountSpec.Kind).
+	if spec.Kind == contracts.AccountKindExternal || spec.Kind == contracts.AccountKindEntra {
+		return contracts.AccountRef{}, contracts.ErrAccountNotFound
 	}
 	ref := contracts.AccountRef{
 		UserID: uuid.New(), State: contracts.AccountStatePending, DisabledBy: contracts.DisabledByStaff, Managed: true,
@@ -317,6 +335,7 @@ func (f *fakeAccounts) Activate(ctx context.Context, actor contracts.Actor, id u
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.kinds = append(f.kinds, "Activate:"+opts.Kind)
 	ref, ok := f.users[id]
 	switch {
 	case !ok:

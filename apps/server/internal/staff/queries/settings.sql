@@ -76,12 +76,13 @@ WHERE NOT (SELECT s.account_kind_seeded FROM staff.settings s WHERE s.id = 1);
 
 -- name: MarkAccountKindsSeeded :exec
 -- MarkAccountKindsSeeded records that the kinds were seeded, the default
--- kind with them, and moves the revision on, so a settings form read before
--- the seed is a conflict rather than a write of the old default. Nothing
--- when they were seeded already.
+-- kind with them, and moves the revision on when the default changed, so a
+-- settings form read before the seed is a conflict rather than a write of
+-- the old default; a seed that leaves the default as it was (local) moves
+-- nothing a form could hold. Nothing when they were seeded already.
 UPDATE staff.settings SET
-    default_account_kind = @default_account_kind,
+    default_account_kind = @default_account_kind::varchar,
     account_kind_seeded = true,
-    revision = revision + 1,
-    updated_at = @now::timestamptz
+    revision = revision + CASE WHEN default_account_kind <> @default_account_kind::varchar THEN 1 ELSE 0 END,
+    updated_at = CASE WHEN default_account_kind <> @default_account_kind::varchar THEN @now::timestamptz ELSE updated_at END
 WHERE id = 1 AND NOT account_kind_seeded;
