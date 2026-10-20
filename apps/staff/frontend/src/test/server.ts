@@ -2459,12 +2459,13 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         return jsonResponse(200, whole(group));
       }
       if (method === "DELETE") {
-        const synced = (state.groupTraits[group.id] ?? []).some((one) => one.syncedAt || one.externalId);
+        const synced = (state.groupTraits[group.id] ?? []).some((one) => one.syncedAt || one.externalId || one.enabled);
         if (synced)
           return staffProblem(409, {
             code: "group_synced",
             title: "Group synced",
-            detail: "A provider has made this group in its directory; archive it instead.",
+            detail:
+              "A provider has the group in its directory, is being sent it, or is turned on for it; archive it instead.",
           });
         state.groups = state.groups.filter((one) => one !== group);
         return new Response(null, { status: 204 });

@@ -84,7 +84,11 @@ export const accountsQueryOptions = () =>
     queryFn: ({ signal }) => request<EntraAccount[]>(`${base}/accounts`, { signal }),
   });
 
-/** The groups the module keeps in the tenant for Staff's groups, deleted ones included (Entra design D14). */
+/** Confirms the adoption of a group the module found by its mail nickname rather than made; idempotent. */
+export const confirmGroupAdoption = (objectId: string) =>
+  request<EntraGroup>(`${base}/groups/${objectId}/confirm`, { method: "POST" });
+
+/** The groups the module keeps in the tenant for Staff's groups, deleted and retired ones included (Entra design D14). */
 export const groupsQueryOptions = () =>
   queryOptions({
     queryKey: [ENTRA_QUERY_KEY, "groups"],

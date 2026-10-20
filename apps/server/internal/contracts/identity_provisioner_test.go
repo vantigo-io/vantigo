@@ -26,7 +26,7 @@ func TestIdentityProvisionerConstants(t *testing.T) {
 // errors.Is tells a provider's answer from identity's.
 func TestIdentityProvisionerErrors_AreDistinct(t *testing.T) {
 	all := []error{ErrExternalAmbiguous, ErrExternalAddressTaken, ErrExternalSyncedOnPremises, ErrExternalPrivileged,
-		ErrExternalUnconfirmed, ErrExternalEnabled, ErrPassGone, ErrProviderUnavailable, ErrGroupNotManageable,
+		ErrExternalUnconfirmed, ErrExternalEnabled, ErrPassGone, ErrProviderUnavailable, ErrGroupNotManageable, ErrGroupUnconfirmed,
 		ErrAccountNotManaged, ErrAccountPrivileged, ErrAccountNotFound, ErrUserGone, ErrInvalidActor}
 	for i, a := range all {
 		for j, b := range all {

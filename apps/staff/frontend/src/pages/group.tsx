@@ -6,39 +6,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import {
-  archiveGroup,
-  deleteGroup,
-  groupQueryOptions,
-  groupTraitsQueryOptions,
-  type StaffGroup,
-  type StaffGroupProvider,
-} from "../api/groups";
+import { archiveGroup, deleteGroup, groupQueryOptions, groupTraitsQueryOptions, type StaffGroup } from "../api/groups";
 import { personQueryOptions } from "../api/people";
 import { NotFoundError, STAFF_QUERY_KEY } from "../api/request";
 import { structureQueryOptions } from "../api/structure";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
+import { groupDeletable } from "../lib/groups";
 import { GROUPS_ROUTE_PATH } from "../lib/routes";
 import { GroupFormModal } from "./-group-form-modal";
 import { GroupMembers, GroupOwners } from "./-group-members";
 import { GroupProviders } from "./-group-traits";
 
-/** Whether a provider ever made or found the group: then it is archived, never deleted (`group_synced`). */
-const everSynced = (providers: StaffGroupProvider[]) =>
-  providers.some(
-    (provider) =>
-      provider.syncedAt !== undefined ||
-      provider.externalId !== undefined ||
-      provider.state === "synced" ||
-      provider.state === "retired" ||
-      provider.state === "deleted",
-  );
-
 /**
  * One group (Entra design D9, D10, D14): the header with its kind and its
  * rule in words, *Edit*, *Archive* with a confirmation and *Delete* while no
- * provider ever made it; the members — HR's for a listed group, the rule's,
+ * provider has it, holds it or is turned on for it (the server's rule); the members — HR's for a listed group, the rule's,
  * read-only, for a derived one — the owners, and one card per provider in
  * the slot with the traits it declares. An archived group is read-only.
  */
@@ -88,7 +71,7 @@ export const GroupPage = () => {
   if (!group.data) return <ContentSkeleton rows={6} rowHeight={44} />;
   const data = group.data;
   const archived = Boolean(data.archivedAt);
-  const deletable = traits.data !== undefined && !everSynced(traits.data.providers);
+  const deletable = traits.data !== undefined && groupDeletable(traits.data.providers);
 
   const confirmArchive = () =>
     modals.openConfirmModal({

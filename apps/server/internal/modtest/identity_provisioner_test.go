@@ -380,6 +380,45 @@ func TestFakeIdentityProvisioner_Groups(t *testing.T) {
 	}
 }
 
+// A group SetGroupUnconfirmed marks is an adoption nobody confirmed:
+// EnsureGroup and SetMembers answer ErrGroupUnconfirmed, recorded, and
+// change nothing; confirmed, they act again; DeleteGroup forgets it.
+func TestFakeIdentityProvisioner_AnUnconfirmedGroupRefusesItsWrites(t *testing.T) {
+	ctx := context.Background()
+	f, _ := newTestProvisioner()
+	spec := contracts.GroupSpec{GroupID: "9", Name: "Found", Values: map[string]any{"type": "security"}, OwnerExternalIDs: []string{"o1"}}
+	f.SetGroupUnconfirmed("9", true)
+	if g, err := f.EnsureGroup(ctx, fakeWorker, spec); !errors.Is(err, contracts.ErrGroupUnconfirmed) || g.ExternalID != "" {
+		t.Errorf("EnsureGroup of an unconfirmed group = %+v, %v; want ErrGroupUnconfirmed", g, err)
+	}
+	if _, err := f.SetMembers(ctx, fakeWorker, "9", []string{"a"}); !errors.Is(err, contracts.ErrGroupUnconfirmed) {
+		t.Errorf("SetMembers of an unconfirmed group = %v, want ErrGroupUnconfirmed", err)
+	}
+	if f.Owners("9") != nil {
+		t.Error("an unconfirmed group was written")
+	}
+	f.SetGroupUnconfirmed("9", false)
+	if g, err := f.EnsureGroup(ctx, fakeWorker, spec); err != nil || g.ExternalID == "" {
+		t.Errorf("EnsureGroup once confirmed = %+v, %v; want the group", g, err)
+	}
+	f.SetGroupUnconfirmed("9", true)
+	if err := f.DeleteGroup(ctx, fakeWorker, "9"); err != nil || f.Owners("9") != nil {
+		t.Errorf("DeleteGroup of an unconfirmed group = %v, want it forgotten", err)
+	}
+	if _, err := f.EnsureGroup(ctx, fakeWorker, spec); err != nil {
+		t.Errorf("EnsureGroup after the delete = %v, want the mark gone with the group", err)
+	}
+	n := 0
+	for _, c := range f.Calls() {
+		if c.Method == "EnsureGroup" || c.Method == "SetMembers" {
+			n++
+		}
+	}
+	if n != 4 {
+		t.Errorf("%d group calls recorded, want the refused ones too (4)", n)
+	}
+}
+
 // The option presets the slot: the harness's Deps carry the fake.
 func TestWithIdentityProvisioners_PresetsTheSlot(t *testing.T) {
 	f, _ := newTestProvisioner()

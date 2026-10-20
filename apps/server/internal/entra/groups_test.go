@@ -10,10 +10,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/entra/graphtest"
+	"github.com/vantigo-io/vantigo/server/internal/entra/store"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // The groups (plan task 4, Entra design D10, D14): GroupTraits from the
@@ -364,37 +367,160 @@ func TestEnsureGroup_RefusesAGroupItMayNotWrite(t *testing.T) {
 	}
 }
 
-func TestEnsureGroup_AdoptsAGroupHoldingTheNickname(t *testing.T) {
+// A group found holding the nickname is adopted untrusted (the review's
+// HIGH 1): its row recorded, nothing written to the tenant — no name, no
+// owner, no member — and every write answers ErrGroupUnconfirmed until a
+// holder of entra:manage confirms it; then EnsureGroup does what adoption
+// did. The module never deletes a group it did not make.
+func TestEnsureGroup_AnAdoptedGroupIsUntrustedUntilConfirmed(t *testing.T) {
 	t.Parallel()
 	l := newLifecycle(t)
-	kari, ola := l.person(t, "kari"), l.person(t, "ola")
-	found := l.g.AddGroup(graphtest.Group{DisplayName: "Engineers (old)", MailNickname: "engineering", SecurityEnabled: true, Owners: []string{kari}})
+	ctx := context.Background()
+	kari, ola, per := l.person(t, "kari"), l.person(t, "ola"), l.person(t, "per")
+	found := l.g.AddGroup(graphtest.Group{DisplayName: "Engineers (old)", MailNickname: "engineering", SecurityEnabled: true,
+		Owners: []string{kari}, Members: []string{per}})
+
+	mark := len(l.g.Calls())
+	if out, err := l.p.EnsureGroup(ctx, staffActor, groupSpec(security(), kari, ola)); !errors.Is(err, contracts.ErrGroupUnconfirmed) || out.ExternalID != "" {
+		t.Fatalf("EnsureGroup of a found group: %+v %v, want ErrGroupUnconfirmed", out, err)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE object_id = $1::uuid AND group_id = '17' AND NOT created_by_us
+	    AND adoption_confirmed_at IS NULL AND state = 'present'`, found.ID); n != 1 {
+		t.Error("the adopted group's row")
+	}
+	if ev := l.events(t, "entra.group.adopted"); len(ev) != 1 || !slices.Equal(ev[0], []string{"type:security", "refused:adoption_unconfirmed"}) {
+		t.Errorf("the adopted event: %v", ev)
+	}
+	if _, err := l.p.EnsureGroup(ctx, staffActor, groupSpec(security(), kari, ola)); !errors.Is(err, contracts.ErrGroupUnconfirmed) {
+		t.Errorf("EnsureGroup again: %v, want ErrGroupUnconfirmed", err)
+	}
+	if _, err := l.p.SetMembers(ctx, staffActor, "17", []string{ola}); !errors.Is(err, contracts.ErrGroupUnconfirmed) {
+		t.Errorf("SetMembers of an unconfirmed group: %v, want ErrGroupUnconfirmed", err)
+	}
+	for _, action := range []string{"entra.group.updated", "entra.group.members_set"} {
+		if ev := l.events(t, action); len(ev) != 1 || !hasCode(ev[0], "refused:adoption_unconfirmed") {
+			t.Errorf("the %s events: %v, want refused:adoption_unconfirmed", action, ev)
+		}
+	}
+	if got := writes(l.graphCalls(mark)); len(got) != 0 {
+		t.Errorf("writes to an unconfirmed group: %q", got)
+	}
+	if g := l.group(t, found.ID); g.DisplayName != "Engineers (old)" || !sameSet(g.Owners, []string{kari}) || !sameSet(g.Members, []string{per}) {
+		t.Errorf("the unconfirmed group was changed: %+v", g)
+	}
+
+	// Confirmed: 403 without entra:manage, 404 unknown, then 200 and
+	// audited once; a second confirmation is answered as it is.
+	confirm := groupsPath + "/" + found.ID + "/confirm"
+	if r := l.h.SignIn(t).Do(http.MethodPost, confirm, nil); r.Status != http.StatusForbidden {
+		t.Errorf("confirm without entra:manage: %d, want 403", r.Status)
+	}
+	m, managerID := manager(t, l.h)
+	if r := m.Do(http.MethodPost, groupsPath+"/"+uuid.NewString()+"/confirm", nil); r.Status != http.StatusNotFound {
+		t.Errorf("confirm an unknown group: %d, want 404", r.Status)
+	}
+	for range 2 {
+		r := m.Do(http.MethodPost, confirm, nil)
+		if r.Status != http.StatusOK {
+			t.Fatalf("confirm: %d %s", r.Status, r.Body)
+		}
+		var g gen.EntraGroup
+		r.JSON(&g)
+		if g.ObjectId.String() != found.ID || g.CreatedByUs || g.AdoptionConfirmedAt == nil {
+			t.Errorf("the confirmed group: %+v", g)
+		}
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.group.adoption_confirmed' AND actor_user_id = $1
+	    AND object_id = $2::uuid`, managerID, found.ID); n != 1 {
+		t.Errorf("%d adoption_confirmed events, want one", n)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE object_id = $1::uuid AND adoption_confirmed_by_user_id = $2`, found.ID, managerID); n != 1 {
+		t.Error("the confirmation is not kept on the row")
+	}
 
 	out := l.ensure(t, groupSpec(security(), kari, ola))
 	if out.Created || out.ExternalID != found.ID {
-		t.Fatalf("EnsureGroup answered %+v, want the found group adopted", out)
+		t.Fatalf("EnsureGroup after the confirmation answered %+v", out)
 	}
-	g := l.group(t, found.ID)
-	if g.DisplayName != "Engineering" || !sameSet(g.Owners, []string{kari, ola, l.g.ServicePrincipalID}) {
-		t.Errorf("the adopted group: %+v", g)
+	if g := l.group(t, found.ID); g.DisplayName != "Engineering" || !sameSet(g.Owners, []string{kari, ola, l.g.ServicePrincipalID}) {
+		t.Errorf("the confirmed group: %+v", g)
 	}
-	if n := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE object_id = $1::uuid AND NOT created_by_us AND state = 'present'`, found.ID); n != 1 {
-		t.Error("the adopted group's row")
-	}
-	ev := l.events(t, "entra.group.adopted")
-	if len(ev) != 1 || !slices.Equal(ev[0], []string{"type:security", "changed:displayName", "changed:description", "owners_added:2"}) {
-		t.Errorf("the adopted event: %v", ev)
-	}
-	if n := countCalls(l.g.Calls(), http.MethodPost, "/v1.0/groups"); n != 0 {
-		t.Errorf("%d groups created", n)
+	if result, err := l.p.SetMembers(ctx, staffActor, "17", []string{ola}); err != nil || result.Added != 1 || result.Removed != 1 {
+		t.Errorf("SetMembers after the confirmation: %+v %v", result, err)
 	}
 
-	// Adopted with another type: the type cannot change.
+	// Let go: the tenant keeps a group the module did not make.
+	mark = len(l.g.Calls())
+	if err := l.p.DeleteGroup(ctx, staffActor, "17"); err != nil {
+		t.Fatal(err)
+	}
+	if got := writes(l.graphCalls(mark)); len(got) != 0 {
+		t.Errorf("DeleteGroup of an adopted group wrote %q", got)
+	}
+	if g := l.group(t, found.ID); g.Deleted {
+		t.Error("the adopted group was deleted in the tenant")
+	}
+	if ev := l.events(t, "entra.group.deleted"); len(ev) != 1 || !slices.Equal(ev[0], []string{"kept_not_ours"}) {
+		t.Errorf("the deleted events: %v", ev)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE object_id = $1::uuid AND state = 'deleted'`, found.ID); n != 1 {
+		t.Error("the adopted group's row is not marked deleted")
+	}
+
+	// Adopted with another type: the type cannot change, and nothing is
+	// recorded.
 	l.g.AddGroup(graphtest.Group{DisplayName: "All", MailNickname: "all", MailEnabled: true, SecurityEnabled: true, GroupTypes: []string{"Unified"}})
-	_, err := l.p.EnsureGroup(context.Background(), staffActor, contracts.GroupSpec{GroupID: "2", Key: "all", Name: "All", Values: security()})
+	_, err := l.p.EnsureGroup(ctx, staffActor, contracts.GroupSpec{GroupID: "2", Key: "all", Name: "All", Values: security()})
 	var te *contracts.GroupTraitError
 	if !errors.As(err, &te) || te.Field != "type" || te.Code != contracts.TraitImmutable {
 		t.Errorf("a Microsoft 365 group found for a security one: %v", err)
+	}
+}
+
+// An unconfirmed adoption deleted by Staff is left to the tenant too, with
+// no call (kept_not_ours).
+func TestDeleteGroup_AnUnconfirmedAdoptionIsLeftToTheTenant(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	ctx := context.Background()
+	found := l.g.AddGroup(graphtest.Group{DisplayName: "Engineers", MailNickname: "engineering", SecurityEnabled: true})
+	if _, err := l.p.EnsureGroup(ctx, staffActor, groupSpec(security())); !errors.Is(err, contracts.ErrGroupUnconfirmed) {
+		t.Fatalf("EnsureGroup: %v", err)
+	}
+	mark := len(l.g.Calls())
+	if err := l.p.DeleteGroup(ctx, staffActor, "17"); err != nil || len(l.g.Calls()) != mark {
+		t.Errorf("DeleteGroup of an unconfirmed adoption: %v, %d calls", err, len(l.g.Calls())-mark)
+	}
+	if g := l.group(t, found.ID); g.Deleted {
+		t.Error("deleted in the tenant")
+	}
+}
+
+// Two Staff groups cannot hold one tenant group (the review's LOW 7): the
+// second Staff group naming the first's nickname is refused, and
+// InsertGroup never re-points another Staff group's row.
+func TestEnsureGroup_TwoStaffGroupsAndOneNickname(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	ctx := context.Background()
+	first := l.ensure(t, groupSpec(security())).ExternalID
+
+	other := contracts.GroupSpec{GroupID: "18", Key: "engineers", Name: "Engineers", Values: map[string]any{"type": "security", "mailNickname": "engineering"}}
+	if _, err := l.p.EnsureGroup(ctx, staffActor, other); !errors.Is(err, contracts.ErrGroupNotManageable) {
+		t.Errorf("a second Staff group on the nickname: %v, want ErrGroupNotManageable", err)
+	}
+	_, err := store.New(l.h.Pool()).InsertGroup(ctx, store.InsertGroupParams{
+		ObjectID: uuid.MustParse(first), GroupID: "18", Key: "engineers", DisplayName: "Engineers", MailNickname: "engineering",
+		Type: "security", CreatedByUs: false, Now: l.h.Now(),
+	})
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("InsertGroup of another Staff group's object: %v, want no row", err)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE object_id = $1::uuid AND group_id = '17' AND key = 'engineering'`, first); n != 1 {
+		t.Error("the first Staff group's row was re-pointed")
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE group_id = '18'`); n != 0 {
+		t.Error("a row was recorded for the second Staff group")
 	}
 }
 
@@ -645,7 +771,8 @@ func TestDeleteGroup_SoftDeletesOnceAndAGroupIsMadeAnew(t *testing.T) {
 	if err := l.p.DeleteGroup(ctx, staffActor, "17"); err != nil || len(l.g.Calls()) != mark {
 		t.Errorf("a group never made: %v, %d calls", err, len(l.g.Calls())-mark)
 	}
-	id := l.ensure(t, groupSpec(security())).ExternalID
+	m365 := func() map[string]any { return map[string]any{"type": "microsoft365"} }
+	id := l.ensure(t, groupSpec(m365())).ExternalID
 	if err := l.p.DeleteGroup(ctx, staffActor, "17"); err != nil {
 		t.Fatal(err)
 	}
@@ -667,7 +794,7 @@ func TestDeleteGroup_SoftDeletesOnceAndAGroupIsMadeAnew(t *testing.T) {
 	}
 
 	// Turned on again: a new group takes the row's place.
-	again := l.ensure(t, groupSpec(security()))
+	again := l.ensure(t, groupSpec(m365()))
 	if !again.Created || again.ExternalID == id {
 		t.Errorf("EnsureGroup after the delete: %+v", again)
 	}
@@ -677,9 +804,73 @@ func TestDeleteGroup_SoftDeletesOnceAndAGroupIsMadeAnew(t *testing.T) {
 
 	// Deleted in the portal: the next EnsureGroup makes it anew too.
 	l.g.EditGroup(again.ExternalID, func(g *graphtest.Group) { g.Deleted = true })
-	third := l.ensure(t, groupSpec(security()))
+	third := l.ensure(t, groupSpec(m365()))
 	if !third.Created || third.ExternalID == again.ExternalID {
 		t.Errorf("EnsureGroup after a delete in the portal: %+v", third)
+	}
+}
+
+// A security group the module made is never deleted in the tenant — Graph
+// deletes one for good — but emptied of its user members and its person
+// owners by reference, the service principal kept an owner, renamed
+// "… (archived)" once and kept, its row retired (the review's MEDIUM 4).
+// Turned on again, the group is found by its nickname and is the module's
+// own still: no confirmation asked.
+func TestDeleteGroup_ASecurityGroupIsEmptiedAndKept(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	ctx := context.Background()
+	kari, ola := l.person(t, "kari"), l.person(t, "ola")
+	members := l.people(t, "member", 23)
+	id := l.ensure(t, groupSpec(security(), kari, ola)).ExternalID
+	if _, err := l.p.SetMembers(ctx, staffActor, "17", members); err != nil {
+		t.Fatal(err)
+	}
+
+	mark := len(l.g.Calls())
+	if err := l.p.DeleteGroup(ctx, staffActor, "17"); err != nil {
+		t.Fatal(err)
+	}
+	g := l.group(t, id)
+	if g.Deleted || len(g.Members) != 0 || g.DisplayName != "Engineering (archived)" || slices.Contains(g.Owners, kari) ||
+		slices.Contains(g.Owners, ola) || !slices.Contains(g.Owners, l.g.ServicePrincipalID) {
+		t.Errorf("the retired group: %+v, want it kept, empty, renamed, the service principal its owner", g)
+	}
+	if n := countCalls(l.graphCalls(mark), http.MethodDelete, "/groups/"+id); n != 0 {
+		t.Error("the security group was deleted")
+	}
+	l.noTrap(t)
+	for _, u := range slices.Concat(members, []string{kari, ola}) {
+		if _, ok := l.g.User(u); !ok {
+			t.Fatalf("user %s is gone", u)
+		}
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE object_id = $1::uuid AND state = 'retired' AND display_name = 'Engineering (archived)'`, id); n != 1 {
+		t.Error("the row is not retired")
+	}
+	ev := l.events(t, "entra.group.retired")
+	if len(ev) != 1 || !slices.Equal(ev[0], []string{"security_kept", "removed:23", "owners_removed:2", "changed:displayName"}) {
+		t.Errorf("the retired events: %v", ev)
+	}
+	mark = len(l.g.Calls())
+	if err := l.p.DeleteGroup(ctx, staffActor, "17"); err != nil || len(l.g.Calls()) != mark {
+		t.Errorf("a second DeleteGroup: %v, %d calls", err, len(l.g.Calls())-mark)
+	}
+	if conn := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE state = 'present'`); conn != 0 {
+		t.Error("a retired group counts as present")
+	}
+
+	// Turned on again: the kept group is found by its nickname, the
+	// module's own, and brought back without a confirmation.
+	out := l.ensure(t, groupSpec(security(), kari))
+	if out.Created || out.ExternalID != id {
+		t.Errorf("EnsureGroup after the retirement: %+v, want the kept group", out)
+	}
+	if g := l.group(t, id); g.DisplayName != "Engineering" || !slices.Contains(g.Owners, kari) {
+		t.Errorf("the group brought back: %+v", g)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.groups WHERE object_id = $1::uuid AND state = 'present' AND created_by_us`, id); n != 1 {
+		t.Error("the row brought back is not the module's, present")
 	}
 }
 
@@ -809,6 +1000,92 @@ func TestUpdate_ReconcilesTheDirectLicences(t *testing.T) {
 	}
 }
 
+// Update removes only the direct licences the module itself assigned (the
+// review's HIGH 2, design reading 9): one an administrator assigned
+// directly survives an Update with no licence named; one the module
+// assigned leaves when the person's groups' licences trait no longer names
+// it; the leaver's strip forgets what the module assigned.
+func TestUpdate_RemovesOnlyTheLicencesTheModuleAssigned(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	const skuE5 = "06ebc4ee-1bb5-47dd-8120-11324bc54e06"
+	const skuVisio = "c5928f49-12ba-48f7-ada3-0d743a3601d5"
+	l.g.Configure(func(g *graphtest.FakeGraph) {
+		g.Skus = append(g.Skus,
+			graphtest.Sku{SkuID: skuE5, PartNumber: "SPE_E5", Enabled: 5, Consumed: 0},
+			graphtest.Sku{SkuID: skuVisio, PartNumber: "VISIOCLIENT", Enabled: 5, Consumed: 0})
+	})
+	spec := joiner("E-1")
+	spec.Licences = nil
+	id := l.prepare(t, spec).ExternalID
+	l.activate(t, id, spec)
+	// An administrator's direct licence, assigned in the portal.
+	l.g.EditUser(id, func(u *graphtest.User) {
+		u.Licences = append(u.Licences, graphtest.LicenceState{SkuID: skuVisio, State: "Active", Error: "None"})
+	})
+	direct := func() []string {
+		var out []string
+		for _, lic := range l.user(t, id).Licences {
+			if lic.AssignedByGroup == "" {
+				out = append(out, lic.SkuID)
+			}
+		}
+		return out
+	}
+	assigned := func() string {
+		return modtest.One[string](t, l.h.Harness, `SELECT array_to_string(licences_assigned, ',') FROM entra.accounts WHERE object_id = $1::uuid`, id)
+	}
+
+	if _, err := l.p.Update(context.Background(), staffActor, id, spec); err != nil {
+		t.Fatal(err)
+	}
+	if got := direct(); !sameSet(got, []string{skuVisio}) {
+		t.Errorf("the direct licences after an Update with none named: %v, want the administrator's kept", got)
+	}
+
+	// A group's licences trait names SPE_E5: the module assigns it.
+	withE5 := spec
+	withE5.Licences = []string{"SPE_E5"}
+	if _, err := l.p.Update(context.Background(), staffActor, id, withE5); err != nil {
+		t.Fatal(err)
+	}
+	if got := direct(); !sameSet(got, []string{skuVisio, skuE5}) {
+		t.Errorf("the direct licences with SPE_E5 named: %v", got)
+	}
+	if got := assigned(); got != skuE5 {
+		t.Errorf("licences_assigned = %q, want the module's SPE_E5 alone", got)
+	}
+
+	// The trait drops it: the module's licence leaves, the administrator's
+	// stays.
+	if _, err := l.p.Update(context.Background(), staffActor, id, spec); err != nil {
+		t.Fatal(err)
+	}
+	if got := direct(); !sameSet(got, []string{skuVisio}) {
+		t.Errorf("the direct licences after the trait dropped SPE_E5: %v, want the administrator's alone", got)
+	}
+	if got := assigned(); got != "" {
+		t.Errorf("licences_assigned = %q, want none", got)
+	}
+	ev := l.events(t, "entra.user.updated")
+	if last := ev[len(ev)-1]; !hasCode(last, "licences_removed:1") {
+		t.Errorf("the updated event: %v", last)
+	}
+
+	// The leaver's strip (C's rule) takes every direct licence, and the
+	// module forgets the ones it assigned.
+	if _, err := l.p.Update(context.Background(), staffActor, id, withE5); err != nil {
+		t.Fatal(err)
+	}
+	l.deactivate(t, id, leaver(withE5))
+	if got := direct(); len(got) != 0 {
+		t.Errorf("the direct licences after the leaver's strip: %v", got)
+	}
+	if got := assigned(); got != "" {
+		t.Errorf("licences_assigned after the strip = %q, want none", got)
+	}
+}
+
 func TestGroupsEndpoint_TheModulesGroupsAndTheirCount(t *testing.T) {
 	t.Parallel()
 	l := newLifecycle(t)
@@ -835,11 +1112,12 @@ func TestGroupsEndpoint_TheModulesGroupsAndTheirCount(t *testing.T) {
 	var groups []gen.EntraGroup
 	r.JSON(&groups)
 	if len(groups) != 2 || groups[0].ObjectId.String() != second || groups[1].ObjectId.String() != first {
-		t.Fatalf("GET /groups: %+v, want Accounts then Engineering", groups)
+		t.Fatalf("GET /groups: %+v, want Accounts (archived) then Engineering", groups)
 	}
 	acc, eng := groups[0], groups[1]
-	if acc.State != gen.EntraGroupStateDeleted || acc.Type != gen.Security || acc.Team || acc.LastMembersAt == nil || acc.GroupId != "18" {
-		t.Errorf("the deleted group: %+v", acc)
+	if acc.State != gen.EntraGroupStateRetired || acc.Type != gen.Security || acc.Team || acc.LastMembersAt == nil || acc.GroupId != "18" ||
+		acc.DisplayName != "Accounts (archived)" || acc.AdoptionConfirmedAt != nil {
+		t.Errorf("the retired group: %+v", acc)
 	}
 	if eng.State != gen.EntraGroupStatePresent || eng.Type != gen.Microsoft365 || !eng.Team || !eng.CreatedByUs || eng.Key != "engineering" ||
 		eng.MailNickname != "engineering" || eng.DisplayName != "Engineering" || eng.LastMembersAt != nil {

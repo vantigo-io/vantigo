@@ -296,10 +296,12 @@ const entraGroupsVersion = 63
 // TestEntraGroups_AppliesAndIsIdempotent proves the migration applies, rolls
 // back and re-applies cleanly, and pins what delivery D's module rests on:
 // entra.groups with every column's type, length, nullability and default,
-// keyed by the object id, one per Staff group id, its type and state held to
-// their values by CHECKs as the baseline's are; and the connection's two new
-// columns, the service principal null and the licences an empty array until
-// a test reads them. The Down drops the table and the two columns.
+// keyed by the object id, one per Staff group id, its type and state
+// (present, deleted, retired) held to their values by CHECKs as the
+// baseline's are, an adoption's confirmation beside it; the connection's two
+// new columns, the service principal null and the licences an empty array
+// until a test reads them; and the accounts' licences_assigned, empty. The
+// Down drops the table and the three columns.
 func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, entraGroupsVersion)
@@ -332,6 +334,8 @@ func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
 		"last_members_at:timestamp with time zone:YES:",
 		"created_at:timestamp with time zone:NO:",
 		"updated_at:timestamp with time zone:NO:",
+		"adoption_confirmed_at:timestamp with time zone:YES:",
+		"adoption_confirmed_by_user_id:uuid:YES:",
 	}; !equalStrings(columns("groups"), want) {
 		t.Errorf("entra.groups columns =\n%s\nwant\n%s", strings.Join(columns("groups"), "\n"), strings.Join(want, "\n"))
 	}
@@ -341,6 +345,10 @@ func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
 		"skus:jsonb:NO:'[]'::jsonb",
 	}) {
 		t.Errorf("entra.connection's last columns = %v, want service_principal_id and skus", tail)
+	}
+	accounts := columns("accounts")
+	if tail := accounts[max(len(accounts)-1, 0):]; !equalStrings(tail, []string{"licences_assigned:ARRAY:NO:'{}'::text[]"}) {
+		t.Errorf("entra.accounts' last column = %v, want licences_assigned", tail)
 	}
 	if cols := primaryKeyColumns(t, ctx, pool, "entra", "groups"); !equalStrings(cols, []string{"object_id"}) {
 		t.Errorf("entra.groups primary key = %v, want [object_id]", cols)
@@ -377,6 +385,9 @@ func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
 	if err := group("1004", "security", "archived"); !checkViolationOf(err, "groups_state_check") {
 		t.Errorf("an unknown state: %v, want groups_state_check", err)
 	}
+	if err := group("1005", "security", "retired"); err != nil {
+		t.Errorf("a retired security group: %v", err)
+	}
 	if _, err := pool.Exec(ctx, `
 		UPDATE entra.connection SET service_principal_id = $1,
 		    skus = '[{"skuId": "6fd2c87f-b296-42f0-b197-1e91e994b900", "skuPartNumber": "ENTERPRISEPACK", "enabled": 25, "consumed": 20}]'
@@ -389,11 +400,11 @@ func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
 		SELECT table_name FROM information_schema.tables WHERE table_schema = 'entra' AND table_name = 'groups'`); len(got) != 0 {
 		t.Errorf("the rollback left entra.groups")
 	}
-	for _, name := range []string{"service_principal_id", "skus"} {
-		if got := staffCollect(t, ctx, pool, name, `
+	for _, c := range [][2]string{{"connection", "service_principal_id"}, {"connection", "skus"}, {"accounts", "licences_assigned"}} {
+		if got := staffCollect(t, ctx, pool, c[1], `
 			SELECT column_name FROM information_schema.columns
-			WHERE table_schema = 'entra' AND table_name = 'connection' AND column_name = $1`, name); len(got) != 0 {
-			t.Errorf("the rollback left entra.connection.%s", name)
+			WHERE table_schema = 'entra' AND table_name = $1 AND column_name = $2`, c[0], c[1]); len(got) != 0 {
+			t.Errorf("the rollback left entra.%s.%s", c[0], c[1])
 		}
 	}
 }

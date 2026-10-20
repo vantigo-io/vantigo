@@ -36,7 +36,7 @@ func getTraits(t *testing.T, c *modtest.Client, id int64) gen.StaffGroupTraits {
 // and the values — an empty object when it stores none.
 func TestGroupTraits_TheDeclarationPerProvider(t *testing.T) {
 	t.Parallel()
-	_, fake, hr := groupProviderHarness(t)
+	h, fake, hr := groupProviderHarness(t)
 	g := createGroup(t, hr, listedGroup("declared"))
 
 	got := getTraits(t, hr, g.Id)
@@ -66,6 +66,13 @@ func TestGroupTraits_TheDeclarationPerProvider(t *testing.T) {
 	p = getTraits(t, hr, g.Id).Providers[0]
 	if p.Status != "failing" || len(p.Traits) != 0 {
 		t.Errorf("a provider that cannot declare: %+v, want failing with no traits", p)
+	}
+	// Turning it on then cannot check the values: 503 provider_unavailable,
+	// nothing written.
+	refused(t, hr.Do(http.MethodPut, groupTraitPath(g.Id, "entra"), map[string]any{"enabled": true, "values": map[string]any{"type": "security"}}),
+		http.StatusServiceUnavailable, "provider_unavailable")
+	if n := h.Count(t, `SELECT count(*) FROM staff.group_traits WHERE group_id = $1`, g.Id); n != 0 {
+		t.Errorf("%d sections written while the provider could not declare", n)
 	}
 	if r := hr.Do(http.MethodGet, groupTraitsPath(999999), nil); r.Status != http.StatusNotFound {
 		t.Errorf("an unknown group: status %d, want 404", r.Status)

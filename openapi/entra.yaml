@@ -293,13 +293,17 @@ components:
                 - codes
             type: object
         EntraGroup:
-            description: 'One group the module keeps in the tenant for a Staff group (Entra design D14), by the directory''s immutable object id: made by the module, or found by its mail nickname and adopted. Its members and its traits are Staff''s; this is the tenant''s side. A deleted group stays, marked deleted.'
+            description: 'One group the module keeps in the tenant for a Staff group (Entra design D14), by the directory''s immutable object id: made by the module, or found by its mail nickname and adopted. Its members and its traits are Staff''s; this is the tenant''s side. A deleted group stays, marked deleted; a security group the module made and Staff let go stays, marked retired: emptied of its people and kept, since the tenant deletes a security group for good.'
             properties:
+                adoptionConfirmedAt:
+                    description: When a holder of entra:manage confirmed the adoption of a group the module found rather than made (POST /groups/{objectId}/confirm). Until then the module writes nothing to that group — no name, no owner, no member, no delete. Absent for one not confirmed, and for one the module made, which needs no confirmation.
+                    format: date-time
+                    type: string
                 createdAt:
                     format: date-time
                     type: string
                 createdByUs:
-                    description: True when the module created the group; false when it found one holding the mail nickname that it may write, and adopted it.
+                    description: True when the module created the group; false when it found one holding the mail nickname that it may write, and adopted it — untrusted until confirmed (adoptionConfirmedAt).
                     type: boolean
                 displayName:
                     description: The name the module last wrote — Staff's name, with " (archived)" after it once Staff archived the group and keeps it.
@@ -321,9 +325,11 @@ components:
                     format: uuid
                     type: string
                 state:
+                    description: present; deleted (soft-deleted in the tenant, or a group the module did not make, left to the tenant); retired (a security group the module made, emptied of its people, renamed "… (archived)" and kept).
                     enum:
                         - present
                         - deleted
+                        - retired
                     type: string
                 team:
                     description: True once the group became a team in Microsoft Teams.
@@ -983,6 +989,42 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: The module's groups
+            tags:
+                - Entra
+            x-vantigo-access: permission:entra:manage
+    /api/v1/entra/groups/{objectId}/confirm:
+        post:
+            description: 'Confirms the adoption of a group the module found holding a Staff group''s mail nickname rather than made. Until it is confirmed the module writes nothing to that group — no name, no description, no owner, no member — and Staff''s sync waits with group_unconfirmed; from then on the module writes to it as to one it made, and Staff''s next cycle adds the owners and writes the name, the description and the members. The module never deletes a group it did not make. Idempotent: a group confirmed already, or one the module made, is answered as it is. Audited entra.group.adoption_confirmed with the actor, once. 404 for a group the module does not keep.'
+            operationId: postEntraGroupsByObjectIdConfirm
+            parameters:
+                - in: path
+                  name: objectId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EntraGroup'
+                    description: OK — the group as confirmed.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the module keeps no group by that object id. The body is empty.
+            summary: Confirm an adopted group
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage

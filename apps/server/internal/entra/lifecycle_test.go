@@ -986,9 +986,16 @@ func TestDeactivate_RunsTheLeaverStepsInOrder(t *testing.T) {
 		t.Errorf("Deactivate answered %+v", acc)
 	}
 	if got, want := writes(l.graphCalls(mark)), []string{
-		"PATCH " + id, "POST revokeSignInSessions", "PATCH " + id, "POST assignLicense", "DELETE $ref", "DELETE $ref",
+		"PATCH " + id, "POST revokeSignInSessions", "PATCH " + id, "POST assignLicense", "DELETE $ref", "DELETE $ref", "POST $batch",
 	}; !slices.Equal(got, want) {
 		t.Errorf("the leaver's writes:\n got %q\nwant %q", got, want)
+	}
+	// The removals go inside one $batch: the user's id never stands in a
+	// request line the client logs (the review's LOW 9).
+	for _, c := range l.graphCalls(mark) {
+		if c.Method == http.MethodDelete && (!c.Batch || !strings.HasSuffix(c.Path, "/members/"+id+"/$ref")) {
+			t.Errorf("a leaver's removal outside a $batch, or not by reference: %+v", c)
+		}
 	}
 	u := l.user(t, id)
 	if u.AccountEnabled || u.SessionsRevokedAt == nil || u.EmployeeLeaveDateTime == nil ||

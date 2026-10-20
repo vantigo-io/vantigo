@@ -107,14 +107,23 @@ func (q *Queries) ClaimGroupTrait(ctx context.Context, arg ClaimGroupTraitParams
 
 const countGroupTraitsSynced = `-- name: CountGroupTraitsSynced :one
 SELECT count(*)::integer FROM staff.group_traits
-WHERE group_id = $1 AND (synced_at IS NOT NULL OR external_id IS NOT NULL)
+WHERE group_id = $1
+  AND (synced_at IS NOT NULL OR external_id IS NOT NULL OR enabled OR lease_until > $2::timestamptz)
 `
 
+type CountGroupTraitsSyncedParams struct {
+	GroupID int64
+	Now     time.Time
+}
+
 // CountGroupTraitsSynced is how many of a group's sections ever reached the
-// provider — synced once, or holding the external group's id — which makes
-// the group one to archive, never delete.
-func (q *Queries) CountGroupTraitsSynced(ctx context.Context, groupID int64) (int32, error) {
-	row := q.db.QueryRow(ctx, countGroupTraitsSynced, groupID)
+// provider — synced once, or holding the external group's id — or may be
+// reaching it now: turned on, or claimed by the worker under a live lease
+// (its first sync in flight, the external id not written yet). Any makes
+// the group one to archive, never delete: a delete would cascade the
+// section away and orphan the group in the provider.
+func (q *Queries) CountGroupTraitsSynced(ctx context.Context, arg CountGroupTraitsSyncedParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countGroupTraitsSynced, arg.GroupID, arg.Now)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err

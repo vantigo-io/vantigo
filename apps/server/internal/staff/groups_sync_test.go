@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -612,5 +613,157 @@ func TestGroupSync_TheLicencesUnionReachesTheSpec(t *testing.T) {
 	spec, _ = w.prov.LastSpec(p.EmployeeNumber)
 	if got, want := spec.Licences, []string{"EMS", "SPE_E3"}; !slices.Equal(got, want) || updates() != before+2 {
 		t.Errorf("the spec's licences after the archive = %v (%d updates), want %v in one more Update", got, updates()-before, want)
+	}
+}
+
+// A group the provider found and adopted and nobody has confirmed there
+// (the review's HIGH 1) is no failure: the section waits pending with
+// group_unconfirmed, nothing counted, no item raised, asked again at the
+// next poll; once confirmed, the next cycle creates it in step and sends the
+// members.
+func TestGroupSync_AnUnconfirmedGroupWaitsForTheConfirmation(t *testing.T) {
+	t.Parallel()
+	w := newGroupWorld(t)
+	a := w.member(t, "Anne", "ext-a", "enabled")
+	g := w.group(t, "found", []int64{a}, nil, security)
+	w.prov.SetGroupUnconfirmed(strconv.FormatInt(g, 10), true)
+
+	w.cycle(t)
+	row := w.section(t, g)
+	if row.State != "pending" || str(row.LastError) != "group_unconfirmed" || row.LastErrorField != nil || row.Attempts != 0 ||
+		row.ExternalID != nil || row.LastValuesHash != nil || row.NextAttemptAt == nil || !row.NextAttemptAt.After(w.h.Now()) {
+		t.Fatalf("the section = %+v, want pending, group_unconfirmed, nothing counted, due at the next poll", row)
+	}
+	if item := groupItem(t, w, g); item != nil {
+		t.Errorf("an unconfirmed group raised %+v", item)
+	}
+	w.later()
+	w.cycle(t)
+	if got := w.rec.groupCalls(); !slices.Equal(got, []string{"EnsureGroup", "EnsureGroup"}) {
+		t.Errorf("group calls while unconfirmed = %v, want EnsureGroup each poll and no SetMembers", got)
+	}
+	if row := w.section(t, g); row.Attempts != 0 || row.State != "pending" {
+		t.Errorf("the section after a second poll = %+v, want pending, nothing counted", row)
+	}
+
+	w.prov.SetGroupUnconfirmed(strconv.FormatInt(g, 10), false)
+	w.later()
+	w.cycle(t)
+	if got := w.rec.groupCalls(); !slices.Equal(got, []string{"EnsureGroup", "EnsureGroup", "EnsureGroup", "SetMembers"}) {
+		t.Errorf("group calls after the confirmation = %v", got)
+	}
+	if row := w.section(t, g); row.State != "synced" || row.LastError != nil || row.ExternalID == nil {
+		t.Errorf("the section after the confirmation = %+v, want synced", row)
+	}
+}
+
+// A value the provider refuses for a group it holds already does not freeze
+// the members (the review's MEDIUM 3): the refusal is kept, failed, with its
+// field, and EnsureGroup is not asked again until the values change — but
+// SetMembers runs in the same claim, and a member leaving or joining
+// afterwards makes the section due at once (writeGroupMembers), the
+// refusal still on the row.
+func TestGroupSync_ATraitRefusalDoesNotFreezeTheMembers(t *testing.T) {
+	t.Parallel()
+	w := newGroupWorld(t)
+	a := w.member(t, "Anne", "ext-a", "enabled")
+	b := w.member(t, "Bjørn", "ext-b", "enabled")
+	c := w.member(t, "Cato", "ext-c", "enabled")
+	g := w.group(t, "ops", []int64{a, b}, nil, security)
+	w.cycle(t)
+	if row := w.section(t, g); row.State != "synced" {
+		t.Fatalf("the section = %+v, want synced", row)
+	}
+
+	// HR changes the type, which the provider refuses, and Bjørn leaves.
+	w.setValues(t, g, map[string]any{"type": "microsoft365"})
+	if _, err := w.q.DeleteGroupMember(context.Background(), store.DeleteGroupMemberParams{GroupID: g, PersonID: b}); err != nil {
+		t.Fatal(err)
+	}
+	w.cycle(t)
+	if got, want := w.rec.groupCalls(), []string{"EnsureGroup", "SetMembers", "EnsureGroup", "SetMembers"}; !slices.Equal(got, want) {
+		t.Errorf("group calls = %v, want %v (the members sent despite the refusal)", got, want)
+	}
+	if got := w.rec.lastMembers(t); !slices.Equal(got, []string{"ext-a"}) {
+		t.Errorf("SetMembers = %v, want [ext-a]: Bjørn left", got)
+	}
+	row := w.section(t, g)
+	if row.State != "failed" || str(row.LastError) != contracts.TraitImmutable || str(row.LastErrorField) != "type" ||
+		row.LastValuesHash == nil || row.NextAttemptAt == nil || row.ExternalID == nil {
+		t.Fatalf("the section = %+v, want failed trait_immutable on type, the values' hash kept, due at the next poll", row)
+	}
+
+	// An unchanged poll asks nothing, and the refusal stays.
+	w.later()
+	w.cycle(t)
+	if got := w.rec.groupCalls(); len(got) != 4 {
+		t.Errorf("group calls after an unchanged poll = %v, want none more", got)
+	}
+	if row := w.section(t, g); row.State != "failed" || str(row.LastError) != contracts.TraitImmutable {
+		t.Errorf("the section after an unchanged poll = %+v, want the refusal kept", row)
+	}
+
+	// Cato joins by HR's PUT: the section is due at once, the members sent,
+	// the refusal kept.
+	do(t, w.hr, http.MethodPut, groupMembersPath(g), map[string]any{"personIds": []int64{a, c}}, http.StatusOK, nil)
+	if row := w.section(t, g); row.NextAttemptAt == nil || row.NextAttemptAt.After(w.h.Now()) {
+		t.Errorf("the section after a member joined = %+v, want due now", row)
+	}
+	w.cycle(t)
+	if got, want := w.rec.groupCalls(), []string{"EnsureGroup", "SetMembers", "EnsureGroup", "SetMembers", "SetMembers"}; !slices.Equal(got, want) {
+		t.Errorf("group calls after a member joined = %v, want %v", got, want)
+	}
+	if got := w.rec.lastMembers(t); !slices.Equal(got, []string{"ext-a", "ext-c"}) {
+		t.Errorf("SetMembers = %v, want [ext-a ext-c]", got)
+	}
+	if row := w.section(t, g); row.State != "failed" || str(row.LastError) != contracts.TraitImmutable || str(row.LastErrorField) != "type" {
+		t.Errorf("the section = %+v, want the refusal kept", row)
+	}
+
+	// HR mends the values: synced.
+	w.setValues(t, g, security)
+	w.cycle(t)
+	if row := w.section(t, g); row.State != "synced" || row.LastError != nil || row.LastErrorField != nil {
+		t.Errorf("the section after the values were mended = %+v, want synced", row)
+	}
+}
+
+// Every group's members are reconciled once a day whatever Staff saw (the
+// review's LOW 6): the members' hash covers the civil day, so the first
+// cycle of a new day sends them again, and drift in the directory — a
+// member added by hand — is undone.
+func TestGroupSync_TheMembersAreReconciledDaily(t *testing.T) {
+	t.Parallel()
+	w := newGroupWorld(t)
+	a := w.member(t, "Anne", "ext-a", "enabled")
+	g := w.group(t, "daily", []int64{a}, nil, security)
+	w.cycle(t)
+	w.later()
+	w.cycle(t)
+	if got := w.rec.groupCalls(); !slices.Equal(got, []string{"EnsureGroup", "SetMembers"}) {
+		t.Fatalf("group calls the same day = %v, want the first sync's alone", got)
+	}
+	w.h.Advance(24 * time.Hour)
+	w.cycle(t)
+	if got := w.rec.groupCalls(); !slices.Equal(got, []string{"EnsureGroup", "SetMembers", "SetMembers"}) {
+		t.Errorf("group calls the next day = %v, want one SetMembers more", got)
+	}
+	if row := w.section(t, g); row.State != "synced" {
+		t.Errorf("the section = %+v, want synced", row)
+	}
+}
+
+// What a provider's GroupTraitError names is bounded before it is written
+// (the review's LOW 9): the field to 40 characters, the code to 200.
+func TestGroupSync_AProvidersFieldAndCodeAreBounded(t *testing.T) {
+	t.Parallel()
+	w := newGroupWorld(t)
+	a := w.member(t, "Anne", "ext-a", "enabled")
+	g := w.group(t, "long", []int64{a}, nil, security)
+	w.prov.FailWith("EnsureGroup", &contracts.GroupTraitError{Field: strings.Repeat("f", 60), Code: strings.Repeat("c", 300)})
+	w.cycle(t)
+	row := w.section(t, g)
+	if row.State != "failed" || str(row.LastErrorField) != strings.Repeat("f", 40) || str(row.LastError) != strings.Repeat("c", 200) {
+		t.Errorf("the section = %+v, want the field cut at 40 and the code at 200", row)
 	}
 }

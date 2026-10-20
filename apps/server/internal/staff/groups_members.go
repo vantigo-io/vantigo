@@ -42,7 +42,10 @@ var groupEventClasses = []string{"C"}
 // writeGroupMembers makes g's members exactly wanted (ascending, each once)
 // inside the caller's transaction, which holds groupLock and g's row: the
 // others removed, the missing added from today as source, each change an
-// event on the person by who. It answers how many joined and left.
+// event on the person by who. When anything changed, every provider's
+// section of g is made due (MakeGroupTraitsDue), a failing one included, so
+// the worker's next cycle carries the members whatever the section waits
+// for. It answers how many joined and left.
 func (s *server) writeGroupMembers(ctx context.Context, txq *store.Queries, g store.StaffGroup, wanted []int64, source string, who actor, today time.Time) (joined, left int, err error) {
 	current, err := txq.GroupMemberIDs(ctx, g.ID)
 	if err != nil {
@@ -74,6 +77,11 @@ func (s *server) writeGroupMembers(ctx context.Context, txq *store.Queries, g st
 			return 0, 0, err
 		}
 		joined++
+	}
+	if joined > 0 || len(removed) > 0 {
+		if err := txq.MakeGroupTraitsDue(ctx, store.MakeGroupTraitsDueParams{GroupID: g.ID, Now: s.deps.Clock()}); err != nil {
+			return 0, 0, fmt.Errorf("staff: make group %d's sections due: %w", g.ID, err)
+		}
 	}
 	return joined, len(removed), nil
 }

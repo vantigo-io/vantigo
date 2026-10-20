@@ -29,11 +29,13 @@ import (
 // not audited: the person events carry the membership and the provider's
 // trail the directory.
 
-// The refusal codes of the groups (delivery D), each a 409.
+// The refusal codes of the groups (delivery D): the three 409s, and the 503
+// of a provider turned on that could not declare its traits.
 const (
-	codeGroupSynced   = "group_synced"
-	codeGroupDerived  = "group_derived"
-	codeGroupArchived = "group_archived"
+	codeGroupSynced         = "group_synced"
+	codeGroupDerived        = "group_derived"
+	codeGroupArchived       = "group_archived"
+	codeProviderUnavailable = "provider_unavailable"
 )
 
 // invalidGroupTitle is the title of a group's validation problems.
@@ -485,8 +487,9 @@ func (s *server) PostStaffGroupsByIdArchive(ctx context.Context, req gen.PostSta
 // DeleteStaffGroupsById Delete a group
 // (DELETE /api/v1/staff/groups/{id})
 //
-// Only a group no provider ever made or found: one that did is group_synced,
-// archived instead. Its members leave it, each a group_left event by the
+// Only a group no provider ever made or found, none is sending it to now
+// and none is turned on for: any other is group_synced, archived instead —
+// a delete would take the sections with it and orphan the provider's group. Its members leave it, each a group_left event by the
 // caller, so a person's history does not keep a join with no end.
 func (s *server) DeleteStaffGroupsById(ctx context.Context, req gen.DeleteStaffGroupsByIdRequestObject) (gen.DeleteStaffGroupsByIdResponseObject, error) {
 	who, err := s.actorFor(ctx)
@@ -503,13 +506,13 @@ func (s *server) DeleteStaffGroupsById(ctx context.Context, req gen.DeleteStaffG
 		} else if err != nil {
 			return fmt.Errorf("staff: lock group %d: %w", req.Id, err)
 		}
-		synced, err := txq.CountGroupTraitsSynced(ctx, g.ID)
+		synced, err := txq.CountGroupTraitsSynced(ctx, store.CountGroupTraitsSyncedParams{GroupID: g.ID, Now: s.deps.Clock()})
 		if err != nil {
 			return fmt.Errorf("staff: count group %d's synced sections: %w", g.ID, err)
 		}
 		if synced > 0 {
 			return refuseConflict(conflict(codeGroupSynced, "Group in a provider's directory",
-				"A provider has made or found the group in its directory, so it is not deleted; archive it instead."))
+				"A provider has the group in its directory, is being sent it, or is turned on for it, so it is not deleted; archive it instead."))
 		}
 		members, err := txq.ListGroupMembers(ctx, g.ID)
 		if err != nil {

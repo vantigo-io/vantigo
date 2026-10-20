@@ -570,7 +570,7 @@ export const staffCatalog = {
     createBeforeDaysInvalid: "0 to 90 days",
     deleteExternalAfterDays: "Delete an external account (days after the end)",
     deleteExternalAfterDaysDescription:
-      "How long after the last employment ended Staff deletes the person's account in an identity provider's directory — restorable there for thirty days — once it is disabled and no legal hold is on the person: 1 to 3650 days; empty for never.",
+      "How long after the last employment ended Staff deletes the person's account in an identity provider's directory — restorable there for thirty days — once it is disabled and no legal hold is on the person: 1 to 3650 days; empty for never. It also governs a group archived or switched off for a provider: deleted there that many days after, or with never renamed “… (archived)” and kept.",
     deleteExternalAfterDaysInvalid: "1 to 3650 days, or empty for never",
     saveAccountSettings: "Save the account settings",
     accountSettingsSaved: "The account settings are saved",
@@ -1636,6 +1636,7 @@ export const staffCatalog = {
     groupSyncState_retired: "Kept, renamed",
     groupSyncState_deleted: "Deleted",
     groupSyncedSince: "In sync since {{date}}",
+    groupAwaitingConfirmation: "Found in {{provider}} and awaiting confirmation there",
     groupInProvider: "In {{provider}}",
     groupStaffsInProviderToo: "Staff's in {{provider}} too",
     groupProviderSaved: "Saved for {{provider}}; the group follows at the accounts worker's next run",
@@ -1655,7 +1656,9 @@ export const staffCatalog = {
     groupError_trait_immutable: "this cannot change once the group is made",
     groupError_trait_needs_owner: "it needs a person as an owner",
     groupError_group_not_manageable:
-      "the directory holds a group by this key that Staff may not write (dynamic, role-assignable or another's)",
+      "the directory holds a group by this key that Staff may not write — dynamic, role-assignable, a list or mail-enabled security group Exchange keeps, another Staff group's, or one of two holding the nickname — or the group is gone from the directory",
+    groupError_group_unconfirmed:
+      "the directory held a group by this key that Staff did not make; it is written to only once someone confirms it there",
     groupError_call_failed: "the directory could not be reached; the worker tries again",
     groupError_members_failed: "{{count}} members could not be changed; they are tried again at the next sync",
     groupErrorUnknown: "the directory answered {{code}}",
@@ -2244,7 +2247,7 @@ export const staffCatalog = {
     createBeforeDaysInvalid: "0 til 90 dager",
     deleteExternalAfterDays: "Slett en ekstern konto (dager etter slutt)",
     deleteExternalAfterDaysDescription:
-      "Hvor lenge etter at siste arbeidsforhold sluttet Ansatte sletter personens konto i en identitetsleverandørs katalog — den kan gjenopprettes der i tretti dager — når den er deaktivert og personen ikke har bevaringspålegg: 1 til 3650 dager; tom for aldri.",
+      "Hvor lenge etter at siste arbeidsforhold sluttet Ansatte sletter personens konto i en identitetsleverandørs katalog — den kan gjenopprettes der i tretti dager — når den er deaktivert og personen ikke har bevaringspålegg: 1 til 3650 dager; tom for aldri. Den gjelder også en gruppe som er arkivert eller slått av for en leverandør: slettet der så mange dager etter, eller med aldri omdøpt til «… (archived)» og beholdt.",
     deleteExternalAfterDaysInvalid: "1 til 3650 dager, eller tom for aldri",
     saveAccountSettings: "Lagre kontoinnstillingene",
     accountSettingsSaved: "Kontoinnstillingene er lagret",
@@ -3308,6 +3311,7 @@ export const staffCatalog = {
     groupSyncState_retired: "Beholdt, omdøpt",
     groupSyncState_deleted: "Slettet",
     groupSyncedSince: "Synkronisert siden {{date}}",
+    groupAwaitingConfirmation: "Funnet i {{provider}} og venter på bekreftelse der",
     groupInProvider: "I {{provider}}",
     groupStaffsInProviderToo: "Gruppen finnes også i {{provider}}",
     groupProviderSaved: "Lagret for {{provider}}; gruppen følger ved kontoarbeiderens neste kjøring",
@@ -3327,7 +3331,9 @@ export const staffCatalog = {
     groupError_trait_immutable: "dette kan ikke endres når gruppen er laget",
     groupError_trait_needs_owner: "den trenger en person som eier",
     groupError_group_not_manageable:
-      "katalogen har en gruppe med denne nøkkelen som Ansatte ikke får skrive (dynamisk, rolletildelbar eller en annens)",
+      "katalogen har en gruppe med denne nøkkelen som Ansatte ikke får skrive — dynamisk, rolletildelbar, en liste eller e-postaktivert sikkerhetsgruppe som Exchange holder, en annen gruppe i Ansattes, eller én av to med samme alias — eller gruppen er borte fra katalogen",
+    groupError_group_unconfirmed:
+      "katalogen hadde en gruppe med denne nøkkelen som Ansatte ikke laget; den skrives til først når noen bekrefter den der",
     groupError_call_failed: "katalogen kunne ikke nås; arbeideren prøver igjen",
     groupError_members_failed: "{{count}} medlemmer kunne ikke endres; de prøves igjen ved neste synkronisering",
     groupErrorUnknown: "katalogen svarte {{code}}",

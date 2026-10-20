@@ -284,7 +284,8 @@ func (s *server) PutStaffGroupsByIdTraitsByProvider(ctx context.Context, req gen
 	var stored []byte
 	if body.Enabled {
 		if !section.ok {
-			return nil, fmt.Errorf("staff: provider %s could not declare its group traits, so group %d's values cannot be checked", req.Provider, req.Id)
+			// The values cannot be checked: nothing is written.
+			return gen.PutStaffGroupsByIdTraitsByProvider503ApplicationProblemPlusJSONResponse(groupProviderUnavailable()), nil
 		}
 		var values map[string]any
 		if body.Values != nil {

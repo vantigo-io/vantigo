@@ -352,7 +352,7 @@ func (p *provisioner) Update(ctx context.Context, actor contracts.Actor, externa
 	codes := changedCodes(changed)
 	judges := updateJudges
 	if u.AccountEnabled {
-		licences, licenceCodes, err := p.reconcileLicences(ctx, s, id, u, spec.Licences)
+		licences, licenceCodes, err := p.reconcileLicences(ctx, s, id, u, row, spec.Licences)
 		if err != nil {
 			return contracts.ExternalAccount{}, err
 		}
