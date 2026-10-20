@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create or the adoption with the service principal as an owner, the team, the members by $ref, the delete; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -94,24 +94,31 @@ reaches them.
   first. A row carries the UPN the module made or found and codes, never another
   address, a secret or a pass.
 
-Delivery D's migration, `00063_entra_groups.sql`, adds a table and two columns:
+Delivery D's migration, `00063_entra_groups.sql`, adds a table and three columns:
 
 - **`groups`** — the groups the module made or adopted for Staff's: `object_id` (the
   primary key), `group_id` (Staff's group id, 60, unique — `ux_entra_groups_group_id`),
   `key` (60), `display_name` (256) and `mail_nickname` (64) as the module last wrote
   them, `type` (`security` or `microsoft365`, `CHECK`ed, never changed), `team_created_at`,
   `created_by_us` (false for a group found by its nickname and adopted), `state`
-  (`present` or `deleted`, `CHECK`ed — a deleted group's row is kept), `last_members_at`
-  and the two stamps.
+  (`present`, `deleted` or `retired`, `CHECK`ed — a deleted group's row is kept, and so is
+  a retired one's, a security group emptied and kept: [DeleteGroup](#deletegroup)),
+  `last_members_at`, the two stamps, and `adoption_confirmed_at` and
+  `adoption_confirmed_by_user_id` — when and by whom a holder of `entra:manage` confirmed
+  an adopted group ([adopted groups](#adopted-groups)), null for one not confirmed and
+  for one the module made.
 - **`connection.service_principal_id`** — the application's service principal in the
   tenant, read from its token's `oid` claim, which every group the module makes names as
   an owner; and **`connection.skus`** (`jsonb`, `[]` by default) — the tenant's
   licences as the last connection test or licences read found them, from which the
   [licences trait](#the-traits) is declared.
+- **`accounts.licences_assigned`** (`text[]`, `{}` by default) — the SKU ids, lower-case,
+  of the direct licences the module itself assigned the user: the only ones
+  [Activate](#activate) and [Update](#update) remove (design reading 9).
 
-Its down drops the table and the two columns; the groups the module made stay in the
-tenant, and the next connection test reads the service principal and the licences
-again.
+Its down drops the table and the three columns; the groups the module made stay in the
+tenant, the next connection test reads the service principal and the licences again,
+and the licences the module assigned are forgotten.
 
 The down migration drops the schema with everything in it — the connection, the sealed
 secrets, any pass not yet revealed and the trail. Nothing in the tenant is touched: the
@@ -129,7 +136,7 @@ lost (Staff's **Run now (new pass)** issues another).
 
 | Key | Name | Grants | Sensitive | Delegable |
 | --- | --- | --- | --- | --- |
-| `entra:manage` | Manage Microsoft Entra ID | The tile and its page; the connection's status, secrets (without their values), accounts and events; confirming an [adopted account](#adopted-accounts); the [account rules](#the-account-rules), the tenant's licences and the module's [groups](#groups-in-the-tenant). | yes | **no** |
+| `entra:manage` | Manage Microsoft Entra ID | The tile and its page; the connection's status, secrets (without their values), accounts and events; confirming an [adopted account](#adopted-accounts) or an [adopted group](#adopted-groups); the [account rules](#the-account-rules), the tenant's licences and the module's [groups](#groups-in-the-tenant). | yes | **no** |
 
 It is in the category "Administration". The Owner holds it through the wildcard;
 anyone else needs a role that grants it, and because it is not delegable, only an Owner
@@ -525,14 +532,21 @@ On the first day:
    `subscribedSkus`. A part number the tenant does not subscribe to, or a
    `licenseAssignmentStates[].error` (such as `CountViolation`, no seat left), reports
    `licence_unavailable:<part number>`; the rest are assigned. A 4xx on the whole call
-   reports every licence it carried. Then the direct licences — `assignedByGroup` null —
-   whose part number Staff does not name are removed in one `assignLicense` with
-   `removeLicenses` — every direct one when Staff names none; a licence the tenant
-   assigned through a group is left alone (design reading 9), and so is one whose SKU
+   reports every licence it carried. Then **the licences the module itself assigned** —
+   those in `accounts.licences_assigned` the user still holds directly
+   (`assignedByGroup` null) — whose part number Staff no longer names are removed in one
+   `assignLicense` with `removeLicenses`, every one of them when Staff names none. Only
+   the module's own (design reading 9, plan reading 12): a licence an administrator
+   assigned directly, one the user held before Staff named it, and one the tenant
+   assigns through a group are the tenant's and are left alone, and so is one whose SKU
    `subscribedSkus` no longer lists. A 4xx on the removal records
    `licences_not_removed` in the event and leaves the user as it is; the removal records
-   `licences_removed:<n>`. With no licence named and no direct licence held, nothing is
-   asked of the tenant.
+   `licences_removed:<n>`. The module's list is then written when it changed: those it
+   held still and those it assigned now — a SKU the tenant reported an error for not
+   among them — less those removed, so a licence the user no longer holds directly
+   drops out of it. An account the module enabled before it kept the list starts with
+   an empty one, so nothing assigned to it earlier is ever removed here. With no licence
+   named and no direct licence held, nothing is asked of the tenant.
 3. The pass, **only when this call enabled the account**, and then when Staff's step
    asks for a fresh one — **Run now (new pass)**, `Flags.Fresh` — or no unrevealed,
    unexpired pass waits. An `Activate` of an account already enabled issues none,
@@ -568,14 +582,17 @@ by the connection unless named always:
    in the past by the time Staff disables, which is what a Lifecycle Workflows leaver
    trigger wants.
 4. `POST /users/{id}/assignLicense` removing every **direct** licence — those whose
-   `assignedByGroup` is null (`leaver_strip_licences`). A licence assigned through a
-   group goes with the group.
+   `assignedByGroup` is null (`leaver_strip_licences`), the module's or not. A licence
+   assigned through a group goes with the group. The module's list
+   (`licences_assigned`) is emptied.
 5. The groups, by `leaver_remove_groups`: **`all`** removes the person from every group
    `memberOf` lists (at most 50 pages) that is a group — not a directory role or an
    administrative unit — and not dynamic (`membershipRule` set), role-assignable or a
    distribution list (mail-enabled, neither security-enabled nor Microsoft 365, which
    Exchange keeps), groups the module never made included, each by `DELETE
-   /groups/{id}/members/{userId}/$ref`, a membership already gone counting as done;
+   /groups/{id}/members/{userId}/$ref` inside `$batch` requests of twenty, so the user's
+   id never stands in a request line the client logs — a membership already gone (404)
+   counting as done, and any other answer failing the step;
    **`managed`** from the module's own groups only — the `memberOf` pages intersected
    with the groups the module made or adopted and holds present in the tenant
    (`entra.groups`, `state` `present`) before the same `$ref` deletes, so a group the
@@ -603,11 +620,12 @@ found. A phone (`mobilePhone`, `businessPhones`) is a sensitive property: a 403 
 `PATCH` carrying one is `ErrExternalPrivileged`. **On an enabled user the licences are
 reconciled** as on [Activate](#activate) (Entra design D10, plan reading 6): the
 licences Staff names that the user lacks are assigned — `licence_unavailable:<part
-number>` when one cannot be, `CountViolation` included — and the direct ones Staff does
-not name are removed, every direct one when Staff names none; a licence a group gave
-is left alone. Staff's list is the union of the person's groups' licences, so a
-membership's change reaches the user here — and a licence an administrator assigned
-directly by hand to a person Staff keeps is removed at their next `Update`. On a
+number>` when one cannot be, `CountViolation` included — and those the module assigned
+itself that Staff no longer names are removed, every one of them when Staff names none;
+a licence an administrator assigned directly, and one a group gave, are left alone.
+Staff's list is the union of the person's groups' licences, so a membership's change
+reaches the user here: a licence the module assigned for a group the person has left is
+removed at their next `Update`, while one an administrator assigned by hand stays. On a
 disabled user the licences are not touched. Recorded as the event `entra.user.updated`
 with a `changed:<property>` code for each, `changed:manager`, `licences_assigned:<n>`,
 `licences_removed:<n>` or `licences_not_removed`, and the reported codes.
@@ -744,7 +762,8 @@ keeps it in line, and records it in `entra.groups` by its object id, one row per
 group id. Staff calls `EnsureGroup` when a group's values changed, `SetMembers` when its
 members did, and `DeleteGroup` to retire it ([Staff's sync](/en/reference/staff/#the-sync)).
 Each write checks its actor, needs the status `connected` — `ErrProviderUnavailable`
-otherwise, but for a `DeleteGroup` with nothing to delete — makes its Graph calls on no
+otherwise, but for a `DeleteGroup` with nothing to delete or on a group the module did
+not make — makes its Graph calls on no
 transaction and writes the row after, and records an [event](#the-events). A user's
 object id is never logged, and a member or an owner is only ever removed by its
 reference (`/$ref`): without it, Graph deletes the user.
@@ -754,10 +773,16 @@ shows as `group_not_manageable`: a group that is dynamic (`membershipRule` set, 
 `DynamicMembership` among its `groupTypes`), role-assignable (`isAssignableToRole`), or
 mail-enabled without being a Microsoft 365 group — a distribution list or a
 mail-enabled security group, which Exchange keeps; a group found by the nickname that
-another of the module's rows holds, or two groups holding it; and, at `SetMembers`, a
-group the module keeps no row for, or one gone from the tenant. A refusal judged on a
-group the module read is recorded under the write's action with
-`refused:group_not_manageable`.
+another of the module's rows holds — judged again inside the transaction that records
+the row, so two Staff groups racing for one group cannot both take it — or two groups
+holding it; and, at `SetMembers`, a group the module keeps no row for, or one gone from
+the tenant. A refusal judged on a group the module read is recorded under the write's
+action with `refused:group_not_manageable`.
+
+**An adopted group nobody has confirmed** is `contracts.ErrGroupUnconfirmed`, which
+Staff shows as `group_unconfirmed` and does not count as a failure: the module found
+the group rather than made it, and writes nothing to it until a holder of
+`entra:manage` confirms the adoption ([adopted groups](#adopted-groups)).
 
 ### The traits
 
@@ -771,7 +796,7 @@ order:
 | `type` | Group type / Gruppetype | choice: `security` (Security / Sikkerhet), `microsoft365` (Microsoft 365) | `security` | Required: none is `trait_required`, another value `trait_invalid`. **Immutable**: a value other than the one the group was made or adopted with is `trait_immutable`. |
 | `mailNickname` | Mail nickname / E-postalias | string, at most 64 | none | The group's mail nickname. A value is folded and lower-cased — a–z, 0–9 and hyphens kept, every run of other characters one hyphen — and cut at 64; one that folds to nothing is `trait_invalid`. Empty, it is made from the key the same way: the key as it is. **Immutable too**: once the group exists, a value other than the nickname it was made or adopted with is `trait_immutable`; left empty, the group keeps its own. |
 | `visibility` | Visibility / Synlighet | choice: `private` (Private / Privat), `public` (Public / Offentlig) | none | Microsoft 365 groups only: a value on a security group is `trait_invalid`. Left empty, nothing is written and the tenant's default stands. |
-| `description` | Description in the tenant / Beskrivelse i tenanten | string, at most 1024 | none | The description written to the group; empty, the Staff group's own description, cut at 1024. |
+| `description` | Description in the tenant / Beskrivelse i leietakeren | string, at most 1024 | none | The description written to the group; empty, the Staff group's own description, cut at 1024. |
 | `team` | Team in Microsoft Teams / Team i Microsoft Teams | bool | `false` | Microsoft 365 groups only: `true` on a security group is `trait_invalid`. The group [becomes a team](#the-team). |
 | `licences` | Licences / Lisenser | list | none | The licences the group's members get: each a part number (`[A-Za-z0-9_.-]`, at most 64), else `trait_invalid`. Whether the tenant subscribes to it is judged when it is assigned (`licence_unavailable`). |
 
@@ -807,7 +832,7 @@ takes it from the token it was opened with and writes it to
 token's `oid` wins over the row** — as the connection test does; a token without one
 falls back to the row, and with neither the write fails.
 
-**With no row for the Staff group** — or only a deleted one — the module looks for a
+**With no row for the Staff group** — or only a deleted or retired one — the module looks for a
 group holding the mail nickname, `GET /groups?$filter=mailNickname eq '<nickname>'`,
 the nickname's `'` escaped as `''`:
 
@@ -816,14 +841,20 @@ the nickname's `'` escaped as `''`:
 - **One** is adopted, unless the module [may not write it](#groups-in-the-tenant) or
   another of its rows holds its object id or, present, its nickname
   (`ErrGroupNotManageable`), or its type is not the `type` trait's (`GroupTraitError
-  {type, trait_immutable}`) — each recorded under `entra.group.adopted`. An adopted
-  group's row is written at once, `created_by_us` false; then Staff's name, description
-  and visibility are written where they differ (`PATCH /groups/{id}`), and the owners it
-  lacks are added by `POST /groups/{id}/owners/$ref` — the service principal among them.
-  **No owner is removed on adoption**: the group's own owners stay until the next
-  `EnsureGroup`, which removes the people Staff does not name. Recorded as
-  `entra.group.adopted` with `type:<type>`, a `changed:<property>` code for each property
-  written and `owners_added:<n>`.
+  {type, trait_immutable}`) — each recorded under `entra.group.adopted`. **An adopted
+  group is untrusted** (plan reading 11): its row is written at once, `created_by_us`
+  false, and nothing is written to the tenant — no name, no description, no owner — the
+  call answering `ErrGroupUnconfirmed` and recording `entra.group.adopted` with
+  `type:<type>` and `refused:adoption_unconfirmed`, until a holder of `entra:manage`
+  confirms it ([adopted groups](#adopted-groups)). A group the Staff group's own row
+  names, found again — a security group the module [retired](#deletegroup) and Staff
+  turned on anew, say — comes back present with who made it and its confirmation kept,
+  and one the module made or whose adoption was confirmed needs no confirmation: Staff's
+  name, description and visibility are written where they differ (`PATCH
+  /groups/{id}`) and the owners it lacks are added by `POST /groups/{id}/owners/$ref` —
+  the service principal among them — none removed, recorded as `entra.group.adopted`
+  with `type:<type>`, a `changed:<property>` code for each property written and
+  `owners_added:<n>`.
 - **None** is a create, `POST /groups`, with `displayName`, `mailNickname`, by `type` —
   `security`: `mailEnabled` false, `securityEnabled` true, `groupTypes: []`;
   `microsoft365`: `mailEnabled` true, `securityEnabled` true, `groupTypes: ["Unified"]`
@@ -845,14 +876,21 @@ the nickname's `'` escaped as `''`:
 **The row is recorded under the connection's share lock**, at once after the create or
 the adoption, so a failure after it finds the group next time: when the tenant or the
 client moved since the call began, nothing is recorded, the group is left in the
-tenant, and the call answers `ErrProviderUnavailable`. A deleted row for the same Staff
-group gives way to the new one (`ForgetDeletedGroup`); the deleted group's events keep
-its object id.
+tenant, and the call answers `ErrProviderUnavailable`. A deleted or retired row for the
+same Staff group gives way to the new one (`ForgetDeletedGroup`) — but for the row of
+the group found again, which is brought back; the old group's events keep its object
+id. The module's rows are read again inside that transaction: a group another Staff
+group's row holds is `ErrGroupNotManageable` and nothing is recorded — `InsertGroup`
+never re-points another Staff group's row.
 
-**With the row**, a `type` other than the row's, or a `mailNickname` other than the
-row's, is `GroupTraitError{…, trait_immutable}`, and nothing is written. The module
-reads the group (`GET /groups/{id}`): **a group gone from the tenant** — a 404, deleted
-by someone else — has its row marked `deleted` and is looked for by its nickname and
+**With the row of an adopted group nobody has confirmed**, the call is
+`ErrGroupUnconfirmed` before anything else is judged, nothing written, and recorded as
+`entra.group.updated` with `refused:adoption_unconfirmed` — at every call, so the trail
+shows one at each of Staff's polls until the group is confirmed. **With any other
+row**, a `type` other than the row's, or a `mailNickname` other than the row's, is
+`GroupTraitError{…, trait_immutable}`, and nothing is written. The module reads the
+group (`GET /groups/{id}`): **a group gone from the tenant** — a 404, deleted by
+someone else — has its row marked `deleted` and is looked for by its nickname and
 made again as above; a group it [may not write](#groups-in-the-tenant) any more is
 `ErrGroupNotManageable`. Otherwise it `PATCH`es what differs of `displayName`,
 `description` (an empty one cleared) and a Microsoft 365 group's `visibility`, and
@@ -868,7 +906,35 @@ its name with ` (archived)` after it (plan reading 5).
 
 A write that fails after it changed something records its event with the codes so far
 and `failed`. A trait refused here is kept beside the field by Staff, which does not
-call again until HR changes the group.
+call `EnsureGroup` again until HR changes the group, but goes on sending the members of
+a group the module holds ([Staff's sync](/en/reference/staff/#the-sync)).
+
+### Adopted groups
+
+A Staff group's mail nickname is named by a holder of `staff:manage`, so a group
+adopted on its nickname alone would let HR take over any group in the tenant the module
+may write — its name, its owners, its members and, through Staff's archive, its
+existence. An adopted group is therefore untrusted, as an [adopted
+account](#adopted-accounts) is (plan reading 11): until it is confirmed, `EnsureGroup`
+and `SetMembers` answer `ErrGroupUnconfirmed` and write nothing, each recording
+`refused:adoption_unconfirmed` under its action, and Staff's section waits `pending`
+with `group_unconfirmed`, asked again at every poll with no attempt counted ([the
+sync](/en/reference/staff/#the-sync)).
+
+`POST /groups/{objectId}/confirm` (`entra:manage`) confirms it, in one transaction:
+`adoption_confirmed_at` and `adoption_confirmed_by_user_id` are written and
+`entra.group.adoption_confirmed` recorded with the caller as its actor. It answers 200
+with the group. Idempotent: a group confirmed already, or one the module made, is
+answered as it is and records nothing — never a 409, unlike an account's — and an
+object id the module keeps no row for is a bare 404. Staff's next cycle then calls
+`EnsureGroup`, which takes the row's path above: Staff's name, description and
+visibility are written, and the owners made exactly Staff's people and the service
+principal — **the group's own owners are removed** — and `SetMembers` makes the members
+exactly Staff's. The module's page offers **Confirm** in its **Groups** table on a
+present group the module neither made nor has had confirmed.
+
+**The module never deletes a group it did not make**, confirmed or not:
+[DeleteGroup](#deletegroup) leaves it to the tenant.
 
 ### The team
 
@@ -896,8 +962,10 @@ team.
 ### SetMembers
 
 Reconciles the group's members to exactly the accounts Staff names. A group the module
-keeps no row for, or one marked deleted, is `ErrGroupNotManageable`; an id that is not
-a GUID is a failure `not_found`. It reads the group: one gone from the tenant (a 404)
+keeps no row for, or one marked deleted or retired, is `ErrGroupNotManageable`; an
+adopted group nobody has confirmed is `ErrGroupUnconfirmed`, nothing read or written,
+recorded under `entra.group.members_set` with `refused:adoption_unconfirmed`; an id
+that is not a GUID is a failure `not_found`. It reads the group: one gone from the tenant (a 404)
 has its row marked `deleted` and is `ErrGroupNotManageable`; one that became
 role-assignable or Exchange's is refused `group_not_manageable`; **one that became
 dynamic** changes nothing, each member to add or remove answered failed `dynamic`. It
@@ -924,12 +992,33 @@ and `failed` when a request failed after something changed.
 
 ### DeleteGroup
 
-A group the module keeps no row for, or one marked deleted, answers nil with no
-connection and no call: there is nothing to delete. Otherwise, needing the status
-`connected`, `DELETE /groups/{id}` — a soft delete: a deleted group stays restorable in
-the tenant's deleted groups for 30 days. A 404 is deleted already, recorded with the
-code `gone`. The row is kept, marked `deleted`, and `entra.group.deleted` recorded.
-There is no rename here: a group Staff keeps is renamed through `EnsureGroup`.
+Lets go of the Staff group's group, its row kept, by who made it and by its kind (plan
+readings 11 and 13). A group the module keeps no row for, or one marked deleted or
+retired, answers nil with no connection and no call: there is nothing to let go of.
+
+- **A group the module did not make** — adopted, confirmed or not — is the tenant's: no
+  connection and no call. The row is marked `deleted` and `entra.group.deleted` recorded
+  with the code `kept_not_ours`; the group stays in the tenant as it is.
+- **A Microsoft 365 group the module made**, needing the status `connected`: `DELETE
+  /groups/{id}` — a soft delete: it stays restorable in the tenant's deleted groups for
+  30 days. A 404 is deleted already, recorded with the code `gone`. The row is marked
+  `deleted` and `entra.group.deleted` recorded.
+- **A security group the module made is never deleted**: Graph deletes a security group
+  for good, with no deleted-groups container to restore it from. Needing the status
+  `connected`, the module reads it — one gone from the tenant (a 404) is marked
+  `deleted` with `gone`; one it [may not write](#groups-in-the-tenant) any more is
+  `ErrGroupNotManageable`, recorded under `entra.group.retired` — then removes every
+  user among its members (`GET /groups/{id}/members`, at most 100 pages) and every user
+  among its owners by their reference, `DELETE …/$ref` in `$batch` requests of twenty —
+  **never the service principal**, nor a member or an owner that is not a user — and
+  renames it with ` (archived)` after its name, once (`PATCH`, the name cut so the whole
+  fits 256). The row is marked `retired` with that name, and `entra.group.retired`
+  recorded with `security_kept`, `removed:<n>`, `owners_removed:<n>` and
+  `changed:displayName` when the name was written. A member or an owner the tenant would
+  not remove fails the call, the row as it was, for Staff's next call to try again.
+
+A group Staff keeps whole — its archive while `deleteExternalAfterDays` is never — is
+renamed through `EnsureGroup`, not here.
 
 ## The events
 
@@ -946,7 +1035,8 @@ limit outside that is a 400) on the **Status** card:
 | `entra.user.prepared`, `entra.user.activated`, `entra.user.deactivated`, `entra.user.updated`, `entra.user.deleted` | the lifecycle |
 | `entra.pass.issued`, `entra.pass.revealed` | the pass |
 | `entra.account.adoption_confirmed` | `POST /accounts/{objectId}/confirm` |
-| `entra.group.created`, `entra.group.adopted`, `entra.group.updated`, `entra.group.team_created`, `entra.group.members_set`, `entra.group.deleted` | [the groups](#groups-in-the-tenant), with the group's `objectId` — none on a refusal before the module had one — and no UPN |
+| `entra.group.created`, `entra.group.adopted`, `entra.group.updated`, `entra.group.team_created`, `entra.group.members_set`, `entra.group.deleted`, `entra.group.retired` | [the groups](#groups-in-the-tenant), with the group's `objectId` — none on a refusal before the module had one — and no UPN |
+| `entra.group.adoption_confirmed` | `POST /groups/{objectId}/confirm`, with the group's `objectId` |
 
 A lifecycle write the tenant refused is recorded under its own action with
 `refused:<code>`. The codes carry the details each section names — `tenant_before:`,
@@ -956,8 +1046,10 @@ A lifecycle write the tenant refused is recorded under its own action with
 `sessions_revoked`, `leave_date_written`, `licences_stripped`, `groups_removed`, `gone`,
 and for a group `type:<type>`, `changed:<property>`, `owners:<n>`, `owners_added:<n>`,
 `owners_removed:<n>`, `team_pending`, `added:<n>`, `removed:<n>`, `failed:<n>`, `failed`
-(a write that failed after it changed something), `gone` and `refused:<code>` — and the
-reported codes. The trail is
+(a write that failed after it changed something), `gone`, `kept_not_ours`,
+`security_kept` and `refused:<code>` (`refused:adoption_unconfirmed` among them) — and
+the reported codes. The module's page words each action and each code it knows, in
+English and Norwegian, and shows one it does not know as it is. The trail is
 the module's only record of its writes: nothing goes to the platform's audit log.
 
 Each answers `id`, `at`, `actor` — the user's id, or the system's name
@@ -971,10 +1063,11 @@ pass. The **Status**
 card lists them once the module keeps any.
 
 `GET /groups` (`entra:manage`) lists every group the module keeps for Staff's, deleted
-ones included, by display name — `objectId`, `groupId`, `key`, `displayName`,
-`mailNickname`, `type`, `team` (true once it became a team), `state`, `createdByUs`,
-`lastMembersAt` and `createdAt` — read-only: Staff decides what exists. The module's
-page shows them in its **Groups** table.
+and retired ones included, by display name — `objectId`, `groupId`, `key`,
+`displayName`, `mailNickname`, `type`, `team` (true once it became a team), `state`,
+`createdByUs`, `adoptionConfirmedAt`, `lastMembersAt` and `createdAt`. Staff decides
+what exists; the one write on the groups here is the [confirmation](#adopted-groups).
+The module's page shows them in its **Groups** table.
 
 ## Refusals
 
@@ -1014,8 +1107,9 @@ with its permission, and what the module answers for a user synchronised from
 on-premises — and runs a group through the tenant: made with the service principal and
 an owner (a security group whose nickname starts with `vt-test-`), ensured again to
 find the same group, the user added as a member and removed by `$ref` in a `$batch`,
-deleted (the team is not attempted, the group being
-younger than fifteen minutes): `go test -tags entra -run TestEntraTenant -v ./internal/entra/` with
+then let go by `DeleteGroup` — a security group the module made, so emptied, renamed
+` (archived)` and kept in the tenant, where each run leaves one (the team is not
+attempted, the group being younger than fifteen minutes): `go test -tags entra -run TestEntraTenant -v ./internal/entra/` with
 `ENTRA_TEST_TENANT_ID`, `ENTRA_TEST_CLIENT_ID`, `ENTRA_TEST_CLIENT_SECRET` and
 `ENTRA_TEST_DOMAIN` set (and `ENTRA_TEST_SYNCED_USER_ID` with
 `ENTRA_TEST_SYNCED_EMPLOYEE_NUMBER` for the third), skipped without them. It runs the
@@ -1039,6 +1133,7 @@ All under `/api/v1/entra`.
 | `GET /accounts` | `entra:manage` |
 | `POST /accounts/{objectId}/confirm` | `entra:manage` |
 | `GET /groups` | `entra:manage` |
+| `POST /groups/{objectId}/confirm` | `entra:manage` |
 
 The request and response shapes are in the contract,
 [`openapi/entra.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/entra.yaml),

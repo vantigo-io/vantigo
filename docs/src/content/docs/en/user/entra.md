@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules, the Groups table — and who sees what.
+description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules, the Groups table and confirming a group Vantigo did not create — and who sees what.
 sidebar:
   order: 47
 sources:
@@ -22,7 +22,7 @@ reference](/en/reference/entra/).
 
 | What | Who |
 | --- | --- |
-| The **Microsoft Entra ID** tile, the page, the **Status** card, the accounts — **Confirm** on one Vantigo did not create — the recent events and the **Groups** table | `entra:manage` |
+| The **Microsoft Entra ID** tile, the page, the **Status** card, the accounts and the **Groups** table — **Confirm** on an account or a group Vantigo did not create — and the recent events | `entra:manage` |
 | Steps **1 Register the application**, **2 Add a client secret** and **3 Grant the permissions and the role** — **Save**, **Add the secret**, **Revoke**, **Test connection** | an **Owner**, signed in with a second factor; to anyone else with `entra:manage` they are shown read-only, with *An Owner does this step. You can see what is set, but not change it.* |
 | Step **4 Set the account rules** — **Save the account rules** | `entra:manage` |
 | Steps **5 Sign-in** and **6 Provisioning** | an **Owner**: they are the **Single sign-on** card's forms; anyone else reads the step without them |
@@ -63,24 +63,27 @@ that, and again after step 1 changes, it is not shown:
   ([below](#confirm-an-account-vantigo-did-not-create));
 - **Recent events**: what Vantigo did in the tenant or to the connection, when, the
   user principal name, *by Staff's accounts run* when Staff's worker did it, and what
-  was reported. Never a secret, a password or a pass. A group's event is listed by its
-  action's name as it is — `entra.group.created`, `entra.group.adopted`,
-  `entra.group.updated`, `entra.group.team_created`, `entra.group.members_set` or
-  `entra.group.deleted` — with its codes, such as `added:3` or `team_pending`.
+  was reported. Never a secret, a password or a pass. A group's event is worded too —
+  *A group was created*, *A group was found and adopted*, *A group's members were
+  reconciled*, *A group was emptied and kept*, *A group's adoption was confirmed* and the
+  like — with what was reported in words, such as *3 members added* or *the team waits
+  until the group is fifteen minutes old and Teams has seen it*.
 
 ### The Groups table
 
 Under the **Status** card, shown with it, **Groups** lists the groups Vantigo keeps in
-the tenant for Staff's groups ([Groups in Staff](/en/user/staff/#groups)), deleted ones
-included, greyed out: each group's **Name** as Vantigo last wrote it, with its mail
-nickname under it; its **Type**, *Security* or *Microsoft 365*; **Team**, *Yes* once it
-has become a team in Microsoft Teams, else *No*; its **State**, *Present* or *Deleted*,
+the tenant for Staff's groups ([Groups in Staff](/en/user/staff/#groups)), deleted and
+kept ones included, greyed out: each group's **Name** as Vantigo last wrote it, with its
+mail nickname under it; its **Type**, *Security* or *Microsoft 365*; **Team**, *Yes* once
+it has become a team in Microsoft Teams, else *No*; its **State** — *Present*, *Deleted*,
+or *Emptied and kept* for a security group Staff let go, which Vantigo never deletes —
 with *Found in the tenant and adopted* under it for a group Vantigo found holding the
-nickname rather than made; and **Last members sync**, when Vantigo last brought its
-members in line, or *Never*. Before there is any it says *No groups yet. A Staff group
-turned on for Microsoft Entra ID appears here once the accounts worker has made it.* It
-is read-only: HR creates, changes and archives groups in Staff, and Staff's accounts
-worker brings them here.
+nickname rather than made, or *Adopted — confirm* and **Confirm** while nobody has
+confirmed it ([below](#confirm-a-group-vantigo-did-not-create)); and **Last members
+sync**, when Vantigo last brought its members in line, or *Never*. Before there is any
+it says *No groups yet. A Staff group turned on for Microsoft Entra ID appears here once
+the accounts worker has made it.* Apart from **Confirm** it is read-only: HR creates,
+changes and archives groups in Staff, and Staff's accounts worker brings them here.
 
 ### 1 Register the application
 
@@ -204,6 +207,24 @@ Staff's Account tab and dashboard say so, and the dashboard links here.
 The page says *Adoption confirmed*, and Vantigo manages the account from Staff's next
 accounts run. Confirm only an account you have checked: confirming hands it to whoever
 holds that employee number in Staff.
+
+## Confirm a group Vantigo did not create
+
+When the tenant already holds a group with the mail nickname of a Staff group turned on
+for Microsoft Entra ID, Vantigo links it but writes nothing to it — no name, no owner, no
+member, no delete — until someone with `entra:manage` confirms it is that group. The
+Staff group's page says *Found in Microsoft Entra ID and awaiting confirmation there*
+meanwhile.
+
+1. In the **Groups** table, find the group reading *Adopted — confirm*.
+2. Check in the portal that it is the group meant — its name, its owners, its members.
+3. Choose **Confirm** beside it, then **Confirm** in *Confirm the adoption of …?*, which
+   says what follows.
+
+The page says *Adoption confirmed* — *Vantigo manages the group from Staff's next
+accounts run.* Vantigo then writes Staff's name and description to the group, makes its
+owners Staff's and its members Staff's, removing everyone else. It never deletes a
+group it did not create. Confirm only a group you have checked.
 
 ## After the setup
 
