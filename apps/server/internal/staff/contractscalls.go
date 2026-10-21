@@ -217,6 +217,16 @@ func (s *server) accountsUnexpect(ctx context.Context, actor contracts.Actor, em
 	return s.deps.Accounts.Unexpect(ctx, actor, employeeNumber)
 }
 
+func (s *server) accountsErase(ctx context.Context, actor contracts.Actor, id uuid.UUID) error {
+	if err := noteContractCall(ctx, "Accounts.Erase"); err != nil {
+		return err
+	}
+	if s.deps.Accounts == nil {
+		return errAccountsUnavailable
+	}
+	return s.deps.Accounts.Erase(ctx, actor, id)
+}
+
 // errProviderUnavailable is every provider accessor's answer when no enabled
 // module offers the provider a person's kind names (the slot lacks its key):
 // the worker records provider_unavailable, a request answers 503.

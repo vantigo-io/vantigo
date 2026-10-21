@@ -13,9 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 )
@@ -1554,4 +1556,116 @@ func erasedKindsResponse(kinds []erasedKind) []gen.StaffErasedKind {
 	return mapRows(kinds, func(k erasedKind) gen.StaffErasedKind {
 		return gen.StaffErasedKind{Kind: gen.StaffErasedKindKind(k.Kind), Count: k.Count}
 	})
+}
+
+// eraseAccounts erases the Staff-managed disabled identity user and withdraws
+// any unfulfilled announcement of each erased person due (Entra delivery E),
+// after the lease's connection has been returned to the pool so no connection
+// is held across a call to identity (contractscalls.go). A failure records
+// erasure_incomplete on the person's identity link for the dashboard's
+// attention item and schedules the next try for the next civil day's midnight.
+func (s *server) eraseAccounts(ctx context.Context, who actor, zone *time.Location) error {
+	if s.deps.Accounts == nil {
+		return nil
+	}
+	now := s.deps.Clock()
+	due, err := store.New(s.deps.Pool).DuePeopleAccountErase(ctx, store.DuePeopleAccountEraseParams{
+		IgnoreBackoff: who.Kind != actorKindSystem,
+		Now:           now,
+		RowLimit:      retentionBatch,
+	})
+	if err != nil {
+		return fmt.Errorf("staff: select the people due for the identity erase: %w", err)
+	}
+	for _, row := range due {
+		if ctx.Err() != nil {
+			break
+		}
+		if row.HasAnnouncement && row.EmployeeNumber != "" {
+			if _, err := withCallTimeout(ctx, func(ctx context.Context) (struct{}, error) {
+				return struct{}{}, s.accountsUnexpect(ctx, contracts.Actor{System: contracts.SystemActorStaffRetention}, row.EmployeeNumber)
+			}); err != nil {
+				s.recordAccountEraseFailure(ctx, row, err, zone)
+				continue
+			}
+		}
+		if row.ExternalID != nil {
+			userID, err := uuid.Parse(*row.ExternalID)
+			if err == nil {
+				_, err = withCallTimeout(ctx, func(ctx context.Context) (struct{}, error) {
+					return struct{}{}, s.accountsErase(ctx, contracts.Actor{System: contracts.SystemActorStaffRetention}, userID)
+				})
+			}
+			if err != nil {
+				s.recordAccountEraseFailure(ctx, row, err, zone)
+				continue
+			}
+		}
+		if err := s.withPersonLock(ctx, row.PersonID, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+			p, err := txq.GetPerson(ctx, row.PersonID)
+			if err != nil {
+				return err
+			}
+			if p.ErasedAt == nil || p.LegalHold {
+				return nil
+			}
+			now := s.deps.Clock()
+			if row.HasAnnouncement {
+				if err := txq.ClearProviderLinkAnnounced(ctx, store.ClearProviderLinkAnnouncedParams{
+					PersonID: row.PersonID, Now: now,
+				}); err != nil {
+					return err
+				}
+			}
+			n, err := txq.MarkIdentityLinkErased(ctx, store.MarkIdentityLinkErasedParams{
+				ID: row.LinkID, ClaimedExternalID: row.ExternalID, Now: now,
+			})
+			if err != nil || n == 0 || row.ExternalID == nil {
+				return err
+			}
+			return s.recordEvent(ctx, txq, &row.PersonID, eventIdentityErased, who, map[string]any{}, accountEventClasses)
+		}); err != nil && !errors.Is(err, errPersonNotFound) && ctx.Err() == nil {
+			s.logger().ErrorContext(ctx, "staff: record an erased identity link",
+				"worker", retentionWorkerName, "person_id", row.PersonID, "error", err.Error())
+		}
+	}
+	return nil
+}
+
+func accountEraseErrorCode(err error) string {
+	switch {
+	case errors.Is(err, contracts.ErrAccountEnabled):
+		return "account_enabled"
+	case errors.Is(err, contracts.ErrAccountPrivileged), errors.Is(err, contracts.ErrLastOwner):
+		return reasonPrivileged
+	case errors.Is(err, contracts.ErrAccountNotManaged):
+		return reasonNotManaged
+	case errors.Is(err, contracts.ErrInvalidActor):
+		return reasonInvalidActor
+	default:
+		return errorAccountsUnavailable
+	}
+}
+
+func (s *server) recordAccountEraseFailure(ctx context.Context, row store.DuePeopleAccountEraseRow, callErr error, zone *time.Location) {
+	code := accountEraseErrorCode(callErr)
+	if ctx.Err() == nil {
+		s.logger().WarnContext(ctx, "staff: erasing a person's identity user failed; they are due again on the next retention run",
+			"worker", retentionWorkerName, "person_id", row.PersonID, "code", code, "error", callErr.Error())
+	}
+	now := s.deps.Clock()
+	y, m, d := civilToday(now, zone).Date()
+	next := time.Date(y, m, d+1, 0, 0, 0, 0, zone)
+	if err := s.withPersonLock(ctx, row.PersonID, allowErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		return txq.MarkIdentityLinkEraseFailed(ctx, store.MarkIdentityLinkEraseFailedParams{
+			ID:                row.LinkID,
+			ClaimedExternalID: row.ExternalID,
+			LastError:         code,
+			NextAttemptAt:     next,
+			Now:               now,
+		})
+	}); err != nil && !errors.Is(err, errPersonNotFound) && ctx.Err() == nil {
+		s.logger().ErrorContext(ctx, "staff: record a failed identity erase",
+			"worker", retentionWorkerName, "person_id", row.PersonID, "error", err.Error())
+	}
 }

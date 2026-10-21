@@ -25,7 +25,7 @@ var accountItemTypes = []gen.StaffStatsAttentionItemType{
 	gen.AccountBlockedByOwner, gen.AccountDisabledByOwner, gen.AccountUserGone, gen.AccountPrivileged,
 	gen.AccountMismatch, gen.AccountModeChanged, gen.AccountEmailDiffers, gen.AccountEmailTaken,
 	gen.AccountNumberTaken, gen.AccountFailing, gen.InvitationUnanswered, gen.InvitationRevoked,
-	gen.EmployeeRoleMissing, gen.EmployeeRoleUnsafe, gen.AccountModeMismatch,
+	gen.EmployeeRoleMissing, gen.EmployeeRoleUnsafe, gen.AccountModeMismatch, gen.ErasureIncomplete,
 }
 
 // accountItems is the account items among items.
@@ -129,6 +129,13 @@ func TestAccountAttention_EachItemAndItsAudience(t *testing.T) {
 	leaver := createPerson(t, w.hr, newPerson("Sluttet", "Varsel"))
 	seedEmploymentDated(t, w.h, leaver.Id, 0, "2020-01-01", dayPtr("2026-06-30"))
 	flagOn(t, w.hr, leaver.Id)
+
+	// An erased person whose identity erase could not finish raises
+	// erasureIncomplete, titled "An erased person".
+	incomplete := person("Ufullstendig", true)
+	seedWorkerLink(t, w.h, incomplete.Id, "disabled", "erasure_incomplete", "account_privileged", 1)
+	w.h.Exec(t, `UPDATE staff.people SET provision_account = false, erased_at = $2 WHERE id = $1`, incomplete.Id, w.h.Now())
+	wants = append(wants, want{gen.ErasureIncomplete, incomplete.Id, "An erased person"})
 
 	// The installation's items: one each, counting the links.
 	for _, reason := range []string{"employee_role_missing", "employee_role_missing", "employee_role_unsafe", "mode_mismatch"} {

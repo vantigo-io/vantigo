@@ -93,6 +93,25 @@ func (q *Queries) ClaimObjectDeletion(ctx context.Context, arg ClaimObjectDeleti
 	return attempts, err
 }
 
+const clearProviderLinkAnnounced = `-- name: ClearProviderLinkAnnounced :exec
+UPDATE staff.identity_links SET
+    announced_at = NULL,
+    updated_at = $1::timestamptz
+WHERE person_id = $2 AND provider <> 'identity' AND announced_at IS NOT NULL
+`
+
+type ClearProviderLinkAnnouncedParams struct {
+	Now      time.Time
+	PersonID int64
+}
+
+// ClearProviderLinkAnnounced clears announced_at on the person's provider
+// links after the announcement has been withdrawn from identity.
+func (q *Queries) ClearProviderLinkAnnounced(ctx context.Context, arg ClearProviderLinkAnnouncedParams) error {
+	_, err := q.db.Exec(ctx, clearProviderLinkAnnounced, arg.Now, arg.PersonID)
+	return err
+}
+
 const dueCasesE = `-- name: DueCasesE :many
 SELECT c.id, c.person_id
 FROM staff.sick_cases c
@@ -360,6 +379,75 @@ func (q *Queries) DueObjectDeletions(ctx context.Context, arg DueObjectDeletions
 			return nil, err
 		}
 		items = append(items, object_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const duePeopleAccountErase = `-- name: DuePeopleAccountErase :many
+SELECT p.id AS person_id, p.employee_number, l.id AS link_id, l.external_id,
+    EXISTS (
+        SELECT 1 FROM staff.identity_links x
+        WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.announced_at IS NOT NULL
+    )::boolean AS has_announcement
+FROM staff.people p
+JOIN staff.identity_links l ON l.person_id = p.id AND l.provider = 'identity'
+WHERE p.erased_at IS NOT NULL
+  AND NOT p.legal_hold
+  AND ((l.external_id IS NOT NULL AND l.state = 'disabled' AND l.managed)
+    OR EXISTS (
+        SELECT 1 FROM staff.identity_links x
+        WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.announced_at IS NOT NULL))
+  AND ($1::boolean
+    OR l.blocked_reason IS DISTINCT FROM 'erasure_incomplete'
+    OR l.next_attempt_at IS NULL
+    OR l.next_attempt_at <= $2::timestamptz)
+ORDER BY p.erased_at, p.id
+LIMIT $3
+`
+
+type DuePeopleAccountEraseParams struct {
+	IgnoreBackoff bool
+	Now           time.Time
+	RowLimit      int32
+}
+
+type DuePeopleAccountEraseRow struct {
+	PersonID        int64
+	EmployeeNumber  string
+	LinkID          int64
+	ExternalID      *string
+	HasAnnouncement bool
+}
+
+// DuePeopleAccountErase is the erased people, not held, whose Staff-managed
+// disabled identity user or unfulfilled announcement is due to be erased from
+// identity (Entra delivery E): either their identity link still names a
+// disabled Staff-managed user, or a provider link still carries an
+// announcement. A link whose last attempt failed (erasure_incomplete) waits
+// for its next attempt (the next civil day's midnight) unless the run is by
+// hand (@ignore_backoff).
+func (q *Queries) DuePeopleAccountErase(ctx context.Context, arg DuePeopleAccountEraseParams) ([]DuePeopleAccountEraseRow, error) {
+	rows, err := q.db.Query(ctx, duePeopleAccountErase, arg.IgnoreBackoff, arg.Now, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DuePeopleAccountEraseRow
+	for rows.Next() {
+		var i DuePeopleAccountEraseRow
+		if err := rows.Scan(
+			&i.PersonID,
+			&i.EmployeeNumber,
+			&i.LinkID,
+			&i.ExternalID,
+			&i.HasAnnouncement,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -966,6 +1054,74 @@ type MarkCaseErasedParams struct {
 func (q *Queries) MarkCaseErased(ctx context.Context, arg MarkCaseErasedParams) error {
 	_, err := q.db.Exec(ctx, markCaseErased, arg.Zone, arg.ID)
 	return err
+}
+
+const markIdentityLinkEraseFailed = `-- name: MarkIdentityLinkEraseFailed :exec
+UPDATE staff.identity_links SET
+    blocked_reason = 'erasure_incomplete',
+    last_error = $1::varchar,
+    attempts = attempts + 1,
+    next_attempt_at = $2::timestamptz,
+    updated_at = $3::timestamptz
+WHERE id = $4
+  AND external_id IS NOT DISTINCT FROM $5::text
+`
+
+type MarkIdentityLinkEraseFailedParams struct {
+	LastError         string
+	NextAttemptAt     time.Time
+	Now               time.Time
+	ID                int64
+	ClaimedExternalID *string
+}
+
+// MarkIdentityLinkEraseFailed records an identity erase that could not finish
+// on the person's identity link (erasure_incomplete), retried on the next
+// civil day's retention run.
+func (q *Queries) MarkIdentityLinkEraseFailed(ctx context.Context, arg MarkIdentityLinkEraseFailedParams) error {
+	_, err := q.db.Exec(ctx, markIdentityLinkEraseFailed,
+		arg.LastError,
+		arg.NextAttemptAt,
+		arg.Now,
+		arg.ID,
+		arg.ClaimedExternalID,
+	)
+	return err
+}
+
+const markIdentityLinkErased = `-- name: MarkIdentityLinkErased :execrows
+UPDATE staff.identity_links SET
+    external_id = NULL,
+    state = 'disabled',
+    managed = false,
+    blocked_reason = NULL,
+    last_error = NULL,
+    attempts = 0,
+    next_attempt_at = NULL,
+    last_spec_hash = NULL,
+    synced_employee_number = NULL,
+    disable_requested_at = NULL,
+    lease_id = NULL,
+    lease_until = NULL,
+    updated_at = $1::timestamptz
+WHERE id = $2
+  AND external_id IS NOT DISTINCT FROM $3::text
+`
+
+type MarkIdentityLinkErasedParams struct {
+	Now               time.Time
+	ID                int64
+	ClaimedExternalID *string
+}
+
+// MarkIdentityLinkErased clears the erased user from the person's identity
+// link while keeping the row so a provider link's claim can still lock it.
+func (q *Queries) MarkIdentityLinkErased(ctx context.Context, arg MarkIdentityLinkErasedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markIdentityLinkErased, arg.Now, arg.ID, arg.ClaimedExternalID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const markPersonErased = `-- name: MarkPersonErased :exec

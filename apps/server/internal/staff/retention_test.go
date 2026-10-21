@@ -7,10 +7,14 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -881,5 +885,111 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 	}
 	if got := modtest.One[string](t, h.Harness, `SELECT coalesce(last_error, '') FROM staff.object_deletions WHERE object_key = 'people/1/a'`); !strings.HasPrefix(got, "storage_unavailable") {
 		t.Errorf("last_error = %q, want storage_unavailable's", got)
+	}
+}
+
+// Entra delivery E: after the D erase sets erased_at, the retention run erases
+// a disabled Staff-managed identity user (recording identity_erased and
+// keeping the identity link row with external_id NULL so a provider link's
+// claim still works) and withdraws any unfulfilled announcement; it leaves a
+// self-service link alone; a failure records erasure_incomplete (raising
+// erasureIncomplete on the dashboard) until the next day's retention run or
+// POST /retention/run finishes it; and an erased leaver's disabled external
+// account is still deleted by staff-accounts once deleteExternalAfterDays
+// passes.
+func TestRetention_IdentityEraseAndExternalDelete(t *testing.T) {
+	t.Parallel()
+	w := newAccountsWorld(t)
+	s := getSettings(t, w.hr)
+	do(t, w.hr, http.MethodPut, settingsPath, settingsBody(map[string]any{
+		"retentionGraceDays":      30,
+		"deleteExternalAfterDays": 60,
+	}), http.StatusOK, &s, ifMatch(s.Revision))
+
+	end := shiftDay(t, today(t, w.h), -40)
+	managed := createPerson(t, w.hr, with(newPerson("Slettet", "Konto"), "workEmail", "slettet@example.test"))
+	seedEmploymentDated(t, w.h, managed.Id, 0, shiftDay(t, today(t, w.h), -200), &end)
+	uManaged := uuid.New()
+	w.fake.setUser(contracts.AccountRef{
+		UserID: uManaged, State: contracts.AccountStateDisabled, DisabledBy: contracts.DisabledByStaff,
+		Managed: true, EmployeeNumber: managed.EmployeeNumber,
+	})
+	workerLink(t, w.h, managed.Id, uManaged, "disabled")
+	_ = w.fake.Expect(context.Background(), contracts.Actor{System: contracts.SystemActorStaffAccounts},
+		contracts.ExpectedAccount{EmployeeNumber: managed.EmployeeNumber, ObjectID: "oid-managed"})
+	w.h.Exec(t, `
+		INSERT INTO staff.identity_links (person_id, provider, external_id, state, managed, announced_at, created_at, updated_at)
+		VALUES ($1, 'entra', 'oid-managed', 'disabled', true, $2, $2, $2)`,
+		managed.Id, w.h.Now())
+
+	selfLinked := createPerson(t, w.hr, with(newPerson("Egen", "Lenke"), "workEmail", "egen@example.test"))
+	seedEmploymentDated(t, w.h, selfLinked.Id, 0, shiftDay(t, today(t, w.h), -200), &end)
+	uSelf := uuid.New()
+	w.fake.setUser(contracts.AccountRef{
+		UserID: uSelf, State: contracts.AccountStateDisabled, Managed: false,
+	})
+	link(t, w.h, selfLinked.Id, uSelf)
+
+	blocked := createPerson(t, w.hr, with(newPerson("Nekter", "Slett"), "workEmail", "nekter@example.test"))
+	seedEmploymentDated(t, w.h, blocked.Id, 0, shiftDay(t, today(t, w.h), -200), &end)
+	uBlocked := uuid.New()
+	w.fake.setUser(contracts.AccountRef{
+		UserID: uBlocked, State: contracts.AccountStateDisabled, DisabledBy: contracts.DisabledByStaff,
+		Managed: true, Privileged: true, EmployeeNumber: blocked.EmployeeNumber,
+	})
+	workerLink(t, w.h, blocked.Id, uBlocked, "disabled")
+
+	var retention *staff.RetentionWorker
+	for _, wk := range w.h.Workers(w.h.Deps()) {
+		if rw, ok := wk.(*staff.RetentionWorker); ok {
+			retention = rw
+		}
+	}
+	if ran, err := retention.RunCycle(context.Background()); err != nil || !ran {
+		t.Fatalf("RunCycle = %v, %v; want true, nil", ran, err)
+	}
+
+	// 1. managed's identity user was erased, announcement withdrawn, link row kept with external_id NULL, identity_erased recorded.
+	if w.fake.user(uManaged).UserID != uuid.Nil {
+		t.Error("the managed disabled user still exists in fakeAccounts after retention")
+	}
+	if _, announced := w.fake.announcements()[contracts.NormalizeEmployeeNumber(managed.EmployeeNumber)]; announced {
+		t.Error("the announcement for managed was not withdrawn")
+	}
+	if n := w.h.Count(t, `SELECT count(*) FROM staff.identity_links WHERE person_id = $1 AND provider = 'identity' AND external_id IS NULL AND state = 'disabled' AND NOT managed`, managed.Id); n != 1 {
+		t.Error("the identity link row was not kept with external_id = NULL, state = disabled, managed = false")
+	}
+	if n := w.h.Count(t, `SELECT count(*) FROM staff.identity_links WHERE person_id = $1 AND provider = 'entra' AND announced_at IS NULL`, managed.Id); n != 1 {
+		t.Error("the provider link's announced_at was not cleared")
+	}
+	if n := w.h.Count(t, `SELECT count(*) FROM staff.events WHERE person_id = $1 AND kind = 'identity_erased'`, managed.Id); n != 1 {
+		t.Error("identity_erased event was not recorded for managed")
+	}
+
+	// 2. selfLinked's self-service link was left untouched.
+	if w.fake.user(uSelf).UserID == uuid.Nil {
+		t.Error("the self-service linked user was erased")
+	}
+	if n := w.h.Count(t, `SELECT count(*) FROM staff.identity_links WHERE person_id = $1 AND provider = 'identity' AND external_id = $2`, selfLinked.Id, uSelf.String()); n != 1 {
+		t.Error("the self-service link lost its external_id")
+	}
+
+	// 3. blocked's privileged user refused Erase: erasure_incomplete is recorded and erasureIncomplete is raised on the dashboard.
+	itemID := "erasureIncomplete/" + strconv.FormatInt(blocked.Id, 10)
+	if item, ok := hasItem(t, w.hr, itemID); !ok || item.Title != "An erased person" {
+		t.Fatalf("attention item %s = %+v, %v; want present with title 'An erased person'", itemID, item, ok)
+	}
+	// Once demoted, POST /retention/run by hand retries immediately and clears erasureIncomplete.
+	w.fake.setUser(contracts.AccountRef{
+		UserID: uBlocked, State: contracts.AccountStateDisabled, DisabledBy: contracts.DisabledByStaff,
+		Managed: true, Privileged: false, EmployeeNumber: blocked.EmployeeNumber,
+	})
+	var run gen.StaffRetentionRun
+	do(t, w.hr, http.MethodPost, retentionRunPath, nil, http.StatusOK, &run)
+	if w.fake.user(uBlocked).UserID != uuid.Nil {
+		t.Error("POST /retention/run did not erase the demoted user")
+	}
+	if item, ok := hasItem(t, w.hr, itemID); ok {
+		t.Errorf("after POST /retention/run HR still reads %+v", item)
 	}
 }

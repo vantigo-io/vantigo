@@ -475,6 +475,36 @@ func (f *fakeAccounts) Unexpect(_ context.Context, actor contracts.Actor, employ
 	return nil
 }
 
+// Erase deletes a disabled Staff-managed user from the fake, as a write
+// "Erase".
+func (f *fakeAccounts) Erase(ctx context.Context, actor contracts.Actor, id uuid.UUID) error {
+	if !actor.Valid() {
+		return contracts.ErrInvalidActor
+	}
+	if err := f.wait(ctx, "Erase"); err != nil {
+		return err
+	}
+	if err := f.begin("Erase", "", id, actor); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ref, ok := f.users[id]
+	switch {
+	case !ok:
+		return nil
+	case !ref.Managed:
+		return contracts.ErrAccountNotManaged
+	case ref.Privileged:
+		return contracts.ErrAccountPrivileged
+	case ref.State != contracts.AccountStateDisabled && ref.DisabledBy == "":
+		return contracts.ErrAccountEnabled
+	}
+	delete(f.users, id)
+	delete(f.expected, contracts.NormalizeEmployeeNumber(ref.EmployeeNumber))
+	return nil
+}
+
 // The fake's announcements, which Task 4's tests read: held by the number's
 // key, replaced by a second Expect, withdrawn by Unexpect, each a write.
 func TestFakeAccounts_ExpectHoldsTheAnnouncementByNumber(t *testing.T) {

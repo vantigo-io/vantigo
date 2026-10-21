@@ -123,6 +123,18 @@ func TestDecideProvider(t *testing.T) {
 			in.DisableRequested, in.Person.Flag, in.Person.Erased = true, false, true
 		}), step(accountStepDeactivate)},
 		{"erased", all(withAccount(providerStateEnabled), func(in *providerDecision) { in.Person.Erased = true }), none},
+		{"erased leaver, enabled", all(employed(span("2026-01-01", "2026-09-10")), withAccount(providerStateEnabled),
+			func(in *providerDecision) { in.Person.Erased, in.Person.Flag = true, false }), step(accountStepDeactivate)},
+		{"erased leaver, disabled, the delete due", all(employed(span("2026-01-01", "2026-09-10")), withAccount(providerStateDisabled),
+			func(in *providerDecision) {
+				in.Person.Erased, in.Person.Flag, in.DeleteAfterDays = true, false, days(30)
+			}), step(accountStepDelete)},
+		{"erased leaver, disabled, the delete due, a legal hold", all(employed(span("2026-01-01", "2026-09-10")), withAccount(providerStateDisabled),
+			func(in *providerDecision) {
+				in.Person.Erased, in.Person.Flag, in.DeleteAfterDays, in.LegalHold = true, false, days(30), true
+			}), none},
+		{"erased leaver, disabled, a leaver's step failed: deactivated again", all(employed(span("2026-01-01", "2026-09-10")),
+			withAccount(providerStateDisabled), stepFailed, func(in *providerDecision) { in.Person.Erased, in.Person.Flag = true, false }), step(accountStepDeactivate)},
 		// A leaver's step the provider could not run (Entra C's deviation 5):
 		// the disabled account is deactivated again, once a chain, until the
 		// code clears.

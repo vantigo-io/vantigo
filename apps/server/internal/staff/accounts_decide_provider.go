@@ -163,6 +163,22 @@ func providerRow(in providerDecision) accountStep {
 		return none
 	}
 	if p.Erased {
+		if len(p.Employments) == 0 {
+			return none
+		}
+		today := decideDay(in.Today)
+		phase, _ := accountPhaseOf(p, today, in.CreateBeforeDays)
+		if phase == phaseEnded {
+			switch {
+			case enabled:
+				return accountStep{Kind: accountStepDeactivate}
+			case hasAccount && acc.State == providerStateDisabled &&
+				providerDeleteDue(p.Employments, today, in.DeleteAfterDays) && !in.LegalHold:
+				return accountStep{Kind: accountStepDelete}
+			case unfinished:
+				return accountStep{Kind: accountStepDeactivate}
+			}
+		}
 		return none
 	}
 	if link != nil && link.ExternalID != nil && !deleted && acc == nil {

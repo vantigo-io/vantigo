@@ -553,3 +553,72 @@ SELECT created_at FROM staff.object_deletions ORDER BY created_at, id LIMIT 1;
 SELECT at FROM staff.events
 WHERE kind = 'erased' AND (@with_health::boolean OR NOT ('E' = ANY(payload_classes)))
 ORDER BY at DESC, id DESC LIMIT 1;
+
+-- name: DuePeopleAccountErase :many
+-- DuePeopleAccountErase is the erased people, not held, whose Staff-managed
+-- disabled identity user or unfulfilled announcement is due to be erased from
+-- identity (Entra delivery E): either their identity link still names a
+-- disabled Staff-managed user, or a provider link still carries an
+-- announcement. A link whose last attempt failed (erasure_incomplete) waits
+-- for its next attempt (the next civil day's midnight) unless the run is by
+-- hand (@ignore_backoff).
+SELECT p.id AS person_id, p.employee_number, l.id AS link_id, l.external_id,
+    EXISTS (
+        SELECT 1 FROM staff.identity_links x
+        WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.announced_at IS NOT NULL
+    )::boolean AS has_announcement
+FROM staff.people p
+JOIN staff.identity_links l ON l.person_id = p.id AND l.provider = 'identity'
+WHERE p.erased_at IS NOT NULL
+  AND NOT p.legal_hold
+  AND ((l.external_id IS NOT NULL AND l.state = 'disabled' AND l.managed)
+    OR EXISTS (
+        SELECT 1 FROM staff.identity_links x
+        WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.announced_at IS NOT NULL))
+  AND (@ignore_backoff::boolean
+    OR l.blocked_reason IS DISTINCT FROM 'erasure_incomplete'
+    OR l.next_attempt_at IS NULL
+    OR l.next_attempt_at <= @now::timestamptz)
+ORDER BY p.erased_at, p.id
+LIMIT @row_limit;
+
+-- name: MarkIdentityLinkErased :execrows
+-- MarkIdentityLinkErased clears the erased user from the person's identity
+-- link while keeping the row so a provider link's claim can still lock it.
+UPDATE staff.identity_links SET
+    external_id = NULL,
+    state = 'disabled',
+    managed = false,
+    blocked_reason = NULL,
+    last_error = NULL,
+    attempts = 0,
+    next_attempt_at = NULL,
+    last_spec_hash = NULL,
+    synced_employee_number = NULL,
+    disable_requested_at = NULL,
+    lease_id = NULL,
+    lease_until = NULL,
+    updated_at = @now::timestamptz
+WHERE id = @id
+  AND external_id IS NOT DISTINCT FROM sqlc.narg(claimed_external_id)::text;
+
+-- name: MarkIdentityLinkEraseFailed :exec
+-- MarkIdentityLinkEraseFailed records an identity erase that could not finish
+-- on the person's identity link (erasure_incomplete), retried on the next
+-- civil day's retention run.
+UPDATE staff.identity_links SET
+    blocked_reason = 'erasure_incomplete',
+    last_error = @last_error::varchar,
+    attempts = attempts + 1,
+    next_attempt_at = @next_attempt_at::timestamptz,
+    updated_at = @now::timestamptz
+WHERE id = @id
+  AND external_id IS NOT DISTINCT FROM sqlc.narg(claimed_external_id)::text;
+
+-- name: ClearProviderLinkAnnounced :exec
+-- ClearProviderLinkAnnounced clears announced_at on the person's provider
+-- links after the announcement has been withdrawn from identity.
+UPDATE staff.identity_links SET
+    announced_at = NULL,
+    updated_at = @now::timestamptz
+WHERE person_id = @person_id AND provider <> 'identity' AND announced_at IS NOT NULL;
