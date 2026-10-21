@@ -589,6 +589,9 @@ func (r *accountResult) reported(step accountStep, ref *contracts.AccountRef) {
 	case step.Kind == accountStepNone && ref != nil:
 		r.state = stateOfRef(*ref, r.state)
 	}
+	if step.Kind == accountStepNone && deref(r.claim.BlockedReason) == reasonErasureIncomplete {
+		return
+	}
 	r.answered(step.Reason)
 	if step.Kind == accountStepReport && r.changed() {
 		r.event(reportEventKind(step.Reason, r.state), string(step.Kind), step.Reason)
@@ -847,7 +850,7 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 		r.disableRequested = nil
 	}
 	var ref *contracts.AccountRef
-	if user != nil {
+	if user != nil && !f.decide.Erased {
 		if ref, err = s.readAccountRef(ctx, *user, f); err != nil {
 			log.WarnContext(ctx, "staff: read a linked account", "error", err.Error())
 			// The provider column still runs: a leaver's external account is

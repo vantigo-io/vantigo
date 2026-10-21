@@ -87,8 +87,9 @@ const (
 	reasonInvitationUnanswered = "invitation_unanswered"
 	// reasonNotManaged: the worker's link names a user Staff no longer
 	// manages (an Owner unmanaged or promoted them); the link keeps its state.
-	reasonNotManaged = "account_not_managed"
-	reasonPrivileged = "account_privileged"
+	reasonNotManaged        = "account_not_managed"
+	reasonPrivileged        = "account_privileged"
+	reasonErasureIncomplete = "erasure_incomplete"
 )
 
 // accountStep is decide's answer: one step. Fresh is the activate's

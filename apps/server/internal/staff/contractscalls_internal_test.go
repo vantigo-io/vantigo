@@ -69,6 +69,8 @@ func (silentAccounts) Expect(context.Context, contracts.Actor, contracts.Expecte
 
 func (silentAccounts) Unexpect(context.Context, contracts.Actor, string) error { return nil }
 
+func (silentAccounts) Erase(context.Context, contracts.Actor, uuid.UUID) error { return nil }
+
 // silentProvisioner is a contracts.IdentityProvisioner answering nothing
 // and refusing nothing, under the key "entra".
 type silentProvisioner struct{ contracts.IdentityProvisioner }
@@ -168,6 +170,7 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		system := contracts.Actor{System: contracts.SystemActorStaffAccounts}
 		e12 := s.accountsExpect(ctx, system, contracts.ExpectedAccount{EmployeeNumber: "A-1"})
 		e13 := s.accountsUnexpect(ctx, system, "A-1")
+		e13b := s.accountsErase(ctx, system, user)
 		p, _ := s.provisioner(contracts.AccountKindEntra)
 		_, e14 := s.providerInfo(ctx, p)
 		_, e15 := s.providerAccount(ctx, p, "x")
@@ -177,11 +180,11 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		_, e19 := s.providerUpdate(ctx, p, system, "x", contracts.ExternalSpec{})
 		e20 := s.providerDelete(ctx, p, system, "x")
 		_, e21 := s.providerRevealPass(ctx, p, system, "x")
-		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21}
+		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e13b, e14, e15, e16, e17, e18, e19, e20, e21}
 	}
 	want := []string{"Users.User", "Users.Users", "Users.SearchUsers", "SMTPSend", "ObjectStore.Put", "ObjectStore.Get", "ObjectStore.Delete",
 		"Accounts.Mode", "Accounts.Account", "Accounts.ProvisioningRoles", "Users.PermissionHolders",
-		"Accounts.Expect", "Accounts.Unexpect", "Provisioner.Provider", "Provisioner.Account", "Provisioner.Prepare",
+		"Accounts.Expect", "Accounts.Unexpect", "Accounts.Erase", "Provisioner.Provider", "Provisioner.Account", "Provisioner.Prepare",
 		"Provisioner.Activate", "Provisioner.Deactivate", "Provisioner.Update", "Provisioner.Delete", "Provisioner.RevealPass"}
 
 	for _, err := range call(ctx) {
@@ -267,6 +270,9 @@ func TestContractCalls_TheAccountsAccessors(t *testing.T) {
 	}
 	if err := none.accountsExpect(ctx, contracts.Actor{System: contracts.SystemActorStaffAccounts}, contracts.ExpectedAccount{}); !errors.Is(err, errAccountsUnavailable) {
 		t.Errorf("Expect without a provider = %v, want errAccountsUnavailable", err)
+	}
+	if err := none.accountsErase(ctx, contracts.Actor{System: contracts.SystemActorStaffRetention}, uuid.New()); !errors.Is(err, errAccountsUnavailable) {
+		t.Errorf("Erase without a provider = %v, want errAccountsUnavailable", err)
 	}
 	// A provider no enabled module offers: the slot names none, and every
 	// provider accessor answers errProviderUnavailable.

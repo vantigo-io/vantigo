@@ -45,6 +45,7 @@ const (
 	eventAccountBlocked     = "account_blocked"
 	eventAccountFailed      = "account_failed"
 	eventAccountMismatched  = "account_mismatched"
+	eventIdentityErased     = "identity_erased"
 )
 
 // accountEventKinds are the account events, listed only to the readers of
@@ -58,6 +59,7 @@ const (
 var accountEventKinds = []string{
 	eventAccountFlagUpdated, eventAccountPrepared, eventAccountActivated, eventAccountDeactivated,
 	eventAccountUpdated, eventAccountBlocked, eventAccountFailed, eventAccountMismatched,
+	eventIdentityErased,
 	eventAccountAnnounced, eventAccountExternalPrepared, eventAccountExternalActivated,
 	eventAccountExternalDeactivated, eventAccountExternalUpdated, eventAccountExternalDeleted,
 	eventAccountExternalBlocked, eventAccountExternalFailed, eventPassRevealed,

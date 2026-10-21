@@ -65,7 +65,7 @@ SELECT l.person_id, p.display_name, p.provision_account, (p.erased_at IS NOT NUL
         WHERE i.person_id = p.id AND i.provider = 'identity' AND i.external_id IS NOT NULL)::boolean AS identity_linked
 FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
-WHERE (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL)
+WHERE (p.erased_at IS NULL OR l.disable_requested_at IS NOT NULL OR l.blocked_reason = 'erasure_incomplete')
   AND (l.blocked_reason IS NOT NULL OR l.last_error IS NOT NULL OR l.disable_requested_at IS NOT NULL
     OR (l.provider <> 'identity'
         AND (cardinality(l.reported_codes) > 0 OR l.pass_issued_at IS NOT NULL OR l.announced_at IS NOT NULL)))
@@ -213,8 +213,7 @@ WHERE id = (
     JOIN staff.people p ON p.id = l.person_id
     WHERE l.provider = 'identity'
       AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
-        OR (p.erased_at IS NULL
-            AND ((l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
+        OR (((p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
                 OR EXISTS (SELECT 1 FROM staff.identity_links x
                     WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.state <> 'deleted'))
             AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)
@@ -368,8 +367,7 @@ SELECT count(*) FROM staff.identity_links l
 JOIN staff.people p ON p.id = l.person_id
 WHERE l.provider = 'identity'
   AND ((p.provision_account AND p.erased_at IS NULL) OR l.disable_requested_at IS NOT NULL
-    OR (p.erased_at IS NULL
-        AND ((l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
+    OR (((p.erased_at IS NULL AND l.state <> 'linked' AND l.managed AND l.external_id IS NOT NULL)
             OR EXISTS (SELECT 1 FROM staff.identity_links x
                 WHERE x.person_id = p.id AND x.provider <> 'identity' AND x.state <> 'deleted'))
         AND EXISTS (SELECT 1 FROM staff.employments e WHERE e.person_id = p.id)

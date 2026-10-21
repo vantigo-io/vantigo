@@ -76,6 +76,7 @@ var accountReasonItems = map[string]gen.StaffStatsAttentionItemType{
 	reasonEmployeeRoleMissing:  gen.EmployeeRoleMissing,
 	reasonEmployeeRoleUnsafe:   gen.EmployeeRoleUnsafe,
 	reasonModeMismatch:         gen.AccountModeMismatch,
+	reasonErasureIncomplete:    gen.ErasureIncomplete,
 	// The provider link's reasons (accounts_provider.go). Its
 	// provider_unavailable is judged on settings.provider_status instead
 	// (accountStatusReasons); external_enabled — a delete the provider
@@ -255,10 +256,11 @@ func (a accountAttention) items() []gen.StaffStatsAttentionItem {
 		}
 		// A flag that is off, or an erased record, raises only the refusal a
 		// disable asked for was answered with, while it stands (re-check
-		// MEDIUM-1 and LOW-1): the user is still enabled, and an Owner's, or
-		// HR's number, to put right. A reason left from when the flag was on
-		// raises nothing.
-		if (l.Erased || !l.ProvisionAccount) && (l.DisableRequestedAt == nil || !accountDisableRefusals[reason]) {
+		// MEDIUM-1 and LOW-1) — the user is still enabled, and an Owner's, or
+		// HR's number, to put right — or an identity erase the retention run
+		// could not finish (erasure_incomplete). A reason left from when the
+		// flag was on raises nothing.
+		if (l.Erased || !l.ProvisionAccount) && reason != reasonErasureIncomplete && (l.DisableRequestedAt == nil || !accountDisableRefusals[reason]) {
 			continue
 		}
 		title, isInstallation := accountInstallationItems[kind]

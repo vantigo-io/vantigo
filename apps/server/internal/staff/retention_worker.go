@@ -149,30 +149,42 @@ func (s *server) eraseUnderLease(ctx context.Context, who actor) (bool, []erased
 	if err != nil {
 		return false, nil, err
 	}
-	conn, err := s.deps.Pool.Acquire(ctx)
-	if err != nil {
-		return false, nil, fmt.Errorf("staff: acquire a connection for the retention lease: %w", err)
-	}
-	defer conn.Release()
-
-	var acquired bool
-	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, retentionLeaseKey).Scan(&acquired); err != nil {
-		return false, nil, fmt.Errorf("staff: take the retention lease: %w", err)
-	}
-	if !acquired {
-		s.logger().DebugContext(ctx, "staff: the retention lease is held elsewhere; skipping this cycle", "worker", retentionWorkerName)
-		return false, nil, nil
-	}
-	defer func() {
-		release := context.WithoutCancel(ctx)
-		if _, err := conn.Exec(release, `SELECT pg_advisory_unlock($1)`, retentionLeaseKey); err != nil {
-			s.logger().ErrorContext(release, "staff: releasing the retention lease failed; discarding the connection",
-				"worker", retentionWorkerName, "error", err.Error())
-			_ = conn.Conn().Close(release)
+	var (
+		acquired bool
+		kinds    []erasedKind
+	)
+	if err := func() error {
+		conn, err := s.deps.Pool.Acquire(ctx)
+		if err != nil {
+			return fmt.Errorf("staff: acquire a connection for the retention lease: %w", err)
 		}
-	}()
-	kinds, err := s.eraseCycle(ctx, conn, who, zone)
-	return true, kinds, err
+		defer conn.Release()
+
+		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, retentionLeaseKey).Scan(&acquired); err != nil {
+			return fmt.Errorf("staff: take the retention lease: %w", err)
+		}
+		if !acquired {
+			s.logger().DebugContext(ctx, "staff: the retention lease is held elsewhere; skipping this cycle", "worker", retentionWorkerName)
+			return nil
+		}
+		defer func() {
+			release := context.WithoutCancel(ctx)
+			if _, err := conn.Exec(release, `SELECT pg_advisory_unlock($1)`, retentionLeaseKey); err != nil {
+				s.logger().ErrorContext(release, "staff: releasing the retention lease failed; discarding the connection",
+					"worker", retentionWorkerName, "error", err.Error())
+				_ = conn.Conn().Close(release)
+			}
+		}()
+		var cycleErr error
+		kinds, cycleErr = s.eraseCycle(ctx, conn, who, zone)
+		return cycleErr
+	}(); err != nil || !acquired {
+		return acquired, nil, err
+	}
+	if err := s.eraseAccounts(ctx, who, zone); err != nil {
+		return true, kinds, err
+	}
+	return true, kinds, nil
 }
 
 // logger is the module's logger, or the process's when a bare Deps has none.
