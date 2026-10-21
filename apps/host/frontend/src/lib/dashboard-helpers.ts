@@ -180,6 +180,7 @@ const staffAccountAttentionTypes = [
   "accountFailing",
   "invitationUnanswered",
   "invitationRevoked",
+  "erasureIncomplete",
   // The provider link's (Entra delivery B), read from the person's provider link.
   "accountNotArrived",
   "accountAmbiguousInEntra",
@@ -387,6 +388,7 @@ const staffAttentionTitleKeys: Record<string, string> = {
   accountFailing: "dashboard.staffAccountFailing",
   invitationUnanswered: "dashboard.staffInvitationUnanswered",
   invitationRevoked: "dashboard.staffInvitationRevoked",
+  erasureIncomplete: "dashboard.staffErasureIncomplete",
   employeeRoleMissing: "dashboard.staffEmployeeRoleMissing",
   employeeRoleUnsafe: "dashboard.staffEmployeeRoleUnsafe",
   accountModeMismatch: "dashboard.staffAccountModeMismatch",
