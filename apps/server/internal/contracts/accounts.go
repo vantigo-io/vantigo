@@ -106,26 +106,30 @@ const (
 // SystemActorStaffAccounts is the Actor.System of the staff-accounts worker.
 const SystemActorStaffAccounts = "system:staff-accounts"
 
+// SystemActorStaffRetention is the Actor.System of the staff-retention worker.
+const SystemActorStaffRetention = "system:staff-retention"
+
 // Actor is who a provisioning call acts for, written to identity's audit:
 // exactly one of UserID (a person who pressed a button: identity writes them
 // as the audit row's actor) and System (a background worker, such as
-// SystemActorStaffAccounts: identity writes a null actor with
-// details.actor = System and no correlation id).
+// SystemActorStaffAccounts or SystemActorStaffRetention: identity writes a null
+// actor with details.actor = System and no correlation id).
 type Actor struct {
 	UserID *uuid.UUID
 	System string
 }
 
 // Valid reports whether a names exactly one actor: a user (not the nil
-// UUID), or a known system (SystemActorStaffAccounts). A provider refuses an
-// invalid actor with ErrInvalidActor before any write, so every change it
-// audits has someone to name.
+// UUID), or a known system (SystemActorStaffAccounts or
+// SystemActorStaffRetention). A provider refuses an invalid actor with
+// ErrInvalidActor before any write, so every change it audits has someone to
+// name.
 func (a Actor) Valid() bool {
 	user := a.UserID != nil && *a.UserID != uuid.Nil
 	switch {
 	case user && a.System == "":
 		return true
-	case a.UserID == nil && a.System == SystemActorStaffAccounts:
+	case a.UserID == nil && (a.System == SystemActorStaffAccounts || a.System == SystemActorStaffRetention):
 		return true
 	default:
 		return false
@@ -310,6 +314,8 @@ var (
 	ErrModeMismatch = errors.New("contracts: this process's authority mode differs from the recorded one")
 	// ErrLastOwner: deactivating the user would leave no active Owner.
 	ErrLastOwner = errors.New("contracts: the account is the last active Owner")
+	// ErrAccountEnabled: Erase was called for a user who is not disabled.
+	ErrAccountEnabled = errors.New("contracts: the account is not disabled")
 )
 
 // AccountProvisioning is the one sanctioned way a module writes identity's
@@ -409,6 +415,10 @@ type AccountProvisioning interface {
 	Expect(ctx context.Context, actor Actor, spec ExpectedAccount) error
 	// Unexpect withdraws an announcement nobody fulfilled.
 	Unexpect(ctx context.Context, actor Actor, employeeNumber string) error
+	// Erase deletes a managed, disabled user whose person was erased (D16).
+	// ErrUserGone, ErrAccountNotManaged, ErrAccountPrivileged, ErrLastOwner,
+	// ErrAccountEnabled.
+	Erase(ctx context.Context, actor Actor, userID uuid.UUID) error
 }
 
 // NormalizeEmployeeNumber is the one key two employee numbers are compared

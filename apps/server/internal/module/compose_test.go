@@ -880,6 +880,8 @@ func (*fakeAccounts) Expect(context.Context, contracts.Actor, contracts.Expected
 
 func (*fakeAccounts) Unexpect(context.Context, contracts.Actor, string) error { return nil }
 
+func (*fakeAccounts) Erase(context.Context, contracts.Actor, uuid.UUID) error { return nil }
+
 type fakeProductCatalog struct{}
 
 func (*fakeProductCatalog) Variant(context.Context, int32) (*contracts.VariantEntry, error) {
