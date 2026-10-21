@@ -185,3 +185,27 @@ FOR SHARE OF r;
 SELECT id, role, expires_at FROM identity.invitations
 WHERE normalized_email = @normalized_email AND accepted_at IS NULL AND revoked_at IS NULL
 ORDER BY id;
+
+-- name: DeleteUserExpectedAccounts :exec
+-- DeleteUserExpectedAccounts removes any announcement naming the user to
+-- replace or holding their employee number's key (Entra design D16).
+DELETE FROM identity.expected_accounts
+WHERE replace_user_id = @user_id
+   OR (sqlc.narg(employee_number_key)::text IS NOT NULL AND employee_number_key = sqlc.narg(employee_number_key)::text);
+
+-- name: DeleteUserInvitations :exec
+-- DeleteUserInvitations removes every invitation naming the user or their
+-- normalized email address when the user is erased (Entra design D16).
+DELETE FROM identity.invitations
+WHERE user_id = @user_id OR normalized_email = @normalized_email;
+
+-- name: DeleteUserScimMapping :exec
+-- DeleteUserScimMapping lifts the SCIM mapping's ON DELETE RESTRICT before
+-- an erased user's row is deleted (Entra design D16).
+DELETE FROM identity.scim_user_mappings WHERE user_id = @user_id;
+
+-- name: DeleteUserCreatedDelegations :exec
+-- DeleteUserCreatedDelegations lifts authorization_delegations's ON DELETE
+-- RESTRICT on created_by_user_id before an erased user's row is deleted.
+DELETE FROM identity.authorization_delegations WHERE created_by_user_id = @user_id;
+

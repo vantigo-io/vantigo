@@ -1276,6 +1276,9 @@ func TestProvisioning_EveryMethodInBothModes(t *testing.T) {
 			{"Account", func() error { _, err := p.Account(ctx, id, "both@example.test"); return err }},
 			{"Deactivate", func() error { _, err := p.Deactivate(ctx, systemActor, id); return err }},
 			{"ProvisioningRoles", func() error { _, err := p.ProvisioningRoles(ctx); return err }},
+			{"Erase", func() error {
+				return p.Erase(ctx, contracts.Actor{System: contracts.SystemActorStaffRetention}, id)
+			}},
 		}
 		for _, c := range calls {
 			if err := c.call(); err != nil {
@@ -1331,5 +1334,171 @@ func TestProvisioning_CreatedOnlyOnTheCreatingPrepare(t *testing.T) {
 	}
 	if ref := accountOf(t, p, first.UserID, ""); ref.Created {
 		t.Error("Account answered Created")
+	}
+}
+
+// Erase refuses an invalid actor, an unknown user, an unmanaged user, an
+// Owner or SystemAdmin, and an enabled user, writing nothing.
+func TestProvisioning_EraseRefusals(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := h.bootstrapOwner(t)
+	employeeRole(t, h)
+	p := h.accounts(t)
+	ctx := context.Background()
+	retentionActor := contracts.Actor{System: contracts.SystemActorStaffRetention}
+
+	if err := p.Erase(ctx, contracts.Actor{}, uuid.New()); !errors.Is(err, contracts.ErrInvalidActor) {
+		t.Errorf("Erase with invalid actor = %v, want ErrInvalidActor", err)
+	}
+	if err := p.Erase(ctx, retentionActor, uuid.New()); !errors.Is(err, contracts.ErrUserGone) {
+		t.Errorf("Erase unknown user = %v, want ErrUserGone", err)
+	}
+
+	unmanaged := h.createUser(t, owner, "unmanaged-erase@example.test", identity.RoleUser)
+	h.exec(t, `UPDATE identity.users SET is_disabled = true, disabled_by = 'owner' WHERE id = $1`, unmanaged)
+	if err := p.Erase(ctx, retentionActor, unmanaged); !errors.Is(err, contracts.ErrAccountNotManaged) {
+		t.Errorf("Erase unmanaged user = %v, want ErrAccountNotManaged", err)
+	}
+
+	// Managed Owner (simulated via SQL, as a race or manual write) is ErrLastOwner / ErrAccountPrivileged.
+	h.exec(t, `UPDATE identity.users SET managed_by = 'staff', employee_number = 'OWN-1', employee_number_key = 'OWN-1' WHERE id = $1`, ownerID)
+	if err := p.Erase(ctx, retentionActor, ownerID); !errors.Is(err, contracts.ErrLastOwner) {
+		t.Errorf("Erase last active Owner = %v, want ErrLastOwner", err)
+	}
+	secondOwner := h.createUser(t, owner, "second-owner@example.test", identity.RoleOwner)
+	h.exec(t, `UPDATE identity.users SET is_disabled = true, disabled_by = 'staff', managed_by = 'staff', employee_number = 'OWN-2', employee_number_key = 'OWN-2' WHERE id = $1`, secondOwner)
+	if err := p.Erase(ctx, retentionActor, secondOwner); !errors.Is(err, contracts.ErrAccountPrivileged) {
+		t.Errorf("Erase managed Owner = %v, want ErrAccountPrivileged", err)
+	}
+
+	// Enabled managed user is ErrAccountEnabled.
+	ref := mustPrepare(t, p, spec("enabled-erase@example.test", "E-EN1"))
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	if err := p.Erase(ctx, retentionActor, ref.UserID); !errors.Is(err, contracts.ErrAccountEnabled) {
+		t.Errorf("Erase enabled user = %v, want ErrAccountEnabled", err)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1`, ref.UserID); n != 1 {
+		t.Errorf("enabled user was deleted")
+	}
+}
+
+// Erase deletes a disabled Staff-managed user along with their invitations,
+// expected account announcement, OIDC link, SCIM mapping (lifting its ON
+// DELETE RESTRICT), and created delegations, pseudonymises the personal fields
+// in the audit snapshots naming them to "[erased]", and writes account.erased
+// with the user id alone.
+func TestProvisioning_EraseDeletesRowsAndPseudonymisesAudit(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	employeeRole(t, h)
+	p := h.accounts(t)
+	ctx := context.Background()
+	retentionActor := contracts.Actor{System: contracts.SystemActorStaffRetention}
+
+	if err := p.Expect(ctx, systemActor, contracts.ExpectedAccount{
+		EmployeeNumber:    "E-ERASE",
+		DisplayName:       "Kari Nordmann",
+		PreferredLanguage: "nb",
+		UserPrincipalName: "kari.nordmann@example.test",
+	}); err != nil {
+		t.Fatalf("Expect: %v", err)
+	}
+	if err := p.Unexpect(ctx, systemActor, "E-ERASE"); err != nil {
+		t.Fatalf("Unexpect: %v", err)
+	}
+
+	ref := mustPrepare(t, p, contracts.AccountSpec{
+		Email:             "kari.nordmann@example.test",
+		DisplayName:       "Kari Nordmann",
+		PreferredLanguage: "nb",
+		EmployeeNumber:    "E-ERASE",
+	})
+	mustActivate(t, p, ref.UserID, contracts.ActivateOpts{})
+	if _, err := p.Update(ctx, systemActor, ref.UserID, contracts.AccountSpec{
+		Email:             "kari.nordmann@example.test",
+		DisplayName:       "Kari L. Nordmann",
+		PreferredLanguage: "en",
+		EmployeeNumber:    "E-ERASE",
+	}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if _, err := p.Deactivate(ctx, systemActor, ref.UserID); err != nil {
+		t.Fatalf("Deactivate: %v", err)
+	}
+
+	// Attach a SCIM mapping, an OIDC link, an announcement naming the number,
+	// and a delegation created by the user to verify every dependent row goes.
+	h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+		VALUES ($1, $2, 'ext-erase-1', 'kari.nordmann@example.test', false, 1, 'etag1', now(), now())`, uuid.New(), ref.UserID)
+	h.exec(t, `INSERT INTO identity.oidc_links (issuer, subject, user_id, created_at) VALUES ('https://issuer.example.test', 'sub-erase-1', $1, now())`, ref.UserID)
+	h.exec(t, `INSERT INTO identity.expected_accounts (employee_number_key, employee_number, display_name, user_principal_name, created_at, created_by_system)
+		VALUES ('E-ERASE', 'E-ERASE', 'Kari Nordmann', 'kari.nordmann@example.test', now(), 'system:staff-accounts')`)
+	grantee := h.createUser(t, owner, "grantee@example.test", identity.RoleUser)
+	h.exec(t, `INSERT INTO identity.authorization_delegations (id, grantee_user_id, created_by_user_id, can_create_roles, version, created_at, updated_at)
+		VALUES ($1, $2, $3, false, $4, now(), now())`, uuid.New(), grantee, ref.UserID, uuid.New())
+
+	if err := p.Erase(ctx, retentionActor, ref.UserID); err != nil {
+		t.Fatalf("Erase: %v", err)
+	}
+	// A second Erase answers ErrUserGone.
+	if err := p.Erase(ctx, retentionActor, ref.UserID); !errors.Is(err, contracts.ErrUserGone) {
+		t.Errorf("second Erase = %v, want ErrUserGone", err)
+	}
+
+	for _, table := range []struct {
+		name  string
+		query string
+		arg   any
+	}{
+		{"users", `SELECT count(*) FROM identity.users WHERE id = $1`, ref.UserID},
+		{"invitations", `SELECT count(*) FROM identity.invitations WHERE user_id = $1 OR normalized_email = 'KARI.NORDMANN@EXAMPLE.TEST'`, ref.UserID},
+		{"scim_user_mappings", `SELECT count(*) FROM identity.scim_user_mappings WHERE user_id = $1`, ref.UserID},
+		{"oidc_links", `SELECT count(*) FROM identity.oidc_links WHERE user_id = $1`, ref.UserID},
+		{"expected_accounts", `SELECT count(*) FROM identity.expected_accounts WHERE employee_number_key = 'E-ERASE'`, nil},
+		{"authorization_delegations", `SELECT count(*) FROM identity.authorization_delegations WHERE created_by_user_id = $1`, ref.UserID},
+	} {
+		var n int
+		if table.arg != nil {
+			n = h.count(t, table.query, table.arg)
+		} else {
+			n = h.count(t, table.query)
+		}
+		if n != 0 {
+			t.Errorf("%s has %d rows after Erase, want 0", table.name, n)
+		}
+	}
+
+	// Prior audit events remain, with name, email and employee number replaced by "[erased]".
+	for _, action := range []string{"account.expected", "account.unexpected", "user.staff-prepared", "user.staff-updated"} {
+		events := h.auditEvents(t, action)
+		if len(events) == 0 {
+			t.Fatalf("no %s audit event kept", action)
+		}
+		for _, ev := range events {
+			for _, snap := range []string{ev.Before, ev.After} {
+				for _, leaked := range []string{"Kari", "kari.nordmann", "E-ERASE"} {
+					if strings.Contains(snap, leaked) {
+						t.Errorf("%s snapshot %s still contains %q", action, snap, leaked)
+					}
+				}
+			}
+			if !strings.Contains(ev.Before, "[erased]") && !strings.Contains(ev.After, "[erased]") {
+				t.Errorf("%s snapshots (%s / %s) do not contain [erased]", action, ev.Before, ev.After)
+			}
+		}
+	}
+
+	erasedEvents := h.auditEvents(t, "account.erased")
+	if len(erasedEvents) != 1 {
+		t.Fatalf("%d account.erased events, want 1", len(erasedEvents))
+	}
+	ev := erasedEvents[0]
+	wantBefore := `{"userId":"` + ref.UserID.String() + `"}`
+	if ev.Actor != nil || ev.TargetUser == nil || *ev.TargetUser != ref.UserID ||
+		ev.Details != `{"action":"account.erased","actor":"system:staff-retention"}` ||
+		ev.Before != wantBefore || ev.After != `{}` {
+		t.Errorf("account.erased = %+v, want userId-only before %s and empty after", ev, wantBefore)
 	}
 }

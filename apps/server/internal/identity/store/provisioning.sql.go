@@ -55,6 +55,63 @@ func (q *Queries) DeleteProvisioningRolesExcept(ctx context.Context, roleIds []u
 	return err
 }
 
+const deleteUserCreatedDelegations = `-- name: DeleteUserCreatedDelegations :exec
+DELETE FROM identity.authorization_delegations WHERE created_by_user_id = $1
+`
+
+// DeleteUserCreatedDelegations lifts authorization_delegations's ON DELETE
+// RESTRICT on created_by_user_id before an erased user's row is deleted.
+func (q *Queries) DeleteUserCreatedDelegations(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUserCreatedDelegations, userID)
+	return err
+}
+
+const deleteUserExpectedAccounts = `-- name: DeleteUserExpectedAccounts :exec
+DELETE FROM identity.expected_accounts
+WHERE replace_user_id = $1
+   OR ($2::text IS NOT NULL AND employee_number_key = $2::text)
+`
+
+type DeleteUserExpectedAccountsParams struct {
+	UserID            *uuid.UUID
+	EmployeeNumberKey *string
+}
+
+// DeleteUserExpectedAccounts removes any announcement naming the user to
+// replace or holding their employee number's key (Entra design D16).
+func (q *Queries) DeleteUserExpectedAccounts(ctx context.Context, arg DeleteUserExpectedAccountsParams) error {
+	_, err := q.db.Exec(ctx, deleteUserExpectedAccounts, arg.UserID, arg.EmployeeNumberKey)
+	return err
+}
+
+const deleteUserInvitations = `-- name: DeleteUserInvitations :exec
+DELETE FROM identity.invitations
+WHERE user_id = $1 OR normalized_email = $2
+`
+
+type DeleteUserInvitationsParams struct {
+	UserID          *uuid.UUID
+	NormalizedEmail string
+}
+
+// DeleteUserInvitations removes every invitation naming the user or their
+// normalized email address when the user is erased (Entra design D16).
+func (q *Queries) DeleteUserInvitations(ctx context.Context, arg DeleteUserInvitationsParams) error {
+	_, err := q.db.Exec(ctx, deleteUserInvitations, arg.UserID, arg.NormalizedEmail)
+	return err
+}
+
+const deleteUserScimMapping = `-- name: DeleteUserScimMapping :exec
+DELETE FROM identity.scim_user_mappings WHERE user_id = $1
+`
+
+// DeleteUserScimMapping lifts the SCIM mapping's ON DELETE RESTRICT before
+// an erased user's row is deleted (Entra design D16).
+func (q *Queries) DeleteUserScimMapping(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUserScimMapping, userID)
+	return err
+}
+
 const firstDeniedRolePermission = `-- name: FirstDeniedRolePermission :one
 SELECT r.name, rp.permission_key
 FROM identity.role_permissions rp
