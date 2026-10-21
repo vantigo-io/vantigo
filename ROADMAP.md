@@ -1540,7 +1540,7 @@ Calendar and Staff it **depends on nobody but identity** for what it reads; Staf
 it through a new many-provider slot, `contracts.IdentityProvisioner`, and identity's
 accounts stay identity's. It follows [Staff](#staff)'s phase 1, done.
 
-### Phase 1 — The tenant follows the register (A, B, C and D done)
+### Phase 1 — The tenant follows the register (done)
 
 Five deliveries, five pull requests, one migration per schema each. A, B and C are
 specified in full by the design; D and E are decided there and planned on their own.
@@ -1695,12 +1695,25 @@ Account tab's **Groups** card, My page's **Your groups**, and the module page's
 register, with no second place to type; a second provider's groups, which need nothing
 new in Staff.
 
-**E — The erase and the leftovers**, on `feat/identity-erase`: identity's erase on
-Staff's call, after the retention worker has erased the person — the managed user
-deleted with their invitations, OIDC links, passkeys, second factor, sessions and SCIM
-mapping, and the audit rows' snapshots that name them pseudonymised — which replaces
-the Owner's procedure for what identity keeps after Staff's erase. No migration
-expected.
+**E — The erase and the leftovers, built** on `feat/identity-erase`
+([the plan](docs/superpowers/plans/2026-10-21-identity-erase.md);
+[Staff's reference](docs/src/content/docs/en/reference/staff.md#the-erased-state);
+[Authentication](docs/src/content/docs/en/admin/authentication.md#the-audits-system-actor)):
+`AccountProvisioning.Erase` (`contracts.SystemActorStaffRetention`,
+`contracts.ErrAccountEnabled`), called by Staff's retention run after the erase lease is
+released so a single-connection pool never deadlocks: the disabled Staff-managed user is
+deleted with their sessions, credentials, invitations, SCIM mapping, any unconsumed
+announcement for the employee number and the delegations they granted (delegations
+granted to them keep their row with `delegate_user_id` cleared), the `actor_snapshot` and
+`target_snapshot` of the audit rows naming them are pseudonymised in place
+(`displayName: "Erased user"`, `email` and `employeeNumber` empty), and
+`user.staff-erased` is recorded without a snapshot; in Staff, the managed `identity` link
+is deleted (`identity_erased`) — or left keyless and `disabled` while a non-`deleted`
+provider link still waits for `deleteExternalAfterDays`, which the accounts worker now
+claims and soft-deletes even after the person is erased — and a refusal or failure
+records `erasure_incomplete` on the link, raising `erasureIncomplete` under the neutral
+title `"An erased person"` and retrying on the next retention run. A self-service link is
+left untouched. No migration.
 
 *Unblocks:* Staff as the authority for who exists in the company's Microsoft tenant;
 the joiner, mover and leaver without a second place to type.

@@ -284,7 +284,7 @@ skriver endringene for en som bytter stilling, til Entra (`account_external_upda
 dagen etter siste slutt deaktiverer den kontoen i Entra, så brukeren i Vantigo; og etter
 **Slett en ekstern konto (dager etter slutt)**, uten slettesperre, sletter den
 Entra-kontoen (`account_external_deleted`), som Entra holder gjenopprettbar i tretti
-dager. En adresse Entra laget for en person uten e-post på jobb, skrives til personen
+dager — også etter at personen er slettet i Ansatte. En adresse Entra laget for en person uten e-post på jobb, skrives til personen
 (`work_email_set_by_provider`). HR viser passet én gang på personens Konto-fane (**Vis
 passet**, `POST /api/v1/staff/people/{id}/account/pass`, `pass_revealed` i historikken);
 et nytt forsøk, eller et etter at det gikk ut, er `pass_gone` (409): **Kjør nå (nytt
@@ -330,7 +330,10 @@ adressen eller nummeret), `blocked_by_owner` og `disabled_by_owner` (en Owner de
 brukeren; bare en Owner opphever det), `account_privileged` (brukeren er Owner eller
 SystemAdmin og håndteres for hånd), `account_not_managed` (en Owner lot Ansatte slutte å
 styre brukeren), `mismatch` (brukeren har et annet ansattnummer: en annens konto),
-`user_gone` (brukeren ble slettet i identity), `invitation_revoked` og
+`user_gone` (brukeren ble slettet i identity), `erasure_incomplete` (personen er slettet
+i Ansatte, men identity har ennå ikke slettet brukeren — brukeren er fortsatt aktivert,
+er Owner eller SystemAdmin, styres ikke lenger av Ansatte, eller identity svarte ikke;
+oppbevaringsarbeideren prøver igjen ved hver kjøring), `invitation_revoked` og
 `invitation_unanswered` (en Owner trakk invitasjonen tilbake, eller tre invitasjoner ble
 ikke besvart). På en Entra-konto: `provider_unavailable` (Entra ikke tilkoblet, eller
 feiler), `external_ambiguous` (to kontoer i Entra har ansattnummeret),
@@ -453,7 +456,9 @@ lest fra Ansattes egne data (identity spørres ikke når dashbordet lastes). Hve
 navngir personen og ikke noe mer; åpne Konto-fanen deres for detaljene. Bare personer
 med flagget på som ikke er slettet listes, unntatt *accountFailing* for en deaktivering
 som er bedt om og ikke har nådd identity — også for en slettet person, med tittelen «An
-erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk deaktivert.
+erased person» — *erasureIncomplete* for en slettet person hvis bruker i identity ennå
+ikke har blitt slettet (med tittelen «An erased person»), og *accountFailing* for en som
+har sluttet og hvis konto arbeideren ikke fikk deaktivert.
 
 | Punkt | Hva det betyr | Hva du gjør |
 | --- | --- | --- |
@@ -473,6 +478,7 @@ erased person» — og for en som har sluttet og hvis konto arbeideren ikke fikk
 | `accountFailing` (flagget på) | Identity svarte ikke tre ganger på rad | Sjekk identity og loggen, og kjør så Kjør nå |
 | `accountFailing` (flagget av, en som har sluttet) | Personen har sluttet (alle arbeidsforhold avsluttet, ingen senere), og arbeideren fikk ikke deaktivert brukeren Ansatte styrer for dem, tre kjøringer på rad — de kan fortsatt logge inn | Sjekk identity og loggen; arbeideren prøver igjen ved hver kjøring, og punktet forsvinner når brukeren er deaktivert |
 | `accountFailing` (flagget av, eller en slettet person) | En Deaktiver nå har ikke nådd identity — feilet, eller ventet mer enn ti minutter | Arbeideren prøver igjen ved hver kjøring og stopper når identity svarer (en bruker som alt er deaktivert, teller); send Deaktiver nå på nytt om det vedvarer |
+| `erasureIncomplete` | Personen er slettet, og identity kunne ennå ikke slette brukeren Ansatte styrte for dem (fortsatt aktivert, Owner eller SystemAdmin, ikke lenger styrt av Ansatte, eller identity ikke tilgjengelig; med tittelen «An erased person») | Deaktiver brukeren, fjern rollen eller ta brukeren inn for Ansatte igjen i identity, eller sjekk identity — oppbevaringsarbeideren prøver igjen ved hver kjøring |
 | `invitationUnanswered` | Tre invitasjoner ble ikke besvart | Sjekk adressen; Kjør nå sender en ny |
 | `invitationRevoked` | En Owner trakk invitasjonen tilbake | Kjør nå sender en ny, om personen skal ha den |
 | `employeeRoleMissing` | Ingen ansattrolle er navngitt (ett punkt, med antall) | En Owner navngir rollene Ansatte kan gi |
@@ -1268,17 +1274,20 @@ En slettet person som kommer tilbake, [ansettes på nytt](#ansett-en-slettet-per
 på de samme opplysningene: det slettingen fjernet, blir stående tomt til du skriver det
 inn igjen, og lønnen i det nye arbeidsforholdet røres ikke av slettingen av det gamle.
 
-**Det som blir igjen i identity.** Slettingen når bare Ansattes egne rader. Styrte
-Ansatte personens konto, har identity fortsatt den brukeren — navnet, adressen (den
-private, når kontoen brukte den) og ansattnummeret — med invitasjonene og identitys
-revisjonsrader som navngir dem. Dette er godtatt i denne utgivelsen; en automatisk
-fjerning er planlagt i en senere. For å fjerne dem nå gjør en Owner dette:
-
-1. Åpner **Brukere** i arbeidsområdet og finner brukeren (*Styres av Ansatte*, med
-   ansattnummeret).
-2. Velger **Stopp styringen** (`POST /api/v1/identity/owner/users/<id>/unmanage`).
-3. Sletter brukeren. Identitys revisjonsrader om brukeren er identitys egen logg og
-   blir stående.
+**Hva som skjer i identity og katalogen.** Når en person er slettet (og ikke har
+slettesperre), ber oppbevaringsarbeideren også identity om å slette den deaktiverte
+brukeren Ansatte styrte for dem (`identity_erased` i historikken, koblingen fjernet):
+brukeren slettes med invitasjonene, innloggingsmetodene, øktene, SCIM-koblingen og en
+eventuell ubrukt kunngjøring for ansattnummeret, og øyeblikksbildene i identitys
+revisjonsrader som navngir dem, pseudonymiseres på stedet (`Erased user`). En bruker HR
+koblet for hånd under Selvbetjening, er ikke Ansattes og røres ikke. Hvis identity
+avviser — brukeren er fortsatt aktivert, er Owner eller SystemAdmin, eller styres ikke
+lenger av Ansatte — eller ikke svarer, registrerer koblingen `erasure_incomplete`,
+dashbordet viser *erasureIncomplete* («An erased person»), og oppbevaringsarbeideren
+prøver igjen ved hver kjøring til brukeren er slettet eller allerede borte. For en
+`entra`-person der katalogkontoen ennå ikke er slettet, lar Ansatte en tom kobling stå
+slik at kontoarbeideren fortsatt sletter Entra-kontoen når **Slett en ekstern konto
+(dager etter slutt)** er passert etter at siste arbeidsforhold sluttet.
 
 ## Tersklene
 

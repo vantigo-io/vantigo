@@ -195,17 +195,21 @@ Owner may resend one already sent.
 A change Staff's provisioning makes in identity is audited like an Owner's, in
 `identity.authorization_audit_events`, but its actor is a system, not a user:
 `actor_user_id` is empty, the `details` read
-`{"action":"…","actor":"system:staff-accounts"}`, and there is no correlation id, since
+`{"action":"…","actor":"system:staff-accounts"}` (or `"system:staff-retention"` when the
+retention worker erases the user), and there is no correlation id, since
 no request made the change. Every other row's `details` are `{"action":"…"}` as before.
 
-**After Staff erases a person.** Staff's erase reaches Staff's rows alone: identity
-keeps the user Staff managed for them — their name, their address (possibly the
-person's private one) and their employee number — the user's invitations, and the
-audit rows naming them, whose snapshots carry names and employee numbers. This is
-accepted for this release (Staff's design S15); an automatic removal is a later
-release's. An Owner removes the user by hand: [stop Staff managing
-them](#stop-staff-managing-a-user), then delete them. The audit rows stay, as for
-every deleted user.
+**After Staff erases a person.** Once Staff's retention worker has erased a former
+employee's personnel administration (`erased_at`), it asks identity (`Erase`, actor
+`system:staff-retention`, or the caller for a run by hand) to erase the disabled user
+Staff managed for them: the user is deleted together with their sessions, credentials,
+invitations, SCIM mapping, any unconsumed announcement (`identity.expected_accounts`) for
+their employee number, and the delegations they granted (`created_by_user_id`), while
+delegations granted to them stay with `delegate_user_id` cleared; the `actor_snapshot`
+and `target_snapshot` of every row in `identity.authorization_audit_events` naming them
+are pseudonymised in place (`displayName: "Erased user"`, `email` and `employeeNumber`
+empty); and `user.staff-erased` is recorded without a target snapshot. A user HR linked
+by hand (`managed = false`) is not Staff's and is left untouched.
 
 ### The authority mode
 
@@ -288,6 +292,7 @@ link-only path for a person whose account Staff has an external provider create 
 | Activate | Enables a user Staff disabled — a prepared user among them — giving them the [employee roles](#the-employee-roles) on that call only, so a role an Owner removes later stays removed, and recording when (`provisioning_roles_at`); invites a pending user without a credential by name | Re-enables a user Staff disabled; gives no role and sends no invitation | Re-enables a user Staff disabled and, while `provisioning_roles_at` is empty, gives the employee roles and records it — once, enabled or not, never again; sends no invitation | `user.staff-activated` |
 | Deactivate | Disables the user as Staff's (`disabledBy: staff`) — also one the directory already deactivated — ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | The same | `user.staff-deactivated` |
 | Update | Writes the display name, the language and the employee number; the address only while the user is pending and no invitation naming them has been delivered yet, which revokes their invitations `email_changed` and an Owner's open invitations to the new address `replaced` (named in the audit) | Writes the language and the employee number only | The same as `external` | `user.staff-updated` |
+| Erase | Deletes the disabled Staff-managed user (with their sessions, credentials, invitations, SCIM mapping, any unconsumed announcement for the employee number and the delegations they granted, while delegations to them keep their row with `delegate_user_id` cleared) and pseudonymises the `actor_snapshot` and `target_snapshot` of the audit rows naming them (`displayName: "Erased user"`, `email` and `employeeNumber` empty) | The same | The same | `user.staff-erased` |
 | Expect | — | — | Records or replaces the [announcement](#the-announced-account) for the employee number | `account.expected` |
 | Unexpect | — | — | Withdraws an announcement nobody fulfilled | `account.unexpected` |
 
@@ -324,6 +329,7 @@ out and Staff reports their account disabled by the directory. What it refuses:
 | Not managed | The user is not Staff-managed | Adopt them, or leave them to an Owner |
 | Privileged | The user is an Owner or a SystemAdmin (refused for every step, an update included). Identity reports this when Staff reads the account, so Staff reports it without trying, also for a managed user since promoted to Owner | Handle the account by hand |
 | Blocked by an Owner | An Owner disabled the user | Enable them here if Staff should manage them again |
+| Account enabled | `Erase`: the user is still enabled | Disable the user first |
 | Employee role missing | No employee role is named | Name the [employee roles](#the-employee-roles) |
 | Employee role unsafe | A role in the set carries a permission that grants administration — possible only by a change outside identity's checks | Take the permission off the role, or the role out of the set |
 | Address taken | Another user holds the person's address, or an Owner has invited someone to become an Owner at it and the invitation is still open | Give the person another address in Staff, or resolve the other account or the invitation |

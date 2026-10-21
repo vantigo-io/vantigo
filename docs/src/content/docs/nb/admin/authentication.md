@@ -209,18 +209,23 @@ ventende bruker; en eier kan sende en som allerede er sendt, på nytt.
 En endring kontoklargjøringen i Ansatte gjør i identitetsmodulen, logges som en eiers, i
 `identity.authorization_audit_events`, men aktøren er et system, ikke en bruker:
 `actor_user_id` er tom, `details` er
-`{"action":"…","actor":"system:staff-accounts"}`, og det er ingen korrelasjons-id, siden
+`{"action":"…","actor":"system:staff-accounts"}` (eller `"system:staff-retention"` når
+oppbevaringsarbeideren sletter brukeren), og det er ingen korrelasjons-id, siden
 ingen forespørsel gjorde endringen. Alle andre raders `details` er `{"action":"…"}` som
 før.
 
-**Etter at Ansatte har slettet en person.** Ansattes sletting når bare Ansattes rader:
-identity beholder brukeren Ansatte styrte for dem — navnet, adressen (kanskje personens
-private) og ansattnummeret — brukerens invitasjoner og revisjonsradene som navngir dem,
-der øyeblikksbildene har navn og ansattnumre. Dette er godtatt i denne utgivelsen
-(Ansattes design S15); en automatisk fjerning kommer i en senere utgivelse. En eier
-fjerner brukeren for hånd: [slutt å la Ansatte styre
-dem](#slutte-å-la-ansatte-styre-en-bruker), og slett dem så. Revisjonsradene blir
-stående, som for enhver slettet bruker.
+**Etter at Ansatte har slettet en person.** Når Ansattes oppbevaringsarbeider har slettet
+personaladministrasjonen til en tidligere ansatt (`erased_at`), ber den identitetsmodulen
+(`Erase`, aktør `system:staff-retention`, eller innkalleren ved en kjøring for hånd) om å
+slette den deaktiverte brukeren Ansatte styrte for dem: brukeren slettes sammen med øktene,
+innloggingsmetodene, invitasjonene, SCIM-koblingen, en eventuell ubrukt kunngjøring
+(`identity.expected_accounts`) for ansattnummeret og delegeringene brukeren selv har gitt
+(`created_by_user_id`), mens delegeringer gitt til brukeren blir stående med
+`delegate_user_id` tømt; `actor_snapshot` og `target_snapshot` i hver rad i
+`identity.authorization_audit_events` som navngir dem, pseudonymiseres på stedet
+(`displayName: "Erased user"`, `email` og `employeeNumber` tomme); og `user.staff-erased`
+logges uten øyeblikksbilde for målet. En bruker HR koblet for hånd (`managed = false`), er
+ikke Ansattes og røres ikke.
 
 ### Autoritetsmodusen
 
@@ -306,6 +311,7 @@ kontoen til og [kunngjør](#den-kunngjorte-kontoen), med ansattrollene gitt én 
 | Aktiver | Aktiverer en bruker Ansatte har deaktivert — også en klargjort bruker — og gir dem [ansattrollene](#ansattrollene) bare ved det kallet, så en rolle en eier fjerner senere, forblir fjernet, og registrerer når (`provisioning_roles_at`); inviterer en ventende bruker uten innloggingsmetode ved navn | Aktiverer igjen en bruker Ansatte deaktiverte; gir ingen rolle og sender ingen invitasjon | Aktiverer igjen en bruker Ansatte deaktiverte og, så lenge `provisioning_roles_at` er tom, gir ansattrollene og registrerer det — én gang, aktivert eller ikke, aldri igjen; sender ingen invitasjon | `user.staff-activated` |
 | Deaktiver | Deaktiverer brukeren som Ansattes (`disabledBy: staff`) — også en katalogen allerede har deaktivert — avslutter øktene og tilbakestillingslenkene, og trekker tilbake de åpne invitasjonene `deactivated` | Det samme | Det samme | `user.staff-deactivated` |
 | Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter og ingen invitasjon som navngir dem, er levert ennå, og da trekkes invitasjonene tilbake `email_changed` og en eiers åpne invitasjoner til den nye adressen `replaced` (navngitt i revisjonsloggen) | Skriver bare språket og ansattnummeret | Det samme som `external` | `user.staff-updated` |
+| Slett (`Erase`) | Sletter den deaktiverte brukeren Ansatte styrer (med øktene, innloggingsmetodene, invitasjonene, SCIM-koblingen, en eventuell ubrukt kunngjøring for ansattnummeret og delegeringene brukeren ga, mens delegeringer til brukeren beholder raden med `delegate_user_id` tømt) og pseudonymiserer `actor_snapshot` og `target_snapshot` i revisjonsradene som navngir dem (`displayName: "Erased user"`, `email` og `employeeNumber` tomme) | Det samme | Det samme | `user.staff-erased` |
 | Forvent (`Expect`) | — | — | Registrerer eller erstatter [kunngjøringen](#den-kunngjorte-kontoen) for ansattnummeret | `account.expected` |
 | Trekk tilbake (`Unexpect`) | — | — | Trekker tilbake en kunngjøring ingen har oppfylt | `account.unexpected` |
 
@@ -344,6 +350,7 @@ kontoen som deaktivert av katalogen. Dette avviser den:
 | Ikke styrt | Brukeren styres ikke av Ansatte | Ta dem inn, eller overlat dem til en eier |
 | Privilegert | Brukeren er eier eller SystemAdmin (avvist for hvert steg, også en oppdatering). Identitet melder dette når Ansatte leser kontoen, så Ansatte melder det uten å forsøke, også for en styrt bruker som siden er gjort til eier | Håndter kontoen for hånd |
 | Sperret av en eier | En eier deaktiverte brukeren | Aktiver dem her hvis Ansatte skal styre dem igjen |
+| Kontoen er aktivert | `Erase`: brukeren er fortsatt aktivert | Deaktiver brukeren først |
 | Ansattrolle mangler | Ingen ansattrolle er valgt | Velg [ansattrollene](#ansattrollene) |
 | Usikker ansattrolle | En rolle i settet har en tillatelse som gir administrasjon — bare mulig ved en endring utenom identitetsmodulens kontroller | Ta tillatelsen av rollen, eller rollen ut av settet |
 | Adressen er tatt | En annen bruker har personens adresse, eller en eier har invitert noen til å bli eier på den og invitasjonen er fortsatt åpen | Gi personen en annen adresse i Ansatte, eller rydd i den andre kontoen eller invitasjonen |

@@ -280,7 +280,8 @@ account's arrival made — no Owner adopts it — giving them the employee roles
 writes a mover's changes to Entra (`account_external_updated`); the day after the last
 end it disables the account in Entra, then the user in Vantigo; and after **Delete an
 external account (days after the end)**, with no legal hold, it deletes the Entra
-account (`account_external_deleted`), which Entra keeps restorable for thirty days. An
+account (`account_external_deleted`), which Entra keeps restorable for thirty days —
+even after the person's record in Staff has been erased. An
 address Entra made for a person with no work email is written to the person
 (`work_email_set_by_provider`). HR shows the pass once on the person's Account tab
 (**Show the pass**, `POST /api/v1/staff/people/{id}/account/pass`, `pass_revealed` in
@@ -326,7 +327,10 @@ address or the number), `blocked_by_owner` and `disabled_by_owner` (an Owner dis
 the user; only an Owner undoes it), `account_privileged` (the user is an Owner or a
 SystemAdmin, handled by hand), `account_not_managed` (an Owner stopped Staff managing
 the user), `mismatch` (the user holds another employee number: someone else's account),
-`user_gone` (the user was deleted in identity), `invitation_revoked` and
+`user_gone` (the user was deleted in identity), `erasure_incomplete` (the person was
+erased in Staff, and identity has not yet erased their user — the user is still enabled,
+an Owner or a SystemAdmin, no longer managed by Staff, or identity could not be reached;
+the retention worker tries again at every run), `invitation_revoked` and
 `invitation_unanswered` (an Owner's revoke, or three invitations unanswered). On an
 Entra account: `provider_unavailable` (Entra not connected, or failing),
 `external_ambiguous` (two accounts in Entra hold the employee number),
@@ -447,7 +451,9 @@ them, read from Staff's own records (identity is not asked when the dashboard lo
 Each names the person and nothing more; open their Account tab for the details. Only
 people whose flag is on and who are not erased are listed, except *accountFailing* for a
 disable asked for that has not reached identity — for an erased person too, titled "An
-erased person" — and for a leaver whose account the worker could not disable.
+erased person" — *erasureIncomplete* for an erased person whose user in identity could
+not yet be erased (titled "An erased person"), and *accountFailing* for a leaver whose
+account the worker could not disable.
 
 | Item | What it means | What to do |
 | --- | --- | --- |
@@ -467,6 +473,7 @@ erased person" — and for a leaver whose account the worker could not disable.
 | `accountFailing` (flag on) | Identity could not be reached three times in a row | Check identity's health and the log, then Run now |
 | `accountFailing` (flag off, a leaver) | The person has left (every employment ended, none later) and the worker could not disable the user Staff manages for them, three polls in a row — they can still sign in | Check identity's health and the log; the worker retries at every poll and the item clears once the user is disabled |
 | `accountFailing` (flag off, or an erased person) | A Disable now has not reached identity — failed, or waiting more than ten minutes | The worker retries at every poll and stops once identity answers (a user found disabled already counts); send Disable now again if it persists |
+| `erasureIncomplete` | The person is erased, and identity could not yet erase the user Staff managed for them (still enabled, an Owner or a SystemAdmin, no longer managed by Staff, or identity unreachable; titled "An erased person") | Disable, demote or re-adopt the user in identity, or check identity's health — the retention worker retries at every run |
 | `invitationUnanswered` | Three invitations went unanswered | Check the address; Run now sends a fresh one |
 | `invitationRevoked` | An Owner revoked the invitation | Run now sends a fresh one, if the person should have it |
 | `employeeRoleMissing` | No employee role named (one item, with a count) | An Owner names the roles Staff may give |
@@ -1255,17 +1262,20 @@ An erased person who comes back is [rehired](#rehire-an-erased-person) on the sa
 record: what the erase removed stays empty until you type it again, and the rehired
 employment's pay is untouched by the old one's erase.
 
-**What stays in identity.** The erase reaches Staff's rows alone. If Staff managed the
-person's account, identity still holds that user — their name, their address (the
-private one, when the account used it) and their employee number — with their
-invitations and identity's audit rows naming them. This is accepted for this release;
-an automatic removal is planned for a later one. To remove them now, an Owner:
-
-1. Opens **Users** in the workspace and finds the user (*Managed by Staff · no.* and the
-   employee number).
-2. Chooses **Stop managing** (`POST /api/v1/identity/owner/users/<id>/unmanage`).
-3. Deletes the user. Identity's audit rows about the user are identity's own record and
-   stay.
+**What happens in identity and the directory.** Once a person is erased (and no legal
+hold is on them), the retention worker also asks identity to erase the disabled user
+Staff managed for them (`identity_erased` in the history, the link removed): the user is
+deleted with their invitations, credentials, sessions, SCIM mapping and any unconsumed
+announcement for their employee number, and the snapshots in identity's audit rows
+naming them are pseudonymised in place (`Erased user`). A user HR linked by hand under
+Self-service is not Staff's and is left untouched. If identity refuses — the user is
+still enabled, is an Owner or a SystemAdmin, or is no longer managed by Staff — or
+cannot be reached, the link records `erasure_incomplete`, the dashboard shows
+*erasureIncomplete* ("An erased person"), and the retention worker tries again at every
+run until the user is erased or already gone. For an `entra` person whose directory
+account has not yet been deleted, Staff keeps a keyless link so the accounts worker still
+deletes the Entra account once **Delete an external account (days after the end)** has
+passed since the last employment ended.
 
 ## The thresholds
 

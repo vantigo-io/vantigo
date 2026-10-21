@@ -270,7 +270,8 @@ Communications' outbox is the working example.
     registers: `contracts.AccountProvisioning`, in the single-provider slot
     `Accounts` (rule 5), which identity provides. Through it a caller prepares a
     Staff-managed user (`Prepare`), enables it (`Activate`), disables it
-    (`Deactivate`), updates it (`Update`), reads it (`Account`) and reads the roles an
+    (`Deactivate`), updates it (`Update`), erases it once the person is erased in Staff
+    (`Erase`), reads it (`Account`) and reads the roles an
     Owner named for Staff to give (`ProvisioningRoles`), and announces the account an
     external provider will create for a person (`Expect`) or withdraws that
     announcement (`Unexpect`), so the user the provider's SCIM push or the person's
@@ -295,14 +296,19 @@ Communications' outbox is the working example.
     and holds no connection or lease across a call**; a worker claims its row in one
     short transaction, commits, calls identity holding nothing, and writes the result
     in a second. Every write names its `contracts.Actor` — exactly one of a user and a
-    known system actor (`system:staff-accounts`), which identity writes to its audit;
+    known system actor (`system:staff-accounts` or `system:staff-retention`), which
+    identity writes to its audit;
     a provider refuses an actor that is not `Actor.Valid` with `ErrInvalidActor`
     before it writes anything. The spec
     carries no roles: identity assigns the set an Owner named, only on the `Activate`
     that enables a user Staff disabled (`local`) or once for an adopted user (`entra`),
     so `staff:manage` can never mint an account holding a role it chose, nor give back
-    one an Owner removed. `Expect` and `Unexpect`, like `Deactivate`, read no mode.
-    `Expect` refuses an announcement that is not valid — no object id and no principal
+    one an Owner removed. `Erase`, `Expect` and `Unexpect`, like `Deactivate`, read no
+    mode. `Erase` refuses a user that is not disabled (`ErrAccountEnabled`), not
+    Staff-managed (`ErrAccountNotManaged`), privileged (`ErrAccountPrivileged` or
+    `ErrLastOwner`) or gone (`ErrUserGone`), deletes the disabled Staff-managed user and
+    their dependent rows, and pseudonymises the snapshots of identity's audit rows naming
+    them (`user.staff-erased`). `Expect` refuses an announcement that is not valid — no object id and no principal
     name, or a `ReplaceUserID` that is not the managed, pending, credential-less user
     holding the number — as an invalid spec, a number an unmanaged user holds
     (`ErrEmployeeNumberTaken`) or a managed Owner holds (`ErrAccountPrivileged`), and
