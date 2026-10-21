@@ -68,6 +68,7 @@ func TestActor_Valid(t *testing.T) {
 	}{
 		{"a user", Actor{UserID: &user}, true},
 		{"the accounts worker", Actor{System: SystemActorStaffAccounts}, true},
+		{"the retention worker", Actor{System: SystemActorStaffRetention}, true},
 		{"nobody", Actor{}, false},
 		{"both", Actor{UserID: &user, System: SystemActorStaffAccounts}, false},
 		{"an unknown system", Actor{System: "system:someone"}, false},
@@ -91,6 +92,7 @@ func TestAccountConstants(t *testing.T) {
 		{InvitationNone, "none"}, {InvitationActive, "active"}, {InvitationExpired, "expired"},
 		{InvitationRevokedByOwner, "revoked_by_owner"}, {InvitationExhausted, "exhausted"},
 		{SystemActorStaffAccounts, "system:staff-accounts"},
+		{SystemActorStaffRetention, "system:staff-retention"},
 	} {
 		if c.got != c.want {
 			t.Errorf("constant = %q, want %q", c.got, c.want)
@@ -119,7 +121,7 @@ func TestValidAccountKind(t *testing.T) {
 // ErrAccountEmailTaken above all.
 func TestAccountErrors_AreDistinct(t *testing.T) {
 	all := []error{ErrAccountNotManaged, ErrAccountPrivileged, ErrBlockedByOwner, ErrAccountEmailTaken,
-		ErrEmployeeNumberTaken, ErrInvalidActor, ErrEmployeeRoleMissing, ErrEmployeeRoleUnsafe, ErrAccountNotFound, ErrUserGone, ErrModeMismatch, ErrLastOwner}
+		ErrEmployeeNumberTaken, ErrInvalidActor, ErrEmployeeRoleMissing, ErrEmployeeRoleUnsafe, ErrAccountNotFound, ErrUserGone, ErrModeMismatch, ErrLastOwner, ErrAccountEnabled}
 	for i, a := range all {
 		for j, b := range all {
 			if i != j && errors.Is(a, b) {

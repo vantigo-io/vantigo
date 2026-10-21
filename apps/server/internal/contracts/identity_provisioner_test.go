@@ -27,7 +27,7 @@ func TestIdentityProvisionerConstants(t *testing.T) {
 func TestIdentityProvisionerErrors_AreDistinct(t *testing.T) {
 	all := []error{ErrExternalAmbiguous, ErrExternalAddressTaken, ErrExternalSyncedOnPremises, ErrExternalPrivileged,
 		ErrExternalUnconfirmed, ErrExternalEnabled, ErrPassGone, ErrProviderUnavailable, ErrGroupNotManageable, ErrGroupUnconfirmed,
-		ErrAccountNotManaged, ErrAccountPrivileged, ErrAccountNotFound, ErrUserGone, ErrInvalidActor}
+		ErrAccountNotManaged, ErrAccountPrivileged, ErrAccountNotFound, ErrUserGone, ErrInvalidActor, ErrAccountEnabled}
 	for i, a := range all {
 		for j, b := range all {
 			if i != j && errors.Is(a, b) {
