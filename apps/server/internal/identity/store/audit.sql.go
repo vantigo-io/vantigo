@@ -50,3 +50,74 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 	)
 	return err
 }
+
+const listUserAuditEventsForErase = `-- name: ListUserAuditEventsForErase :many
+SELECT id, target_user_id, action, before_json, after_json
+FROM identity.authorization_audit_events
+WHERE target_user_id = $1
+   OR ($2::text IS NOT NULL
+       AND target_user_id IS NULL
+       AND action IN ('account.expected', 'account.unexpected'))
+ORDER BY id
+FOR UPDATE
+`
+
+type ListUserAuditEventsForEraseParams struct {
+	UserID            *uuid.UUID
+	EmployeeNumberKey *string
+}
+
+type ListUserAuditEventsForEraseRow struct {
+	ID           int64
+	TargetUserID *uuid.UUID
+	Action       string
+	BeforeJson   *string
+	AfterJson    *string
+}
+
+// ListUserAuditEventsForErase lists the audit rows naming the erased user
+// (and any targetless announcement audit rows when the user held an employee
+// number) so their before_json and after_json snapshots can be pseudonymised
+// in place (Entra design D16).
+func (q *Queries) ListUserAuditEventsForErase(ctx context.Context, arg ListUserAuditEventsForEraseParams) ([]ListUserAuditEventsForEraseRow, error) {
+	rows, err := q.db.Query(ctx, listUserAuditEventsForErase, arg.UserID, arg.EmployeeNumberKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserAuditEventsForEraseRow
+	for rows.Next() {
+		var i ListUserAuditEventsForEraseRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TargetUserID,
+			&i.Action,
+			&i.BeforeJson,
+			&i.AfterJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateAuditEventSnapshots = `-- name: UpdateAuditEventSnapshots :exec
+UPDATE identity.authorization_audit_events
+SET before_json = $1, after_json = $2
+WHERE id = $3
+`
+
+type UpdateAuditEventSnapshotsParams struct {
+	BeforeJson *string
+	AfterJson  *string
+	ID         int64
+}
+
+func (q *Queries) UpdateAuditEventSnapshots(ctx context.Context, arg UpdateAuditEventSnapshotsParams) error {
+	_, err := q.db.Exec(ctx, updateAuditEventSnapshots, arg.BeforeJson, arg.AfterJson, arg.ID)
+	return err
+}

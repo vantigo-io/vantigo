@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -882,4 +883,185 @@ func (p *provisioning) ProvisioningRoles(ctx context.Context) ([]contracts.RoleR
 		out[i] = contracts.RoleRef{ID: row.ID, Name: row.Name}
 	}
 	return out, nil
+}
+
+// erasedAudit is account.erased's before: the user id alone (Entra design D16).
+type erasedAudit struct {
+	UserID uuid.UUID `json:"userId"`
+}
+
+// Erase deletes a managed, disabled user whose person was erased in Staff
+// (Entra design D4, D16). It refuses an unknown user (ErrUserGone), an
+// unmanaged user (ErrAccountNotManaged), the last active Owner (ErrLastOwner),
+// an Owner or SystemAdmin (ErrAccountPrivileged), or an enabled user
+// (ErrAccountEnabled). It deletes the user's announcements, invitations, SCIM
+// mapping, created delegations, and user row (which cascades to sessions,
+// passkeys, OIDC links, roles, group memberships, avatars, recovery codes,
+// reset tokens, and login tickets), pseudonymises the personal fields in the
+// before_json and after_json snapshots of audit rows naming the user to
+// "[erased]", and audits account.erased with the user id alone.
+func (p *provisioning) Erase(ctx context.Context, actor contracts.Actor, userID uuid.UUID) error {
+	return p.writeIn(ctx, actor, false, func(q *store.Queries, _ string, now time.Time) error {
+		u, err := lockUser(ctx, q, userID)
+		if err != nil {
+			return err
+		}
+		if u.ManagedBy == nil {
+			return contracts.ErrAccountNotManaged
+		}
+		last, err := q.IsLastActiveOwner(ctx, store.IsLastActiveOwnerParams{UserID: userID, Now: now})
+		if err != nil {
+			return err
+		}
+		if last {
+			return contracts.ErrLastOwner
+		}
+		if u.Privileged {
+			return contracts.ErrAccountPrivileged
+		}
+		if !u.IsDisabled {
+			return contracts.ErrAccountEnabled
+		}
+		var empKey *string
+		if u.EmployeeNumber != nil {
+			if k := contracts.NormalizeEmployeeNumber(*u.EmployeeNumber); k != "" {
+				empKey = &k
+			}
+		}
+		if err := q.DeleteUserExpectedAccounts(ctx, store.DeleteUserExpectedAccountsParams{
+			UserID:            &userID,
+			EmployeeNumberKey: empKey,
+		}); err != nil {
+			return err
+		}
+		if err := q.DeleteUserInvitations(ctx, store.DeleteUserInvitationsParams{
+			UserID:          &userID,
+			NormalizedEmail: u.NormalizedEmail,
+		}); err != nil {
+			return err
+		}
+		if err := q.DeleteUserScimMapping(ctx, userID); err != nil {
+			return err
+		}
+		if err := q.DeleteUserCreatedDelegations(ctx, userID); err != nil {
+			return err
+		}
+		if err := q.DeleteUser(ctx, userID); err != nil {
+			return err
+		}
+		if err := pseudonymiseUserAuditEvents(ctx, q, userID, empKey); err != nil {
+			return err
+		}
+		by, system := auditActor(actor)
+		return writeAudit(ctx, q, nil, now, auditEvent{
+			actor: by, system: system, targetUser: &userID, action: "account.erased",
+			before: erasedAudit{UserID: userID}, after: struct{}{},
+		})
+	})
+}
+
+const erasedAuditPlaceholder = "[erased]"
+
+func pseudonymiseUserAuditEvents(ctx context.Context, q *store.Queries, userID uuid.UUID, empKey *string) error {
+	rows, err := q.ListUserAuditEventsForErase(ctx, store.ListUserAuditEventsForEraseParams{
+		UserID:            &userID,
+		EmployeeNumberKey: empKey,
+	})
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if row.TargetUserID == nil {
+			if empKey == nil || (!snapshotHasEmployeeNumber(row.BeforeJson, *empKey) && !snapshotHasEmployeeNumber(row.AfterJson, *empKey)) {
+				continue
+			}
+		}
+		before, beforeChanged := pseudonymiseAuditSnapshot(row.BeforeJson)
+		after, afterChanged := pseudonymiseAuditSnapshot(row.AfterJson)
+		if !beforeChanged && !afterChanged {
+			continue
+		}
+		if err := q.UpdateAuditEventSnapshots(ctx, store.UpdateAuditEventSnapshotsParams{
+			ID:         row.ID,
+			BeforeJson: before,
+			AfterJson:  after,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func snapshotHasEmployeeNumber(raw *string, empKey string) bool {
+	if raw == nil || *raw == "" {
+		return false
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(*raw), &m); err != nil {
+		return false
+	}
+	for _, k := range []string{"employeeNumber", "EmployeeNumber"} {
+		if s, ok := m[k].(string); ok && contracts.NormalizeEmployeeNumber(s) == empKey {
+			return true
+		}
+	}
+	return false
+}
+
+func pseudonymiseAuditSnapshot(raw *string) (*string, bool) {
+	if raw == nil || *raw == "" {
+		return raw, false
+	}
+	var v any
+	if err := json.Unmarshal([]byte(*raw), &v); err != nil {
+		return raw, false
+	}
+	if !pseudonymiseAuditValue(v) {
+		return raw, false
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return raw, false
+	}
+	out := string(b)
+	return &out, true
+}
+
+func pseudonymiseAuditValue(v any) bool {
+	changed := false
+	switch node := v.(type) {
+	case map[string]any:
+		for k, val := range node {
+			if isAuditPIIKey(k) {
+				if s, ok := val.(string); ok && s != "" && s != erasedAuditPlaceholder {
+					node[k] = erasedAuditPlaceholder
+					changed = true
+				}
+				continue
+			}
+			if pseudonymiseAuditValue(val) {
+				changed = true
+			}
+		}
+	case []any:
+		for _, item := range node {
+			if pseudonymiseAuditValue(item) {
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+func isAuditPIIKey(k string) bool {
+	switch k {
+	case "email", "Email",
+		"normalizedEmail", "NormalizedEmail",
+		"displayName", "DisplayName",
+		"employeeNumber", "EmployeeNumber",
+		"userPrincipalName", "UserPrincipalName":
+		return true
+	default:
+		return false
+	}
 }
