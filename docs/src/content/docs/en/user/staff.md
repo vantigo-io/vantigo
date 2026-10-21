@@ -6,6 +6,8 @@ sidebar:
 sources:
   - apps/staff/frontend
   - apps/host/frontend/src/routes/staff
+  - apps/host/frontend/src/catalogs/dashboard.ts
+  - apps/host/frontend/src/lib/dashboard-helpers.ts
 ---
 
 The Staff app is where HR keeps the company's people: who they are, how to reach them,
@@ -442,9 +444,10 @@ not created or found one for this person.* Then:
   by an Owner or three left unanswered, the user no longer managed by Staff, an Owner or
   a system administrator, no user with the employee number yet in the identity
   provider, the address or the employee number held by a user Staff does not manage,
-  no roles named for Staff — or one that grants administration — and a worker whose
-  mode differs from the installation's. *Failed attempts in a row: 3* says identity
-  could not be reached; the worker tries again.
+  no roles named for Staff — or one that grants administration — an erased person whose
+  user in identity has not yet been erased (the retention worker tries again), and a
+  worker whose mode differs from the installation's. *Failed attempts in a row: 3* says
+  identity could not be reached; the worker tries again.
 - **Invitation** — whether one is open and can be accepted, the latest lapsed
   unanswered, an Owner revoked it, or three went unanswered, with how many were sent.
 - **Next attempt** and **Last brought in line**.
@@ -561,7 +564,10 @@ lift it. A manager and a colleague are not shown the hold.
 ### An erased record
 
 Once a former employee's last employment has ended and the grace period has passed,
-the [retention run](#retention) erases their personnel administration. HR
+the [retention run](#retention) erases their personnel administration, and also erases
+the disabled user Staff managed for them in identity (leaving a user HR linked by hand
+under Self-service untouched, and still deleting a Microsoft Entra ID account once
+**Delete an external account (days after the end)** has passed). HR
 (`staff:manage`, `staff:personal-data`) then sees **Erased** beside the person's status
 and a notice, **This record was erased on** and the day: the contact details, the
 address, the next of kin, the national identity number, the bank account, HR's notes
@@ -1106,6 +1112,7 @@ type is counted only for `staff:personal-data`:
 | Temporary for three years | A run of temporary employments on ground a or b has lasted three years, and the person may have a right to a permanent position. | The person |
 | No manager | Someone employed today has no manager in employment: none named, or the one named has left, and nobody in employment manages their department or one above it. A manager who has left is skipped: their people go to the next manager up, who also sees their probation items. | The person |
 | Reassessment due | An erased person's last employment ended a year ago: record the reassessment. | The person |
+| User in identity not erased | An erased person's user in identity could not yet be erased — still enabled, an Owner or a system administrator, no longer managed by Staff, or identity could not be reached. | The person |
 | Documents not deleted | The document store has refused to delete documents for more than a day. | Staff settings |
 | OTP threshold | By the percentages employed today, the company needs an occupational pension scheme — unless the only such person is the owner. | Staff settings |
 | 5, 30 or more than 50 employees | The headcount has crossed a threshold that brings a duty: a whistleblowing routine and a safety representative at 5, a working environment committee at 30, the duty to report on equality above 50. | Staff settings |

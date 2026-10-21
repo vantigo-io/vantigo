@@ -6,6 +6,8 @@ sidebar:
 sources:
   - apps/staff/frontend
   - apps/host/frontend/src/routes/staff
+  - apps/host/frontend/src/catalogs/dashboard.ts
+  - apps/host/frontend/src/lib/dashboard-helpers.ts
 ---
 
 I Ansatte-appen holder HR oversikt over selskapets personer: hvem de er, hvordan de
@@ -440,9 +442,10 @@ Ansatte har ikke opprettet eller funnet en for denne personen.* Deretter:
   invitasjon trukket tilbake av en eier eller tre ubesvarte, brukeren styres ikke lenger
   av Ansatte, en eier eller en systemadministrator, ingen bruker med ansattnummeret ennå
   hos identitetsleverandøren, adressen eller ansattnummeret holdt av en bruker Ansatte
-  ikke styrer, ingen roller angitt for Ansatte — eller en som gir administrasjon — og en
-  arbeider med en annen modus enn installasjonens. *Mislykkede forsøk på rad: 3* sier at
-  identitet ikke kunne nås; arbeideren prøver igjen.
+  ikke styrer, ingen roller angitt for Ansatte — eller en som gir administrasjon — en
+  slettet person der brukeren i identitet ennå ikke er slettet (oppbevaringsarbeideren
+  prøver igjen), og en arbeider med en annen modus enn installasjonens. *Mislykkede
+  forsøk på rad: 3* sier at identitet ikke kunne nås; arbeideren prøver igjen.
 - **Invitasjon** — om en er åpen og kan godtas, den siste gikk ut ubesvart, en eier
   trakk den tilbake, eller tre ble ikke besvart, med hvor mange som er sendt.
 - **Neste forsøk** og **Sist synkronisert**.
@@ -558,7 +561,10 @@ eller oppheve den. En leder og en kollega får ikke se sperren.
 ### En slettet person
 
 Når en tidligere ansatts siste arbeidsforhold er slutt og fristen er gått, sletter
-[oppbevaringskjøringen](#oppbevaring) personaladministrasjonen deres. HR
+[oppbevaringskjøringen](#oppbevaring) personaladministrasjonen deres, og sletter også den
+deaktiverte brukeren Ansatte styrte for dem i identitet (mens en bruker HR koblet for
+hånd under Selvbetjening, ikke røres, og en konto i Microsoft Entra ID fortsatt slettes
+når **Slett en ekstern konto (dager etter slutt)** er passert). HR
 (`staff:manage`, `staff:personal-data`) ser da **Slettet** ved siden av personens status
 og en melding, **Denne personen ble slettet** og dagen: kontaktopplysningene, adressen,
 pårørende, fødselsnummeret, bankkontoen, HRs notater og personaldokumentene er borte;
@@ -1097,6 +1103,7 @@ bare for `staff:personal-data`:
 | Midlertidig i tre år | En rekke midlertidige arbeidsforhold på grunnlag a eller b har vart tre år, og personen kan ha rett til fast ansettelse. | Personen |
 | Ingen leder | En som er ansatt i dag har ingen leder i arbeid: ingen er oppgitt, eller den som er oppgitt har sluttet, og ingen i arbeid leder avdelingen eller en avdeling over den. En leder som har sluttet, hoppes over: folkene går til nærmeste leder over, som også ser punktene om prøvetiden deres. | Personen |
 | Ny vurdering | Det siste arbeidsforholdet til en slettet person sluttet for et år siden: registrer den nye vurderingen. | Personen |
+| Bruker i identitet ikke slettet | Brukeren i identitet til en slettet person kunne ennå ikke slettes — fortsatt aktivert, eier eller systemadministrator, ikke lenger styrt av Ansatte, eller identitet kunne ikke nås. | Personen |
 | Dokumenter ikke slettet | Dokumentlageret har nektet å slette dokumenter i over et døgn. | Ansatteinnstillinger |
 | OTP-terskelen | Etter stillingsprosentene i dag skal virksomheten ha tjenestepensjon — med mindre den eneste det gjelder er eieren. | Ansatteinnstillinger |
 | 5, 30 eller flere enn 50 ansatte | Antallet ansatte har passert en terskel som gir en plikt: varslingsrutine og verneombud fra 5, arbeidsmiljøutvalg fra 30, aktivitets- og redegjørelsesplikten over 50. | Ansatteinnstillinger |

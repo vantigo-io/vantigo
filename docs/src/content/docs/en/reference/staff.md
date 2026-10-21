@@ -1189,8 +1189,8 @@ person, `staff:manage`, `staff:personal-data` — and never to a manager, an App
 a colleague, whose history and its count leave them out.
 `account_flag_updated {fields: {provisionAccount, provisionFrom, accountEmailKind}}`
 is HR's change of the flag; the worker's `account_prepared`, `account_activated`,
-`account_deactivated`, `account_updated`, `account_blocked`, `account_failed` and
-`account_mismatched` carry `{step, state, code?, invitation?: {state, issued},
+`account_deactivated`, `account_updated`, `account_blocked`, `account_failed`,
+`account_mismatched` and the retention run's `identity_erased` carry `{step, state, code?, invitation?: {state, issued},
 flagOffMeanwhile?}` — the step, the link's state after it, a code, a pending user's
 invitation after an activation, and whether the flag was turned off while the step ran
 — and nothing else: no address, no name, no user id beyond the link's own. They name
@@ -1593,10 +1593,13 @@ worker asked the provider to create or find the account, none named yet), `enabl
 `disabled`, `deleted` (soft-deleted in the directory), `failed` and `blocked`.
 
 **The identity link stays the claim.** The worker claims a person's identity link as
-before — `ClaimAccountLink` now also claims, daily, the identity link of a leaver who is
-not erased and whose provider link is not `deleted`, even one naming no user, for the
-deactivation and the deletion below; an erased person's external account is touched
-only by a disable *Disable now* asked for — and works both links under that one claim and its
+before — `ClaimAccountLink` now also claims, daily, the identity link of a leaver whose
+provider link is not `deleted`, even one naming no user or of an erased person (not
+under a legal hold, once `deleteExternalAfterDays` have passed since the last
+employment ended), for the deactivation and the deletion below; an erased person's
+managed identity link is kept keyless (`external_id` null, `disabled`) after
+[the retention run erases their user](#the-worker) for as long as a non-`deleted`
+provider link remains, and deleted once the provider link is `deleted` — and works both links under that one claim and its
 lease: the provider link's result (`WriteProviderLinkResult`) is written only while the
 identity link holds the claim's lease. For a person of the `entra` kind a cycle reads,
 beside the person's facts, the provider link, the settings' `deleteExternalAfterDays`,
@@ -1620,8 +1623,8 @@ undone* is a `disabled` one whose reported codes hold `leaver_step_failed:<step>
 | # | When | The provider link `P` |
 | --- | --- | --- |
 | 1 | HR's *Disable now* (or the worker finishing it) | `Deactivate` an account that is `enabled`, or `disabled` with its leaver's steps undone; otherwise nothing |
-| 2 | The person erased | nothing (the external account's erase is delivery E's) |
-| 3 | `P` names an account `Account` answers none for | `user_gone`, `P` `failed` — never created again |
+| 2 | The person erased | once every employment has ended (`T > E`, none later), `deleteExternalAfterDays` have passed since `E`, with no legal hold and `P` `disabled`, `Delete` → `P` `deleted`; otherwise nothing |
+| 3 | `P` names an account `Account` answers none for | `user_gone`, `P` `deleted` when the person is erased, else `failed` — never created again |
 | 4 | No employment at all | `no_employment` with the flag on and a `P`; otherwise nothing |
 | 5 | Every employment ended (`T > E`, none later), the flag on or off — or, the flag on, between employments before the later one is due | `Deactivate` an `enabled` account, whatever the provider's status; for a leaver, once `deleteExternalAfterDays` have passed since `E`, with no legal hold and the account `disabled`, `Delete` → `P` `deleted`; else a `disabled` account with its leaver's steps undone is deactivated again, once a day, the provider finishing the steps left and the code clearing when they succeed; otherwise nothing |
 | 6 | The flag off | nothing |
@@ -3785,15 +3788,35 @@ mode and in api mode with `WORKERS_IN_PROCESS=1`. Each poll:
    first; a backlog drains over cycles. One person failing is logged by id, rolled back,
    and due again next cycle. The lease is released on a context stripped of
    cancellation; an unlock that fails closes the connection.
-2. **A ledger pass**, with no lease.
+2. **An identity-erase pass** (`eraseAccounts`, once the lease is released, when a module
+   provides accounts): reads `ListErasedAccountLinks` on the pool (up to 50 erased,
+   unheld people who still have a Staff-managed `identity` link that either names a user
+   or has no non-`deleted` provider link left) and for each person calls identity's
+   `Erase` on no connection (actor `system:staff-retention` for the worker, the caller
+   for `POST /retention/run`) and any unconsumed announcement's `Unexpect`, then under
+   the person's lock (`withPersonLockAllowErased`) re-checks that the person is still
+   erased and not held and the link's `external_id` has not changed: when `Erase`
+   succeeded or answered `ErrUserGone` (or `external_id` was already empty), it deletes
+   the `identity` link (`DeleteErasedIdentityLink`) — or, while a non-`deleted` provider
+   link remains for the person, clears `external_id`, `blocked_reason`, `last_error` and
+   `attempts` and leaves the `identity` link `disabled` (`ClearErasedIdentityLinkUser`)
+   so the accounts worker still claims it to delete the external account once
+   `deleteExternalAfterDays` has passed — and records `identity_erased`
+   (`{step: "erase", state: "deleted"}`, with `code: "user_gone"` when the user was
+   already gone); when `Erase` was refused (`ErrAccountEnabled`, `ErrAccountPrivileged`,
+   `ErrLastOwner`, `ErrAccountNotManaged`, `ErrInvalidActor`) or failed, it sets
+   `blocked_reason = erasure_incomplete` on the link (`state = blocked` on a refusal,
+   `last_error = accounts_unavailable` and `attempts` incremented on a failure), raising
+   `erasureIncomplete` on the dashboard and retrying on the next retention run.
+3. **A ledger pass**, with no lease.
 
 The worker starts without storage: in worker mode its object store is built from the
 configuration, and an unconfigured one fails only the ledger's attempts.
 
 ### Running it by hand
 
-`POST /retention/run` (`staff:manage`) runs both steps now, by the same code with the
-same connection disciplines, the caller as the `erased` events' actor. It answers 200
+`POST /retention/run` (`staff:manage`) runs all three steps now, by the same code with the
+same connection disciplines, the caller as the `erased` and `identity_erased` events' actor. It answers 200
 `{"erased": {"kinds": [{"kind", "count"}]}, "deletions": {"attempted", "succeeded"}}` —
 the kinds summed over the people erased, a kind no erase ran for absent — the health
 kinds (`health`, `cases`, `childSick`, `withdrawal`, `pregnancyHealth`) only to a
@@ -3855,14 +3878,23 @@ one, and the D erase's due question is what passes over a person already erased.
 export of an erased person writes their erased columns empty, and that row imports
 back unchanged.
 
-**What identity keeps.** Staff's erase reaches Staff's own rows alone. A person whose
-account Staff managed keeps, in identity, the managed user — their name, their address
-(the private one, when the flag named it) and their employee number — the user's
-invitations, and identity's audit rows naming them, with names and employee numbers.
-This is accepted for this delivery (design S15; research §10.13): an Owner removes
-them by hand — stop Staff managing the user (`POST /owner/users/{id}/unmanage`), then
-delete the user. An automatic path, Staff asking identity to remove the user it
-managed once the person is erased, is a later delivery's.
+**What happens in identity and the directory.** Once a person is erased (and not under
+a legal hold), the retention run's [identity-erase pass](#the-worker) calls identity's
+`Erase` for the disabled user Staff managed for them ([what Staff's provisioning does in
+identity](/en/admin/authentication/#what-staffs-provisioning-does-in-identity)): the user
+is deleted together with their sessions, credentials, invitations, SCIM mapping, any
+unconsumed announcement for their employee number and the delegations they granted
+(delegations granted to them keep their row with `delegate_user_id` cleared), the
+`actor_snapshot` and `target_snapshot` of identity's audit rows naming them are
+pseudonymised in place (`displayName: "Erased user"`, `email` and `employeeNumber`
+empty), and the managed `identity` link is deleted (`identity_erased`) — or left keyless
+and `disabled` while a non-`deleted` provider link still waits for
+`deleteExternalAfterDays`, then deleted on the next retention run once the provider link
+is `deleted`. A self-service link (`managed = false`) is left untouched. While `Erase`
+is refused (the user is still enabled, is an Owner or a SystemAdmin, or is no longer
+managed by Staff) or identity cannot be reached, the link records
+`blocked_reason = erasure_incomplete` and raises [`erasureIncomplete`](#attention-items)
+under the neutral title `"An erased person"`.
 
 **The rehire warning.** The erase removes the national identity number and its index,
 so a person who comes back cannot be recognised by it. `POST /people/similar-erased`
@@ -3982,16 +4014,18 @@ or a colleague — and are derived from Staff's own rows in the snapshot, never 
 identity: the links as the [accounts worker](#the-accounts-worker) wrote them
 (`AccountLinkAttention`: every link with a `blocked_reason`, a `last_error` or a
 `disable_requested_at`, of a person not erased — or of an erased one whose link carries
-`disable_requested_at`) and one person query (`AccountPersonAttention`). A person's item is listed
+`disable_requested_at` or `blocked_reason = erasure_incomplete`) and one person query (`AccountPersonAttention`). A person's item is listed
 only while their flag is on and they are not erased — but for `accountFailing` from a
-disable requested, raised for an erased record too (review M2) under the neutral title
+disable requested and `erasureIncomplete` from an identity erase that has not yet
+completed, raised for an erased record too (review M2) under the neutral title
 "An erased person" — with `id` `<type>/<person id>`, `entityId` the person, `title`
 the person's display name and nothing more (no address, no reason beyond the type) and
 `occurredAt` the link's `updated_at` (today for the two person-query items).
 For a person whose flag is off, or an erased one (titled "An erased person"), a link
 carrying `disable_requested_at` raises the answer the disable met —
 `accountNotManaged`, `accountPrivileged` or `accountMismatch`, the user still enabled —
-rather than `accountFailing`; a reason left from when the flag was on raises nothing
+rather than `accountFailing`, and an erased person's link carrying `erasure_incomplete`
+raises `erasureIncomplete` whatever the flag; a reason left from when the flag was on raises nothing
 once the flag is off.
 
 | `type` | Source | Trigger |
@@ -4010,6 +4044,7 @@ once the flag is off.
 | `accountEmailTaken` | `account_email_taken` | Another user holds the address. |
 | `accountNumberTaken` | `employee_number_taken` | An unmanaged user holds the employee number. |
 | `accountFailing` | `last_error`, `disable_requested_at` | The flag on and not erased: `attempts` ≥ 3 with `last_error` set, or `blocked_reason` `invalid_actor` (Staff's own fault, folded in) or `external_enabled` (a provider link's delete refused for an account found enabled). Otherwise — the flag off, or erased — only from `disable_requested_at`: set with `last_error`, or set more than ten minutes ago (longer than a claim's lease, so a disable in hand raises nothing) — and from a flag-off leaver's link, which the worker deactivates whatever the flag (the worker's link to a Staff-managed user, the person not erased, every employment ended before today, none later): `attempts` ≥ 3 with `last_error` set, as with the flag on, cleared once the deactivation succeeds. A flag turned off after failures raises nothing otherwise (review L1). |
+| `erasureIncomplete` | `erasure_incomplete` | An erased person's Staff-managed user in identity could not yet be erased — the user is still enabled, is an Owner or a SystemAdmin, is no longer managed by Staff, or identity could not be reached; titled `"An erased person"`. |
 | `invitationUnanswered` | `invitation_unanswered` | Three invitations unanswered in the spell. |
 | `invitationRevoked` | `invitation_revoked` | An Owner revoked the pending user's invitation. |
 | `employeeRoleMissing` | `employee_role_missing` | Installation item: one, `id` the type, `entityId` `settings`, `count` the links, `occurredAt` the oldest such write. |
