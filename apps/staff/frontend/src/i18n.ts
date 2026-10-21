@@ -424,6 +424,7 @@ export const staffCatalog = {
     event_account_blocked: "Account held up",
     event_account_failed: "Account step failed",
     event_account_mismatched: "Account belongs to another employee number",
+    event_identity_erased: "Identity user erased",
     event_account_announced: "Account announced to identity",
     event_account_external_prepared: "Directory account prepared",
     event_account_external_activated: "Directory account enabled",
@@ -537,6 +538,8 @@ export const staffCatalog = {
       "A role named for Staff grants administration, so no account is given roles until an Owner takes it out.",
     accountReason_mode_mismatch:
       "A worker's authority mode differs from the one this installation recorded, so only deactivations run.",
+    accountReason_erasure_incomplete:
+      "The retention run could not erase the identity user yet; it tries again on the next retention run.",
     accountAdoptExplained:
       "Staff does not manage this user. For Staff to manage them, an Owner adopts the user for Staff on the Users page (Adopt for Staff), with this person's employee number, {{number}}.",
     openUsers: "Open Users",
@@ -2103,6 +2106,7 @@ export const staffCatalog = {
     event_account_blocked: "Konto stoppet",
     event_account_failed: "Kontosteg mislyktes",
     event_account_mismatched: "Kontoen hører til et annet ansattnummer",
+    event_identity_erased: "Identitetsbruker slettet",
     event_account_announced: "Konto varslet til identitet",
     event_account_external_prepared: "Katalogkonto forberedt",
     event_account_external_activated: "Katalogkonto aktivert",
@@ -2216,6 +2220,8 @@ export const staffCatalog = {
       "En rolle angitt for Ansatte gir administrasjon, så ingen konto får roller før en eier tar den ut.",
     accountReason_mode_mismatch:
       "En arbeiders autoritetsmodus er en annen enn den denne installasjonen registrerte, så bare deaktiveringer kjøres.",
+    accountReason_erasure_incomplete:
+      "Slettekjøringen kunne ikke slette identitetsbrukeren ennå; den prøver igjen ved neste slettekjøring.",
     accountAdoptExplained:
       "Ansatte styrer ikke denne brukeren. For at Ansatte skal styre den, lar en eier Ansatte styre brukeren på siden Brukere (La Ansatte styre), med denne personens ansattnummer, {{number}}.",
     openUsers: "Åpne Brukere",

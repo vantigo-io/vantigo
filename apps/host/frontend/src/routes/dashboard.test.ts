@@ -879,6 +879,17 @@ describe("the dashboard's staff account attention items", () => {
     expect(attentionTitleKey({ ...item, title: "Kari Nordmann" })).toBe("dashboard.staffAccountFailing");
   });
 
+  it("opens the person's Account tab and words an incomplete identity erasure in the reader's language", () => {
+    const item = { module: "staff" as const, type: "erasureIncomplete", entityId: "1042", title: "An erased person" };
+    expect(attentionHref(item)).toBe("/staff/people/1042?tab=account");
+    const key = attentionTitleKey(item) as string;
+    expect(key).toBe("dashboard.staffErasureIncomplete");
+    const nb = i18n.t(key, { ns: "host", lng: "nb" });
+    expect(nb).not.toBe(key);
+    expect(nb).not.toContain("An erased person");
+    expect(i18n.t(key, { ns: "host", lng: "en" })).toContain("erased person");
+  });
+
   it("has a link and a sentence for every type staff.yaml lists", () => {
     const yaml = Object.values(
       import.meta.glob<string>("../../../../../openapi/staff.yaml", { query: "?raw", import: "default", eager: true }),

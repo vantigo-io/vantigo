@@ -75,6 +75,8 @@ const en = {
   "dashboard.staffAccountFailing": "{{name}}'s account could not be updated: the attempts keep failing",
   "dashboard.staffAccountFailingErased":
     "An erased person's account could not be disabled yet: the attempts keep failing",
+  "dashboard.staffErasureIncomplete":
+    "An erased person's identity user could not be erased yet; the person's Account tab says why",
   "dashboard.staffInvitationUnanswered": "{{name}} has not answered three invitations to their account",
   "dashboard.staffInvitationRevoked": "An Owner revoked {{name}}'s invitation to their account",
   "dashboard.staffEmployeeRoleMissing_one": "{{count}} account waits: no Owner has named the roles Staff may give",
@@ -292,6 +294,8 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.staffAccountNumberTaken": "En konto Ansatte ikke styrer, har ansattnummeret til {{name}}",
   "dashboard.staffAccountFailing": "Kontoen til {{name}} kunne ikke oppdateres: forsøkene feiler",
   "dashboard.staffAccountFailingErased": "Kontoen til en slettet person er ennå ikke deaktivert: forsøkene feiler",
+  "dashboard.staffErasureIncomplete":
+    "Identitetsbrukeren til en slettet person kunne ikke slettes ennå; fanen Konto på personens side forteller hvorfor",
   "dashboard.staffInvitationUnanswered": "{{name}} har ikke svart på tre invitasjoner til kontoen sin",
   "dashboard.staffInvitationRevoked": "En eier tilbakekalte invitasjonen til kontoen til {{name}}",
   "dashboard.staffEmployeeRoleMissing_one": "{{count}} konto venter: ingen eier har valgt rollene Ansatte kan gi",

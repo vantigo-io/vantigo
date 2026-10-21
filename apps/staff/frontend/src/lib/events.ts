@@ -53,6 +53,7 @@ export const eventKinds = [
   "account_blocked",
   "account_failed",
   "account_mismatched",
+  "identity_erased",
   // The provider link (Entra delivery B, `accounts_provider.go`): the
   // announcement and the provider's steps, by their codes (accountLines),
   // the address a provider made — never the address itself — and a pass
