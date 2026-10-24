@@ -850,7 +850,7 @@ export interface paths {
         post?: never;
         /**
          * Turn the workforce OIDC provider off
-         * @description Turns the workforce OpenID Connect provider off and clears it, the sealed client secret included; every process stops offering it within 20 seconds. While people are linked to the provider it is refused 409 oidc_links_exist unless confirm is true. Audited sso-settings.changed, without the secret.
+         * @description Turns the workforce OpenID Connect provider off and clears it, the sealed client secret included; every process stops offering it within 20 seconds. While people are linked to the provider, or announced to it and not yet linked, it is refused 409 oidc_links_exist unless confirm is true. Audited sso-settings.changed, without the secret.
          */
         delete: operations["deleteIdentityOwnerSsoOidc"];
         options?: never;
@@ -1063,6 +1063,24 @@ export interface paths {
         put?: never;
         post: operations["postIdentityOwnerUsersByIdPasswordReset"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/owner/users/{id}/sso-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Announces the directory account an existing user holds (Entra phase 2 design L2), so that the user's next sign-in through the configured workforce OIDC provider (matched on the token's oid under the provider's issuer) or the provider's SCIM push (matched on userName against the user principal name, then externalId against the object id) attaches to this user as a regular provisioning would, the email claim not consulted; the user's address, name and roles are kept. The announcement replaces the user's earlier one whole; the same again changes nothing. Refused 400 invalid_request with neither key, an invalid principal name or object id, or for the caller's own account; 409 sso_not_configured while OIDC is off; 409 account_pending for a pending user, whose way in is their invitation; 409 account_linked for a user already linked under the issuer; 409 sso_link_taken when another user's announcement, or an account Staff announced, names the object id or the principal name. A disabled user, an Owner and a SystemAdmin may be announced. Audited account.link-expected with the names of the keys, never the address. */
+        post: operations["postIdentityOwnerUsersByIdSsoLink"];
+        /** @description Disconnects the user from the configured workforce OIDC provider (Entra phase 2 design L2): withdraws their announced link, if any (audited account.link-unexpected), and removes every link of theirs under the provider's issuer (audited account.unlinked with the count). A SCIM mapping is not touched. Nothing to remove is 200 with the user unchanged; a user left without a credential keeps their account and signs in again through a password reset or a new announcement. 400 for the caller's own account; 409 sso_not_configured while OIDC is off. */
+        delete: operations["deleteIdentityOwnerUsersByIdSsoLink"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1708,9 +1726,35 @@ export interface components {
             /** @description A user Staff created who has not yet chosen a credential through their invitation. A pending user is listed disabled and not active. Always sent; optional only because the recorded .NET exchanges predate it. */
             pending?: boolean;
             role: string;
-            /** @default false */
+            /**
+             * @description Whether the user is linked to the configured workforce OIDC provider — ssoLink.state linked.
+             * @default false
+             */
             ssoEnabled: boolean;
+            /** @description The user's connection to the configured workforce OIDC provider (Entra phase 2 design L2). Absent while OIDC is off. */
+            ssoLink?: components["schemas"]["OwnerSsoLink"];
             twoFactorEnabled: boolean;
+        };
+        /** @description How a user stands to the configured workforce OIDC provider: linked (a link exists under its issuer, so the user signs in through it), expected (an Owner announced the directory account the user holds, and the link is made at the user's next sign-in through the provider or the provider's SCIM push), or none. The announced keys are sent while expected. */
+        OwnerSsoLink: {
+            /**
+             * Format: date-time
+             * @description When the announcement was made; sent while expected.
+             */
+            expectedAt?: string;
+            /** @description The announced object id, in lower-case dashed form; sent while expected and announced. */
+            objectId?: string;
+            /** @enum {string} */
+            state: "linked" | "expected" | "none";
+            /** @description The announced user principal name, lower-cased; sent while expected and announced. */
+            userPrincipalName?: string;
+        };
+        /** @description The directory account an existing user holds, by at least one of its two keys. The user principal name is what Entra's SCIM sends as userName; the object id is what the token carries as oid, and what SCIM sends as externalId when the tenant maps it so. */
+        OwnerSsoLinkRequest: {
+            /** @description The directory's object id of the account, at most 200 characters; a GUID is normalised to lower-case dashed form. */
+            objectId?: string | null;
+            /** @description The account's user principal name, an address of at most 254 characters; compared as emails are. */
+            userPrincipalName?: string | null;
         };
         OwnerUserUpdateRequest: {
             displayName: string | null;
@@ -2085,7 +2129,7 @@ export interface components {
             clientId: string;
             /** @description The client secret, sealed at rest and never answered. Present, it replaces the secret and clears the token file. Absent with the same provider and clientId as the settings hold, it keeps the secret already set; a change of provider or clientId needs clientSecret or workloadTokenFile in the same request, since the old application's credential is never carried to a new one. A secret and workloadTokenFile are mutually exclusive, and one of the two is required. */
             clientSecret?: string;
-            /** @description True to change the authority while people are linked to the provider under the current one. The links are keyed on the issuer, so a linked person has no link under the new one, so their next sign-in through it finds their address already an account's and is refused oidc_email_conflict, and they sign in with a local credential, if they have one, until a later release relinks them; without this flag such a change is refused 409 oidc_links_exist. */
+            /** @description True to change the authority while people are linked to the provider under the current one. The links are keyed on the issuer, so a linked person has no link under the new one, so their next sign-in through it finds their address already an account's and is refused oidc_email_conflict, and they sign in with a local credential, if they have one, until an Owner announces their account again under the new provider (POST /owner/users/{id}/sso-link) and their next sign-in links them under it — the old link stays as a row nothing reads; announced links not yet fulfilled are counted with the links. Without this flag such a change is refused 409 oidc_links_exist. */
             confirmIssuerChange?: boolean;
             /** @description The label of the sign-in page's provider button, at most 100 characters; Workforce SSO when absent or empty. */
             displayName?: string;
@@ -7101,6 +7145,160 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PasswordRecoveryResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityOwnerUsersByIdSsoLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OwnerSsoLinkRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerUserResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityOwnerUsersByIdSsoLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerUserResponse"];
                 };
             };
             /** @description Bad Request */

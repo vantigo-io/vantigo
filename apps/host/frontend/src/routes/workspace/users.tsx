@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   Card,
+  Collapse,
   Group,
   Menu,
   Modal,
@@ -25,6 +26,7 @@ import { notifications } from "@mantine/notifications";
 import {
   IconBriefcase,
   IconBriefcaseOff,
+  IconCircleCheck,
   IconDots,
   IconLock,
   IconMail,
@@ -43,6 +45,7 @@ import { createInvitation, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { ApiValidationError } from "../../api/request";
 import {
+  announceSsoLink,
   createUser,
   deleteUser,
   disableUser,
@@ -50,6 +53,7 @@ import {
   listUsers,
   type ManagedUser,
   manageUser,
+  removeSsoLink,
   sendPasswordReset,
   setUserPassword,
   type UserRole,
@@ -58,6 +62,8 @@ import {
 } from "../../api/users";
 import { translateHostRole } from "../../i18n";
 import "../../i18n";
+
+const emailPattern = /^\S+@\S+$/;
 
 const roles = ["User", "Owner"] as const;
 
@@ -73,6 +79,9 @@ const refusalKeys: Record<string, string> = {
   employee_number_taken: "admin.refusalEmployeeNumberTaken",
   account_managed: "admin.deleteManagedReason",
   account_pending: "admin.refusalAccountPending",
+  sso_not_configured: "admin.refusalSsoNotConfigured",
+  account_linked: "admin.refusalAccountLinked",
+  sso_link_taken: "admin.refusalSsoLinkTaken",
 };
 
 const refusalMessage = (error: unknown, t: (key: string) => string) => {
@@ -126,10 +135,12 @@ const UsersPage = () => {
   const [editing, setEditing] = useState<ManagedUser | null>(null);
   const [passwordUser, setPasswordUser] = useState<ManagedUser | null>(null);
   const [adoptUser, setAdoptUser] = useState<ManagedUser | null>(null);
+  const [connectUser, setConnectUser] = useState<ManagedUser | null>(null);
+  const [connectMore, setConnectMore] = useState(false);
   const form = useForm({
     initialValues: { displayName: "", email: "", role: "User" as UserRole, password: "" },
     validate: {
-      email: (v) => (/^\S+@\S+$/.test(v) ? undefined : t("auth.validEmail")),
+      email: (v) => (emailPattern.test(v) ? undefined : t("auth.validEmail")),
       password: (v) =>
         !editing && mode === "initial" && !passwordValid(v) ? t("admin.passwordValidation") : undefined,
     },
@@ -144,6 +155,17 @@ const UsersPage = () => {
     initialValues: { employeeNumber: "" },
     validate: {
       employeeNumber: (v) => (employeeNumberPattern.test(v.trim()) ? undefined : t("admin.employeeNumberInvalid")),
+    },
+  });
+  const connectForm = useForm({
+    initialValues: { userPrincipalName: "", objectId: "" },
+    validate: {
+      userPrincipalName: (v, values) =>
+        v.trim() === "" && values.objectId.trim() === ""
+          ? t("admin.ssoLinkNeedOne")
+          : v.trim() !== "" && !emailPattern.test(v.trim())
+            ? t("auth.validEmail")
+            : undefined,
     },
   });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["owner-users"] });
@@ -230,6 +252,62 @@ const UsersPage = () => {
       children: <Text size="sm">{t("admin.stopManagingWarning", { user: u.displayName || u.email })}</Text>,
       labels: { confirm: t("admin.stopManaging"), cancel: t("common.cancel") },
       onConfirm: () => unmanage.mutate(u),
+    });
+  const announce = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { userPrincipalName?: string; objectId?: string } }) =>
+      announceSsoLink(id, body),
+    onSuccess: () => {
+      setConnectUser(null);
+      connectForm.reset();
+      refresh();
+      notifications.show({
+        title: t("admin.ssoLinkAnnounced"),
+        message: t("admin.ssoLinkAnnouncedMessage"),
+        color: "teal",
+      });
+    },
+    onError: (error) => {
+      if (error instanceof ApiValidationError) {
+        connectForm.setErrors(error.fieldErrors);
+        if (error.fieldErrors.objectId) setConnectMore(true);
+      } else mutationError(t("admin.ssoLinkAnnounceFailed"))(error);
+    },
+  });
+  const removeLink = useMutation({
+    mutationFn: (u: ManagedUser) => removeSsoLink(u.id),
+    onSuccess: () => {
+      refresh();
+      notifications.show({ title: t("admin.ssoLinkRemoved"), message: t("admin.saveChange"), color: "teal" });
+    },
+    onError: mutationError(t("admin.ssoLinkRemoveFailed")),
+  });
+  const openConnect = (u: ManagedUser) => {
+    const link = u.ssoLink;
+    const expected = link?.state === "expected";
+    connectForm.setValues({
+      userPrincipalName: expected ? (link.userPrincipalName ?? "") : (u.email ?? ""),
+      objectId: expected ? (link.objectId ?? "") : "",
+    });
+    connectForm.resetDirty();
+    connectForm.clearErrors();
+    setConnectMore(expected && !!link.objectId);
+    setConnectUser(u);
+  };
+  const confirmRemoveLink = (u: ManagedUser, kind: "disconnect" | "cancel") =>
+    modals.openConfirmModal({
+      title: t(kind === "disconnect" ? "admin.ssoLinkDisconnectQuestion" : "admin.ssoLinkCancelQuestion"),
+      children: (
+        <Text size="sm">
+          {t(kind === "disconnect" ? "admin.ssoLinkDisconnectWarning" : "admin.ssoLinkCancelWarning", {
+            user: u.displayName || u.email,
+          })}
+        </Text>
+      ),
+      labels: {
+        confirm: t(kind === "disconnect" ? "admin.ssoLinkDisconnect" : "admin.ssoLinkCancel"),
+        cancel: t("common.cancel"),
+      },
+      onConfirm: () => removeLink.mutate(u),
     });
   const reset = useMutation({
     mutationFn: sendPasswordReset,
@@ -335,7 +413,9 @@ const UsersPage = () => {
           <ActionIcon
             variant="subtle"
             aria-label={t("admin.actionsFor", { user: u.displayName || u.email || t("common.user") })}
-            disabled={action.isPending || reset.isPending || adopt.isPending || unmanage.isPending}
+            disabled={
+              action.isPending || reset.isPending || adopt.isPending || unmanage.isPending || removeLink.isPending
+            }
           >
             <IconDots size={18} />
           </ActionIcon>
@@ -379,6 +459,18 @@ const UsersPage = () => {
                 {t("admin.adoptForStaff")}
               </Menu.Item>
             )
+          )}
+          {u.ssoLink?.state === "none" && !u.pending && (
+            <Menu.Item onClick={() => openConnect(u)}>{t("admin.ssoLinkConnectItem")}</Menu.Item>
+          )}
+          {u.ssoLink?.state === "expected" && (
+            <>
+              <Menu.Item onClick={() => openConnect(u)}>{t("admin.ssoLinkChangeItem")}</Menu.Item>
+              <Menu.Item onClick={() => confirmRemoveLink(u, "cancel")}>{t("admin.ssoLinkCancelItem")}</Menu.Item>
+            </>
+          )}
+          {u.ssoLink?.state === "linked" && (
+            <Menu.Item onClick={() => confirmRemoveLink(u, "disconnect")}>{t("admin.ssoLinkDisconnectItem")}</Menu.Item>
           )}
           <Menu.Divider />
           {u.pending ? (
@@ -425,6 +517,36 @@ const UsersPage = () => {
         </Menu.Dropdown>
       </Menu>
     );
+  // The server omits ssoLink while OIDC is off, and the column goes with it.
+  const ssoOn = users.data?.some((u) => u.ssoLink !== undefined) ?? false;
+  const ssoCell = (u: ManagedUser) => {
+    const link = u.ssoLink;
+    if (link?.state === "linked")
+      return (
+        <Group gap={5} wrap="nowrap">
+          <IconCircleCheck size={15} color="var(--mantine-color-teal-6)" />
+          <Text size="sm">{t("admin.ssoLinkConnected")}</Text>
+        </Group>
+      );
+    if (link?.state === "expected")
+      return (
+        <Stack gap={2} align="flex-start">
+          <Badge variant="light" color="blue">
+            {t("admin.ssoLinkAwaiting")}
+          </Badge>
+          <Text size="xs" c="dimmed">
+            {link.userPrincipalName || link.objectId}
+          </Text>
+        </Stack>
+      );
+    if (link?.state === "none" && !self(u) && !u.pending)
+      return (
+        <Button variant="light" size="xs" onClick={() => openConnect(u)}>
+          {t("admin.ssoLinkConnect")}
+        </Button>
+      );
+    return null;
+  };
   const userInfo = (u: ManagedUser) => (
     <>
       <Text fw={600}>{u.displayName || t("admin.unnamedUser")}</Text>
@@ -580,6 +702,7 @@ const UsersPage = () => {
                     <Table.Th>{t("common.role")}</Table.Th>
                     <Table.Th>{t("admin.access")}</Table.Th>
                     <Table.Th>{t("admin.twoFactor")}</Table.Th>
+                    {ssoOn && <Table.Th>{t("admin.ssoLinkColumn")}</Table.Th>}
                     <Table.Th>
                       <span className="sr-only">{t("admin.actions")}</span>
                     </Table.Th>
@@ -612,6 +735,7 @@ const UsersPage = () => {
                             </Text>
                           )}
                         </Table.Td>
+                        {ssoOn && <Table.Td>{ssoCell(u)}</Table.Td>}
                         <Table.Td ta="right">{actions(u)}</Table.Td>
                       </Table.Tr>
                     );
@@ -641,6 +765,7 @@ const UsersPage = () => {
                           {t("admin.twoFactor")} {u.twoFactorEnabled ? t("common.on") : t("common.off")}
                         </Badge>
                       </Group>
+                      {ssoOn && ssoCell(u)}
                     </Stack>
                   </Card>
                 );
@@ -723,6 +848,53 @@ const UsersPage = () => {
             />
             <Button type="submit" loading={adopt.isPending}>
               {t("admin.adopt")}
+            </Button>
+          </Stack>
+        </form>
+      </Modal>
+      <Modal
+        opened={!!connectUser}
+        onClose={() => setConnectUser(null)}
+        title={t("admin.ssoLinkConnectTitle", {
+          user: connectUser?.displayName || connectUser?.email || t("common.user"),
+        })}
+        centered
+      >
+        <form
+          onSubmit={connectForm.onSubmit((v) => {
+            if (!connectUser) return;
+            const userPrincipalName = v.userPrincipalName.trim();
+            const objectId = v.objectId.trim();
+            announce.mutate({
+              id: connectUser.id,
+              body: {
+                ...(userPrincipalName && { userPrincipalName }),
+                ...(objectId && { objectId }),
+              },
+            });
+          })}
+        >
+          <Stack>
+            <Text size="sm" c="dimmed">
+              {t("admin.ssoLinkConnectDescription")}
+            </Text>
+            <TextInput
+              label={t("admin.ssoLinkUpn")}
+              description={t("admin.ssoLinkUpnHelp")}
+              {...connectForm.getInputProps("userPrincipalName")}
+            />
+            <Anchor component="button" type="button" size="sm" onClick={() => setConnectMore((m) => !m)}>
+              {t("admin.ssoLinkMore")}
+            </Anchor>
+            <Collapse expanded={connectMore}>
+              <TextInput
+                label={t("admin.ssoLinkObjectId")}
+                description={t("admin.ssoLinkObjectIdHelp")}
+                {...connectForm.getInputProps("objectId")}
+              />
+            </Collapse>
+            <Button type="submit" loading={announce.isPending}>
+              {t("admin.ssoLinkSubmit")}
             </Button>
           </Stack>
         </form>

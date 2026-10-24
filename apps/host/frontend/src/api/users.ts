@@ -22,6 +22,13 @@ export interface OwnerUserResponse {
   employeeNumber?: string;
   /** Who disabled the user; absent while enabled. */
   disabledBy?: "owner" | "staff";
+  /** The user's single sign-on link; absent while OIDC is off. */
+  ssoLink?: {
+    state: "linked" | "expected" | "none";
+    userPrincipalName?: string;
+    objectId?: string;
+    expectedAt?: string;
+  };
 }
 
 export type ManagedUser = OwnerUserResponse;
@@ -52,5 +59,9 @@ export const deleteUser = (id: string) =>
   request<OwnerUserResponse>(`/api/v1/identity/owner/users/${id}`, { method: "DELETE" });
 export const manageUser = (id: string, employeeNumber: string) =>
   request<OwnerUserResponse>(`/api/v1/identity/owner/users/${id}/manage`, json({ module: "staff", employeeNumber }));
+export const announceSsoLink = (id: string, body: { userPrincipalName?: string; objectId?: string }) =>
+  request<OwnerUserResponse>(`/api/v1/identity/owner/users/${id}/sso-link`, json(body));
+export const removeSsoLink = (id: string) =>
+  request<OwnerUserResponse>(`/api/v1/identity/owner/users/${id}/sso-link`, { method: "DELETE" });
 export const unmanageUser = (id: string) =>
   request<OwnerUserResponse>(`/api/v1/identity/owner/users/${id}/unmanage`, json({}));

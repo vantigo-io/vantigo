@@ -16,6 +16,8 @@ const api = vi.hoisted(() => ({
   updateUser: vi.fn(),
   sendPasswordReset: vi.fn(),
   listInvitations: vi.fn(),
+  announceSsoLink: vi.fn(),
+  removeSsoLink: vi.fn(),
 }));
 
 vi.mock("../../api/users", () => ({
@@ -29,6 +31,8 @@ vi.mock("../../api/users", () => ({
   updateUser: api.updateUser,
   sendPasswordReset: api.sendPasswordReset,
   setUserPassword: vi.fn(),
+  announceSsoLink: api.announceSsoLink,
+  removeSsoLink: api.removeSsoLink,
 }));
 
 vi.mock("../../api/account-lifecycle", () => ({
@@ -338,5 +342,85 @@ describe("what a Staff-managed or pending user cannot have done", () => {
     expect(
       await screen.findByText("Staff manages this account, so it cannot be deleted. Stop managing it first."),
     ).toBeInTheDocument();
+  });
+});
+
+describe("the single sign-on column", () => {
+  it("is absent when no user carries an ssoLink", async () => {
+    await renderUsers([user({})]);
+    expect(screen.queryByText("Single sign-on")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Connect…" })).not.toBeInTheDocument();
+  });
+
+  it("says each of the three states in words", async () => {
+    await renderUsers([
+      user({
+        id: "u-1",
+        displayName: "Kari Nordmann",
+        ssoLink: { state: "linked", userPrincipalName: "kari@example.com" },
+      }),
+      user({
+        id: "u-2",
+        displayName: "Ola Hansen",
+        ssoLink: { state: "expected", userPrincipalName: "ola@example.com", expectedAt: "2026-10-24T10:00:00Z" },
+      }),
+      user({ id: "u-3", displayName: "Per Olsen", ssoLink: { state: "none" } }),
+    ]);
+    expect(screen.getAllByText("Single sign-on").length).toBeGreaterThan(0);
+    expect(within(row("Kari Nordmann")).getByText("Connected")).toBeInTheDocument();
+    expect(within(row("Ola Hansen")).getByText("Awaiting first sign-in")).toBeInTheDocument();
+    expect(within(row("Ola Hansen")).getByText("ola@example.com")).toBeInTheDocument();
+    expect(within(row("Per Olsen")).getByRole("button", { name: "Connect…" })).toBeInTheDocument();
+  });
+
+  it("announces the link with the pre-filled address", async () => {
+    api.announceSsoLink.mockResolvedValue(
+      user({ ssoLink: { state: "expected", userPrincipalName: "kari@example.com" } }),
+    );
+    await renderUsers([user({ ssoLink: { state: "none" } })]);
+    fireEvent.click(within(row("Kari Nordmann")).getByRole("button", { name: "Connect…" }));
+    expect(await screen.findByText("Connect Kari Nordmann to single sign-on")).toBeInTheDocument();
+    expect(screen.getByLabelText("User principal name")).toHaveValue("kari@example.com");
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await waitFor(() =>
+      expect(api.announceSsoLink).toHaveBeenCalledWith("u-1", { userPrincipalName: "kari@example.com" }),
+    );
+    expect(await screen.findByText("Connection announced")).toBeInTheDocument();
+  });
+
+  it("puts a sso_link_taken refusal in words", async () => {
+    api.announceSsoLink.mockRejectedValue(refusal(409, "sso_link_taken"));
+    await renderUsers([user({ ssoLink: { state: "none" } })]);
+    fireEvent.click(within(row("Kari Nordmann")).getByRole("button", { name: "Connect…" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
+    expect(await screen.findByText("Another user is already connected to this account.")).toBeInTheDocument();
+    expect(screen.queryByText("server text for sso_link_taken")).not.toBeInTheDocument();
+  });
+
+  it("disconnects a linked user after a confirmation", async () => {
+    api.removeSsoLink.mockResolvedValue(user({ ssoLink: { state: "none" } }));
+    await renderUsers([user({ ssoLink: { state: "linked" } })]);
+    openActions("Kari Nordmann");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Disconnect from single sign-on…" }));
+    expect(await screen.findByText("Disconnect from single sign-on?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(api.removeSsoLink).toHaveBeenCalledWith("u-1"));
+  });
+
+  it("offers a pending user no Connect, button or menu item", async () => {
+    await renderUsers([
+      user({
+        pending: true,
+        disabled: true,
+        active: false,
+        managedBy: "staff",
+        employeeNumber: "1",
+        ssoLink: { state: "none" },
+      }),
+    ]);
+    expect(screen.queryByRole("button", { name: "Connect…" })).not.toBeInTheDocument();
+    openActions("Kari Nordmann");
+    await screen.findByRole("menuitem", { name: "Edit details" });
+    expect(screen.queryByRole("menuitem", { name: "Connect to single sign-on…" })).not.toBeInTheDocument();
   });
 });
