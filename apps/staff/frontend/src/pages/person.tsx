@@ -175,7 +175,12 @@ export const PersonPage = () => {
         )}
         <Tabs.Panel value="competence" pt="lg">
           {current === "competence" && (
-            <PersonCompetence person={shown} self={data.capabilities.self} today={meta.data.today} />
+            <PersonCompetence
+              person={shown}
+              self={data.capabilities.self}
+              today={meta.data.today}
+              timeZone={timeZone}
+            />
           )}
         </Tabs.Panel>
         {historyReadable && (

@@ -110,6 +110,7 @@ export const PersonCompetence = ({
   person,
   self,
   today,
+  timeZone,
   addOnArrival = false,
   onArrivalDone,
 }: {
@@ -118,6 +119,8 @@ export const PersonCompetence = ({
   self: boolean;
   /** The business zone's day a validity is judged on. */
   today: string;
+  /** The business time zone, the day a verification fell on is told in. */
+  timeZone?: string;
   /** Opens Add competence on arrival — the host spotlight's Add competence. */
   addOnArrival?: boolean;
   /** Called when the form opened on arrival closes, so the URL forgets it. */
@@ -136,6 +139,12 @@ export const PersonCompetence = ({
   const verifier = caps.canVerifyCompetence;
   const hr = caps.canEdit;
   const canAdd = self || verifier || hr;
+  // Self first, as the server judges: on their own record HR and a verifier
+  // are the person, who changes and removes their own declarations alone.
+  const writesAny = !self && (verifier || hr);
+  // Who files evidence, as the upload is judged: the person, HR and
+  // staff:personal-data — never a manager or an Approver as such.
+  const filesEvidence = self || hr || caps.canSeeHealth;
   const nameOf = (row: StaffPersonCompetence) => {
     const name = competenceName(row.competence, locale);
     return row.competence.archived ? t("competenceArchivedName", { name }) : name;
@@ -164,7 +173,8 @@ export const PersonCompetence = ({
       children: (
         <Stack gap="sm">
           <Text size="sm">{t("removeCompetenceExplained")}</Text>
-          {hr && (
+          <Text size="sm">{t("removeCompetenceRenewed")}</Text>
+          {hr && !self && (
             <Checkbox
               label={t("removeCompetenceChain")}
               description={t("removeCompetenceChainExplained")}
@@ -242,16 +252,19 @@ export const PersonCompetence = ({
             {members.map((row) => {
               const current = !row.superseded;
               const own = self && !row.verified;
+              // A skill has no expiry: it is edited, never renewed.
+              const renewable = row.competence.kind !== "skill";
               return (
                 <CompetenceRow
                   key={row.id}
                   row={row}
                   name={nameOf(row)}
                   today={today}
+                  timeZone={timeZone}
                   actions={
                     current && (
                       <>
-                        {(own || verifier || hr) && (
+                        {(own || writesAny) && (
                           <Button size="compact-sm" variant="light" onClick={() => setDialog({ kind: "edit", row })}>
                             {t("competenceEdit")}
                           </Button>
@@ -261,12 +274,12 @@ export const PersonCompetence = ({
                             {t("competenceVerify")}
                           </Button>
                         )}
-                        {(self || verifier || hr) && (
+                        {renewable && (self || verifier || hr) && (
                           <Button size="compact-sm" variant="light" onClick={() => setDialog({ kind: "renew", row })}>
                             {t("competenceRenewed")}
                           </Button>
                         )}
-                        {!row.evidence && (self || hr || caps.canSeeHealth) && (
+                        {!row.evidence && filesEvidence && (
                           <Button
                             size="compact-sm"
                             variant="light"
@@ -275,7 +288,7 @@ export const PersonCompetence = ({
                             {t("competenceAddEvidence")}
                           </Button>
                         )}
-                        {(own || verifier || hr) && (
+                        {(own || writesAny) && (
                           <Button size="compact-sm" variant="subtle" color="red" onClick={() => confirmRemove(row)}>
                             {t("remove")}
                           </Button>
@@ -297,14 +310,26 @@ export const PersonCompetence = ({
         fullScreen={phone}
       >
         {dialog?.kind === "add" && (
-          <AddForm personId={person.id} catalogue={catalogue.data} categories={categories.data} onDone={close} />
+          <AddForm
+            personId={person.id}
+            catalogue={catalogue.data}
+            categories={categories.data}
+            filesEvidence={filesEvidence}
+            onDone={close}
+          />
         )}
         {dialog?.kind === "edit" && (
           <EditForm row={dialog.row} competence={competenceOf(dialog.row)} name={nameOf(dialog.row)} onDone={close} />
         )}
         {dialog?.kind === "verify" && <VerifyForm row={dialog.row} name={nameOf(dialog.row)} onDone={close} />}
         {dialog?.kind === "renew" && (
-          <RenewForm row={dialog.row} competence={competenceOf(dialog.row)} name={nameOf(dialog.row)} onDone={close} />
+          <RenewForm
+            row={dialog.row}
+            competence={competenceOf(dialog.row)}
+            name={nameOf(dialog.row)}
+            filesEvidence={filesEvidence}
+            onDone={close}
+          />
         )}
         {dialog?.kind === "evidence" && <EvidenceForm row={dialog.row} onDone={close} />}
       </Modal>
@@ -317,21 +342,23 @@ const CompetenceRow = ({
   row,
   name,
   today,
+  timeZone,
   actions,
 }: {
   row: StaffPersonCompetence;
   name: string;
   today: string;
+  timeZone?: string;
   actions: ReactNode;
 }) => {
-  const { t, date } = useStaffFormat();
+  const { t, date, day } = useStaffFormat();
   const download = useMutation({
-    mutationFn: downloadEvidence,
+    mutationFn: (fileName: string) => downloadEvidence(row.id, fileName),
     onSuccess: saveFile,
-    onError: (error, evidence) =>
+    onError: (error, fileName) =>
       notifications.show({
         color: "red",
-        title: t("couldNotDownloadDocument", { name: evidence.fileName }),
+        title: t("couldNotDownloadDocument", { name: fileName }),
         message: error.message,
       }),
   });
@@ -390,8 +417,8 @@ const CompetenceRow = ({
         {row.verifiedAt && (
           <Text size="sm" c="dimmed">
             {row.verifiedBy
-              ? t("competenceVerifiedBy", { name: row.verifiedBy, date: date(row.verifiedAt.slice(0, 10)) })
-              : t("competenceVerifiedOn", { date: date(row.verifiedAt.slice(0, 10)) })}
+              ? t("competenceVerifiedBy", { name: row.verifiedBy, date: day(row.verifiedAt, timeZone) })
+              : t("competenceVerifiedOn", { date: day(row.verifiedAt, timeZone) })}
             {row.verifiedBasis ? ` · ${basisLabel(t, row.verifiedBasis)}` : ""}
           </Text>
         )}
@@ -417,7 +444,7 @@ const CompetenceRow = ({
                   leftSection={<IconDownload size={14} />}
                   aria-label={t("downloadDocument", { name: row.evidence.fileName })}
                   loading={download.isPending}
-                  onClick={() => row.evidence && download.mutate(row.evidence)}
+                  onClick={() => row.evidence && download.mutate(row.evidence.fileName)}
                   style={{ overflowWrap: "anywhere" }}
                 >
                   {row.evidence.fileName}
@@ -562,11 +589,14 @@ const AddForm = ({
   personId,
   catalogue,
   categories,
+  filesEvidence,
   onDone,
 }: {
   personId: number;
   catalogue?: StaffCompetence[];
   categories?: StaffCompetenceCategory[];
+  /** The evidence picker is offered to whoever may file it alone. */
+  filesEvidence: boolean;
   onDone: () => void;
 }) => {
   const { t, locale } = useI18n("staff");
@@ -604,7 +634,7 @@ const AddForm = ({
     .filter((group) => group.items.length > 0);
 
   const propose = (issuedOn: string | null, competence: StaffCompetence | undefined) => {
-    if (expiryTyped) return;
+    if (expiryTyped || competence?.kind === "skill") return;
     form.setFieldValue("validTo", proposedExpiry(issuedOn, competence?.validityMonths) ?? null);
   };
 
@@ -614,7 +644,7 @@ const AddForm = ({
         competenceId: Number(values.competenceId),
         ...(values.level !== null ? { level: Number(values.level) } : {}),
         ...(values.issuedOn ? { issuedOn: values.issuedOn } : {}),
-        ...(values.validTo ? { validTo: values.validTo } : {}),
+        ...(values.validTo && chosen?.kind !== "skill" ? { validTo: values.validTo } : {}),
         ...(optional(values.issuer) ? { issuer: optional(values.issuer) } : {}),
         ...(optional(values.reference) ? { reference: optional(values.reference) } : {}),
       });
@@ -663,7 +693,8 @@ const AddForm = ({
             form.setFieldValue("competenceId", value);
             const next = offered.find((one) => String(one.id) === value);
             if (!next?.hasLevel) form.setFieldValue("level", null);
-            propose(form.values.issuedOn, next);
+            if (next?.kind === "skill") form.setFieldValue("validTo", null);
+            else propose(form.values.issuedOn, next);
           }}
         />
         {chosen?.hasLevel && (
@@ -686,19 +717,22 @@ const AddForm = ({
               propose(value, chosen);
             }}
           />
-          <DateInput
-            label={t("competenceValidTo")}
-            description={
-              chosen?.validityMonths ? t("competenceExpiryProposed", { months: chosen.validityMonths }) : undefined
-            }
-            valueFormat={t("dateInputFormat")}
-            clearable
-            {...form.getInputProps("validTo")}
-            onChange={(value) => {
-              setExpiryTyped(true);
-              form.setFieldValue("validTo", value);
-            }}
-          />
+          {/* A skill has no expiry (`skill_no_validity`). */}
+          {chosen?.kind !== "skill" && (
+            <DateInput
+              label={t("competenceValidTo")}
+              description={
+                chosen?.validityMonths ? t("competenceExpiryProposed", { months: chosen.validityMonths }) : undefined
+              }
+              valueFormat={t("dateInputFormat")}
+              clearable
+              {...form.getInputProps("validTo")}
+              onChange={(value) => {
+                setExpiryTyped(true);
+                form.setFieldValue("validTo", value);
+              }}
+            />
+          )}
         </SimpleGrid>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput label={t("competenceIssuer")} description={chosen?.issuerHint} {...form.getInputProps("issuer")} />
@@ -708,15 +742,17 @@ const AddForm = ({
             {...form.getInputProps("reference")}
           />
         </SimpleGrid>
-        <EvidencePicker
-          file={form.values.file}
-          error={form.errors.file}
-          disabled={save.isPending}
-          onPick={(file) => {
-            form.setFieldValue("file", file);
-            form.setFieldError("file", fileRefusal(file, t));
-          }}
-        />
+        {filesEvidence && (
+          <EvidencePicker
+            file={form.values.file}
+            error={form.errors.file}
+            disabled={save.isPending}
+            onPick={(file) => {
+              form.setFieldValue("file", file);
+              form.setFieldError("file", fileRefusal(file, t));
+            }}
+          />
+        )}
         <Group justify="flex-end">
           <Button type="button" variant="default" onClick={onDone} disabled={save.isPending}>
             {t("cancel")}
@@ -753,11 +789,13 @@ const EditForm = ({
   const { t } = useI18n("staff");
   const queryClient = useQueryClient();
   const [banner, setBanner] = useState<string | null>(null);
+  // A skill has no expiry (`skill_no_validity`): none is shown or sent.
+  const skill = row.competence.kind === "skill";
   const form = useForm<EditValues>({
     initialValues: {
       level: row.level === undefined ? null : String(row.level),
       issuedOn: row.issuedOn ?? null,
-      validTo: row.validTo ?? null,
+      validTo: skill ? null : (row.validTo ?? null),
       issuer: row.issuer ?? "",
       reference: row.reference ?? "",
     },
@@ -829,12 +867,14 @@ const EditForm = ({
             clearable
             {...form.getInputProps("issuedOn")}
           />
-          <DateInput
-            label={t("competenceValidTo")}
-            valueFormat={t("dateInputFormat")}
-            clearable
-            {...form.getInputProps("validTo")}
-          />
+          {!skill && (
+            <DateInput
+              label={t("competenceValidTo")}
+              valueFormat={t("dateInputFormat")}
+              clearable
+              {...form.getInputProps("validTo")}
+            />
+          )}
         </SimpleGrid>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput
@@ -958,11 +998,14 @@ const RenewForm = ({
   row,
   competence,
   name,
+  filesEvidence,
   onDone,
 }: {
   row: StaffPersonCompetence;
   competence?: StaffCompetence;
   name: string;
+  /** The evidence picker is offered to whoever may file it alone. */
+  filesEvidence: boolean;
   onDone: () => void;
 }) => {
   const { t } = useI18n("staff");
@@ -1053,15 +1096,17 @@ const RenewForm = ({
             {...form.getInputProps("reference")}
           />
         </SimpleGrid>
-        <EvidencePicker
-          file={form.values.file}
-          error={form.errors.file}
-          disabled={save.isPending}
-          onPick={(file) => {
-            form.setFieldValue("file", file);
-            form.setFieldError("file", fileRefusal(file, t));
-          }}
-        />
+        {filesEvidence && (
+          <EvidencePicker
+            file={form.values.file}
+            error={form.errors.file}
+            disabled={save.isPending}
+            onPick={(file) => {
+              form.setFieldValue("file", file);
+              form.setFieldError("file", fileRefusal(file, t));
+            }}
+          />
+        )}
         <Group justify="flex-end">
           <Button type="button" variant="default" onClick={onDone} disabled={save.isPending}>
             {t("cancel")}

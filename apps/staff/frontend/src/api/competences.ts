@@ -135,6 +135,11 @@ export const uploadEvidence = (id: number, file: File): Promise<StaffPersonCompe
   });
 };
 
-/** The evidence's bytes, through the documents' own download. */
-export const downloadEvidence = (evidence: StaffCompetenceEvidence): Promise<FileDownload> =>
-  downloadFile(`/api/v1/staff/documents/${evidence.documentId}`, evidence.fileName);
+/**
+ * A row's evidence file, read through the row rather than the archive, so
+ * everyone who reads the row's detail — the person, their manager, an
+ * Approver, HR, `staff:personal-data` — may download it; anyone else gets
+ * the unknown row's 404. Named as the server names it, `fileName` failing that.
+ */
+export const downloadEvidence = (rowId: number, fileName: string): Promise<FileDownload> =>
+  downloadFile(`/api/v1/staff/person-competences/${rowId}/evidence`, fileName);

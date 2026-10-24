@@ -141,6 +141,7 @@ export const MyPage = () => {
               person={person}
               self
               today={meta.data.today}
+              timeZone={meta.data.timeZone}
               addOnArrival={create === "competence"}
               onArrivalDone={() => navigate({ search: { tab: "competence" }, replace: true })}
             />

@@ -1755,6 +1755,8 @@ export const staffCatalog = {
     removeCompetenceTitle: "Remove {{name}}?",
     removeCompetenceExplained:
       "The competence is removed from the person's competences. Evidence the person uploaded with their own declaration goes with it; other evidence stays among the documents.",
+    removeCompetenceRenewed:
+      "Removing a renewed row brings the previous one back; HR can remove the whole history instead.",
     removeCompetenceChain: "Remove the whole history",
     removeCompetenceChainExplained: "The earlier, renewed rows of this competence are removed too.",
     competenceCategoryUnknown: "Other",
@@ -1809,6 +1811,7 @@ export const staffCatalog = {
     "refusal.level_not_allowed": "This competence takes no level.",
     "refusal.level_required": "Choose a level: this competence has one.",
     "refusal.own_record": "Your own competence is verified by somebody else.",
+    "refusal.skill_no_validity": "A skill has no expiry; it is edited rather than renewed.",
   },
   nb: {
     staff: "Ansatte",
@@ -3560,6 +3563,8 @@ export const staffCatalog = {
     removeCompetenceTitle: "Fjerne {{name}}?",
     removeCompetenceExplained:
       "Kompetansen fjernes fra personens kompetanser. Dokumentasjon personen lastet opp med sin egen erklæring fjernes med den; annen dokumentasjon blir liggende blant dokumentene.",
+    removeCompetenceRenewed:
+      "Fjerner du en fornyet rad, kommer den forrige tilbake; HR kan i stedet fjerne hele historikken.",
     removeCompetenceChain: "Fjern hele historikken",
     removeCompetenceChainExplained: "De tidligere, fornyede radene for denne kompetansen fjernes også.",
     competenceCategoryUnknown: "Annet",
@@ -3617,6 +3622,7 @@ export const staffCatalog = {
     "refusal.level_not_allowed": "Denne kompetansen har ikke nivå.",
     "refusal.level_required": "Velg et nivå: denne kompetansen har nivå.",
     "refusal.own_record": "Din egen kompetanse bekreftes av en annen.",
+    "refusal.skill_no_validity": "En ferdighet har ingen utløpsdato, den endres i stedet for å fornyes.",
   },
 } satisfies CatalogResources;
 

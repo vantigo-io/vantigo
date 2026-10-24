@@ -127,6 +127,7 @@ describe("the staff catalog", () => {
       "level_not_allowed",
       "level_required",
       "own_record",
+      "skill_no_validity",
     ];
     const keys = [
       ...LEVELS.map((level) => `level_${level}`),
