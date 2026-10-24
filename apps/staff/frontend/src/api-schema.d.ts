@@ -475,7 +475,7 @@ export interface paths {
         };
         /**
          * List competence categories
-         * @description Every competence category in its order, archived ones included so a competence can still name its own. Read by staff:view, staff:manage and staff:personal-data; anyone else gets the uniform 403.
+         * @description Every competence category in its order, archived ones included so a competence can still name its own. Every caller reads them — the catalogue is about no person, and the person declaring a competence on My page needs it.
          */
         get: operations["getStaffCompetenceCategories"];
         put?: never;
@@ -519,7 +519,7 @@ export interface paths {
         };
         /**
          * List competences
-         * @description The competence catalogue in its categories' order, then its own. Read by staff:view, staff:manage and staff:personal-data; anyone else gets the uniform 403. Hidden and archived competences are listed to staff:manage alone, and only when includeHidden or includeArchived asks for them; to anyone else the two are ignored.
+         * @description The competence catalogue in its categories' order, then its own. Every caller reads the competences that are neither hidden nor archived — the catalogue is about no person, and the person declaring a competence on My page needs it. Hidden and archived competences are listed to staff:manage alone, and only when includeHidden or includeArchived asks for them; to anyone else the two are ignored.
          */
         get: operations["getStaffCompetences"];
         put?: never;
@@ -2060,13 +2060,13 @@ export interface paths {
         get?: never;
         /**
          * Change a competence
-         * @description Changes a current row's level, dates, issuer and reference, recorded as competence_changed: the person their own declared row, a manager of theirs today, staff:approve or staff:manage any current row. Anyone else who sees the person gets the uniform 403; a row the caller may not see is the bare 404.
+         * @description Changes a current row's level, dates, issuer and reference, recorded as competence_changed: the person their own declared row, a manager of theirs today, staff:approve or staff:manage any current row. A verifier who changes a verified row's level verifies it anew — the stamp's instant and verifier theirs, its basis and note kept; a new validTo clears the expiry reminders already sent, so the row is reminded of again ahead of its new end. Anyone else who sees the person gets the uniform 403; a row the caller may not see is the bare 404.
          */
         put: operations["putStaffPersonCompetencesById"];
         post?: never;
         /**
          * Remove a competence
-         * @description Removes a current competence row, recorded as competence_removed: the person their own declared row — with the evidence they uploaded for it, whose object is queued for removal — and a manager of theirs today, staff:approve or staff:manage any current row. chain (staff:manage) removes every row the person has had for the competence. Anyone else who sees the person gets the uniform 403; a row the caller may not see is the bare 404.
+         * @description Removes a current competence row, recorded as competence_removed: the person their own declared row — with the evidence they uploaded for it, whose object is queued for removal — and a manager of theirs today, staff:approve or staff:manage any current row. chain (staff:manage) removes every row the person has had for the competence. A renewal removed without chain makes the row it superseded current again, and competence_removed names that row as restored. Anyone else who sees the person gets the uniform 403; a row the caller may not see is the bare 404.
          */
         delete: operations["deleteStaffPersonCompetencesById"];
         options?: never;
@@ -2081,7 +2081,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Download a competence's evidence
+         * @description Streams the evidence document of a row as GET /documents/{id} streams a document — the type it was sniffed as on upload, named as uploaded (RFC 5987), inline except HEIC, never cached and never sniffed — to everyone who reads the row's detail: the person, a manager of theirs today, staff:approve, staff:manage and staff:personal-data. A document moved since into a restricted category is read only by the health group's readers. To anyone else — a colleague included — for a row the caller may not see and for a row with no evidence, it is the bare 404 an unknown id is.
+         */
+        get: operations["getStaffPersonCompetencesByIdEvidence"];
         put?: never;
         /**
          * Add a competence's evidence
@@ -2105,7 +2109,7 @@ export interface paths {
         put?: never;
         /**
          * Renew a competence
-         * @description Renews a current row: a new current row with the new dates, issuer and reference, the old row superseded by it in the same transaction and kept as it was; recorded as competence_renewed. The person renews their own row (the new row declared), a manager of theirs today, staff:approve or staff:manage any current row (the new row verified at once). Anyone else who sees the person gets the uniform 403; a row the caller may not see is the bare 404.
+         * @description Renews a current row: a new current row with the new dates, issuer and reference, the old row superseded by it in the same transaction and kept as it was; recorded as competence_renewed. The person renews their own row (the new row declared), a manager of theirs today, staff:approve or staff:manage any current row (the new row verified at once), and its event names the new end and, on a competence with a level, the level carried over. A certificate is renewed; a skill has no validity and is changed instead (409 skill_no_validity). Anyone else who sees the person gets the uniform 403; a row the caller may not see is the bare 404.
          */
         post: operations["postStaffPersonCompetencesByIdRenew"];
         delete?: never;
@@ -2952,7 +2956,7 @@ export interface components {
              */
             validityMonths?: number;
         };
-        /** @description The document a row's evidence is, filed in the person's archive under the certificate category; read through the document's own download. */
+        /** @description The document a row's evidence is, filed in the person's archive under the certificate category; downloaded through GET /person-competences/{id}/evidence by everyone who reads the row's detail — the person, their manager, staff:approve and HR — and through the document's own download by those who read the person's documents. */
         StaffCompetenceEvidence: {
             contentType: string;
             /** Format: int64 */
@@ -4589,7 +4593,7 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), level_not_allowed (400, a field error on level: a level on a competence without one) and level_required (400, a field error on level: none on a competence with one). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), own_record (403: the person verifying their own competence row), skill_no_validity (400, a field error on validTo: an end on a row of a skill; 409: a renewal of a skill's row), level_not_allowed (400, a field error on level: a level on a competence without one) and level_required (400, a field error on level: none on a competence with one). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -6950,7 +6954,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden — none of staff:view, staff:manage and staff:personal-data. */
+            /** @description Forbidden */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7118,7 +7122,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden — none of staff:view, staff:manage and staff:personal-data. */
+            /** @description Forbidden */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11295,7 +11299,7 @@ export interface operations {
                     "application/json": components["schemas"]["StaffPersonCompetence"];
                 };
             };
-            /** @description Bad Request — a field did not pass; competence_unavailable on competenceId (an unknown, hidden or archived competence), level_required or level_not_allowed on level. */
+            /** @description Bad Request — a field did not pass; competence_unavailable on competenceId (an unknown, hidden or archived competence), level_required or level_not_allowed on level, skill_no_validity on validTo (an end on a skill). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -12669,7 +12673,7 @@ export interface operations {
                     "application/json": components["schemas"]["StaffPersonCompetence"];
                 };
             };
-            /** @description Bad Request — a field did not pass, level_required or level_not_allowed on level, or If-Match is not a revision. */
+            /** @description Bad Request — a field did not pass, level_required or level_not_allowed on level, skill_no_validity on validTo (an end on a skill), or If-Match is not a revision. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -12762,6 +12766,62 @@ export interface operations {
             };
             /** @description Conflict — verified_row (the person removing their own verified row), superseded (a superseded row, which goes only with its chain); person_erased when the person has been erased. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffPersonCompetencesByIdEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no row has that id, the caller may not read its detail, or it has no evidence. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — storage_unavailable, the object store could not be read. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12921,7 +12981,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — superseded (a superseded row, renewed already); person_erased when the person has been erased. */
+            /** @description Conflict — superseded (a superseded row, renewed already), skill_no_validity (a skill's row, which is changed, never renewed); person_erased when the person has been erased. */
             409: {
                 headers: {
                     [name: string]: unknown;

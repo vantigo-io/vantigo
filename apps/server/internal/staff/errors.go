@@ -157,8 +157,9 @@ const (
 
 // The refusal codes of competence (staff competence design §6, delivery A):
 // competence_unavailable, level_required and level_not_allowed are 400s on the
-// field they name; own_record is the 403 to the person verifying their own
-// row; the rest 409s on the state of things. seed_immutable,
+// field they name; skill_no_validity is the 400 on validTo of a skill's row
+// and the 409 its renewal answers; own_record is the 403 to the person
+// verifying their own row; the rest 409s on the state of things. seed_immutable,
 // category_in_use, revision_conflict and the documents' codes are reused.
 const (
 	codeCompetenceHeld        = "competence_held"
@@ -169,6 +170,7 @@ const (
 	codeLevelNotAllowed       = "level_not_allowed"
 	codeLevelRequired         = "level_required"
 	codeOwnRecord             = "own_record"
+	codeSkillNoValidity       = "skill_no_validity"
 )
 
 // The titles this module's validation problems carry, one per thing a request

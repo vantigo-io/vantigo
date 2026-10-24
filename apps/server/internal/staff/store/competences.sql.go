@@ -1014,6 +1014,43 @@ func (q *Queries) NextCompetenceSort(ctx context.Context) (int32, error) {
 	return next, err
 }
 
+const restorePredecessorOf = `-- name: RestorePredecessorOf :many
+UPDATE staff.person_competences SET
+    superseded_by_id = NULL,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE superseded_by_id = $2::bigint AND id <> $2::bigint
+RETURNING id
+`
+
+type RestorePredecessorOfParams struct {
+	Now time.Time
+	ID  int64
+}
+
+// RestorePredecessorOf makes the row a removed renewal superseded current
+// again, answering its id. The removed row points at itself first, so the
+// person holds one current row of the competence at every statement.
+func (q *Queries) RestorePredecessorOf(ctx context.Context, arg RestorePredecessorOfParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, restorePredecessorOf, arg.Now, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setPersonCompetenceEvidence = `-- name: SetPersonCompetenceEvidence :one
 UPDATE staff.person_competences SET
     evidence_document_id = $1::bigint,
@@ -1237,12 +1274,16 @@ UPDATE staff.person_competences SET
     level = $1,
     issued_on = $2,
     valid_from = $3,
-    valid_to = $4,
+    valid_to = $4::date,
     issuer = $5,
     reference = $6,
+    expiring_notified_at = CASE WHEN valid_to IS DISTINCT FROM $4::date THEN NULL ELSE expiring_notified_at END,
+    expired_notified_at = CASE WHEN valid_to IS DISTINCT FROM $4::date THEN NULL ELSE expired_notified_at END,
+    verified_at = CASE WHEN $7::boolean THEN $8::timestamptz ELSE verified_at END,
+    verified_by_user_id = CASE WHEN $7::boolean THEN $9::uuid ELSE verified_by_user_id END,
     revision = revision + 1,
-    updated_at = $7::timestamptz
-WHERE id = $8
+    updated_at = $8::timestamptz
+WHERE id = $10
 RETURNING id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at
 `
 
@@ -1253,11 +1294,16 @@ type UpdatePersonCompetenceParams struct {
 	ValidTo   pgtype.Date
 	Issuer    *string
 	Reference *string
+	Restamp   bool
 	Now       time.Time
+	Verifier  uuid.UUID
 	ID        int64
 }
 
 // UpdatePersonCompetence replaces a row's level, dates, issuer and reference.
+// A new end clears the worker's two stamps, so the row is mailed again ahead
+// of it; restamp moves the verification's instant and verifier to the
+// verifier changing a verified row's level, its basis and note kept.
 func (q *Queries) UpdatePersonCompetence(ctx context.Context, arg UpdatePersonCompetenceParams) (StaffPersonCompetence, error) {
 	row := q.db.QueryRow(ctx, updatePersonCompetence,
 		arg.Level,
@@ -1266,7 +1312,9 @@ func (q *Queries) UpdatePersonCompetence(ctx context.Context, arg UpdatePersonCo
 		arg.ValidTo,
 		arg.Issuer,
 		arg.Reference,
+		arg.Restamp,
 		arg.Now,
+		arg.Verifier,
 		arg.ID,
 	)
 	var i StaffPersonCompetence

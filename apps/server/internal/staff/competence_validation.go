@@ -191,6 +191,21 @@ func parseRowFields(issuedOn, validFrom, validTo *openapi_types.Date, issuer, re
 	return out
 }
 
+// skillValidity refuses an end on a row of a skill (S1): a skill is a
+// proficiency, never valid until a day (skill_no_validity on validTo).
+func skillValidity(kind string, validTo *time.Time, f *fieldErrors) {
+	if kind == kindSkill && validTo != nil {
+		f.addCoded("validTo", codeSkillNoValidity, "A skill has no validity; only a certificate ends")
+	}
+}
+
+// skillNotRenewed is the 409 a renewal of a skill's row answers: a skill
+// has no validity to renew, and is changed instead.
+func skillNotRenewed() error {
+	return refuseConflict(conflict(codeSkillNoValidity, "A skill is not renewed",
+		"A skill has no validity to renew. Change its level instead."))
+}
+
 // competenceAvailable is whether a new row may name c (§4 "Hidden and
 // archived"): neither hidden nor archived. An unknown one is unavailable too.
 func competenceAvailable(c store.StaffCompetence) bool {
