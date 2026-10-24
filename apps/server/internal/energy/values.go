@@ -151,18 +151,25 @@ func floatPtrFromNumeric(n pgtype.Numeric) *float64 {
 // of it. A value read back from the column is already rounded and comes back
 // unchanged; a NaN or an infinity comes back as it is.
 func roundKwh(v float64) float64 {
+	return roundDecimals(v, 3)
+}
+
+// roundDecimals is roundKwh for any column scale: v rounded to places
+// decimals, half away from zero, on its shortest decimal text. The spot
+// prices' numeric(12,6) columns round to six (spot_prices_write.go).
+func roundDecimals(v float64, places int) float64 {
 	whole, frac, _ := strings.Cut(strconv.FormatFloat(math.Abs(v), 'f', -1, 64), ".")
-	if len(frac) <= 3 {
+	if len(frac) <= places {
 		return v
 	}
-	n, ok := new(big.Int).SetString(whole+frac[:3], 10)
+	n, ok := new(big.Int).SetString(whole+frac[:places], 10)
 	if !ok {
 		return v
 	}
-	if frac[3] >= '5' {
+	if frac[places] >= '5' {
 		n.Add(n, big.NewInt(1))
 	}
-	r, err := strconv.ParseFloat(n.String()+"e-3", 64)
+	r, err := strconv.ParseFloat(n.String()+"e-"+strconv.Itoa(places), 64)
 	if err != nil {
 		return v
 	}
