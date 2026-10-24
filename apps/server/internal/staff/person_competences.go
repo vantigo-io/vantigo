@@ -53,7 +53,7 @@ const certificateCategoryKey = "certificate"
 func competenceFieldGroup(name string) fieldGroup {
 	switch name {
 	case "competence", "competenceKey", "level", "validFrom", "validTo", "verified", "superseded",
-		"expiring", "expired", "declaredAt", "revision", "chain":
+		"expiring", "expired", "declaredAt", "revision", "chain", "restored":
 		return groupCompetence
 	case "issuedOn", "issuer", "reference", "evidence", "documentId", "source", "verifiedAt", "verifiedBy",
 		"verifiedBasis", "basis", "verifiedNote":
@@ -422,6 +422,7 @@ func (s *server) PostStaffPeopleByIdCompetences(ctx context.Context, req gen.Pos
 		}
 		var f fieldErrors
 		level := parseLevel(body.Level, c.HasLevel, &f)
+		skillValidity(c.Kind, fields.ValidTo, &f)
 		if f.failed() {
 			return refuseInvalid(invalidPersonCompetenceTitle, f)
 		}
@@ -546,12 +547,17 @@ func (s *server) PutStaffPersonCompetencesById(ctx context.Context, req gen.PutS
 		level := parseLevel(body.Level, l.competence.HasLevel, &f)
 		from := civil(l.row.ValidFrom)
 		fields := parseRowFields(body.IssuedOn, body.ValidFrom, body.ValidTo, body.Issuer, body.Reference, &from, caller.Today, &f)
+		skillValidity(l.competence.Kind, fields.ValidTo, &f)
 		if f.failed() {
 			return refuseInvalid(invalidPersonCompetenceTitle, f)
 		}
+		// A verifier who changes a verified row's level verifies that level:
+		// the stamp is theirs now, its basis and note kept.
+		restamp := role.verifies() && isVerified(l.row) && !equalInt16(level, l.row.Level)
 		row, err := txq.UpdatePersonCompetence(ctx, store.UpdatePersonCompetenceParams{
 			ID: l.row.ID, Level: level, IssuedOn: pgTime(fields.IssuedOn), ValidFrom: dayParam(fields.ValidFrom),
-			ValidTo: pgTime(fields.ValidTo), Issuer: fields.Issuer, Reference: fields.Reference, Now: s.deps.Clock(),
+			ValidTo: pgTime(fields.ValidTo), Issuer: fields.Issuer, Reference: fields.Reference,
+			Restamp: restamp, Verifier: caller.UserID, Now: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("staff: change competence row %d: %w", l.row.ID, err)
@@ -607,7 +613,8 @@ func (s *server) PutStaffPersonCompetencesById(ctx context.Context, req gen.PutS
 // the ledger in the same transaction, then removed once that has committed,
 // as a document's delete is. A verifier and HR remove any current row; chain
 // (staff:manage) removes every row the person has had for the competence. A
-// superseded row goes only with its chain.
+// superseded row goes only with its chain. A renewal removed alone makes the
+// row it renewed current again (restored).
 func (s *server) DeleteStaffPersonCompetencesById(ctx context.Context, req gen.DeleteStaffPersonCompetencesByIdRequestObject) (gen.DeleteStaffPersonCompetencesByIdResponseObject, error) {
 	chain := req.Params.Chain != nil && *req.Params.Chain
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
@@ -636,14 +643,21 @@ func (s *server) DeleteStaffPersonCompetencesById(ctx context.Context, req gen.D
 		case role == roleSelf && isVerified(l.row):
 			return verifiedRow()
 		}
+		c := changes{"chain": fieldChange{To: chain}}
 		if chain {
 			if _, err := txq.DeletePersonCompetenceChain(ctx, store.DeletePersonCompetenceChainParams{
 				PersonID: l.row.PersonID, CompetenceID: l.row.CompetenceID,
 			}); err != nil {
 				return fmt.Errorf("staff: remove person %d's rows of competence %d: %w", l.row.PersonID, l.row.CompetenceID, err)
 			}
-		} else if _, err := txq.DeletePersonCompetence(ctx, l.row.ID); err != nil {
-			return fmt.Errorf("staff: remove competence row %d: %w", l.row.ID, err)
+		} else {
+			restored, err := s.removeRenewal(ctx, txq, l.row.ID)
+			if err != nil {
+				return err
+			}
+			if restored != nil {
+				c["restored"] = fieldChange{To: *restored}
+			}
 		}
 		if role == roleSelf && l.row.EvidenceDocumentID != nil {
 			key, err := s.removeOwnEvidence(ctx, txq, *l.row.EvidenceDocumentID, caller.UserID, who)
@@ -652,8 +666,7 @@ func (s *server) DeleteStaffPersonCompetencesById(ctx context.Context, req gen.D
 			}
 			queued = key
 		}
-		return s.recordCompetenceEvent(ctx, txq, l.row.PersonID, l.row.ID, eventCompetenceRemoved, who, l.competence.Key,
-			changes{"chain": fieldChange{To: chain}})
+		return s.recordCompetenceEvent(ctx, txq, l.row.PersonID, l.row.ID, eventCompetenceRemoved, who, l.competence.Key, c)
 	})
 	if errors.Is(err, errPersonNotFound) {
 		return gen.DeleteStaffPersonCompetencesById404Response{}, nil
@@ -674,6 +687,29 @@ func (s *server) DeleteStaffPersonCompetencesById(ctx context.Context, req gen.D
 		s.finishObjectDeletion(ctx, *queued, 0, "person_id", seen.StaffPersonCompetence.PersonID)
 	}
 	return gen.DeleteStaffPersonCompetencesById204Response{}, nil
+}
+
+// removeRenewal deletes one current row and makes the row it renewed, if
+// any, current again, answering that row's id. The removed row points at
+// itself first — no longer current, and no longer named by its predecessor
+// once that is restored — so the person holds at most one current row of the
+// competence after every statement (S3) and the delete meets no reference.
+func (s *server) removeRenewal(ctx context.Context, txq *store.Queries, id int64) (*int64, error) {
+	now := s.deps.Clock()
+	if err := txq.SupersedePersonCompetence(ctx, store.SupersedePersonCompetenceParams{ID: id, SupersededByID: id, Now: now}); err != nil {
+		return nil, fmt.Errorf("staff: take competence row %d out of the current rows: %w", id, err)
+	}
+	restored, err := txq.RestorePredecessorOf(ctx, store.RestorePredecessorOfParams{ID: id, Now: now})
+	if err != nil {
+		return nil, fmt.Errorf("staff: restore the row competence row %d superseded: %w", id, err)
+	}
+	if _, err := txq.DeletePersonCompetence(ctx, id); err != nil {
+		return nil, fmt.Errorf("staff: remove competence row %d: %w", id, err)
+	}
+	if len(restored) == 0 {
+		return nil, nil
+	}
+	return &restored[0], nil
 }
 
 // removeOwnEvidence deletes the evidence document of a row its person
@@ -839,7 +875,8 @@ func verifyRefused(err error) gen.PostStaffPersonCompetencesByIdVerifyResponseOb
 // row's level; the old row, kept as it was, superseded by it in the same
 // transaction. The person's renewal is declared; a verifier's or HR's is
 // verified at once. validTo left out is the issue date plus the
-// competence's validity, when both are known.
+// competence's validity, when both are known. A skill is changed, never
+// renewed (skill_no_validity).
 func (s *server) PostStaffPersonCompetencesByIdRenew(ctx context.Context, req gen.PostStaffPersonCompetencesByIdRenewRequestObject) (gen.PostStaffPersonCompetencesByIdRenewResponseObject, error) {
 	var body gen.StaffCompetenceRenewRequest
 	if req.Body != nil {
@@ -872,6 +909,9 @@ func (s *server) PostStaffPersonCompetencesByIdRenew(ctx context.Context, req ge
 		}
 		if isSuperseded(l.row) {
 			return supersededRow()
+		}
+		if l.competence.Kind == kindSkill {
+			return skillNotRenewed()
 		}
 		validTo := body.ValidTo
 		if validTo == nil && body.IssuedOn != nil && l.competence.ValidityMonths != nil {
@@ -910,6 +950,9 @@ func (s *server) PostStaffPersonCompetencesByIdRenew(ctx context.Context, req ge
 		c := changes{}
 		if fc, ok := dateChange(l.row.ValidTo, row.ValidTo); ok {
 			c["validTo"] = fc
+		}
+		if l.competence.HasLevel && row.Level != nil {
+			c["level"] = fieldChange{To: *row.Level}
 		}
 		return s.recordCompetenceEvent(ctx, txq, row.PersonID, row.ID, eventCompetenceRenewed, who, l.competence.Key, c)
 	})
@@ -1070,6 +1113,73 @@ func (s *server) PostStaffPersonCompetencesByIdEvidence(ctx context.Context, req
 		return nil, err
 	}
 	return gen.PostStaffPersonCompetencesByIdEvidence200JSONResponse(out), nil
+}
+
+// evidenceDownload sets the headers a served document carries on the
+// evidence's answer, as documentDownload does on a document's.
+type evidenceDownload struct {
+	body        gen.GetStaffPersonCompetencesByIdEvidenceResponseObject
+	disposition string
+}
+
+func (r evidenceDownload) VisitGetStaffPersonCompetencesByIdEvidenceResponse(w http.ResponseWriter) error {
+	setDocumentHeaders(w, r.disposition)
+	return r.body.VisitGetStaffPersonCompetencesByIdEvidenceResponse(w)
+}
+
+// GetStaffPersonCompetencesByIdEvidence Download a competence's evidence
+// (GET /api/v1/staff/person-competences/{id}/evidence)
+//
+// The evidence to everyone who reads the row's detail (S6, §5) — the
+// person, their manager, the Approver and HR — who need not read the
+// person's documents: the row, the audience and the document judged in a
+// snapshot, the object read after it, outside any transaction, as a
+// document's download reads it. A document moved since into a restricted
+// category is the health group's alone. A row without evidence is the 404.
+func (s *server) GetStaffPersonCompetencesByIdEvidence(ctx context.Context, req gen.GetStaffPersonCompetencesByIdEvidenceRequestObject) (gen.GetStaffPersonCompetencesByIdEvidenceResponseObject, error) {
+	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
+	if err != nil {
+		return nil, err
+	}
+	var d store.StaffDocument
+	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		row, err := readCompetenceRow(ctx, q, req.Id)
+		if err != nil {
+			return err
+		}
+		r := row.StaffPersonCompetence
+		a, err := personAudience(ctx, q, caller, r.PersonID)
+		if err != nil {
+			return err
+		}
+		if !a.reads(groupCompetenceDetail) || r.EvidenceDocumentID == nil {
+			return notFound()
+		}
+		document, err := readDocument(ctx, q, *r.EvidenceDocumentID)
+		if err != nil {
+			return err
+		}
+		if document.StaffDocumentCategory.Restricted && !a.reads(groupHealth) {
+			return notFound()
+		}
+		d = document.StaffDocument
+		return nil
+	})
+	if _, ok := asRefusal(err); ok {
+		return evidenceDownload{body: gen.GetStaffPersonCompetencesByIdEvidence404Response{}}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	body, err := s.objectGet(ctx, d.ObjectKey)
+	if err != nil {
+		s.deps.Logger.ErrorContext(ctx, "staff: a competence's evidence could not be read from the store", "document_id", d.ID, "error", err.Error())
+		return evidenceDownload{body: gen.GetStaffPersonCompetencesByIdEvidence503ApplicationProblemPlusJSONResponse(storageUnavailable())}, nil
+	}
+	return evidenceDownload{
+		body:        gen.GetStaffPersonCompetencesByIdEvidence200AsteriskResponse{Body: body, ContentType: d.ContentType, ContentLength: d.SizeBytes},
+		disposition: contentDisposition(storedDocumentType(d.ContentType), d.FileName),
+	}, nil
 }
 
 // filesEvidence is whether the caller files a row's evidence (S6): the row's

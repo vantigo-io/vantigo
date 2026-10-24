@@ -424,13 +424,19 @@ type documentDownload struct {
 }
 
 func (r documentDownload) VisitGetStaffDocumentsByIdResponse(w http.ResponseWriter) error {
+	setDocumentHeaders(w, r.disposition)
+	return r.body.VisitGetStaffDocumentsByIdResponse(w)
+}
+
+// setDocumentHeaders sets the headers every served document carries, and
+// its disposition when it is one.
+func setDocumentHeaders(w http.ResponseWriter, disposition string) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", documentContentSecurityPolicy)
-	if r.disposition != "" {
-		w.Header().Set("Content-Disposition", r.disposition)
+	if disposition != "" {
+		w.Header().Set("Content-Disposition", disposition)
 	}
-	return r.body.VisitGetStaffDocumentsByIdResponse(w)
 }
 
 // GetStaffDocumentsById Download a document

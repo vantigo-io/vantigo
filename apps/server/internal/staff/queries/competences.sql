@@ -184,13 +184,20 @@ RETURNING *;
 
 -- name: UpdatePersonCompetence :one
 -- UpdatePersonCompetence replaces a row's level, dates, issuer and reference.
+-- A new end clears the worker's two stamps, so the row is mailed again ahead
+-- of it; restamp moves the verification's instant and verifier to the
+-- verifier changing a verified row's level, its basis and note kept.
 UPDATE staff.person_competences SET
     level = sqlc.narg(level),
     issued_on = sqlc.narg(issued_on),
     valid_from = @valid_from,
-    valid_to = sqlc.narg(valid_to),
+    valid_to = sqlc.narg(valid_to)::date,
     issuer = sqlc.narg(issuer),
     reference = sqlc.narg(reference),
+    expiring_notified_at = CASE WHEN valid_to IS DISTINCT FROM sqlc.narg(valid_to)::date THEN NULL ELSE expiring_notified_at END,
+    expired_notified_at = CASE WHEN valid_to IS DISTINCT FROM sqlc.narg(valid_to)::date THEN NULL ELSE expired_notified_at END,
+    verified_at = CASE WHEN @restamp::boolean THEN @now::timestamptz ELSE verified_at END,
+    verified_by_user_id = CASE WHEN @restamp::boolean THEN @verifier::uuid ELSE verified_by_user_id END,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = @id
@@ -228,6 +235,17 @@ UPDATE staff.person_competences SET
     updated_at = @now::timestamptz
 WHERE id = @id
 RETURNING *;
+
+-- name: RestorePredecessorOf :many
+-- RestorePredecessorOf makes the row a removed renewal superseded current
+-- again, answering its id. The removed row points at itself first, so the
+-- person holds one current row of the competence at every statement.
+UPDATE staff.person_competences SET
+    superseded_by_id = NULL,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE superseded_by_id = @id::bigint AND id <> @id::bigint
+RETURNING id;
 
 -- name: DeletePersonCompetence :execrows
 -- DeletePersonCompetence removes one current row.

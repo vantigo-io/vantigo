@@ -1916,7 +1916,7 @@ type StaffCompetenceChangeRequest struct {
 	ValidityMonths *int32 `json:"validityMonths,omitempty"`
 }
 
-// StaffCompetenceEvidence The document a row's evidence is, filed in the person's archive under the certificate category; read through the document's own download.
+// StaffCompetenceEvidence The document a row's evidence is, filed in the person's archive under the certificate category; downloaded through GET /person-competences/{id}/evidence by everyone who reads the row's detail — the person, their manager, staff:approve and HR — and through the document's own download by those who read the person's documents.
 type StaffCompetenceEvidence struct {
 	ContentType string `json:"contentType"`
 	DocumentId  int64  `json:"documentId"`
@@ -3226,7 +3226,7 @@ type StaffPersonCompetence struct {
 	// DeclaredAt When the row was entered.
 	DeclaredAt time.Time `json:"declaredAt"`
 
-	// Evidence The document a row's evidence is, filed in the person's archive under the certificate category; read through the document's own download.
+	// Evidence The document a row's evidence is, filed in the person's archive under the certificate category; downloaded through GET /person-competences/{id}/evidence by everyone who reads the row's detail — the person, their manager, staff:approve and HR — and through the document's own download by those who read the person's documents.
 	Evidence *StaffCompetenceEvidence `json:"evidence,omitempty"`
 
 	// Expired A current row whose validTo has passed today.
@@ -3609,7 +3609,7 @@ type StaffPersonalDataPerson struct {
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), own_record (403: the person verifying their own competence row), level_not_allowed (400, a field error on level: a level on a competence without one) and level_required (400, a field error on level: none on a competence with one). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), own_record (403: the person verifying their own competence row), skill_no_validity (400, a field error on validTo: an end on a row of a skill; 409: a renewal of a skill's row), level_not_allowed (400, a field error on level: a level on a competence without one) and level_required (400, a field error on level: none on a competence with one). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -5071,6 +5071,9 @@ type ServerInterface interface {
 	// PutStaffPersonCompetencesById Change a competence
 	// (PUT /api/v1/staff/person-competences/{id})
 	PutStaffPersonCompetencesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffPersonCompetencesByIdParams)
+	// GetStaffPersonCompetencesByIdEvidence Download a competence's evidence
+	// (GET /api/v1/staff/person-competences/{id}/evidence)
+	GetStaffPersonCompetencesByIdEvidence(w http.ResponseWriter, r *http.Request, id int64)
 	// PostStaffPersonCompetencesByIdEvidence Add a competence's evidence
 	// (POST /api/v1/staff/person-competences/{id}/evidence)
 	PostStaffPersonCompetencesByIdEvidence(w http.ResponseWriter, r *http.Request, id int64)
@@ -9263,6 +9266,32 @@ func (siw *ServerInterfaceWrapper) PutStaffPersonCompetencesById(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffPersonCompetencesByIdEvidence operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPersonCompetencesByIdEvidence(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPersonCompetencesByIdEvidence(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostStaffPersonCompetencesByIdEvidence operation middleware
 func (siw *ServerInterfaceWrapper) PostStaffPersonCompetencesByIdEvidence(w http.ResponseWriter, r *http.Request) {
 
@@ -9798,6 +9827,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.PutStaffPeopleByIdUser)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/person-competences/{id}", wrapper.DeleteStaffPersonCompetencesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/person-competences/{id}", wrapper.PutStaffPersonCompetencesById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/person-competences/{id}/evidence", wrapper.GetStaffPersonCompetencesByIdEvidence)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/person-competences/{id}/evidence", wrapper.PostStaffPersonCompetencesByIdEvidence)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/person-competences/{id}/renew", wrapper.PostStaffPersonCompetencesByIdRenew)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/person-competences/{id}/verify", wrapper.PostStaffPersonCompetencesByIdVerify)
@@ -19399,6 +19429,85 @@ func (response PutStaffPersonCompetencesById409ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type GetStaffPersonCompetencesByIdEvidenceRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPersonCompetencesByIdEvidenceResponseObject interface {
+	VisitGetStaffPersonCompetencesByIdEvidenceResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPersonCompetencesByIdEvidence200AsteriskResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetStaffPersonCompetencesByIdEvidence200AsteriskResponse) VisitGetStaffPersonCompetencesByIdEvidenceResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetStaffPersonCompetencesByIdEvidence401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPersonCompetencesByIdEvidence401JSONResponse) VisitGetStaffPersonCompetencesByIdEvidenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPersonCompetencesByIdEvidence403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPersonCompetencesByIdEvidence403JSONResponse) VisitGetStaffPersonCompetencesByIdEvidenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPersonCompetencesByIdEvidence404Response struct {
+}
+
+func (response GetStaffPersonCompetencesByIdEvidence404Response) VisitGetStaffPersonCompetencesByIdEvidenceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetStaffPersonCompetencesByIdEvidence503ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffPersonCompetencesByIdEvidence503ApplicationProblemPlusJSONResponse) VisitGetStaffPersonCompetencesByIdEvidenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostStaffPersonCompetencesByIdEvidenceRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *multipart.Reader
@@ -20639,6 +20748,9 @@ type StrictServerInterface interface {
 	// PutStaffPersonCompetencesById Change a competence
 	// (PUT /api/v1/staff/person-competences/{id})
 	PutStaffPersonCompetencesById(ctx context.Context, request PutStaffPersonCompetencesByIdRequestObject) (PutStaffPersonCompetencesByIdResponseObject, error)
+	// GetStaffPersonCompetencesByIdEvidence Download a competence's evidence
+	// (GET /api/v1/staff/person-competences/{id}/evidence)
+	GetStaffPersonCompetencesByIdEvidence(ctx context.Context, request GetStaffPersonCompetencesByIdEvidenceRequestObject) (GetStaffPersonCompetencesByIdEvidenceResponseObject, error)
 	// PostStaffPersonCompetencesByIdEvidence Add a competence's evidence
 	// (POST /api/v1/staff/person-competences/{id}/evidence)
 	PostStaffPersonCompetencesByIdEvidence(ctx context.Context, request PostStaffPersonCompetencesByIdEvidenceRequestObject) (PostStaffPersonCompetencesByIdEvidenceResponseObject, error)
@@ -24460,6 +24572,32 @@ func (sh *strictHandler) PutStaffPersonCompetencesById(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffPersonCompetencesByIdResponseObject); ok {
 		if err := validResponse.VisitPutStaffPersonCompetencesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPersonCompetencesByIdEvidence operation middleware
+func (sh *strictHandler) GetStaffPersonCompetencesByIdEvidence(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPersonCompetencesByIdEvidenceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPersonCompetencesByIdEvidence(ctx, request.(GetStaffPersonCompetencesByIdEvidenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPersonCompetencesByIdEvidence")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPersonCompetencesByIdEvidenceResponseObject); ok {
+		if err := validResponse.VisitGetStaffPersonCompetencesByIdEvidenceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

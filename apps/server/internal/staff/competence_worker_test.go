@@ -3,6 +3,7 @@ package staff_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -239,6 +240,49 @@ func TestCompetenceWorker_RenewalAndSupersededRows(t *testing.T) {
 	}
 	if m := lastMail(t, h, kariAddress); !strings.Contains(m, "2026-11-01") {
 		t.Errorf("the renewed row's mail:\n%s", m)
+	}
+}
+
+// A new end clears the stamps: a row mailed as expiring whose end HR moves a
+// year ahead is not mailed again now, and is mailed again once the new end
+// comes within its lead.
+func TestCompetenceWorker_ANewEndClearsTheStamps(t *testing.T) {
+	t.Parallel()
+	w := newCompetenceWorld(t)
+	h := w.h
+	hr, _ := signIn(t, h, "staff:manage")
+	// HMS-kort's lead is 60 days: 12 October is within it.
+	row := rawPersonCompetence(t, h, competenceRow{person: w.kari, competence: catalogueID(t, h, "hms-kort"), from: "2024-10-13", to: strPtr("2026-10-12"), verified: true})
+	runCompetence(t, h)
+	if e, _ := stamps(t, h, row); !e || len(h.mail.messages()) != 2 {
+		t.Fatalf("expiring stamped %v, %d mails; want stamped and two mails", e, len(h.mail.messages()))
+	}
+
+	revision := modtest.One[int32](t, h.Harness, `SELECT revision FROM staff.person_competences WHERE id = $1`, row)
+	do(t, hr, http.MethodPut, personCompetencePath(row), map[string]any{"validTo": "2027-10-12"}, http.StatusOK, nil, ifMatch(revision))
+	if e, x := stamps(t, h, row); e || x {
+		t.Errorf("stamps after the new end = expiring %v, expired %v; want neither", e, x)
+	}
+	runCompetence(t, h)
+	if n := len(h.mail.messages()); n != 2 {
+		t.Errorf("%d mails after the new end, want no new one a year ahead", n)
+	}
+
+	setClock(t, h, osloAt("2027-08-20", 7))
+	runCompetence(t, h)
+	if e, _ := stamps(t, h, row); !e || len(h.mail.messages()) != 4 {
+		t.Fatalf("on 20 August 2027: expiring stamped %v, %d mails; want stamped and two more", e, len(h.mail.messages()))
+	}
+	if m := lastMail(t, h, kariAddress); !strings.Contains(m, "2027-10-12") {
+		t.Errorf("Kari's mail about the new end:\n%s", m)
+	}
+	// A change that keeps the end keeps the stamps. (A year on, HR signs in
+	// again.)
+	hr, _ = signIn(t, h, "staff:manage")
+	revision = modtest.One[int32](t, h.Harness, `SELECT revision FROM staff.person_competences WHERE id = $1`, row)
+	do(t, hr, http.MethodPut, personCompetencePath(row), map[string]any{"validTo": "2027-10-12", "reference": "HMS-1"}, http.StatusOK, nil, ifMatch(revision))
+	if e, _ := stamps(t, h, row); !e {
+		t.Error("a change that kept the end cleared the expiring stamp")
 	}
 }
 

@@ -160,6 +160,26 @@ func TestCompetenceCategories_AddAndChange(t *testing.T) {
 	if r := hr.Do(http.MethodPut, competenceCategoryPath(9999999), map[string]any{"names": names, "archived": false}, ifMatch(1)); r.Status != http.StatusNotFound {
 		t.Errorf("an unknown category = %d, want 404", r.Status)
 	}
+
+	// A competence under an archived category is restored only once its
+	// category is.
+	var shelved gen.StaffCompetence
+	for _, c := range listCompetences(t, hr, "?includeArchived=true") {
+		if c.Id == skill.Id {
+			shelved = c
+		}
+	}
+	p := refused(t, hr.Do(http.MethodPut, competencePath(skill.Id), competenceChangeBody(shelved, "archived", false), ifMatch(shelved.Revision)),
+		http.StatusBadRequest, "")
+	if len(p.Errors["archived"]) == 0 {
+		t.Errorf("a restore under an archived category: errors = %v, want one on archived", p.Errors)
+	}
+	do(t, hr, http.MethodPut, competenceCategoryPath(added.Id), map[string]any{"names": names, "archived": false}, http.StatusOK, nil, ifMatch(archived.Revision))
+	var restored gen.StaffCompetence
+	do(t, hr, http.MethodPut, competencePath(skill.Id), competenceChangeBody(shelved, "archived", false), http.StatusOK, &restored, ifMatch(shelved.Revision))
+	if restored.ArchivedAt != nil {
+		t.Errorf("restored = %+v, want it in the catalogue again", restored)
+	}
 }
 
 // The fifteen seeded certificates are every caller's; a hidden or an

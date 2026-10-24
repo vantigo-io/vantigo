@@ -1,6 +1,7 @@
 package staff_test
 
 import (
+	"bytes"
 	"errors"
 	"net/http"
 	"strings"
@@ -242,6 +243,40 @@ func TestPersonCompetences_Change(t *testing.T) {
 	refused(t, w.hr.Do(http.MethodPut, personCompetencePath(own.Id), map[string]any{}, ifMatch(old.Revision)), http.StatusConflict, "superseded")
 }
 
+// A verifier who changes a verified row's level verifies that level: the
+// stamp's instant and verifier move to them, its basis and note kept; a
+// change that leaves the level alone leaves the stamp as it was.
+func TestPersonCompetences_AVerifierChangingTheLevelRestamps(t *testing.T) {
+	t.Parallel()
+	w := newCompetenceWorldA(t)
+	h := w.h
+	row := declare(t, w.kariC, w.kari.Id, map[string]any{"competenceId": w.golang, "level": 3})
+	verified := verify(t, w.bossC, row.Id, map[string]any{"basis": "evidence", "level": 3, "note": "Seen in the billing project"})
+	verifier := func() uuid.UUID {
+		return modtest.One[uuid.UUID](t, h.Harness, `SELECT verified_by_user_id FROM staff.person_competences WHERE id = $1`, row.Id)
+	}
+	hr, hrUser := signIn(t, h, "staff:manage")
+
+	h.Advance(time.Hour)
+	var same gen.StaffPersonCompetence
+	do(t, hr, http.MethodPut, personCompetencePath(row.Id), map[string]any{"level": 3, "reference": "GO-1"}, http.StatusOK, &same, ifMatch(verified.Revision))
+	if !same.VerifiedAt.Equal(*verified.VerifiedAt) || verifier() != w.bossUser {
+		t.Errorf("a change of the reference moved the stamp: %+v", same)
+	}
+
+	h.Advance(time.Hour)
+	var changed gen.StaffPersonCompetence
+	do(t, hr, http.MethodPut, personCompetencePath(row.Id), map[string]any{"level": 2, "reference": "GO-1"}, http.StatusOK, &changed, ifMatch(same.Revision))
+	if !changed.Verified || *changed.Level != 2 || !changed.VerifiedAt.After(*verified.VerifiedAt) || verifier() != hrUser ||
+		*changed.VerifiedBasis != "evidence" || changed.VerifiedNote == nil || *changed.VerifiedNote != "Seen in the billing project" {
+		t.Errorf("changed = %+v, want level 2 verified by HR now, the basis and the note kept", changed)
+	}
+	if f := competenceEventFields(t, w.kariC, w.kari.Id, "competence_changed", row.Id); f == nil ||
+		f["level"].(map[string]any)["from"] != float64(3) || f["level"].(map[string]any)["to"] != float64(2) {
+		t.Errorf("the changed event = %v, want the level from 3 to 2", f)
+	}
+}
+
 // A manager of the person today, an Approver and HR verify — the person
 // never (own_record), a colleague the uniform 403; the level the verifier
 // agrees to becomes the row's, and the event names it on both sides and the
@@ -291,11 +326,9 @@ func TestPersonCompetences_Verify(t *testing.T) {
 	}
 	verify(t, w.hr, row.Id, map[string]any{"basis": "observed", "level": 4})
 
-	renewed := renew(t, w.bossC, row.Id, map[string]any{})
-	refused(t, w.bossC.Do(http.MethodPost, verifyPath(row.Id), map[string]any{"basis": "observed", "level": 2}), http.StatusConflict, "superseded")
-	if *renewed.Level != 4 {
-		t.Errorf("the renewal's level = %v, want the old row's 4", renewed.Level)
-	}
+	fse := declare(t, w.kariC, w.kari.Id, map[string]any{"competenceId": w.fse})
+	renew(t, w.bossC, fse.Id, map[string]any{})
+	refused(t, w.bossC.Do(http.MethodPost, verifyPath(fse.Id), map[string]any{"basis": "observed"}), http.StatusConflict, "superseded")
 }
 
 // A renewal is a new current row and the old row superseded, kept as it
@@ -341,6 +374,44 @@ func TestPersonCompetences_Renew(t *testing.T) {
 		http.StatusBadRequest, "")
 	if len(p.Errors["validTo"]) == 0 {
 		t.Errorf("errors = %v, want one on validTo", p.Errors)
+	}
+
+	// A certificate with a level keeps it, and the event names it.
+	welding := addCompetence(t, w.hr, with(skillBody(t, w.h, "sveisesertifikat"), "kind", "certificate", "validityMonths", 24)).Id
+	graded := declare(t, w.kariC, w.kari.Id, map[string]any{"competenceId": welding, "level": 3, "issuedOn": "2025-01-10"})
+	regraded := renew(t, w.kariC, graded.Id, map[string]any{"issuedOn": "2026-09-01"})
+	if regraded.Level == nil || *regraded.Level != 3 {
+		t.Errorf("the renewal's level = %v, want the old row's 3", regraded.Level)
+	}
+	if f := competenceEventFields(t, w.kariC, w.kari.Id, "competence_renewed", regraded.Id); f == nil ||
+		f["level"].(map[string]any)["to"] != float64(3) || f["validTo"].(map[string]any)["to"] != "2028-09-01" {
+		t.Errorf("the renewed event = %v, want the level and the new end", f)
+	}
+}
+
+// A skill is a proficiency, never valid until a day (skill_no_validity): an
+// end on a skill's row is a field error on validTo when it is declared and
+// when it is changed, and a skill's row is changed, never renewed.
+func TestPersonCompetences_ASkillHasNoValidity(t *testing.T) {
+	t.Parallel()
+	w := newCompetenceWorldA(t)
+	p := refused(t, w.kariC.Do(http.MethodPost, personCompetencesPath(w.kari.Id),
+		map[string]any{"competenceId": w.golang, "level": 2, "validTo": "2027-01-01"}), http.StatusBadRequest, "skill_no_validity")
+	if len(p.Errors["validTo"]) == 0 {
+		t.Errorf("a declaration: errors = %v, want one on validTo", p.Errors)
+	}
+
+	row := declare(t, w.kariC, w.kari.Id, map[string]any{"competenceId": w.golang, "level": 2})
+	p = refused(t, w.bossC.Do(http.MethodPut, personCompetencePath(row.Id), map[string]any{"level": 2, "validTo": "2027-01-01"}, ifMatch(row.Revision)),
+		http.StatusBadRequest, "skill_no_validity")
+	if len(p.Errors["validTo"]) == 0 {
+		t.Errorf("a change: errors = %v, want one on validTo", p.Errors)
+	}
+	for _, c := range []*modtest.Client{w.kariC, w.bossC, w.hr} {
+		refused(t, c.Do(http.MethodPost, renewPath(row.Id), map[string]any{}), http.StatusConflict, "skill_no_validity")
+	}
+	if rows := listPersonCompetences(t, w.hr, w.kari.Id, true); len(rows) != 1 || rows[0].ValidTo != nil || rows[0].Superseded {
+		t.Errorf("Kari's rows = %+v, want the one skill row, without end, current", rows)
 	}
 }
 
@@ -395,6 +466,111 @@ func TestPersonCompetences_Remove(t *testing.T) {
 	if r := w.hr.Do(http.MethodDelete, personCompetencePath(next.Id), nil); r.Status != http.StatusNotFound {
 		t.Errorf("a removed row = %d, want 404", r.Status)
 	}
+}
+
+// A renewal removed alone makes the row it renewed current again, in the
+// default list, and competence_removed names it as restored: the person's
+// own declared renewal, and a verifier's of any current row. The chain goes
+// whole, as before.
+func TestPersonCompetences_RemovingARenewalRestoresTheRowItRenewed(t *testing.T) {
+	t.Parallel()
+	w := newCompetenceWorldA(t)
+	h := w.h
+
+	old := declare(t, w.kariC, w.kari.Id, map[string]any{"competenceId": w.fse, "issuedOn": "2025-09-01", "validTo": "2026-09-01"})
+	verify(t, w.bossC, old.Id, map[string]any{"basis": "evidence"})
+	renewed := renew(t, w.kariC, old.Id, map[string]any{"issuedOn": "2026-09-01"})
+	do(t, w.kariC, http.MethodDelete, personCompetencePath(renewed.Id), nil, http.StatusNoContent, nil)
+	current := listPersonCompetences(t, w.kariC, w.kari.Id, false)
+	if len(current) != 1 || current[0].Id != old.Id || current[0].Superseded || !current[0].Verified ||
+		current[0].ValidTo.Format(time.DateOnly) != "2026-09-01" || current[0].Revision <= old.Revision {
+		t.Errorf("Kari's current rows = %+v, want the verified row she renewed, current again", current)
+	}
+	f := competenceEventFields(t, w.kariC, w.kari.Id, "competence_removed", renewed.Id)
+	if f == nil || f["chain"].(map[string]any)["to"] != false || f["restored"].(map[string]any)["to"] != float64(old.Id) {
+		t.Errorf("the removed event = %v, want the restored row named", f)
+	}
+
+	hms := declare(t, w.hr, w.kari.Id, map[string]any{"competenceId": competenceID(t, h, "hms-kort")})
+	next := renew(t, w.bossC, hms.Id, map[string]any{"issuedOn": "2026-09-01"})
+	do(t, w.bossC, http.MethodDelete, personCompetencePath(next.Id), nil, http.StatusNoContent, nil)
+	if rows := listPersonCompetences(t, w.hr, w.kari.Id, true); len(rows) != 2 {
+		t.Errorf("Kari's rows = %+v, want FSE's and HMS-kort's, one each", rows)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM staff.person_competences WHERE id = $1 AND superseded_by_id IS NULL`, hms.Id); n != 1 {
+		t.Error("the manager's removal of the renewal did not restore the row it renewed")
+	}
+	f = competenceEventFields(t, w.bossC, w.kari.Id, "competence_removed", next.Id)
+	if f == nil || f["restored"].(map[string]any)["to"] != float64(hms.Id) {
+		t.Errorf("the removed event = %v, want the restored row named", f)
+	}
+
+	// A row that renewed nothing names no row restored.
+	golang := declare(t, w.kariC, w.kari.Id, map[string]any{"competenceId": w.golang, "level": 1})
+	do(t, w.kariC, http.MethodDelete, personCompetencePath(golang.Id), nil, http.StatusNoContent, nil)
+	if f := competenceEventFields(t, w.kariC, w.kari.Id, "competence_removed", golang.Id); f == nil || f["restored"] != nil {
+		t.Errorf("the removed event = %v, want no restored row", f)
+	}
+
+	again := renew(t, w.kariC, old.Id, map[string]any{"issuedOn": "2026-09-02"})
+	do(t, w.hr, http.MethodDelete, personCompetencePath(again.Id)+"?chain=true", nil, http.StatusNoContent, nil)
+	if n := h.Count(t, `SELECT count(*) FROM staff.person_competences WHERE person_id = $1 AND competence_id = $2`, w.kari.Id, w.fse); n != 0 {
+		t.Errorf("%d rows of the chain left, want none", n)
+	}
+}
+
+// The evidence is downloaded by everyone who reads the row's detail — the
+// person, their manager, the Approver, HR and staff:personal-data — as a
+// document is, with its headers; a colleague and a stranger get the 404, as
+// does a row with no evidence; the store failing is 503.
+func TestPersonCompetences_EvidenceDownload(t *testing.T) {
+	t.Parallel()
+	w := newCompetenceWorldA(t)
+	h := w.h
+	row := declare(t, w.kariC, w.kari.Id, map[string]any{"competenceId": w.fse})
+	filed := addEvidence(t, w.kariC, row.Id)
+	want := pdfUpload(0).data
+
+	for name, c := range map[string]*modtest.Client{
+		"Kari": w.kariC, "her manager": w.bossC, "an Approver": w.approver, "HR": w.hr, "staff:personal-data": w.pd,
+	} {
+		r := c.Do(http.MethodGet, evidencePath(row.Id), nil)
+		if r.Status != http.StatusOK || !bytes.Equal(r.Body, want) {
+			t.Errorf("%s: status %d, %d bytes; want 200 and the file", name, r.Status, len(r.Body))
+			continue
+		}
+		for header, value := range map[string]string{
+			"Content-Type":            "application/pdf",
+			"Cache-Control":           "private, no-store",
+			"X-Content-Type-Options":  "nosniff",
+			"Content-Security-Policy": "default-src 'none'; sandbox",
+			"Content-Disposition":     "inline; filename*=UTF-8''avtale.pdf",
+		} {
+			if got := r.Header(header); got != value {
+				t.Errorf("%s: %s = %q, want %q", name, header, got, value)
+			}
+		}
+	}
+	// The manager reads the evidence, not the person's documents.
+	if r := w.bossC.Do(http.MethodGet, documentPath(filed.Evidence.DocumentId), nil); r.Status != http.StatusNotFound {
+		t.Errorf("the manager's download of the document = %d, want 404", r.Status)
+	}
+	for name, c := range map[string]*modtest.Client{"a colleague": w.viewer, "a stranger": w.nobody} {
+		if r := c.Do(http.MethodGet, evidencePath(row.Id), nil); r.Status != http.StatusNotFound || len(r.Body) != 0 {
+			t.Errorf("%s: status %d body %q, want the bare 404", name, r.Status, r.Body)
+		}
+	}
+	bare := declare(t, w.kariC, w.kari.Id, map[string]any{"competenceId": competenceID(t, h, "hms-kort")})
+	if r := w.hr.Do(http.MethodGet, evidencePath(bare.Id), nil); r.Status != http.StatusNotFound {
+		t.Errorf("a row with no evidence = %d, want 404", r.Status)
+	}
+	if r := w.hr.Do(http.MethodGet, evidencePath(9999999), nil); r.Status != http.StatusNotFound {
+		t.Errorf("an unknown row = %d, want 404", r.Status)
+	}
+
+	h.objects.failGet(errors.New("disk gone"))
+	refused(t, w.bossC.Do(http.MethodGet, evidencePath(row.Id), nil), http.StatusServiceUnavailable, "storage_unavailable")
+	h.objects.failGet(nil)
 }
 
 // The evidence is a document in the person's archive under the seeded

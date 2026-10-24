@@ -320,6 +320,17 @@ func (s *server) PutStaffCompetencesById(ctx context.Context, req gen.PutStaffCo
 			if err := lockFilingCategory(ctx, txq, body.CategoryId, row.CategoryID); err != nil {
 				return err
 			}
+		} else if !body.Archived && row.ArchivedAt != nil {
+			// A restore files the competence again: under an archived
+			// category it would be offered from a category nobody sees.
+			c, err := txq.LockCompetenceCategory(ctx, row.CategoryID)
+			if err != nil {
+				return fmt.Errorf("staff: lock competence category %d: %w", row.CategoryID, err)
+			}
+			if c.ArchivedAt != nil {
+				return refuseInvalid(invalidCompetenceTitle, fieldErrors{errs: fieldError("archived",
+					fmt.Sprintf("The category %s is archived; restore it first", c.NameEn))})
+			}
 		}
 		if !row.Seeded && spec.HasLevel != row.HasLevel {
 			inUse, err := txq.CompetenceInUse(ctx, row.ID)
