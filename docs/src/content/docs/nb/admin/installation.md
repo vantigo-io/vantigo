@@ -516,7 +516,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `STAFF_ACCOUNTS_ENABLED` (standard på), som klargjør, aktiverer og deaktiverer brukerne
   kontoflagget ber om, på den samme kjøringsfrekvensen
   ([Ansatte](/nb/admin/staff/#kontoarbeideren)). Den leser kontomodusen fra
-  innstillingene for single sign-on i databasen, slik API-et gjør.
+  innstillingene for single sign-on i databasen, slik API-et gjør. Kompetansearbeiderens
+  `STAFF_COMPETENCE_ENABLED` (standard på) sender en person og lederne deres e-post før
+  et sertifikat utløper, og når det har utløpt, på den samme kjøringsfrekvensen
+  ([Ansatte](/nb/admin/staff/#kompetansearbeideren)).
 - Det finnes **ingen `ENTRA_*`-variabel**. Leietakeren og klienten til Microsoft Entra
   ID-modulen, klienthemmelighetene (forseglet under `APP_SECRET`) og kontoreglene
   ligger i databasen, satt av en eier og `entra:manage` på modulens side; modulen når
@@ -681,6 +684,16 @@ trenger tilgang til skjemaet `entra` ([Databaseroller](#databaseroller)). Å rul
 migreringen tilbake dropper skjemaet med de forseglede hemmelighetene og et pass som
 ikke er vist ennå, og rører ingenting i leietakeren. Se
 [Microsoft Entra ID](/nb/admin/entra/).
+
+**Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
+kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og
+personenes kompetanser, tomme. Ingen rettighet er ny: `staff:approve` bekrefter nå også
+kompetanser, og `staff:manage` holder katalogen. Den starter også kompetansearbeideren,
+`staff-competence`, på som standard; den sender ingen e-post før noen har et sertifikat
+med sluttdato, og `STAFF_COMPETENCE_ENABLED=0` holder den av. Å rulle migreringen
+tilbake dropper de tre tabellene med alle personers kompetanserader; dokumentasjonen
+blir liggende blant personenes dokumenter. Se
+[Ansatte](/nb/admin/staff/#kompetansearbeideren).
 
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

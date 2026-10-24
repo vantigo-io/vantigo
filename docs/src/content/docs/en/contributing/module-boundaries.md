@@ -80,7 +80,7 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are twelve single-provider slots, each filled by at most one enabled module:
+   There are thirteen single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -93,7 +93,9 @@ Communications' outbox is the working example.
    owes, every state judged on the provider's own business day), and the three line-level reads an
    invoice is built from — `BillableHours` (`contracts.BillableHours`, time),
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
-   `BillableMilestones` (`contracts.BillableMilestones`, projects). `module.Compose`
+   `BillableMilestones` (`contracts.BillableMilestones`, projects) — and `Workforce`
+   (`contracts.Workforce`, staff — who holds which competence, valid on a date; rule
+   12). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`
    and then `Accounts` are resolved right after `Users`, so the accounts provider may
@@ -101,7 +103,10 @@ Communications' outbox is the working example.
    `Expenses`, `Receivables` and the three `Billable*` are resolved last, after
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
    the project directory or the customer directory (none does, but a future
-   provider could).
+   provider could). `Workforce` is resolved after the business calendar — by Compose
+   after the line-level reads, by `module.Workers` after `Users` and `Accounts`
+   (`withWorkforce`) — so its provider reads `Deps.Calendar` while it is built, and a
+   worker-mode `Deps` answers who holds what as a composed one does.
    Six slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
@@ -371,6 +376,13 @@ Communications' outbox is the working example.
     is always checked through `Check` first. A provider reads its own tables only
     ([Calendar](/en/reference/calendar/#the-sources-contract),
     [the feed's read](/en/reference/calendar/#reading-the-providers-for-the-feed)).
+    The single-provider `contracts.Workforce` is bound by the same rule: Staff, its
+    sole provider, applies the Colleague rule — `staff:view` (or, for the catalogue
+    alone, `staff:manage`), and the person active today — to the principal in `ctx`,
+    under a request or `AsUser`, and answers nothing, not an error, to anyone else or
+    to a context with neither; a declared certificate is not held. Staffing, its
+    intended consumer, never re-states the rule
+    ([Staff](/en/reference/staff/#the-workforce-contract)).
 13. **Staff writes a provider's directory.** The fifth sanctioned cross-module
     direction, Staff → a provider module, made for the accounts and groups of the
     people Staff registers: `contracts.IdentityProvisioner`, in the many-provider slot
@@ -818,8 +830,12 @@ one the user directory would have to name; and the object store
 from the configuration, in the API and a worker alike, with a construction error kept
 for the calls that need a store rather than failing the process) for the bytes of
 people's documents. It counts the working days an absence takes by the platform
-calendar (`internal/holidays`), never a holiday list of its own. It reads no business module, provides no contract and fills no
-slot, so switching it off strands nothing in another module — but it does strand its
+calendar (`internal/holidays`), never a holiday list of its own. It reads no business module. It provides one contract,
+`contracts.Workforce` — the competences people hold, valid on a date, for Staffing, its
+intended consumer, which does not exist yet — as that slot's sole provider, and fills
+the many-provider `CalendarSources` slot with the caller's own absences; with Staff
+switched off `Deps.Workforce` is nil, which a consumer must handle, and nothing else in
+another module is stranded — but it does strand its
 own objects and the rows of its ledger of objects still to remove
 (`staff.object_deletions`), which wait untouched until the module is on again. It keeps
 rule 10's restatement strictly: all three are reached **before a transaction opens or
@@ -831,8 +847,10 @@ the module's transactions (the marking Invoices introduced, copied rather than
 imported), and the harness records every call and fails a test that makes one under an
 open transaction. So a document's object is written before its row's transaction and
 removed after a refusal, read after the row's snapshot, and removed after the delete
-commits. Its one background worker, `staff-retention`, is contributed through `Workers`
-behind `STAFF_RETENTION_ENABLED` and keeps two connection disciplines: the erase runs on
+commits. Its background workers are contributed through `Workers` — `staff-retention`
+behind `STAFF_RETENTION_ENABLED`, `staff-accounts` behind `STAFF_ACCOUNTS_ENABLED` and
+`staff-competence` behind `STAFF_COMPETENCE_ENABLED`, which stamps each row in a short
+transaction of its own and mails only after it has closed — and the retention worker keeps two connection disciplines: the erase runs on
 the advisory lease's own connection — the due queries and every person's transaction,
 the person's lock included, never asking the pool for a second, which is how a lease
 holder deadlocked the customers worker with a pool of four (PR #124) — and the ledger

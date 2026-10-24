@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, groups — listed or derived by a rule, their owners, the traits a provider declares, the sync with the provider's directory and the licences they give — and My page, the document archive with its categories and retention classes, the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, groups — listed or derived by a rule, their owners, the traits a provider declares, the sync with the provider's directory and the licences they give — and My page, the document archive with its categories and retention classes, competence — the catalogue with the Norwegian certificates seeded, a person's competences declared, verified, renewed and removed with their evidence, the competence worker and its mails, and the Workforce contract — the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/openapi/specs/staff.yaml
   - apps/server/internal/db/migrations/00060_staff_account_kind.sql
   - apps/server/internal/db/migrations/00062_staff_groups.sql
+  - apps/server/internal/db/migrations/00066_staff_competence.sql
 ---
 The Staff module is the company's register of the people who work for it: who they
 are, how to reach them and their next of kin, their employments as Norwegian
@@ -19,8 +20,11 @@ PostgreSQL database, and serves `openapi/staff.yaml` under `/api/v1/staff`.
 It depends on nobody but identity: it reads users through `contracts.UserDirectory`,
 which identity always provides, sends its one mail through the platform's SMTP seam,
 and keeps its documents' bytes in the platform's object store under its own scope,
-`staff`. `MODULES=staff` alone is a valid installation. It provides no contract and fills
-no slot; nothing in another module reads the register yet. It reads one many-provider
+`staff`. `MODULES=staff` alone is a valid installation. It provides one contract,
+`contracts.Workforce` — the [competences people hold](#the-workforce-contract), valid on
+a date — as the sole provider of that slot, and fills the many-provider calendar slot
+with the caller's own absences ([on the calendar](#on-the-calendar)); nothing else of
+the register is read by another module. It reads one many-provider
 slot, `Deps.IdentityProvisioners` (`contracts.IdentityProvisioner`): the external
 identity providers an enabled module offers, whose directory the
 [accounts worker](#the-provider-link) writes for a person of a provider's
@@ -39,6 +43,10 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [sealed identifiers](#the-sealed-identifiers), the
 [self-service link](#the-self-service-link), the [accounts](#accounts), [groups](#groups), [My page](#my-page), the
 [documents](#documents) and their [categories](#categories-and-classes),
+[competence](#competence) — the [catalogue](#the-catalogue),
+[a person's competences](#a-persons-competences), the
+[competence worker](#the-competence-worker) and the
+[Workforce contract](#the-workforce-contract) —
 [absence](#absence) — the [types](#absence-types), the [holiday schemes](#holiday-schemes) and the
 [care-day fields](#the-care-day-fields) — the
 [personal-data exports](#the-personal-data-exports), the register's
@@ -150,14 +158,27 @@ holds them (indexed by provider and `next_attempt_at`). Still no CHECK constrain
 module validates the kinds and the states, and a provider judges its traits' values.
 The Down drops the four tables; the groups a provider made in its directory stay there.
 
+Staff phase 2's delivery A adds `00066_staff_competence.sql` and three tables, the
+[competence](#competence): `competence_categories` (unique `key`; the five seeds;
+`archived_at`), `competences` (unique `key`; indexed by category; `hidden` and
+`archived_at`; the fifteen certificate seeds) and `person_competences` (indexed by
+person, by competence, and by `valid_to` where the row is current and has one, for
+the worker and the items; `evidence_document_id` references `documents` and is
+cleared when the document is deleted; `superseded_by_id` names the row that renewed
+it). At most one current row per person and competence is the index's
+(`ux_person_competences_current`, partial on `superseded_by_id IS NULL`), and the
+handler reports it as `competence_held`. Still no CHECK constraint: the module's
+validation owns the kinds, the levels, the sources, the bases and the dates. The Down
+drops the three tables.
+
 ## Permissions
 
 | Key | Name | Grants | Sensitive |
 | --- | --- | --- | --- |
-| `staff:access` | Use Staff | The app at all: your own record, absence, documents and export. **Every operation requires it.** | no |
-| `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the [calendar](#the-calendar) with types hidden. | no |
-| `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. It [decides](#decisions) anyone's absence requests but an HR-only type's, is the [Approver audience](#field-groups-and-audiences), sees the [inbox](#the-approvals-inbox) and the [calendar](#the-calendar), and makes `GET /meta`'s `canDecide` true; it reads open [sick-leave cases](#sick-leave-cases) and marks their milestones. | no |
-| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the settings, documents other than health and their categories, the [account flag](#accounts), the [groups](#groups), imports and exports, the retention run by hand, the thresholds' acknowledgement. | yes |
+| `staff:access` | Use Staff | The app at all: your own record, absence, documents, competences and export; the [competence catalogue](#the-catalogue)'s visible rows. **Every operation requires it.** | no |
+| `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the [calendar](#the-calendar) with types hidden, and the active people's [competences](#a-persons-competences) without their detail; the [Workforce contract](#the-workforce-contract)'s answers. | no |
+| `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. It [decides](#decisions) anyone's absence requests but an HR-only type's, is the [Approver audience](#field-groups-and-audiences), sees the [inbox](#the-approvals-inbox) and the [calendar](#the-calendar), and makes `GET /meta`'s `canDecide` true; it reads open [sick-leave cases](#sick-leave-cases) and marks their milestones; it [verifies](#verification) anyone's competences but its holder's own, and adds, changes, renews and removes them. | no |
+| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the [competence catalogue](#the-catalogue) and anyone's competences — their chains included — the settings, documents other than health and their categories, the [account flag](#accounts), the [groups](#groups), imports and exports, the retention run by hand, the thresholds' acknowledgement. | yes |
 | `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure is the [retention run](#retention)'s, on its schedule (run by hand by `staff:manage`); it alone writes the milestones' notes and [decides HR-only types](#decisions). | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
@@ -478,6 +499,8 @@ from the response — never null.
 | Bank account | `bankAccount { kind, last4 }` | ✓ | — | — | — | ✓ | ✎ reveal and set |
 | Link | `user { id, displayName, active }` | ✓ | — | — | — | ✓ | ✓ |
 | Hold | `legalHold { held, reason, at }`, `erasedAt`, `reassessedAt` | — | — | — | — | ✓ | ✎ hold and reassess |
+| Competence | a [competence row's](#a-persons-competences) `competence`, `level`, `validFrom`, `validTo`, `verified`, `superseded`, `expiring`, `expired`, `declaredAt`, `revision` | ✎ declare; change and remove their own declared rows; renew | ✓ | ✎ add, change, verify, renew, remove | ✎ add, change, verify, renew, remove | ✎ all, the chain too | ✓ |
+| Competence detail | a row's `issuedOn`, `issuer`, `reference`, `evidence`, `source`, `verifiedAt`, `verifiedBy`, `verifiedBasis`, `verifiedNote` | ✓ file evidence | — | ✓ | ✓ | ✎ file evidence | ✓ file evidence |
 
 - **Self** is the user a person's self-service link names, in whatever state the
   accounts worker left it (pending, disabled, failed …) — except a worker link the
@@ -523,7 +546,9 @@ Each person carries `capabilities`: `canEdit` and `canManageAccount` (`staff:man
 `staff:personal-data`: the person's health documents) and `canHold`
 (`staff:personal-data`: the [legal hold](#the-legal-hold), the
 [reassessment](#the-reassessment) and the [complete export](#the-personal-data-exports)),
-`canDecide` (the caller decides the person's absence), and who the caller is to the
+`canDecide` (the caller decides the person's absence), `canVerifyCompetence` (the
+caller [verifies](#verification) the person's competences: a manager of theirs today,
+`staff:approve` or `staff:manage`, never the person), and who the caller is to the
 person: `self` (the caller's self-service link names them) and `isManager` (the caller
 manages them today by [the manager rule](#managers-and-the-org-view); false for oneself) —
 which the page reads to offer a manager's writes on a sick-leave case, never guessing.
@@ -573,6 +598,8 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `payroll_exported` | Installation-level (no person): `month`, `format`, `rows` and `sha256` (hex) of the [payroll file](#the-payroll-export) answered; no personal data, so no payload class. |
 | `threshold_acknowledged` | Installation-level (no person): `key`, the [threshold](#the-thresholds) acknowledged (`5`, `30`, `50` or `otp`); the actor is the caller; no payload class. |
 | `group_joined`, `group_left` | `groupId`, `groupName`, `groupKey` and `source` (`listed` or `derived`): the person joined or left a [group](#members-and-owners) — by the caller for a listed group's members or a group's delete, by the accounts worker's run for a derived one's. Class C; listed to every reader of the history, the payload read by the links group alone — the person, `staff:manage`, `staff:personal-data` — and empty to anyone else. |
+| `competence_declared`, `competence_changed`, `competence_verified`, `competence_renewed`, `competence_removed`, `competence_evidence_added` | `competenceId` (the person's row) and `fields`: the competence's key and the row's fields before and after, never the verifier's note — see [the competence events](#the-competence-events). |
+| `competence_created`, `competence_updated` | Installation-level (no person): `competenceId` (the catalogue's) and `fields`, each field set or changed. |
 | `erased` | No fields: `kinds`, `[{kind, count}]` — what one [erase](#what-an-erase-does) removed per kind (`D`, `health`, `A`, `cases`, `childSick`, `withdrawal`, `pregnancyHealth`), read by `staff:manage` and `staff:personal-data`, the five health-side entries (`health`, `cases`, `childSick`, `withdrawal`, `pregnancyHealth`) by `staff:personal-data` alone; listed as the hold's kinds are; the actor is the installation's `system` for the worker, the caller for a run by hand; no payload class. |
 
 Delivery B's absence and adjustment events carry their classes per field and are
@@ -2137,6 +2164,10 @@ caller about themselves.
   documents included, newest first.
 - **`GET /me/groups`** is the [groups](#the-persons-groups) the person is in, archived
   groups aside, by name alone.
+- **The Competence tab** has no `/me` path of its own: My page calls
+  [a person's competence operations](#a-persons-competences) with the linked person's
+  id, as Self — the person declares, changes and removes their own declared rows,
+  renews their own and [files their evidence](#evidence), and never verifies one.
 - **`GET /me/export`** is the person's own copy of their data — see
   [the personal-data exports](#the-personal-data-exports).
 
@@ -2163,7 +2194,9 @@ newest first; `GET /documents/{id}` streams the bytes.
 restricted needs `staff:manage` or `staff:personal-data`; in a restricted one,
 `staff:personal-data` (`category_restricted`, 403, to HR without it — HR's own health
 document included, which they read as its person but do not change or remove). The
-person never writes their own documents, and anyone else gets the uniform 403.
+person never writes their own documents — but for the [evidence](#evidence) of their
+own competence, filed through the competence row — and anyone else gets the uniform
+403.
 
 ### Filing a document
 
@@ -2267,6 +2300,453 @@ documents — and only class E is. Six are seeded:
   archiving one that documents are still filed under is `category_in_use` (409) —
   move them first — so the archive never takes from the picker a category a document
   still names.
+
+## Competence
+
+Competence is the first delivery of Staff's second phase (the
+[design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-25-staff-competence-design.md),
+delivery A): a flat [catalogue](#the-catalogue) of competences in categories — skills
+with a level and certificates with a validity, the Norwegian certificates seeded — and
+[a person's competences](#a-persons-competences), declared by the person on My page,
+[verified](#verification) by their manager, [renewed](#renewal) as new rows and
+[removed](#removal), carrying their [evidence](#evidence) in the person's archive,
+mailed ahead of their end by the [competence worker](#the-competence-worker) and shown
+on the dashboard as [attention items](#the-competence-items); and the read contract
+[`contracts.Workforce`](#the-workforce-contract), through which another module learns
+who holds what, valid on a date. No permission is new: `staff:manage` keeps the
+catalogue, `staff:approve` verifies, and a manager needs none for their own reports.
+
+### The catalogue
+
+`staff.competence_categories` and `staff.competences` are the catalogue (design S1,
+S2). It is about no person: no retention class, never touched by an erase. Categories
+are flat, and every competence is filed under one.
+
+**Categories.** A category has a `key` (1–40 characters `[a-z0-9-]`, unique),
+`names` `{en, nb}` (each 1–100 characters), `seeded`, `archivedAt`, `sort` and
+`revision`. Five are seeded, in this order:
+
+| Key | English | Norwegian |
+| --- | --- | --- |
+| `fag` | Trade | Fag |
+| `sertifikat` | Certificate | Sertifikat |
+| `sprak` | Language | Språk |
+| `verktoy` | Tool | Verktøy |
+| `domene` | Domain | Domene |
+
+- **`GET /competence-categories`** lists every category in order, archived ones
+  included, so a competence — and a person's row through it — can still name its own.
+  Every caller with `staff:access` reads them.
+- **`POST /competence-categories`** (`staff:manage`) adds a company category after the
+  others; a key another category has is a 400 on `key`.
+- **`PUT /competence-categories/{id}`** (`staff:manage`, `If-Match`) replaces a
+  company category's `names` and sets `archived`. The key never changes. A seeded
+  category never changes at all (`seed_immutable`, 409). Archiving a category that a
+  competence not archived is filed under is `category_in_use` (409): archive the
+  competences, or move them, first. A category's write records no event, as a
+  document category's does not.
+
+**Competences.** A competence has a `categoryId`, a `key` (1–60 characters
+`[a-z0-9-]`, unique), `names` `{en, nb}` (each 1–100 characters), a `kind`,
+`hasLevel`, `validityMonths`, `reminderLeadDays`, an `issuerHint` (at most 200
+characters, shown to whoever adds the competence), a `basis` (the regulation it rests
+on; the seeds' alone), `seeded`, `hidden`, `archivedAt`, `sort` and `revision`.
+
+- **The kind** is `skill` — a proficiency, with a level when `hasLevel`, never a
+  validity — or `certificate` — issued by someone, valid for `validityMonths` from its
+  issue (1–240) or without end. A validity on a skill is a 400 on `validityMonths`, and
+  a skill's row never carries a `validTo` (`skill_no_validity`, below).
+- **The level** is one scale, fixed in code and named in both languages: 0 *aware*
+  (*kjenner til*), 1 *basic* (*grunnleggende*), 2 *independent* (*selvstendig*), 3
+  *experienced* (*erfaren*), 4 *expert* (*ekspert*). `hasLevel` decides whether every
+  row of the competence carries one.
+- **The reminder lead** is how many days before a row's end the
+  [worker](#the-competence-worker) mails and the dashboard shows it as expiring: 0–365,
+  and only with a validity (a 400 on `reminderLeadDays` otherwise). Left out beside a
+  validity it is the default — **30** days for a validity of up to 12 months, **60** up
+  to 24, **180** beyond — on a create and on every change alike. A competence without a
+  validity has no lead, and its rows are never expiring.
+- **`GET /competences`** lists the catalogue in its categories' order, then its own,
+  optionally one category's (`categoryId`). Every caller with `staff:access` reads the
+  competences that are neither hidden nor archived — the person declaring one on My
+  page needs them. `includeHidden` and `includeArchived` add the others **for
+  `staff:manage` alone**; for anyone else they are ignored.
+- **`POST /competences`** (`staff:manage`) adds a company competence after the others,
+  in a category that exists and is not archived (a 400 on `categoryId` otherwise); a
+  key another competence has is a 400 on `key`. Its key and its kind are fixed from
+  then on.
+- **`PUT /competences/{id}`** (`staff:manage`, `If-Match`) replaces `categoryId`,
+  `names`, `hasLevel`, `validityMonths`, `reminderLeadDays`, `issuerHint`, `hidden` and
+  `archived`. The body is closed: a `key`, a `kind` or any other property the contract
+  does not name is a 400 naming it, and nothing is written. A **seed** changes its
+  names, its lead, its issuer hint and `hidden` alone; another category, level or
+  validity, or `archived`, is `seed_immutable` (409) — a seed is hidden, never
+  archived. A **company** competence moves to any category not archived, and its
+  `hasLevel` is fixed once a person's row names it (`competence_in_use`, 409).
+  Restoring an archived competence whose category is archived is a 400 on `archived`:
+  restore the category first.
+- **Hidden and archived.** A hidden or archived competence is offered for no new row
+  (`competence_unavailable`, a 400 on `competenceId`) and keeps every row that names
+  it: those rows are still read, changed, verified, renewed and removed, an archived
+  one's with `competence.archived` true. Neither is refused for the rows held —
+  history outlives the catalogue. Hiding is how HR stops offering a seed the company
+  does not use; archiving retires a company competence.
+- **History.** Each competence write is an installation event, `competence_created` or
+  `competence_updated`, naming the competence (`competenceId`) and the fields set or
+  changed. It is about no person and touches no retention class.
+
+The seeds are the Norwegian certificates, under `sertifikat`, kind `certificate` and
+without a level, the validity in months and the lead in days:
+
+| Key | English | Norwegian | Validity | Lead | Basis |
+| --- | --- | --- | --- | --- | --- |
+| `fagbrev` | Trade certificate | Fagbrev eller svennebrev | — | — | opplæringslova |
+| `fse` | FSE training with first aid | FSE-opplæring med førstehjelp | 12 | 30 | FSE § 7 |
+| `hms-kort` | HMS card | HMS-kort | 24 | 60 | FOR-2007-03-30-366 |
+| `truck` | Forklift, certified training | Truckfører, sertifisert opplæring | — | — | fua. § 10-3 |
+| `kran` | Crane, certified training | Kranfører, sertifisert opplæring | — | — | fua. § 10-3 |
+| `masseforflytning` | Earth-moving machinery, certified training | Masseforflytningsmaskiner, sertifisert opplæring | — | — | fua. § 10-3 |
+| `dokumentert-sikkerhetsopplaering` | Documented safety training | Dokumentert sikkerhetsopplæring | — | — | fua. §§ 10-1, 10-2 |
+| `stillas-bruker` | Scaffolding user | Stillasbruker | — | — | fua. § 17-5 |
+| `stillas-bygger` | Scaffolding erector | Stillasbygger | — | — | fua. §§ 17-2–17-4 |
+| `forerkort-b` | Driving licence B | Førerkort klasse B | 180 | 180 | førerkortforskriften § 4-1 |
+| `forerkort-c` | Driving licence C | Førerkort klasse C | 60 | 180 | førerkortforskriften § 4-1 |
+| `forerkort-d` | Driving licence D | Førerkort klasse D | 60 | 180 | førerkortforskriften § 4-1 |
+| `yrkessjaforkompetanse` | Professional driver competence (code 95) | Yrkessjåførkompetanse (kode 95) | 60 | 180 | yrkessjåførforskriften |
+| `varme-arbeider` | Hot work | Varme arbeider | 60 | 180 | insurers' sikkerhetsforskrift |
+| `arbeidsvarsling` | Work zone signage | Arbeidsvarsling | 60 | 180 | Statens vegvesen N301 |
+
+Their issuer hints name the issuer the law names: `fylkeskommunen` for the trade
+certificate, `arbeidsgiver eller kursleverandør` for FSE, `Arbeidstilsynets
+kortutsteder` for the HMS card, `Statens vegvesen` for the driving licences and code
+95, and `Norsk brannvernforening` for hot work. The scaffolding heights (2–5, 5–9,
+over 9 m) are one `stillas-bygger`, the height in the row's `reference`. No skill is
+seeded: skills are the company's own vocabulary.
+
+### A person's competences
+
+`staff.person_competences` holds them (S3): the competence, a `level` when it has one,
+`issuedOn`, `validFrom`, `validTo`, the `issuer` (at most 200 characters), a
+`reference` (at most 100: the certificate's number, a scaffold's height), the evidence
+document, the `source` — `self`, `manager` or `hr`: who entered the row — and the
+verification: when, by whom, on what `basis` (`evidence` or `observed`) and a note of
+at most 200 characters.
+
+- **One current row per competence.** A row is **current** until a
+  [renewal](#renewal) supersedes it, and a person holds at most one current row of a
+  competence (the partial unique index `ux_person_competences_current`). Declaring or
+  adding one the person holds is `competence_held` (409): change or renew that row
+  instead.
+- **Declared or verified.** A row is **declared** until it is
+  [verified](#verification). A declared skill counts, with its badge wherever it is
+  shown; a declared certificate is not held outside the person's tab — the
+  [Workforce contract](#the-workforce-contract) leaves it out.
+- **Valid on a day** D: the current row, its `validFrom` on or before D and its
+  `validTo` absent or on or after D. A superseded row is valid on no day, whatever its
+  dates.
+- **Expiring and expired.** Every current row answers `expiring` — its `validTo` today
+  or later and no more than its competence's `reminderLeadDays` away; false without a
+  lead — and `expired` — its `validTo` before today. A superseded row is neither.
+  Today is the [business time zone's](#the-business-time-zone).
+
+**Who writes what.** The person is **Self** on their own rows whatever else they hold,
+so HR and an Approver declare their own competences like anyone, and never verify
+them:
+
+| Who | Adds | Changes | Renews | Removes | Verifies |
+| --- | --- | --- | --- | --- | --- |
+| The person | declares: `source` `self`, declared | their own declared row | their own current row; the new row declared | their own declared row, with the evidence they uploaded | never: `own_record` (403) |
+| A manager today, `staff:approve` | adds: `source` `manager`, verified at once | any current row | any current row; the new row verified at once | any current row | any current row |
+| `staff:manage` | adds: `source` `hr`, verified at once | any current row | any current row; the new row verified at once | any current row, or the whole chain | any current row |
+
+The person's change or removal of a **verified** row is `verified_row` (409): it is
+theirs to read and renew, or to ask their manager or HR about. A manager's, an
+Approver's or HR's entry is verified at once, on the basis `observed`, the caller its
+verifier: they vouch for it by entering it (plan reading 5). `staff:personal-data`
+without `staff:manage` reads every row with its detail and files
+[evidence](#evidence), and writes no row (the uniform 403); so does a colleague with
+`staff:view`, who reads the rows without their detail. A person the caller may not see
+is the bare 404 an unknown id is, and a write on an [erased](#the-erased-state) person
+is `person_erased` (409), judged under the person's lock.
+
+**Reading.** `GET /people/{id}/competences` answers the current rows in the
+catalogue's order; `history=true` answers every row the person has had, superseded
+ones included, newest first. Two [field groups](#field-groups-and-audiences) shape each
+row:
+
+- **Competence** — `competence` (`{id, key, names, kind, hasLevel, categoryId,
+  archived}`), `level`, `validFrom`, `validTo`, `verified`, `superseded`, `expiring`,
+  `expired`, `declaredAt` (when the row was entered) and `revision`: everyone who sees
+  the person — the person, a manager of theirs today, a colleague with `staff:view`
+  while the person is active, the Approver, `staff:manage` and `staff:personal-data`.
+- **Competence detail** — `issuedOn`, `issuer`, `reference`, `evidence`
+  (`{documentId, fileName, contentType, sizeBytes}`), `source`, `verifiedAt`,
+  `verifiedBy` (the verifier's display name, read from the user directory after the
+  transaction; "Unknown user" for one it no longer knows), `verifiedBasis` and
+  `verifiedNote`: all of them but the colleague. Absent, never null, for a colleague.
+
+The worker's two notified stamps are in no response.
+
+**Writing.**
+
+- **`POST /people/{id}/competences`** (201) declares or adds: `competenceId`, `level`,
+  `issuedOn`, `validFrom`, `validTo`, `issuer` and `reference`. The competence must be
+  neither hidden nor archived — an unknown one likewise — (`competence_unavailable`); on
+  a competence with a level, `level` is required (`level_required`), on one without it
+  is refused (`level_not_allowed`), both 400 on `level`, and out of 0–4 a plain field
+  error. `validFrom` left out is `issuedOn`, else today; a `validTo` before `validFrom`
+  is a 400 on `validTo`, and so is any `validTo` on a skill (`skill_no_validity`): a
+  skill is a proficiency, valid until no day. The server stores the `validTo` it is sent: the app proposes
+  the issue date plus the competence's validity, and the person may change it. The
+  refusals come in the order that tells a caller least: the person they may not see
+  (404), the uniform 403, the fields (400), then the state of things (409). Recorded as
+  `competence_declared`.
+- **`PUT /person-competences/{id}`** (`If-Match`) replaces a current row's `level`,
+  `issuedOn`, `validFrom`, `validTo`, `issuer` and `reference` by the same rules: a
+  field left out is cleared, but `validFrom`, which keeps the row's own. A new
+  `validTo` clears the worker's two stamps, so a corrected end is mailed again when it
+  comes due. A manager, the Approver or HR changing a verified row's level verifies
+  that level: `verifiedAt` and the verifier become theirs, the basis and the note kept.
+  Recorded as `competence_changed` with the fields that changed; a change that changes
+  nothing records nothing.
+- A **superseded** row is written by nobody: a change, a verification, a renewal, a
+  removal or evidence on it is `superseded` (409).
+
+### Verification
+
+`POST /person-competences/{id}/verify` (S4) takes the `level` agreed (on a competence
+with a level, required — `level_required` — and on one without refused), the `basis` —
+`evidence`, the verifier saw it, or `observed`, seen in the work — and an optional
+`note` of at most 200 characters, about what the verification rests on.
+
+- **Who.** A manager of the person today by the
+  [one manager rule](#managers-and-the-org-view), `staff:approve` or `staff:manage` —
+  **never the person**: the person verifying their own row is `own_record` (403, with
+  its problem), judged before anything else, whatever they hold, with none of the
+  absence decisions' sole-holder exception. Anyone else who sees the person gets the
+  uniform 403. A one-person HR's own rows stay declared until another verifier exists.
+- **What it stamps.** The level agreed becomes the row's, lower or higher than the
+  one declared; `verifiedAt`, the verifier, the basis and the note are set. A verified
+  row verified again moves the stamp.
+- **Disagreeing** is removing: a manager who does not agree with a declaration
+  [removes](#removal) it — there is no rejected state for the person to clear.
+- **The event**, `competence_verified`, names the level before and after and the
+  basis — never the note, which is the row's alone.
+
+Each person carries `canVerifyCompetence` among its `capabilities`: this rule for the
+caller on the person — `(a manager of theirs today ∨ staff:approve ∨ staff:manage) ∧
+¬self` — derived from the audience, with no read of its own.
+
+### Renewal
+
+`POST /person-competences/{id}/renew` (S5; 201, the new row) writes a new current row
+and supersedes the old one in the same transaction: the old row then names the new one
+(`superseded_by_id`), keeping its dates and its evidence as they were. A certificate
+is renewed, never its `validTo` edited, so history keeps the old.
+
+- The body is `issuedOn`, `validFrom`, `validTo`, `issuer` and `reference`. The new
+  row keeps the old row's level, carries no evidence until some is
+  [filed](#evidence), and starts unstamped by the worker.
+- `validTo` left out, with an `issuedOn`, is the issue date plus the competence's
+  `validityMonths` when it has one; `validFrom` left out is the issue date, else
+  today. A certificate without a validity is renewed the same way; a **skill** is not
+  renewed (`skill_no_validity`, 409) — its level is changed instead.
+- The person renews their own current row, declared or verified, and the new row is
+  declared (`source` `self`); a manager, the Approver and HR renew any current row, and
+  the new row is verified at once on the basis `observed`.
+- The renewed row is no longer current: it raises no item and is never mailed again.
+  The chain is read with `GET /people/{id}/competences?history=true`.
+- Recorded as `competence_renewed`, naming the new row, with `validTo` from the old
+  row's to the new one's and the level it carries.
+
+### Removal
+
+`DELETE /person-competences/{id}` (204) removes a current row, recorded as
+`competence_removed`.
+
+- **The person** removes their **own declared** row; a verified one is `verified_row`
+  (409). The evidence **they uploaded** for it goes with it (reading 4): its document
+  is deleted and its object queued in the [deletion ledger](#the-deletion-ledger) in
+  the same transaction, with the document's own `document_removed` event, and removed
+  once that has committed, as a [document's delete](#reading-changing-and-removing)
+  is. Evidence someone else filed — HR's — stays in the archive.
+- **A manager today, the Approver and HR** remove any current row. Its evidence stays
+  in the archive, for HR to delete as any document.
+- **Removing a renewal undoes it.** Removed without `chain`, a current row that renewed
+  an earlier one makes that row current again, its dates, stamps and evidence as they
+  were; the event names it (`restored`).
+- **`chain=true`** (`staff:manage` alone; the uniform 403 otherwise) removes every row
+  the person has had for the competence, the superseded ones with the current. A
+  superseded row goes only so: removed on its own it is `superseded` (409).
+
+### Evidence
+
+`POST /person-competences/{id}/evidence` (S6; 200, the row) files a row's evidence in
+the person's [archive](#documents) and names it on the row. It is the **one write the
+person makes into their own archive**: allowed to the row's person on their own
+current row, declared or verified, and to `staff:manage` and `staff:personal-data` as
+any document. A manager or an Approver without either gets the uniform 403.
+
+- **The file** is the multipart part `file`, alone, judged as
+  [a document's](#filing-a-document) is: a PDF, JPEG, PNG or HEIC of at most 10 MiB
+  whose own bytes decide its type — `document_type_unsupported` and
+  `document_too_large`, 400 on `file`. The router caps the request at 10 MiB + 64 KiB,
+  and a body over the cap is answered `document_too_large` (400) too.
+- **Where it goes.** Under the seeded **`certificate`** category (class D, not
+  restricted), with no employment and the caller as its uploader, recorded as the
+  document's `document_added` and the row's `competence_evidence_added`.
+- **The order.** A row the caller may not see is the 404, then the uniform 403, then
+  the file (400). The object is written **before** the transaction — a store that
+  cannot write is 503 `storage_unavailable`, with nothing recorded — and under the
+  person's lock a superseded row (`superseded`) and a person with 200 documents
+  (`document_count_exceeded`) are 409s. Whatever refuses or fails after the write
+  removes the object again.
+- **A second upload** names the new document on the row and leaves the earlier one in
+  the archive.
+- **A deleted document.** HR deleting the evidence as a document clears the row's
+  reference; a verified row stays verified — the verification was the verifier's act,
+  the document a trace.
+- **Reading it.** `GET /person-competences/{id}/evidence` streams the file to everyone
+  who reads the row's detail group — the person, a manager of theirs today, the
+  Approver, `staff:manage` and `staff:personal-data` — though a manager and the Approver
+  do not read the person's [documents](#documents) otherwise; it carries the headers a
+  document's download does. A row without evidence, or one the caller does not read
+  the detail of, is the bare 404, and so is evidence HR has since moved into a
+  restricted category, to a reader without the health group; an object the store
+  cannot read is 503 `storage_unavailable`. The person, HR and `staff:personal-data`
+  also read it among the documents (`GET /documents/{id}`).
+- **The rate limit** is the uploads' (`StaffDocumentUpload`, 600 an hour per client
+  address), 429 past it.
+
+### The competence worker
+
+`staff-competence` (S7) runs every `STAFF_WORKERS_POLL` (default `1h`, at least `1m`)
+unless `STAFF_COMPETENCE_ENABLED=0` — in worker mode, and in api mode with
+`WORKERS_IN_PROCESS=1`. Each cycle takes today in the business time zone and reads
+every current row with a `validTo` of a person not erased and in employment today,
+and judges it:
+
+- `validTo` before today and not yet stamped expired: **expired**;
+- otherwise `validTo` no more than its competence's `reminderLeadDays` after today and
+  not yet stamped expiring: **expiring**. A competence without a lead never raises it.
+
+Each row so judged is stamped — `expired_notified_at` or `expiring_notified_at` — in a
+short transaction of its own, under the row's lock and judged again there, so two
+replicas stamp it once; and it is stamped **before** any mail: the stamp is the run's,
+not the send's (plan reading 4). Once every transaction is closed, the mails go one
+after the other within 30 seconds for the cycle, through the platform's SMTP seam: to
+the person and to each of their manager-deciders today — the managers by the one
+manager rule whose link names an active user, as for [the absence
+mails](#the-absence-mails) — at the work email Staff holds for each, else the private
+one, in each one's language (`en` in English, any other in Norwegian). A send that
+fails is logged with the recipient's person id and the address redacted, is never
+retried and never fails the cycle: the [dashboard item](#the-competence-items),
+computed on read, is the durable signal. With a mail driver other than `smtp` the rows
+are stamped all the same and nothing is sent. A second cycle finds the stamps and
+sends nothing; a renewal supersedes the row, and the new row starts unstamped. Each
+cycle logs how many rows it stamped and how many mails it sent and failed — never an
+address. Since a cycle runs every poll rather than at a set hour, a row is mailed at
+the first poll after it comes due — often just after midnight in the business time
+zone. A change of a row's `validTo` clears its stamps, so a corrected end is mailed
+again when it comes due. There is no *Run now*: the items need nothing from the
+worker.
+
+The mails are plain text, name the competence in the recipient's language and the
+last day it is valid, and nothing else of the row — no issuer, reference, level or
+evidence:
+
+- **Expiring, to the person**: the competence is valid until the day; when it is
+  renewed, add the new one on My page — with a link to My page.
+- **Expiring, to a manager**: the competence of the person, named, is valid until the
+  day — with a link to the person's Competence tab.
+- **Expired, to the person**: the competence was valid until the day and has expired;
+  when it is renewed, add the new one — with the link to My page.
+- **Expired, to a manager**: the person's competence was valid until the day and has
+  expired — with the link to their Competence tab.
+
+### The competence items
+
+Three [attention items](#attention-items) — `competenceDeclared`,
+`competenceExpiring` and `competenceExpired` — are computed on read in the dashboard's
+snapshot, never waiting for the worker. Only current rows of people in employment
+today and not erased raise them, and never a caller's own rows to the caller: the
+person sees their own on the tab. Each is one per row, `id` `<type>/<row id>`,
+`entityId` the person and `title` the person's name; the host opens the person's
+Competence tab. Their audiences and triggers are in the
+[attention table](#attention-items).
+
+### The Workforce contract
+
+`contracts.Workforce` is Staff's register of competences read by another module
+(S15): Staff is its sole provider (the `Workforce` slot; nil when Staff is disabled),
+and Staffing its intended consumer, which reads it through `Deps.Workforce` and never
+Staff's tables. Staff is its own gatekeeper
+([rule 12](/en/contributing/module-boundaries/)): the principal is the request's
+caller, or the user `contracts.AsUser` names; a context with neither answers nothing.
+
+- **`Competences(ctx)`** is the catalogue: every competence not archived, hidden ones
+  included, each with its id, key, names, its category's key, its kind, `HasLevel`,
+  `ValidityMonths` and `Hidden` — for a principal holding `staff:view` or
+  `staff:manage`; nothing, never an error, for anyone else.
+- **`HeldCompetences(ctx, on, personIDs)`** answers, for each person id, the
+  competences they hold valid on `on` (a calendar date at midnight UTC): the current
+  row, `validFrom` on or before it and `validTo` absent or on or after it, as
+  `{CompetenceID, Key, Kind, Level, Verified, ValidFrom, ValidTo}`. It applies the
+  **Colleague rule**: it needs `staff:view` — `staff:manage` alone answers nothing —
+  and answers people **active today** only, in employment on today's date in the
+  business zone, whatever date is asked. A person not active today, and one who holds
+  nothing on the date, is absent from the map.
+- **Held** means verified for a certificate: a declared certificate is not held. A
+  declared skill is held, with `Verified` false. An expired certificate is absent on a
+  date after its end, though the dashboard still shows it.
+- The consumer calls with the request's context, never inside a transaction of its
+  own. What a person **wants** is never a method: it reaches Staffing only as a fit
+  Staff scores, which delivery C writes down.
+
+### The exports and the erase
+
+- Both [personal-data exports](#the-personal-data-exports) carry `competences`: every
+  row the person has had, superseded ones included, newest first, with the detail —
+  the evidence's details (the file is read through `GET /documents/{id}`), the
+  verifier's name, the basis and the note.
+- The [D erase](#what-an-erase-does) deletes the person's rows, renewal chains with
+  them: every column is class D ([the classes](#the-classes-column-by-column)). The
+  evidence is a `certificate` document, class D, deleted with the person's other D
+  documents. No erase kind is new: both count under `D`. The catalogue is never
+  touched.
+- `DELETE /people/{id}` refuses a person with a competence row (`person_in_use`, "has
+  competences").
+- The register's CSV import and export and the payroll export carry no competence.
+
+### The competence events
+
+A person's row's events name the row (`competenceId`) and carry, beside the competence's
+key, the fields that changed, before and after:
+
+| Kind | Payload |
+| --- | --- |
+| `competence_declared` | `competenceId`; `fields`: `competenceKey`, `source` and — on a competence with a level — `level`, each as `to`. Both the person's declaration and a manager's or HR's addition; `source` tells them apart. |
+| `competence_changed` | `competenceId`; `fields`: `competenceKey` and each of `level`, `issuedOn`, `validFrom`, `validTo`, `issuer` and `reference` that changed, before and after. |
+| `competence_verified` | `competenceId`; `fields`: `competenceKey`, `basis` and — on a competence with a level — `level`, from the row's to the level verified, both sides even when equal. Never the note. |
+| `competence_renewed` | `competenceId`, the new row; `fields`: `competenceKey`, `validTo` from the old row's to the new one's (either side absent when empty) and — on a competence with a level — `level` as `to`. |
+| `competence_removed` | `competenceId`, the row removed; `fields`: `competenceKey`, `chain` and — when the removal undid a renewal — `restored`, the row current again. |
+| `competence_evidence_added` | `competenceId`; `fields`: `competenceKey` and `documentId`, beside the document's own `document_added`. |
+| `competence_created`, `competence_updated` | Installation-level (no person): `competenceId`, the catalogue's competence, and `fields`, each field set or changed. |
+
+Each person event carries `classes`, its own map of each field's class — every one D,
+the row's — which the D erase blanks it by. They are listed to everyone who reads the
+person's [history](#the-history) and shaped by the two competence groups, field by
+field; every reader of the history reads both.
+
+### What comes next
+
+- **B — the one-to-one**: interests, preferences and the availability declaration,
+  written by the person alone and read by their manager and HR; the manager's Seen
+  stamp; the review stamp with its interval setting and overdue item; My team's cards.
+- **C — profiles, gaps and the overview**: competence profiles, assigned to people or
+  defaulted by department, with the gap list and its item; the matrix and the
+  interests overview; and the matching contract's Staff side — a fit for a proposed
+  booking, never the wishes themselves — written into this page.
 
 ## Absence
 
@@ -3186,7 +3666,9 @@ status), the [holiday adjustments](#adjustments-and-carry-over) (`holidayAdjustm
 every [sick-leave case](#sick-leave-cases) with its milestones (`cases`), this year's
 [care days](#care-days) (`careDays`), the standing of
 [egenmelding](#egenmelding) today with the [withdrawal](#the-withdrawal)
-(`selfCertification`) and every event of their history, oldest first. Each absence
+(`selfCertification`), every [competence row](#a-persons-competences) they have had,
+superseded ones included, newest first, with its detail (`competences`) and every
+event of their history, oldest first. Each absence
 array is shaped as the file's reader reads it: the complete file whole, the person's
 own copy as the person reads their own — both read every type as itself, a milestone's
 note, the care-day fields and the withdrawal. Both exports read it all in **one** REPEATABLE READ snapshot, so its parts
@@ -3570,12 +4052,14 @@ holds every payload field to its column's class, and a third holds this table to
 | `group_members` | C | every column: `group_id`, `person_id`, `source`, `since` — a person's rows go with the person on an erase or a delete |
 | `group_owners` | C | every column: `group_id`, `person_id` — a person's rows go with the person on an erase or a delete |
 | `group_traits` | C | every column: `group_id`, `provider`, `values`, `enabled`, `disabled_at`, `external_id`, `state`, `last_values_hash`, `last_members_hash`, `last_error`, `last_error_field`, `synced_at`, `retired_at`, `attempts`, `next_attempt_at`, `lease_id`, `lease_until` |
+| `person_competences` | D | every column: `id`, `person_id`, `competence_id`, `level`, `issued_on`, `valid_from`, `valid_to`, `issuer`, `reference`, `evidence_document_id`, `source`, `verified_at`, `verified_by_user_id`, `verified_basis`, `verified_note`, `superseded_by_id`, `expiring_notified_at`, `expired_notified_at`, `revision`, `created_at`, `updated_at` — the D erase deletes the rows; the evidence is a `certificate` document, erased by its category's class |
 
 Ids, foreign keys, revisions and timestamps are C: they say that a row existed and
 when. An event's `payload_classes` are its fields' classes (`fieldClasses` in
 `events.go`, held to the columns above); a document's event takes its category's; an
-absence, adjustment, case or withdrawal event carries its own map of each field's
-class ([the absence events](#the-absence-events)), and the types beside its fields
+absence, adjustment, case, withdrawal or competence event carries its own map of each
+field's class ([the absence events](#the-absence-events),
+[the competence events](#the-competence-events)), and the types beside its fields
 (`typeIds`) carry theirs (`typeClasses`).
 
 ### What is due
@@ -3650,7 +4134,8 @@ asked again on the row the lock holds — a hold set, an employment reopened or 
 since the cycle chose the person is seen there:
 
 - **D** nulls every D column of the person and of their terms rows, deletes their next
-  of kin, deletes their documents of class D, replaces every value of class D in their
+  of kin and their [competence rows](#the-exports-and-the-erase) — the evidence among
+  their documents — deletes their documents of class D, replaces every value of class D in their
   history's payloads, and sets `erased_at` — the person is then
   [read-only](#the-erased-state).
 - **health** deletes their documents in restricted categories filed under no case and
@@ -3971,8 +4456,8 @@ they manage today (by the dashboard's manager rule below); a caller with none of
 gets `[]`, never a 403. A caller with none of `staff:manage`, `staff:personal-data` and
 `staff:approve` is judged as a manager on the employments, their terms and the
 departments alone, and gets `[]` at once when they manage nobody today; a manager's
-read adds only their reports' names, the requests they decide and the open cases'
-milestones. Every count and item shown to a caller without `staff:personal-data`
+read adds only their reports' names, the requests they decide, the open cases'
+milestones and their reports' [competence rows](#the-competence-items). Every count and item shown to a caller without `staff:personal-data`
 leaves out the requests of an HR-only type, so none reveals one.
 
 The **dashboard's manager rule** is the [manager rule](#managers-and-the-org-view) —
@@ -4006,6 +4491,9 @@ the caller's roles find is listed once.
 | `hrOnlySelfApproved` | personal-data (never manage without it) | An approved absence of an HR-only type its person approved as the sole active holder of `staff:personal-data` ([decisions](#decisions)) that has not ended — read by every holder of `staff:personal-data`, so a holder added later sees it while it lasts (reading 22). One per absence; `id` `hrOnlySelfApproved/<absence id>`; the title the person's name, never the type (`HROnlySelfApprovedAbsences`; `SelfApprovedAbsences` keeps leaving HR-only rows out for `selfApproved`). | When it was approved. | The person. |
 | `sickMilestoneDue` | manage, approve; a manager today of the person | A [milestone](#the-arbeidsgiverperiode-and-the-milestones) due — the case open and lasted to within a week of the date, neither done nor waived (pre-flight I5) — dated within seven days or past. The end of the arbeidsgiverperiode is a date, never an action, and raises none; a three-day case raises none. One per milestone; `id` `sickMilestoneDue/<case id>/<kind>`. | The milestone's date. | The person. |
 | `holidayUntaken` | manage | In January: a person with an employment in force today whose [holiday account](#the-holiday-account) for last year has days remaining and no carry-over from it recorded — a carry-in [automatic carry-over](#adjustments-and-carry-over) derives counts as recorded (pre-flight M6). One per person. | 1 January. | The person. |
+| `competenceDeclared` | manage, approve: everyone's; a manager today: their reports' | A current [competence row](#a-persons-competences) not yet verified — the person's declaration, or a renewal they made — of a person in employment today and not erased; never the caller's own. One per row; `id` `competenceDeclared/<row id>`. | When the row was entered. | The person. |
+| `competenceExpiring` | manage: everyone's; a manager today: their reports' (not approve) | A current row whose `validTo` is today or later and no more than its competence's `reminderLeadDays` away — none for a competence without a lead — of a person in employment today and not erased; never the caller's own; raised whatever the [worker](#the-competence-worker) has mailed. One per row; `id` `competenceExpiring/<row id>`. | The `validTo`. | The person. |
+| `competenceExpired` | the same | A current row whose `validTo` has passed, on the same terms. Renewing the row supersedes it, and the item goes. One per row; `id` `competenceExpired/<row id>`. | The `validTo`. | The person. |
 | `mainPeriodShort` | manage | From 1 April to 30 September (reading 23): a person with an employment in force today that began before 1 June, with fewer approved ferie working days in 1 June – 30 September than the main period, converted, of the scheme the holiday account reads — the earliest employment's in the year (whole-branch review) — 18 virkedager are 15 days (ferieloven § 7 (1)). One per person. | 1 April. | The person. |
 
 **The account items** (delivery C, `accounts_attention.go`; pre-flight I8) are
@@ -4106,13 +4594,14 @@ the group's page), `title` the group's name and `occurredAt` today, since the ro
 no date of its failure; the code and the field stay on the group's page. It goes once
 the section is no longer `failed`; a retired section keeps its code and raises none.
 
-`id` is `<type>/<employment id>` for the employment items, `<type>/<person id>` for
-the person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
+`id` is `<type>/<employment id>` for the employment items, `<type>/<row id>` for the
+competence items, `<type>/<person id>` for the other person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
 `title` is the person's display name — class C, so it survives the erase — with the
 employment number after it, in brackets, on an employment item of a person who has
 more than one; for the installation types it is an English sentence, and for the
 two request counts the type's name. The host words every type from its own catalog, in
-the reader's language, and links a person's item to their page, the two request counts
+the reader's language, and links a person's item to their page — a competence item
+to its Competence tab (`?tab=competence`) — the two request counts
 to the Absence page and the other three to Settings.
 
 ### The thresholds
@@ -4156,7 +4645,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `employee_number_too_long` | 400 | The prefix and the next number make a number longer than 16; a typed employee number longer than 16; a generation the skip carries past 16. |
 | `employee_number_taken` | 400 | Another person has the employee number, however it is cased. |
 | `work_email_taken` | 400 | Another person has the work email. |
-| `person_in_use` | 409 | Deleting a person with an employment, a user link, documents, absences or holiday adjustments, or named as a manager. |
+| `person_in_use` | 409 | Deleting a person with an employment, a user link, documents, absences, holiday adjustments or competences, or named as a manager. |
 | `legal_hold` | 409 | Deleting a person under a legal hold. |
 | `reassessment_not_due` | 409 | Recording a reassessment of a person who is not erased, already reassessed, or whose last employment ended less than twelve months ago or has not ended. |
 | `structure_archived` | 409 | A write newly names an archived row — a holiday scheme among them — or makes one the default. |
@@ -4188,8 +4677,8 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `document_too_large` | 400 | A file over 10 MiB. |
 | `document_count_exceeded` | 409 | Filing a document for a person who has 200. |
 | `category_restricted` | 403 | Filing, moving into or out of, or removing a health document without `staff:personal-data`. |
-| `category_in_use` | 409 | Archiving a category documents are filed under. |
-| `seed_immutable` | 409 | Changing a seeded document category; changing a seeded absence type beyond its names, order and `hidden`, or showing the reserved `absent`. |
+| `category_in_use` | 409 | Archiving a category documents are filed under, or a competence category a competence not archived is filed under. |
+| `seed_immutable` | 409 | Changing a seeded document category or competence category; changing a seeded absence type beyond its names, order and `hidden`, or showing the reserved `absent`; changing a seeded competence beyond its names, `reminderLeadDays`, `issuerHint` and `hidden`, or archiving it. |
 | `holiday_scheme_in_use` | 409 | Archiving the default holiday scheme, or one an employment names. |
 | `absence_type_in_use` | 409 | Widening a company absence type's visibility from `hr_only` to `absent` once an absence names it, or narrowing it from `absent` to `hr_only` while a self-approved absence of it has not ended. |
 | `percent_not_allowed` | 400 | A percentage on an absence of a type that allows none — a sick kind among them. |
@@ -4207,6 +4696,15 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `self_certification_withdrawn` | 409 | An egenmelding from the day HR decided to withdraw the right until its last day. |
 | `holiday_postponement_not_applicable` | 409 | A demand to postpone holiday on a row that is no 100 % sykmelding, or one over no approved ferie. |
 | `holiday_postponement_too_late` | 409 | A demand to postpone holiday for sickness that began before it, made after the last working day before the holiday (ferieloven § 9 first paragraph). |
+| `competence_held` | 409 | Declaring or adding a competence the person holds a current row of: change or renew that row instead. |
+| `competence_unavailable` | 400 | A new competence row naming a competence that is hidden, archived or unknown (on `competenceId`). |
+| `competence_in_use` | 409 | Changing whether a company competence has a level once a person's row names it. |
+| `verified_row` | 409 | The person changing or removing their own verified competence row: renew it instead. |
+| `superseded` | 409 | Changing, verifying, renewing or removing a competence row a renewal has superseded, or filing its evidence; removed only with its chain. |
+| `level_not_allowed` | 400 | A level on a competence row, or a verification, of a competence without one (on `level`). |
+| `level_required` | 400 | No level on a competence row, or a verification, of a competence with one (on `level`). |
+| `own_record` | 403 | The person verifying their own competence row, whatever they hold. |
+| `skill_no_validity` | 400, 409 | A `validTo` on a skill's competence row — declared, added or changed (400 on `validTo`); renewing a skill's row (409). |
 | `person_erased` | 409 | Any write of a person the retention run has erased but the hold, the reassessment, an unlink and a rehire. |
 | `storage_unavailable` | 503 | The object store could not be written to or read from. |
 | `import_too_large` | 400 | An import file over 5 MiB. |
@@ -4316,6 +4814,19 @@ person's, which it moves on when the list changes.
   are judged one after the other; none takes a person's row. Every other write of a
   group takes its row alone. A group's section is claimed by the accounts worker under its lease,
   as a link is.
+- **A competence row.** A write of a person's competence row takes the person's row,
+  then the competence it names `FOR SHARE` — a change of the competence holds its row
+  `FOR NO KEY UPDATE` and never a person, so a hide, an archive or a change of its
+  level and a new row naming it are judged one after the other — then the row
+  (`FOR NO KEY UPDATE`): person → competence → row. A renewal supersedes the old row and
+  writes the new under that one lock. The evidence then takes the seeded `certificate`
+  category `FOR SHARE`, as a document's upload does; the person's removal of their own
+  declared row then takes its evidence document's row. The
+  [competence worker](#the-competence-worker) stamps each row in a transaction of its
+  own holding that row alone, never a person.
+- **The competence catalogue.** A category's change takes its row `FOR NO KEY UPDATE`,
+  which a competence filed under it — added, or moved there — takes too, so an archive
+  and a competence filed under the category are judged one after the other.
 - **The sequence.** A create that generates an employee number holds the settings row
   until it commits, so two creators take numbers one after the other.
 - **The delete.** `DELETE /people/{id}` takes the person's row, then the manager graph,
@@ -4348,6 +4859,15 @@ All under `/api/v1/staff`.
 | `GET /people/{id}/documents`, `GET /documents/{id}` | `staff:access`, then the person, `staff:manage` (not health documents) or `staff:personal-data` (otherwise 404) |
 | `POST /people/{id}/documents`, `PUT /documents/{id}`, `DELETE /documents/{id}` | `staff:access`, then `staff:manage` or `staff:personal-data`, a health document `staff:personal-data` (judged in the module; otherwise 403) |
 | `GET /document-categories` | `staff:view`, `staff:manage` or `staff:personal-data` (judged in the module; otherwise 403) |
+| `GET /competence-categories`, `GET /competences` | `staff:access` (hidden and archived competences to `staff:manage` alone, when asked) |
+| `POST /competence-categories`, `PUT /competence-categories/{id}`, `POST /competences`, `PUT /competences/{id}` | `staff:manage` |
+| `GET /people/{id}/competences` | `staff:access`, then the [audience](#field-groups-and-audiences) — the detail to all but the colleague (otherwise 404) |
+| `POST /people/{id}/competences` | `staff:access`, then the person (declares), a manager of theirs today, `staff:approve` or `staff:manage` (adds) (otherwise 403; a person the caller may not see 404) |
+| `PUT /person-competences/{id}`, `DELETE /person-competences/{id}` | `staff:access`, then the person on their own declared row, a manager of theirs today, `staff:approve` or `staff:manage` (otherwise 403; `verified_row` to the person on a verified row); `chain` `staff:manage` |
+| `POST /person-competences/{id}/renew` | `staff:access`, then the person on their own row, a manager of theirs today, `staff:approve` or `staff:manage` (otherwise 403) |
+| `POST /person-competences/{id}/verify` | `staff:access`, then a manager of the person today, `staff:approve` or `staff:manage` — never the person (`own_record`; otherwise 403) |
+| `POST /person-competences/{id}/evidence` | `staff:access`, then the person on their own row, `staff:manage` or `staff:personal-data` (otherwise 403) |
+| `GET /person-competences/{id}/evidence` | `staff:access`, then a reader of the row's detail — the person, a manager of theirs today, `staff:approve`, `staff:manage`, `staff:personal-data` (otherwise, or without evidence, 404) |
 | `POST /document-categories`, `PUT /document-categories/{id}` | `staff:manage` |
 | `GET /absence-types`, `GET /holiday-schemes` | `staff:access` (hidden types to `staff:manage` alone) |
 | `POST /absence-types`, `PUT /absence-types/{id}`, `POST /holiday-schemes`, `PUT /holiday-schemes/{id}` | `staff:manage` |
