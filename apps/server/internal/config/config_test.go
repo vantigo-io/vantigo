@@ -1316,6 +1316,45 @@ func TestLoad_CustomersImportWorker(t *testing.T) {
 	}
 }
 
+// TestLoad_EnergySpotPriceFeed pins the spot price worker's three settings
+// (energy consumption billing design D2): off unless turned on, the public
+// feed's template, a fifteen-minute poll no shorter than a minute, and a
+// template that must be https and carry every placeholder.
+func TestLoad_EnergySpotPriceFeed(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if cfg.EnergySpotPriceFeedEnabled {
+		t.Error("ENERGY_SPOT_PRICE_FEED_ENABLED unset did not default to off")
+	}
+	if cfg.EnergySpotPriceFeedURL != DefaultEnergySpotPriceFeedURL {
+		t.Errorf("EnergySpotPriceFeedURL = %q, want the default feed", cfg.EnergySpotPriceFeedURL)
+	}
+	if cfg.EnergySpotPriceFeedPoll != 15*time.Minute {
+		t.Errorf("EnergySpotPriceFeedPoll = %v, want 15m", cfg.EnergySpotPriceFeedPoll)
+	}
+	tuned := mustLoad(t, with(validEnv(), "ENERGY_SPOT_PRICE_FEED_ENABLED", "1",
+		"ENERGY_SPOT_PRICE_FEED_URL", "https://prices.example.test/{area}/{year}/{month}/{day}.json",
+		"ENERGY_SPOT_PRICE_FEED_POLL", "1h"))
+	if !tuned.EnergySpotPriceFeedEnabled || tuned.EnergySpotPriceFeedPoll != time.Hour ||
+		tuned.EnergySpotPriceFeedURL != "https://prices.example.test/{area}/{year}/{month}/{day}.json" {
+		t.Errorf("tuned = %v/%v/%q, want on, 1h and the template", tuned.EnergySpotPriceFeedEnabled, tuned.EnergySpotPriceFeedPoll, tuned.EnergySpotPriceFeedURL)
+	}
+	if msg := loadError(t, with(validEnv(), "ENERGY_SPOT_PRICE_FEED_ENABLED", "yes")); !strings.Contains(msg, `ENERGY_SPOT_PRICE_FEED_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "ENERGY_SPOT_PRICE_FEED_POLL", "30s")); !strings.Contains(msg, "ENERGY_SPOT_PRICE_FEED_POLL: must be at least 1m") {
+		t.Errorf("error = %q", msg)
+	}
+	for v, want := range map[string]string{
+		"http://prices.example.test/{year}/{month}/{day}_{area}.json": "must be an absolute https URL",
+		"https://prices.example.test/{year}/{month}/{day}.json":       "must contain {year}, {month}, {day} and {area}",
+		"not a url": "must be an absolute https URL",
+	} {
+		if msg := loadError(t, with(validEnv(), "ENERGY_SPOT_PRICE_FEED_URL", v)); !strings.Contains(msg, "ENERGY_SPOT_PRICE_FEED_URL: "+want) {
+			t.Errorf("%q: error = %q, want %q", v, msg, want)
+		}
+	}
+}
+
 // TestLoad_EnergyImportWorker pins the energy import worker's three settings
 // (energy import design D6), the customers import's under energy's name: on
 // unless turned off, a five-second poll, and thirty days of retention.

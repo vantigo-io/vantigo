@@ -964,12 +964,16 @@ func TestEnergyBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// but keeps the partitioned parent itself, relkind 'p').
 	// The import's two tables (00049_energy_imports.sql, energy import design
 	// D3) are applied with every migration up.
+	// The spot prices' two (00065_energy_spot_prices.sql, energy consumption
+	// billing design D2) likewise.
 	wantTables := []string{
 		"consumption_intervals",
 		"import_rows",
 		"imports",
 		"metering_points",
 		"meters",
+		"spot_price_fetches",
+		"spot_prices",
 		"supply_periods",
 	}
 	rows, err := pool.Query(ctx, `

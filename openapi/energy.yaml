@@ -844,6 +844,169 @@ components:
                 - meterNumber
                 - installedAt
             type: object
+        SpotPriceCoverage:
+            description: What the installation holds of day-ahead prices, per price area (energy consumption billing design D2), for the Prices page — every area a metering point with a supply period is in, and every area already priced.
+            properties:
+                areas:
+                    items:
+                        $ref: '#/components/schemas/SpotPriceCoverageArea'
+                    type: array
+            required:
+                - areas
+            type: object
+        SpotPriceCoverageArea:
+            description: One area's coverage. firstStart and lastEnd bound what is stored and are absent for an area with no prices; daysMissingLast30 counts the civil days (Europe/Oslo) among the last thirty, today included, with no price interval starting in them; lastFetch is the feed worker's most recent attempt for the area, absent when the worker never tried it.
+            properties:
+                daysMissingLast30:
+                    format: int32
+                    type: integer
+                firstStart:
+                    format: date-time
+                    type: string
+                intervalCount:
+                    format: int64
+                    type: integer
+                lastEnd:
+                    format: date-time
+                    type: string
+                lastFetch:
+                    $ref: '#/components/schemas/SpotPriceFetch'
+                priceArea:
+                    type: string
+            required:
+                - priceArea
+                - intervalCount
+                - daysMissingLast30
+            type: object
+        SpotPriceFetch:
+            description: "The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body)."
+            properties:
+                attemptedAt:
+                    format: date-time
+                    type: string
+                attempts:
+                    format: int32
+                    type: integer
+                day:
+                    format: date
+                    type: string
+                error:
+                    type: string
+                nextAttemptAt:
+                    format: date-time
+                    type: string
+                status:
+                    description: ok, pending, missing or failed.
+                    type: string
+            required:
+                - day
+                - status
+                - attempts
+            type: object
+        SpotPriceImportArea:
+            description: What a spot price import did for one area, counting the rows without an error — inserted where no interval with the row's start was stored, replaced where one was with other figures, unchanged where one was with the same — and the range the rows cover.
+            properties:
+                inserted:
+                    format: int32
+                    type: integer
+                priceArea:
+                    type: string
+                rangeEnd:
+                    format: date-time
+                    type: string
+                rangeStart:
+                    format: date-time
+                    type: string
+                replaced:
+                    format: int32
+                    type: integer
+                unchanged:
+                    format: int32
+                    type: integer
+            required:
+                - priceArea
+                - inserted
+                - replaced
+                - unchanged
+            type: object
+        SpotPriceImportError:
+            description: One problem with one row of a spot price import. row is the row's number as the import counts it (the first row under the header is 1, blank rows take no number); column is the 0-based index of the file column the offending cell is in, absent for a problem with the row as a whole.
+            properties:
+                column:
+                    format: int32
+                    type: integer
+                message:
+                    type: string
+                row:
+                    format: int32
+                    type: integer
+            required:
+                - row
+                - message
+            type: object
+        SpotPriceImportResult:
+            description: What a spot price import read and did (energy consumption billing design D2). rows is the number of data rows; errorCount counts every problem found and errors lists the first 200 in file order; areas is the file's areas with their counts and ranges, over the rows without an error. imported is true only when the prices were written — a run (dryRun=false) with no error, every row in one transaction.
+            properties:
+                areas:
+                    items:
+                        $ref: '#/components/schemas/SpotPriceImportArea'
+                    type: array
+                dryRun:
+                    type: boolean
+                errorCount:
+                    format: int32
+                    type: integer
+                errors:
+                    items:
+                        $ref: '#/components/schemas/SpotPriceImportError'
+                    type: array
+                imported:
+                    type: boolean
+                rows:
+                    format: int32
+                    type: integer
+            required:
+                - dryRun
+                - imported
+                - rows
+                - errorCount
+                - errors
+                - areas
+            type: object
+        SpotPriceInterval:
+            description: One day-ahead price interval of a price area, half-open [start, end), at the resolution the source gave (hourly from the public feed today). nokPerKwh is the price a settlement uses; eurPerKwh and exchangeRate are present when the source gave them. source is Feed (the worker) or Import (a file).
+            properties:
+                end:
+                    format: date-time
+                    type: string
+                eurPerKwh:
+                    format: double
+                    type: number
+                exchangeRate:
+                    format: double
+                    type: number
+                id:
+                    format: int64
+                    type: integer
+                nokPerKwh:
+                    format: double
+                    type: number
+                priceArea:
+                    type: string
+                source:
+                    description: Feed or Import.
+                    type: string
+                start:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - priceArea
+                - start
+                - end
+                - nokPerKwh
+                - source
+            type: object
         SupplyPeriodResponse:
             properties:
                 customerId:
@@ -2325,6 +2488,151 @@ paths:
             tags:
                 - Energy metering points
             x-vantigo-access: permission:energy:supply-periods-manage+energy:supply-periods-view
+    /api/v1/energy/spot-prices:
+        get:
+            description: The day-ahead price intervals of one price area starting inside [from, to), ascending (energy consumption billing design D2). The window is at most 35 days, so a month at a quarter-hour resolution is one answer. Prices are market data, not a customer's, and need no supply-period gate.
+            operationId: getEnergySpotPrices
+            parameters:
+                - description: The price area, as a metering point carries it (NO1–NO5).
+                  in: query
+                  name: area
+                  required: true
+                  schema:
+                    type: string
+                - in: query
+                  name: from
+                  required: true
+                  schema:
+                    format: date-time
+                    type: string
+                - description: Exclusive; at most 35 days after from.
+                  in: query
+                  name: to
+                  required: true
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/SpotPriceInterval'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — area not two letters and one or two digits, from not before to, or to more than 35 days after from.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List spot prices of a price area
+            tags:
+                - EnergySpotPricesEndpoints
+            x-vantigo-access: permission:energy:prices-view
+    /api/v1/energy/spot-prices/coverage:
+        get:
+            description: What is held of day-ahead prices, per price area, with the feed worker's last attempt for each (energy consumption billing design D2) — the Prices page's first card.
+            operationId: getEnergySpotPricesCoverage
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SpotPriceCoverage'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Spot price coverage per price area
+            tags:
+                - EnergySpotPricesEndpoints
+            x-vantigo-access: permission:energy:prices-view
+    /api/v1/energy/spot-prices/import:
+        post:
+            description: |-
+                Imports day-ahead prices from a file (energy consumption billing design D2): multipart, one part named file — a CSV of at most 10 MiB and 50 000 data rows, read as the consumption import reads its file. The layout is fixed and found from the header words, each matched at most once: the area (area, price_area, prisområde, elspotområde, område, sone), the start (start, from, fra, time_start, starttid), optionally the end (end, to, til, time_end, sluttid), the NOK price per kWh (nok_per_kwh, price, pris, kr/kwh, nok/kwh; or øre/kwh, ore_per_kwh, read as øre and divided by 100), optionally the EUR price (eur_per_kwh, eur/kwh) and the exchange rate (exr, exchange_rate, kurs). Area, start and the NOK price are required.
+
+                Timestamps are read as the consumption import reads them: ISO 8601 or dd.mm.yyyy hh:mm, with an offset or Z as that instant, without one as a local clock time in Europe/Oslo, the spring gap a row's error and the autumn repeat the earlier instant first. Without an end column an interval closes at the next row's start of the same area in file order, the last row's an hour after its start; a gap or an unordered row is the row's error. A file may hold several areas. A row whose interval overlaps a stored interval of another length is the row's error (prices of one area never overlap); one equal to a stored interval replaces its figures when they differ and is unchanged when they do not.
+
+                dryRun (true when absent) checks every row and writes nothing; a run (dryRun=false) writes every row in one transaction, or — when any row has an error — nothing at all, and answers 422 with the same body. Rate-limited at 600 calls an hour per client address.
+            operationId: postEnergySpotPricesImport
+            parameters:
+                - description: true (the default) checks the file and writes nothing; false writes every row, or nothing when any row has an error.
+                  in: query
+                  name: dryRun
+                  schema:
+                    default: true
+                    type: boolean
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SpotPriceImportResult'
+                    description: OK — the file read and checked, and written when dryRun was false.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on 'file' for the file itself (no part named file or two of them, an empty file, one past 10 MiB, no header row, more than 50 columns, more than 50 000 rows, a line the CSV reader cannot parse, or a header without an area, a start or a NOK price column). A body that is not multipart at all is a bare 400.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SpotPriceImportResult'
+                    description: Unprocessable Entity — a run (dryRun=false) found at least one row with an error; nothing was written, and the body says what.
+            summary: Import spot prices from a file
+            tags:
+                - EnergySpotPricesEndpoints
+            x-vantigo-access: permission:energy:prices-manage+energy:prices-view
     /api/v1/energy/stats/attention:
         get:
             operationId: getEnergyStatsAttention

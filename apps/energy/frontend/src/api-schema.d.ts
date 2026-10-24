@@ -433,6 +433,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/energy/spot-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List spot prices of a price area
+         * @description The day-ahead price intervals of one price area starting inside [from, to), ascending (energy consumption billing design D2). The window is at most 35 days, so a month at a quarter-hour resolution is one answer. Prices are market data, not a customer's, and need no supply-period gate.
+         */
+        get: operations["getEnergySpotPrices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/spot-prices/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spot price coverage per price area
+         * @description What is held of day-ahead prices, per price area, with the feed worker's last attempt for each (energy consumption billing design D2) — the Prices page's first card.
+         */
+        get: operations["getEnergySpotPricesCoverage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/spot-prices/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import spot prices from a file
+         * @description Imports day-ahead prices from a file (energy consumption billing design D2): multipart, one part named file — a CSV of at most 10 MiB and 50 000 data rows, read as the consumption import reads its file. The layout is fixed and found from the header words, each matched at most once: the area (area, price_area, prisområde, elspotområde, område, sone), the start (start, from, fra, time_start, starttid), optionally the end (end, to, til, time_end, sluttid), the NOK price per kWh (nok_per_kwh, price, pris, kr/kwh, nok/kwh; or øre/kwh, ore_per_kwh, read as øre and divided by 100), optionally the EUR price (eur_per_kwh, eur/kwh) and the exchange rate (exr, exchange_rate, kurs). Area, start and the NOK price are required.
+         *
+         *     Timestamps are read as the consumption import reads them: ISO 8601 or dd.mm.yyyy hh:mm, with an offset or Z as that instant, without one as a local clock time in Europe/Oslo, the spring gap a row's error and the autumn repeat the earlier instant first. Without an end column an interval closes at the next row's start of the same area in file order, the last row's an hour after its start; a gap or an unordered row is the row's error. A file may hold several areas. A row whose interval overlaps a stored interval of another length is the row's error (prices of one area never overlap); one equal to a stored interval replaces its figures when they differ and is unchanged when they do not.
+         *
+         *     dryRun (true when absent) checks every row and writes nothing; a run (dryRun=false) writes every row in one transaction, or — when any row has an error — nothing at all, and answers 422 with the same body. Rate-limited at 600 calls an hour per client address.
+         */
+        post: operations["postEnergySpotPricesImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/energy/stats/attention": {
         parameters: {
             query?: never;
@@ -861,6 +925,88 @@ export interface components {
             /** Format: date-time */
             installedAt: string | null;
             meterNumber: string | null;
+        };
+        /** @description What the installation holds of day-ahead prices, per price area (energy consumption billing design D2), for the Prices page — every area a metering point with a supply period is in, and every area already priced. */
+        SpotPriceCoverage: {
+            areas: components["schemas"]["SpotPriceCoverageArea"][];
+        };
+        /** @description One area's coverage. firstStart and lastEnd bound what is stored and are absent for an area with no prices; daysMissingLast30 counts the civil days (Europe/Oslo) among the last thirty, today included, with no price interval starting in them; lastFetch is the feed worker's most recent attempt for the area, absent when the worker never tried it. */
+        SpotPriceCoverageArea: {
+            /** Format: int32 */
+            daysMissingLast30: number;
+            /** Format: date-time */
+            firstStart?: string;
+            /** Format: int64 */
+            intervalCount: number;
+            /** Format: date-time */
+            lastEnd?: string;
+            lastFetch?: components["schemas"]["SpotPriceFetch"];
+            priceArea: string;
+        };
+        /** @description The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body). */
+        SpotPriceFetch: {
+            /** Format: date-time */
+            attemptedAt?: string;
+            /** Format: int32 */
+            attempts: number;
+            /** Format: date */
+            day: string;
+            error?: string;
+            /** Format: date-time */
+            nextAttemptAt?: string;
+            /** @description ok, pending, missing or failed. */
+            status: string;
+        };
+        /** @description What a spot price import did for one area, counting the rows without an error — inserted where no interval with the row's start was stored, replaced where one was with other figures, unchanged where one was with the same — and the range the rows cover. */
+        SpotPriceImportArea: {
+            /** Format: int32 */
+            inserted: number;
+            priceArea: string;
+            /** Format: date-time */
+            rangeEnd?: string;
+            /** Format: date-time */
+            rangeStart?: string;
+            /** Format: int32 */
+            replaced: number;
+            /** Format: int32 */
+            unchanged: number;
+        };
+        /** @description One problem with one row of a spot price import. row is the row's number as the import counts it (the first row under the header is 1, blank rows take no number); column is the 0-based index of the file column the offending cell is in, absent for a problem with the row as a whole. */
+        SpotPriceImportError: {
+            /** Format: int32 */
+            column?: number;
+            message: string;
+            /** Format: int32 */
+            row: number;
+        };
+        /** @description What a spot price import read and did (energy consumption billing design D2). rows is the number of data rows; errorCount counts every problem found and errors lists the first 200 in file order; areas is the file's areas with their counts and ranges, over the rows without an error. imported is true only when the prices were written — a run (dryRun=false) with no error, every row in one transaction. */
+        SpotPriceImportResult: {
+            areas: components["schemas"]["SpotPriceImportArea"][];
+            dryRun: boolean;
+            /** Format: int32 */
+            errorCount: number;
+            errors: components["schemas"]["SpotPriceImportError"][];
+            imported: boolean;
+            /** Format: int32 */
+            rows: number;
+        };
+        /** @description One day-ahead price interval of a price area, half-open [start, end), at the resolution the source gave (hourly from the public feed today). nokPerKwh is the price a settlement uses; eurPerKwh and exchangeRate are present when the source gave them. source is Feed (the worker) or Import (a file). */
+        SpotPriceInterval: {
+            /** Format: date-time */
+            end: string;
+            /** Format: double */
+            eurPerKwh?: number;
+            /** Format: double */
+            exchangeRate?: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: double */
+            nokPerKwh: number;
+            priceArea: string;
+            /** @description Feed or Import. */
+            source: string;
+            /** Format: date-time */
+            start: string;
         };
         SupplyPeriodResponse: {
             /** Format: int32 */
@@ -2619,6 +2765,163 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getEnergySpotPrices: {
+        parameters: {
+            query: {
+                /** @description The price area, as a metering point carries it (NO1–NO5). */
+                area: string;
+                from: string;
+                /** @description Exclusive; at most 35 days after from. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotPriceInterval"][];
+                };
+            };
+            /** @description Bad Request — area not two letters and one or two digits, from not before to, or to more than 35 days after from. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getEnergySpotPricesCoverage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotPriceCoverage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postEnergySpotPricesImport: {
+        parameters: {
+            query?: {
+                /** @description true (the default) checks the file and writes nothing; false writes every row, or nothing when any row has an error. */
+                dryRun?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK — the file read and checked, and written when dryRun was false. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotPriceImportResult"];
+                };
+            };
+            /** @description Bad Request — on 'file' for the file itself (no part named file or two of them, an empty file, one past 10 MiB, no header row, more than 50 columns, more than 50 000 rows, a line the CSV reader cannot parse, or a header without an area, a start or a NOK price column). A body that is not multipart at all is a bare 400. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity — a run (dryRun=false) found at least one row with an error; nothing was written, and the body says what. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotPriceImportResult"];
                 };
             };
         };
