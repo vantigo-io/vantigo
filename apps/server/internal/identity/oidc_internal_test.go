@@ -154,8 +154,22 @@ func TestOIDCReadExternalAccount(t *testing.T) {
 	const issuer = "https://login.microsoftonline.com/" + policyTenantID + "/v2.0"
 	base := oidcClaims{Issuer: issuer, Subject: "Subject-1", Email: "person@example.com", EmailVerified: true, Name: "Ada Lovelace"}
 	a, ok := readExternalAccount(base, issuer)
-	if !ok || a != (externalAccount{issuer: issuer, subject: "Subject-1", email: "person@example.com", emailVerified: true, displayName: "Ada Lovelace"}) {
+	// The principal name is the verified email when the token carries no
+	// preferred_username (Entra phase 2 design L3).
+	if !ok || a != (externalAccount{issuer: issuer, subject: "Subject-1", email: "person@example.com", emailVerified: true, displayName: "Ada Lovelace", principalName: "person@example.com"}) {
 		t.Errorf("readExternalAccount = %+v, %v", a, ok)
+	}
+	// preferred_username wins when it is an address; an unverified email
+	// without one is no principal name.
+	withUPN := base
+	withUPN.PreferredUsername = "ada@tenant.example"
+	if a, _ := readExternalAccount(withUPN, issuer); a.principalName != "ada@tenant.example" {
+		t.Errorf("principal name with preferred_username = %q, want the UPN", a.principalName)
+	}
+	withUPN.PreferredUsername = "ada"
+	withUPN.EmailVerified = false
+	if a, _ := readExternalAccount(withUPN, issuer); a.principalName != "" {
+		t.Errorf("principal name without an address-shaped UPN or a verified email = %q, want none", a.principalName)
 	}
 	if a, ok := readExternalAccount(base, issuer+"x"); ok {
 		t.Errorf("another issuer = %+v", a)
