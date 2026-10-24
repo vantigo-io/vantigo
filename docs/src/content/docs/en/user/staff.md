@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page with its documents and their account, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, absence and the holiday account, and the Groups and their place in the directory, and the Staff settings with the company's structure, the document categories, the register's import and export, the payroll export, retention, the thresholds and the accounts.
+description: The people register — People, a person's page with its documents, their competences and their account, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, absence and the holiday account, and the Groups and their place in the directory, and the Staff settings with the company's structure, the document categories, the competence catalogue, the register's import and export, the payroll export, retention, the thresholds and the accounts.
 sidebar:
   order: 45
 sources:
@@ -80,8 +80,8 @@ Press a name to open [the person's page](#a-persons-page).
 
 ## A person's page
 
-A person's page has six tabs — **Profile**, **Employments**, **Absence**, **History**, **Documents** and
-**Account** — and the tab you are on is in the page's address (`?tab=account` opens the
+A person's page has seven tabs — **Profile**, **Employments**, **Absence**, **Competence**, **History**,
+**Documents** and **Account** — and the tab you are on is in the page's address (`?tab=account` opens the
 Account tab, which is where the dashboard's account items lead). It shows what you may see of the person and
 nothing else: a group of fields that is not yours to read is not on the page at all,
 not even as an empty heading. The person themselves, a manager of theirs, a colleague
@@ -276,6 +276,57 @@ see the tab. From top to bottom:
 A write sends what the row carries to guard it: if somebody changed the row meanwhile,
 the form closes, the tab reloads and says so — make your change again on what is there
 now. A row that has gone meanwhile says *This is no longer there.*
+
+### Competence
+
+**Competence** is what the person can do: skills with a level, from *aware* to
+*expert*, and certificates with a validity. Everyone who sees the person sees the tab,
+grouped by category, but not the same tab:
+
+- **A colleague** with `staff:view` sees each competence's name, its **Level**,
+  whether it is **Declared** or **Verified**, and how long it is valid — *Valid to* a
+  date with the days left, or *Valid without end* — with **Expiring** or **Expired**
+  when it is. Nothing more, and no buttons.
+- **The person's manager, whoever holds `staff:approve`, and HR** also see each
+  row's detail: **Issued**, **Issuer**, **Reference**, **Entered by** (*The person*,
+  *A manager* or *HR*), *Verified by* a name on a date and what the verification rests
+  on, and the **Evidence** — the photo or scan of the certificate — to download.
+
+A competence the person added themselves carries the **Declared** badge until
+somebody verifies it, and the dashboard lists it for the person's manager under
+*… declared a competence awaiting verification*.
+
+**In the one-to-one.** Open your report's page on **Competence** and go through it
+together:
+
+- **Verify** confirms a declared competence. Choose the **Level** the two of you agree
+  on — it may be lower or higher than the one the person chose — and what it is
+  **Verified on the basis of**: *The evidence* (you saw the certificate) or *Seen in
+  the work*. A short **Note** about what it rests on is optional; keep it to the
+  evidence. The row then reads *Verified by* you. Nobody verifies their own
+  competences — not with `staff:approve`, not as HR: someone else does it. If you do
+  not agree with a declaration, **Remove** it and say why in the conversation; there
+  is no "rejected" state.
+- **Add competence** enters one you have seen in the work. It is verified at once, in
+  your name.
+- **Edit** corrects a row's level, dates, issuer or reference. If you change a verified
+  row's level, the row reads *Verified by* you from then on.
+- **Renewed** records a renewed certificate: the new **Issued** date, the **Valid to**
+  date — proposed from the issue date when the certificate has a fixed validity — the
+  **Issuer** and the **Reference**; the person or HR adds the new certificate's evidence.
+  The old row is kept as history
+  and the new one is current; renewed by you, it is verified at once. A skill has no
+  validity, and is not renewed: edit its level instead.
+- **Remove** takes a competence off the list, after asking. On a renewed certificate
+  it takes the renewal back: the earlier row is current again. HR may tick **Remove
+  the whole history** to remove every row of that competence at once.
+- **Add evidence** files a photo or a scan on a row that has none; it is the person's
+  and HR's to do.
+- **Show history** lists the renewed rows too, marked *Renewed since*.
+
+A certificate within its reminder of its end shows **Expiring** with the days left,
+and **Expired** once the day has passed; both are on your dashboard, and you and the
+person get an email. When the new certificate is there, press **Renewed** on the row.
 
 ### History
 
@@ -846,8 +897,8 @@ longer be changed.*, shows the owners as a list, and offers no **Edit**, **Archi
 
 **My page** (`staff:access`) is your own record in Staff, found through the user HR
 linked it to, and shows what you see of yourself — whatever else you may hold. It has
-a person's four tabs, then **Absence**, **Account** and, when you manage anyone,
-**My team**:
+a person's four tabs, then **Absence**, **Competence**, **Account** and, when you manage
+anyone, **My team**:
 
 - **Profile** — your work details, your private details, your national identity number
   as **On file** and your bank account's last four digits, your next of kin, your roles
@@ -874,6 +925,8 @@ a person's four tabs, then **Absence**, **Account** and, when you manage anyone,
 - **Absence** — your holiday account, your egenmelding standing, your care days and
   your absences, with **Request absence** (see
   [Request absence](#request-absence-from-your-phone) below).
+- **Competence** — what you can do, with **Add competence** (see
+  [Your competence](#your-competence) below).
 - **Account** — whether Staff gives you a user to sign in with, from which day and at
   which address, and how your account stands: pending your password, active,
   disabled, with your invitation, and the **Groups** card: the groups you are in, how
@@ -907,6 +960,49 @@ The **Absence** tab of My page shows, as Staff counts them:
   *Approved*, *Rejected*, *Cancelled* or *Registered*), working days or hours, your
   note and the decider's note. A request still waiting has **Change** and **Cancel
   request**; a cancelled request stays in the list.
+
+### Your competence
+
+The **Competence** tab of My page is what you can do — skills with a level and
+certificates with a validity — as you and your manager keep it together. It is made
+for your phone.
+
+To add a competence:
+
+1. On My page, open **Competence** and press **Add competence**. On a phone the form
+   fills the screen.
+2. Under **Competence**, search the catalogue and choose one. If it has a level,
+   choose the **Level**, from *aware* to *expert*.
+3. For a certificate, set **Issued**. When the certificate has a fixed validity,
+   **Valid to** is proposed from it — change it if your certificate says otherwise.
+   Add the **Issuer** and the **Reference** (the certificate's number) if you like.
+4. Under **Evidence**, press **Take a photo** to photograph the certificate with the
+   phone's camera, or **Choose a file** (a PDF, JPEG, PNG or HEIC of at most 10 MiB).
+   The evidence is optional, and is filed among your documents under *Certificate*.
+5. Press **Save**.
+
+You can also start from anywhere: search for **Add competence** (Ctrl+K or ⌘K) and the
+form opens on My page's **Competence** tab.
+
+The competence is listed with the **Declared** badge. Your manager sees it on their
+dashboard and verifies it — usually in your next one-to-one — at the level the two of
+you agree on; it then reads *Verified by* them. Until then **Edit** and **Remove** are
+yours; once it is verified it is no longer yours to change or remove: renew it, or ask
+your manager. If the evidence could not be filed, the page says so — the competence is
+saved: press **Add evidence** on it to try again. A competence you already have is
+not added twice: change or renew the one you have.
+
+**When a certificate expires.** Within its reminder of the end — 30 days ahead for a
+yearly certificate, six months for a five-year one — it shows **Expiring** with the
+days left, and you and your manager get an email; once the day has passed it shows
+**Expired**, and you get one more. When you have renewed it, press **Renewed** on it,
+set the new dates and add the new certificate: the old one stays as history, and the
+new one waits for your manager's verification, as a new one does.
+
+**Who sees it.** Colleagues who hold `staff:view` see what you can do: your
+competences, their levels, whether they are verified and how long they are valid. The
+detail — the evidence, the issuer, the reference and the verification — is seen by
+you, your manager, whoever holds `staff:approve` and HR.
 
 ### Request absence from your phone
 
@@ -1098,9 +1194,10 @@ read through the API by `staff:manage`, `staff:approve` and `staff:personal-data
 alone, never by `staff:view`.
 
 Staff's items join the other apps' in **Needs attention**, each worded in your
-language. Most are HR's (`staff:manage`); a manager sees the probation, the requests
-and the sick-leave follow-up items for the people they manage, `staff:approve` the
-requests and the follow-ups of everyone, and the reassessment and the confidential
+language. Most are HR's (`staff:manage`); a manager sees the probation, the requests,
+the sick-leave follow-up and the competence items for the people they manage,
+`staff:approve` the requests, the follow-ups and the competences awaiting verification
+of everyone, and the reassessment and the confidential
 requests are `staff:personal-data`'s. A request of a confidential (HR-only) absence
 type is counted only for `staff:personal-data`:
 
@@ -1123,6 +1220,9 @@ type is counted only for `staff:personal-data`:
 | Too little holiday in the main period | From April to September: someone has fewer approved holiday days between 1 June and 30 September than their scheme's main period (three weeks under the Holiday Act). | The person |
 | Approved their own absence | Someone approved their own absence, as the only decider there was. | The person |
 | Sick during approved holiday | A 100 % sykmelding lies over approved ferie: the employee may demand to postpone it. | The person |
+| … declared a competence awaiting verification | Someone added a competence — or renewed a certificate — themselves, and nobody has verified it yet. A manager sees their own people's; `staff:approve` and HR everyone's. Verify it, or remove it. | The person's Competence tab |
+| A certificate of … expires soon | A certificate is within its reminder of its last valid day. A manager sees their own people's; HR everyone's. Press **Renewed** on it when the new one is there. | The person's Competence tab |
+| A certificate of … has expired | A certificate's last valid day has passed. Renew it, or remove it if the person no longer needs it. | The person's Competence tab |
 | The group … is not in sync with its directory | A group could not be kept in the directory — a setting the directory refused, a group there holding its key that Vantigo may not change, or a directory that could not be reached three times in a row; the group's page says why. One per group and directory, for HR. | The group |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
@@ -1132,7 +1232,8 @@ Staff settings.
 ## Change the settings
 
 **Staff settings** (`staff:manage`) has the general settings first, then the company's
-structure, the document categories, three cards for absence — **Absence types**,
+structure, the document categories, two cards for competence — **Competence
+categories** and **Competences** — three cards for absence — **Absence types**,
 **Holiday schemes** and **Egenmelding and carry-over** — four cards for the data —
 **Import and export people**, **Payroll export**, **Retention** and **Thresholds** — and
 **Accounts** and **Directory profile**.
@@ -1205,6 +1306,56 @@ in the category is erased. On a category of your own, the pencil changes the nam
 **Archive** stops offering it for new documents, and **Restore** offers it again. A
 category documents are filed under is not archived — the page says so: move them to
 another category first.
+
+### Competence categories
+
+**Competence categories** lists the groups the competence catalogue is sorted in: the
+**Key**, the **English name**, the **Norwegian name** and the status. The five
+**Seeded** categories — Trade, Certificate, Language, Tool and Domain — never change and
+have no actions.
+
+To add one of your own:
+
+1. Press **Add competence category**.
+2. Type a **Key** — 1 to 40 characters of a–z, 0–9 and hyphens — the **English name**
+   and the **Norwegian name**.
+3. Press **Save**. The category is listed after the others.
+
+The pencil changes a category's names, **Archive** stops offering it for new
+competences, and **Restore** offers it again; the key never changes. A category a
+competence that is not archived is filed under is not archived — the page says so:
+move or archive the competence first.
+
+### Competences
+
+**Competences** is the catalogue people pick their competences from: each one's name,
+**Category**, **Kind** — *Skill* or *Certificate* — whether it has a **Level**, its
+**Validity (months)**, its **Reminder (days)**, **Who issues it** and its status:
+**Seeded**, **Hidden** or **Archived**. The Norwegian certificates are seeded under
+Certificate: the trade certificate, FSE, the HMS card, forklift, crane and earth-moving
+machinery, documented safety training, scaffolding user and erector, the driving
+licences B, C and D, code 95, hot work and work zone signage.
+
+- **New competence** adds one of your own: the **Category**, a **Key** (1 to 60
+  characters of a–z, 0–9 and hyphens), the **Name in English** and **Name in
+  Norwegian**, the **Kind** — the key and the kind cannot be changed later — whether it
+  **Has a level** (every row then carries one, from *aware* to *expert*) and, for a
+  certificate, its **Validity (months)**, 1 to 240, left empty for one valid without
+  end, and its **Reminder (days before expiry)**. Fill in **Who issues it** to show the
+  person adding it who the issuer is. Press **Add**.
+- **The reminder** is how many days before a certificate's last valid day its holder
+  and their manager are emailed and the dashboard shows it as expiring; they are
+  emailed again once it has expired. Left empty it is 30 days for a validity of up to
+  12 months, 60 up to 24 and 180 beyond.
+- The pencil changes a competence. A **seeded** one keeps its key, kind, level and
+  validity, shown greyed out; its names, its reminder, its issuer and whether it is
+  offered change. Whether one of your own has a level no longer changes once someone
+  holds it — the page says so: add another competence instead.
+- **Hide** stops offering a competence for new rows, and **Offer** brings it back —
+  the way to retire a seeded certificate your company does not use. **Archive**
+  retires one of your own, and **Restore** brings it back; one whose category is
+  archived is restored only once its category is. Either way, everyone who holds the
+  competence keeps it, shown by its name.
 
 ### Absence types
 

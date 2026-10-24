@@ -1519,26 +1519,90 @@ Decisions taken while building it that change the design:
 *Unblocks:* a hire who exists before their first day and can sign in on it, a leaver
 who cannot sign in the day after, and an employee who requests holiday from a phone.
 
-### Later
+### Phase 2 — Competence and preferences (A built)
 
-**The Entra module** is the next step, and has [a section of its own](#entra).
+What competence means for this company was discussed first, in
+[`docs/superpowers/research/2026-10-25-staff-competence.md`](docs/superpowers/research/2026-10-25-staff-competence.md)
+— the person on My page and the manager in the one-to-one, and the sixteen decisions
+the owner took — and designed in
+[`docs/superpowers/specs/2026-10-25-staff-competence-design.md`](docs/superpowers/specs/2026-10-25-staff-competence-design.md).
+Three deliveries, three pull requests, one migration each, each opened against `main`
+after the previous one lands.
 
-**Staff phase 2 — Competence and preferences.** What competence must mean for this
-company is discussed before the phase is specified; the starting proposal is flat
-categories and competences with an optional level and expiry, a person's competences
-with their evidence and verification, interests ("wants to work with"), requirements
-on a project role, a task or a shift template, availability declarations and weighted
-preferences — and the matching contract written down, implemented with Staffing.
+**A — The catalogue and the person's competences, built** on
+`claude/staff-phase2-competence-7c8b5e`
+([the plan](docs/superpowers/plans/2026-10-25-staff-competence.md);
+[the reference](docs/src/content/docs/en/reference/staff.md#competence)): a flat
+catalogue of competence categories and competences — skills with a level on one
+0–4 scale, certificates with a validity and a reminder lead — with the five categories
+and fifteen Norwegian certificates seeded, hidden rather than archived; a person's
+competences, declared by the person on My page from a phone, with the certificate
+photographed as evidence into their archive under `certificate` (the first write a
+person makes into their own archive), verified by their manager, `staff:approve` or
+HR — never by themselves — renewed as new rows that keep the old as history, and
+removed; the `staff-competence` worker, which mails the person and their managers once
+when a certificate comes within its lead and once when it has expired; the three
+attention items; the events, the exports' `competences` section and the D erase of the
+rows; `contracts.Workforce`, the sole-provider slot through which Staffing will read the
+catalogue and who holds what, valid on a date, under the Colleague rule; and the
+Competence tab on My page and the person page, the two catalogue cards in the Staff
+settings and the search's **Add competence**. One migration, `00066_staff_competence.sql`.
+
+Decisions taken while building it that change the design:
+
+- **The visible catalogue is everyone's**: every `staff:access` holder reads the
+  categories and the competences neither hidden nor archived, since the person
+  declaring needs them; `includeHidden` and `includeArchived` take effect for
+  `staff:manage` alone.
+- **No new erase kind**: `person_competences` is class D whole and is deleted under
+  the kind `D`, as the next of kin are; the evidence is erased as a `certificate`
+  document.
+- **Row operations live at `/person-competences/{id}`**, as documents and absences do,
+  with the list and the creation under `/people/{id}/competences`; the evidence is
+  downloaded from the row as well.
+- **The worker stamps before it mails**, each row in a transaction of its own under the
+  row's lock; a failed send is logged and never retried — the dashboard item is the
+  durable signal — and a corrected end date is mailed again when due.
+- **A manager's or HR's entry is verified at once**, basis `observed`: they vouch for
+  it by entering it.
+- **Settings has no tabs**: the catalogue is two cards, *Competence categories* and
+  *Competences*, after *Document categories*.
+- **Removing a renewed row undoes the renewal**, the earlier row current again; HR
+  removes the whole history with `chain`. A skill carries no validity and is not
+  renewed (`skill_no_validity`).
+- **`contracts.Workforce` answers people active today**, whatever date is asked, and
+  `HeldCompetences` needs `staff:view` alone.
+
+**B — The one-to-one.** Interests, weighted preferences and the availability
+declaration, written by the person alone on My page and read by their manager and
+HR, never by colleagues and with no free-text reason; the manager's Seen stamp per row;
+the review stamp the manager and the person record together, with its interval setting
+and an overdue item; My team's cards for declarations awaiting verification,
+certificates expiring and reviews overdue; the tab's second half, *What I want*.
+
+**C — Profiles, gaps and the overview.** Competence profiles — a named list of
+competence, minimum level and must-be-valid — assigned to people or defaulted by
+department, with the gap list and its attention item; the Competence area with the
+matrix (who holds what, at least which level, valid on a date, declared rows badged,
+verified only on request) and, for HR, the interests overview; and the matching
+contract's Staff side — a fit for a proposed booking — written into the reference.
 
 *Unblocks:* "who can do this, and who wants to"; certificates that expire before the
 work does.
 
+### Later
+
+**The Entra module** has [a section of its own](#entra); its phase 1 is done and phase 2 is in
+flight beside Staff phase 2.
+
 **Staffing.** One module owning every booking of a person's time — allocations,
 assignments with their notice periods and customer terms, and shifts — with staffing
 requests, move wishes, matching and shift trades, and employee pages beside the
-manager's. It reads Projects through `contracts.ProjectDirectory` and Staff through a
-new read contract (the employment on a date, competences valid on a date, preferences
-and wishes), the first module to consume two business modules at once; whether
+manager's. It reads Projects through `contracts.ProjectDirectory` and Staff through
+`contracts.Workforce` — the competences held, valid on a date, already answered under
+the Colleague rule, and, added with Staffing's first delivery, the employment on a date
+and a **fit** Staff scores for a proposed booking from the person's preferences, never
+the wishes themselves — the first module to consume two business modules at once; whether
 Projects phase 5's allocations move into it or are read by it is its spec's first
 question. The statutory limits are warnings an installation can mark as hard, never
 built-in refusals.

@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden med dokumentene og kontoen, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, fravær og feriekontoen, Grupper og plassen deres i katalogen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, import og eksport av registeret, lønnseksporten, oppbevaring, tersklene og kontoene.
+description: Personregisteret — Personer, personsiden med dokumentene, kompetansen og kontoen, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, fravær og feriekontoen, Grupper og plassen deres i katalogen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, kompetansekatalogen, import og eksport av registeret, lønnseksporten, oppbevaring, tersklene og kontoene.
 sidebar:
   order: 45
 sources:
@@ -81,8 +81,8 @@ Trykk på et navn for å åpne [personsiden](#personsiden).
 
 ## Personsiden
 
-En persons side har seks faner — **Profil**, **Arbeidsforhold**, **Fravær**, **Historikk**, **Dokumenter** og
-**Konto** — og fanen du står på, ligger i sidens adresse (`?tab=account` åpner fanen
+En persons side har sju faner — **Profil**, **Arbeidsforhold**, **Fravær**, **Kompetanse**, **Historikk**,
+**Dokumenter** og **Konto** — og fanen du står på, ligger i sidens adresse (`?tab=account` åpner fanen
 Konto, som er dit dashbordets kontopunkter fører). Siden viser det du kan se av personen og
 ikke noe annet: en gruppe felt som ikke er din å lese, står ikke på siden i det hele
 tatt, heller ikke som en tom overskrift. Personen selv, en leder av dem, en kollega med
@@ -278,6 +278,58 @@ Ovenfra og ned:
 En endring sender med det raden har for å vokte den: har noen endret raden imens,
 lukkes skjemaet, fanen lastes på nytt og sier fra — gjør endringen igjen på det som står
 der nå. En rad som er borte imens, sier *Dette finnes ikke lenger.*
+
+### Kompetanse
+
+**Kompetanse** er det personen kan: ferdigheter med et nivå, fra *kjenner til* til
+*ekspert*, og sertifikater med en gyldighet. Alle som ser personen, ser fanen, sortert
+etter kategori, men ikke den samme fanen:
+
+- **En kollega** med `staff:view` ser navnet på hver kompetanse, **Nivå**, om den er
+  **Egenerklært** eller **Bekreftet**, og hvor lenge den gjelder — *Gyldig til* en dato
+  med dagene som er igjen, eller *Gyldig uten utløp* — med **Utløper snart** eller
+  **Utløpt** når det er slik. Ikke noe mer, og ingen knapper.
+- **Personens leder, den som har `staff:approve`, og HR** ser også detaljene på hver
+  rad: **Utstedt**, **Utsteder**, **Referanse**, **Registrert av** (*Personen selv*,
+  *En leder* eller *HR*), *Bekreftet av* et navn på en dato og hva bekreftelsen bygger
+  på, og **Dokumentasjon** — bildet eller skanningen av sertifikatet — til nedlasting.
+
+En kompetanse personen la inn selv, har merket **Egenerklært** til noen bekrefter den,
+og dashbordet viser den for personens leder som *… har registrert en kompetanse som
+venter på bekreftelse*.
+
+**I medarbeidersamtalen.** Åpne siden til den du er leder for, på **Kompetanse**, og gå
+gjennom den sammen:
+
+- **Bekreft** bekrefter en egenerklært kompetanse. Velg **Nivå** dere er enige om — det
+  kan være lavere eller høyere enn det personen valgte — og hva den er **Bekreftet på
+  grunnlag av**: *Dokumentasjonen* (du så sertifikatet) eller *Sett i arbeidet*. En kort
+  **Merknad** om hva den bygger på, er valgfri; hold den til dokumentasjonen. Raden
+  viser deretter *Bekreftet av* deg. Ingen bekrefter sin egen kompetanse — ikke med
+  `staff:approve`, ikke som HR: det gjør noen andre. Er du ikke enig i en erklæring,
+  **Fjern** den og si hvorfor i samtalen; det finnes ingen «avvist»-status.
+- **Legg til kompetanse** legger inn en du har sett i arbeidet. Den er bekreftet med
+  en gang, i ditt navn.
+- **Endre** retter nivået, datoene, utstederen eller referansen på en rad. Endrer du
+  nivået på en bekreftet rad, viser raden *Bekreftet av* deg fra da av.
+- **Fornyet** registrerer et fornyet sertifikat: ny **Utstedt**-dato, **Gyldig til** —
+  foreslått ut fra utstedelsesdatoen når sertifikatet har en fast gyldighet —
+  **Utsteder** og **Referanse**; personen selv eller HR legger til dokumentasjonen for
+  det nye sertifikatet. Den gamle raden blir stående
+  som historikk, og den nye er den gjeldende; fornyer du den, er den bekreftet med en
+  gang. En ferdighet har ingen gyldighet og fornyes ikke: endre nivået i stedet.
+- **Fjern** tar en kompetanse ut av listen, etter å ha spurt. På et fornyet sertifikat
+  tar den fornyelsen tilbake: den forrige raden blir gjeldende igjen. HR kan krysse av
+  for **Fjern hele historikken** for å fjerne alle radene for den kompetansen på én
+  gang.
+- **Legg til dokumentasjon** arkiverer et bilde eller en skanning på en rad som ikke
+  har noen; det gjør personen selv og HR.
+- **Vis historikk** viser også de fornyede radene, merket *Fornyet senere*.
+
+Et sertifikat som er innenfor påminnelsen før det utløper, viser **Utløper snart** med
+dagene som er igjen, og **Utløpt** når dagen er passert; begge står på dashbordet ditt,
+og du og personen får en e-post. Når det nye sertifikatet er der, trykker du
+**Fornyet** på raden.
 
 ### Historikk
 
@@ -840,8 +892,8 @@ eller bryteren. Ingenting slettes i Ansatte.
 
 **Min side** (`staff:access`) er din egen oppføring i Ansatte, funnet gjennom brukeren
 HR koblet den til, og viser det du ser av deg selv — uansett hvilke andre rettigheter du
-har. Den har de fire fanene en persons side har, og så **Fravær**, **Konto** og, når du er
-leder for noen, **Mitt team**:
+har. Den har de fire fanene en persons side har, og så **Fravær**, **Kompetanse**,
+**Konto** og, når du er leder for noen, **Mitt team**:
 
 - **Profil** — jobbopplysningene, de private opplysningene, fødselsnummeret som
   **Registrert** og de fire siste sifrene i bankkontoen, de pårørende, rollene og hvor
@@ -867,6 +919,8 @@ leder for noen, **Mitt team**:
   personopplysninger.
 - **Fravær** — feriekontoen din, egenmeldingsstatusen, omsorgsdagene og fraværene
   dine, med **Be om fravær** (se [Be om fravær](#be-om-fravær-fra-mobilen) nedenfor).
+- **Kompetanse** — det du kan, med **Legg til kompetanse** (se
+  [Kompetansen din](#kompetansen-din) nedenfor).
 - **Konto** — om Ansatte gir deg en bruker å logge inn med, fra hvilken dag og på
   hvilken adresse, og hvordan kontoen din står: venter på passordet ditt, aktiv,
   deaktivert, med invitasjonen din, og kortet **Grupper**: gruppene du er med i, hvordan
@@ -900,6 +954,51 @@ Fanen **Fravær** på Min side viser, slik Ansatte teller dem:
   *Avslått*, *Trukket tilbake* eller *Registrert*), arbeidsdager eller timer, merknaden
   din og merknaden til avgjørelsen. En søknad som venter, har **Endre** og **Trekk
   tilbake**; en søknad som er trukket tilbake, blir stående i listen.
+
+### Kompetansen din
+
+Fanen **Kompetanse** på Min side er det du kan — ferdigheter med et nivå og
+sertifikater med en gyldighet — slik du og lederen din holder den ved like sammen. Den
+er laget for mobilen.
+
+Slik legger du til en kompetanse:
+
+1. På Min side åpner du **Kompetanse** og trykker **Legg til kompetanse**. På mobilen
+   fyller skjemaet hele skjermen.
+2. Under **Kompetanse** søker du i katalogen og velger en. Har den nivå, velger du
+   **Nivå**, fra *kjenner til* til *ekspert*.
+3. For et sertifikat setter du **Utstedt**. Når sertifikatet har en fast gyldighet,
+   foreslås **Gyldig til** ut fra den — endre den hvis sertifikatet ditt sier noe annet.
+   Legg gjerne til **Utsteder** og **Referanse** (sertifikatets nummer).
+4. Under **Dokumentasjon** trykker du **Ta et bilde** for å fotografere sertifikatet
+   med kameraet på mobilen, eller **Velg en fil** (en PDF, JPEG, PNG eller HEIC på høyst
+   10 MiB). Dokumentasjonen er valgfri, og arkiveres blant dokumentene dine under
+   *Sertifikat*.
+5. Trykk **Lagre**.
+
+Du kan også begynne hvor som helst: søk etter **Legg til kompetanse** (Ctrl+K eller ⌘K),
+så åpnes skjemaet på fanen **Kompetanse** på Min side.
+
+Kompetansen står i listen merket **Egenerklært**. Lederen din ser den på dashbordet og
+bekrefter den — som regel i neste medarbeidersamtale — på det nivået dere blir enige
+om; deretter viser den *Bekreftet av* lederen. Til da kan du selv **Endre** og
+**Fjern**; når den er bekreftet, kan du ikke lenger endre eller fjerne den selv: forny
+den, eller spør lederen din. Kunne ikke dokumentasjonen arkiveres, sier siden fra —
+kompetansen er lagret: trykk **Legg til dokumentasjon** på den for å prøve igjen. En
+kompetanse du allerede har, legges ikke inn to ganger: endre eller forny den du har.
+
+**Når et sertifikat utløper.** Innenfor påminnelsen før utløpet — 30 dager før for et
+sertifikat som gjelder ett år, seks måneder før for et som gjelder fem — viser det
+**Utløper snart** med dagene som er igjen, og du og lederen din får en e-post; når dagen
+er passert, viser det **Utløpt**, og du får én til. Når du har fornyet det, trykker du
+**Fornyet** på det, setter de nye datoene og legger til det nye sertifikatet: det gamle
+blir stående som historikk, og det nye venter på at lederen din bekrefter det, slik et
+nytt gjør.
+
+**Hvem som ser den.** Kolleger med `staff:view` ser hva du kan: kompetansene dine,
+nivåene, om de er bekreftet og hvor lenge de gjelder. Detaljene — dokumentasjonen,
+utstederen, referansen og bekreftelsen — ser du, lederen din, den som har
+`staff:approve`, og HR.
 
 ### Be om fravær fra mobilen
 
@@ -1090,8 +1189,9 @@ sykefraværssakene og sykefraværet de siste tolv månedene leses gjennom API-et
 
 Punktene fra Ansatte kommer i **Trenger oppfølging** sammen med de andre appenes, hvert
 formulert på ditt språk. De fleste er HRs (`staff:manage`); en leder ser punktene om
-prøvetid, søknader og sykefraværsoppfølging for sine egne folk, `staff:approve`
-søknadene og oppfølgingen for alle, og den nye vurderingen og de fortrolige søknadene
+prøvetid, søknader, sykefraværsoppfølging og kompetanse for sine egne folk,
+`staff:approve` søknadene, oppfølgingen og kompetansene som venter på bekreftelse, for
+alle, og den nye vurderingen og de fortrolige søknadene
 er `staff:personal-data` sine. En søknad om en fortrolig (bare HR) fraværstype telles
 bare for `staff:personal-data`:
 
@@ -1114,6 +1214,9 @@ bare for `staff:personal-data`:
 | For lite ferie i hovedferien | Fra april til september: noen har færre godkjente feriedager mellom 1. juni og 30. september enn ferieordningens hovedferie (tre uker etter ferieloven). | Personen |
 | Godkjente sitt eget fravær | Noen godkjente sitt eget fravær, som den eneste som kunne avgjøre det. | Personen |
 | Syk i godkjent ferie | En 100 % sykmelding ligger over godkjent ferie: den ansatte kan kreve å få den utsatt. | Personen |
+| … har registrert en kompetanse som venter på bekreftelse | Noen har lagt inn en kompetanse — eller fornyet et sertifikat — selv, og ingen har bekreftet den ennå. En leder ser sine egne folks; `staff:approve` og HR alles. Bekreft den, eller fjern den. | Personens kompetansefane |
+| Et sertifikat for … utløper snart | Et sertifikat er innenfor påminnelsen før siste gyldige dag. En leder ser sine egne folks; HR alles. Trykk **Fornyet** på det når det nye er der. | Personens kompetansefane |
+| Et sertifikat for … har utløpt | Siste gyldige dag for et sertifikat er passert. Forny det, eller fjern det hvis personen ikke lenger trenger det. | Personens kompetansefane |
 | Gruppen … er ikke synkronisert med katalogen | En gruppe kunne ikke holdes i katalogen — en innstilling katalogen avviste, en gruppe der med nøkkelen som Vantigo ikke får endre, eller en katalog som ikke kunne nås tre ganger på rad; gruppesiden forteller hvorfor. Én per gruppe og katalog, for HR. | Gruppen |
 
 Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
@@ -1123,7 +1226,8 @@ Ansatteinnstillinger.
 ## Endre innstillingene
 
 **Ansatteinnstillinger** (`staff:manage`) har de generelle innstillingene først, så
-selskapets struktur, dokumentkategoriene, tre kort for fravær — **Fraværstyper**,
+selskapets struktur, dokumentkategoriene, to kort for kompetanse — **Kompetansekategorier**
+og **Kompetanser** — tre kort for fravær — **Fraværstyper**,
 **Ferieordninger** og **Egenmelding og overføring** — fire kort for dataene —
 **Importer og eksporter personer**, **Lønnseksport**, **Oppbevaring** og **Terskler** — og
 **Kontoer** og **Katalogprofil**. Den som ikke har `staff:manage` og åpner siden med adressen, ser ingen av dem.
@@ -1194,6 +1298,56 @@ kategorien slettes. På en egen kategori endrer blyanten navnene, **Arkiver** sl
 tilby den for nye dokumenter, og **Gjenopprett** tilbyr den igjen. En kategori det er
 arkivert dokumenter under, arkiveres ikke — siden sier fra: flytt dem til en annen
 kategori først.
+
+### Kompetansekategorier
+
+**Kompetansekategorier** lister gruppene kompetansekatalogen er sortert i: **Nøkkel**,
+**Engelsk navn**, **Norsk navn** og status. De fem kategoriene merket
+**Forhåndsdefinert** — Fag, Sertifikat, Språk, Verktøy og Domene — endres aldri og har
+ingen handlinger.
+
+Slik legger du til en egen:
+
+1. Trykk **Legg til kompetansekategori**.
+2. Skriv en **Nøkkel** — 1 til 40 tegn av a–z, 0–9 og bindestrek — **Engelsk navn** og
+   **Norsk navn**.
+3. Trykk **Lagre**. Kategorien står etter de andre.
+
+Blyanten endrer navnene på en kategori, **Arkiver** slutter å tilby den for nye
+kompetanser, og **Gjenopprett** tilbyr den igjen; nøkkelen endres aldri. En kategori
+som en kompetanse som ikke er arkivert, ligger under, arkiveres ikke — siden sier fra:
+flytt eller arkiver kompetansen først.
+
+### Kompetanser
+
+**Kompetanser** er katalogen folk velger kompetansene sine fra: navnet på hver,
+**Kategori**, **Type** — *Ferdighet* eller *Sertifikat* — om den har **Nivå**,
+**Gyldighet (måneder)**, **Påminnelse (dager)**, **Hvem utsteder** og status:
+**Forhåndsdefinert**, **Skjult** eller **Arkivert**. De norske sertifikatene er
+forhåndsdefinert under Sertifikat: fagbrev, FSE, HMS-kort, truck, kran og
+masseforflytningsmaskiner, dokumentert sikkerhetsopplæring, stillasbruker og
+stillasbygger, førerkort klasse B, C og D, kode 95, varme arbeider og arbeidsvarsling.
+
+- **Ny kompetanse** legger til en egen: **Kategori**, en **Nøkkel** (1 til 60 tegn av
+  a–z, 0–9 og bindestrek), **Navn på engelsk** og **Navn på norsk**, **Type** —
+  nøkkelen og typen kan ikke endres senere — om den **Har nivå** (hver rad har da et
+  nivå, fra *kjenner til* til *ekspert*) og, for et sertifikat, **Gyldighet (måneder)**,
+  1 til 240, tom for et som gjelder uten utløp, og **Påminnelse (dager før utløp)**.
+  Fyll ut **Hvem utsteder** for å vise den som legger den til, hvem utstederen er.
+  Trykk **Legg til**.
+- **Påminnelsen** er hvor mange dager før et sertifikats siste gyldige dag den som har
+  det, og lederen deres får e-post og dashbordet viser det som snart utløpt; de får
+  e-post igjen når det har utløpt. Står den tom, er den 30 dager for en gyldighet på
+  inntil 12 måneder, 60 inntil 24 og 180 utover det.
+- Blyanten endrer en kompetanse. En **forhåndsdefinert** beholder nøkkel, type, nivå og
+  gyldighet, vist grået ut; navnene, påminnelsen, utstederen og om den tilbys, kan
+  endres. Om en egen kompetanse har nivå, kan ikke endres når noen har den — siden sier
+  fra: legg til en annen kompetanse i stedet.
+- **Skjul** slutter å tilby en kompetanse for nye rader, og **Tilby** henter den
+  tilbake — slik tar du bort et forhåndsdefinert sertifikat virksomheten ikke bruker.
+  **Arkiver** tar bort en egen, og **Gjenopprett** henter den tilbake; en som ligger i
+  en arkivert kategori, gjenopprettes først når kategorien er det. Uansett beholder
+  alle som har kompetansen, den, vist med navnet.
 
 ### Fraværstyper
 

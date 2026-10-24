@@ -4,7 +4,9 @@ The second phase of the `staff` module. Research: `docs/superpowers/research/202
 ("R", cited by section) and the discussion note
 `docs/superpowers/research/2026-10-25-staff-competence.md` ("N"), whose §3 holds the
 sixteen decisions the owner took on 2026-10-24 and 2026-10-25, which this design
-implements and does not reopen. Revision 1, before critical review. Code references
+implements and does not reopen. Revision 2: revision 1 was the design before review; the
+code review and the build of delivery A (2026-10-25) amended it as §13 lists, and the
+sections above are read with §13. Code references
 are against `main` at `65a369c6`; `srv/` abbreviates `apps/server/internal/`, `mig/`
 `srv/db/migrations/`, `boundaries.md` the page
 `docs/src/content/docs/en/contributing/module-boundaries.md`, "the reference"
@@ -674,3 +676,55 @@ For the owner's verdict; each is how the design read a decision or a gap.
 5. Does the review stamp want a **`kind`** now (`one_to_one`, `onboarding`) so the
    later medarbeidersamtale module inherits typed rows, or is one kind enough until
    it exists?
+
+## 13. Amendments at revision 2 (decided while building delivery A, 2026-10-25)
+
+Each entry names the section it amends; the section's text above stands otherwise.
+
+1. **S1, §5, §6 — the visible catalogue is readable by anyone with `staff:access`.** The
+   person declaring from My page needs the picker, and the catalogue holds no personal
+   data: `GET /competence-categories` lists every category (archived included, so a row
+   can still name its own), `GET /competences` the rows neither hidden nor archived;
+   `includeHidden` and `includeArchived` take effect for `staff:manage` only and are
+   silently false for anyone else. Writes stay `staff:manage`'s.
+2. **S1 — a company competence's `key` and `kind` never change** (the change request has
+   neither); `competence_in_use` fires on `hasLevel` changed on a competence a row names.
+3. **S1 — a skill never carries a validity.** `validTo` on a skill row is `skill_no_validity`
+   (400 on `validTo`) in declaration, change and renewal, and a skill row is never renewed
+   (`skill_no_validity`, 409): a skill is edited.
+4. **S4 — a manager's or HR's add, and their renewal, are verified at once** with basis
+   `observed` and the caller as the verifier. A verifier (or HR) changing a verified row's
+   level re-stamps `verified_at` and `verified_by`; the basis and the note stay.
+5. **S5 — renewal of a hidden or archived competence is allowed**: a renewal keeps a held
+   competence alive, it offers nothing new.
+6. **S6 — removing a renewed current row without `chain` restores the row it superseded**
+   as current (it undoes the renewal), recorded on `competence_removed` as `restored`; HR's
+   `chain=true` removes the whole history. Row operations live at
+   `/person-competences/{id}`; the list and the creation under `/people/{id}/competences`.
+7. **S6, §5 — the evidence is downloaded through `GET /person-competences/{id}/evidence`**
+   by everyone who reads the Competence detail group (Self, Manager, Approver, HR), since
+   `GET /documents/{id}` is the Documents group's (Self and HR). Uploading stays the
+   person's own current row and HR's; a manager or an approver uploads nothing, and the
+   apps offer them no picker.
+8. **S7 — the worker polls hourly** (`STAFF_WORKERS_POLL`) and stamps the row in its own
+   transaction, with the row locked and re-judged, before mailing, so a mail may arrive
+   just after midnight in the business zone; a changed `valid_to` clears both stamps so a
+   corrected date is mailed again when due. `STAFF_COMPETENCE_ENABLED` (default true)
+   switches the worker.
+9. **S15 — `contracts.Workforce` is a sole-provider slot** on `module.Deps`, resolved by
+   `Compose` and `Workers`; `HeldCompetences` is gated on `staff:view` alone and answers
+   people active today; `Competences` on `staff:view` or `staff:manage`, hidden rows
+   included, archived excluded.
+10. **S16 — the event payloads** carry `competenceId` (the row) and `fields` with
+    `competenceKey` and, per kind, `level`, `source`, `basis`, `validTo`, `chain`,
+    `restored`, `documentId`; `competence_renewed` names the level too; the catalogue
+    writes installation events `competence_created` and `competence_updated`.
+11. **S17 — no new erase kind**: `person_competences` is a whole-D table deleted under kind
+    `D`, as `next_of_kin` is; the evidence is erased as documents.
+12. **S18 — `canVerifyCompetence` is audience-derived**: `(manager ∨ approver ∨ manage) ∧ ¬self`.
+13. **§5's table — the Approver adds, edits, renews and removes** as a verifier does, with
+    §4's rule; the table's "R, verify, remove" is read as the verifier's full set.
+14. **§7 — Settings is a stack of cards**, so the catalogue is two cards after Document
+    categories, not a tab.
+15. **§4 — the lead-days default** applies when a validity is given and no lead; a change
+    request leaving the lead out resets it to the default.

@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, slå på konto for en person og kontoarbeideren med gruppene den holder, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, og innstillingene — forretningstidssonen, ansattnummerserien, oppbevaringstidene og kontoinnstillingene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, slå på konto for en person og kontoarbeideren med gruppene den holder, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, kompetansearbeideren og e-postene dens, og innstillingene — forretningstidssonen, ansattnummerserien, oppbevaringstidene og kontoinnstillingene.
 sidebar:
   order: 44
 sources:
@@ -26,6 +26,8 @@ sources:
   - apps/server/internal/staff/adjustments.go
   - apps/server/internal/staff/deciders.go
   - apps/server/internal/staff/notifications.go
+  - apps/server/internal/staff/competence_worker.go
+  - apps/server/internal/staff/competence_mails.go
   - apps/server/internal/staff/cases.go
   - apps/server/internal/staff/sickness.go
   - apps/server/internal/staff/care_days.go
@@ -82,8 +84,8 @@ Hver operasjon i Ansatte krever `staff:access`, og fire rettigheter ligger over 
 | --- | --- |
 | `staff:access` | Alle som skal se sine egne opplysninger. |
 | `staff:view` | Kolleger som skal se katalogen og bedriftens struktur. |
-| `staff:approve` | Den som avgjør alles fravær: godkjenner, avslår og trekker tilbake søknader, ser alles arbeidsopplysninger og fravær (en HR-type som permisjon), godkjenningsinnboksen og kalenderen, og åpne sykefraværssaker (milepælene, ikke notatene) — ikke lønn, private opplysninger eller historikk. |
-| `staff:manage` | HR: personer, arbeidsforhold, dokumenter unntatt helsedokumenter, dokumentkategoriene, strukturen og innstillingene. Sensitiv. |
+| `staff:approve` | Den som avgjør alles fravær: godkjenner, avslår og trekker tilbake søknader, ser alles arbeidsopplysninger og fravær (en HR-type som permisjon), godkjenningsinnboksen og kalenderen, og åpne sykefraværssaker (milepælene, ikke notatene) — ikke lønn, private opplysninger eller historikk. De bekrefter også alles kompetanse unntatt sin egen. |
+| `staff:manage` | HR: personer, arbeidsforhold, dokumenter unntatt helsedokumenter, dokumentkategoriene, kompetansekatalogen og alles kompetanse, strukturen og innstillingene. Sensitiv. |
 | `staff:personal-data` | Den som får vise fødselsnumre og kontonumre, og lese og arkivere helsedokumenter. Sensitiv. |
 
 Owner har dem alle allerede. Alle andre trenger en rolle som gir dem: under
@@ -1423,6 +1425,51 @@ ingenting og sender ingen e-post.
   `staff: bank-account change mail skipped: the person has no email`.
 - En sending som feiler, logges som en advarsel med personens id; selve endringen blir
   stående lagret.
+
+## Kompetansearbeideren
+
+Arbeideren `staff-competence` sender e-post før et sertifikat utløper. Ved hver
+`STAFF_WORKERS_POLL` (standard `1h`) — i worker-modus, og i api-modus med
+`WORKERS_IN_PROCESS=1` ([Installasjon](/nb/admin/installation/)) — med mindre
+`STAFF_COMPETENCE_ENABLED=0`, ser den på hver gjeldende kompetanserad med en sluttdato
+for en person som er i arbeid i dag:
+
+- når raden kommer innenfor påminnelsen før siste gyldige dag — **Påminnelse (dager)**
+  HR setter på kompetansen, som standard 30 dager for en gyldighet på inntil ett år, 60
+  inntil to år og 180 utover det — får personen og hver av lederne deres én e-post
+  («utløper snart»);
+- når siste gyldige dag er passert, får de én til («er utløpt»).
+
+Hver rad får hver e-post én gang, og raden stemples før e-postene går, så to
+replikaer aldri sender den to ganger. En fornyelse begynner på nytt med den nye raden,
+og en rettet sluttdato sendes på nytt når den forfaller. Fordi arbeideren ser etter ved
+hver kjøring og ikke på et fast klokkeslett, går e-posten ved første kjøring etter at
+raden forfaller — ofte like etter midnatt i virksomhetens tidssone. Dashbordet viser
+sertifikater som snart utløper og som er utløpt, uansett hva arbeideren har gjort
+([referansen](/en/reference/staff/#the-competence-worker)).
+
+1. Forutsetning: `MAIL_DRIVER=smtp` og `SMTP_*`-innstillingene
+   ([Installasjon](/nb/admin/installation/#e-post-og-observerbarhet)). E-postene går til
+   jobbadressen Ansatte har for hver person, ellers den private, på deres språk; en
+   leder får dem bare når brukerkoblingen deres viser til en aktiv bruker.
+2. Kontroller: hver runde logger `staff: the competence cycle ran` med hvor mange rader
+   den stemplet og hvor mange e-poster den sendte og ikke fikk sendt.
+3. For å stoppe den: `STAFF_COMPETENCE_ENABLED=0` og start på nytt. Da får ingen
+   e-post; punktene på dashbordet blir stående.
+
+Hva som kan gå galt:
+
+- **`staff: competence mails skipped: the mail driver is not smtp`.** Radene stemples
+  likevel: de e-postene sendes ikke senere når SMTP er satt opp.
+- **`staff: competence mail skipped: the recipient has no email`.** Personen eller
+  lederen har verken jobbadresse eller privat e-post i Ansatte; linjen nevner
+  person-id-en.
+- **`staff: a competence mail could not be sent`.** Logges som en advarsel med
+  mottakerens person-id og adressen skjult; den prøves ikke igjen — punktet på
+  dashbordet er signalet.
+- **`staff: competence mails not sent: the time for the cycle ran out`.** En rundes
+  e-poster har 30 sekunder til sammen; det som er igjen, logges med antall og sendes
+  ikke.
 
 ## Innstillingene
 

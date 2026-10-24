@@ -345,8 +345,9 @@ forlater en Vipps-betaling som står fast; og **Registrere betalinger** dekker h
 kredittstyringen — bankimport og avvikskøen, purrekjøringer og brev, vent, overlevering
 til inkasso, en kundes purreregel og å registrere en dags Vipps-betalinger som avstemt. I Ansatte er **Vise og slette
 personopplysninger** den eneste tillatelsen som viser et fødselsnummer eller en bankkonto
-— **Administrere ansatte** gjør det ikke — og **Avgjøre fravær** kan gis allerede, men
-tillater ingenting før fravær kommer til Ansatte. **Administrer
+— **Administrere ansatte** gjør det ikke, men holder kompetansekatalogen — og **Avgjøre
+fravær** avgjør alles fravær og bekrefter også folks kompetanse, aldri innehaverens
+egen. **Administrer
 identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse.
 
 ### Tildelinger

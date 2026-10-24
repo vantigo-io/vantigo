@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, turning on accounts for a person and the accounts worker with the groups it keeps, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, and the settings — the business time zone, the employee number sequence, the retention periods and the account settings.
+description: Enabling the Staff module, giving people access to it, linking people to their users, turning on accounts for a person and the accounts worker with the groups it keeps, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, the competence worker and its mails, and the settings — the business time zone, the employee number sequence, the retention periods and the account settings.
 sidebar:
   order: 44
 sources:
@@ -26,6 +26,8 @@ sources:
   - apps/server/internal/staff/adjustments.go
   - apps/server/internal/staff/deciders.go
   - apps/server/internal/staff/notifications.go
+  - apps/server/internal/staff/competence_worker.go
+  - apps/server/internal/staff/competence_mails.go
   - apps/server/internal/staff/cases.go
   - apps/server/internal/staff/sickness.go
   - apps/server/internal/staff/care_days.go
@@ -82,8 +84,8 @@ Every Staff operation requires `staff:access`, and four permissions sit above it
 | --- | --- |
 | `staff:access` | Everyone who should see their own record. |
 | `staff:view` | Colleagues who should see the directory and the company's structure. |
-| `staff:approve` | Whoever decides everyone's absence: they approve, reject and cancel requests, see every person's work details and absences (an HR-only type as leave), the approvals inbox and the calendar, and open sick-leave cases (their milestones, not the notes) — no pay, no private details, no history. |
-| `staff:manage` | HR: people, employments, documents other than health documents, the document categories, the structure and the settings. Sensitive. |
+| `staff:approve` | Whoever decides everyone's absence: they approve, reject and cancel requests, see every person's work details and absences (an HR-only type as leave), the approvals inbox and the calendar, and open sick-leave cases (their milestones, not the notes) — no pay, no private details, no history. They also verify anyone's competences but their own. |
+| `staff:manage` | HR: people, employments, documents other than health documents, the document categories, the competence catalogue and everyone's competences, the structure and the settings. Sensitive. |
 | `staff:personal-data` | Whoever may reveal national identity numbers and bank accounts, and read and file health documents. Sensitive. |
 
 The Owner holds them all already. Everyone else needs a role that grants them: under
@@ -1412,6 +1414,48 @@ saved. Sending the account already on file again changes nothing and mails nobod
   `staff: bank-account change mail skipped: the person has no email`.
 - A send that fails is logged as a warning naming the person's id; the change itself
   stays saved.
+
+## The competence worker
+
+The worker `staff-competence` mails ahead of a certificate's end. Every
+`STAFF_WORKERS_POLL` (default `1h`) — in worker mode, and in api mode with
+`WORKERS_IN_PROCESS=1` ([Installation](/en/admin/installation/)) — unless
+`STAFF_COMPETENCE_ENABLED=0`, it looks at every current competence row with an end
+date of a person in employment today:
+
+- when the row comes within its competence's reminder of its last valid day — the
+  **Reminder (days)** HR sets on the competence, by default 30 days for a validity of up
+  to a year, 60 up to two years and 180 beyond — it mails the person and each of their
+  managers once ("expires soon");
+- when the last valid day has passed, it mails them once more ("has expired").
+
+Each row is mailed once for each, and stamped before the mails go, so two replicas
+never mail it twice. A renewal starts afresh with the new row, and a corrected end date
+is mailed again when it comes due. Because the worker looks every poll rather than at
+a set hour, a mail goes at the first poll after a row comes due — often just after
+midnight in the business time zone. The dashboard shows expiring and expired
+certificates whatever the worker did ([the reference](/en/reference/staff/#the-competence-worker)).
+
+1. Precondition: `MAIL_DRIVER=smtp` and the `SMTP_*` settings
+   ([Installation](/en/admin/installation/#email-and-observability)). The mails go to
+   the work email Staff holds for each person, else their private one, in their
+   language; a manager receives them only when their user link names an active user.
+2. Verify: each cycle logs `staff: the competence cycle ran` with how many rows it
+   stamped and how many mails it sent and failed.
+3. To stop it: `STAFF_COMPETENCE_ENABLED=0` and restart. Nobody is then mailed; the
+   dashboard items stay.
+
+What can go wrong:
+
+- **`staff: competence mails skipped: the mail driver is not smtp`.** The rows are
+  stamped all the same: those mails are not sent later when SMTP is configured.
+- **`staff: competence mail skipped: the recipient has no email`.** The person or
+  manager has neither a work nor a private email in Staff; it names their person id.
+- **`staff: a competence mail could not be sent`.** Logged as a warning with the
+  recipient's person id and the address redacted; it is not retried — the dashboard
+  item is the signal.
+- **`staff: competence mails not sent: the time for the cycle ran out`.** A cycle's
+  mails have 30 seconds together; what is left is logged by count and not sent.
 
 ## The settings
 

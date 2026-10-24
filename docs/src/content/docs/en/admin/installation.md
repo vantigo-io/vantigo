@@ -502,7 +502,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   and the Staff accounts worker's `STAFF_ACCOUNTS_ENABLED` (default on), which prepares,
   enables and disables the users the account flag asks for on the poll it shares
   ([Staff](/en/admin/staff/#the-accounts-worker)). It reads the accounts mode from the
-  single sign-on settings in the database, as the API does.
+  single sign-on settings in the database, as the API does. The Staff competence
+  worker's `STAFF_COMPETENCE_ENABLED` (default on) mails a person and their managers
+  ahead of a certificate's end, and when it has passed, on the same poll
+  ([Staff](/en/admin/staff/#the-competence-worker)).
 - There is **no `ENTRA_*` variable**. The Microsoft Entra ID module's tenant and
   client, its client secrets (sealed under `APP_SECRET`) and its account rules are in
   the database, set by an Owner and `entra:manage` on the module's page; the module
@@ -658,6 +661,16 @@ accounts there only for people of the **Microsoft Entra ID** kind. A least-privi
 role needs the `entra` schema granted ([Database roles](#database-roles)). Rolling the
 migration back drops the schema with the sealed secrets and any pass not yet shown, and
 touches nothing in the tenant. See [Microsoft Entra ID](/en/admin/entra/).
+
+**The release with Staff competence.** It brings `00066_staff_competence.sql`: the
+competence catalogue — five categories and fifteen Norwegian certificates seeded — and
+people's competences, empty. No permission is new: `staff:approve` now also verifies
+competences and `staff:manage` keeps the catalogue. It also starts the competence
+worker, `staff-competence`, on by default; it mails nobody until someone holds a
+certificate with an end date, and `STAFF_COMPETENCE_ENABLED=0` keeps it off. Rolling
+the migration back drops the three tables with every person's competence rows; the
+evidence stays among the people's documents. See
+[Staff](/en/admin/staff/#the-competence-worker).
 
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).
