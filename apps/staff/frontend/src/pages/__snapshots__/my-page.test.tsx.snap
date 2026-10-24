@@ -8,6 +8,7 @@ exports[`My page — on a phone > is one column, and its form is a full-screen s
   "button[tab]: History",
   "button[tab]: Documents",
   "button[tab]: Absence",
+  "button[tab]: Competence",
   "button[tab]: Account",
   "button[tab]: My team",
   "h3: Work",

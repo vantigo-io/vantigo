@@ -10,6 +10,7 @@ import accountsWorkerGo from "../../../server/internal/staff/accounts_worker.go?
 import eventsGo from "../../../server/internal/staff/events.go?raw";
 import retentionGo from "../../../server/internal/staff/retention.go?raw";
 import { staffCatalog } from "./i18n";
+import { competenceBases, competenceKinds, competenceSources, LEVELS } from "./lib/competences";
 import { eventFieldLabelKey, eventFields, eventKinds } from "./lib/events";
 import { staffNavItems } from "./lib/navigation";
 import { myPageTabs, personTabs } from "./lib/search";
@@ -114,6 +115,45 @@ describe("the staff catalog", () => {
       for (const [language, catalog] of Object.entries(staffCatalog))
         expect((catalog as Record<string, string>)[`refusal.${code}`], `${language} refusal.${code}`).toBeDefined();
     }
+  });
+
+  it("words every refusal of competence the contract names, and the scale, the kinds, the bases and the sources", () => {
+    const codes = [
+      "competence_held",
+      "competence_unavailable",
+      "competence_in_use",
+      "verified_row",
+      "superseded",
+      "level_not_allowed",
+      "level_required",
+      "own_record",
+    ];
+    const keys = [
+      ...LEVELS.map((level) => `level_${level}`),
+      ...competenceKinds.map((kind) => `competenceKind_${kind}`),
+      ...competenceBases.map((basis) => `competenceBasis_${basis}`),
+      ...competenceSources.map((source) => `competenceSource_${source}`),
+    ];
+    for (const code of codes) expect(staffYaml, `the contract names ${code}`).toContain(code);
+    for (const [language, catalog] of Object.entries(staffCatalog)) {
+      const words = catalog as Record<string, string>;
+      for (const code of codes) expect(words[`refusal.${code}`], `${language} refusal.${code}`).toBeDefined();
+      for (const key of keys) expect(words[key], `${language} ${key}`).toBeDefined();
+    }
+    expect(LEVELS.map((level) => staffCatalog.en[`level_${level}` as keyof typeof staffCatalog.en])).toEqual([
+      "aware",
+      "basic",
+      "independent",
+      "experienced",
+      "expert",
+    ]);
+    expect(LEVELS.map((level) => staffCatalog.nb[`level_${level}` as keyof typeof staffCatalog.nb])).toEqual([
+      "kjenner til",
+      "grunnleggende",
+      "selvstendig",
+      "erfaren",
+      "ekspert",
+    ]);
   });
 
   it("words every reason the accounts worker records on a link, in both languages", () => {

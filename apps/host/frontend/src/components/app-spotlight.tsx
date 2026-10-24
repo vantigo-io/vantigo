@@ -7,6 +7,7 @@ import {
   IconBuilding,
   IconCalendarEvent,
   IconCalendarPlus,
+  IconCertificate,
   IconClock,
   IconListCheck,
   IconMail,
@@ -148,6 +149,18 @@ export const AppSpotlight = ({
             icon: IconCalendarPlus,
             path: MY_PAGE_ROUTE_PATH,
             search: { tab: "absence", create: "absence" },
+          },
+        ]
+      : []),
+    // Add competence is everyone's in the app, for themselves: My page's
+    // Competence tab opens the add form on arrival (`create=competence`).
+    ...(enabledModules?.includes("staff") && hasPermissions(permissions, ["staff:access"])
+      ? [
+          {
+            label: t("dashboard.addCompetence"),
+            icon: IconCertificate,
+            path: MY_PAGE_ROUTE_PATH,
+            search: { tab: "competence", create: "competence" },
           },
         ]
       : []),

@@ -17,6 +17,7 @@ import { ErasedBanner } from "./-erased-banner";
 import { LegalHoldAlert, LegalHoldButton } from "./-legal-hold";
 import { PersonAbsence } from "./-person-absence";
 import { PersonAccount } from "./-person-account";
+import { PersonCompetence } from "./-person-competence";
 import { PersonDocuments } from "./-person-documents";
 import { PersonEmployments } from "./-person-employments";
 import { PersonHistory } from "./-person-history";
@@ -24,8 +25,8 @@ import { PersonProfile } from "./-person-profile";
 import { PersonalDataDownload } from "./-personal-data-download";
 
 /**
- * The person page (design §7): Profile, Employments, Absence, History and
- * Documents, the tab in the URL. What it shows is what `GET /people/{id}`
+ * The person page (design §7): Profile, Employments, Absence, Competence,
+ * History and Documents, the tab in the URL. What it shows is what `GET /people/{id}`
  * and its sub-resources answer this reader (§5); what it offers follows the
  * person's capabilities. The Account tab (delivery C) is HR's
  * (`canManageAccount`), and the person's own and `staff:personal-data`'s,
@@ -90,7 +91,13 @@ export const PersonPage = () => {
   const shown: StaffPerson = erased
     ? {
         ...data,
-        capabilities: { ...data.capabilities, canEdit: false, canRevealIdentifiers: false, canHold: false },
+        capabilities: {
+          ...data.capabilities,
+          canEdit: false,
+          canRevealIdentifiers: false,
+          canHold: false,
+          canVerifyCompetence: false,
+        },
       }
     : data;
   const timeZone = meta.data.timeZone;
@@ -103,6 +110,8 @@ export const PersonPage = () => {
     { value: "profile" as const, label: t("tab_profile") },
     { value: "employments" as const, label: t("tab_employments") },
     ...(absenceReadable ? [{ value: "absence" as const, label: t("tab_absence") }] : []),
+    // Every reader who sees the person reads their competences (plan reading 9).
+    { value: "competence" as const, label: t("tab_competence") },
     ...(historyReadable ? [{ value: "history" as const, label: t("tab_history") }] : []),
     ...(readsDocuments(data) ? [{ value: "documents" as const, label: t("tab_documents") }] : []),
     ...(readsAccount ? [{ value: "account" as const, label: t("tab_account") }] : []),
@@ -164,6 +173,11 @@ export const PersonPage = () => {
             )}
           </Tabs.Panel>
         )}
+        <Tabs.Panel value="competence" pt="lg">
+          {current === "competence" && (
+            <PersonCompetence person={shown} self={data.capabilities.self} today={meta.data.today} />
+          )}
+        </Tabs.Panel>
         {historyReadable && (
           <Tabs.Panel value="history" pt="lg">
             <PersonHistory
