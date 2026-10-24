@@ -1872,10 +1872,13 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
    * the person, added verified by a manager, an Approver or HR; one current
    * row per competence (`competence_held`), the level required or refused
    * by the competence (`level_required`, `level_not_allowed`), a verified
-   * row not the person's to change or remove (`verified_row`), a renewed one
-   * nobody's (`superseded`), never verified by the person (`own_record`);
-   * renewal superseding, the chain removed by HR, and the evidence filed
-   * under the seeded `certificate` category. It does not model the events.
+   * row not the person's to change or remove (`verified_row`) — the person
+   * first, whatever else they hold — a renewed one nobody's (`superseded`),
+   * never verified by the person (`own_record`), a skill never given an
+   * expiry nor renewed (`skill_no_validity`); renewal superseding, its
+   * removal bringing the previous row back, the chain removed by HR, the
+   * evidence filed under the seeded `certificate` category and read back
+   * through the row by the detail's readers. It does not model the events.
    */
   const competenceRoutes = (
     method: string,
@@ -2052,6 +2055,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         return problem(400, "level_not_allowed", "This competence takes no level", "level");
       return undefined;
     };
+    const skillRefusal = (kind: string, validTo: unknown) =>
+      kind === "skill" && validTo !== undefined
+        ? problem(400, "skill_no_validity", "A skill has no validity", "validTo")
+        : undefined;
     const datesRefusal = (validFrom: string, validTo: unknown) =>
       typeof validTo === "string" && validTo < validFrom
         ? invalid({ validTo: ["validTo is before validFrom"] })
@@ -2098,7 +2105,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         const picked = state.competences.find((one) => one.id === input.competenceId);
         if (!picked || picked.hidden || picked.archivedAt)
           return problem(400, "competence_unavailable", "Choose a competence that is offered", "competenceId");
-        const refused = levelRefusal(picked.hasLevel, input.level);
+        const refused = levelRefusal(picked.hasLevel, input.level) ?? skillRefusal(picked.kind, input.validTo);
         if (refused) return refused;
         if (
           state.personCompetences.some(
@@ -2147,9 +2154,21 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       const reader = row ? judge(row.personId) : undefined;
       if (!row || !reader) return notFound();
       const action = one[2];
+      // The evidence's bytes, to the detail's readers alone — a colleague gets the unknown row's 404.
+      if (action === "evidence" && method === "GET") {
+        if ((colleagueOnly(reader.audience) && role !== "approve") || !row.evidence) return notFound();
+        return new Response(`bytes of ${row.evidence.fileName}`, {
+          status: 200,
+          headers: {
+            "Content-Type": row.evidence.contentType,
+            "Content-Disposition": `inline; filename="${row.evidence.fileName.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(row.evidence.fileName)}`,
+          },
+        });
+      }
       if (!reader.writer && !(action === "evidence" && holdsPersonalData(role))) return forbidden();
       if (reader.stored.erasedAt) return erasedRefusal();
-      const own = reader.audience.self && !reader.verifier && !hr;
+      // Self first: on their own record HR is the person.
+      const own = reader.audience.self;
       if (row.superseded && (action !== undefined || method !== "DELETE" || url.searchParams.get("chain") !== "true"))
         return problem(409, "superseded", "This row was renewed; only the current one changes.");
 
@@ -2165,6 +2184,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         return jsonResponse(200, shaped(row, reader.audience));
       }
       if (action === "renew" && method === "POST") {
+        if (row.competence.kind === "skill")
+          return problem(409, "skill_no_validity", "A skill has no validity; it is changed, not renewed.");
         const input = body as {
           issuedOn?: string;
           validFrom?: string;
@@ -2251,7 +2272,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           issuer?: string;
           reference?: string;
         };
-        const refused = levelRefusal(row.competence.hasLevel, input.level);
+        const refused =
+          levelRefusal(row.competence.hasLevel, input.level) ?? skillRefusal(row.competence.kind, input.validTo);
         if (refused) return refused;
         const validFrom = input.validFrom ?? row.validFrom;
         const dates = datesRefusal(validFrom, input.validTo);
@@ -2264,12 +2286,20 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (!action && method === "DELETE") {
         if (own && row.verified) return problem(409, "verified_row", "A verified row is not the person's to remove.");
         const chain = url.searchParams.get("chain") === "true";
-        if (chain && !hr) return forbidden();
+        if (chain && (!hr || own)) return forbidden();
+        const sameChain = (candidate: StaffPersonCompetence) =>
+          candidate.personId === row.personId && candidate.competence.id === row.competence.id;
         state.personCompetences = state.personCompetences.filter(
-          (candidate) =>
-            candidate !== row &&
-            !(chain && candidate.personId === row.personId && candidate.competence.id === row.competence.id),
+          (candidate) => candidate !== row && !(chain && sameChain(candidate)),
         );
+        // The renewal undone: the row it superseded, the newest, is the current one again.
+        const previous = state.personCompetences
+          .filter((candidate) => sameChain(candidate) && candidate.superseded)
+          .sort((a, b) => b.declaredAt.localeCompare(a.declaredAt))[0];
+        if (!row.superseded && previous) {
+          previous.superseded = false;
+          previous.revision += 1;
+        }
         return new Response(null, { status: 204 });
       }
     }
