@@ -113,6 +113,9 @@ const en = {
   "dashboard.staffSecretExpired_other":
     "{{count}} people's accounts wait: Microsoft Entra ID's client secret has expired",
   "dashboard.staffGroupSyncFailed": "The group {{name}} is not in sync with its directory; its page says why",
+  "dashboard.staffCompetenceDeclared": "{{name}} declared a competence awaiting verification",
+  "dashboard.staffCompetenceExpiring": "A certificate of {{name}} expires soon",
+  "dashboard.staffCompetenceExpired": "A certificate of {{name}} has expired",
   "dashboard.invoicesOutstanding": "Outstanding",
   "dashboard.invoicesOverdueHint": "{{count}} overdue ({{amount}})",
   "dashboard.invoicesIssuedDelta": "issued vs previous period",
@@ -219,6 +222,7 @@ const en = {
   "dashboard.newTravelClaim": "New travel claim",
   "dashboard.newPerson": "New person",
   "dashboard.requestAbsence": "Request absence",
+  "dashboard.addCompetence": "Add competence",
   "dashboard.newAppointment": "New appointment",
 };
 
@@ -335,6 +339,9 @@ const nb: { [Key in keyof typeof en]: string } = {
     "{{count}} personers kontoer venter: klienthemmeligheten til Microsoft Entra ID har utløpt",
   "dashboard.staffGroupSyncFailed":
     "Gruppen {{name}} er ikke synkronisert med katalogen; gruppesiden forteller hvorfor",
+  "dashboard.staffCompetenceDeclared": "{{name}} har registrert en kompetanse som venter på bekreftelse",
+  "dashboard.staffCompetenceExpiring": "Et sertifikat for {{name}} utløper snart",
+  "dashboard.staffCompetenceExpired": "Et sertifikat for {{name}} har utløpt",
   "dashboard.invoicesOutstanding": "Utestående",
   "dashboard.invoicesOverdueHint": "{{count}} forfalte ({{amount}})",
   "dashboard.invoicesIssuedDelta": "fakturert mot forrige periode",
@@ -441,6 +448,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.newTravelClaim": "Ny reiseregning",
   "dashboard.newPerson": "Ny person",
   "dashboard.requestAbsence": "Be om fravær",
+  "dashboard.addCompetence": "Legg til kompetanse",
   "dashboard.newAppointment": "Ny avtale",
 };
 

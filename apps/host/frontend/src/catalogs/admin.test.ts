@@ -136,11 +136,11 @@ describe("the admin permission catalog", () => {
     );
     expect(en["admin.permission.staffApprove"]).toBe("Decide absence");
     expect(en["admin.permission.staffApproveDescription"]).toBe(
-      "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, and mark their milestones.",
+      "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, mark their milestones, and verify competences.",
     );
     expect(en["admin.permission.staffManage"]).toBe("Manage staff");
     expect(en["admin.permission.staffManageDescription"]).toBe(
-      "Create and edit people (not their national identity number or bank account), employments and terms with pay, the company's structure, absence types and holiday schemes, the settings, documents other than health documents, the account flag, imports, exports and the payroll export.",
+      "Create and edit people (not their national identity number or bank account), employments and terms with pay, the company's structure, absence types and holiday schemes, the competence catalogue, the settings, documents other than health documents, the account flag, imports, exports and the payroll export.",
     );
     expect(en["admin.permission.staffPersonalData"]).toBe("Reveal and erase personal data");
     expect(en["admin.permission.staffPersonalDataDescription"]).toBe(

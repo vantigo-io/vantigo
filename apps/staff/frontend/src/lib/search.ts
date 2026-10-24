@@ -51,9 +51,18 @@ export const validatePeopleSearch = (search: Record<string, unknown>): PeopleSea
 
 /**
  * The tabs of the person page and My page (design §7), with delivery C's
- * Account — the tab the host's dashboard links an account item to.
+ * Account — the tab the host's dashboard links an account item to — and
+ * phase 2's Competence, which its competence items open.
  */
-export const personTabs = ["profile", "employments", "absence", "history", "documents", "account"] as const;
+export const personTabs = [
+  "profile",
+  "employments",
+  "absence",
+  "competence",
+  "history",
+  "documents",
+  "account",
+] as const;
 export type PersonTab = (typeof personTabs)[number];
 
 /** The person page's and My page's URL search: the tab, so a refresh or a pasted link opens the same view. */
@@ -74,16 +83,19 @@ export const validatePersonSearch = (search: Record<string, unknown>): PersonSea
 export const myPageTabs = [...personTabs, "team"] as const;
 export type MyPageTab = (typeof myPageTabs)[number];
 
-/** My page's URL search: the tab, and the request sheet to open on arrival (the host's spotlight action). */
+/**
+ * My page's URL search: the tab, and the form to open on arrival (the host's
+ * spotlight actions) — the request sheet, or Add competence.
+ */
 export interface MyPageSearch {
   tab?: MyPageTab;
-  create?: "absence";
+  create?: "absence" | "competence";
 }
 
 /** The host route's `validateSearch` for My page; an unknown tab is the profile. */
 export const validateMyPageSearch = (search: Record<string, unknown>): MyPageSearch => ({
   tab: myPageTabs.includes(search.tab as MyPageTab) && search.tab !== "profile" ? (search.tab as MyPageTab) : undefined,
-  create: search.create === "absence" ? "absence" : undefined,
+  create: search.create === "absence" || search.create === "competence" ? search.create : undefined,
 });
 
 /** The Absence page's tabs (design §7): the calendar, and the inbox of what the caller decides. */

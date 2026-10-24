@@ -284,6 +284,26 @@ describe("AppSpotlight navigation authorization", () => {
     expect(screen.queryByText("Request absence", { exact: true })).not.toBeInTheDocument();
   });
 
+  // Add competence is everyone's in the app: it lands on My page's Competence
+  // tab with the add form open (the package's `create=competence` seam).
+  it("opens the add form from Add competence for staff:access, and hides it without", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["staff:access"], false, false, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText("Add competence", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/staff/me", search: { tab: "competence", create: "competence" } }),
+    );
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["*"], true, true, undefined, ["customers"]);
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Add competence", { exact: true })).not.toBeInTheDocument();
+  });
+
   // New appointment is everyone's in the calendar: it lands on the calendar
   // with the appointment sheet open (the package's `new` seam).
   it("opens the appointment sheet from New appointment for calendar:access", async () => {

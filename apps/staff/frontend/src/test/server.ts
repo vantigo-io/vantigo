@@ -1,3 +1,9 @@
+import type {
+  StaffCompetence,
+  StaffCompetenceCategory,
+  StaffCompetenceChange,
+  StaffPersonCompetence,
+} from "../api/competences";
 import type { StaffImportResult } from "../api/data";
 import type { StaffDocument, StaffDocumentCategory } from "../api/documents";
 import type {
@@ -14,6 +20,7 @@ import type { StaffRetentionRun } from "../api/retention";
 import type { StaffSettings, StaffSettingsInput, StaffThreshold } from "../api/settings";
 import type { StaffBusinessUnit, StaffDepartment, StaffLegalEntity, StaffLocation } from "../api/structure";
 import type { components } from "../api-schema";
+import { daysUntil, proposedExpiry } from "../lib/competences";
 import { defaultFullTimeHours, fullTimeHoursMismatch } from "../lib/terms";
 import {
   allAbsenceTypes,
@@ -27,6 +34,11 @@ import {
   type PersonAbsence,
 } from "./absence-fixtures";
 import { jsonResponse } from "./api";
+import {
+  competenceCategories as defaultCompetenceCategories,
+  competences as defaultCompetences,
+  personCompetences as defaultPersonCompetences,
+} from "./competence-fixtures";
 import { type StubbedFetch, stubFetch } from "./fetch";
 import {
   capabilitiesOf,
@@ -107,6 +119,12 @@ export interface StaffServer {
   groupTraits?: Record<number, StaffGroupProvider[]>;
   /** What `GET /me/groups` answers the caller linked to a person. */
   myGroups?: StaffPersonGroup[];
+  /** The competence categories (staff phase 2); the five seeds and a company one by default. */
+  competenceCategories?: StaffCompetenceCategory[];
+  /** The competence catalogue as staff:manage reads it, hidden and archived included. */
+  competences?: StaffCompetence[];
+  /** Every person's competence rows with every detail field; the fake shapes them per reader. */
+  personCompetences?: StaffPersonCompetence[];
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
   /** Answers a read instead of the fake's own, as `write` does a write. */
@@ -171,6 +189,9 @@ export interface StaffState {
   passesRevealed: number;
   groups: StaffGroup[];
   groupTraits: Record<number, StaffGroupProvider[]>;
+  competenceCategories: StaffCompetenceCategory[];
+  competences: StaffCompetence[];
+  personCompetences: StaffPersonCompetence[];
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -504,6 +525,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     passesRevealed: 0,
     groups: server.groups ?? defaultGroups(),
     groupTraits: server.groupTraits ?? defaultGroupTraits(),
+    competenceCategories: server.competenceCategories ?? defaultCompetenceCategories(),
+    competences: server.competences ?? defaultCompetences(),
+    personCompetences: server.personCompetences ?? defaultPersonCompetences(),
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -722,6 +746,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         // Who decides the person's absence requests: their manager, an
         // Approver or HR, never they themselves (the stub knows no self-approver).
         canDecide: (audience.manager || audience.hr || role === "approve") && !audience.self,
+        // Who verifies the person's competences: their manager, an Approver
+        // or HR, never they themselves (staff competence design S4).
+        canVerifyCompetence: (audience.manager || audience.hr || role === "approve") && !audience.self,
         // Who the caller is to the person: themselves, or their manager today.
         self: audience.self,
         isManager: audience.manager && !audience.self,
@@ -1835,6 +1862,421 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
   };
 
   /**
+   * Competence (staff phase 2, delivery A), as the server judges it: the
+   * catalogue read by anyone with the app — the hidden and the archived
+   * rows to `staff:manage` alone, when asked — and written by
+   * `staff:manage`, a seed's fixed fields refused `seed_immutable`, a
+   * category in use never archived (`category_in_use`), a held competence's
+   * level fixed (`competence_in_use`); a person's rows read by everyone who
+   * sees the person, the detail fields left out for a colleague; declared by
+   * the person, added verified by a manager, an Approver or HR; one current
+   * row per competence (`competence_held`), the level required or refused
+   * by the competence (`level_required`, `level_not_allowed`), a verified
+   * row not the person's to change or remove (`verified_row`), a renewed one
+   * nobody's (`superseded`), never verified by the person (`own_record`);
+   * renewal superseding, the chain removed by HR, and the evidence filed
+   * under the seeded `certificate` category. It does not model the events.
+   */
+  const competenceRoutes = (
+    method: string,
+    path: string,
+    url: URL,
+    init: RequestInit | undefined,
+    body: Record<string, unknown> | undefined,
+  ): Response | undefined => {
+    const hr = manages(role);
+    const problem = (status: number, code: string, detail: string, field?: string) =>
+      staffProblem(status, {
+        code,
+        title: "Competence refused",
+        detail,
+        ...(field ? { errors: { [field]: [detail] } } : {}),
+      });
+    const invalid = (errors: Record<string, string[]>) => staffProblem(400, { title: "Invalid competence", errors });
+
+    const categories = /^\/api\/v1\/staff\/competence-categories(?:\/(\d+))?$/.exec(path);
+    if (categories) {
+      if (method === "GET" && !categories[1]) return jsonResponse(200, state.competenceCategories);
+      if (!hr) return forbidden();
+      if (method === "POST" && !categories[1]) {
+        const input = body as { key: string; names: { en: string; nb: string } };
+        if (!/^[a-z0-9-]{1,40}$/.test(input.key ?? ""))
+          return invalid({ key: ["A key is 1 to 40 characters of a–z, 0–9 and hyphens"] });
+        if (state.competenceCategories.some((row) => row.key === input.key))
+          return invalid({ key: ["Another category already has this key"] });
+        const created: StaffCompetenceCategory = {
+          id: nextId++,
+          key: input.key,
+          names: input.names,
+          seeded: false,
+          sort: state.competenceCategories.length + 1,
+          revision: 1,
+        };
+        state.competenceCategories.push(created);
+        return jsonResponse(201, created);
+      }
+      const category = state.competenceCategories.find((row) => row.id === Number(categories[1]));
+      if (!category) return notFound();
+      if (method === "PUT") {
+        const stale = staleRevision(init, category.revision, "competence category");
+        if (stale) return stale;
+        if (category.seeded) return problem(409, "seed_immutable", "The five seeded categories never change.");
+        const input = body as { names: { en: string; nb: string }; archived: boolean };
+        if (
+          input.archived &&
+          !category.archivedAt &&
+          state.competences.some((row) => row.categoryId === category.id && !row.archivedAt)
+        )
+          return problem(409, "category_in_use", "A competence not archived is filed under this category.");
+        category.names = input.names;
+        if (input.archived) category.archivedAt = category.archivedAt ?? "2026-10-11T08:00:00Z";
+        else delete category.archivedAt;
+        category.revision += 1;
+        return jsonResponse(200, category);
+      }
+    }
+
+    const catalogue = /^\/api\/v1\/staff\/competences(?:\/(\d+))?$/.exec(path);
+    if (catalogue) {
+      if (method === "GET" && !catalogue[1]) {
+        const hidden = hr && url.searchParams.get("includeHidden") === "true";
+        const archived = hr && url.searchParams.get("includeArchived") === "true";
+        const categoryId = url.searchParams.get("categoryId");
+        return jsonResponse(
+          200,
+          state.competences.filter(
+            (row) =>
+              (hidden || !row.hidden) &&
+              (archived || !row.archivedAt) &&
+              (categoryId === null || row.categoryId === Number(categoryId)),
+          ),
+        );
+      }
+      if (!hr) return forbidden();
+      const lead = (input: { validityMonths?: number; reminderLeadDays?: number }) =>
+        input.validityMonths === undefined
+          ? {}
+          : {
+              reminderLeadDays:
+                input.reminderLeadDays ?? (input.validityMonths <= 12 ? 30 : input.validityMonths <= 24 ? 60 : 180),
+            };
+      if (method === "POST" && !catalogue[1]) {
+        const input = body as unknown as Omit<StaffCompetence, "id" | "seeded" | "hidden" | "sort" | "revision">;
+        if (!/^[a-z0-9-]{1,60}$/.test(input.key ?? ""))
+          return invalid({ key: ["A key is 1 to 60 characters of a–z, 0–9 and hyphens"] });
+        if (state.competences.some((row) => row.key === input.key))
+          return invalid({ key: ["Another competence already has this key"] });
+        if (input.kind === "skill" && input.validityMonths !== undefined)
+          return invalid({ validityMonths: ["A skill has no validity"] });
+        const created: StaffCompetence = {
+          ...input,
+          ...lead(input),
+          id: nextId++,
+          seeded: false,
+          hidden: false,
+          sort: state.competences.length + 1,
+          revision: 1,
+        };
+        state.competences.push(created);
+        return jsonResponse(201, created);
+      }
+      const row = state.competences.find((one) => one.id === Number(catalogue[1]));
+      if (!row) return notFound();
+      if (method === "PUT") {
+        const stale = staleRevision(init, row.revision, "competence");
+        if (stale) return stale;
+        const input = body as unknown as StaffCompetenceChange;
+        if (
+          row.seeded &&
+          (input.categoryId !== row.categoryId ||
+            input.hasLevel !== row.hasLevel ||
+            input.validityMonths !== row.validityMonths ||
+            input.archived)
+        )
+          return problem(
+            409,
+            "seed_immutable",
+            "A seeded competence changes its names, reminderLeadDays, issuerHint and hidden alone.",
+          );
+        if (input.hasLevel !== row.hasLevel && state.personCompetences.some((one) => one.competence.id === row.id))
+          return problem(409, "competence_in_use", "A person's row names this competence; hasLevel is fixed.");
+        delete row.validityMonths;
+        delete row.reminderLeadDays;
+        delete row.issuerHint;
+        const { archived, ...fields } = input;
+        Object.assign(row, fields, lead(input));
+        if (archived) row.archivedAt = row.archivedAt ?? "2026-10-11T08:00:00Z";
+        else delete row.archivedAt;
+        row.revision += 1;
+        return jsonResponse(200, row);
+      }
+    }
+
+    // A person's competences: who the caller is to them decides everything.
+    const callerName = () => (server.me === undefined ? undefined : findPerson(server.me)?.displayName) ?? "Harriet HR";
+    const judge = (personId: number) => {
+      const stored = findPerson(personId);
+      const audience = stored ? audienceOf(stored) : undefined;
+      if (!stored || !audience) return undefined;
+      const verifier = (audience.manager || audience.hr || role === "approve") && !audience.self;
+      // The person writes as themselves; a manager, an Approver or HR as the verifier.
+      return { stored, audience, verifier, writer: audience.self || verifier };
+    };
+    const shaped = (row: StaffPersonCompetence, audience: Audience): StaffPersonCompetence => {
+      const leadDays = state.competences.find((one) => one.id === row.competence.id)?.reminderLeadDays;
+      const current = !row.superseded && row.validTo !== undefined;
+      const expired = current && (row.validTo as string) < TODAY;
+      const expiring =
+        current && !expired && leadDays !== undefined && daysUntil(TODAY, row.validTo as string) <= leadDays;
+      const whole = { ...row, expiring, expired };
+      if (!(colleagueOnly(audience) && role !== "approve")) return whole;
+      const detail = [
+        "issuedOn",
+        "issuer",
+        "reference",
+        "evidence",
+        "source",
+        "verifiedAt",
+        "verifiedBy",
+        "verifiedBasis",
+        "verifiedNote",
+      ];
+      return Object.fromEntries(
+        Object.entries(whole).filter(([field]) => !detail.includes(field)),
+      ) as StaffPersonCompetence;
+    };
+    const levelRefusal = (hasLevel: boolean, level: unknown) => {
+      if (hasLevel && level === undefined)
+        return problem(400, "level_required", "This competence has a level; give one from 0 to 4", "level");
+      if (!hasLevel && level !== undefined)
+        return problem(400, "level_not_allowed", "This competence takes no level", "level");
+      return undefined;
+    };
+    const datesRefusal = (validFrom: string, validTo: unknown) =>
+      typeof validTo === "string" && validTo < validFrom
+        ? invalid({ validTo: ["validTo is before validFrom"] })
+        : undefined;
+    const stamp = (row: StaffPersonCompetence, basis: string, note?: string) => {
+      Object.assign(row, {
+        verified: true,
+        verifiedAt: "2026-10-11T08:00:00Z",
+        verifiedBy: callerName(),
+        verifiedBasis: basis,
+      });
+      delete row.verifiedNote;
+      if (note) row.verifiedNote = note;
+    };
+
+    const list = /^\/api\/v1\/staff\/people\/(\d+)\/competences$/.exec(path);
+    if (list) {
+      const reader = judge(Number(list[1]));
+      if (!reader) return notFound();
+      if (method === "GET") {
+        const history = url.searchParams.get("history") === "true";
+        const rows = state.personCompetences.filter(
+          (row) => row.personId === reader.stored.id && (history || !row.superseded),
+        );
+        return jsonResponse(
+          200,
+          (history ? [...rows].sort((a, b) => b.declaredAt.localeCompare(a.declaredAt)) : rows).map((row) =>
+            shaped(row, reader.audience),
+          ),
+        );
+      }
+      if (method === "POST") {
+        if (!reader.writer) return forbidden();
+        if (reader.stored.erasedAt) return erasedRefusal();
+        const input = body as {
+          competenceId: number;
+          level?: number;
+          issuedOn?: string;
+          validFrom?: string;
+          validTo?: string;
+          issuer?: string;
+          reference?: string;
+        };
+        const picked = state.competences.find((one) => one.id === input.competenceId);
+        if (!picked || picked.hidden || picked.archivedAt)
+          return problem(400, "competence_unavailable", "Choose a competence that is offered", "competenceId");
+        const refused = levelRefusal(picked.hasLevel, input.level);
+        if (refused) return refused;
+        if (
+          state.personCompetences.some(
+            (row) => row.personId === reader.stored.id && row.competence.id === picked.id && !row.superseded,
+          )
+        )
+          return problem(409, "competence_held", "The person holds a current row of this competence.");
+        const validFrom = input.validFrom ?? input.issuedOn ?? TODAY;
+        const dates = datesRefusal(validFrom, input.validTo);
+        if (dates) return dates;
+        const created: StaffPersonCompetence = {
+          id: nextId++,
+          personId: reader.stored.id,
+          competence: {
+            id: picked.id,
+            key: picked.key,
+            names: picked.names,
+            kind: picked.kind,
+            hasLevel: picked.hasLevel,
+            categoryId: picked.categoryId,
+            archived: false,
+          },
+          ...(input.level !== undefined ? { level: input.level } : {}),
+          ...(input.issuedOn ? { issuedOn: input.issuedOn } : {}),
+          validFrom,
+          ...(input.validTo ? { validTo: input.validTo } : {}),
+          ...(input.issuer ? { issuer: input.issuer } : {}),
+          ...(input.reference ? { reference: input.reference } : {}),
+          source: reader.audience.self ? "self" : hr ? "hr" : "manager",
+          verified: false,
+          superseded: false,
+          expiring: false,
+          expired: false,
+          declaredAt: "2026-10-11T08:00:00Z",
+          revision: 1,
+        };
+        if (!reader.audience.self) stamp(created, "observed");
+        state.personCompetences.push(created);
+        return jsonResponse(201, shaped(created, reader.audience));
+      }
+    }
+
+    const one = /^\/api\/v1\/staff\/person-competences\/(\d+)(?:\/(verify|renew|evidence))?$/.exec(path);
+    if (one) {
+      const row = state.personCompetences.find((candidate) => candidate.id === Number(one[1]));
+      const reader = row ? judge(row.personId) : undefined;
+      if (!row || !reader) return notFound();
+      const action = one[2];
+      if (!reader.writer && !(action === "evidence" && holdsPersonalData(role))) return forbidden();
+      if (reader.stored.erasedAt) return erasedRefusal();
+      const own = reader.audience.self && !reader.verifier && !hr;
+      if (row.superseded && (action !== undefined || method !== "DELETE" || url.searchParams.get("chain") !== "true"))
+        return problem(409, "superseded", "This row was renewed; only the current one changes.");
+
+      if (action === "verify" && method === "POST") {
+        if (reader.audience.self)
+          return problem(403, "own_record", "Your own competence is verified by somebody else.");
+        const input = body as { level?: number; basis: string; note?: string };
+        const refused = levelRefusal(row.competence.hasLevel, input.level);
+        if (refused) return refused;
+        if (input.level !== undefined) row.level = input.level;
+        stamp(row, input.basis, input.note);
+        row.revision += 1;
+        return jsonResponse(200, shaped(row, reader.audience));
+      }
+      if (action === "renew" && method === "POST") {
+        const input = body as {
+          issuedOn?: string;
+          validFrom?: string;
+          validTo?: string;
+          issuer?: string;
+          reference?: string;
+        };
+        const validFrom = input.validFrom ?? input.issuedOn ?? TODAY;
+        const months = state.competences.find((candidate) => candidate.id === row.competence.id)?.validityMonths;
+        const validTo = input.validTo ?? proposedExpiry(input.issuedOn, months);
+        const dates = datesRefusal(validFrom, validTo);
+        if (dates) return dates;
+        const renewed: StaffPersonCompetence = {
+          id: nextId++,
+          personId: row.personId,
+          competence: row.competence,
+          ...(row.level !== undefined ? { level: row.level } : {}),
+          ...(input.issuedOn ? { issuedOn: input.issuedOn } : {}),
+          validFrom,
+          ...(validTo ? { validTo } : {}),
+          ...(input.issuer ? { issuer: input.issuer } : {}),
+          ...(input.reference ? { reference: input.reference } : {}),
+          source: reader.audience.self ? "self" : hr ? "hr" : "manager",
+          verified: false,
+          superseded: false,
+          expiring: false,
+          expired: false,
+          declaredAt: "2026-10-11T08:00:00Z",
+          revision: 1,
+        };
+        if (!reader.audience.self) stamp(renewed, "observed");
+        row.superseded = true;
+        row.revision += 1;
+        state.personCompetences.push(renewed);
+        return jsonResponse(201, shaped(renewed, reader.audience));
+      }
+      if (action === "evidence" && method === "POST") {
+        if (!reader.audience.self && !hr && !holdsPersonalData(role)) return forbidden();
+        const file = (init?.body as FormData | undefined)?.get("file");
+        if (!(file instanceof File) || file.size === 0) return invalid({ file: ["A document file is required"] });
+        if (file.size > 10 * 1024 * 1024)
+          return staffProblem(400, {
+            code: "document_too_large",
+            title: "Invalid document",
+            errors: { file: ["A document is at most 10 MiB"] },
+          });
+        const category = state.documentCategories.find((candidate) => candidate.key === "certificate");
+        const document: StaffDocument = {
+          id: nextId++,
+          personId: row.personId,
+          category: {
+            id: category?.id ?? 3,
+            key: "certificate",
+            names: category?.names ?? { en: "Certificate", nb: "Sertifikat" },
+            class: "D",
+            restricted: false,
+          },
+          fileName: file.name,
+          contentType: file.type,
+          sizeBytes: file.size,
+          uploadedAt: "2026-10-11T08:00:00Z",
+          revision: 1,
+        };
+        state.documents.unshift(document);
+        row.evidence = {
+          documentId: document.id,
+          fileName: document.fileName,
+          contentType: document.contentType,
+          sizeBytes: document.sizeBytes,
+        };
+        row.revision += 1;
+        return jsonResponse(200, shaped(row, reader.audience));
+      }
+      if (!action && method === "PUT") {
+        if (own && row.verified)
+          return problem(409, "verified_row", "A verified row is renewed, not changed, by the person.");
+        const stale = staleRevision(init, row.revision, "competence row");
+        if (stale) return stale;
+        const input = body as {
+          level?: number;
+          issuedOn?: string;
+          validFrom?: string;
+          validTo?: string;
+          issuer?: string;
+          reference?: string;
+        };
+        const refused = levelRefusal(row.competence.hasLevel, input.level);
+        if (refused) return refused;
+        const validFrom = input.validFrom ?? row.validFrom;
+        const dates = datesRefusal(validFrom, input.validTo);
+        if (dates) return dates;
+        for (const field of ["level", "issuedOn", "validTo", "issuer", "reference"] as const) delete row[field];
+        Object.assign(row, input, { validFrom });
+        row.revision += 1;
+        return jsonResponse(200, shaped(row, reader.audience));
+      }
+      if (!action && method === "DELETE") {
+        if (own && row.verified) return problem(409, "verified_row", "A verified row is not the person's to remove.");
+        const chain = url.searchParams.get("chain") === "true";
+        if (chain && !hr) return forbidden();
+        state.personCompetences = state.personCompetences.filter(
+          (candidate) =>
+            candidate !== row &&
+            !(chain && candidate.personId === row.personId && candidate.competence.id === row.competence.id),
+        );
+        return new Response(null, { status: 204 });
+      }
+    }
+    return undefined;
+  };
+
+  /**
    * The data operations, retention and the thresholds (design S15, S18–S20),
    * every one `staff:manage`'s: the import answering `importTally` with the
    * request's `dryRun` (a file refused whole — `import_sealed_columns` and
@@ -2723,6 +3165,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
 
     const documentsAnswer = documentRoutes(method, path, init, body);
     if (documentsAnswer) return Promise.resolve(documentsAnswer);
+
+    const competenceAnswer = competenceRoutes(method, path, url, init, body);
+    if (competenceAnswer) return Promise.resolve(competenceAnswer);
 
     return Promise.resolve(personRoutes(method, path, url, init, body) ?? notFound());
   }) as StaffStub;

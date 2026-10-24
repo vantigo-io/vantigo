@@ -73,6 +73,17 @@ export const eventKinds = [
   // naming the group and how the person came in or went (groupLine).
   "group_joined",
   "group_left",
+  // Competence (staff phase 2, delivery A): a person's row declared or added,
+  // changed, verified, renewed, removed and given its evidence, by its
+  // fields; and the catalogue's two installation events.
+  "competence_declared",
+  "competence_changed",
+  "competence_verified",
+  "competence_renewed",
+  "competence_removed",
+  "competence_evidence_added",
+  "competence_created",
+  "competence_updated",
 ] as const;
 
 /**
@@ -95,6 +106,17 @@ const fieldLabelOverrides: Record<string, string> = {
   roles: "roles",
   // The select's label, whose values are the kinds' short names.
   accountKind: "accountKindChoice",
+  // A competence row's fields (phase 2): the labels the tab shows, whose
+  // values — the source, the basis — are named under the same keys.
+  competenceKey: "competencePick",
+  level: "competenceLevel",
+  issuedOn: "competenceIssuedOn",
+  issuer: "competenceIssuer",
+  reference: "competenceReference",
+  source: "competenceSource",
+  basis: "competenceBasis",
+  documentId: "competenceEvidence",
+  chain: "removeCompetenceChain",
 };
 
 export const eventFieldLabelKey = (field: string): string => fieldLabelOverrides[field] ?? field;
@@ -180,6 +202,16 @@ export const eventFields = [
   "accountEmailKind",
   // The person's account kind (Entra delivery B), a change of the flag's.
   "accountKind",
+  // A competence row's (phase 2); validFrom and validTo are the terms' words.
+  "competenceKey",
+  "level",
+  "issuedOn",
+  "issuer",
+  "reference",
+  "source",
+  "basis",
+  "documentId",
+  "chain",
 ] as const;
 
 /** What one field of a payload says: its values before and after, or only that it changed. */
@@ -216,7 +248,8 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 export const formatEventValue = (field: string, value: unknown, f: EventFormatting): string => {
   if (value === undefined || value === null || value === "") return "—";
   if (typeof value === "boolean") return f.t(value ? "yes" : "no");
-  if (typeof value === "number") return f.number(value);
+  // A competence's level is named on the one scale (design S2), not counted.
+  if (typeof value === "number") return field === "level" ? f.t(`level_${value}`) : f.number(value);
   if (typeof value === "string") {
     if (ISO_DAY.test(value)) return f.date(value);
     const enumKey = `${eventFieldLabelKey(field)}_${value}`;

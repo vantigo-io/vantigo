@@ -835,6 +835,31 @@ describe("the dashboard's staff account attention items", () => {
     }
   });
 
+  // The competence items (Staff phase 2, delivery A): a declaration awaiting
+  // verification and a certificate expiring or expired, each about a person
+  // and dealt with on their Competence tab.
+  it("opens the person's Competence tab for a competence item, and words it with the name", () => {
+    const sentences = {
+      competenceDeclared: [
+        "Kari Nordmann declared a competence awaiting verification",
+        "Kari Nordmann har registrert en kompetanse som venter på bekreftelse",
+      ],
+      competenceExpiring: [
+        "A certificate of Kari Nordmann expires soon",
+        "Et sertifikat for Kari Nordmann utløper snart",
+      ],
+      competenceExpired: ["A certificate of Kari Nordmann has expired", "Et sertifikat for Kari Nordmann har utløpt"],
+    };
+    for (const [type, [en, nb]] of Object.entries(sentences)) {
+      expect(attentionHref({ module: "staff", type, entityId: "1042" }), type).toBe(
+        "/staff/people/1042?tab=competence",
+      );
+      const key = attentionTitleKey({ module: "staff", type }) as string;
+      expect(i18n.t(key, { ns: "host", lng: "en", name: "Kari Nordmann" }), type).toBe(en);
+      expect(i18n.t(key, { ns: "host", lng: "nb", name: "Kari Nordmann" }), type).toBe(nb);
+    }
+  });
+
   it("opens Staff's Settings for the installation's items", () => {
     for (const type of installationTypes) {
       expect(attentionHref({ module: "staff", type, entityId: "settings" }), type).toBe("/staff/settings");

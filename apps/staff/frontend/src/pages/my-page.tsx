@@ -29,6 +29,7 @@ import { MyAbsence } from "./-my-absence";
 import { MyTeam } from "./-my-team";
 import { NextOfKinFields } from "./-next-of-kin-fields";
 import { PersonAccount } from "./-person-account";
+import { PersonCompetence } from "./-person-competence";
 import { PersonEmployments } from "./-person-employments";
 import { PersonHistory } from "./-person-history";
 import { PersonProfile } from "./-person-profile";
@@ -39,7 +40,8 @@ import { PersonProfile } from "./-person-profile";
  * private group theirs to edit (`PUT /me`), their employments and terms with
  * the pay (it is their contract), their history, and their documents with
  * the copy of their data they may take (design S16), their absence with the
- * request sheet, their account read-only (delivery C), and — for a caller
+ * request sheet, their competences (phase 2) with Add competence, their
+ * account read-only (delivery C), and — for a caller
  * who manages anyone — My team. A caller HR has not
  * linked yet gets a plain explanation, not an error: `no_person` is the
  * expected state of somebody new. Laid out for a phone first.
@@ -87,6 +89,7 @@ export const MyPage = () => {
           { value: "history", label: t("tab_history") },
           { value: "documents", label: t("tab_documents") },
           { value: "absence", label: t("tab_absence") },
+          { value: "competence", label: t("tab_competence") },
           { value: "account", label: t("tab_account") },
           ...(managesAnyone ? [{ value: "team", label: t("tab_team") }] : []),
         ]}
@@ -126,6 +129,20 @@ export const MyPage = () => {
               types={meta.data.absenceTypes}
               requestOnArrival={create === "absence"}
               onArrivalDone={() => navigate({ search: { tab: "absence" }, replace: true })}
+            />
+          )}
+        </Tabs.Panel>
+        <Tabs.Panel value="competence" pt="lg">
+          {current === "competence" && (
+            <PersonCompetence
+              // The spotlight's Add competence may arrive while the tab is
+              // open: a new `create` mounts it afresh, the form seeded open.
+              key={create === "competence" ? "adding" : "plain"}
+              person={person}
+              self
+              today={meta.data.today}
+              addOnArrival={create === "competence"}
+              onArrivalDone={() => navigate({ search: { tab: "competence" }, replace: true })}
             />
           )}
         </Tabs.Panel>
