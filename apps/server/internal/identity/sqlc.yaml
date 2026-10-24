@@ -11,6 +11,7 @@ sql:
       - ../db/migrations/00052_identity_workspace_time_zone.sql
       - ../db/migrations/00058_identity_sso_settings.sql
       - ../db/migrations/00059_identity_expected_accounts.sql
+      - ../db/migrations/00064_identity_expected_links.sql
     queries: queries
     gen:
       go:

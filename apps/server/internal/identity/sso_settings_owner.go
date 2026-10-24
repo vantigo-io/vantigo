@@ -481,13 +481,19 @@ func currentIssuer(row store.IdentitySsoSetting) (string, bool) {
 }
 
 // refuseWhileLinked is the 409 oidc_links_exist while anyone is linked
-// under issuer, nil otherwise.
+// under issuer — or announced to it and not yet linked (Entra phase 2
+// design L4): the announcement fulfils nothing under another issuer, so it
+// is counted with the links it would have become — nil otherwise.
 func refuseWhileLinked(ctx context.Context, q *store.Queries, issuer string) error {
 	n, err := q.CountOidcLinksByIssuer(ctx, issuer)
 	if err != nil {
 		return fmt.Errorf("identity: count the OIDC links: %w", err)
 	}
-	if n > 0 {
+	expected, err := q.CountExpectedLinksByIssuer(ctx, issuer)
+	if err != nil {
+		return fmt.Errorf("identity: count the announced links: %w", err)
+	}
+	if n > 0 || expected > 0 {
 		return refuse(http.StatusConflict, "oidc_links_exist", oidcLinksExistMessage, nil)
 	}
 	return nil

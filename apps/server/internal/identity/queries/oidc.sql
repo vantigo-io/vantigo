@@ -17,3 +17,15 @@ WHERE l.issuer = @issuer AND l.subject = @subject;
 -- identity lose.
 INSERT INTO identity.oidc_links (issuer, subject, user_id, created_at)
 VALUES (@issuer, @subject, @user_id, @now::timestamptz);
+
+-- name: DeleteOidcLinksByUser :execrows
+-- DeleteOidcLinksByUser is an Owner's disconnect (Entra phase 2 design L2):
+-- every link of the user under the configured issuer goes; a link left by a
+-- previously configured provider stays, as it counts for nothing.
+DELETE FROM identity.oidc_links WHERE user_id = @user_id AND issuer = @issuer;
+
+-- name: HasOidcLinkUnderIssuer :one
+-- HasOidcLinkUnderIssuer reports whether the user is linked under the
+-- issuer: an announcement for a linked user is refused, and an arrival that
+-- finds its user linked meanwhile fulfils nothing.
+SELECT EXISTS (SELECT 1 FROM identity.oidc_links WHERE user_id = @user_id AND issuer = @issuer)::boolean AS linked;
