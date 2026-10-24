@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/identity
   - apps/server/internal/db/migrations/00058_identity_sso_settings.sql
   - apps/server/internal/db/migrations/00059_identity_expected_accounts.sql
+  - apps/server/internal/db/migrations/00064_identity_expected_links.sql
 ---
 This is the production runbook for Vantigo's workforce single sign-on and SCIM
 provisioning. Each installation has **at most one** workforce OpenID Connect provider
@@ -274,7 +275,17 @@ authority?" — and is sent again with `confirmIssuerChange` only when you choos
 move to another tenant or provider: nobody linked under the old authority is
 recognised under the new one. Their next SSO sign-in finds no link, and because an
 address never links a new identity to an existing account, it is refused
-(`oidc_email_conflict`) while their user exists.
+(`oidc_email_conflict`) while their user exists. The remedy needs no disconnect: a link
+under the old authority counts for nothing once the authority has changed, so after the
+change the Owner **announces** each person's account again under the new provider
+([the announced link](#the-announced-link)), and their next sign-in links them under the
+new authority. The old link stays as a dead row that nothing reads. Announced links
+count with the links: a change of authority or a turn-off is refused
+`oidc_links_exist` while any link or announcement stands, and, confirmed, leaves both
+behind. An announcement made under the old authority fulfils nothing and blocks nothing (the
+check that a directory account is taken, and the uniqueness of announcements, are per
+issuer); the Users screen lists the user as not connected, and announcing the account
+again replaces it.
 
 **Turn off** in the provider's part of the card — or **Off** as the provider and
 **Save**, which does the same — asks first, "Turn off SSO?", and on **Turn off**
@@ -354,6 +365,46 @@ To verify, after the provider has created a person's account and the provisionin
 cycle has run: the user appears on the **Users** page managed by Staff with the
 person's employee number and not pending, and the person's Account tab in Staff shows
 the Vantigo account active.
+
+### The announced link
+
+The announced account above is for a user who does not exist yet. For a user who
+**does** — an account with a password, in an installation that turned single sign-on
+on later — an Owner **announces a link**: this user holds that directory account.
+Their next arrival then links or maps to them, instead of being refused
+`oidc_email_conflict` (an address never links a federated identity to an existing
+account). The Owner announces it on the Users screen or through
+[the endpoint](/en/admin/authentication/#connect-an-existing-user-to-the-provider);
+the announcement is kept in `identity.expected_links`, one per user, with the issuer it
+was made under, the object id and the user principal name (either may be absent, not
+both) and who made it. A directory account can be announced for one user only.
+
+**The match.** On both arrivals the announced link is read before the announced
+account, and the Owner's act wins:
+
+- **A SCIM create** of a User is matched on `userName` against the announced principal
+  name, then on `externalId` against the announced object id (which matches only if
+  you map `objectId` to `externalId`; see above). When one matches and the user holds
+  no SCIM mapping, the create maps the resource to that user instead of inserting
+  one; it does not create a second. The user's address becomes the resource's **work
+  email** when it carries one (another user's address is `DuplicateEmail`, as for any
+  create; none leaves the address as it is); `email_confirmed` is left as it was, and a
+  user who was an Owner keeps their role. The resource's `active` becomes the
+  mapping's `upstream_active`, as for any mapped user.
+- **An OIDC sign-in** with no link yet is matched on the token's `oid` claim against
+  the announced object id under the issuer, else on the token's principal name
+  (Entra's `preferred_username`, which is the user principal name; for a provider
+  without one, the verified `email` claim) against the announced user principal name,
+  compared as emails are compared. An announcement by principal name alone is
+  therefore fulfilled by a sign-in too. A match
+  creates the link, signs the user in as a linked account (a disabled user is
+  `account_locked`; a user with TOTP is asked for it), and keeps the user's address,
+  name and roles. **The email claim is not consulted**: the Owner named the user.
+
+Either way the announcement is consumed and the arrival audited
+`account.linked-from-provider` with `matchedBy` (`oid`, `userName` or `externalId`),
+beside SCIM's own `scim.user.created`. A user who has a link or a mapping already is no
+match, and the arrival goes on as it would have without the announcement.
 
 ### Token rotation with overlap
 

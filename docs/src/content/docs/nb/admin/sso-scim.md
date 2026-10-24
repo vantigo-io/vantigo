@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/identity
   - apps/server/internal/db/migrations/00058_identity_sso_settings.sql
   - apps/server/internal/db/migrations/00059_identity_expected_accounts.sql
+  - apps/server/internal/db/migrations/00064_identity_expected_links.sql
 ---
 Dette er produksjonsveiledningen for single sign-on for arbeidsstyrken og
 SCIM-provisjonering i Vantigo. Hver installasjon har **høyst én** OpenID
@@ -276,7 +277,17 @@ sendes på nytt med `confirmIssuerChange` bare når du velger **Endre autoritet*
 annen leietaker eller leverandør: ingen som er koblet under den gamle autoriteten,
 gjenkjennes under den nye. Deres neste SSO-innlogging finner ingen kobling, og fordi en
 adresse aldri kobler en ny identitet til en eksisterende konto, avvises den
-(`oidc_email_conflict`) så lenge brukeren deres finnes.
+(`oidc_email_conflict`) så lenge brukeren deres finnes. Løsningen krever ingen
+frakobling: en kobling under den gamle autoriteten teller for ingenting etter at
+autoriteten er endret, så etter endringen **kunngjør** eieren hver persons konto på nytt
+under den nye leverandøren ([den kunngjorte koblingen](#den-kunngjorte-koblingen)), og
+personens neste innlogging kobler dem under den nye autoriteten. Den gamle koblingen blir
+stående som en død rad ingenting leser. Kunngjorte koblinger telles med koblingene: en
+endring av autoritet eller en avslåing avvises med `oidc_links_exist` mens noen kobling
+eller kunngjøring består, og lar, bekreftet, begge bli stående. En kunngjøring gjort under
+den gamle autoriteten oppfyller ingenting og blokkerer ingenting (kontrollen av om en
+katalogkonto er tatt, og at kunngjøringer er unike, gjelder per utsteder); brukerskjermen
+lister brukeren som ikke koblet til, og å kunngjøre kontoen på nytt erstatter den.
 
 **Slå av** i leverandørens del av kortet — eller **Av** som leverandør og **Lagre**,
 som gjør det samme — spør først, «Slå av SSO?», og med **Slå av** slår det OIDC av og
@@ -358,6 +369,47 @@ For å kontrollere, etter at leverandøren har opprettet en persons konto og
 klargjøringsrunden har kjørt: brukeren vises på siden **Brukere** styrt av Ansatte med
 personens ansattnummer og ikke ventende, og personens fane Konto i Ansatte viser
 Vantigo-kontoen aktiv.
+
+### Den kunngjorte koblingen
+
+Den kunngjorte kontoen ovenfor gjelder en bruker som ikke finnes ennå. For en bruker
+som **finnes** — en konto med passord, i en installasjon som slo på enkel pålogging
+senere — **kunngjør** en eier en kobling: denne brukeren har den katalogkontoen.
+Brukerens neste ankomst kobles eller tilordnes da til dem, i stedet for å avvises med
+`oidc_email_conflict` (en adresse kobler aldri en føderert identitet til en
+eksisterende konto). Eieren kunngjør den på brukerskjermen eller gjennom
+[endepunktet](/nb/admin/authentication/#koble-en-eksisterende-bruker-til-leverandøren);
+kunngjøringen lagres i `identity.expected_links`, én per bruker, med utstederen den ble
+gjort under, objekt-ID-en og brukerprinsipalnavnet (det ene kan mangle, ikke begge) og
+hvem som gjorde den. En katalogkonto kan bare kunngjøres for én bruker.
+
+**Treffet.** På begge ankomstveier leses den kunngjorte koblingen før den kunngjorte
+kontoen, og eierens handling går foran:
+
+- **En SCIM-opprettelse** av en User matches på `userName` mot det kunngjorte
+  prinsipalnavnet, så på `externalId` mot den kunngjorte objekt-ID-en (som bare treffer
+  hvis du tilordner `objectId` til `externalId`; se ovenfor). Treffer en, og brukeren
+  ikke har noen SCIM-tilordning, tilordner opprettelsen ressursen til den brukeren i
+  stedet for å sette inn en; den lager ikke en andre. Brukerens adresse blir ressursens
+  **jobb-e-post** når den har en (en annen brukers adresse er `DuplicateEmail`, som for
+  enhver opprettelse; ingen lar adressen stå); `email_confirmed` blir som den var, og en
+  bruker som var eier, beholder rollen. Ressursens `active` blir tilordningens
+  `upstream_active`, som for enhver tilordnet bruker.
+- **En OIDC-innlogging** uten kobling ennå matches på tokenets `oid`-krav mot den
+  kunngjorte objekt-ID-en under utstederen, ellers på tokenets prinsipalnavn (Entras
+  `preferred_username`, som er brukerprinsipalnavnet; for en leverandør uten et slikt, det
+  verifiserte `email`-kravet) mot det kunngjorte brukerprinsipalnavnet, sammenlignet slik
+  e-postadresser sammenlignes. En kunngjøring med bare prinsipalnavn oppfylles derfor
+  også av en innlogging. Et treff oppretter
+  koblingen, logger brukeren inn som en koblet konto (en deaktivert bruker får
+  `account_locked`; en bruker med TOTP bes om den) og beholder brukerens adresse, navn og
+  roller. **E-postkravet brukes ikke**: eieren pekte ut brukeren.
+
+Uansett vei forbrukes kunngjøringen, og ankomsten revisjonslogges
+`account.linked-from-provider` med `matchedBy` (`oid`, `userName` eller `externalId`),
+ved siden av SCIMs egen `scim.user.created`. En bruker som allerede har en kobling eller
+en tilordning, er ikke noe treff, og ankomsten går videre som den ville gjort uten
+kunngjøringen.
 
 ### Tokenrotasjon med overlapp
 

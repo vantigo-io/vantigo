@@ -1718,6 +1718,49 @@ left untouched. No migration.
 *Unblocks:* Staff as the authority for who exists in the company's Microsoft tenant;
 the joiner, mover and leaver without a second place to type.
 
+### Phase 2 — Connecting existing users
+
+Phase 1 made the tenant follow the register, but a company that turns single sign-on on
+later, with a workspace full of users who already sign in with a password, got nothing
+of that: their first provider sign-in is refused `oidc_email_conflict`, since an address
+never links an identity to an existing account. Phase 2, specified in
+[`docs/superpowers/specs/2026-10-24-entra-link-existing-users-design.md`](docs/superpowers/specs/2026-10-24-entra-link-existing-users-design.md),
+gives an Owner the authorised exception, in two deliveries.
+
+**A — The announced link (done)** on `feat/identity-expected-links`
+([the plan](docs/superpowers/plans/2026-10-24-identity-expected-links.md);
+[Authentication](docs/src/content/docs/en/admin/authentication.md#connect-an-existing-user-to-the-provider);
+[SSO and SCIM](docs/src/content/docs/en/admin/sso-scim.md#the-announced-link)): an
+Owner announces that an existing user holds a directory account —
+`POST /api/v1/identity/owner/users/{id}/sso-link` with the user principal name, the
+object id, or both, kept one per user in `identity.expected_links` — and the user's next
+OIDC sign-in (matched on `oid` under the issuer, else on the token's principal name) or SCIM push (`userName` against the
+principal name, then `externalId` against the object id) links or maps to that user,
+without consulting the email claim, ahead of an announced account, audited
+`account.linked-from-provider`; `DELETE …/sso-link` withdraws the announcement and
+removes the user's OIDC links under the configured issuer; after an authority change
+the Owner simply announces each account again under the new provider, and
+announcements count for `oidc_links_exist`. Refusals in order:
+`invalid_request`, 404, `sso_not_configured`, `account_pending`, `account_linked`,
+`sso_link_taken`. `OwnerUserResponse.ssoLink` says `linked`, `expected` or `none`, and
+the Users screen gains a **Single sign-on** column with *Connect…*, *Change the
+connection…*, *Cancel the connection* and *Disconnect from single sign-on…*. Migration
+`00064_identity_expected_links.sql`.
+
+*Unblocks:* turning single sign-on on in a workspace that already has users, one
+person at a time, with the Owner typing the principal name.
+
+**B — The directory picker**, next, on `feat/entra-directory-picker`: in the Entra
+module, a Graph search (`$search` with `ConsistencyLevel: eventual`) behind
+`GET /api/v1/entra/directory/users?q=` for an Owner, and
+`GET /api/v1/entra/directory/matches` proposing, for every unconnected user, the
+directory account whose mail or principal name equals their address or whose
+`employeeId` equals their employee number — exact matches only; the picker in the
+connect dialog in place of the typed name; and a review list with **Connect selected**,
+the bulk connect. No migration.
+
+*Unblocks:* connecting a whole workspace in one review, not user by user.
+
 ### Later
 
 A certificate credential, and workload identity federation, for Graph · a leaver's

@@ -504,6 +504,89 @@ sak. Personen Ansatte koblet brukeren til, **mister Min side** (Ansattes egen vi
 til HR kobler brukeren til dem igjen for hånd på personsiden i Ansatte; da blir det en
 vanlig selvbetjent kobling som Ansatte aldri handler på.
 
+### Koble en eksisterende bruker til leverandøren
+
+Når enkel pålogging slås på i en installasjon som allerede har brukere, kobler en
+adresse aldri en innlogging gjennom leverandøren til en eksisterende konto, så det første
+forsøket avvises med `oidc_email_conflict`. En eier **kunngjør** at brukeren har en
+katalogkonto; brukerens neste OIDC-innlogging (matchet på `oid` under den satte
+utstederen, ellers på tokenets prinsipalnavn, Entras `preferred_username`, eller det verifiserte `email`-kravet for en leverandør uten et slikt) eller SCIM-push (matchet på `userName` mot prinsipalnavnet, så `externalId`
+mot objekt-ID-en) kobler eller tilordner da til den brukeren. Hvordan ankomsten matches,
+står under [den kunngjorte koblingen](/nb/admin/sso-scim/#den-kunngjorte-koblingen).
+
+Forutsetninger: du er eier, innlogget med MFA når `OWNERS_REQUIRE_MFA` er på; OIDC-
+leverandøren for arbeidsstyrken er på; brukeren er ikke deg, er ikke ventende og har
+ingen kobling under den satte utstederen.
+
+1. Finn brukerens id i `GET /api/v1/identity/owner/users`. Brukerens `ssoLink` har
+   `state: none`.
+2. Kunngjør koblingen, med brukerprinsipalnavnet, objekt-ID-en eller begge:
+
+   ```bash
+   curl -X POST https://vantigo.example.com/api/v1/identity/owner/users/<id>/sso-link \
+     -H 'Content-Type: application/json' \
+     -d '{"userPrincipalName":"kari@example.com","objectId":"3f2c1a40-8b1e-4c52-9d3a-6e7f5a1b2c3d"}'
+   ```
+
+3. Kontroller: svaret er brukeren, med `ssoLink` med `state: expected`, nøklene og
+   `expectedAt`. Når personen har logget inn, eller leverandøren har sendt kontoen, står
+   det `state: linked`, og revisjonsloggen har `account.linked-from-provider`.
+
+Brukerprinsipalnavnet lagres normalisert som adresser (høyst 254 tegn); objekt-ID-en
+slik SCIMs `externalId` er, en GUID med små bokstaver og bindestreker (høyst 200 tegn,
+ingen kontrolltegn). En SCIM-ankomst erstatter brukerens adresse med ressursens jobb-e-post og lar
+`email_confirmed` være som den var; en bruker som var eier, beholder rollen. Den samme
+kunngjøringen på nytt endrer ingenting; enhver endring
+erstatter den helt. En katalogkonto kunngjøres for høyst én bruker. Brukerens
+e-postadresse spiller ingen rolle i treffet, og ankomstens e-postkrav brukes ikke.
+`ssoLink` mangler i svarene mens OIDC er av.
+
+Hva som kan gå galt, i den rekkefølgen endepunktet vurderer det:
+
+| Svar | Betydning |
+| --- | --- |
+| 400 `invalid_request` | Ingen av nøklene er oppgitt; prinsipalnavnet er ikke en adresse eller er lengre enn 254; objekt-ID-en er lengre enn 200 eller har et kontrolltegn; eller brukeren er deg (koble din egen konto ved å logge inn) |
+| 404 | Ingen slik bruker |
+| 409 `sso_not_configured` | OIDC er av, så det finnes ingen utsteder å kunngjøre under |
+| 409 `account_pending` | Brukeren er ventende: veien inn er invitasjonen, eller den kunngjorte kontoen som erstatter dem |
+| 409 `account_linked` | Brukeren har allerede en kobling under den satte utstederen; koble dem fra først |
+| 409 `sso_link_taken` | Objekt-ID-en under utstederen, eller prinsipalnavnet, er kunngjort for en annen bruker, eller pekt ut av Ansattes [kunngjorte konto](#den-kunngjorte-kontoen) |
+
+En deaktivert bruker kan kunngjøres: ankomsten logger dem inn etter reglene for en koblet
+konto, `account_locked` til de aktiveres. En eier eller en SystemAdmin kan kunngjøres, og
+den lokale MFA-regelen gjelder. En kunngjort kobling går foran en kunngjort konto for
+samme ankomst, og en ankomst oppfyller aldri begge.
+
+### Koble fra en bruker
+
+`DELETE /api/v1/identity/owner/users/<id>/sso-link` trekker tilbake brukerens kunngjorte
+kobling og fjerner hver OIDC-kobling brukeren har under den satte utstederen, i én
+transaksjon, og svarer med brukeren.
+
+```bash
+curl -X DELETE https://vantigo.example.com/api/v1/identity/owner/users/<id>/sso-link
+```
+
+Er det ingenting å fjerne, er svaret `200` med brukeren uendret. Brukeren beholder
+kontoen; en bruker uten påloggingsopplysning kommer inn igjen først etter en
+tilbakestilling av passord eller en ny kunngjøring. SCIM-tilordningen berøres **ikke**:
+den er leverandørens oppføring og tar slutt med leverandørens sletting. Avvisningene er
+`400` for din egen konto, `404` for ingen slik bruker og `409 sso_not_configured` mens
+OIDC er av.
+
+Revisjonsloggen, i `identity.authorization_audit_events`, har de fire hendelsene for den
+kunngjorte koblingen, ingen med en adresse:
+
+| Hendelse | Når | Detalj |
+| --- | --- | --- |
+| `account.link-expected` | En kunngjøring registreres eller endres | `keys`: navnene på nøklene som ble oppgitt (`objectId`, `userPrincipalName`) |
+| `account.link-unexpected` | `DELETE` trakk en kunngjøring tilbake | — |
+| `account.unlinked` | `DELETE` fjernet OIDC-koblinger | `links`: hvor mange |
+| `account.linked-from-provider` | En ankomst oppfylte kunngjøringen | `matchedBy`: `oid`, `userName` eller `externalId` |
+
+Migrasjonen `00064_identity_expected_links.sql` legger til `identity.expected_links`; dens
+Down fjerner tabellen, og en ikke oppfylt kunngjøring gjøres på nytt av en eier.
+
 ### Ansattrollene
 
 Den innebygde rollen `User` har ingen rettigheter, så brukerne Ansatte klargjør, får
