@@ -49,14 +49,17 @@ listed below. `srv/` is `apps/server/internal/`, `mig/` `srv/db/migrations/`, `R
 1. The migration is `mig/00065_energy_spot_prices.sql`; it is added to
    `srv/energy/sqlc.yaml`, `R/energy.md`'s `sources`, and gets
    `srv/db/schema_energy_spot_prices_test.go`.
-2. `spot_price_fetches.status` is one of `ok`, `pending` (tomorrow not yet published),
-   `missing` (a past day the feed has no file for), `failed`; `attempts` counts every
-   request; `next_attempt_at` is when the planner may ask again.
+2. `spot_price_fetches.status` is one of `ok`, `pending` (today or tomorrow not yet
+   published), `missing` (a past day the feed has no file for), `failed`; `attempts`
+   counts the requests since the record last changed status (the review's finding: a
+   day's hours of `pending` must not spend a later status's budget); `next_attempt_at`
+   is when the planner may ask again.
 3. The planner's window is the civil days in Europe/Oslo from `today − 7` to `today + 1`;
    the feed's own days are Europe/Oslo days whatever the area, and the stored intervals
    are instants.
-4. Retry: `pending` → in an hour; `missing` → in a day, up to seven attempts, then left
-   `missing` and asked again only by a file; `failed` → `min(6h, 15min × 2^(attempts−1))`.
+4. Retry: `pending` → in an hour; `missing` → in a day, up to seven `missing` answers
+   in a row, then left `missing` and asked again only by a file; `failed` →
+   `min(6h, 15min × 2^(attempts−1))`, `attempts` the `failed` ones in a row.
 5. A fetched day is written only when its intervals are contiguous, lie within the day
    (the first `time_start` at the day's local midnight, the last `time_end` at the next),
    and do not overlap a stored interval of another length; otherwise the fetch row is
@@ -83,7 +86,8 @@ listed below. `srv/` is `apps/server/internal/`, `mig/` `srv/db/migrations/`, `R
     the area's last row takes the length of the row before it — an hour only when the
     area has a single row (a quarter-hour file's last row must not run into the next
     day); a row whose successor starts later than that length after it, or earlier, is
-    the row's error.
+    the row's error. With an `end` column an interval is at most an hour long (the
+    review's finding: a year-long row would block every feed day of that year).
 11. The import answers `SpotPriceImportResult{dryRun, imported, rows, errorCount,
     errors[{row, column, message}] (first 200), areas[{area, inserted, replaced,
     unchanged, rangeStart, rangeEnd}]}`; 422 with the same body when any row has an error

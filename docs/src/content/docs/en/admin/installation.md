@@ -334,17 +334,24 @@ run it with `customers` among the `MODULES` when imports name customers. See
 [Importing metering points](/en/reference/energy/#importing-metering-points).
 
 The energy spot price worker `energy-spot-prices` fetches the day-ahead prices of each
-price area the metering points are in, from seven days back to tomorrow, from
+price area in use — that of a metering point with a non-cancelled supply period, or one
+already priced — from seven days back to tomorrow, from
 `ENERGY_SPOT_PRICE_FEED_URL` — by default the public feed at `www.hvakosterstrommen.no`.
 It is an outbound call the installation opts into, so it is **off** unless
 `ENERGY_SPOT_PRICE_FEED_ENABLED=1`; without it, prices are imported from a file on the
-Prices page, which is also how a day older than a week is filled in. It runs every
+Prices page, which is also how a day older than a week is filled in. The default feed
+serves the Norwegian areas NO1–NO5 only: a metering point in another area (a Swedish
+`SE3`, say) makes the worker ask for days the feed never has, so give it a feed that
+serves them or import that area's prices from a file. It runs every
 `ENERGY_SPOT_PRICE_FEED_POLL` (15 minutes by default, at least `1m`) under an advisory
 lock of its own, so one instance fetches, and makes at most twenty requests a cycle.
 The feed is fetched through the outbound address guard, as the calendar subscriptions
 are: `https` only, no proxy, no redirect, at most 1 MiB, and never a host that resolves
-to a private, loopback, link-local or cloud metadata address — so the API or worker
-container needs outbound https to the feed's host, without a proxy. See
+to a private, loopback, link-local, carrier-grade NAT, cloud metadata or otherwise
+non-routable address — so the API or worker container needs outbound https to the
+feed's host, without a proxy. A bad `ENERGY_SPOT_PRICE_FEED_URL` or an `ENERGY_SPOT_PRICE_FEED_POLL` under `1m`
+stops the start-up even with the worker off. A failed fetch is logged at warning with
+the area, the day and the feed's host, never the address's path or query. See
 [Spot prices](/en/reference/energy/#spot-prices).
 
 On shutdown the process drains for up to `SHUTDOWN_TIMEOUT` (30 seconds by default),

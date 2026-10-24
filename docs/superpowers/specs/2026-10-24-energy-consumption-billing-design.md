@@ -152,7 +152,7 @@ fetched_at)` does not record as `ok`, at most twenty requests a cycle. A 200 is 
 (`time_start`, `time_end`, `NOK_per_kWh`, `EUR_per_kWh`, `EXR`), checked to lie within
 the day and to be contiguous, and upserted in one transaction with the fetch row `ok`; a
 404 for tomorrow is `pending` and retried hourly (the day-ahead auction publishes about
-13:00 CET), a 404 for a past day `missing` and retried daily up to seven times; any other
+13:00 CET; a 404 for today the same), a 404 for a past day `missing` and retried daily up to seven times in a row; any other
 failure `failed` with exponential backoff capped at six hours. Older days come by file.
 The worker never backfills past seven days on its own, and refuses a body that is not
 JSON, not an array or whose intervals overlap what is stored (the exclusion), logging the

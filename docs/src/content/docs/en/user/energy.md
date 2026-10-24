@@ -360,19 +360,19 @@ figures, not a customer's, so the page shows no customer data.
 ### Read the coverage
 
 The first card, **Coverage**, has one row per price area: every area a metering point
-with a supply period is in, and every area that already has prices. **No price areas
+with a non-cancelled supply period is in, and every area that already has prices. **No price areas
 yet** means neither exists. Each row shows:
 
 - **First** and **Last**: the start of the first price held and the end of the last;
 - **Intervals**: how many prices are held;
 - **Days without prices, last 30**: the days among the last 30, today included, in
   which no price starts — **Complete** when there are none;
-- **Last fetch**: the latest day the background job asked the feed for, and how it
-  went. **Fetched**: the day's prices are stored. **Not yet published**: tomorrow's
-  prices are not out yet; the day-ahead auction publishes them around 13:00 Norwegian
-  time, and the job asks again every hour. **Missing**: the feed has no prices for that
-  past day; the job asks again daily for a week, after which you import the day from a
-  file. **Failed**: the reason is shown under it, and the job tries again later,
+- **Last fetch**: the day the background job asked the feed about most recently, and
+  how it went. **Fetched**: the day's prices are stored. **Not yet published**: today's or
+  tomorrow's prices are not out yet; the day-ahead auction publishes them around 13:00
+  Norwegian time, and the job asks again every hour. **Missing**: the feed has no prices
+  for that past day; the job asks again once a day, up to seven times in a row, after
+  which you import the day from a file. **Failed**: the reason is shown under it, and the job tries again later,
   waiting longer each time, at most six hours. **Not fetched** means the job has never
   tried the area, as when it is switched off.
 
@@ -381,11 +381,14 @@ be imported.
 
 ### Look at an area's prices
 
-The card **Spot prices** shows one area's prices as a chart in NOK/kWh, one point per
-interval at its start, in Norwegian time. Choose the **Price area**, then **Day** or
+The card **Spot prices** shows one area's prices as a stepped line in NOK/kWh, each
+price drawn from its interval's start in Norwegian time and held until the next (a
+day also marks each interval with a dot). It opens on today in the first area. Choose the **Price area**, then **Day** or
 **Month** and the day or the month. A day has 24 hourly prices (23 or 25 on the nights
-the clocks change), or 96 quarter-hours when prices come at that resolution. A period
-without prices says *No prices for this period.*
+the clocks change), or 96 quarter-hours when prices come at that resolution. On the
+autumn night the hour from 02:00 comes twice, and the chart labels each run with its
+UTC offset, *02:00 +02* and *02:00 +01*. A period without prices says *No prices for
+this period.*
 
 ### Import prices from a file
 
@@ -406,7 +409,8 @@ without prices says *No prices for this period.*
    - the **price in EUR** (*EUR per kWh*, *EUR/kWh*) and the **exchange rate** (*EXR*,
      *Exchange rate*, *Kurs*), optional and kept for the record.
 
-   A file may hold several price areas.
+   A file may hold several price areas. A file with two columns for the same thing —
+   *Price* and *øre/kWh*, say — is refused, as is one missing a needed column.
 2. The file is checked as soon as you choose it, and nothing is saved. The result,
    **Dry run** with the number of rows, shows for each area how many prices are
    **New**, how many are **Replaced** (a price already held, with other figures) and
@@ -414,18 +418,27 @@ without prices says *No prices for this period.*
    problems, the first 200 of them with their row (the first row under the header is
    row 1) and column, and nothing can be imported until the file is fixed.
 3. When the check found no problem, click **Import** to save the prices. *Prices
-   imported* confirms it, and the coverage and the chart are updated.
+   imported* confirms it, and the coverage and the chart are updated. When every price
+   in the file is already held, the check says *Every price in the file is already
+   stored.* and there is nothing to import. If the stored prices changed after the
+   check so that a row now has a problem, nothing is imported: *The file has errors
+   now. They are listed below.*, and the check runs again.
 
 How the file is read:
 
 - **Times** are written as for [Import readings](#import-readings): `2025-01-31 13:00`,
   `2025-01-31T13:00`, `31.01.2025 13:00` or `31/01/2025 13:00`. A time with an offset
   (`+01:00`, `Z`) is that moment; a time without one is Norwegian time, whatever the
-  area. On the spring night a time the clocks skip is refused; on the autumn night the
-  first row at a repeated time is the first occurrence and the next the second.
-- **With an end column**, each price lasts from its start to its end. The rows need not
-  follow on from each other, so one file may fill several separate days; but each
-  area's rows must be in time order and must not overlap.
+  area. On the spring night a time the clocks skip is refused; on the autumn night an
+  area's first row at a repeated time is the first occurrence and its next the second.
+- **The area** may be written in any case: `no1` is `NO1`.
+- **Prices** take a decimal comma or a decimal point (`0,8123` or `0.8123`, not both);
+  a space as thousands separator is ignored, and a price may be negative. They are kept
+  to six decimals. An exchange rate must be above zero; the price in EUR and the rate
+  may be left blank.
+- **With an end column**, each price lasts from its start to its end, at most an hour.
+  The rows need not follow on from each other, so one file may fill several separate
+  days; but each area's rows must be in time order and must not overlap.
 - **Without an end column**, each price lasts until the next row of the same area
   starts, and an area's last row as long as the row before it (an hour when the area
   has only one row). Keep each area's rows in time order with no gaps: a row is refused

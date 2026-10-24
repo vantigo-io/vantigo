@@ -342,18 +342,25 @@ navngir kunder. Se
 [Importing metering points](/en/reference/energy/#importing-metering-points).
 
 Energimodulens spotprisjobb `energy-spot-prices` henter døgnmarkedets priser for hvert
-prisområde målepunktene ligger i, fra sju dager tilbake til i morgen, fra
+prisområde i bruk — det til et målepunkt med en ikke-kansellert leveranseperiode, eller
+et som allerede har priser — fra sju dager tilbake til i morgen, fra
 `ENERGY_SPOT_PRICE_FEED_URL` — som standard den offentlige priskilden på
 `www.hvakosterstrommen.no`. Det er et utgående kall installasjonen selv velger, så den
 er **av** med mindre `ENERGY_SPOT_PRICE_FEED_ENABLED=1`; uten den importeres prisene fra
-en fil på Priser-siden, som også er måten å fylle inn en dag eldre enn en uke. Den
+en fil på Priser-siden, som også er måten å fylle inn en dag eldre enn en uke.
+Standardkilden har bare de norske områdene NO1–NO5: et målepunkt i et annet område (et
+svensk `SE3`, for eksempel) får jobben til å spørre etter dager kilden aldri har, så gi
+den en kilde som har dem, eller importer områdets priser fra en fil. Den
 kjører hvert `ENERGY_SPOT_PRICE_FEED_POLL` (15 minutter som standard, minst `1m`) under
 en egen rådgivende lås, så én instans henter, og gjør høyst tjue forespørsler per
 runde. Priskilden hentes gjennom vakten for utgående adresser, slik
 kalenderabonnementene gjør: bare `https`, ingen proxy, ingen videresending, høyst
-1 MiB, og aldri en vert som slås opp til en privat adresse, loopback, link-local eller
-en skyplattforms metadata-adresse — så API- eller worker-containeren trenger utgående
-https til priskildens vert, uten proxy. Se
+1 MiB, og aldri en vert som slås opp til en privat adresse, loopback, link-local,
+carrier-grade NAT, en skyplattforms metadata-adresse eller en annen ikke-rutbar
+adresse — så API- eller worker-containeren trenger utgående https til priskildens vert,
+uten proxy. En ugyldig `ENERGY_SPOT_PRICE_FEED_URL` eller en `ENERGY_SPOT_PRICE_FEED_POLL` under `1m` stopper
+oppstarten selv når jobben er slått av. En mislykket henting logges som advarsel med
+området, dagen og priskildens vert, aldri adressens sti eller spørring. Se
 [Spot prices](/en/reference/energy/#spot-prices).
 
 Ved avslutning tømmer prosessen pågående arbeid i opptil `SHUTDOWN_TIMEOUT` (30
