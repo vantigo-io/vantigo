@@ -51,17 +51,22 @@ var permissions = []contracts.Permission{
 // called RequireRateLimiting (energy inventory §6); the import's upload (energy
 // import design D6) takes the customers import's limit, since it stores what
 // it is sent; the consumption import (design D8) the same, since every call
-// reads a file.
+// reads a file; and the spot price import (consumption billing design D2) the
+// consumption import's figures under its own name.
 var limits = map[string]ratelimit.Policy{
 	"postEnergyImports":                             policyImportUpload,
 	"postEnergyMeteringPointsByIdConsumptionImport": policyConsumptionImport,
+	"postEnergySpotPricesImport":                    policySpotPriceImport,
 }
 
 // bodyLimits raises the router's request-body cap for the import's upload
-// (imports.go) and the consumption import (consumption_import.go); every other operation keeps the platform default (1 MiB).
+// (imports.go), the consumption import (consumption_import.go) and the spot
+// price import (spot_prices_import.go); every other operation keeps the
+// platform default (1 MiB).
 var bodyLimits = map[string]int64{
 	"postEnergyImports":                             maxImportUploadRequestBytes,
 	"postEnergyMeteringPointsByIdConsumptionImport": maxConsumptionImportRequestBytes,
+	"postEnergySpotPricesImport":                    maxSpotPriceImportRequestBytes,
 }
 
 // Module is energy as a platform module: its contract mounted under
@@ -87,14 +92,26 @@ func Module() module.Module {
 
 // workers is this module's background work: the import worker (energy import
 // design D6), which checks, runs and attaches the metering-point files people
-// upload. It is registered only when its switch is on, as the customers
-// import worker is: off means this process never hands it to the runner, and
-// an import queues and waits. TestModule_ContributesItsWorkers asserts the set.
+// upload, and the spot price worker (energy consumption billing design D2),
+// which fetches each day's day-ahead prices from the configured feed. Each is
+// registered only when its switch is on, as the customers import worker is:
+// off means this process never hands it to the runner — an import queues and
+// waits, and prices come by file only. The spot price feed's switch is off by
+// default, since it is an outbound call the installation opts in to; a Deps
+// with no Config runs neither. TestModule_ContributesItsWorkers asserts the
+// set.
 func workers(d module.Deps) []worker.Worker {
-	if d.Config == nil || !d.Config.EnergyImportEnabled {
+	if d.Config == nil {
 		return nil
 	}
-	return []worker.Worker{NewImportWorker(d)}
+	var ws []worker.Worker
+	if d.Config.EnergyImportEnabled {
+		ws = append(ws, NewImportWorker(d))
+	}
+	if d.Config.EnergySpotPriceFeedEnabled {
+		ws = append(ws, NewSpotPriceWorker(d))
+	}
+	return ws
 }
 
 // mount registers every contract operation on the platform router, which wraps

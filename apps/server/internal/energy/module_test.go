@@ -109,8 +109,10 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 
 // TestModule_ContributesItsWorkers asserts the module's workers exactly: the
 // import worker (energy import design D6) when ENERGY_IMPORT_ENABLED is on,
-// the default, and none when it is off — a worker added without its name
-// here fails rather than silently never running in production.
+// the default, and the spot price worker (energy consumption billing design
+// D2) when ENERGY_SPOT_PRICE_FEED_ENABLED is, off by default — a worker added
+// without its name here fails rather than silently never running in
+// production.
 func TestModule_ContributesItsWorkers(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -120,6 +122,10 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 	}{
 		{name: "the default installation runs the import worker", want: []string{"energy-import"}},
 		{name: "the import worker turned off leaves none", env: map[string]string{"ENERGY_IMPORT_ENABLED": "0"}, want: nil},
+		{name: "the spot price feed turned on adds its worker", env: map[string]string{"ENERGY_SPOT_PRICE_FEED_ENABLED": "1"},
+			want: []string{"energy-import", "energy-spot-prices"}},
+		{name: "the spot price feed alone", env: map[string]string{"ENERGY_IMPORT_ENABLED": "0", "ENERGY_SPOT_PRICE_FEED_ENABLED": "1"},
+			want: []string{"energy-spot-prices"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
