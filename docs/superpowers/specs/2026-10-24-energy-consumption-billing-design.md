@@ -163,12 +163,12 @@ day and leaving the fetch row `failed`.
 words as the consumption import finds its own (`srv/energy/consumption_import.go:205-230`):
 the area (`area`, `price_area`, `prisområde`, `elspotområde`), the start (`start`, `from`,
 `fra`, `time_start`), the end (`end`, `to`, `til`, `time_end`; optional, else the next
-row's start or one hour), the NOK price (`nok_per_kwh`, `price`, `pris`, `øre/kwh`
+row's start of the same area, the area's last row taking the previous interval's length), the NOK price (`nok_per_kwh`, `price`, `pris`, `øre/kwh`
 divided by 100 when the header says øre), optional `eur_per_kwh` and `exr`. Local times are
 read in Europe/Oslo with the DST nights spelled out as the consumption import does; a file
 may hold several areas. **All or nothing**: every row is checked, then written in one
 transaction (`{inserted, replaced, unchanged}` per area answered; `dryRun=true` checks
-only). A row overlapping a stored interval of another length is a 400 naming the row. The
+only). A row overlapping a stored interval of another length is that row's error, naming the stored interval (so a run answers 422 with it). The
 permission is **`energy:prices-manage`** (new, not sensitive), with `energy:prices-view`.
 
 **The reads.** `GET /api/v1/energy/spot-prices?area&from&to` (`energy:prices-view`; `to −

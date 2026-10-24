@@ -271,7 +271,8 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 
 The single-container default hosts every enabled module's background workers (outbox
 delivery, retention, attachment cleanup, the customers registry workers, the
-customers import worker `customers-import`, the energy import worker `energy-import`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
+customers import worker `customers-import`, the energy import worker `energy-import`, the energy spot price worker
+`energy-spot-prices` when `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
 `INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
 always, the invoices payments worker `invoices-payments` when
 `INVOICES_VIPPS_ENABLED` is on, the calendar cancellations worker
@@ -331,6 +332,20 @@ imports then wait. Finished and abandoned imports, with their rows, are removed 
 they wrote stay. In worker mode it reads customers through the customers module, so
 run it with `customers` among the `MODULES` when imports name customers. See
 [Importing metering points](/en/reference/energy/#importing-metering-points).
+
+The energy spot price worker `energy-spot-prices` fetches the day-ahead prices of each
+price area the metering points are in, from seven days back to tomorrow, from
+`ENERGY_SPOT_PRICE_FEED_URL` — by default the public feed at `www.hvakosterstrommen.no`.
+It is an outbound call the installation opts into, so it is **off** unless
+`ENERGY_SPOT_PRICE_FEED_ENABLED=1`; without it, prices are imported from a file on the
+Prices page, which is also how a day older than a week is filled in. It runs every
+`ENERGY_SPOT_PRICE_FEED_POLL` (15 minutes by default, at least `1m`) under an advisory
+lock of its own, so one instance fetches, and makes at most twenty requests a cycle.
+The feed is fetched through the outbound address guard, as the calendar subscriptions
+are: `https` only, no proxy, no redirect, at most 1 MiB, and never a host that resolves
+to a private, loopback, link-local or cloud metadata address — so the API or worker
+container needs outbound https to the feed's host, without a proxy. See
+[Spot prices](/en/reference/energy/#spot-prices).
 
 On shutdown the process drains for up to `SHUTDOWN_TIMEOUT` (30 seconds by default),
 enough for the longest single worker operation to finish and commit. `compose.yaml`

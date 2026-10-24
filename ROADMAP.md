@@ -494,7 +494,27 @@ Vantigo on day one, with the import behind its own sensitive permission
 An `internal/contracts` interface (e.g. `contracts.ConsumptionProvider`) returning
 billable consumption per customer/metering point/supply period, keeping the
 privacy boundary enforced in one place. Price dimension: spot prices per price
-area (NO1–NO5) and grid tariffs, decided together with the Invoices module.
+area (NO1–NO5) and grid tariffs, decided together with the Invoices module. The
+design for this phase and Invoices phase 5 is written
+([design](docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md)) and
+lands in five deliveries, the three of Energy first.
+
+**Delivery A: spot prices (done)** — the price dimension. The day-ahead price of each
+price area is stored as intervals of any length, hourly from the public feed today and
+quarter-hourly when the 15-minute market unit reaches it, never two overlapping in one
+area. The `energy-spot-prices` worker, off unless an installation opts into the
+outbound call (`ENERGY_SPOT_PRICE_FEED_ENABLED`), fetches each area in use from seven
+days back to tomorrow from a configured feed through the outbound address guard, under
+an advisory lease, and records each day's fetch; **Import prices** reads a file of one
+or several areas in a fixed layout, checks it as a dry run and writes every row or
+nothing. The **Prices** page shows each area's coverage, the days missing and the last
+fetch, and a day's or a month's prices as a chart, behind `energy:prices-view` and
+`energy:prices-manage`. See
+[`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#spot-prices).
+
+What remains: **B** tariffs and the metering point's billing facts, **C** settlements
+and the `contracts.ConsumptionProvider` contract (Energy phase 4 done), then Invoices
+phase 5's **D** invoices from consumption (the wizard) and **E** billing runs.
 
 *Unblocks:* the Invoices module generating invoice lines from consumption
 without touching `energy` tables.
@@ -1040,7 +1060,10 @@ production.
 
 Periodic invoices per supply point and period from Energy's figures, tariff and price
 lines, batch issuing, the utilities' periodic-invoicing rules — with Energy phase 4's
-consumption contract.
+consumption contract. The design is written
+([design](docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md)); Energy
+phase 4's deliveries A–C come first, then this phase's D (invoices from consumption)
+and E (billing runs).
 
 *Unblocks:* the energy business's core revenue.
 

@@ -77,9 +77,13 @@ listed below. `srv/` is `apps/server/internal/`, `mig/` `srv/db/migrations/`, `R
    `exchange_rate`, `kurs`. Each header matched at most once; area, start and the NOK
    price are required. No mapping part: the import is a fixed layout, unlike the
    consumption import whose files come from many systems.
-10. Without an `end` column the interval closes at the next row's start of the same area
-    in file order, the last row's at one hour after its start; a gap or an unordered row
-    is the row's error.
+10. With an `end` column, rows of one area may leave gaps between them (one file fills
+    several separate days); an unordered or overlapping row is the row's error. Without
+    one, the interval closes at the next row's start of the same area in file order, and
+    the area's last row takes the length of the row before it — an hour only when the
+    area has a single row (a quarter-hour file's last row must not run into the next
+    day); a row whose successor starts later than that length after it, or earlier, is
+    the row's error.
 11. The import answers `SpotPriceImportResult{dryRun, imported, rows, errorCount,
     errors[{row, column, message}] (first 200), areas[{area, inserted, replaced,
     unchanged, rangeStart, rangeEnd}]}`; 422 with the same body when any row has an error

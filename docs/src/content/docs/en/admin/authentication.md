@@ -945,6 +945,9 @@ release refuses them at startup. See
 | `ENERGY_IMPORT_ENABLED` | Run the energy import worker, which checks, imports and attaches uploaded metering-point files; `0` leaves imports waiting | `1` |
 | `ENERGY_IMPORT_POLL` | How often the energy import worker looks for a queued import | `5s` |
 | `ENERGY_IMPORT_RETENTION` | How long a finished or abandoned metering-point import and its rows are kept | `720h` |
+| `ENERGY_SPOT_PRICE_FEED_ENABLED` | On/off switch for the energy spot price worker, `energy-spot-prices`, which fetches the day-ahead prices of the price areas in use, from seven days back to tomorrow, through the outbound address guard — no private address, no proxy, no redirect, at most 1 MiB; off, prices are imported from a file ([Spot prices](/en/reference/energy/#spot-prices)) | `0` |
+| `ENERGY_SPOT_PRICE_FEED_URL` | The feed as a template: an absolute `https` URL carrying `{year}`, `{month}`, `{day}` and `{area}`, the month and the day zero-padded; anything else stops the start-up | `https://www.hvakosterstrommen.no/api/v1/prices/{year}/{month}-{day}_{area}.json` |
+| `ENERGY_SPOT_PRICE_FEED_POLL` | How often the spot price worker runs a cycle of at most twenty requests; a duration of at least `1m` | `15m` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
 
 The Peppol lookup treats NXDOMAIN and NOERROR-with-no-NAPTR-records as the same
