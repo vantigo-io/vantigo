@@ -867,7 +867,8 @@ SELECT
     EXISTS (SELECT 1 FROM staff.departments d WHERE d.manager_person_id = $1) AS manages_department,
     EXISTS (SELECT 1 FROM staff.employment_terms t WHERE t.manager_person_id = $1) AS named_as_manager,
     EXISTS (SELECT 1 FROM staff.absences a WHERE a.person_id = $1) AS has_absences,
-    EXISTS (SELECT 1 FROM staff.holiday_adjustments h WHERE h.person_id = $1) AS has_adjustments
+    EXISTS (SELECT 1 FROM staff.holiday_adjustments h WHERE h.person_id = $1) AS has_adjustments,
+    EXISTS (SELECT 1 FROM staff.person_competences pc WHERE pc.person_id = $1) AS has_competences
 `
 
 type PersonInUseRow struct {
@@ -878,6 +879,7 @@ type PersonInUseRow struct {
 	NamedAsManager    bool
 	HasAbsences       bool
 	HasAdjustments    bool
+	HasCompetences    bool
 }
 
 // PersonInUse is why a person may not be deleted as created in error (plan
@@ -885,7 +887,8 @@ type PersonInUseRow struct {
 // worker's preparing link names none, and is deleted with the person (plan
 // reading 9) — a document, a department naming
 // them as its manager, any terms naming them as the manager, an absence or
-// a holiday adjustment (delivery B). It is read under the
+// a holiday adjustment (delivery B), or a competence (competence delivery
+// A). It is read under the
 // person's lock and the manager-graph lock, which every write of those edges
 // takes, so nothing can start naming the person between this and the delete.
 func (q *Queries) PersonInUse(ctx context.Context, id int64) (PersonInUseRow, error) {
@@ -899,6 +902,7 @@ func (q *Queries) PersonInUse(ctx context.Context, id int64) (PersonInUseRow, er
 		&i.NamedAsManager,
 		&i.HasAbsences,
 		&i.HasAdjustments,
+		&i.HasCompetences,
 	)
 	return i, err
 }

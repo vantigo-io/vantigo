@@ -2229,6 +2229,85 @@ func (fakeBusinessCalendar) Day(_ context.Context, t time.Time) (time.Time, erro
 	return t.UTC().Truncate(24 * time.Hour), nil
 }
 
+// fakeWorkforce is a contracts.Workforce that answers nothing: these tests
+// only need a distinct value to assert on, and what Deps carried when it was
+// built.
+type fakeWorkforce struct {
+	name     string
+	calendar contracts.BusinessCalendar // whatever Deps carried when it was built
+}
+
+func (*fakeWorkforce) Competences(context.Context) ([]contracts.CompetenceEntry, error) {
+	return nil, nil
+}
+
+func (*fakeWorkforce) HeldCompetences(context.Context, time.Time, []int64) (map[int64][]contracts.HeldCompetence, error) {
+	return nil, nil
+}
+
+// The Workforce slot (contracts.Workforce, staff competence design S15) is a
+// sole-provider slot, resolved before any Mount runs and after the business
+// calendar, so its provider may read deps.Calendar while it is built; it
+// reaches every module's Deps, a module providing none included. Two
+// enabled providers are a compose error naming both, and a disabled one
+// leaves the slot nil.
+func TestCompose_ResolvesTheWorkforceSlot(t *testing.T) {
+	specs := map[string]string{"alpha": alphaContract, "beta": betaContract}
+	t.Run("resolved after the calendar", func(t *testing.T) {
+		var built *fakeWorkforce
+		var got Deps
+		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs),
+			Module{Name: "beta", Workforce: func(d Deps) contracts.Workforce {
+				built = &fakeWorkforce{name: "beta", calendar: d.Calendar}
+				return built
+			}, Mount: staticHandler("beta")},
+			Module{Name: "alpha", Calendar: func(Deps) contracts.BusinessCalendar { return fakeBusinessCalendar{} },
+				Mount: func(d Deps) (http.Handler, error) {
+					got = d
+					return staticHandler("alpha")(d)
+				}},
+		)
+		if err != nil {
+			t.Fatalf("compose: %v", err)
+		}
+		if built == nil || got.Workforce != built {
+			t.Errorf("Deps.Workforce = %v, want the provider's", got.Workforce)
+		}
+		if built != nil && built.calendar == nil {
+			t.Errorf("the workforce provider was built without Deps.Calendar; want the business calendar resolved before it")
+		}
+	})
+	t.Run("two providers", func(t *testing.T) {
+		provide := func(Deps) contracts.Workforce { return &fakeWorkforce{} }
+		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs),
+			Module{Name: "alpha", Workforce: provide, Mount: staticHandler("alpha")},
+			Module{Name: "beta", Workforce: provide, Mount: staticHandler("beta")},
+		)
+		if err == nil || !strings.Contains(err.Error(), "a workforce directory") ||
+			!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+			t.Errorf("compose = %v, want an error naming a workforce directory, alpha and beta", err)
+		}
+	})
+	t.Run("disabled provider", func(t *testing.T) {
+		var got Deps
+		_, err := compose(
+			Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+			fakeLoad(specs),
+			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+				got = d
+				return staticHandler("alpha")(d)
+			}},
+			Module{Name: "beta", Workforce: func(Deps) contracts.Workforce { return &fakeWorkforce{name: "beta"} }, Mount: staticHandler("beta")},
+		)
+		if err != nil {
+			t.Fatalf("compose: %v", err)
+		}
+		if got.Workforce != nil {
+			t.Errorf("Deps.Workforce = %v, want nil: beta (the provider) is disabled", got.Workforce)
+		}
+	})
+}
+
 // fakeIdentityProvisioner is a contracts.IdentityProvisioner that answers
 // nothing but its key: these tests only need distinct values to collect and
 // assert on, and what Deps carried when each was built. The embedded nil

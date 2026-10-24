@@ -14,7 +14,7 @@ import "github.com/vantigo-io/vantigo/server/internal/worker"
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
-// Deps.CalendarSources and Deps.IdentityProvisioners, which it resolves from
+// Deps.Workforce, Deps.CalendarSources and Deps.IdentityProvisioners, which it resolves from
 // the enabled modules the way
 // Compose does — the same base Deps Compose
 // resolves Directory from, before any Mount runs, with no per-module Doc or
@@ -49,6 +49,13 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 		deps.Directory = provider.Directory(deps)
 	}
 	deps, err = withUsersAndAccounts(deps, enabled)
+	if err != nil {
+		panic(err.Error())
+	}
+	// The workforce register, resolved as Compose resolves it, after the
+	// business calendar: a worker-mode Deps must not differ from a composed
+	// one in who holds what.
+	deps, err = withWorkforce(deps, enabled)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -103,6 +110,21 @@ func withUsersAndAccounts(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if accountsProvider != nil {
 		deps.Accounts = accountsProvider.Accounts(deps)
+	}
+	return deps, nil
+}
+
+// withWorkforce resolves contracts.Workforce from the enabled modules — at
+// most one may declare it — keeping a preset value when none does (the seam
+// modtest.WithWorkforce fills). Compose and Workers both call it, after the
+// business calendar.
+func withWorkforce(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "a workforce directory", func(m Module) bool { return m.Workforce != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.Workforce = provider.Workforce(deps)
 	}
 	return deps, nil
 }

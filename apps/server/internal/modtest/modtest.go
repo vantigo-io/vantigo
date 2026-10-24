@@ -140,6 +140,7 @@ type setup struct {
 	invoicedWork    []contracts.InvoicedWorkHolder
 	calendarSources []contracts.CalendarSource
 	provisioners    []contracts.IdentityProvisioner
+	workforce       contracts.Workforce
 	hours           contracts.BillableHours
 	billExpenses    contracts.BillableExpenses
 	milestones      contracts.BillableMilestones
@@ -332,6 +333,15 @@ func WithCalendarSources(sources ...contracts.CalendarSource) Option {
 // Key fail the composition.
 func WithIdentityProvisioners(providers ...contracts.IdentityProvisioner) Option {
 	return func(s *setup) { s.provisioners = append(s.provisioners, providers...) }
+}
+
+// WithWorkforce sets Deps.Workforce, for a module that reads who holds what
+// (contracts.Workforce, staff competence design S15) to be tested against a
+// fake register without composing Staff beside it. module.Compose and
+// module.Workers keep a value set here when no enabled module provides the
+// slot; a composed Staff's own replaces it.
+func WithWorkforce(w contracts.Workforce) Option {
+	return func(s *setup) { s.workforce = w }
 }
 
 // WithBillableHours sets Deps.BillableHours directly to p, for a module under
@@ -593,6 +603,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		InvoicedWork:             s.invoicedWork,
 		CalendarSources:          s.calendarSources,
 		IdentityProvisioners:     s.provisioners,
+		Workforce:                s.workforce,
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,
 		BillableMilestones:       s.milestones,

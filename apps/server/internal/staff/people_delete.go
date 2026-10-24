@@ -93,6 +93,7 @@ func (s *server) DeleteStaffPeopleById(ctx context.Context, req gen.DeleteStaffP
 			{use.NamedAsManager, "is the manager on someone's terms"},
 			{use.HasAbsences, "has absences"},
 			{use.HasAdjustments, "has holiday adjustments"},
+			{use.HasCompetences, "has competences"},
 		} {
 			if r.holds {
 				reasons = append(reasons, r.reason)

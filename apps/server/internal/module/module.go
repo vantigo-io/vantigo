@@ -136,6 +136,14 @@ type Deps struct {
 	BillableHours      contracts.BillableHours
 	BillableExpenses   contracts.BillableExpenses
 	BillableMilestones contracts.BillableMilestones
+	// Workforce is Staff's register of competences, the one sanctioned way a
+	// module reads who holds what (see contracts.Workforce, staff competence
+	// design S15). Compose sets it, on every module's Deps copy, from
+	// whichever enabled module declares Module.Workforce, after the business
+	// calendar — so its provider may read deps.Calendar while it is built;
+	// Workers sets it too, the same way. It is nil when no enabled module
+	// provides one (staff disabled).
+	Workforce contracts.Workforce
 	// InvoicedWork is every given module's contracts.InvoicedWorkHolder
 	// (rule 10), enabled or not, in the order the modules were given — the
 	// third many-provider contract slot, collected the customer slots' way
@@ -334,6 +342,12 @@ type Module struct {
 	BillableHours      func(Deps) contracts.BillableHours
 	BillableExpenses   func(Deps) contracts.BillableExpenses
 	BillableMilestones func(Deps) contracts.BillableMilestones
+	// Workforce builds this module's contracts.Workforce implementation, if
+	// it provides one (staff). At most one enabled module may set it; Compose
+	// and Workers call it before anything they build runs — after they have
+	// resolved the business calendar — and put the result on every module's
+	// Deps, including the provider's own, the same way they resolve Calendar.
+	Workforce func(Deps) contracts.Workforce
 	// InvoicedWork builds this module's contracts.InvoicedWorkHolder, if an
 	// invoice is built from its rows (rule 10). Like CustomerReferences, any
 	// number of modules may set it, and it is called for a module MODULES

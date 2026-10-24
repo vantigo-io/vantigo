@@ -298,6 +298,13 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.BillableMilestones = milestonesProvider.BillableMilestones(deps)
 	}
 
+	// The workforce register (contracts.Workforce, staff competence design
+	// S15) resolves after the business calendar, so its provider may read
+	// deps.Calendar while it is built; Workers resolves it the same way.
+	if deps, err = withWorkforce(deps, mods); err != nil {
+		return nil, err
+	}
+
 	// Customer reference holders are the first many-provider contract slot
 	// (contracts.CustomerReferenceHolder, customers merge design D1): every
 	// module given that declares one contributes it, in the order given, so

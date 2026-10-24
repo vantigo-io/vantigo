@@ -240,7 +240,8 @@ LIMIT @page_size OFFSET @page_offset;
 -- worker's preparing link names none, and is deleted with the person (plan
 -- reading 9) — a document, a department naming
 -- them as its manager, any terms naming them as the manager, an absence or
--- a holiday adjustment (delivery B). It is read under the
+-- a holiday adjustment (delivery B), or a competence (competence delivery
+-- A). It is read under the
 -- person's lock and the manager-graph lock, which every write of those edges
 -- takes, so nothing can start naming the person between this and the delete.
 SELECT
@@ -250,7 +251,8 @@ SELECT
     EXISTS (SELECT 1 FROM staff.departments d WHERE d.manager_person_id = @id) AS manages_department,
     EXISTS (SELECT 1 FROM staff.employment_terms t WHERE t.manager_person_id = @id) AS named_as_manager,
     EXISTS (SELECT 1 FROM staff.absences a WHERE a.person_id = @id) AS has_absences,
-    EXISTS (SELECT 1 FROM staff.holiday_adjustments h WHERE h.person_id = @id) AS has_adjustments;
+    EXISTS (SELECT 1 FROM staff.holiday_adjustments h WHERE h.person_id = @id) AS has_adjustments,
+    EXISTS (SELECT 1 FROM staff.person_competences pc WHERE pc.person_id = @id) AS has_competences;
 
 -- name: DeletePersonEvents :exec
 -- DeletePersonEvents is the one exception to the events table's append-only
