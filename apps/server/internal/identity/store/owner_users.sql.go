@@ -151,6 +151,8 @@ func (q *Queries) IsLastActiveOwner(ctx context.Context, arg IsLastActiveOwnerPa
 const listManagedUsers = `-- name: ListManagedUsers :many
 SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled,
        u.managed_by, u.employee_number, (u.pending_since IS NOT NULL)::boolean AS pending, u.disabled_by,
+       el.issuer AS expected_issuer, el.object_id AS expected_object_id,
+       el.user_principal_name AS expected_upn, el.created_at AS expected_at,
        EXISTS (
            SELECT 1
            FROM identity.user_roles ur
@@ -163,6 +165,7 @@ SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabl
            WHERE l.user_id = u.id AND l.issuer = $1::text
        ))::boolean AS sso_enabled
 FROM identity.users u
+LEFT JOIN identity.expected_links el ON el.user_id = u.id
 WHERE $2::uuid IS NULL OR u.id = $2::uuid
 ORDER BY is_owner DESC, u.display_name COLLATE "C", u.id
 `
@@ -173,19 +176,23 @@ type ListManagedUsersParams struct {
 }
 
 type ListManagedUsersRow struct {
-	ID             uuid.UUID
-	Email          string
-	DisplayName    string
-	IsDisabled     bool
-	LockoutEnd     *time.Time
-	TotpEnabled    bool
-	ManagedBy      *string
-	EmployeeNumber *string
-	Pending        bool
-	DisabledBy     *string
-	IsOwner        bool
-	HasAvatar      bool
-	SsoEnabled     bool
+	ID               uuid.UUID
+	Email            string
+	DisplayName      string
+	IsDisabled       bool
+	LockoutEnd       *time.Time
+	TotpEnabled      bool
+	ManagedBy        *string
+	EmployeeNumber   *string
+	Pending          bool
+	DisabledBy       *string
+	ExpectedIssuer   *string
+	ExpectedObjectID *string
+	ExpectedUpn      *string
+	ExpectedAt       *time.Time
+	IsOwner          bool
+	HasAvatar        bool
+	SsoEnabled       bool
 }
 
 // ListManagedUsers is owner user management's view of every user, or only
@@ -197,7 +204,10 @@ type ListManagedUsersRow struct {
 // OIDC is off (EA/AuthAccountEndpoints.cs:406-408, :425-426). A link left
 // behind by a previously configured provider does not count. managed_by,
 // employee_number, pending (pending_since set) and disabled_by are the
-// Staff-managed state (delivery C).
+// Staff-managed state (delivery C). The expected_* columns are the user's
+// announced link, if any (Entra phase 2 design L1): the handler reads its
+// state against oidc_issuer, since an announcement under another issuer
+// fulfils nothing.
 func (q *Queries) ListManagedUsers(ctx context.Context, arg ListManagedUsersParams) ([]ListManagedUsersRow, error) {
 	rows, err := q.db.Query(ctx, listManagedUsers, arg.OidcIssuer, arg.ID)
 	if err != nil {
@@ -218,6 +228,10 @@ func (q *Queries) ListManagedUsers(ctx context.Context, arg ListManagedUsersPara
 			&i.EmployeeNumber,
 			&i.Pending,
 			&i.DisabledBy,
+			&i.ExpectedIssuer,
+			&i.ExpectedObjectID,
+			&i.ExpectedUpn,
+			&i.ExpectedAt,
 			&i.IsOwner,
 			&i.HasAvatar,
 			&i.SsoEnabled,

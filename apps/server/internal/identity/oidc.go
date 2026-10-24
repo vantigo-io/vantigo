@@ -554,6 +554,10 @@ func (rp *oidcRelyingParty) lifetimeProblem(idToken *oidc.IDToken) string {
 //     disabled or locked out, local_mfa_required when it has TOTP (an OIDC
 //     sign-in never counts as MFA and never skips the local second
 //     factor), otherwise it is signed in;
+//     3b. no link, but an Owner announced that an existing user holds this
+//     identity's oid under this issuer (Entra phase 2 design L3): the user
+//     is linked, the announcement consumed, and they are signed in as 3
+//     signs a linked account in — the email claim not consulted;
 //  4. no link, but the email belongs to an account: account_locked when
 //     that account is unavailable, else oidc_email_conflict. An email never
 //     links an identity to an existing account: that is the takeover guard
@@ -607,6 +611,41 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 		return s.oidcSignInLinked(ctx, r, linked, consumed)
 	case !errors.Is(err, pgx.ErrNoRows):
 		return nil, fmt.Errorf("identity: OIDC link: %w", err)
+	}
+
+	// An announced link naming this identity's object id (Entra phase 2
+	// design L3) is an Owner's word that an existing user holds it:
+	// fulfilled before the email is consulted, since the Owner named the
+	// user, and signed in as a linked account. A race lost to a concurrent
+	// completion of the same identity, or to other owner-locked writers on
+	// every attempt, fulfils nothing here: the committed link decides, as
+	// after a lost provisioning race — and without one the sign-in is
+	// unavailable rather than provisioned anew beside the announced user.
+	var fulfilled bool
+	err = db.RetrySerializable(ctx, serializableAttempts, func() error {
+		var err error
+		fulfilled, err = s.fulfilExpectedOIDCLink(ctx, r, account)
+		return err
+	})
+	switch {
+	case db.IsSerializationConflict(err) || db.IsUniqueViolation(err, ""):
+		linked, err := s.q.GetOidcLinkedUser(ctx, store.GetOidcLinkedUserParams{Issuer: account.issuer, Subject: account.subject})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fail(oidcSignInUnavailable, "the announced link conflicted with another account change")
+		}
+		if err != nil {
+			return nil, fmt.Errorf("identity: OIDC link: %w", err)
+		}
+		return s.oidcSignInLinked(ctx, r, linked, consumed)
+	case err != nil:
+		return nil, fmt.Errorf("identity: OIDC announced link: %w", err)
+	}
+	if fulfilled {
+		linked, err := s.q.GetOidcLinkedUser(ctx, store.GetOidcLinkedUserParams{Issuer: account.issuer, Subject: account.subject})
+		if err != nil {
+			return nil, fmt.Errorf("identity: OIDC link: %w", err)
+		}
+		return s.oidcSignInLinked(ctx, r, linked, consumed)
 	}
 
 	// The pending user an announcement for this identity names to replace

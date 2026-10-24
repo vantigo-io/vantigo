@@ -90,6 +90,15 @@ type IdentityExpectedAccount struct {
 	CreatedBySystem   *string
 }
 
+type IdentityExpectedLink struct {
+	UserID            uuid.UUID
+	Issuer            string
+	ObjectID          *string
+	UserPrincipalName *string
+	CreatedAt         time.Time
+	CreatedByUserID   uuid.UUID
+}
+
 type IdentityInvitation struct {
 	ID              uuid.UUID
 	Email           string

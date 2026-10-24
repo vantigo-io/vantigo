@@ -522,9 +522,11 @@ func (s *server) scimUserChange(ctx context.Context, id string, ifMatch *string,
 // transaction the externalId is looked up again: a create that raced
 // another for it replaces the User the other made (:156-162), unless it is
 // an Owner; a new User is confirmed, not disabled, and has no role, group
-// or password (:137-155) — unless an account Staff announced matches it
-// (adoptExpectedScimUser, Entra design D4), which the transaction, taking
-// the owner lock after the SCIM lock, reads and consumes. Either way it is
+// or password (:137-155) — unless an Owner announced that an existing user
+// holds the account (fulfilExpectedScimLink, Entra phase 2 design L3), which
+// maps the resource to that user, or an account Staff announced matches it
+// (adoptExpectedScimUser, Entra design D4); the transaction, taking the
+// owner lock after the SCIM lock, reads and consumes either. Either way it is
 // audited scim.user.created, and the answer is 201 with the User, its
 // Location and its ETag.
 func (s *server) PostIdentityScimV2Users(ctx context.Context, _ gen.PostIdentityScimV2UsersRequestObject) (gen.PostIdentityScimV2UsersResponseObject, error) {
@@ -542,6 +544,12 @@ func (s *server) PostIdentityScimV2Users(ctx context.Context, _ gen.PostIdentity
 	if err := validateScimUser(ctx, s.q, input, uuid.Nil); err != nil {
 		return scimOr[gen.PostIdentityScimV2UsersResponseObject](err)
 	}
+	// Read before the transaction, which then holds its connection
+	// without waiting for another.
+	issuer, err := s.scimIssuer(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var saved scimUserRow
 	err = s.scimTx(ctx, func(q *store.Queries, now time.Time) error {
 		if err := lockOwners(ctx, q); err != nil {
@@ -550,9 +558,14 @@ func (s *server) PostIdentityScimV2Users(ctx context.Context, _ gen.PostIdentity
 		existing, err := q.LockScimUserByExternalID(ctx, *input.externalID)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
-			var adopted bool
-			if saved, adopted, err = adoptExpectedScimUser(ctx, q, r, input, now); err == nil && !adopted {
-				saved, err = createScimUser(ctx, q, input, now, nil)
+			// An announced link — an Owner's word that an existing user
+			// holds the account (Entra phase 2 design L3) — outranks an
+			// announced account, which names a user yet to arrive.
+			var fulfilled, adopted bool
+			if saved, fulfilled, err = fulfilExpectedScimLink(ctx, q, r, input, issuer, now); err == nil && !fulfilled {
+				if saved, adopted, err = adoptExpectedScimUser(ctx, q, r, input, now); err == nil && !adopted {
+					saved, err = createScimUser(ctx, q, input, now, nil)
+				}
 			}
 		case err == nil:
 			saved, err = replaceRacedScimUser(ctx, q, scimUserRow(existing), input, now)

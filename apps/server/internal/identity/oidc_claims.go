@@ -247,6 +247,10 @@ type externalAccount struct {
 	// (normalizeExternalID), what an announced account is matched on
 	// (Entra design D4); "" when the token carries none.
 	objectID string
+	// principalName is the directory's sign-in name (readPrincipalName),
+	// what an announced link is matched on after the object id (Entra
+	// phase 2 design L3); "" when the token carries none.
+	principalName string
 }
 
 // maxSubjectLength is the longest subject .NET linked
@@ -269,14 +273,31 @@ func readExternalAccount(c oidcClaims, configuredIssuer string) (externalAccount
 	if strings.TrimSpace(c.ObjectID) != "" {
 		objectID = *normalizeExternalID(&c.ObjectID)
 	}
-	return externalAccount{
+	a := externalAccount{
 		issuer:        issuer,
 		subject:       c.Subject,
 		email:         readEmail(c.Email),
 		emailVerified: bool(c.EmailVerified),
 		displayName:   readDisplayName(c),
 		objectID:      objectID,
-	}, true
+	}
+	a.principalName = readPrincipalName(c, a)
+	return a, true
+}
+
+// readPrincipalName is the directory's sign-in name the token carries, for
+// the announced link's match (Entra phase 2 design L3): Entra's
+// preferred_username, the user principal name, when it is an address; else
+// the verified email claim, a provider without a principal name (Google)
+// having its address verified under its hosted domain instead; else "".
+func readPrincipalName(c oidcClaims, a externalAccount) string {
+	if upn := readEmail(c.PreferredUsername); upn != "" {
+		return upn
+	}
+	if a.emailVerified {
+		return a.email
+	}
+	return ""
 }
 
 // readEmail is .NET's ReadEmail (EA/WorkforceOidcEndpoints.cs:280-290): the

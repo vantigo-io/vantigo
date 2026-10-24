@@ -66,6 +66,27 @@ func (e InvitationResponseRevokedReason) Valid() bool {
 	}
 }
 
+// Defines values for OwnerSsoLinkState.
+const (
+	Expected OwnerSsoLinkState = "expected"
+	Linked   OwnerSsoLinkState = "linked"
+	None     OwnerSsoLinkState = "none"
+)
+
+// Valid indicates whether the value is a known member of the OwnerSsoLinkState enum.
+func (e OwnerSsoLinkState) Valid() bool {
+	switch e {
+	case Expected:
+		return true
+	case Linked:
+		return true
+	case None:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OwnerUserResponseDisabledBy.
 const (
 	OwnerUserResponseDisabledByOwner OwnerUserResponseDisabledBy = "owner"
@@ -480,6 +501,31 @@ type OidcProvidersResponse struct {
 	Oidc *OidcProviderResponse `json:"oidc"`
 }
 
+// OwnerSsoLink How a user stands to the configured workforce OIDC provider: linked (a link exists under its issuer, so the user signs in through it), expected (an Owner announced the directory account the user holds, and the link is made at the user's next sign-in through the provider or the provider's SCIM push), or none. The announced keys are sent while expected.
+type OwnerSsoLink struct {
+	// ExpectedAt When the announcement was made; sent while expected.
+	ExpectedAt *time.Time `json:"expectedAt,omitempty"`
+
+	// ObjectId The announced object id, in lower-case dashed form; sent while expected and announced.
+	ObjectId *string           `json:"objectId,omitempty"`
+	State    OwnerSsoLinkState `json:"state"`
+
+	// UserPrincipalName The announced user principal name, lower-cased; sent while expected and announced.
+	UserPrincipalName *string `json:"userPrincipalName,omitempty"`
+}
+
+// OwnerSsoLinkState defines model for OwnerSsoLink.State.
+type OwnerSsoLinkState string
+
+// OwnerSsoLinkRequest The directory account an existing user holds, by at least one of its two keys. The user principal name is what Entra's SCIM sends as userName; the object id is what the token carries as oid, and what SCIM sends as externalId when the tenant maps it so.
+type OwnerSsoLinkRequest struct {
+	// ObjectId The directory's object id of the account, at most 200 characters; a GUID is normalised to lower-case dashed form.
+	ObjectId *string `json:"objectId,omitempty"`
+
+	// UserPrincipalName The account's user principal name, an address of at most 254 characters; compared as emails are.
+	UserPrincipalName *string `json:"userPrincipalName,omitempty"`
+}
+
 // OwnerUserCreateRequest defines model for OwnerUserCreateRequest.
 type OwnerUserCreateRequest struct {
 	DisplayName       *string `json:"displayName"`
@@ -524,10 +570,15 @@ type OwnerUserResponse struct {
 	ManagedBy *OwnerUserResponseManagedBy `json:"managedBy,omitempty"`
 
 	// Pending A user Staff created who has not yet chosen a credential through their invitation. A pending user is listed disabled and not active. Always sent; optional only because the recorded .NET exchanges predate it.
-	Pending          *bool  `json:"pending,omitempty"`
-	Role             string `json:"role"`
-	SsoEnabled       bool   `json:"ssoEnabled"`
-	TwoFactorEnabled bool   `json:"twoFactorEnabled"`
+	Pending *bool  `json:"pending,omitempty"`
+	Role    string `json:"role"`
+
+	// SsoEnabled Whether the user is linked to the configured workforce OIDC provider — ssoLink.state linked.
+	SsoEnabled bool `json:"ssoEnabled"`
+
+	// SsoLink The user's connection to the configured workforce OIDC provider (Entra phase 2 design L2). Absent while OIDC is off.
+	SsoLink          *OwnerSsoLink `json:"ssoLink,omitempty"`
+	TwoFactorEnabled bool          `json:"twoFactorEnabled"`
 }
 
 // OwnerUserResponseDisabledBy Who disabled the user, owner or staff; absent while the user is enabled. An Owner's disable wins over Staff's, and Staff never re-enables a user an Owner disabled.
@@ -995,7 +1046,7 @@ type SsoOidcSettingsRequest struct {
 	// ClientSecret The client secret, sealed at rest and never answered. Present, it replaces the secret and clears the token file. Absent with the same provider and clientId as the settings hold, it keeps the secret already set; a change of provider or clientId needs clientSecret or workloadTokenFile in the same request, since the old application's credential is never carried to a new one. A secret and workloadTokenFile are mutually exclusive, and one of the two is required.
 	ClientSecret *string `json:"clientSecret,omitempty"`
 
-	// ConfirmIssuerChange True to change the authority while people are linked to the provider under the current one. The links are keyed on the issuer, so a linked person has no link under the new one, so their next sign-in through it finds their address already an account's and is refused oidc_email_conflict, and they sign in with a local credential, if they have one, until a later release relinks them; without this flag such a change is refused 409 oidc_links_exist.
+	// ConfirmIssuerChange True to change the authority while people are linked to the provider under the current one. The links are keyed on the issuer, so a linked person has no link under the new one, so their next sign-in through it finds their address already an account's and is refused oidc_email_conflict, and they sign in with a local credential, if they have one, until an Owner announces their account again under the new provider (POST /owner/users/{id}/sso-link) and their next sign-in links them under it — the old link stays as a row nothing reads; announced links not yet fulfilled are counted with the links. Without this flag such a change is refused 409 oidc_links_exist.
 	ConfirmIssuerChange *bool `json:"confirmIssuerChange,omitempty"`
 
 	// DisplayName The label of the sign-in page's provider button, at most 100 characters; Workforce SSO when absent or empty.
@@ -1304,6 +1355,9 @@ type PostIdentityOwnerUsersByIdManageJSONBody = OwnerUserManageRequest
 // PostIdentityOwnerUsersByIdPasswordJSONBody defines parameters for PostIdentityOwnerUsersByIdPassword.
 type PostIdentityOwnerUsersByIdPasswordJSONBody = OwnerUserPasswordRequest
 
+// PostIdentityOwnerUsersByIdSsoLinkJSONBody defines parameters for PostIdentityOwnerUsersByIdSsoLink.
+type PostIdentityOwnerUsersByIdSsoLinkJSONBody = OwnerSsoLinkRequest
+
 // PutIdentityOwnerWorkspaceJSONBody defines parameters for PutIdentityOwnerWorkspace.
 type PutIdentityOwnerWorkspaceJSONBody = WorkspaceSettingsRequest
 
@@ -1514,6 +1568,9 @@ type PostIdentityOwnerUsersByIdManageJSONRequestBody = PostIdentityOwnerUsersByI
 
 // PostIdentityOwnerUsersByIdPasswordJSONRequestBody defines body for PostIdentityOwnerUsersByIdPassword for application/json ContentType.
 type PostIdentityOwnerUsersByIdPasswordJSONRequestBody = PostIdentityOwnerUsersByIdPasswordJSONBody
+
+// PostIdentityOwnerUsersByIdSsoLinkJSONRequestBody defines body for PostIdentityOwnerUsersByIdSsoLink for application/json ContentType.
+type PostIdentityOwnerUsersByIdSsoLinkJSONRequestBody = PostIdentityOwnerUsersByIdSsoLinkJSONBody
 
 // PutIdentityOwnerWorkspaceJSONRequestBody defines body for PutIdentityOwnerWorkspace for application/json ContentType.
 type PutIdentityOwnerWorkspaceJSONRequestBody = PutIdentityOwnerWorkspaceJSONBody
@@ -2121,6 +2178,12 @@ type ServerInterface interface {
 
 	// (POST /api/v1/identity/owner/users/{id}/password-reset)
 	PostIdentityOwnerUsersByIdPasswordReset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+
+	// (DELETE /api/v1/identity/owner/users/{id}/sso-link)
+	DeleteIdentityOwnerUsersByIdSsoLink(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+
+	// (POST /api/v1/identity/owner/users/{id}/sso-link)
+	PostIdentityOwnerUsersByIdSsoLink(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 
 	// (POST /api/v1/identity/owner/users/{id}/unmanage)
 	PostIdentityOwnerUsersByIdUnmanage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -3945,6 +4008,58 @@ func (siw *ServerInterfaceWrapper) PostIdentityOwnerUsersByIdPasswordReset(w htt
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteIdentityOwnerUsersByIdSsoLink operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIdentityOwnerUsersByIdSsoLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIdentityOwnerUsersByIdSsoLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityOwnerUsersByIdSsoLink operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityOwnerUsersByIdSsoLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityOwnerUsersByIdSsoLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostIdentityOwnerUsersByIdUnmanage operation middleware
 func (siw *ServerInterfaceWrapper) PostIdentityOwnerUsersByIdUnmanage(w http.ResponseWriter, r *http.Request) {
 
@@ -4882,6 +4997,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/manage", wrapper.PostIdentityOwnerUsersByIdManage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/password", wrapper.PostIdentityOwnerUsersByIdPassword)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/password-reset", wrapper.PostIdentityOwnerUsersByIdPasswordReset)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/sso-link", wrapper.DeleteIdentityOwnerUsersByIdSsoLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/sso-link", wrapper.PostIdentityOwnerUsersByIdSsoLink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/users/{id}/unmanage", wrapper.PostIdentityOwnerUsersByIdUnmanage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/workspace", wrapper.GetIdentityOwnerWorkspace)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/owner/workspace", wrapper.PutIdentityOwnerWorkspace)
@@ -11718,6 +11835,227 @@ func (response PostIdentityOwnerUsersByIdPasswordReset429JSONResponse) VisitPost
 	return err
 }
 
+type DeleteIdentityOwnerUsersByIdSsoLinkRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteIdentityOwnerUsersByIdSsoLinkResponseObject interface {
+	VisitDeleteIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error
+}
+
+type DeleteIdentityOwnerUsersByIdSsoLink200JSONResponse OwnerUserResponse
+
+func (response DeleteIdentityOwnerUsersByIdSsoLink200JSONResponse) VisitDeleteIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityOwnerUsersByIdSsoLink400JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityOwnerUsersByIdSsoLink400JSONResponse) VisitDeleteIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityOwnerUsersByIdSsoLink401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityOwnerUsersByIdSsoLink401JSONResponse) VisitDeleteIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityOwnerUsersByIdSsoLink403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityOwnerUsersByIdSsoLink403JSONResponse) VisitDeleteIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityOwnerUsersByIdSsoLink404Response struct {
+}
+
+func (response DeleteIdentityOwnerUsersByIdSsoLink404Response) VisitDeleteIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteIdentityOwnerUsersByIdSsoLink409JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityOwnerUsersByIdSsoLink409JSONResponse) VisitDeleteIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityOwnerUsersByIdSsoLink429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type DeleteIdentityOwnerUsersByIdSsoLink429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers DeleteIdentityOwnerUsersByIdSsoLink429ResponseHeaders
+}
+
+func (response DeleteIdentityOwnerUsersByIdSsoLink429JSONResponse) VisitDeleteIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdSsoLinkRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PostIdentityOwnerUsersByIdSsoLinkJSONRequestBody
+}
+
+type PostIdentityOwnerUsersByIdSsoLinkResponseObject interface {
+	VisitPostIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityOwnerUsersByIdSsoLink200JSONResponse OwnerUserResponse
+
+func (response PostIdentityOwnerUsersByIdSsoLink200JSONResponse) VisitPostIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdSsoLink400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdSsoLink400JSONResponse) VisitPostIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdSsoLink401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdSsoLink401JSONResponse) VisitPostIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdSsoLink403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdSsoLink403JSONResponse) VisitPostIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdSsoLink404Response struct {
+}
+
+func (response PostIdentityOwnerUsersByIdSsoLink404Response) VisitPostIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostIdentityOwnerUsersByIdSsoLink409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOwnerUsersByIdSsoLink409JSONResponse) VisitPostIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOwnerUsersByIdSsoLink429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityOwnerUsersByIdSsoLink429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityOwnerUsersByIdSsoLink429ResponseHeaders
+}
+
+func (response PostIdentityOwnerUsersByIdSsoLink429JSONResponse) VisitPostIdentityOwnerUsersByIdSsoLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostIdentityOwnerUsersByIdUnmanageRequestObject struct {
 	Id openapi_types.UUID `json:"id"`
 }
@@ -13969,6 +14307,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/v1/identity/owner/users/{id}/password-reset)
 	PostIdentityOwnerUsersByIdPasswordReset(ctx context.Context, request PostIdentityOwnerUsersByIdPasswordResetRequestObject) (PostIdentityOwnerUsersByIdPasswordResetResponseObject, error)
+
+	// (DELETE /api/v1/identity/owner/users/{id}/sso-link)
+	DeleteIdentityOwnerUsersByIdSsoLink(ctx context.Context, request DeleteIdentityOwnerUsersByIdSsoLinkRequestObject) (DeleteIdentityOwnerUsersByIdSsoLinkResponseObject, error)
+
+	// (POST /api/v1/identity/owner/users/{id}/sso-link)
+	PostIdentityOwnerUsersByIdSsoLink(ctx context.Context, request PostIdentityOwnerUsersByIdSsoLinkRequestObject) (PostIdentityOwnerUsersByIdSsoLinkResponseObject, error)
 
 	// (POST /api/v1/identity/owner/users/{id}/unmanage)
 	PostIdentityOwnerUsersByIdUnmanage(ctx context.Context, request PostIdentityOwnerUsersByIdUnmanageRequestObject) (PostIdentityOwnerUsersByIdUnmanageResponseObject, error)
@@ -16724,6 +17068,68 @@ func (sh *strictHandler) PostIdentityOwnerUsersByIdPasswordReset(w http.Response
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityOwnerUsersByIdPasswordResetResponseObject); ok {
 		if err := validResponse.VisitPostIdentityOwnerUsersByIdPasswordResetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteIdentityOwnerUsersByIdSsoLink operation middleware
+func (sh *strictHandler) DeleteIdentityOwnerUsersByIdSsoLink(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteIdentityOwnerUsersByIdSsoLinkRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteIdentityOwnerUsersByIdSsoLink(ctx, request.(DeleteIdentityOwnerUsersByIdSsoLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteIdentityOwnerUsersByIdSsoLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteIdentityOwnerUsersByIdSsoLinkResponseObject); ok {
+		if err := validResponse.VisitDeleteIdentityOwnerUsersByIdSsoLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityOwnerUsersByIdSsoLink operation middleware
+func (sh *strictHandler) PostIdentityOwnerUsersByIdSsoLink(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityOwnerUsersByIdSsoLinkRequestObject
+
+	request.Id = id
+
+	var body PostIdentityOwnerUsersByIdSsoLinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityOwnerUsersByIdSsoLink(ctx, request.(PostIdentityOwnerUsersByIdSsoLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityOwnerUsersByIdSsoLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityOwnerUsersByIdSsoLinkResponseObject); ok {
+		if err := validResponse.VisitPostIdentityOwnerUsersByIdSsoLinkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

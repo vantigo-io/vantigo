@@ -12,6 +12,26 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteOidcLinksByUser = `-- name: DeleteOidcLinksByUser :execrows
+DELETE FROM identity.oidc_links WHERE user_id = $1 AND issuer = $2
+`
+
+type DeleteOidcLinksByUserParams struct {
+	UserID uuid.UUID
+	Issuer string
+}
+
+// DeleteOidcLinksByUser is an Owner's disconnect (Entra phase 2 design L2):
+// every link of the user under the configured issuer goes; a link left by a
+// previously configured provider stays, as it counts for nothing.
+func (q *Queries) DeleteOidcLinksByUser(ctx context.Context, arg DeleteOidcLinksByUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOidcLinksByUser, arg.UserID, arg.Issuer)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getOidcLinkedUser = `-- name: GetOidcLinkedUser :one
 SELECT u.id, (u.is_disabled OR u.pending_since IS NOT NULL)::boolean AS is_disabled, u.lockout_end, u.totp_enabled
 FROM identity.oidc_links l
@@ -47,6 +67,25 @@ func (q *Queries) GetOidcLinkedUser(ctx context.Context, arg GetOidcLinkedUserPa
 		&i.TotpEnabled,
 	)
 	return i, err
+}
+
+const hasOidcLinkUnderIssuer = `-- name: HasOidcLinkUnderIssuer :one
+SELECT EXISTS (SELECT 1 FROM identity.oidc_links WHERE user_id = $1 AND issuer = $2)::boolean AS linked
+`
+
+type HasOidcLinkUnderIssuerParams struct {
+	UserID uuid.UUID
+	Issuer string
+}
+
+// HasOidcLinkUnderIssuer reports whether the user is linked under the
+// issuer: an announcement for a linked user is refused, and an arrival that
+// finds its user linked meanwhile fulfils nothing.
+func (q *Queries) HasOidcLinkUnderIssuer(ctx context.Context, arg HasOidcLinkUnderIssuerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasOidcLinkUnderIssuer, arg.UserID, arg.Issuer)
+	var linked bool
+	err := row.Scan(&linked)
+	return linked, err
 }
 
 const insertOidcLink = `-- name: InsertOidcLink :exec

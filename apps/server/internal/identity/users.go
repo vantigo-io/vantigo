@@ -120,7 +120,7 @@ func (s *server) GetIdentityOwnerUsers(ctx context.Context, _ gen.GetIdentityOwn
 	now := s.deps.Clock()
 	users := make(gen.GetIdentityOwnerUsers200JSONResponse, len(rows))
 	for i, u := range rows {
-		users[i] = s.ownerUser(u, now)
+		users[i] = s.ownerUser(u, now, issuer)
 	}
 	return users, nil
 }
@@ -133,8 +133,9 @@ func (s *server) GetIdentityOwnerUsers(ctx context.Context, _ gen.GetIdentityOwn
 // stored, as .NET showed it. Delivery C adds the Staff-managed state:
 // pending, managedBy, the employee number and who disabled the user. A
 // pending user is listed disabled, and so not active, until they choose a
-// credential, whatever is_disabled says.
-func (s *server) ownerUser(u store.ListManagedUsersRow, now time.Time) gen.OwnerUserResponse {
+// credential, whatever is_disabled says. ssoLink is the user's standing to
+// the provider under issuer (ssoLinkOf), absent while OIDC is off.
+func (s *server) ownerUser(u store.ListManagedUsersRow, now time.Time, issuer *string) gen.OwnerUserResponse {
 	role := RoleUser
 	if u.IsOwner {
 		role = RoleOwner
@@ -159,6 +160,7 @@ func (s *server) ownerUser(u store.ListManagedUsersRow, now time.Time) gen.Owner
 		TwoFactorEnabled: u.TotpEnabled,
 		AvatarUrl:        avatarURL,
 		SsoEnabled:       u.SsoEnabled,
+		SsoLink:          ssoLinkOf(u, issuer),
 		Pending:          &pending,
 		ManagedBy:        (*gen.OwnerUserResponseManagedBy)(u.ManagedBy),
 		EmployeeNumber:   u.EmployeeNumber,
@@ -177,7 +179,7 @@ func (s *server) managedUser(ctx context.Context, q *store.Queries, id uuid.UUID
 	if len(rows) != 1 {
 		return gen.OwnerUserResponse{}, fmt.Errorf("identity: user %s is missing from its own transaction", id)
 	}
-	return s.ownerUser(rows[0], now), nil
+	return s.ownerUser(rows[0], now, issuer), nil
 }
 
 // userSnapshot is .NET's UserAuthorizationSnapshot, the before and after of

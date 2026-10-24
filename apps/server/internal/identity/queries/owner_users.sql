@@ -8,9 +8,14 @@
 -- OIDC is off (EA/AuthAccountEndpoints.cs:406-408, :425-426). A link left
 -- behind by a previously configured provider does not count. managed_by,
 -- employee_number, pending (pending_since set) and disabled_by are the
--- Staff-managed state (delivery C).
+-- Staff-managed state (delivery C). The expected_* columns are the user's
+-- announced link, if any (Entra phase 2 design L1): the handler reads its
+-- state against oidc_issuer, since an announcement under another issuer
+-- fulfils nothing.
 SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled,
        u.managed_by, u.employee_number, (u.pending_since IS NOT NULL)::boolean AS pending, u.disabled_by,
+       el.issuer AS expected_issuer, el.object_id AS expected_object_id,
+       el.user_principal_name AS expected_upn, el.created_at AS expected_at,
        EXISTS (
            SELECT 1
            FROM identity.user_roles ur
@@ -23,6 +28,7 @@ SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabl
            WHERE l.user_id = u.id AND l.issuer = sqlc.narg(oidc_issuer)::text
        ))::boolean AS sso_enabled
 FROM identity.users u
+LEFT JOIN identity.expected_links el ON el.user_id = u.id
 WHERE sqlc.narg(id)::uuid IS NULL OR u.id = sqlc.narg(id)::uuid
 ORDER BY is_owner DESC, u.display_name COLLATE "C", u.id;
 
