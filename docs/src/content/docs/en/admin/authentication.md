@@ -482,6 +482,89 @@ The person Staff linked the user to **loses their My page** (Staff's Self view) 
 links the user to them again by hand on the person's page in Staff, which makes it an
 ordinary self-service link Staff never acts on.
 
+### Connect an existing user to the provider
+
+When single sign-on is turned on in an installation that already has users, an
+address never links a provider sign-in to an existing account, so their first attempt is
+refused `oidc_email_conflict`. An Owner **announces** that the user holds a directory
+account; the user's next OIDC sign-in (matched on `oid` under the configured issuer, else on the token's principal name, Entra's `preferred_username`, or the verified `email` claim for a provider without one)
+or SCIM push (matched on `userName` against the principal name, then `externalId`
+against the object id) then links or maps to that user. How the arrival is matched is
+described with [the announced link](/en/admin/sso-scim/#the-announced-link).
+
+Preconditions: you are an Owner, signed in with MFA when `OWNERS_REQUIRE_MFA` is on;
+the workforce OIDC provider is on; the user is not you, is not pending and has no link
+under the configured issuer.
+
+1. Find the user's id in `GET /api/v1/identity/owner/users`. The user's `ssoLink` says
+   `state: none`.
+2. Announce the link, with the user principal name, the object id, or both:
+
+   ```bash
+   curl -X POST https://vantigo.example.com/api/v1/identity/owner/users/<id>/sso-link \
+     -H 'Content-Type: application/json' \
+     -d '{"userPrincipalName":"kari@example.com","objectId":"3f2c1a40-8b1e-4c52-9d3a-6e7f5a1b2c3d"}'
+   ```
+
+3. Verify: the answer is the user, with `ssoLink` of `state: expected`, the keys and
+   `expectedAt`. After the person has signed in, or the provider has pushed the
+   account, it reads `state: linked`, and the audit records
+   `account.linked-from-provider`.
+
+The user principal name is stored normalised as addresses are (at most 254 characters);
+the object id as SCIM's `externalId` is, a GUID in lower-case dashed form (at most 200
+characters, no control character). A SCIM arrival replaces the user's address with the resource's work email and leaves
+`email_confirmed` as it was; a user who was an Owner keeps their role. The same
+announcement again changes nothing; any
+change replaces it whole. A directory account is announced for at most one user. The
+user's email address plays no part in the match, and the arrival's email claim is not
+consulted. `ssoLink` is absent from the answers while OIDC is off.
+
+What can go wrong, in the order the endpoint judges it:
+
+| Answer | Meaning |
+| --- | --- |
+| 400 `invalid_request` | Neither key is given; the principal name is not an address or is longer than 254; the object id is longer than 200 or holds a control character; or the user is you (connect your own account by signing in) |
+| 404 | No such user |
+| 409 `sso_not_configured` | OIDC is off, so there is no issuer to announce under |
+| 409 `account_pending` | The user is pending: their way in is the invitation, or the announced account that replaces them |
+| 409 `account_linked` | The user already has a link under the configured issuer; disconnect them first |
+| 409 `sso_link_taken` | The object id under the issuer, or the principal name, is announced for another user, or named by Staff's [announced account](#the-announced-account) |
+
+A disabled user may be announced: the arrival signs them in by a linked account's
+rules, `account_locked` until they are enabled. An Owner or a SystemAdmin may be
+announced, and the local MFA rule stands. An announced link outranks an announced
+account for the same arrival, and an arrival never fulfils both.
+
+### Disconnect a user
+
+`DELETE /api/v1/identity/owner/users/<id>/sso-link` withdraws the user's announced link
+and removes every OIDC link of the user under the configured issuer, in one
+transaction, and answers the user.
+
+```bash
+curl -X DELETE https://vantigo.example.com/api/v1/identity/owner/users/<id>/sso-link
+```
+
+Nothing to remove is `200` with the user unchanged. The user keeps their account; a
+user left without a credential signs in again only after a password reset or a new
+announcement. The SCIM mapping is **not** touched: it is the provider's record and ends
+with the provider's delete. The refusals are `400` for your own account, `404` for no such user
+and `409 sso_not_configured` while OIDC is off.
+
+The audit, in `identity.authorization_audit_events`, records the four events of the
+announced link, none with an address:
+
+| Event | When | Detail |
+| --- | --- | --- |
+| `account.link-expected` | An announcement is recorded or changed | `keys`: the names of the keys given (`objectId`, `userPrincipalName`) |
+| `account.link-unexpected` | The `DELETE` withdrew an announcement | — |
+| `account.unlinked` | The `DELETE` removed OIDC links | `links`: how many |
+| `account.linked-from-provider` | An arrival fulfilled the announcement | `matchedBy`: `oid`, `userName` or `externalId` |
+
+Migration `00064_identity_expected_links.sql` adds `identity.expected_links`; its Down
+drops the table, and an unfulfilled announcement is made again by an Owner.
+
 ### The employee roles
 
 The built-in `User` role carries no permissions, so the users Staff provisions get the

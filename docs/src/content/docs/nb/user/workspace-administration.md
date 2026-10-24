@@ -47,7 +47,9 @@ eller Eier), **Tilgang** og **2FA** (På eller Av). Tilgang viser **Aktiv**,
 **Deaktivert av en eier**, **Deaktivert av Ansatte** eller **Midlertidig utestengt** —
 det siste etter fem feil passord på rad, og det går over av seg selv etter 15
 minutter. En konto Ansatte styrer, har **Styres av Ansatte · nr.** og ansattnummeret
-under adressen (se [Kontoer Ansatte styrer](#kontoer-ansatte-styrer)).
+under adressen (se [Kontoer Ansatte styrer](#kontoer-ansatte-styrer)). Mens SSO er på,
+viser kolonnen **Enkel pålogging** hvem som er koblet til leverandøren (se
+[Koble en konto til enkel pålogging](#koble-en-konto-til-enkel-pålogging)).
 
 Kortene over listen teller **Aktive**, **Deaktivert**, **SSO** (kontoer som logger
 inn gjennom identitetsleverandøren) og **Administratorer** (eiere); velg ett for å
@@ -176,6 +178,68 @@ Stopp styringen, og slett den så som enhver annen.
 
 Hva Ansatte gjør på sin side, og når, er beskrevet i
 [administrasjonsveiledningen for Ansatte](/nb/admin/staff/).
+
+## Koble en konto til enkel pålogging
+
+Når enkel pålogging slås på i et arbeidsområde som allerede har brukere, logger de
+brukerne fortsatt inn med passord, og en adresse alene kobler aldri en innlogging
+gjennom leverandøren til en eksisterende konto: det første forsøket gjennom
+leverandøren avvises. Du, som eier, sier at en konto og en katalogkonto er samme
+person, og koblingen fullføres neste gang personen logger inn gjennom leverandøren
+(eller leverandøren sender kontoen). **Brukere** får en kolonne, **Enkel pålogging**,
+til dette mens SSO er på; den finnes ikke mens SSO er av, og din egen rad har ingen
+knapp.
+
+Kolonnen viser én av tre ting:
+
+- **Koblet til** med en grønn hake — personen har logget inn gjennom leverandøren, og
+  kontoen er koblet.
+- **Venter på første pålogging** — du har kunngjort koblingen, og den er ikke
+  fullført ennå. Det kunngjorte brukerprinsipalnavnet (eller objekt-ID-en, når du bare
+  oppga den) står under.
+- **Koble til…** — en knapp: ingenting er koblet eller kunngjort.
+
+**Koble en konto.**
+
+1. Velg **Koble til…** i kontoens rad under **Brukere**, eller **Koble til enkel
+   pålogging…** i menyen.
+2. Kontroller **Brukerprinsipalnavn** i **Koble _navn_ til enkel pålogging**. Feltet er
+   fylt ut med kontoens adresse; endre det når personens katalogkonto har et annet
+   navn. Under **Mer** er **Objekt-ID** katalogkontoens id, for når du har den i stedet
+   for eller i tillegg.
+3. Velg **Koble til**. Raden viser nå **Venter på første pålogging**.
+
+Ved personens neste innlogging gjennom leverandøren — eller når leverandøren sender
+kontoen — kobler Vantigo katalogkontoen til kontoen du pekte ut, uansett hvilken
+e-postadresse leverandøren oppgir, og logger personen inn som den kontoen. Navn,
+adresse og roller blir som de var. Kunngjøringen forsvinner da, og raden viser
+**Koblet til**.
+
+**Endre eller avbryt.** Mens en rad viser **Venter på første pålogging**, tilbyr
+menyen **Endre tilkoblingen…**, som åpner samme dialog og erstatter det du oppga, og
+**Avbryt tilkoblingen**, som trekker kunngjøringen tilbake.
+
+**Koble fra.** For en konto som er **Koblet til**, tilbyr menyen **Koble fra enkel
+pålogging…**. Bekreftelsen sier at personen beholder kontoen sin og logger inn med en
+lokal påloggingsopplysning, hvis vedkommende har en. En konto uten passord kan da ikke
+logge inn før du sender en tilbakestilling av passord eller kobler den til igjen.
+Leverandørens egen oppføring av kontoen, hvis den har sendt en, fjernes ikke; den tar
+slutt når leverandøren sletter den.
+
+Koblingen avvises, med ord, når:
+
+- enkel pålogging ikke er slått på;
+- kontoen er **Venter**: personens vei inn er invitasjonen (eller kontoen Ansatte har
+  kunngjort for vedkommende);
+- kontoen allerede er koblet til: koble den fra først;
+- «En annen bruker er allerede koblet til denne kontoen.» — katalogkontoen er kunngjort
+  for, eller allerede pekt ut av, en annen bruker;
+- prinsipalnavnet ikke er en adresse, eller ingen av feltene er fylt ut.
+
+En deaktivert konto kan kobles: personen kommer først inn når du aktiverer den. Når
+leverandørens **Autoritet** er endret, gjelder en kunngjort kobling den gamle
+leverandøren og oppfyller ingenting: raden vises som ikke koblet til, og å koble kontoen på nytt
+erstatter den gamle kunngjøringen.
 
 ## Følg opp invitasjoner
 

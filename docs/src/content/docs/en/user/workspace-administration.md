@@ -46,7 +46,9 @@ account Staff made that waits for its invitation to be accepted), **Disabled by 
 Owner**, **Disabled by Staff** or **Temporarily locked out** — the last after five
 wrong passwords in a row, which clears by itself after 15 minutes. An account Staff
 manages carries **Managed by Staff · no.** and its employee number under the address
-(see [Accounts Staff manages](#accounts-staff-manages)).
+(see [Accounts Staff manages](#accounts-staff-manages)). While SSO is on, the
+**Single sign-on** column says who is connected to the provider (see
+[Connect an account to single sign-on](#connect-an-account-to-single-sign-on)).
 
 The cards above the list count **Active**, **Disabled**, **SSO** (accounts that
 sign in through the identity provider) and **Admins** (Owners); select one to filter
@@ -170,6 +172,66 @@ beneath it. Stop managing it, then delete it as any other.
 
 What Staff does on its side, and when, is described in the
 [administration guide for Staff](/en/admin/staff/).
+
+## Connect an account to single sign-on
+
+When single sign-on is turned on in a workspace that already has users, those users
+still sign in with a password, and an address alone never links a provider sign-in to
+an existing account: their first attempt through the provider is refused. You, as an
+Owner, say that an account and a directory account are the same person, and the
+connection completes the next time that person signs in through the provider (or the
+provider pushes the account). **Users** gets a **Single sign-on** column for this
+while SSO is on; it is not there while SSO is off, and your own row has no button.
+
+The column reads one of three things:
+
+- **Connected** with a green check — the person has signed in through the provider and
+  the account is linked.
+- **Awaiting first sign-in** — you have announced the connection and it has not
+  completed yet. The announced user principal name (or the object id, when you gave
+  only that) stands beneath.
+- **Connect…** — a button: nothing is connected or announced.
+
+**Connect an account.**
+
+1. In **Users**, choose **Connect…** in the account's row, or **Connect to single
+   sign-on…** in its menu.
+2. In **Connect _name_ to single sign-on**, check **User principal name**. It is filled
+   in with the account's address; change it when the person's directory account has
+   another name. Under **More**, **Object id** is the directory account's id, for when
+   you have it instead or besides.
+3. Choose **Connect**. The row now reads **Awaiting first sign-in**.
+
+At the person's next sign-in through the provider — or when the provider pushes their
+account — Vantigo links the directory account to the account you named, whatever
+email address the provider reports, and signs them in as that account. Their name,
+address and roles stay as they were. The announcement then goes, and the row reads
+**Connected**.
+
+**Change or cancel it.** While a row reads **Awaiting first sign-in**, its menu offers
+**Change the connection…**, which opens the same dialog and replaces what you gave,
+and **Cancel the connection**, which withdraws the announcement.
+
+**Disconnect.** For a **Connected** account the menu offers **Disconnect from single
+sign-on…**. The confirmation says the person keeps their account and signs in with a
+local credential, if they have one. An account with no password then cannot sign in
+until you send a password reset or connect it again. The provider's own record of the
+account, if it pushed one, is not removed; that ends when the provider deletes it.
+
+Connecting is refused, in words, when:
+
+- single sign-on is not turned on;
+- the account is **Pending**: the person's way in is their invitation (or the account
+  Staff announced for them);
+- the account is already connected: disconnect it first;
+- "Another user is already connected to this account." — the directory account is
+  announced for, or already named by, another user;
+- the principal name is not an address, or neither field is filled in.
+
+A disabled account can be connected: the person signs in only once you enable it.
+After the provider's **Authority** is changed, an announced connection is for the old
+provider and fulfils nothing: the row reads as not connected, and connecting the account
+again replaces the old announcement.
 
 ## Follow up invitations
 
