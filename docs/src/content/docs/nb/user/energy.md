@@ -361,7 +361,7 @@ ikke en kundes, så siden viser ingen kundedata.
 ### Les dekningen
 
 Det første kortet, **Dekning**, har én rad per prisområde: hvert område et målepunkt med
-en leveranseperiode ligger i, og hvert område som allerede har priser. **Ingen
+en ikke-kansellert leveranseperiode ligger i, og hvert område som allerede har priser. **Ingen
 prisområder ennå** betyr at ingen av delene finnes. Hver rad viser:
 
 - **Første** og **Siste**: starten på den første prisen som finnes, og slutten på den
@@ -369,12 +369,12 @@ prisområder ennå** betyr at ingen av delene finnes. Hver rad viser:
 - **Intervaller**: hvor mange priser som finnes;
 - **Dager uten priser siste 30**: dagene blant de siste 30, i dag medregnet, der ingen
   pris starter — **Komplett** når det ikke er noen;
-- **Siste henting**: den siste dagen bakgrunnsjobben spurte priskilden om, og hvordan
-  det gikk. **Hentet**: dagens priser er lagret. **Ikke publisert ennå**: morgendagens
-  priser er ikke ute ennå; døgnmarkedets auksjon publiserer dem rundt klokken 13 norsk
-  tid, og jobben spør igjen hver time. **Mangler**: priskilden har ingen priser for den
-  passerte dagen; jobben spør igjen daglig i en uke, og deretter importerer du dagen fra
-  en fil. **Feilet**: årsaken vises under, og jobben prøver igjen senere og venter
+- **Siste henting**: dagen bakgrunnsjobben sist spurte priskilden om, og hvordan det
+  gikk. **Hentet**: dagens priser er lagret. **Ikke publisert ennå**: dagens eller
+  morgendagens priser er ikke ute ennå; døgnmarkedets auksjon publiserer dem rundt
+  klokken 13 norsk tid, og jobben spør igjen hver time. **Mangler**: priskilden har
+  ingen priser for den tidligere dagen; jobben spør igjen én gang i døgnet, høyst sju
+  ganger på rad, og deretter importerer du dagen fra en fil. **Feilet**: årsaken vises under, og jobben prøver igjen senere og venter
   lenger hver gang, høyst seks timer. **Ikke hentet** betyr at jobben aldri har prøvd
   området, som når den er slått av.
 
@@ -383,11 +383,14 @@ tilbake, må importeres.
 
 ### Se et områdes priser
 
-Kortet **Spotpriser** viser ett områdes priser som et diagram i kr/kWh, ett punkt per
-intervall ved starten, i norsk tid. Velg **Prisområde**, deretter **Dag** eller
+Kortet **Spotpriser** viser ett områdes priser som en trappelinje i kr/kWh, hver pris
+tegnet fra intervallets start i norsk tid og holdt til den neste (en dag markerer også
+hvert intervall med et punkt). Det åpner på dagens dato i det første området. Velg **Prisområde**, deretter **Dag** eller
 **Måned** og dagen eller måneden. En dag har 24 timepriser (23 eller 25 de nettene
-klokkene stilles), eller 96 kvarter når prisene kommer med den oppløsningen. En periode
-uten priser sier *Ingen priser for denne perioden.*
+klokkene stilles), eller 96 kvarter når prisene kommer med den oppløsningen. Høstnatten
+kommer timen fra 02:00 to ganger, og diagrammet merker hver av dem med UTC-forskyvningen,
+*02:00 +02* og *02:00 +01*. En periode uten priser sier *Ingen priser for denne
+perioden.*
 
 ### Importer priser fra en fil
 
@@ -408,7 +411,9 @@ Den åpner **Importer priser**:
    - **prisen i EUR** (*EUR per kWh*, *EUR/kWh*) og **valutakursen** (*Kurs*, *EXR*,
      *Exchange rate*), valgfrie og tatt vare på for ordens skyld.
 
-   En fil kan inneholde flere prisområder.
+   En fil kan inneholde flere prisområder. En fil med to kolonner for det samme — *Pris*
+   og *øre/kWh*, for eksempel — avvises, og det samme gjør en som mangler en kolonne som
+   må være med.
 2. Filen kontrolleres så snart du velger den, og ingenting lagres. Resultatet,
    **Tørrkjøring** med antall rader, viser for hvert område hvor mange priser som er
    **Nye**, hvor mange som er **Erstattet** (en pris som allerede finnes, med andre
@@ -416,7 +421,11 @@ Den åpner **Importer priser**:
    rader har feil, de første 200 av dem med rad (den første raden under overskriften er
    rad 1) og kolonne, og ingenting kan importeres før filen er rettet.
 3. Når kontrollen ikke fant noen feil, klikker du **Importer** for å lagre prisene.
-   *Priser importert* bekrefter det, og dekningen og diagrammet oppdateres.
+   *Priser importert* bekrefter det, og dekningen og diagrammet oppdateres. Når alle
+   prisene i filen allerede finnes, sier kontrollen *Alle prisene i filen er allerede
+   lagret.*, og det er ingenting å importere. Har de lagrede prisene endret seg etter
+   kontrollen slik at en rad nå har en feil, importeres ingenting: *Filen har feil nå.
+   De vises nedenfor.*, og kontrollen kjøres på nytt.
 
 Slik leses filen:
 
@@ -424,11 +433,15 @@ Slik leses filen:
   `2025-01-31 13:00`, `2025-01-31T13:00`, `31.01.2025 13:00` eller `31/01/2025 13:00`.
   Et tidspunkt med tidssoneforskyvning (`+01:00`, `Z`) er akkurat det øyeblikket; et
   tidspunkt uten er norsk tid, uansett område. Natten om våren avvises et tidspunkt
-  klokkene hopper over; natten om høsten er den første raden på et gjentatt tidspunkt
-  den første forekomsten og den neste den andre.
-- **Med en sluttkolonne** varer hver pris fra starten til slutten. Radene trenger ikke
-  å følge rett etter hverandre, så én fil kan fylle flere adskilte dager; men radene i
-  hvert område må stå i tidsrekkefølge og kan ikke overlappe.
+  klokkene hopper over; natten om høsten er et områdes første rad på et gjentatt
+  tidspunkt den første forekomsten og dets neste den andre.
+- **Prisområdet** kan skrives med store eller små bokstaver: `no1` er `NO1`.
+- **Priser** godtar desimalkomma eller -punktum (`0,8123` eller `0.8123`, ikke begge);
+  mellomrom som tusenskille ignoreres, og en pris kan være negativ. De lagres med seks
+  desimaler. En valutakurs må være over null; prisen i EUR og kursen kan stå tomme.
+- **Med en sluttkolonne** varer hver pris fra starten til slutten, høyst én time.
+  Radene trenger ikke å følge rett etter hverandre, så én fil kan fylle flere adskilte
+  dager; men radene i hvert område må stå i tidsrekkefølge og kan ikke overlappe.
 - **Uten en sluttkolonne** varer hver pris til neste rad i samme område starter, og et
   områdes siste rad like lenge som raden før den (én time når området bare har én rad).
   Hold radene i hvert område i tidsrekkefølge uten hull: en rad avvises når neste rad i

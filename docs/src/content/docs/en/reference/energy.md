@@ -447,11 +447,14 @@ and are in no customer's export.
   difference.
 - **Fetch record** — `energy.spot_price_fetches`, the feed worker's record of one
   `(price_area, day)`, the day a civil day in Europe/Oslo: `status` (`ok` once the
-  day's prices are stored, `pending` while tomorrow's are not yet published, `missing`
-  for a past day the feed has no file for, `failed` for anything else), `attempts`
-  (every request counted), `last_error` (the sentence of the last failure, never the
-  response's body), `attempted_at`, `fetched_at` and `next_attempt_at` (when the worker
-  may ask again).
+  day's prices are stored, `pending` while today's or tomorrow's are not yet
+  published, `missing` for a past day the feed has no file for, `failed` for anything
+  else), `attempts` (the requests made since the record last changed status — a day
+  pending for hours and then missing starts its missing attempts from one), `last_error` (the sentence
+  of the failure when the last request failed, cleared by any other answer; never the
+  response's body), `attempted_at`, `fetched_at` (the last time the day was stored,
+  kept through later attempts) and `next_attempt_at` (when the worker may ask again;
+  absent once it never will).
 
 ### The feed worker: `energy-spot-prices`
 
@@ -460,9 +463,9 @@ opts into. Without it, prices come by file ([below](#importing-prices)).
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `ENERGY_SPOT_PRICE_FEED_ENABLED` | `0` | `1` hands the worker to the runner; `0` leaves it out |
-| `ENERGY_SPOT_PRICE_FEED_URL` | `https://www.hvakosterstrommen.no/api/v1/prices/{year}/{month}-{day}_{area}.json` | The feed as a template: an absolute `https` URL carrying `{year}`, `{month}`, `{day}` and `{area}`, rendered per area and day with the month and the day zero-padded (`…/2026/03-29_NO1.json`). A template that is not `https` or lacks a placeholder stops the start-up, as an invalid setting does |
-| `ENERGY_SPOT_PRICE_FEED_POLL` | `15m` | How often a cycle runs; at least `1m`, a shorter one stopping the start-up |
+| `ENERGY_SPOT_PRICE_FEED_ENABLED` | `0` | `1` hands the worker to the runner; `0` leaves it out; any other value stops the start-up |
+| `ENERGY_SPOT_PRICE_FEED_URL` | `https://www.hvakosterstrommen.no/api/v1/prices/{year}/{month}-{day}_{area}.json` | The feed as a template: an absolute `https` URL carrying `{year}`, `{month}`, `{day}` and `{area}`, rendered per area and day with the month and the day zero-padded (`…/2026/03-29_NO1.json`). A template that is not `https` or lacks a placeholder stops the start-up, as an invalid setting does — even with the worker off |
+| `ENERGY_SPOT_PRICE_FEED_POLL` | `15m` | How often a cycle runs: a Go duration of at least `1m`; a shorter one, or one that does not parse, stops the start-up — even with the worker off |
 
 A cycle:
 
@@ -473,24 +476,29 @@ A cycle:
    period that is not `Cancelled`, and every area already in `energy.spot_prices`. An
    installation with no such point fetches nothing.
 3. **The days.** For each area, the civil days in Europe/Oslo from seven days before
-   today to tomorrow whose fetch record is not `ok` and is due (`next_attempt_at` absent
-   or passed). The feed's days are Europe/Oslo days whatever the area — the Nordic
-   day-ahead market's day is a CET day — and the stored intervals are instants. A cycle
-   makes **at most twenty requests**; the rest wait for the next cycle. The worker never
-   reaches further back than seven days on its own: older days come by file.
+   today to tomorrow in which no stored interval of the area starts — a day a file
+   filled is not asked for, whatever its fetch record says — and that are due: the day
+   has no fetch record yet, or its `next_attempt_at` has passed. A record with no
+   `next_attempt_at` (`ok`, or `missing` given up on) is never due again. The feed's
+   days are Europe/Oslo days whatever the area — the Nordic day-ahead market's day is a
+   CET day — and the stored intervals are instants. A cycle makes **at most twenty
+   requests**, the oldest days first; the rest wait for the next cycle. The worker
+   never reaches further back than seven days on its own: older days come by file.
 4. **The answer**, written to the day's fetch record:
 
 | Answer | Status | Asked again |
 | --- | --- | --- |
 | `200` with a day that passes the checks below | `ok`, the day's prices written | never |
-| `404` for tomorrow | `pending` — the day-ahead auction publishes about 13:00 CET | in an hour |
-| `404` for a past day | `missing` | in a day, up to seven attempts; then left `missing`, and the day comes by file |
-| anything else — another status, a network error, a body that is not a JSON array, a day the checks refuse | `failed`, with the reason in `last_error` | after `min(6 h, 15 min × 2^(attempts − 1))` |
+| `404` for today or tomorrow | `pending` — the day-ahead auction publishes tomorrow's prices about 13:00 CET | in an hour, as long as the day stays in the window |
+| `404` for a past day | `missing` | in a day, until the seventh `missing` answer in a row — `attempts` counts the requests since the record last changed status, so a day's hours of `pending` do not spend them; the seventh leaves it `missing` with no `next_attempt_at`, and the day comes by file |
+| anything else — another status, a redirect, a network error or a timeout, an address the guard refuses, a body over 1 MiB or not a JSON array, a day the checks refuse | `failed`, with the reason in `last_error` | after `min(6 h, 15 min × 2^(attempts − 1))`, `attempts` counting this request and the `failed` ones before it since the status last changed |
 
-A `200`'s entries (`time_start`, `time_end`, `NOK_per_kWh`, `EUR_per_kWh`, `EXR`) are
-written only when they are contiguous, lie within the day — the first starting at the
-day's local midnight, the last ending at the next, so a DST day has 23 or 25 hours —
-and overlap no stored interval of another length. Then the day's intervals (`source`
+A `200`'s entries (`time_start`, `time_end` as RFC 3339 times with an offset;
+`NOK_per_kWh`, required; `EUR_per_kWh` and `EXR`, optional; a price may be negative)
+are written only when they are contiguous, lie within the day — the first starting at
+the day's local midnight, the last ending at the next, so a DST day has 23 or 25
+hours — every figure is one `numeric(12,6)` can store, and they overlap no stored
+interval of another length. Then the day's intervals (`source`
 `Feed`, replaced or unchanged under the model's rule) and the fetch record `ok` are
 written in one transaction; otherwise nothing of the day is written and the record is
 `failed` with the reason.
@@ -500,27 +508,40 @@ written in one transaction; otherwise nothing of the day is written and the reco
 `netguard.DialContext`, so the feed's host is resolved and every address checked
 against the platform's forbidden ranges — private, loopback, link-local, carrier-grade
 NAT and cloud metadata — and the connection made to the address checked; no proxy;
-**no redirect followed**; ten seconds to dial and fifteen for the response's headers;
-the request carries `Accept: application/json` and the body is read to at most
-**1 MiB**. A feed on a private address cannot be used; import its files instead.
+**no redirect followed**; **twenty seconds** for the whole fetch, within it ten to
+dial, ten for the TLS handshake and fifteen for the response's headers; no kept
+connection; the request carries `User-Agent: Vantigo-Energy` and
+`Accept: application/json`, and the body is read to at most **1 MiB**. A feed on a
+private address cannot be used; import its files instead.
+
+**The log.** A day stored is logged at info with the area, the day and the inserted,
+replaced and unchanged counts; a `404` for a past day at info, with the attempts and
+whether the worker gave up; one for today or tomorrow at debug; a failure at
+warning with the area, the day, the feed's host — never the address's path or query,
+nor the body — the attempts and the sentence; a cycle the database ended at error.
 
 ### Importing prices
 
 `POST /spot-prices/import?dryRun=true|false` imports prices from a file in one
 request, in the consumption import's shape: no import record, no worker. Its rule is
 `permission:energy:prices-manage+energy:prices-view`; it is rate-limited at 600 calls
-an hour per client address, and the body is multipart with one part, `file`.
+an hour per client address (`EnergySpotPriceImport`, a budget of its own beside the
+consumption import's), its body is capped at 10 MiB + 64 KiB, and the body is
+multipart with one part, `file`; any other part is skipped.
 
 **Reading.** `internal/fileimport` with the consumption import's limits: 10 MiB,
 50 000 data rows, 50 columns; UTF-8 with or without a byte order mark, else
 Windows-1252; the separator detected among `;`, `,` and tab; the first non-blank row
-the header. A refused file is a `400` on `file`, as is a header without an area, a
-start or a NOK price column.
+the header. A refused file is a `400` on `file` — no part named `file` or two of them,
+an empty one, one past the limits, a line the reader cannot parse — as is a header
+without an area, a start or a NOK price column, or with two columns naming one field.
 
 **The layout** is fixed, unlike the consumption import's, whose files come from many
 systems: there is no mapping part. Each column is found by its header as
 `fileimport.HeaderKey` reads it (lowercased, letters and digits only, so `Price area`,
-`price_area` and `PRICEAREA` are one word), each header matched at most once:
+`price_area` and `PRICEAREA` are one word). Each field is taken from one column: two
+columns naming the same field — the NOK price and the øre price count as one — are
+the file's `400`, since which one is meant cannot be told. The header words:
 
 | Column | Header words |
 | --- | --- |
@@ -533,21 +554,36 @@ systems: there is no mapping part. Each column is found by its header as
 
 **A row.**
 
+- **The area** is read in any case and must be two letters and one or two digits
+  (`no1` is `NO1`).
 - **Timestamps** are read as the consumption import reads them
   ([Importing consumption](#importing-consumption)): ISO 8601, `d.m.yyyy h:mm` or
   `d/m/yyyy h:mm`; with an offset or `Z` that instant, without one a wall time in
   **Europe/Oslo**, whatever the row's area — the spring gap is the row's error and a
-  repeated autumn time is the earlier instant the first time and the later one after.
+  repeated autumn time is the earlier instant the first time the area has it and the
+  later one after.
+- **Figures** — the NOK price, the EUR price and the exchange rate — are read as the
+  consumption import reads a quantity, but signed: a decimal comma or a decimal point
+  (a cell with both is refused), spaces dropped, no exponent; rounded to six decimals
+  as `numeric(12,6)` stores them and less than 1 000 000 in size. A price may be
+  negative; an exchange rate must be greater than zero. The EUR price and the rate
+  may be blank. A price in øre is divided by 100 and rounded again.
 - **The end.** With an end column, each row's end is read as the consumption import
   reads an end, and gaps between an area's rows are allowed, so one file may fill
-  several separate days; a row out of order or overlapping another of its area is the
-  row's error. Without one, an interval closes at the next row's start **of the same
+  several separate days; a row that starts before the area's row before it in the
+  file, or inside that row's interval, is the row's error, and an end not after the
+  start, or more than an hour after it (the market's resolutions are an hour and a
+  quarter of an hour, and a longer interval would block the feed's days), is the
+  end's. Without one, an interval closes at the next row's start **of the same
   area**, in file order, and an area's last row takes the length of the row before it
   (an hour when the area has a single row). A row is then the row's error when it is
   out of order, or when the next row of its area starts more than the previous
   interval's length — at most an hour — after it.
 - **Several areas** may share a file; each area's rows are judged on their own.
-- **Against what is stored**: a row equal to a stored interval (the same area, start
+- **Against what is stored**: judged and written under an advisory lock per area
+  (`pg_advisory_xact_lock` on a hash of the area's name, areas in sorted order), which
+  the feed worker takes too, so two writers of one area never race the exclusion
+  constraint and the counts answered are exact. A row equal to a stored interval (the same area, start
   and end) replaces its figures when they differ and is unchanged when they do not; a
   row whose interval overlaps a stored interval of **another length** is the row's
   error, since prices of one area never overlap.
@@ -573,8 +609,8 @@ All under `/api/v1/energy/`.
 
 | Operation | Rule | What it does |
 | --- | --- | --- |
-| `GET spot-prices?area&from&to` | `permission:energy:prices-view` | The intervals of one area with `start ≥ from` and `start < to`, ascending. `area` must be two letters and one or two digits, `from` before `to`, and `to − from` at most **35 days** — a month at a quarter-hour resolution is one answer — otherwise a `400` (a window too long on `to`). |
-| `GET spot-prices/coverage` | `permission:energy:prices-view` | Per area in use or already priced: `priceArea`, `firstStart` and `lastEnd` (absent with no prices), `intervalCount`, `daysMissingLast30` — the Europe/Oslo days among the last thirty, today included, with no interval starting in them — and `lastFetch`, the worker's most recent fetch record for the area (`day`, `status`, `attempts`, `attemptedAt`, `nextAttemptAt`, `error`), absent when it never tried one. |
+| `GET spot-prices?area&from&to` | `permission:energy:prices-view` | The intervals of one area with `start ≥ from` and `start < to`, ascending. `area` must be two uppercase letters and one or two digits, `from` before `to`, and `to − from` at most **35 days** — a month at a quarter-hour resolution is one answer — otherwise a `400` (a window too long on `to`). |
+| `GET spot-prices/coverage` | `permission:energy:prices-view` | Per area in use or already priced, in area order: `priceArea`, `firstStart` and `lastEnd` (absent with no prices), `intervalCount` (the intervals stored, `0` with none), `daysMissingLast30` — the Europe/Oslo days among the last thirty, today included, with no interval starting in them, `30` with no prices — and `lastFetch`, the fetch record of the worker's most recent attempt for the area, by `attemptedAt` (`day`, `status`, `attempts`, `attemptedAt`, `nextAttemptAt`, `error`), absent when it never tried one. |
 | `POST spot-prices/import?dryRun` | `permission:energy:prices-manage+energy:prices-view` | Imports a file of prices ([above](#importing-prices)). |
 
 ## Permissions
@@ -596,7 +632,9 @@ All under `/api/v1/energy/`.
 Every key is delegable and in the category Energy. Each operation's rule is its
 `x-vantigo-access` in the contract; the metering-point list and page need
 `energy:metering-points-view` and `energy:meters-view`, and creating a point
-`energy:metering-points-manage` and `energy:meters-manage` with both views.
+`energy:metering-points-manage` and `energy:meters-manage` with both views. The
+Prices page needs `energy:prices-view`, and its **Import prices** also
+`energy:prices-manage`.
 
 ## Workers
 
