@@ -28,7 +28,7 @@ func TestModule_ComposesAndDemandsAPermission(t *testing.T) {
 }
 
 // TestModule_DeclaresItsPermissionCatalog pins the module's name and all
-// nine permissions — the eight ported ones and energy:import — field for field, against the .NET catalog
+// eleven permissions — the eight ported ones, energy:import and the spot prices' two — field for field, against the .NET catalog
 // (AZ/EnergyPermissionCatalogContributor.cs, energy inventory §6): every key
 // is delegable and none is sensitive, and every key shares one category,
 // "Energy". Ported from TS/Authorization/EnergyPermissionCatalogTests.cs,
@@ -53,14 +53,16 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 		{Key: "energy:metering-points-view", Display: "View energy metering points", Description: "View energy metering point details and listings.", Category: "Energy", Sensitive: false, Delegable: true},
 		{Key: "energy:meters-manage", Display: "Manage energy meters", Description: "Replace meters installed at energy metering points.", Category: "Energy", Sensitive: false, Delegable: true},
 		{Key: "energy:meters-view", Display: "View energy meters", Description: "View energy meter history for metering points.", Category: "Energy", Sensitive: false, Delegable: true},
+		{Key: "energy:prices-manage", Display: "Manage energy prices", Description: "Import spot prices from a file.", Category: "Energy", Sensitive: false, Delegable: true},
+		{Key: "energy:prices-view", Display: "View energy prices", Description: "View spot prices per price area and what is held of them.", Category: "Energy", Sensitive: false, Delegable: true},
 		{Key: "energy:supply-periods-manage", Display: "Manage energy supply periods", Description: "Create, switch, end, and cancel energy supply periods.", Category: "Energy", Sensitive: false, Delegable: true},
 		{Key: "energy:supply-periods-view", Display: "View energy supply periods", Description: "View energy supply periods for metering points.", Category: "Energy", Sensitive: false, Delegable: true},
 	}
 	if m.Name != "energy" {
 		t.Errorf("Name = %q, want energy", m.Name)
 	}
-	if len(m.Permissions) != 9 {
-		t.Fatalf("Permissions has %d entries, want exactly 9: %+v", len(m.Permissions), m.Permissions)
+	if len(m.Permissions) != 11 {
+		t.Fatalf("Permissions has %d entries, want exactly 11: %+v", len(m.Permissions), m.Permissions)
 	}
 
 	// Ported from EnergyPermissionCatalogTests.cs:14-23: the catalog's keys

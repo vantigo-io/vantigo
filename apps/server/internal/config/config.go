@@ -285,6 +285,23 @@ type Config struct {
 	// (ENERGY_IMPORT_RETENTION, default 720 hours — 30 days).
 	EnergyImportRetention time.Duration
 
+	// EnergySpotPriceFeedEnabled is the on/off switch for the energy module's
+	// spot price worker (ENERGY_SPOT_PRICE_FEED_ENABLED, energy consumption
+	// billing design D2), which fetches each day's day-ahead prices per
+	// price area from a public feed. Default OFF: an installation opts in to
+	// an outbound call of its own; prices can always be imported from a file.
+	EnergySpotPriceFeedEnabled bool
+	// EnergySpotPriceFeedURL is the feed's address as a template
+	// (ENERGY_SPOT_PRICE_FEED_URL) with {year}, {month}, {day} and {area},
+	// rendered per area and civil day with the month and day zero-padded;
+	// https only. The default is the public feed hvakosterstrommen.no.
+	EnergySpotPriceFeedURL string
+	// EnergySpotPriceFeedPoll is how often the worker's cycle runs
+	// (ENERGY_SPOT_PRICE_FEED_POLL, default 15 minutes, at least a minute):
+	// each cycle fetches the days that are missing, so the poll only bounds
+	// how soon tomorrow's prices arrive after they are published.
+	EnergySpotPriceFeedPoll time.Duration
+
 	// InvoicesEhfEnabled is the on/off switch for sending invoices as EHF over
 	// Peppol (INVOICES_EHF_ENABLED, EHF and KID design D1). Default ON, like
 	// PEPPOL_LOOKUP_ENABLED: an installation still needs access-point
@@ -563,6 +580,7 @@ func Load(env map[string]string) (*Config, error) {
 	customersAnonymisation(&p, env, c)
 	customersImport(&p, env, c)
 	energyImport(&p, env, c)
+	energySpotPrices(&p, env, c)
 	invoicesEhf(&p, env, c)
 	invoicesVipps(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
@@ -839,6 +857,51 @@ func energyImport(p *problems, env map[string]string, c *Config) {
 	c.EnergyImportEnabled = boolean(p, env, "ENERGY_IMPORT_ENABLED", true)
 	c.EnergyImportPoll = duration(p, env, "ENERGY_IMPORT_POLL", 5*time.Second)
 	c.EnergyImportRetention = duration(p, env, "ENERGY_IMPORT_RETENTION", 720*time.Hour)
+}
+
+// The spot price feed's defaults and bounds (energy consumption billing
+// design D2): the public feed's address, a quarter of an hour between cycles
+// and no poll under a minute — the feed publishes once a day.
+const (
+	DefaultEnergySpotPriceFeedURL  = "https://www.hvakosterstrommen.no/api/v1/prices/{year}/{month}-{day}_{area}.json"
+	defaultEnergySpotPriceFeedPoll = 15 * time.Minute
+	energySpotPriceFeedMinPoll     = time.Minute
+)
+
+// energySpotPriceFeedPlaceholders are what a feed template must carry.
+var energySpotPriceFeedPlaceholders = []string{"{year}", "{month}", "{day}", "{area}"}
+
+// energySpotPrices loads the spot price worker's settings: its switch, off
+// by default, the feed's template and the poll.
+func energySpotPrices(p *problems, env map[string]string, c *Config) {
+	c.EnergySpotPriceFeedEnabled = boolean(p, env, "ENERGY_SPOT_PRICE_FEED_ENABLED", false)
+	c.EnergySpotPriceFeedURL = spotPriceFeedURL(p, env, "ENERGY_SPOT_PRICE_FEED_URL")
+	c.EnergySpotPriceFeedPoll = duration(p, env, "ENERGY_SPOT_PRICE_FEED_POLL", defaultEnergySpotPriceFeedPoll)
+	if c.EnergySpotPriceFeedPoll < energySpotPriceFeedMinPoll {
+		p.add("ENERGY_SPOT_PRICE_FEED_POLL", "must be at least 1m")
+		c.EnergySpotPriceFeedPoll = defaultEnergySpotPriceFeedPoll
+	}
+}
+
+// spotPriceFeedURL reads the feed template: unset is the default; set, it
+// must be an absolute https URL carrying every placeholder.
+func spotPriceFeedURL(p *problems, env map[string]string, field string) string {
+	v := strings.TrimSpace(env[field])
+	if v == "" {
+		return DefaultEnergySpotPriceFeedURL
+	}
+	u, err := url.Parse(v)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		p.add(field, "must be an absolute https URL")
+		return DefaultEnergySpotPriceFeedURL
+	}
+	for _, ph := range energySpotPriceFeedPlaceholders {
+		if !strings.Contains(v, ph) {
+			p.add(field, "must contain {year}, {month}, {day} and {area}")
+			return DefaultEnergySpotPriceFeedURL
+		}
+	}
+	return v
 }
 
 // staffWorkersMinPoll is the shortest STAFF_WORKERS_POLL accepted.

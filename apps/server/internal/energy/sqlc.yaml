@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00005_energy_baseline.sql
       - ../db/migrations/00049_energy_imports.sql
+      - ../db/migrations/00065_energy_spot_prices.sql
     queries: queries
     gen:
       go:

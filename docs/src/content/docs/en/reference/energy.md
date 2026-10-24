@@ -6,6 +6,7 @@ sources:
   - openapi/energy.yaml
   - apps/server/internal/db/migrations/00005_energy_baseline.sql
   - apps/server/internal/db/migrations/00049_energy_imports.sql
+  - apps/server/internal/db/migrations/00065_energy_spot_prices.sql
 ---
 The Energy module keeps the metering points an energy supplier supplies: where each
 one is, which meter sits on it, which customer it is supplied to and for how long, and
@@ -424,6 +425,8 @@ loser is a `409`.
 | `energy:metering-points-view` | View energy metering points | no |
 | `energy:meters-manage` | Manage energy meters | no |
 | `energy:meters-view` | View energy meters | no |
+| `energy:prices-manage` | Manage energy prices — import spot prices from a file | no |
+| `energy:prices-view` | View energy prices — spot prices per price area and what is held of them | no |
 | `energy:supply-periods-manage` | Manage energy supply periods | no |
 | `energy:supply-periods-view` | View energy supply periods | no |
 
