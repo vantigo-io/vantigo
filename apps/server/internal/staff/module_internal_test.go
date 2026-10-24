@@ -29,12 +29,12 @@ func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 		},
 		{
 			Key: "staff:approve", Display: "Decide absence",
-			Description: "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, and mark their milestones.",
+			Description: "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, mark their milestones, and verify competences.",
 			Category:    "Staff", Sensitive: false, Delegable: true,
 		},
 		{
 			Key: "staff:manage", Display: "Manage staff",
-			Description: "Create and edit people (not their national identity number or bank account), employments and terms with pay, the company's structure, absence types and holiday schemes, the settings, documents other than health documents, the account flag, imports, exports and the payroll export.",
+			Description: "Create and edit people (not their national identity number or bank account), employments and terms with pay, the company's structure, absence types and holiday schemes, the competence catalogue, the settings, documents other than health documents, the account flag, imports, exports and the payroll export.",
 			Category:    "Staff", Sensitive: true, Delegable: true,
 		},
 		{

@@ -69,8 +69,8 @@ func TestCheckClosedSchemas_FailsTheMountOnAnOpenOrMissingSchema(t *testing.T) {
 	if err := checkClosedSchemas(doc); err != nil {
 		t.Errorf("the real contract: %v, want nil", err)
 	}
-	if !slices.Equal(closedSchemas, []string{personRequestSchema, accountRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema}) {
-		t.Errorf("closed schemas = %v, want StaffPersonRequest, StaffPersonAccountRequest, StaffMeRequest, StaffAbsenceTypeChangeRequest, StaffAbsenceChangeRequest, StaffAbsenceRequest and StaffAbsenceDecisionRequest", closedSchemas)
+	if !slices.Equal(closedSchemas, []string{personRequestSchema, accountRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema, competenceChangeSchema}) {
+		t.Errorf("closed schemas = %v, want StaffPersonRequest, StaffPersonAccountRequest, StaffMeRequest, StaffAbsenceTypeChangeRequest, StaffAbsenceChangeRequest, StaffAbsenceRequest, StaffAbsenceDecisionRequest and StaffCompetenceChangeRequest", closedSchemas)
 	}
 	open := true
 	for _, name := range closedSchemas {

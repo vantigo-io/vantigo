@@ -190,6 +190,21 @@ var columnClasses = map[string]string{
 	"holiday_schemes.is_default": "C", "holiday_schemes.seeded": "C", "holiday_schemes.archived_at": "C",
 	"holiday_schemes.revision": "C", "holiday_schemes.created_at": "C", "holiday_schemes.updated_at": "C",
 
+	// A person's competences (staff competence design S17, §3.3) are class D
+	// whole, as the next of kin are: every column, so the D erase deletes the
+	// rows — a renewal's chain with them, in one statement. The evidence is a
+	// document under the certificate category, erased as its class D says.
+	// The catalogue is about nobody and is not here.
+	"person_competences.id": "D", "person_competences.person_id": "D", "person_competences.competence_id": "D",
+	"person_competences.level": "D", "person_competences.issued_on": "D", "person_competences.valid_from": "D",
+	"person_competences.valid_to": "D", "person_competences.issuer": "D", "person_competences.reference": "D",
+	"person_competences.evidence_document_id": "D", "person_competences.source": "D",
+	"person_competences.verified_at": "D", "person_competences.verified_by_user_id": "D",
+	"person_competences.verified_basis": "D", "person_competences.verified_note": "D",
+	"person_competences.superseded_by_id": "D", "person_competences.expiring_notified_at": "D",
+	"person_competences.expired_notified_at": "D", "person_competences.revision": "D",
+	"person_competences.created_at": "D", "person_competences.updated_at": "D",
+
 	// Entra delivery D (00062): the groups are the installation's, about
 	// nobody, C whole as the structure is; a membership or an ownership says
 	// who was in which group when, C; a group's sections per provider are
@@ -1486,7 +1501,10 @@ func blankPayload(stored []byte, class string, absentID int64, reserved ...int64
 	_, adjustment := payload["adjustmentId"]
 	_, sickCase := payload["caseId"]
 	_, withdrawal := payload["selfCertWithdrawal"]
-	classed := absence || adjustment || sickCase || withdrawal
+	// A competence event (staff competence design S16) classes its fields
+	// the same way: every one D, the row's class.
+	_, competence := payload["competenceId"]
+	classed := absence || adjustment || sickCase || withdrawal || competence
 	if raw, ok := payload["classes"]; ok && classed {
 		if err := json.Unmarshal(raw, &own); err != nil {
 			return nil, false, err

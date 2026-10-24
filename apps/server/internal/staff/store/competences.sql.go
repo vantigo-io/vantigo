@@ -878,69 +878,6 @@ func (q *Queries) ListPersonCompetences(ctx context.Context, personID int64) ([]
 	return items, nil
 }
 
-const listPersonCompetencesForExport = `-- name: ListPersonCompetencesForExport :many
-SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at,
-       c.key AS competence_key, c.name_en AS competence_name_en, c.name_nb AS competence_name_nb
-FROM staff.person_competences pc
-JOIN staff.competences c ON c.id = pc.competence_id
-WHERE pc.person_id = $1
-ORDER BY pc.created_at DESC, pc.id DESC
-`
-
-type ListPersonCompetencesForExportRow struct {
-	StaffPersonCompetence StaffPersonCompetence
-	CompetenceKey         string
-	CompetenceNameEn      string
-	CompetenceNameNb      string
-}
-
-// ListPersonCompetencesForExport is every row of the person's, every column,
-// with the competence's key and names, for the personal-data exports.
-func (q *Queries) ListPersonCompetencesForExport(ctx context.Context, personID int64) ([]ListPersonCompetencesForExportRow, error) {
-	rows, err := q.db.Query(ctx, listPersonCompetencesForExport, personID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListPersonCompetencesForExportRow
-	for rows.Next() {
-		var i ListPersonCompetencesForExportRow
-		if err := rows.Scan(
-			&i.StaffPersonCompetence.ID,
-			&i.StaffPersonCompetence.PersonID,
-			&i.StaffPersonCompetence.CompetenceID,
-			&i.StaffPersonCompetence.Level,
-			&i.StaffPersonCompetence.IssuedOn,
-			&i.StaffPersonCompetence.ValidFrom,
-			&i.StaffPersonCompetence.ValidTo,
-			&i.StaffPersonCompetence.Issuer,
-			&i.StaffPersonCompetence.Reference,
-			&i.StaffPersonCompetence.EvidenceDocumentID,
-			&i.StaffPersonCompetence.Source,
-			&i.StaffPersonCompetence.VerifiedAt,
-			&i.StaffPersonCompetence.VerifiedByUserID,
-			&i.StaffPersonCompetence.VerifiedBasis,
-			&i.StaffPersonCompetence.VerifiedNote,
-			&i.StaffPersonCompetence.SupersededByID,
-			&i.StaffPersonCompetence.ExpiringNotifiedAt,
-			&i.StaffPersonCompetence.ExpiredNotifiedAt,
-			&i.StaffPersonCompetence.Revision,
-			&i.StaffPersonCompetence.CreatedAt,
-			&i.StaffPersonCompetence.UpdatedAt,
-			&i.CompetenceKey,
-			&i.CompetenceNameEn,
-			&i.CompetenceNameNb,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const lockCompetence = `-- name: LockCompetence :one
 SELECT id, category_id, key, name_en, name_nb, kind, has_level, validity_months, reminder_lead_days, issuer_hint, basis, seeded, hidden, archived_at, sort, revision, created_at, updated_at FROM staff.competences WHERE id = $1 FOR NO KEY UPDATE
 `

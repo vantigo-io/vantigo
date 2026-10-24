@@ -71,12 +71,14 @@ const documentFormField = "file"
 // one: the column is NOT NULL, and a download needs something to offer.
 const documentFallbackName = "document"
 
-// bodyLimits raises the router's request-body cap for the document upload
-// and the register's import (people_import.go); every other operation keeps
+// bodyLimits raises the router's request-body cap for the document uploads
+// — a competence's evidence among them — and the register's import (people_import.go); every other operation keeps
 // the platform default (1 MiB).
 var bodyLimits = map[string]int64{
 	"postStaffPeopleByIdDocuments": maxDocumentRequestBytes,
 	"postStaffPeopleImport":        maxImportRequestBytes,
+	// A competence's evidence is a document (staff competence design S6).
+	"postStaffPersonCompetencesByIdEvidence": maxDocumentRequestBytes,
 }
 
 // documentUploadsPerHour is how many uploads one client address may make. Two
@@ -99,11 +101,12 @@ var policyDocumentUpload = ratelimit.Policy{
 // which call identity and may mail (accounts_run.go), with the pass, which
 // calls the person's provider (account_pass.go).
 var limits = map[string]ratelimit.Policy{
-	"postStaffPeopleByIdDocuments":      policyDocumentUpload,
-	"postStaffAccountsRun":              policyAccountsRun,
-	"postStaffPeopleByIdAccountRun":     policyAccountAction,
-	"postStaffPeopleByIdAccountDisable": policyAccountAction,
-	"postStaffPeopleByIdAccountPass":    policyAccountAction,
+	"postStaffPeopleByIdDocuments":           policyDocumentUpload,
+	"postStaffPersonCompetencesByIdEvidence": policyDocumentUpload,
+	"postStaffAccountsRun":                   policyAccountsRun,
+	"postStaffPeopleByIdAccountRun":          policyAccountAction,
+	"postStaffPeopleByIdAccountDisable":      policyAccountAction,
+	"postStaffPeopleByIdAccountPass":         policyAccountAction,
 }
 
 // newServer builds the module's operations over d. It never fails: an object

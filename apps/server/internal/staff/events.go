@@ -124,6 +124,26 @@ const (
 	eventGroupLeft   = "group_left"
 )
 
+// The competence events (staff competence design S16, delivery A). A
+// person's row's event names the row (competenceId) and carries its fields
+// before and after — the competence's key, the level, the validity's end,
+// the source, the basis, the evidence's document, whether a removal took the
+// chain — never the verifier's note. No field of theirs is in fieldClasses:
+// each counts as class D, the row's (classOfField), so the D erase blanks
+// them, and shapePayload shapes them by the competence groups
+// (competenceFieldGroup). The catalogue's two are installation events,
+// naming the competence and the fields it changed, as the absence types'.
+const (
+	eventCompetenceDeclared      = "competence_declared"
+	eventCompetenceChanged       = "competence_changed"
+	eventCompetenceVerified      = "competence_verified"
+	eventCompetenceRenewed       = "competence_renewed"
+	eventCompetenceRemoved       = "competence_removed"
+	eventCompetenceEvidenceAdded = "competence_evidence_added"
+	eventCompetenceCreated       = "competence_created"
+	eventCompetenceUpdated       = "competence_updated"
+)
+
 // holdEventKinds are the hold's kinds: about the record's retention and who
 // exported it rather than about the person's work, so they are listed only to
 // an audience that reads the hold group — and to the person themselves, who

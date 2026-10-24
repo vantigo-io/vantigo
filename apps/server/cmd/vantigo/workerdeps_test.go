@@ -75,8 +75,9 @@ func TestWorkerModeDeps_CarryIdentitysUserDirectory(t *testing.T) {
 
 // TestWorkerMode_StaffAloneStartsTheAccountsWorker proves MODULES=staff
 // alone hands the runner staff-accounts (accounts plan M10) — identity is
-// always there to provide Accounts — and STAFF_ACCOUNTS_ENABLED=0 keeps it
-// out, the retention worker still started.
+// always there to provide Accounts — and staff-competence (staff competence
+// design S7); STAFF_ACCOUNTS_ENABLED=0 and STAFF_COMPETENCE_ENABLED=0 each
+// keep their own out, the others still started.
 func TestWorkerMode_StaffAloneStartsTheAccountsWorker(t *testing.T) {
 	_, databaseURL := testdb.Migrated(t)
 	pool, err := pgxpool.New(context.Background(), databaseURL)
@@ -85,11 +86,12 @@ func TestWorkerMode_StaffAloneStartsTheAccountsWorker(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 	for _, tc := range []struct {
-		enabled string
-		want    []string
+		accounts, competence string
+		want                 []string
 	}{
-		{enabled: "", want: []string{"staff-retention", "staff-accounts"}},
-		{enabled: "0", want: []string{"staff-retention"}},
+		{want: []string{"staff-retention", "staff-accounts", "staff-competence"}},
+		{accounts: "0", want: []string{"staff-retention", "staff-competence"}},
+		{competence: "0", want: []string{"staff-retention", "staff-accounts"}},
 	} {
 		env := map[string]string{
 			"DATABASE_URL": databaseURL,
@@ -99,8 +101,11 @@ func TestWorkerMode_StaffAloneStartsTheAccountsWorker(t *testing.T) {
 			"SMTP_FROM":    "noreply@example.invalid",
 			"MODULES":      "staff",
 		}
-		if tc.enabled != "" {
-			env["STAFF_ACCOUNTS_ENABLED"] = tc.enabled
+		if tc.accounts != "" {
+			env["STAFF_ACCOUNTS_ENABLED"] = tc.accounts
+		}
+		if tc.competence != "" {
+			env["STAFF_COMPETENCE_ENABLED"] = tc.competence
 		}
 		cfg, err := config.Load(env)
 		if err != nil {
@@ -115,7 +120,7 @@ func TestWorkerMode_StaffAloneStartsTheAccountsWorker(t *testing.T) {
 			names = append(names, w.Name())
 		}
 		if !slices.Equal(names, tc.want) {
-			t.Errorf("STAFF_ACCOUNTS_ENABLED=%q: workers = %v, want %v", tc.enabled, names, tc.want)
+			t.Errorf("STAFF_ACCOUNTS_ENABLED=%q, STAFF_COMPETENCE_ENABLED=%q: workers = %v, want %v", tc.accounts, tc.competence, names, tc.want)
 		}
 	}
 }

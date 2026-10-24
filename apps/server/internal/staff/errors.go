@@ -155,6 +155,22 @@ const (
 	codeSelfCertWithdrawn = "self_certification_withdrawn"
 )
 
+// The refusal codes of competence (staff competence design §6, delivery A):
+// competence_unavailable, level_required and level_not_allowed are 400s on the
+// field they name; own_record is the 403 to the person verifying their own
+// row; the rest 409s on the state of things. seed_immutable,
+// category_in_use, revision_conflict and the documents' codes are reused.
+const (
+	codeCompetenceHeld        = "competence_held"
+	codeCompetenceUnavailable = "competence_unavailable"
+	codeCompetenceInUse       = "competence_in_use"
+	codeVerifiedRow           = "verified_row"
+	codeSuperseded            = "superseded"
+	codeLevelNotAllowed       = "level_not_allowed"
+	codeLevelRequired         = "level_required"
+	codeOwnRecord             = "own_record"
+)
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.
@@ -182,6 +198,11 @@ const (
 	invalidPayrollTitle      = "Invalid payroll export"
 	invalidAbsenceTypeTitle  = "Invalid absence type"
 	invalidSchemeTitle       = "Invalid holiday scheme"
+
+	invalidCompetenceCategoryTitle = "Invalid competence category"
+	invalidCompetenceTitle         = "Invalid competence"
+	invalidPersonCompetenceTitle   = "Invalid competence row"
+	invalidVerificationTitle       = "Invalid verification"
 )
 
 // withFieldError adds one message to a map another rule may already have put

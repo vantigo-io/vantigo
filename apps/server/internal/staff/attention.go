@@ -89,6 +89,8 @@ type attentionInput struct {
 	// accounts is staff:manage's account items' rows (delivery C, Task 4c,
 	// accounts_attention.go).
 	accounts accountAttention
+	// competences is the competence items' rows (competence_attention.go).
+	competences competenceAttention
 }
 
 // attentionFor is the caller's items, oldest first, then by type and id, each
@@ -116,6 +118,7 @@ func attentionFor(in attentionInput, c *callerContext) []gen.StaffStatsAttention
 	}
 	items = append(items, in.awaitingDecision()...)
 	items = append(items, in.milestonesDue(c)...)
+	items = append(items, in.competenceItems(c)...)
 	if c.Manage {
 		items = append(items, in.holidayItems()...)
 	}
@@ -543,6 +546,11 @@ func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerC
 	}
 	if err := s.readAbsenceAttention(ctx, q, c, selfApproves, solePersonalData, &in); err != nil {
 		return nil, err
+	}
+	if c.Manage || c.Approve || len(in.reports) > 0 {
+		if in.competences, err = readCompetenceAttention(ctx, q); err != nil {
+			return nil, err
+		}
 	}
 	if !c.Manage {
 		return attentionFor(in, c), nil

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -61,6 +62,13 @@ type personalDataSnapshot struct {
 	milestones  []store.StaffSickCaseMilestone
 	careDays    gen.StaffCareDays
 	selfCert    gen.StaffSelfCertification
+	// competences is every competence row the person has had, the
+	// superseded ones included, newest first (staff competence design S17),
+	// with each competence and evidence document; verifiers is the names of
+	// the users who verified them, read from the directory after the
+	// snapshot (withVerifiers).
+	competences []store.GetPersonCompetenceRow
+	verifiers   map[uuid.UUID]string
 }
 
 // readPersonalData reads one person's file on q, which is a snapshot's: the
@@ -146,7 +154,24 @@ func readPersonalData(ctx context.Context, q *store.Queries, id int64, today tim
 	if out.careDays, err = careDaysResponse(ctx, q, id, today.Year(), today); err != nil {
 		return out, err
 	}
+	competences, err := q.ListPersonCompetenceHistory(ctx, id)
+	if err != nil {
+		return out, fmt.Errorf("staff: list person %d's competences: %w", id, err)
+	}
+	out.competences = mapRows(competences, func(r store.ListPersonCompetenceHistoryRow) store.GetPersonCompetenceRow {
+		return store.GetPersonCompetenceRow(r)
+	})
 	return out, nil
+}
+
+// withVerifiers is f with the names of its competences' verifiers, as a
+// reads them, read from the user directory after the snapshot.
+func (s *server) withVerifiers(ctx context.Context, f personalDataSnapshot, a audience) (personalDataSnapshot, error) {
+	var err error
+	f.verifiers, err = s.verifierNames(ctx, a, mapRows(f.competences, func(r store.GetPersonCompetenceRow) store.StaffPersonCompetence {
+		return r.StaffPersonCompetence
+	}))
+	return f, err
 }
 
 // openedSealed is the sealed values of the complete file, opened.
@@ -260,6 +285,9 @@ func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSeal
 			return documentResponse(r.StaffDocument, r.StaffDocumentCategory)
 		}),
 		Events: mapRows(f.events, event),
+		Competences: mapRows(f.competences, func(r store.GetPersonCompetenceRow) gen.StaffPersonCompetence {
+			return personCompetenceResponse(r, a, today, f.verifiers)
+		}),
 	}
 }
 
@@ -364,6 +392,9 @@ func (s *server) GetStaffPeopleByIdPersonalData(ctx context.Context, req gen.Get
 	if err != nil {
 		return nil, err
 	}
+	if f, err = s.withVerifiers(ctx, f, everything); err != nil {
+		return nil, err
+	}
 	var user *gen.StaffPersonUser
 	if f.link != nil {
 		if user, err = s.linkedUser(ctx, f.link.ExternalID); err != nil {
@@ -410,6 +441,9 @@ func (s *server) GetStaffMeExport(ctx context.Context, _ gen.GetStaffMeExportReq
 		return gen.GetStaffMeExport404ApplicationProblemPlusJSONResponse(noPerson()), nil
 	}
 	if err != nil {
+		return nil, err
+	}
+	if f, err = s.withVerifiers(ctx, f, selfAudience); err != nil {
 		return nil, err
 	}
 	var user *gen.StaffPersonUser
