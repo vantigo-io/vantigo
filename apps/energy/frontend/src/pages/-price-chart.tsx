@@ -1,7 +1,7 @@
 import { LineChart } from "@mantine/charts";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { SpotPriceInterval } from "../api/spot-prices";
-import { MARKET_TIME_ZONE } from "../lib/market-time";
+import { MARKET_TIME_ZONE, marketUtcOffset } from "../lib/market-time";
 import "../i18n";
 
 /**
@@ -11,13 +11,20 @@ import "../i18n";
  */
 export const PriceChart = ({ intervals, period }: { intervals: SpotPriceInterval[]; period: "day" | "month" }) => {
   const { t, formatters } = useI18n("energy");
-  const data = intervals.map((item) => ({
-    start: formatters.formatDate(item.start, {
+  const labels = intervals.map((item) =>
+    formatters.formatDate(item.start, {
       ...(period === "month" ? { day: "numeric", month: "short" } : {}),
       hour: "2-digit",
       minute: "2-digit",
       timeZone: MARKET_TIME_ZONE,
     }),
+  );
+  // The day the clock goes back has its 02:00 twice: a label that repeats
+  // carries the interval's UTC offset, so each run of the hour is its own point.
+  const counts = new Map<string, number>();
+  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+  const data = intervals.map((item, index) => ({
+    start: (counts.get(labels[index]) ?? 0) > 1 ? `${labels[index]} ${marketUtcOffset(item.start)}` : labels[index],
     nokPerKwh: item.nokPerKwh,
   }));
   return (

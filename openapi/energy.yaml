@@ -879,7 +879,7 @@ components:
                 - daysMissingLast30
             type: object
         SpotPriceFetch:
-            description: "The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body)."
+            description: "The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while today's or tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body). attempts counts the requests made since the record last changed status, so a day pending for hours and then missing starts its seven missing attempts from one."
             properties:
                 attemptedAt:
                     format: date-time
@@ -2573,9 +2573,9 @@ paths:
     /api/v1/energy/spot-prices/import:
         post:
             description: |-
-                Imports day-ahead prices from a file (energy consumption billing design D2): multipart, one part named file — a CSV of at most 10 MiB and 50 000 data rows, read as the consumption import reads its file. The layout is fixed and found from the header words, each matched at most once: the area (area, price_area, prisområde, elspotområde, område, sone), the start (start, from, fra, time_start, starttid), optionally the end (end, to, til, time_end, sluttid), the NOK price per kWh (nok_per_kwh, price, pris, kr/kwh, nok/kwh; or øre/kwh, ore_per_kwh, read as øre and divided by 100), optionally the EUR price (eur_per_kwh, eur/kwh) and the exchange rate (exr, exchange_rate, kurs). Area, start and the NOK price are required.
+                Imports day-ahead prices from a file (energy consumption billing design D2): multipart, one part named file — a CSV of at most 10 MiB and 50 000 data rows, read as the consumption import reads its file. The layout is fixed and found from the header words — two columns naming one field (NOK and øre count as one) are a 400 — the area (area, price_area, prisområde, elspotområde, område, sone), the start (start, from, fra, time_start, starttid), optionally the end (end, to, til, time_end, sluttid), the NOK price per kWh (nok_per_kwh, price, pris, kr/kwh, nok/kwh; or øre/kwh, ore_per_kwh, read as øre and divided by 100), optionally the EUR price (eur_per_kwh, eur/kwh) and the exchange rate (exr, exchange_rate, kurs). Area, start and the NOK price are required.
 
-                Timestamps are read as the consumption import reads them: ISO 8601 or dd.mm.yyyy hh:mm, with an offset or Z as that instant, without one as a local clock time in Europe/Oslo, the spring gap a row's error and the autumn repeat the earlier instant first. With an end column, rows of one area may leave gaps between them (one file may fill several separate days), but an unordered or overlapping row is the row's error. Without an end column an interval closes at the next row's start of the same area in file order, and the area's last row takes the length of the row before it (an hour when the area has a single row); a row whose successor starts later than that length after it, or earlier, is the row's error. A file may hold several areas. A row whose interval overlaps a stored interval of another length is the row's error (prices of one area never overlap); one equal to a stored interval replaces its figures when they differ and is unchanged when they do not.
+                Timestamps are read as the consumption import reads them: ISO 8601, dd.mm.yyyy hh:mm or dd/mm/yyyy hh:mm, with an offset or Z as that instant, without one as a local clock time in Europe/Oslo, the spring gap a row's error and the autumn repeat the earlier instant first. With an end column, an interval is at most an hour long (the market's own resolutions are an hour and a quarter of an hour), and rows of one area may leave gaps between them (one file may fill several separate days); a row that starts before the area's previous row, or inside its interval, is that row's error. Without an end column an interval closes at the next row's start of the same area in file order, and the area's last row takes the length of the row before it (an hour when the area has a single row); a row whose successor starts later than that length after it is the row's error, and a successor that starts earlier is the successor's. A file may hold several areas. A row whose interval overlaps a stored interval of another length is the row's error (prices of one area never overlap); one equal to a stored interval replaces its figures when they differ and is unchanged when they do not.
 
                 dryRun (true when absent) checks every row and writes nothing; a run (dryRun=false) writes every row in one transaction, or — when any row has an error — nothing at all, and answers 422 with the same body. Rate-limited at 600 calls an hour per client address.
             operationId: postEnergySpotPricesImport
@@ -2610,7 +2610,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request — on 'file' for the file itself (no part named file or two of them, an empty file, one past 10 MiB, no header row, more than 50 columns, more than 50 000 rows, a line the CSV reader cannot parse, or a header without an area, a start or a NOK price column). A body that is not multipart at all is a bare 400.
+                    description: Bad Request — on 'file' for the file itself (no part named file or two of them, an empty file, one past 10 MiB, no header row, more than 50 columns, more than 50 000 rows, a line the CSV reader cannot parse, a header without an area, a start or a NOK price column, or two columns naming one field). A body that is not multipart at all is a bare 400.
                 "401":
                     content:
                         application/json:
@@ -2629,6 +2629,16 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/SpotPriceImportResult'
                     description: Unprocessable Entity — a run (dryRun=false) found at least one row with an error; nothing was written, and the body says what.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — at most 600 imports an hour from one client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             summary: Import spot prices from a file
             tags:
                 - EnergySpotPricesEndpoints

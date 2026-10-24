@@ -49,9 +49,10 @@ const maxSpotPriceImportRequestBytes = maxConsumptionImportRequestBytes
 // six digits before the point.
 const spotPriceFigureLimit = 1e6
 
-// spotPriceMaxInterval is the longest interval a file without an end column
-// is read to give a row (the plan's reading 10): the day-ahead market's
-// unit is an hour or a quarter of one, so a longer one is a missing row.
+// spotPriceMaxInterval is the longest interval a row may have (the plan's
+// reading 10): the day-ahead market's unit is an hour or a quarter of one, so
+// in a file without an end column a longer step is a missing row, and with
+// one a longer interval is the row's error.
 const spotPriceMaxInterval = time.Hour
 
 const invalidSpotPriceImportUploadMessage = "A spot price import is one CSV file of at most 10 MB, sent as the multipart part named 'file'"
@@ -224,9 +225,10 @@ func (e *spotPriceEvaluation) fail(row, column int, message string) {
 // evaluateSpotPriceFile checks every row of a file under l, local clock
 // times in loc (Europe/Oslo: the market's day, whatever the area). Each cell
 // is read first; then each area's rows, in file order, are held to one
-// another (the plan's reading 10): with an end column a row may not start
-// before the row before it nor inside its interval — a gap is allowed, so one
-// file may fill several separate days; without one each row closes at the
+// another (the plan's reading 10): with an end column a row's interval is at
+// most an hour, and a row may not start before the row before it nor inside
+// its interval — a gap is allowed, so one file may fill several separate
+// days; without one each row closes at the
 // next row's start, the last as long as the row before it (an hour when it
 // is the area's only row), and a row the next one does not follow (an
 // unordered row) or follows only after a gap is the row's error. Nothing
@@ -269,8 +271,12 @@ func evaluateSpotPriceFile(file fileimport.File, l spotPriceLayout, loc *time.Lo
 		}
 		if l.end >= 0 {
 			end, endOK := e.readEnd(record.Row, l.end, cell(l.end), start, startOK, loc, zone)
-			if startOK && endOK && !end.After(start) {
+			switch {
+			case !startOK || !endOK:
+			case !end.After(start):
 				e.fail(record.Row, l.end, "The end must be after the start")
+			case end.Sub(start) > spotPriceMaxInterval:
+				e.fail(record.Row, l.end, "An interval may be at most an hour long")
 			}
 			r.price.End = end
 		}
@@ -546,7 +552,8 @@ func planSpotPriceImport(ctx context.Context, q *store.Queries, e spotPriceEvalu
 //
 // Design D2: the part, the file read, the layout from the header (400 on
 // file), every row checked; a dry run answers what a run would do, a run
-// classifies the rows again and writes every area in one transaction — or
+// locks the file's areas, classifies the rows again and writes every area in
+// one transaction — or
 // answers 422 with the same body and writes nothing when any row has an
 // error (the plan's reading 11).
 func (s *server) PostEnergySpotPricesImport(ctx context.Context, req gen.PostEnergySpotPricesImportRequestObject) (gen.PostEnergySpotPricesImportResponseObject, error) {
@@ -584,8 +591,13 @@ func (s *server) PostEnergySpotPricesImport(ctx context.Context, req gen.PostEne
 	var result gen.SpotPriceImportResult
 	clean := false
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		// The classification is made again in the transaction that writes,
-		// so the counts answered are what was written.
+		// The file's areas are locked first, as every writer of spot prices
+		// locks them, and the classification is made again under the locks in
+		// the transaction that writes: another import or the worker writing
+		// the same area waits, so the counts answered are what was written.
+		if err := lockSpotPriceAreas(ctx, tx, evaluation.areas); err != nil {
+			return err
+		}
 		result = newResult()
 		plans, ok, err := planSpotPriceImport(ctx, store.New(tx), evaluation, &result)
 		if err != nil || !ok {

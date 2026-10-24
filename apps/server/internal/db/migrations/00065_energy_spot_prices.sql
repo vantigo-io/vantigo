@@ -32,11 +32,12 @@ CREATE TABLE energy.spot_prices (
 CREATE UNIQUE INDEX ux_spot_prices_area_start ON energy.spot_prices (price_area, "start");
 
 -- The feed worker's record of one (area, civil day in Europe/Oslo): ok once
--- the day's prices are stored, pending while tomorrow's are not yet
--- published, missing for a past day the feed has no file for, failed for
--- anything else; attempts counts every request, next_attempt_at is when the
--- planner may ask again, last_error the sentence of the last failure, never
--- the response's body.
+-- the day's prices are stored, pending while today's or tomorrow's are not
+-- yet published, missing for a past day the feed has no file for, failed for
+-- anything else; attempts counts the requests made since the row last changed
+-- status (so a day pending for hours starts its missing attempts from one),
+-- next_attempt_at is when the planner may ask again, last_error the sentence
+-- of the last failure, never the response's body.
 CREATE TABLE energy.spot_price_fetches (
     price_area      varchar(4)   NOT NULL,
     day             date         NOT NULL,

@@ -333,20 +333,22 @@ func (q *Queries) ListSpotPricesByStarts(ctx context.Context, arg ListSpotPrices
 const listSpotPricesOverlapping = `-- name: ListSpotPricesOverlapping :many
 SELECT id, price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at
 FROM energy.spot_prices
-WHERE price_area = $1 AND "start" < $2::timestamptz AND "end" > $3::timestamptz
+WHERE price_area = $1 AND tstzrange("start", "end", '[)') && tstzrange($2::timestamptz, $3::timestamptz, '[)')
 ORDER BY "start"
 `
 
 type ListSpotPricesOverlappingParams struct {
 	PriceArea string
-	ToTs      time.Time
 	FromTs    time.Time
+	ToTs      time.Time
 }
 
 // ListSpotPricesOverlapping is every stored interval of an area touching
-// [from, to): what a day at another resolution would collide with.
+// [from, to): what a day at another resolution would collide with. The range
+// operator lets the exclusion constraint's GiST index answer it, where
+// "start" < to alone would walk the area's whole history.
 func (q *Queries) ListSpotPricesOverlapping(ctx context.Context, arg ListSpotPricesOverlappingParams) ([]EnergySpotPrice, error) {
-	rows, err := q.db.Query(ctx, listSpotPricesOverlapping, arg.PriceArea, arg.ToTs, arg.FromTs)
+	rows, err := q.db.Query(ctx, listSpotPricesOverlapping, arg.PriceArea, arg.FromTs, arg.ToTs)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +382,7 @@ INSERT INTO energy.spot_price_fetches (price_area, day, status, attempts, last_e
 VALUES ($1, $2::date, $3, 1, $4, $5::timestamptz, $6, $7)
 ON CONFLICT (price_area, day) DO UPDATE SET
     status = EXCLUDED.status,
-    attempts = energy.spot_price_fetches.attempts + 1,
+    attempts = CASE WHEN energy.spot_price_fetches.status = EXCLUDED.status THEN energy.spot_price_fetches.attempts + 1 ELSE 1 END,
     last_error = EXCLUDED.last_error,
     attempted_at = EXCLUDED.attempted_at,
     fetched_at = COALESCE(EXCLUDED.fetched_at, energy.spot_price_fetches.fetched_at),
@@ -398,7 +400,9 @@ type RecordSpotPriceFetchParams struct {
 }
 
 // RecordSpotPriceFetch writes one attempt's outcome: the row created on the
-// first attempt and updated after, attempts counted up each time.
+// first attempt and updated after, attempts counted up while the status
+// stays and starting again from one when it changes — a day pending for
+// hours before it is published does not spend a later status's budget.
 func (q *Queries) RecordSpotPriceFetch(ctx context.Context, arg RecordSpotPriceFetchParams) error {
 	_, err := q.db.Exec(ctx, recordSpotPriceFetch,
 		arg.PriceArea,

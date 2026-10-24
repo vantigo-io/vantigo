@@ -177,21 +177,22 @@ func TestSpotPriceWorker_BacksOffAFailedDay(t *testing.T) {
 }
 
 // feedServer is the public feed's shape over TLS: /prices/{year}/{month}-{day}_{area}.json
-// answers the day's hours in Oslo, unless the test set another status or
-// body for "AREA YYYY-MM-DD". It records every request in order.
+// answers the day's hours in Oslo, unless the test set another status, body
+// or handler for "AREA YYYY-MM-DD". It records every request in order.
 type feedServer struct {
-	srv    *httptest.Server
-	mu     sync.Mutex
-	hits   []string
-	status map[string]int
-	bodies map[string]string
+	srv      *httptest.Server
+	mu       sync.Mutex
+	hits     []string
+	status   map[string]int
+	bodies   map[string]string
+	handlers map[string]http.HandlerFunc
 }
 
 var feedPath = regexp.MustCompile(`^/prices/(\d{4})/(\d{2})-(\d{2})_([A-Z0-9]+)\.json$`)
 
 func newFeedServer(t *testing.T) *feedServer {
 	t.Helper()
-	fs := &feedServer{status: map[string]int{}, bodies: map[string]string{}}
+	fs := &feedServer{status: map[string]int{}, bodies: map[string]string{}, handlers: map[string]http.HandlerFunc{}}
 	fs.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		m := feedPath.FindStringSubmatch(r.URL.Path)
 		if m == nil || r.Header.Get("Accept") != "application/json" || r.Header.Get("User-Agent") != "Vantigo-Energy" {
@@ -202,8 +203,12 @@ func newFeedServer(t *testing.T) *feedServer {
 		key := m[4] + " " + day
 		fs.mu.Lock()
 		fs.hits = append(fs.hits, key)
-		status, body := fs.status[key], fs.bodies[key]
+		status, body, handler := fs.status[key], fs.bodies[key], fs.handlers[key]
 		fs.mu.Unlock()
+		if handler != nil {
+			handler(w, r)
+			return
+		}
 		if status != 0 {
 			http.Error(w, "the feed's own words", status)
 			return
@@ -392,8 +397,9 @@ func TestSpotPriceWorker_RecordsEachAnswerAndRetriesAsReadingFourSays(t *testing
 	if hits := fs.takeHits(); !slices.Contains(hits, "NO1 2026-09-13") {
 		t.Errorf("an hour on, asked for %v, want tomorrow among them", hits)
 	}
-	if published := fetchRecordOf(t, h, "NO1", "2026-09-13"); published.Status != "ok" || published.Attempts != 2 || published.NextAttempt != nil {
-		t.Errorf("tomorrow once published = %+v, want ok on its second attempt", published)
+	// The status changed, so the count starts again: one ok request.
+	if published := fetchRecordOf(t, h, "NO1", "2026-09-13"); published.Status != "ok" || published.Attempts != 1 || published.NextAttempt != nil {
+		t.Errorf("tomorrow once published = %+v, want ok, its attempts counted from one", published)
 	}
 }
 
@@ -520,5 +526,127 @@ func TestSpotPriceWorker_ABuiltByHandConfigWithABadTemplateFailsTheCycle(t *test
 	}
 	if got := fmt.Sprint(energy.NewSpotPriceWorker(h.Deps()).Interval()); got != "15m0s" {
 		t.Errorf("the default poll is %s, want 15m0s", got)
+	}
+}
+
+// seedFetchRow writes area's fetch row for day as an earlier cycle left it,
+// due now.
+func seedFetchRow(t *testing.T, h *modtest.Harness, area, day, status string, attempts int32) {
+	t.Helper()
+	h.Exec(t, `INSERT INTO energy.spot_price_fetches (price_area, day, status, attempts, attempted_at, next_attempt_at)
+	           VALUES ($1, $2::date, $3, $4, $5, $5)`, area, day, status, attempts, h.Now())
+}
+
+func TestSpotPriceWorker_ATodayNotPublishedStaysPendingHoweverLong(t *testing.T) {
+	t.Parallel()
+	fs := newFeedServer(t)
+	h := spotPriceHarness(t, fs)
+	priceAreaInUse(t, h, "NO1")
+	// 2026-09-12 is today: pending since yesterday, fourteen hourly requests.
+	seedFetchRow(t, h, "NO1", "2026-09-12", "pending", 14)
+	fs.set("NO1 2026-09-12", http.StatusNotFound)
+	runSpotPriceCycle(t, energy.NewSpotPriceWorker(h.Deps()))
+	if r := fetchRecordOf(t, h, "NO1", "2026-09-12"); r.Status != "pending" || r.Attempts != 15 || !sameInstant(r.NextAttempt, h.Now().Add(time.Hour)) {
+		t.Errorf("today's 404 = %+v, want pending, its fifteenth attempt, asked again in an hour", r)
+	}
+}
+
+func TestSpotPriceWorker_APendingDayThatIsPastCountsItsMissingAttemptsFromOne(t *testing.T) {
+	t.Parallel()
+	fs := newFeedServer(t)
+	h := spotPriceHarness(t, fs)
+	priceAreaInUse(t, h, "NO1")
+	// 2026-09-11 was today while it was pending; now it is yesterday.
+	seedFetchRow(t, h, "NO1", "2026-09-11", "pending", 14)
+	fs.set("NO1 2026-09-11", http.StatusNotFound)
+	runSpotPriceCycle(t, energy.NewSpotPriceWorker(h.Deps()))
+	if r := fetchRecordOf(t, h, "NO1", "2026-09-11"); r.Status != "missing" || r.Attempts != 1 || !sameInstant(r.NextAttempt, h.Now().Add(24*time.Hour)) {
+		t.Errorf("a past day's first 404 after pending = %+v, want missing, attempt 1, asked again in a day", r)
+	}
+}
+
+func TestSpotPriceWorker_AFailureAfterPendingBacksOffFromFifteenMinutes(t *testing.T) {
+	t.Parallel()
+	fs := newFeedServer(t)
+	h := spotPriceHarness(t, fs)
+	priceAreaInUse(t, h, "NO1")
+	seedFetchRow(t, h, "NO1", "2026-09-13", "pending", 13)
+	fs.set("NO1 2026-09-13", http.StatusInternalServerError)
+	runSpotPriceCycle(t, energy.NewSpotPriceWorker(h.Deps()))
+	if r := fetchRecordOf(t, h, "NO1", "2026-09-13"); r.Status != "failed" || r.Attempts != 1 || !sameInstant(r.NextAttempt, h.Now().Add(15*time.Minute)) {
+		t.Errorf("a 500 after 13 pending attempts = %+v, want failed, attempt 1, asked again in 15 minutes", r)
+	}
+}
+
+func TestSpotPriceWorker_RecordsARedirectAndAnAnswerTooLargeAsFailures(t *testing.T) {
+	t.Parallel()
+	fs := newFeedServer(t)
+	h := spotPriceHarness(t, fs)
+	priceAreaInUse(t, h, "NO1")
+	// The redirect points at another feed address, which records a hit if
+	// it is ever asked.
+	fs.handlers["NO1 2026-09-10"] = func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, fs.srv.URL+"/prices/2026/09-10_NO9.json", http.StatusFound)
+	}
+	fs.handlers["NO1 2026-09-11"] = func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[" + strings.Repeat(" ", 1<<20) + "]"))
+	}
+	runSpotPriceCycle(t, energy.NewSpotPriceWorker(h.Deps()))
+	if hits := fs.takeHits(); slices.Contains(hits, "NO9 2026-09-10") {
+		t.Errorf("asked for %v: the redirect was followed", hits)
+	}
+	for day, want := range map[string]string{
+		"2026-09-10": "the feed redirects; set ENERGY_SPOT_PRICE_FEED_URL to the address it points at",
+		"2026-09-11": "the feed's answer is larger than 1 MiB",
+	} {
+		if r := fetchRecordOf(t, h, "NO1", day); r.Status != "failed" || r.LastError == nil || *r.LastError != want {
+			t.Errorf("%s = %+v, want failed with %q", day, r, want)
+		}
+	}
+	if n := h.Count(t, `SELECT count(*) FROM energy.spot_prices WHERE price_area = 'NO1' AND source = 'Feed'
+	                     AND "start" >= '2026-09-10T00:00:00+02:00' AND "start" < '2026-09-12T00:00:00+02:00'`); n != 0 {
+		t.Errorf("%d intervals of the refused days written, want none", n)
+	}
+}
+
+func TestSpotPriceWorker_AShutdownMidFetchRecordsNothingAndReleasesTheLease(t *testing.T) {
+	t.Parallel()
+	fs := newFeedServer(t)
+	h := spotPriceHarness(t, fs)
+	priceAreaInUse(t, h, "NO1")
+	asked := make(chan struct{})
+	// The window's first day hangs until the request goes away.
+	fs.handlers["NO1 2026-09-05"] = func(_ http.ResponseWriter, r *http.Request) {
+		close(asked)
+		<-r.Context().Done()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-asked
+		cancel()
+	}()
+	n, err := energy.NewSpotPriceWorker(h.Deps()).RunCycle(ctx)
+	if err != nil || n != 0 {
+		t.Errorf("the cancelled cycle answered %d requests, %v; want none and no error", n, err)
+	}
+	if hits := fs.takeHits(); !slices.Equal(hits, []string{"NO1 2026-09-05"}) {
+		t.Errorf("asked for %v, want only the day the shutdown cut short", hits)
+	}
+	if rows := h.Count(t, `SELECT count(*) FROM energy.spot_price_fetches`); rows != 0 {
+		t.Errorf("%d fetch rows recorded, want none: a shutdown is no failure of the feed", rows)
+	}
+	conn, err := h.Pool().Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	var free bool
+	if err := conn.QueryRow(context.Background(), `SELECT pg_try_advisory_lock($1)`, energy.SpotPriceLeaseKeyForTest).Scan(&free); err != nil || !free {
+		t.Fatalf("the lease after a shutdown: taken %v (%v), want it released", free, err)
+	}
+	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, energy.SpotPriceLeaseKeyForTest); err != nil {
+		t.Fatal(err)
 	}
 }

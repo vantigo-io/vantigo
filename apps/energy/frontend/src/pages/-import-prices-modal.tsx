@@ -3,7 +3,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCircleCheck, IconFileUpload } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ApiValidationError } from "../api/request";
 import {
   importSpotPrices,
@@ -31,43 +31,64 @@ export const ImportPricesModal = ({ opened, onClose }: { opened: boolean; onClos
   const [file, setFile] = useState<File | null>(null);
   const [check, setCheck] = useState<SpotPriceImportResult | null>(null);
   const [done, setDone] = useState<SpotPriceImportResult | null>(null);
+  // Each opening is a session of its own: an answer to a request sent in an
+  // earlier one (the modal was closed while it was pending) is dropped.
+  const session = useRef(0);
+  const [wasOpened, setWasOpened] = useState(opened);
 
   const reset = () => {
     setFile(null);
     setCheck(null);
     setDone(null);
   };
-  const close = () => {
-    reset();
-    onClose();
-  };
+  if (opened !== wasOpened) {
+    setWasOpened(opened);
+    if (opened) reset();
+  }
 
   const checkMutation = useMutation({
-    mutationFn: (chosen: File) => importSpotPrices(chosen, true),
-    onSuccess: setCheck,
-    onError: (error) =>
-      notifications.show({ color: "red", title: t("importPricesCouldNotCheck"), message: problem(error) }),
+    mutationFn: ({ file: chosen }: { file: File; session: number }) => importSpotPrices(chosen, true),
+    onSuccess: (result, sent) => {
+      if (sent.session === session.current) setCheck(result);
+    },
+    onError: (error, sent) => {
+      if (sent.session !== session.current) return;
+      notifications.show({ color: "red", title: t("importPricesCouldNotCheck"), message: problem(error) });
+    },
   });
   const importMutation = useMutation({
-    mutationFn: (chosen: File) => importSpotPrices(chosen, false),
-    onSuccess: (result) => {
+    mutationFn: ({ file: chosen }: { file: File; session: number }) => importSpotPrices(chosen, false),
+    onSuccess: (result, sent) => {
       void client.invalidateQueries({ queryKey: spotPricesQueryKey });
+      if (sent.session !== session.current) return;
       setCheck(null);
       setDone(result);
     },
-    onError: (error) => {
+    onError: (error, sent) => {
+      if (sent.session !== session.current) return;
       // 422: a row has an error now that the check did not see (the stored
-      // prices changed in between); the check is run again to list it.
-      const stale = (error as { status?: number }).status === 422;
+      // prices changed in between); 409: another import of the same area ran
+      // at the same time. Either way the check is run again to show the file
+      // against what is stored now.
+      const status = (error as { status?: number }).status;
+      const stale = status === 422 || status === 409;
       setCheck(null);
       notifications.show({
         color: "red",
         title: t("importPricesCouldNotImport"),
-        message: stale ? t("importPricesNowHasErrors") : problem(error),
+        message: status === 422 ? t("importPricesNowHasErrors") : problem(error),
       });
-      if (stale && file) checkMutation.mutate(file);
+      if (stale) checkMutation.mutate(sent);
     },
   });
+
+  const close = () => {
+    session.current += 1;
+    checkMutation.reset();
+    importMutation.reset();
+    reset();
+    onClose();
+  };
 
   const choose = (chosen: File | null) => {
     reset();
@@ -77,7 +98,7 @@ export const ImportPricesModal = ({ opened, onClose }: { opened: boolean; onClos
       notifications.show({ color: "red", title: t("importPricesCouldNotCheck"), message: t("importPricesTooLarge") });
       return;
     }
-    checkMutation.mutate(chosen);
+    checkMutation.mutate({ file: chosen, session: session.current });
   };
 
   const result = done ?? check;
@@ -184,7 +205,7 @@ export const ImportPricesModal = ({ opened, onClose }: { opened: boolean; onClos
               <Button
                 disabled={!canImport}
                 loading={importMutation.isPending || checkMutation.isPending}
-                onClick={() => file && importMutation.mutate(file)}
+                onClick={() => file && importMutation.mutate({ file, session: session.current })}
               >
                 {t("importReadingsImport")}
               </Button>

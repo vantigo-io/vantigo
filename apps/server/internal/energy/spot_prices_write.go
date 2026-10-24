@@ -3,6 +3,7 @@ package energy
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -20,8 +21,11 @@ import (
 // figures, unchanged where it holds it with the same, and a conflict where
 // it holds an interval of another length touching the row's — then written
 // in the caller's transaction. The counts a caller answers are exact because
-// the classification is made under the same transaction as the write; the
-// exclusion constraint spot_prices_no_overlap is the backstop behind it.
+// every writer of an area — the import and the worker alike — takes the
+// area's advisory lock (lockSpotPriceAreas) in that transaction before it
+// classifies, so writers of one area are serialised and none classifies
+// against rows another is about to commit; the exclusion constraint
+// spot_prices_no_overlap stays the backstop behind it.
 
 // The two sources a price is written with.
 const (
@@ -68,6 +72,18 @@ type spotPriceReplace struct {
 // Counts are the plan's figures as a caller answers them.
 func (p spotPriceWritePlan) Counts() (inserted, replaced, unchanged int) {
 	return len(p.inserts), len(p.replaces), p.unchanged
+}
+
+// lockSpotPriceAreas takes the transaction-scoped advisory lock of each of
+// areas on tx, in sorted order so two writers holding several areas never
+// wait on each other in a circle. It is held until tx ends.
+func lockSpotPriceAreas(ctx context.Context, tx pgx.Tx, areas []string) error {
+	for _, area := range slices.Sorted(slices.Values(areas)) {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('energy.spot_prices:' || $1::text, 0))`, area); err != nil {
+			return fmt.Errorf("energy: lock the spot prices of %s: %w", area, err)
+		}
+	}
+	return nil
 }
 
 // planSpotPriceWrite classifies rows — all of one area, any order, no two

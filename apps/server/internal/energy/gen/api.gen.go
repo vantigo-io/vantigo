@@ -503,12 +503,12 @@ type SpotPriceCoverageArea struct {
 	IntervalCount     int64      `json:"intervalCount"`
 	LastEnd           *time.Time `json:"lastEnd,omitempty"`
 
-	// LastFetch The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body).
+	// LastFetch The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while today's or tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body). attempts counts the requests made since the record last changed status, so a day pending for hours and then missing starts its seven missing attempts from one.
 	LastFetch *SpotPriceFetch `json:"lastFetch,omitempty"`
 	PriceArea string          `json:"priceArea"`
 }
 
-// SpotPriceFetch The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body).
+// SpotPriceFetch The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while today's or tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body). attempts counts the requests made since the record last changed status, so a day pending for hours and then missing starts its seven missing attempts from one.
 type SpotPriceFetch struct {
 	AttemptedAt   *time.Time         `json:"attemptedAt,omitempty"`
 	Attempts      int32              `json:"attempts"`
@@ -4601,6 +4601,30 @@ func (response PostEnergySpotPricesImport422JSONResponse) VisitPostEnergySpotPri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergySpotPricesImport429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostEnergySpotPricesImport429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostEnergySpotPricesImport429ResponseHeaders
+}
+
+func (response PostEnergySpotPricesImport429JSONResponse) VisitPostEnergySpotPricesImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }
