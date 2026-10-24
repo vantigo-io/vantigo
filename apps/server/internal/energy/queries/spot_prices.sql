@@ -15,10 +15,12 @@ ORDER BY "start";
 
 -- name: ListSpotPricesOverlapping :many
 -- ListSpotPricesOverlapping is every stored interval of an area touching
--- [from, to): what a day at another resolution would collide with.
+-- [from, to): what a day at another resolution would collide with. The range
+-- operator lets the exclusion constraint's GiST index answer it, where
+-- "start" < to alone would walk the area's whole history.
 SELECT id, price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at
 FROM energy.spot_prices
-WHERE price_area = @price_area AND "start" < @to_ts::timestamptz AND "end" > @from_ts::timestamptz
+WHERE price_area = @price_area AND tstzrange("start", "end", '[)') && tstzrange(@from_ts::timestamptz, @to_ts::timestamptz, '[)')
 ORDER BY "start";
 
 -- name: InsertSpotPrice :exec
@@ -88,12 +90,14 @@ ORDER BY price_area, attempted_at DESC, day DESC;
 
 -- name: RecordSpotPriceFetch :exec
 -- RecordSpotPriceFetch writes one attempt's outcome: the row created on the
--- first attempt and updated after, attempts counted up each time.
+-- first attempt and updated after, attempts counted up while the status
+-- stays and starting again from one when it changes — a day pending for
+-- hours before it is published does not spend a later status's budget.
 INSERT INTO energy.spot_price_fetches (price_area, day, status, attempts, last_error, attempted_at, fetched_at, next_attempt_at)
 VALUES (@price_area, @day::date, @status, 1, @last_error, @attempted_at::timestamptz, @fetched_at, @next_attempt_at)
 ON CONFLICT (price_area, day) DO UPDATE SET
     status = EXCLUDED.status,
-    attempts = energy.spot_price_fetches.attempts + 1,
+    attempts = CASE WHEN energy.spot_price_fetches.status = EXCLUDED.status THEN energy.spot_price_fetches.attempts + 1 ELSE 1 END,
     last_error = EXCLUDED.last_error,
     attempted_at = EXCLUDED.attempted_at,
     fetched_at = COALESCE(EXCLUDED.fetched_at, energy.spot_price_fetches.fetched_at),

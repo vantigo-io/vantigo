@@ -147,6 +147,22 @@ describe("ImportPricesModal", () => {
     expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
   });
 
+  it("checks again when the run answers 409, another import having written the area meanwhile", async () => {
+    const user = userEvent.setup();
+    const { calls } = renderModal((dryRun, call) => {
+      if (dryRun === "false") return json({ title: "Conflict", status: 409, detail: "another import is running" }, 409);
+      return call === 1
+        ? json(result())
+        : json(result({ areas: [{ priceArea: "NO1", inserted: 0, replaced: 0, unchanged: 24 }] }));
+    });
+
+    await chooseFile(user);
+    await user.click(await screen.findByRole("button", { name: "Import" }));
+    expect(await screen.findByText("Every price in the file is already stored.")).toBeInTheDocument();
+    expect(calls).toEqual(["true", "false", "true"]);
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+  });
+
   it("shows the server's words when it refuses the file itself", async () => {
     const user = userEvent.setup();
     renderModal(() =>
@@ -171,5 +187,32 @@ describe("ImportPricesModal", () => {
       ),
     );
     expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+  });
+
+  it("starts afresh when reopened, and drops a check answered after it was closed", async () => {
+    const user = userEvent.setup();
+    const answers: ((response: Response) => void)[] = [];
+    stubFetch(() => new Promise<Response>((resolve) => answers.push(resolve)));
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const modal = (opened: boolean) => (
+      <MantineProvider>
+        <QueryClientProvider client={client}>
+          <ImportPricesModal opened={opened} onClose={() => view.rerender(modal(false))} />
+        </QueryClientProvider>
+      </MantineProvider>
+    );
+    const view = render(modal(true));
+
+    await chooseFile(user);
+    await vi.waitFor(() => expect(answers).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    answers[0](json(result()));
+    await vi.waitFor(() => expect(client.isMutating()).toBe(0));
+
+    view.rerender(modal(true));
+    expect(await screen.findByRole("button", { name: "Import" })).toBeDisabled();
+    expect(screen.queryByText("Dry run: 48 rows")).not.toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: /NO1/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("prices.csv")).not.toBeInTheDocument();
   });
 });

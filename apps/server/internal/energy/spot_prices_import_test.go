@@ -336,7 +336,8 @@ func TestSpotPriceImport_RowErrors(t *testing.T) {
 	}
 
 	// With an end column: a gap is allowed, an overlap and an unordered
-	// row are not, nor an end before the start.
+	// row are not, nor an end before the start, nor an interval longer
+	// than an hour.
 	ends := spotPriceImportOf(t, postSpotPriceImport(t, c, fileOf(
 		[]string{"area", "start", "end", "price"},
 		[]string{"NO1", "2026-01-10 00:00", "2026-01-10 01:00", "1"},
@@ -344,16 +345,103 @@ func TestSpotPriceImport_RowErrors(t *testing.T) {
 		[]string{"NO1", "2026-01-12 00:30", "2026-01-12 01:30", "1"},
 		[]string{"NO1", "2026-01-11 00:00", "2026-01-11 01:00", "1"},
 		[]string{"NO1", "2026-01-13 01:00", "2026-01-13 00:00", "1"},
+		[]string{"NO2", "2026-01-01 00:00", "2027-01-01 00:00", "1"},
 	), "true"), http.StatusOK)
 	want = strings.Join([]string{
 		"3/-: The row overlaps row 2 (2026-01-12 00:00 +01:00 to 2026-01-12 01:00 +01:00)",
 		"4/-: The row starts before row 2; the rows of an area must be in time order",
 		"5/2: The end must be after the start",
+		"6/2: An interval may be at most an hour long",
 	}, "\n")
 	if got := spotPriceErrors(ends); got != want {
 		t.Errorf("errors =\n%s\nwant\n%s", got, want)
 	}
 	wantArea(t, ends.Areas[0], "NO1", 2, 0, 0, utc(2026, time.January, 9, 23), utc(2026, time.January, 12, 0))
+	if a := ends.Areas[1]; a.PriceArea != "NO2" || a.Inserted != 0 || a.RangeStart != nil {
+		t.Errorf("NO2 = %+v, want its one row refused, nothing counted", a)
+	}
+}
+
+func TestSpotPriceImport_AFigureTheColumnCannotHoldIsTheRowsError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, spotPricePermissions...)
+	result := spotPriceImportOf(t, postSpotPriceImport(t, c, fileOf(
+		[]string{"area", "start", "price", "eur_per_kwh"},
+		[]string{"NO1", "2026-01-10 00:00", "1000000", ""},
+		[]string{"NO1", "2026-01-10 01:00", "999999,9999995", ""},
+		[]string{"NO1", "2026-01-10 02:00", "-1000000", ""},
+		[]string{"NO1", "2026-01-10 03:00", "999999,999999", "1000000"},
+	), "false"), http.StatusUnprocessableEntity)
+	want := strings.Join([]string{
+		"1/2: A figure must be less than 1000000 in size",
+		"2/2: A figure must be less than 1000000 in size",
+		"3/2: A figure must be less than 1000000 in size",
+		"4/3: A figure must be less than 1000000 in size",
+	}, "\n")
+	if got := spotPriceErrors(result); got != want || result.ErrorCount != 4 {
+		t.Errorf("errors (%d) =\n%s\nwant\n%s", result.ErrorCount, got, want)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM energy.spot_prices`); n != 0 {
+		t.Errorf("a refused run wrote %d prices", n)
+	}
+}
+
+func TestSpotPriceImport_AnswersTheFirst200ErrorsAndCountsThemAll(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, spotPricePermissions...)
+	rows := [][]string{{"area", "start", "price"}}
+	start := time.Date(2026, time.January, 10, 0, 0, 0, 0, time.UTC)
+	for i := range 250 {
+		rows = append(rows, []string{"NO1", start.Add(time.Duration(i) * time.Hour).Format("2006-01-02 15:04"), "abc"})
+	}
+	result := spotPriceImportOf(t, postSpotPriceImport(t, c, fileOf(rows...), "true"), http.StatusOK)
+	if result.ErrorCount != 250 || len(result.Errors) != 200 || result.Rows != 250 {
+		t.Fatalf("errorCount %d, %d errors, %d rows; want 250 counted, the first 200 answered, 250 rows", result.ErrorCount, len(result.Errors), result.Rows)
+	}
+	if first, last := result.Errors[0].Row, result.Errors[199].Row; first != 1 || last != 200 {
+		t.Errorf("the errors answered run from row %d to %d, want 1 to 200", first, last)
+	}
+}
+
+func TestSpotPriceImport_ConcurrentImportsOfOneFileAllSucceed(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, spotPricePermissions...)
+	data := spotPriceFile(t, "no1_hourly.csv")
+	const n = 5
+	fns := make([]func() *modtest.Response, n)
+	for i := range fns {
+		fns[i] = func() *modtest.Response { return postSpotPriceImport(t, c, data, "false") }
+	}
+	inserted, unchanged := 0, 0
+	for i, r := range race(fns...) {
+		if r.Status != http.StatusOK {
+			t.Errorf("import %d: status %d body %s, want 200", i, r.Status, r.Body)
+			continue
+		}
+		var result spotPriceImportJSON
+		r.JSON(&result)
+		if !result.Imported || len(result.Areas) != 1 {
+			t.Errorf("import %d = %+v, want imported, one area", i, result)
+			continue
+		}
+		switch a := result.Areas[0]; {
+		case a.Inserted == 24 && a.Unchanged == 0 && a.Replaced == 0:
+			inserted++
+		case a.Unchanged == 24 && a.Inserted == 0 && a.Replaced == 0:
+			unchanged++
+		default:
+			t.Errorf("import %d counted %d/%d/%d, want all inserted or all unchanged", i, a.Inserted, a.Replaced, a.Unchanged)
+		}
+	}
+	if inserted != 1 || unchanged != n-1 {
+		t.Errorf("%d imports inserted and %d found the file unchanged, want 1 and %d", inserted, unchanged, n-1)
+	}
+	if got := spotPriceCount(t, h, "NO1"); got != 24 {
+		t.Errorf("%d NO1 prices, want 24", got)
+	}
 }
 
 func TestSpotPriceImport_RefusesAFileItCannotRead(t *testing.T) {
@@ -379,6 +467,26 @@ func TestSpotPriceImport_RefusesAFileItCannotRead(t *testing.T) {
 	r = postSpotPriceImport(t, c, []byte{}, "")
 	if r.Status != http.StatusBadRequest || !strings.Contains(string(r.Body), "sent as the multipart part named 'file'") {
 		t.Errorf("an empty file: status %d body %s, want 400 on file", r.Status, r.Body)
+	}
+
+	// Two parts named file: which one is meant cannot be told.
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for _, name := range []string{"a.csv", "b.csv"} {
+		part, err := w.CreateFormFile("file", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(spotPriceFile(t, "no5_ore.csv")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r = c.Do(http.MethodPost, "/api/v1/energy/spot-prices/import?dryRun=true", nil, modtest.RawBody(w.FormDataContentType(), buf.Bytes()))
+	if r.Status != http.StatusBadRequest || !strings.Contains(string(r.Body), "sent as the multipart part named 'file'") {
+		t.Errorf("two file parts: status %d body %s, want 400 on file", r.Status, r.Body)
 	}
 }
 

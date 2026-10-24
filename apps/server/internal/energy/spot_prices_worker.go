@@ -29,8 +29,17 @@ import (
 // for, and of the rest the planner asks for those the feed's record
 // (energy.spot_price_fetches) leaves due — no record yet, or next_attempt_at
 // reached — at most twenty a cycle, oldest days first. Each answer is
-// recorded on the day's row (reading 2) and retried as reading 4 says. Older
-// days, and a day the feed gave up on, come by file.
+// recorded on the day's row (reading 2) and retried as reading 4 says: a 404
+// for today or tomorrow is pending, not yet published, asked again in an
+// hour; a 404 for a past day is missing, asked again daily until its seventh
+// missing attempt; any other failure is failed, backed off. The row's
+// attempts count the requests since it last changed status, so a day pending
+// for hours does not spend the missing or the failed budget. Older days, and
+// a day the feed gave up on, come by file.
+//
+// Every write of the day's prices takes the area's advisory lock first
+// (lockSpotPriceAreas), as the file import does, so a file and the feed
+// writing one area are serialised; the exclusion constraint is the backstop.
 //
 // A day stored while its fetch row says pending, missing or failed — a file
 // imported it meanwhile — is simply skipped: the row stays the feed's record
@@ -60,16 +69,20 @@ const (
 	// a row.
 	maxSpotPriceFetchesPerCycle = 20
 
-	// The retries of reading 4: tomorrow not yet published is asked again
-	// in an hour (the day-ahead auction publishes about 13:00 CET); a past
-	// day the feed has no file for in a day, until the day's seventh
-	// attempt; any other failure after 15 minutes doubled per attempt, at
-	// most six hours.
+	// The retries of reading 4, each counted in its own status: today or
+	// tomorrow not yet published is asked again in an hour (the day-ahead
+	// auction publishes about 13:00 CET); a past day the feed has no file for
+	// in a day, until its seventh missing attempt; any other failure after 15
+	// minutes doubled per failed attempt, at most six hours.
 	spotPricePendingRetry       = time.Hour
 	spotPriceMissingRetry       = 24 * time.Hour
 	maxSpotPriceMissingAttempts = 7
 	spotPriceFailedBackoff      = 15 * time.Minute
 	maxSpotPriceFailedBackoff   = 6 * time.Hour
+
+	// spotFeedWriteBudget bounds the write of an answer that came: it runs
+	// past a shutdown, so the answer is recorded, but not for ever.
+	spotFeedWriteBudget = 30 * time.Second
 )
 
 // The statuses of a fetch row (plan reading 2).
@@ -181,13 +194,26 @@ func (w *SpotPriceWorker) RunCycle(ctx context.Context) (int, error) {
 }
 
 // spotFeedDue is one (area, day) the planner asks the feed for: day a civil
-// date at UTC midnight, attempts the requests its fetch row has counted so
-// far.
+// date at UTC midnight, past whether it is before today, and status and
+// attempts its fetch row's — the status last recorded ("" with no row yet)
+// and the requests counted in it.
 type spotFeedDue struct {
 	area     string
 	day      time.Time
 	tomorrow bool
+	past     bool
+	status   string
 	attempts int32
+}
+
+// attemptsIn is the attempts the row will count once this request is
+// recorded with status: one more in the same status, one in a new one — what
+// RecordSpotPriceFetch writes.
+func (d spotFeedDue) attemptsIn(status string) int32 {
+	if d.status == status {
+		return d.attempts + 1
+	}
+	return 1
 }
 
 // spotFeedAreaRecord is what the planner knows of an area over the window:
@@ -213,6 +239,8 @@ func spotFeedToday(now time.Time, zone *time.Location) time.Time {
 // with a price starting in it is skipped whatever its fetch row says; of the
 // rest, a day with no fetch row or whose next_attempt_at has come is due —
 // an ok row, or a missing one given up on, has none and is never due again.
+// Each due day carries its row's status and the attempts counted in it, so
+// the answer's record counts on in the same status and from one in another.
 // At most maxSpotPriceFetchesPerCycle are answered.
 func planSpotFeedFetches(now time.Time, zone *time.Location, areas []spotFeedAreaRecord) []spotFeedDue {
 	today := spotFeedToday(now, zone)
@@ -224,14 +252,14 @@ func planSpotFeedFetches(now time.Time, zone *time.Location, areas []spotFeedAre
 			if a.stored[key] {
 				continue
 			}
-			var attempts int32
+			d := spotFeedDue{area: a.area, day: day, tomorrow: offset == 1, past: offset < 0}
 			if f, ok := a.fetches[key]; ok {
 				if f.NextAttemptAt == nil || f.NextAttemptAt.After(now) {
 					continue
 				}
-				attempts = f.Attempts
+				d.status, d.attempts = f.Status, f.Attempts
 			}
-			due = append(due, spotFeedDue{area: a.area, day: day, tomorrow: offset == 1, attempts: attempts})
+			due = append(due, d)
 			if len(due) == maxSpotPriceFetchesPerCycle {
 				return due
 			}
@@ -278,7 +306,7 @@ func (w *SpotPriceWorker) due(ctx context.Context, q *store.Queries) ([]spotFeed
 // answer, reporting whether a request was answered to record. A caller that
 // went away before the fetch answered (a shutdown) records nothing: that is
 // no failure of the feed. The record itself is not cancelled with the
-// caller, so an answer that came is written.
+// caller, so an answer that came is written, within spotFeedWriteBudget.
 func (w *SpotPriceWorker) fetchDay(ctx context.Context, conn *pgxpool.Conn, d spotFeedDue) (bool, error) {
 	target := w.template.render(d.area, d.day)
 	budget, cancel := context.WithTimeout(ctx, spotFeedFetchBudget)
@@ -287,22 +315,24 @@ func (w *SpotPriceWorker) fetchDay(ctx context.Context, conn *pgxpool.Conn, d sp
 	if ctx.Err() != nil {
 		return false, nil
 	}
-	write := context.WithoutCancel(ctx)
+	write, cancelWrite := context.WithTimeout(context.WithoutCancel(ctx), spotFeedWriteBudget)
+	defer cancelWrite()
 	now := w.now()
-	attempts := d.attempts + 1
 	q := store.New(conn)
 	day := spotFeedDayText(d.day)
 	switch {
 	case o.failure != "":
-		return true, w.recordFailed(write, q, d, attempts, o.failure, target, now)
-	case o.notFound && d.tomorrow:
+		return true, w.recordFailed(write, q, d, o.failure, target, now)
+	case o.notFound && !d.past:
+		// Today or tomorrow: not published yet, however long it has been.
 		next := now.Add(spotPricePendingRetry)
-		w.logger().Debug("tomorrow's spot prices are not published yet",
+		w.logger().Debug("the day's spot prices are not published yet",
 			"worker", spotPriceWorkerName, "area", d.area, "day", day)
 		return true, w.record(write, q, d, spotFetchPending, nil, now, nil, &next)
 	case o.notFound:
-		// The seventh attempt is the last: the day is left missing, and only
-		// a file brings it (reading 4).
+		// The seventh missing attempt is the last: the day is left missing,
+		// and only a file brings it (reading 4).
+		attempts := d.attemptsIn(spotFetchMissing)
 		var next *time.Time
 		if attempts < maxSpotPriceMissingAttempts {
 			n := now.Add(spotPriceMissingRetry)
@@ -316,6 +346,9 @@ func (w *SpotPriceWorker) fetchDay(ctx context.Context, conn *pgxpool.Conn, d sp
 	overlaps := false
 	var inserted, replaced, unchanged int
 	err := db.WithTx(write, conn, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		if err := lockSpotPriceAreas(write, tx, []string{d.area}); err != nil {
+			return err
+		}
 		tq := store.New(tx)
 		plan, err := planSpotPriceWrite(write, tq, d.area, o.rows)
 		if err != nil {
@@ -331,8 +364,9 @@ func (w *SpotPriceWorker) fetchDay(ctx context.Context, conn *pgxpool.Conn, d sp
 		inserted, replaced, unchanged = plan.Counts()
 		return w.record(write, tq, d, spotFetchOK, nil, now, &now, nil)
 	})
-	// A file imported over the same hours between the plan and the write
-	// meets the exclusion (or the unique start) instead: the same refusal.
+	// Under the area's lock no file writes between the plan and the write;
+	// should the exclusion (or the unique start) refuse a row all the same,
+	// it is the same refusal.
 	if isSpotPriceOverlap(err) {
 		overlaps, err = true, nil
 	}
@@ -340,7 +374,7 @@ func (w *SpotPriceWorker) fetchDay(ctx context.Context, conn *pgxpool.Conn, d sp
 		return true, fmt.Errorf("energy: store the spot prices of %s on %s: %w", d.area, day, err)
 	}
 	if overlaps {
-		return true, w.recordFailed(write, q, d, attempts, spotFeedOverlaps, target, now)
+		return true, w.recordFailed(write, q, d, spotFeedOverlaps, target, now)
 	}
 	w.logger().Info("spot prices fetched", "worker", spotPriceWorkerName, "area", d.area, "day", day,
 		"inserted", inserted, "replaced", replaced, "unchanged", unchanged)
@@ -357,7 +391,8 @@ func isSpotPriceOverlap(err error) bool {
 // recordFailed records a failure with its backoff and logs it with the area,
 // the day, the feed's host and the sentence — never the address's path or
 // query, nor the body.
-func (w *SpotPriceWorker) recordFailed(ctx context.Context, q *store.Queries, d spotFeedDue, attempts int32, sentence, target string, now time.Time) error {
+func (w *SpotPriceWorker) recordFailed(ctx context.Context, q *store.Queries, d spotFeedDue, sentence, target string, now time.Time) error {
+	attempts := d.attemptsIn(spotFetchFailed)
 	next := now.Add(spotFeedBackoff(attempts))
 	w.logger().Warn("the spot price feed could not be fetched",
 		"worker", spotPriceWorkerName, "area", d.area, "day", spotFeedDayText(d.day), "host", spotFeedHost(target),
@@ -377,7 +412,8 @@ func (w *SpotPriceWorker) record(ctx context.Context, q *store.Queries, d spotFe
 }
 
 // spotFeedBackoff is a failed day's wait before the next request (reading
-// 4): min(6h, 15min × 2^(attempts−1)), attempts counting this one.
+// 4): min(6h, 15min × 2^(attempts−1)), attempts the failed ones in a row,
+// this one counted.
 func spotFeedBackoff(attempts int32) time.Duration {
 	wait := spotPriceFailedBackoff
 	for i := int32(1); i < attempts && wait < maxSpotPriceFailedBackoff; i++ {

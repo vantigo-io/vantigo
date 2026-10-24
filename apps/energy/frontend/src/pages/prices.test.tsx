@@ -4,6 +4,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
+import { PriceChart } from "./-price-chart";
 import { PricesPage } from "./prices";
 
 vi.mock("@mantine/charts", () => ({
@@ -165,5 +166,49 @@ describe("PricesPage", () => {
   it("says so when the coverage cannot be read", async () => {
     renderPage({}, () => json({ title: "Forbidden" }, 403));
     expect(await screen.findByText("Failed to load the price coverage")).toBeInTheDocument();
+  });
+});
+
+describe("PriceChart", () => {
+  const hourly = (from: string, count: number) =>
+    Array.from({ length: count }, (_, index) => {
+      const start = new Date(new Date(from).getTime() + index * 3_600_000);
+      return {
+        id: index + 1,
+        priceArea: "NO1",
+        start: start.toISOString(),
+        end: new Date(start.getTime() + 3_600_000).toISOString(),
+        nokPerKwh: index,
+        source: "Feed" as const,
+      };
+    });
+  const labels = () =>
+    screen
+      .getByTestId("price-chart")
+      .textContent?.split(",")
+      .map((point) => point.split("=")[0]) ?? [];
+
+  it("tells the two runs of 02:00 apart on the day the clock goes back", () => {
+    render(
+      <MantineProvider env="test">
+        <PriceChart intervals={hourly("2025-10-25T22:00:00Z", 25)} period="day" />
+      </MantineProvider>,
+    );
+    const shown = labels();
+    expect(shown).toHaveLength(25);
+    expect(new Set(shown).size).toBe(25);
+    expect(shown.slice(1, 5)).toEqual(["01:00 AM", "02:00 AM +02", "02:00 AM +01", "03:00 AM"]);
+  });
+
+  it("keeps the plain hours on an ordinary day", () => {
+    render(
+      <MantineProvider env="test">
+        <PriceChart intervals={hourly("2026-01-13T23:00:00Z", 24)} period="day" />
+      </MantineProvider>,
+    );
+    const shown = labels();
+    expect(shown).toHaveLength(24);
+    expect(shown[0]).toBe("12:00 AM");
+    expect(shown.every((label) => !/[+-]\d\d$/.test(label))).toBe(true);
   });
 });

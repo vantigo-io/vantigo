@@ -34,6 +34,20 @@ const osloWallClock = (at: number): number => {
 };
 
 /**
+ * The market's offset from UTC at `value`, as `+01` or `+02` (`+05:30` were
+ * the offset not whole hours): what tells the two runs of the hour apart on
+ * the day the clock goes back.
+ */
+export const marketUtcOffset = (value: string): string => {
+  const at = new Date(value).getTime();
+  const minutes = Math.round((osloWallClock(at) - at) / 60_000);
+  const sign = minutes < 0 ? "-" : "+";
+  const hours = String(Math.floor(Math.abs(minutes) / 60)).padStart(2, "0");
+  const rest = Math.abs(minutes) % 60;
+  return `${sign}${hours}${rest ? `:${String(rest).padStart(2, "0")}` : ""}`;
+};
+
+/**
  * The instant a civil day (`YYYY-MM-DD`) starts in the market's time zone,
  * as an ISO timestamp — whatever zone the browser is in. Oslo never changes
  * its clock at midnight, so the offset at the guess is the day's.
