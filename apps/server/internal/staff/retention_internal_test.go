@@ -2,6 +2,7 @@ package staff
 
 import (
 	"context"
+	"encoding/json"
 	"maps"
 	"os"
 	"regexp"
@@ -18,11 +19,13 @@ import (
 // delivery B's absence tables (Task 6): the absences, the holiday
 // adjustments, the sick-leave cases and their milestones, and the types and
 // schemes they name — and Entra delivery D's groups, their members, owners
-// and sections per provider.
+// and sections per provider — and the person's competences (staff
+// competence design S17).
 var classedTables = []string{
 	"people", "next_of_kin", "person_roles", "employments", "employment_terms", "identity_links", "documents",
 	"absences", "holiday_adjustments", "sick_cases", "sick_case_milestones", "absence_types", "holiday_schemes",
 	"groups", "group_members", "group_owners", "group_traits",
+	"person_competences",
 }
 
 // Every column of the tables the erase reaches has a class, and every class
@@ -190,5 +193,30 @@ func TestColumnClasses_TheReferenceAgrees(t *testing.T) {
 				t.Errorf("the reference lists %s, which columnClasses does not", key)
 			}
 		}
+	}
+}
+
+// A competence event's fields are classed D in its own map (staff competence
+// design S17) — validFrom among them, which fieldClasses holds C for a terms
+// row — so the D erase blanks every one and leaves the row's id.
+func TestBlankPayload_TheCompetenceEvents(t *testing.T) {
+	t.Parallel()
+	stored := []byte(`{"competenceId":1001,"fields":{"competenceKey":{"to":"fse"},"validFrom":{"to":"2026-01-01"}},"classes":{"competenceKey":"D","validFrom":"D"}}`)
+	out, rewritten, err := blankPayload(stored, "D", 0)
+	if err != nil || !rewritten {
+		t.Fatalf("blankPayload = %s, %v, %v; want rewritten", out, rewritten, err)
+	}
+	var payload struct {
+		CompetenceID int64          `json:"competenceId"`
+		Fields       map[string]any `json:"fields"`
+	}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.CompetenceID != 1001 || payload.Fields["competenceKey"] != changed || payload.Fields["validFrom"] != changed {
+		t.Errorf("the erased payload = %s, want both fields changed and the row's id kept", out)
+	}
+	if _, rewritten, _ := blankPayload(stored, "C", 0); rewritten {
+		t.Error("the C erase rewrote a competence event, whose fields are D")
 	}
 }

@@ -140,9 +140,14 @@ const absenceChangeSchema = "StaffAbsenceChangeRequest"
 // person (POST /absences), closed as the change is (review L3).
 const absenceRequestSchema = "StaffAbsenceRequest"
 
+// competenceChangeSchema is the contract's name for a change of a
+// competence, which never changes its key or kind: one sent is refused, so
+// HR learns it was not written (staff competence design S1).
+const competenceChangeSchema = "StaffCompetenceChangeRequest"
+
 // closedSchemas are the request schemas whose handlers refuse a property the
 // contract does not name.
-var closedSchemas = []string{personRequestSchema, accountRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema}
+var closedSchemas = []string{personRequestSchema, accountRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema, competenceChangeSchema}
 
 // bodyHas reports whether the request's JSON body names property at its top
 // level — for a required property the generated decoder cannot tell from

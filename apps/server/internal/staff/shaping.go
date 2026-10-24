@@ -79,10 +79,20 @@ const (
 	// "Accommodation note" row, delivery B Task 5): the person, their
 	// manager and HR — never the Approver, who reads the case's milestones.
 	groupAccommodation
+	// groupCompetence is a person's competence row as the colleague reads it
+	// (staff competence design §5's "Competence" row): the competence, the
+	// level, the validity, whether it is verified, superseded, expiring or
+	// expired — everyone's who sees the person.
+	groupCompetence
+	// groupCompetenceDetail is the rest of a row (§5's "Competence detail"
+	// row): the issue date, the issuer, the reference, the evidence, the
+	// source and the verification — the person's, their manager's, the
+	// Approver's and HR's; never a colleague's.
+	groupCompetenceDetail
 )
 
 func (g fieldGroup) String() string {
-	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail", "accommodation"}[g]
+	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail", "accommodation", "competence", "competence-detail"}[g]
 }
 
 // fieldGroups is the one table: every field of the person — as the contract
@@ -258,6 +268,10 @@ func (a audience) reads(g fieldGroup) bool {
 		return a.Self || a.Manager || a.Approver || hr
 	case groupAccommodation:
 		return a.Self || a.Manager || hr
+	case groupCompetence:
+		return a.Self || a.Manager || a.Colleague || a.Approver || hr
+	case groupCompetenceDetail:
+		return a.Self || a.Manager || a.Approver || hr
 	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCareDays:
 		return a.Self || hr
 	case groupHRNotes, groupHold:
@@ -340,6 +354,9 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 			CanDecide:            canDecide,
 			Self:                 a.Self,
 			IsManager:            a.Manager && !a.Self,
+			// The verifier's rule (staff competence design §4): needs no
+			// I/O, since the audience says it — never the person.
+			CanVerifyCompetence: (a.Manager || a.Approver || a.Manage) && !a.Self,
 		},
 		WorkEmail:    shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:    shown(a, "phoneWork", row.PhoneWork),
@@ -501,6 +518,9 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 		GroupName *string `json:"groupName"`
 		GroupKey  *string `json:"groupKey"`
 		Source    *string `json:"source"`
+		// Which person's competence row a competence event is about (staff
+		// competence design S16).
+		CompetenceID *int64 `json:"competenceId"`
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal(stored, &payload); err != nil {
@@ -608,6 +628,13 @@ func shapePayloadTypes(stored []byte, classes []string, a audience, types typeVi
 	if payload.AdjustmentID != nil {
 		out["adjustmentId"] = *payload.AdjustmentID
 		out["fields"] = shapeClassedFields(payload.Fields, adjustmentFieldGroup, a, types)
+		return out
+	}
+	if payload.CompetenceID != nil {
+		// A competence event: each field by the competence groups, a name
+		// they do not know nobody's (competenceFieldGroup).
+		out["competenceId"] = *payload.CompetenceID
+		out["fields"] = shapeClassedFields(payload.Fields, competenceFieldGroup, a, types)
 		return out
 	}
 	fields := make(map[string]any, len(payload.Fields))

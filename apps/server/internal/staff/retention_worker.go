@@ -77,8 +77,10 @@ func NewRetentionWorker(d module.Deps) *RetentionWorker {
 }
 
 // workers is the module's background workers: staff-retention unless
-// STAFF_RETENTION_ENABLED=0, and staff-accounts (accounts_worker.go) unless
-// STAFF_ACCOUNTS_ENABLED=0. A Deps with no Config cannot say, and gets none.
+// STAFF_RETENTION_ENABLED=0, staff-accounts (accounts_worker.go) unless
+// STAFF_ACCOUNTS_ENABLED=0, and staff-competence (competence_worker.go)
+// unless STAFF_COMPETENCE_ENABLED=0. A Deps with no Config cannot say, and
+// gets none.
 func workers(d module.Deps) []worker.Worker {
 	if d.Config == nil {
 		return nil
@@ -89,6 +91,9 @@ func workers(d module.Deps) []worker.Worker {
 	}
 	if d.Config.StaffAccountsEnabled {
 		out = append(out, NewAccountsWorker(d))
+	}
+	if d.Config.StaffCompetenceEnabled {
+		out = append(out, NewCompetenceWorker(d))
 	}
 	return out
 }

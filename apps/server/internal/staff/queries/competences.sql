@@ -290,13 +290,3 @@ WHERE pc.person_id = ANY(@person_ids::bigint[])
   AND pc.valid_from <= @day::date
   AND (pc.valid_to IS NULL OR pc.valid_to >= @day::date)
 ORDER BY pc.person_id, c.sort, c.id;
-
--- name: ListPersonCompetencesForExport :many
--- ListPersonCompetencesForExport is every row of the person's, every column,
--- with the competence's key and names, for the personal-data exports.
-SELECT sqlc.embed(pc),
-       c.key AS competence_key, c.name_en AS competence_name_en, c.name_nb AS competence_name_nb
-FROM staff.person_competences pc
-JOIN staff.competences c ON c.id = pc.competence_id
-WHERE pc.person_id = @person_id
-ORDER BY pc.created_at DESC, pc.id DESC;

@@ -92,15 +92,17 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 		{"a linked caller who manages nobody", callerContext{Person: &nobody, Today: today}, 3, 0},
 		// A manager's include the requests they decide and the open cases'
 		// milestones (delivery B, Task 6) — the oldest request only when one
-		// waits.
-		{"a manager", callerContext{Person: &manager, Today: today}, 6, 1},
+		// waits — and the declared and expiring competences (staff
+		// competence delivery A).
+		{"a manager", callerContext{Person: &manager, Today: today}, 8, 1},
 		// staff:manage's statements include the self-approved absences, the
 		// ferie affected by sickness, the requests and the milestones
 		// (delivery B), the account items' links and people (delivery C), and
 		// the identity providers' recorded status with the people of each
 		// provider's kind (Entra delivery B), and the failed group sections
-		// (Entra delivery D); in October no holiday item is read.
-		{"staff:manage", callerContext{Manage: true, Today: today}, 15, -1},
+		// (Entra delivery D), and the declared and expiring competences (staff
+		// competence delivery A); in October no holiday item is read.
+		{"staff:manage", callerContext{Manage: true, Today: today}, 17, -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})

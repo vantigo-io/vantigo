@@ -54,12 +54,12 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: "staff:approve", Display: "Decide absence",
-		Description: "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, and mark their milestones.",
+		Description: "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, mark their milestones, and verify competences.",
 		Category:    "Staff", Sensitive: false, Delegable: true,
 	},
 	{
 		Key: "staff:manage", Display: "Manage staff",
-		Description: "Create and edit people (not their national identity number or bank account), employments and terms with pay, the company's structure, absence types and holiday schemes, the settings, documents other than health documents, the account flag, imports, exports and the payroll export.",
+		Description: "Create and edit people (not their national identity number or bank account), employments and terms with pay, the company's structure, absence types and holiday schemes, the competence catalogue, the settings, documents other than health documents, the account flag, imports, exports and the payroll export.",
 		Category:    "Staff", Sensitive: true, Delegable: true,
 	},
 	{
@@ -70,11 +70,14 @@ var permissions = []contracts.Permission{
 }
 
 // Module is staff as a platform module: its contract mounted under
-// /api/v1/staff/, its five permissions in the composed catalog and its one
-// background worker, staff-retention (retention_worker.go). It provides no
-// contract and fills no slot — nothing in another module reads the register
-// yet (design reading 17 defers contracts.StaffDirectory to its first
-// consumer).
+// /api/v1/staff/, its five permissions in the composed catalog and its
+// background workers — staff-retention, staff-accounts and staff-competence
+// (workers, retention_worker.go). It fills two slots: the caller's own
+// absences on the calendar (CalendarSource), and the register of competences
+// another module reads, contracts.Workforce (staff competence design S15,
+// workforce.go), of which it is the sole provider. Nothing else of the
+// register is read by another module yet (design reading 17 defers
+// contracts.StaffDirectory to its first consumer).
 func Module() module.Module {
 	return module.Module{
 		Name:        "staff",
@@ -84,6 +87,9 @@ func Module() module.Module {
 		// CalendarSource is the caller's own absences on the calendar
 		// (calendar design D1, calendar_source.go).
 		CalendarSource: newCalendarSource,
+		// Workforce is who holds which competence, for Staffing (staff
+		// competence design S15, workforce.go).
+		Workforce: newWorkforce,
 	}
 }
 

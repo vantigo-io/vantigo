@@ -841,11 +841,12 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 		want []string
 		poll time.Duration
 	}{
-		{name: "the default installation runs both workers", want: []string{"staff-retention", "staff-accounts"}, poll: time.Hour},
-		{name: "the poll is the operator's", env: map[string]string{"STAFF_WORKERS_POLL": "15m"}, want: []string{"staff-retention", "staff-accounts"}, poll: 15 * time.Minute},
-		{name: "retention turned off is never started", env: map[string]string{"STAFF_RETENTION_ENABLED": "0"}, want: []string{"staff-accounts"}, poll: time.Hour},
-		{name: "accounts turned off is never started", env: map[string]string{"STAFF_ACCOUNTS_ENABLED": "0"}, want: []string{"staff-retention"}, poll: time.Hour},
-		{name: "both turned off", env: map[string]string{"STAFF_RETENTION_ENABLED": "0", "STAFF_ACCOUNTS_ENABLED": "0"}},
+		{name: "the default installation runs the three workers", want: []string{"staff-retention", "staff-accounts", "staff-competence"}, poll: time.Hour},
+		{name: "the poll is the operator's", env: map[string]string{"STAFF_WORKERS_POLL": "15m"}, want: []string{"staff-retention", "staff-accounts", "staff-competence"}, poll: 15 * time.Minute},
+		{name: "retention turned off is never started", env: map[string]string{"STAFF_RETENTION_ENABLED": "0"}, want: []string{"staff-accounts", "staff-competence"}, poll: time.Hour},
+		{name: "accounts turned off is never started", env: map[string]string{"STAFF_ACCOUNTS_ENABLED": "0"}, want: []string{"staff-retention", "staff-competence"}, poll: time.Hour},
+		{name: "competence turned off is never started", env: map[string]string{"STAFF_COMPETENCE_ENABLED": "0"}, want: []string{"staff-retention", "staff-accounts"}, poll: time.Hour},
+		{name: "all three turned off", env: map[string]string{"STAFF_RETENTION_ENABLED": "0", "STAFF_ACCOUNTS_ENABLED": "0", "STAFF_COMPETENCE_ENABLED": "0"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -872,8 +873,8 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 	full := h.Deps()
 	workerDeps := module.Deps{Config: full.Config, Pool: full.Pool, Logger: full.Logger, Clock: full.Clock}
 	workers := module.Workers(workerDeps, staff.Module())
-	if len(workers) != 2 {
-		t.Fatalf("worker-mode workers = %d, want staff-retention and staff-accounts", len(workers))
+	if len(workers) != 3 {
+		t.Fatalf("worker-mode workers = %d, want staff-retention, staff-accounts and staff-competence", len(workers))
 	}
 	retention, ok := workers[0].(*staff.RetentionWorker)
 	if !ok {

@@ -50,6 +50,16 @@ func TestFieldGroups_CoverEveryPersonField(t *testing.T) {
 			t.Errorf("the event field %s has no field group", name)
 		}
 	}
+	// A person's competence row (staff competence design §5) has a table of
+	// its own, since its validFrom and validTo are not an employment's: every
+	// field but the row's own ids is the Competence group's or the detail's.
+	competence := reflect.TypeOf(gen.StaffPersonCompetence{})
+	for i := range competence.NumField() {
+		name, _, _ := strings.Cut(competence.Field(i).Tag.Get("json"), ",")
+		if name != "id" && name != "personId" && competenceFieldGroup(name) == groupNobody {
+			t.Errorf("%s.%s has no field group", competence.Name(), name)
+		}
+	}
 	if g := groupOf("noSuchField"); g != groupNobody {
 		t.Errorf("an unknown field's group = %v, want groupNobody, which no audience reads", g)
 	}
@@ -61,7 +71,7 @@ func TestFieldGroups_CoverEveryPersonField(t *testing.T) {
 // so a change to who reads what is a change to this table.
 func TestAudience_ReadsItsGroups(t *testing.T) {
 	t.Parallel()
-	groups := []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupNobody}
+	groups := []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupNobody}
 	for _, c := range []struct {
 		name   string
 		a      audience
@@ -69,11 +79,12 @@ func TestAudience_ReadsItsGroups(t *testing.T) {
 		events bool
 	}{
 		{"nobody", audience{}, nil, false},
-		{"self", audience{Self: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth}, true},
-		{"manager", audience{Manager: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment}, true},
-		{"colleague", audience{Colleague: true}, []fieldGroup{groupWork, groupEmploymentDates}, false},
-		{"staff:manage", audience{Manage: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments}, true},
-		{"staff:personal-data", audience{PersonalData: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth}, true},
+		{"self", audience{Self: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail}, true},
+		{"manager", audience{Manager: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupCompetence, groupCompetenceDetail}, true},
+		{"colleague", audience{Colleague: true}, []fieldGroup{groupWork, groupEmploymentDates, groupCompetence}, false},
+		{"staff:approve", audience{Approver: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupCompetence, groupCompetenceDetail}, false},
+		{"staff:manage", audience{Manage: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCompetence, groupCompetenceDetail}, true},
+		{"staff:personal-data", audience{PersonalData: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail}, true},
 	} {
 		for _, g := range groups {
 			want := false
@@ -321,5 +332,33 @@ func TestShapePayload_TheGroupEvents(t *testing.T) {
 		if got := shapePayload(stored, []string{"C"}, a); len(got) != 0 {
 			t.Errorf("%s reads %v, want nothing", name, got)
 		}
+	}
+}
+
+// A competence event (staff competence design S16) names its row and is
+// shaped field by field by the competence groups: every reader of the
+// history reads the key, the level and the basis; a field the groups do not
+// know reads "changed".
+func TestShapePayload_TheCompetenceEvents(t *testing.T) {
+	t.Parallel()
+	stored := []byte(`{"competenceId":1001,"fields":{"competenceKey":{"to":"fse"},"level":{"from":2,"to":3},"basis":{"to":"observed"},"mystery":{"to":"x"}},"classes":{"competenceKey":"D","level":"D","basis":"D","mystery":"D"}}`)
+	for name, a := range map[string]audience{"self": {Self: true}, "manager": {Manager: true}, "staff:manage": {Manage: true}} {
+		got := shapePayload(stored, []string{"D"}, a)
+		if got["competenceId"] != int64(1001) {
+			t.Errorf("%s: competenceId = %v, want 1001", name, got["competenceId"])
+		}
+		fields := got["fields"].(map[string]any)
+		for _, field := range []string{"competenceKey", "level", "basis"} {
+			if _, ok := fields[field].(map[string]any); !ok {
+				t.Errorf("%s: %s = %v, want its value", name, field, fields[field])
+			}
+		}
+		if fields["mystery"] != changed {
+			t.Errorf("%s: mystery = %v, want changed", name, fields["mystery"])
+		}
+	}
+	colleague := shapePayload(stored, []string{"D"}, audience{Colleague: true})["fields"].(map[string]any)
+	if colleague["basis"] != changed {
+		t.Errorf("a colleague reads basis as %v, want changed", colleague["basis"])
 	}
 }
