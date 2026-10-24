@@ -251,6 +251,10 @@ func TestWorkers_PanicsOnTwoProvidersOfASlot(t *testing.T) {
 			{Name: "alpha", Accounts: func(Deps) contracts.AccountProvisioning { return &fakeAccounts{} }},
 			{Name: "beta", Accounts: func(Deps) contracts.AccountProvisioning { return &fakeAccounts{} }},
 		}, "account provisioning"},
+		{"workforce", []Module{
+			{Name: "alpha", Workforce: func(Deps) contracts.Workforce { return &fakeWorkforce{} }},
+			{Name: "beta", Workforce: func(Deps) contracts.Workforce { return &fakeWorkforce{} }},
+		}, "a workforce directory"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
@@ -285,6 +289,36 @@ func TestWorkers_HandTheWorkersTheCustomerDirectory(t *testing.T) {
 		reader, Module{Name: "owner", Directory: func(Deps) contracts.CustomerDirectory { return disabled }})
 	if seen != preset {
 		t.Errorf("the workers saw Deps.Directory = %v, want the caller's, the owner being disabled", seen)
+	}
+}
+
+// Worker mode never composes, so Workers resolves the Workforce slot itself,
+// as Compose does: from the enabled provider, after the business calendar so
+// the provider may read it while it is built, and the caller's own when no
+// enabled module provides one.
+func TestWorkers_ResolveTheWorkforceSlot(t *testing.T) {
+	var built *fakeWorkforce
+	var seen contracts.Workforce
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d.Workforce
+		return nil
+	}}
+	owner := Module{Name: "owner", Calendar: func(Deps) contracts.BusinessCalendar { return fakeBusinessCalendar{} },
+		Workforce: func(d Deps) contracts.Workforce {
+			built = &fakeWorkforce{name: "owner", calendar: d.Calendar}
+			return built
+		}}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}}, reader, owner)
+	if built == nil || seen != built {
+		t.Errorf("the workers saw Deps.Workforce = %v, want the enabled owner's", seen)
+	}
+	if built != nil && built.calendar == nil {
+		t.Errorf("the workforce provider was built without Deps.Calendar; want the business calendar resolved before it")
+	}
+	preset := &fakeWorkforce{name: "preset"}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, Workforce: preset}, reader, owner)
+	if seen != preset {
+		t.Errorf("the workers saw Deps.Workforce = %v, want the caller's, the owner being disabled", seen)
 	}
 }
 

@@ -66,6 +66,40 @@ type StaffBusinessUnit struct {
 	UpdatedAt     time.Time
 }
 
+type StaffCompetence struct {
+	ID               int64
+	CategoryID       int64
+	Key              string
+	NameEn           string
+	NameNb           string
+	Kind             string
+	HasLevel         bool
+	ValidityMonths   *int16
+	ReminderLeadDays *int16
+	IssuerHint       *string
+	Basis            *string
+	Seeded           bool
+	Hidden           bool
+	ArchivedAt       *time.Time
+	Sort             int32
+	Revision         int32
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type StaffCompetenceCategory struct {
+	ID         int64
+	Key        string
+	NameEn     string
+	NameNb     string
+	Seeded     bool
+	ArchivedAt *time.Time
+	Sort       int32
+	Revision   int32
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type StaffDepartment struct {
 	ID              int64
 	Code            string
@@ -383,6 +417,30 @@ type StaffPerson struct {
 	SelfCertWithdrawnFrom   pgtype.Date
 	AccountRevision         int32
 	AccountKind             string
+}
+
+type StaffPersonCompetence struct {
+	ID                 int64
+	PersonID           int64
+	CompetenceID       int64
+	Level              *int16
+	IssuedOn           pgtype.Date
+	ValidFrom          pgtype.Date
+	ValidTo            pgtype.Date
+	Issuer             *string
+	Reference          *string
+	EvidenceDocumentID *int64
+	Source             string
+	VerifiedAt         *time.Time
+	VerifiedByUserID   *uuid.UUID
+	VerifiedBasis      *string
+	VerifiedNote       *string
+	SupersededByID     *int64
+	ExpiringNotifiedAt *time.Time
+	ExpiredNotifiedAt  *time.Time
+	Revision           int32
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type StaffPersonRole struct {

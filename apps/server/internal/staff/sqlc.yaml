@@ -13,6 +13,7 @@ sql:
       - ../db/migrations/00053_staff_time_zone_to_workspace.sql
       - ../db/migrations/00060_staff_account_kind.sql
       - ../db/migrations/00062_staff_groups.sql
+      - ../db/migrations/00066_staff_competence.sql
     queries: queries
     gen:
       go:

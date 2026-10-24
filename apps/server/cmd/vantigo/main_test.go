@@ -290,13 +290,14 @@ func startServeEnv(t *testing.T, m mode, env map[string]string, extraModules ...
 		// a unit test. The customers module's own tests cover registration and
 		// the switches (TestModule_ContributesItsWorkers); a serve test that
 		// genuinely wants a worker passes fakeWorkerModule, as they already do.
-		// Staff's retention and accounts workers likewise: their own tests
-		// cover them.
+		// Staff's retention, accounts and competence workers likewise: their
+		// own tests cover them.
 		"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
 		"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
 		"CUSTOMERS_ANONYMISATION_ENABLED":  "0",
 		"STAFF_RETENTION_ENABLED":          "0",
 		"STAFF_ACCOUNTS_ENABLED":           "0",
+		"STAFF_COMPETENCE_ENABLED":         "0",
 	}
 	for k, v := range env {
 		envMap[k] = v
@@ -1008,6 +1009,7 @@ func TestServe_AManagementBindFailureStartsNoWorkers(t *testing.T) {
 		"CUSTOMERS_ANONYMISATION_ENABLED":  "0",
 		"STAFF_RETENTION_ENABLED":          "0",
 		"STAFF_ACCOUNTS_ENABLED":           "0",
+		"STAFF_COMPETENCE_ENABLED":         "0",
 	})
 	if err != nil {
 		t.Fatal(err)

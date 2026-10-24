@@ -1483,6 +1483,21 @@ func TestLoad_StaffAccountsWorker(t *testing.T) {
 	}
 }
 
+// The Staff competence worker's switch (staff competence design S7): on
+// unless turned off, independent of the other two, and only "0" or "1".
+func TestLoad_StaffCompetenceWorker(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); !cfg.StaffCompetenceEnabled {
+		t.Error("STAFF_COMPETENCE_ENABLED unset did not default to on")
+	}
+	if cfg := mustLoad(t, with(validEnv(), "STAFF_COMPETENCE_ENABLED", "0")); cfg.StaffCompetenceEnabled || !cfg.StaffRetentionEnabled || !cfg.StaffAccountsEnabled {
+		t.Errorf("STAFF_COMPETENCE_ENABLED=0: competence %v, retention %v, accounts %v; want the competence worker alone off",
+			cfg.StaffCompetenceEnabled, cfg.StaffRetentionEnabled, cfg.StaffAccountsEnabled)
+	}
+	if msg := loadError(t, with(validEnv(), "STAFF_COMPETENCE_ENABLED", "yes")); !strings.Contains(msg, `STAFF_COMPETENCE_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
 // The calendar cancellations worker's two settings (calendar invitations
 // design D6): its switch, on unless turned off — a cancelled appointment is
 // kept only until its last day, and an installation that says nothing must

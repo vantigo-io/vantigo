@@ -361,6 +361,14 @@ type Config struct {
 	// worker is never handed to the runner: no account is prepared, enabled
 	// or disabled on a schedule — leavers included — until it is on again.
 	StaffAccountsEnabled bool
+	// StaffCompetenceEnabled is the on/off switch for the Staff module's
+	// competence worker, staff-competence (STAFF_COMPETENCE_ENABLED, staff
+	// competence design S7). Default ON, as the other two Staff workers' are:
+	// a certificate that lapses unnoticed is what the register is kept to
+	// prevent. A 0 means the worker is never handed to the runner: nobody is
+	// mailed ahead of a certificate's expiry or on it, while the dashboard's
+	// expiring and expired items, computed on read, still show.
+	StaffCompetenceEnabled bool
 	// StaffWorkersPoll is how often the Staff workers run a cycle
 	// (STAFF_WORKERS_POLL, default 1 hour, never under a minute): each poll
 	// takes the retention lease for an erase cycle — at most fifty people, a
@@ -908,14 +916,15 @@ func spotPriceFeedURL(p *problems, env map[string]string, field string) string {
 const staffWorkersMinPoll = time.Minute
 
 // staffWorkers loads the Staff workers' settings (staff foundation design
-// §8.5): the retention and the accounts workers' switches, each on by
-// default, and the poll they share, an hour by default and at least a
+// §8.5, staff competence design S7): the retention, the accounts and the
+// competence workers' switches, each on by default, and the poll they share, an hour by default and at least a
 // minute. The batch —
 // at most fifty people an erase cycle and a hundred objects a ledger pass — is
 // a constant in the worker, not a knob.
 func staffWorkers(p *problems, env map[string]string, c *Config) {
 	c.StaffRetentionEnabled = boolean(p, env, "STAFF_RETENTION_ENABLED", true)
 	c.StaffAccountsEnabled = boolean(p, env, "STAFF_ACCOUNTS_ENABLED", true)
+	c.StaffCompetenceEnabled = boolean(p, env, "STAFF_COMPETENCE_ENABLED", true)
 	c.StaffWorkersPoll = time.Hour
 	if v := env["STAFF_WORKERS_POLL"]; v != "" {
 		d, err := time.ParseDuration(v)
