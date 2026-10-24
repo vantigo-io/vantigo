@@ -10,6 +10,7 @@ import {
   IconCalendarEvent,
   IconCashBanknote,
   IconCategory,
+  IconChartLine,
   IconChecklist,
   IconClock,
   IconClockExclamation,
@@ -406,6 +407,12 @@ export const apps: readonly AppDefinition[] = [
       icon: IconBolt,
       requiredPermissions: ["energy:metering-points-view", "energy:meters-view"],
       searchStrategy: "energy-list",
+    },
+    {
+      label: "navigation.prices",
+      to: "/energy/prices",
+      icon: IconChartLine,
+      requiredPermissions: ["energy:prices-view"],
     },
   ]),
   // The connection to the tenant (Entra design D15): one page, the status and

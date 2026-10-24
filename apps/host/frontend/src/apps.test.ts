@@ -98,6 +98,7 @@ describe("the app registry", () => {
       "/products/categories",
       "/products/tax-categories",
       "/energy/metering-points",
+      "/energy/prices",
       "/entra",
     ]);
   });
