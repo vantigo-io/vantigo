@@ -1,6 +1,6 @@
 ---
 title: Energi
-description: Målepunkter, målere, leveranseperioder og forbruk per kunde.
+description: Målepunkter, målere, leveranseperioder, forbruk per kunde og spotpriser.
 sidebar:
   order: 70
 sources:
@@ -10,11 +10,13 @@ sources:
 
 Energi-appen holder orden på målepunktene organisasjonen din leverer strøm til: hvor
 hvert av dem er, hvilken måler som sitter på det, hvilken kunde det leveres til og hvor
-lenge, og forbruket som er lest av fra det. Appen har ett område, **Målepunkter**, og
-den legger til en **Energi**-fane på hver kunde i Kunder-appen.
+lenge, og forbruket som er lest av fra det, og spotprisene forbruket prises etter.
+Appen har to områder, **Målepunkter** og **Priser**, og den legger til en
+**Energi**-fane på hver kunde i Kunder-appen.
 
 Appen vises når energimodulen er slått på og du har `energy:metering-points-view` og
-`energy:meters-view`. Hver del av et målepunkts side trenger i tillegg sin egen
+`energy:meters-view` for **Målepunkter**, eller `energy:prices-view` for **Priser**;
+hvert område tilbys bare den som har rettighetene til det. Hver del av et målepunkts side trenger i tillegg sin egen
 rettighet; en del du mangler rettighet til vises rett og slett tom. Rettighetene er
 listet nederst på denne siden.
 
@@ -343,6 +345,108 @@ overlappende leveranseperiode* når punktet allerede leveres til på den datoen,
 slått sammen med en annen eller anonymisert. Når to kunder slås sammen, flyttes
 leveranseperiodene til den oppslukte kunden over til den som består.
 
+## Priser
+
+**Priser** holder spotprisene fra døgnmarkedet for hvert prisområde: prisen per kWh for
+hver time, eller hvert kvarter, som forbruk på en spotavtale prises etter. Prisene
+kommer inn på to måter. En bakgrunnsjobb henter hver dags priser fra en offentlig
+priskilde, når administratoren har slått den på
+([Bakgrunnsjobber og skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering));
+og priser kan importeres fra en fil, som også er måten å fylle inn dager eldre enn en
+uke, eller dager priskilden mangler.
+
+Åpne **Energi** → **Priser**. Siden krever `energy:prices-view`. Priser er markedstall,
+ikke en kundes, så siden viser ingen kundedata.
+
+### Les dekningen
+
+Det første kortet, **Dekning**, har én rad per prisområde: hvert område et målepunkt med
+en leveranseperiode ligger i, og hvert område som allerede har priser. **Ingen
+prisområder ennå** betyr at ingen av delene finnes. Hver rad viser:
+
+- **Første** og **Siste**: starten på den første prisen som finnes, og slutten på den
+  siste;
+- **Intervaller**: hvor mange priser som finnes;
+- **Dager uten priser siste 30**: dagene blant de siste 30, i dag medregnet, der ingen
+  pris starter — **Komplett** når det ikke er noen;
+- **Siste henting**: den siste dagen bakgrunnsjobben spurte priskilden om, og hvordan
+  det gikk. **Hentet**: dagens priser er lagret. **Ikke publisert ennå**: morgendagens
+  priser er ikke ute ennå; døgnmarkedets auksjon publiserer dem rundt klokken 13 norsk
+  tid, og jobben spør igjen hver time. **Mangler**: priskilden har ingen priser for den
+  passerte dagen; jobben spør igjen daglig i en uke, og deretter importerer du dagen fra
+  en fil. **Feilet**: årsaken vises under, og jobben prøver igjen senere og venter
+  lenger hver gang, høyst seks timer. **Ikke hentet** betyr at jobben aldri har prøvd
+  området, som når den er slått av.
+
+Jobben henter bare de siste sju dagene og morgendagen. En dag som mangler lenger
+tilbake, må importeres.
+
+### Se et områdes priser
+
+Kortet **Spotpriser** viser ett områdes priser som et diagram i kr/kWh, ett punkt per
+intervall ved starten, i norsk tid. Velg **Prisområde**, deretter **Dag** eller
+**Måned** og dagen eller måneden. En dag har 24 timepriser (23 eller 25 de nettene
+klokkene stilles), eller 96 kvarter når prisene kommer med den oppløsningen. En periode
+uten priser sier *Ingen priser for denne perioden.*
+
+### Importer priser fra en fil
+
+**Importer priser**, øverst på siden, vises når du i tillegg har `energy:prices-manage`.
+Den åpner **Importer priser**:
+
+1. **Velg en CSV-fil** på høyst 10 MB og 50 000 rader: den første raden navngir
+   kolonnene, skilletegnet kan være semikolon, komma eller tabulator, og filen kan være
+   UTF-8 eller en norsk Excels egen tegnkoding. Kolonnene finnes ut fra navnene, uansett
+   store og små bokstaver, mellomrom og tegnsetting:
+   - **prisområdet**, må være med: *Område*, *Prisområde*, *Elspotområde*, *Sone*,
+     *Area* eller *Price area*, med området, som `NO1`;
+   - **starten**, må være med: *Start*, *Fra*, *Starttid*, *From* eller *Time start*;
+   - **slutten**, valgfri: *Til*, *Sluttid*, *End*, *To* eller *Time end*;
+   - **prisen**, må være med: i kroner per kWh, *Pris*, *kr/kWh*, *NOK/kWh*, *Price*
+     eller *NOK per kWh*; eller i øre per kWh, *øre/kWh* eller *ore_per_kwh*, som deles
+     på 100;
+   - **prisen i EUR** (*EUR per kWh*, *EUR/kWh*) og **valutakursen** (*Kurs*, *EXR*,
+     *Exchange rate*), valgfrie og tatt vare på for ordens skyld.
+
+   En fil kan inneholde flere prisområder.
+2. Filen kontrolleres så snart du velger den, og ingenting lagres. Resultatet,
+   **Tørrkjøring** med antall rader, viser for hvert område hvor mange priser som er
+   **Nye**, hvor mange som er **Erstattet** (en pris som allerede finnes, med andre
+   tall) og hvor mange som er **Uendret**, og perioden filen **Dekker**; eller, når
+   rader har feil, de første 200 av dem med rad (den første raden under overskriften er
+   rad 1) og kolonne, og ingenting kan importeres før filen er rettet.
+3. Når kontrollen ikke fant noen feil, klikker du **Importer** for å lagre prisene.
+   *Priser importert* bekrefter det, og dekningen og diagrammet oppdateres.
+
+Slik leses filen:
+
+- **Tidspunkt** skrives som for [Importer avlesninger](#importer-avlesninger):
+  `2025-01-31 13:00`, `2025-01-31T13:00`, `31.01.2025 13:00` eller `31/01/2025 13:00`.
+  Et tidspunkt med tidssoneforskyvning (`+01:00`, `Z`) er akkurat det øyeblikket; et
+  tidspunkt uten er norsk tid, uansett område. Natten om våren avvises et tidspunkt
+  klokkene hopper over; natten om høsten er den første raden på et gjentatt tidspunkt
+  den første forekomsten og den neste den andre.
+- **Med en sluttkolonne** varer hver pris fra starten til slutten. Radene trenger ikke
+  å følge rett etter hverandre, så én fil kan fylle flere adskilte dager; men radene i
+  hvert område må stå i tidsrekkefølge og kan ikke overlappe.
+- **Uten en sluttkolonne** varer hver pris til neste rad i samme område starter, og et
+  områdes siste rad like lenge som raden før den (én time når området bare har én rad).
+  Hold radene i hvert område i tidsrekkefølge uten hull: en rad avvises når neste rad i
+  området starter senere enn ett intervall etter den (høyst én time).
+
+Dette skriver importen:
+
+- En pris med samme område, start og slutt som en som allerede finnes, og med de samme
+  tallene, er **Uendret**: å importere den samme filen to ganger endrer ingenting.
+- En med andre tall **erstatter** prisen som finnes; det gamle tallet beholdes ikke.
+- En pris som overlapper en lagret pris av en annen lengde — et kvarter inne i en
+  lagret time, for eksempel — avvises på raden sin: ett område kan ikke ha priser med
+  to oppløsninger for samme tid.
+- **Alt eller ingenting.** Når en rad har en feil, importeres ingenting; rett filen og
+  velg den på nytt.
+
+De fullstendige reglene står i [Spot prices](/en/reference/energy/#spot-prices).
+
 ## Rettigheter
 
 | Rettighet | Lar deg |
@@ -355,4 +459,6 @@ leveranseperiodene til den oppslukte kunden over til den som består.
 | `energy:supply-periods-manage` | Tildele, bytte, avslutte og knytte til leveranseperioder |
 | `energy:consumption-view` | Se forbruk og Energi-fanens forbrukstall |
 | `energy:consumption-manage` | Legge til manuelle avlesninger |
+| `energy:prices-view` | Se **Priser**: dekningen og hvert områdes priser |
+| `energy:prices-manage` | Importere priser fra en fil, sammen med `energy:prices-view` |
 | `energy:import` | Importere målepunkter fra en fil, sammen med `energy:metering-points-manage`; importere avlesninger, sammen med `energy:consumption-manage` og `energy:consumption-view`; det en import skriver, krever rettighetene over |

@@ -974,6 +974,9 @@ importen; neste utgivelse avviser dem ved oppstart. Se
 | `ENERGY_IMPORT_ENABLED` | Kjør energimodulens importjobb, som kontrollerer, importerer og knytter til kunder opplastede målepunktfiler; `0` lar importer vente | `1` |
 | `ENERGY_IMPORT_POLL` | Hvor ofte energimodulens importjobb ser etter en import i kø | `5s` |
 | `ENERGY_IMPORT_RETENTION` | Hvor lenge en ferdig eller forlatt målepunktimport og radene dens beholdes | `720h` |
+| `ENERGY_SPOT_PRICE_FEED_ENABLED` | Av/på-bryter for energimodulens spotprisjobb, `energy-spot-prices`, som henter døgnmarkedets priser for prisområdene i bruk, fra sju dager tilbake til i morgen, gjennom vakten for utgående adresser — ingen privat adresse, ingen proxy, ingen videresending, høyst 1 MiB; slått av importeres prisene fra en fil ([Spot prices](/en/reference/energy/#spot-prices)) | `0` |
+| `ENERGY_SPOT_PRICE_FEED_URL` | Priskilden som en mal: en absolutt `https`-URL med `{year}`, `{month}`, `{day}` og `{area}`, måneden og dagen med innledende null; alt annet stopper oppstarten | `https://www.hvakosterstrommen.no/api/v1/prices/{year}/{month}-{day}_{area}.json` |
+| `ENERGY_SPOT_PRICE_FEED_POLL` | Hvor ofte spotprisjobben kjører en runde på høyst tjue forespørsler; en varighet på minst `1m` | `15m` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | Profilering av SPA-en | ikke satt |
 
 Peppol-oppslaget behandler NXDOMAIN og NOERROR-uten-NAPTR-poster som det samme

@@ -276,7 +276,8 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 
 Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert modul
 (utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber,
-kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
+kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, energimodulens spotprisjobb
+`energy-spot-prices` når `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
 `INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid,
 fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på, og
 kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
@@ -339,6 +340,21 @@ målepunktene og leveranseperiodene de skrev, blir stående. I worker-modus lese
 kunder gjennom kundemodulen, så kjør den med `customers` blant `MODULES` når importene
 navngir kunder. Se
 [Importing metering points](/en/reference/energy/#importing-metering-points).
+
+Energimodulens spotprisjobb `energy-spot-prices` henter døgnmarkedets priser for hvert
+prisområde målepunktene ligger i, fra sju dager tilbake til i morgen, fra
+`ENERGY_SPOT_PRICE_FEED_URL` — som standard den offentlige priskilden på
+`www.hvakosterstrommen.no`. Det er et utgående kall installasjonen selv velger, så den
+er **av** med mindre `ENERGY_SPOT_PRICE_FEED_ENABLED=1`; uten den importeres prisene fra
+en fil på Priser-siden, som også er måten å fylle inn en dag eldre enn en uke. Den
+kjører hvert `ENERGY_SPOT_PRICE_FEED_POLL` (15 minutter som standard, minst `1m`) under
+en egen rådgivende lås, så én instans henter, og gjør høyst tjue forespørsler per
+runde. Priskilden hentes gjennom vakten for utgående adresser, slik
+kalenderabonnementene gjør: bare `https`, ingen proxy, ingen videresending, høyst
+1 MiB, og aldri en vert som slås opp til en privat adresse, loopback, link-local eller
+en skyplattforms metadata-adresse — så API- eller worker-containeren trenger utgående
+https til priskildens vert, uten proxy. Se
+[Spot prices](/en/reference/energy/#spot-prices).
 
 Ved avslutning tømmer prosessen pågående arbeid i opptil `SHUTDOWN_TIMEOUT` (30
 sekunder som standard), nok til at den lengste enkeltoperasjonen i en bakgrunnsjobb

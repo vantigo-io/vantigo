@@ -1,6 +1,6 @@
 ---
 title: Energy
-description: Metering points, meters, supply periods and consumption per customer.
+description: Metering points, meters, supply periods, consumption per customer and spot prices.
 sidebar:
   order: 70
 sources:
@@ -10,11 +10,14 @@ sources:
 
 The Energy app keeps the metering points your organisation supplies: where each one
 is, which meter sits on it, which customer it is supplied to and for how long, and the
-consumption read from it. It has one area, **Metering points**, and it adds an
-**Energy** tab to every customer in the Customers app.
+consumption read from it, and the spot prices that consumption is priced by. It has
+two areas, **Metering points** and **Prices**, and it adds an **Energy** tab to every
+customer in the Customers app.
 
 The app is shown when the energy module is switched on and you hold
-`energy:metering-points-view` and `energy:meters-view`. Each part of a metering
+`energy:metering-points-view` and `energy:meters-view` for **Metering points**, or
+`energy:prices-view` for **Prices**; each area is offered only to whoever holds its
+permissions. Each part of a metering
 point's page needs its own permission as well; a part you lack the permission for is
 simply shown empty. The permissions are listed at the end of this page.
 
@@ -341,6 +344,107 @@ with *Could not attach metering point* otherwise. The button is not offered on a
 customer that has been merged into another or anonymised. When two customers are
 merged, the supply periods of the absorbed customer move to the surviving one.
 
+## Prices
+
+**Prices** holds the day-ahead spot prices of each price area: the price per kWh for
+every hour, or quarter of an hour, that consumption on a spot contract is priced by.
+Prices come in two ways. A background job fetches each day's prices from a public price
+feed, when your administrator has switched it on
+([Background workers and scaling](/en/admin/installation/#background-workers-and-scaling));
+and prices can be imported from a file, which is also how days older than a week, or
+days the feed lacks, are filled in.
+
+Open **Energy** → **Prices**. The page needs `energy:prices-view`. Prices are market
+figures, not a customer's, so the page shows no customer data.
+
+### Read the coverage
+
+The first card, **Coverage**, has one row per price area: every area a metering point
+with a supply period is in, and every area that already has prices. **No price areas
+yet** means neither exists. Each row shows:
+
+- **First** and **Last**: the start of the first price held and the end of the last;
+- **Intervals**: how many prices are held;
+- **Days without prices, last 30**: the days among the last 30, today included, in
+  which no price starts — **Complete** when there are none;
+- **Last fetch**: the latest day the background job asked the feed for, and how it
+  went. **Fetched**: the day's prices are stored. **Not yet published**: tomorrow's
+  prices are not out yet; the day-ahead auction publishes them around 13:00 Norwegian
+  time, and the job asks again every hour. **Missing**: the feed has no prices for that
+  past day; the job asks again daily for a week, after which you import the day from a
+  file. **Failed**: the reason is shown under it, and the job tries again later,
+  waiting longer each time, at most six hours. **Not fetched** means the job has never
+  tried the area, as when it is switched off.
+
+The job only fetches the last seven days and tomorrow. A day missing further back must
+be imported.
+
+### Look at an area's prices
+
+The card **Spot prices** shows one area's prices as a chart in NOK/kWh, one point per
+interval at its start, in Norwegian time. Choose the **Price area**, then **Day** or
+**Month** and the day or the month. A day has 24 hourly prices (23 or 25 on the nights
+the clocks change), or 96 quarter-hours when prices come at that resolution. A period
+without prices says *No prices for this period.*
+
+### Import prices from a file
+
+**Import prices**, at the top of the page, is shown when you also hold
+`energy:prices-manage`. It opens **Import prices**:
+
+1. **Choose a CSV file** of at most 10 MB and 50 000 rows: the first row names the
+   columns, the separator may be a semicolon, a comma or a tab, and the file may be
+   UTF-8 or a Norwegian Excel's own encoding. The columns are found by their names,
+   whatever their case, spacing or punctuation:
+   - the **price area**, needed: *Area*, *Price area*, *Prisområde*, *Elspotområde*,
+     *Område* or *Sone*, holding the area, such as `NO1`;
+   - the **start**, needed: *Start*, *From*, *Fra*, *Time start* or *Starttid*;
+   - the **end**, optional: *End*, *To*, *Til*, *Time end* or *Sluttid*;
+   - the **price**, needed: in NOK per kWh, *NOK per kWh*, *Price*, *Pris*, *kr/kWh*
+     or *NOK/kWh*; or in øre per kWh, *øre/kWh* or *ore_per_kwh*, which is divided by
+     100;
+   - the **price in EUR** (*EUR per kWh*, *EUR/kWh*) and the **exchange rate** (*EXR*,
+     *Exchange rate*, *Kurs*), optional and kept for the record.
+
+   A file may hold several price areas.
+2. The file is checked as soon as you choose it, and nothing is saved. The result,
+   **Dry run** with the number of rows, shows for each area how many prices are
+   **New**, how many are **Replaced** (a price already held, with other figures) and
+   how many are **Unchanged**, and the period the file **Covers**; or, when rows have
+   problems, the first 200 of them with their row (the first row under the header is
+   row 1) and column, and nothing can be imported until the file is fixed.
+3. When the check found no problem, click **Import** to save the prices. *Prices
+   imported* confirms it, and the coverage and the chart are updated.
+
+How the file is read:
+
+- **Times** are written as for [Import readings](#import-readings): `2025-01-31 13:00`,
+  `2025-01-31T13:00`, `31.01.2025 13:00` or `31/01/2025 13:00`. A time with an offset
+  (`+01:00`, `Z`) is that moment; a time without one is Norwegian time, whatever the
+  area. On the spring night a time the clocks skip is refused; on the autumn night the
+  first row at a repeated time is the first occurrence and the next the second.
+- **With an end column**, each price lasts from its start to its end. The rows need not
+  follow on from each other, so one file may fill several separate days; but each
+  area's rows must be in time order and must not overlap.
+- **Without an end column**, each price lasts until the next row of the same area
+  starts, and an area's last row as long as the row before it (an hour when the area
+  has only one row). Keep each area's rows in time order with no gaps: a row is refused
+  when the next row of its area starts later than one interval after it (at most an
+  hour).
+
+What the import writes:
+
+- A price with the same area, start and end as one already held, and the same figures,
+  is **Unchanged**: importing the same file twice changes nothing.
+- One with other figures **replaces** the price held; the old figure is not kept.
+- A price that overlaps a held price of another length — a quarter of an hour inside a
+  stored hour, say — is refused on its row: one area cannot hold prices at two
+  resolutions for the same time.
+- **All or nothing.** When any row has an error, nothing is imported; fix the file and
+  choose it again.
+
+The full rules are in [Spot prices](/en/reference/energy/#spot-prices).
+
 ## Permissions
 
 | Permission | Lets you |
@@ -353,4 +457,6 @@ merged, the supply periods of the absorbed customer move to the surviving one.
 | `energy:supply-periods-manage` | Assign, switch, end and attach supply periods |
 | `energy:consumption-view` | See consumption and the Energy tab's consumption figure |
 | `energy:consumption-manage` | Add manual readings |
+| `energy:prices-view` | See **Prices**: the coverage and each area's prices |
+| `energy:prices-manage` | Import prices from a file, with `energy:prices-view` |
 | `energy:import` | Import metering points from a file, with `energy:metering-points-manage`; import readings, with `energy:consumption-manage` and `energy:consumption-view`; what an import writes needs the permissions above |
