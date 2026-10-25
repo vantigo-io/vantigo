@@ -69,6 +69,13 @@ type personalDataSnapshot struct {
 	// snapshot (withVerifiers).
 	competences []store.GetPersonCompetenceRow
 	verifiers   map[uuid.UUID]string
+	// Delivery B: what the person wants — their interests, preferences and
+	// availability declaration — and their competence reviews, newest first,
+	// each reviewer named in verifiers with the verifiers.
+	interests    []store.ListPersonInterestsRow
+	preferences  []store.StaffPersonPreference
+	availability []store.StaffAvailabilityDeclaration
+	reviews      []store.StaffCompetenceReview
 }
 
 // readPersonalData reads one person's file on q, which is a snapshot's: the
@@ -161,17 +168,54 @@ func readPersonalData(ctx context.Context, q *store.Queries, id int64, today tim
 	out.competences = mapRows(competences, func(r store.ListPersonCompetenceHistoryRow) store.GetPersonCompetenceRow {
 		return store.GetPersonCompetenceRow(r)
 	})
+	if out.interests, err = q.ListPersonInterests(ctx, id); err != nil {
+		return out, fmt.Errorf("staff: list person %d's interests: %w", id, err)
+	}
+	if out.preferences, err = q.ListPersonPreferences(ctx, id); err != nil {
+		return out, fmt.Errorf("staff: list person %d's preferences: %w", id, err)
+	}
+	if out.availability, err = q.ListAvailabilityDeclarations(ctx, id); err != nil {
+		return out, fmt.Errorf("staff: list person %d's availability declaration: %w", id, err)
+	}
+	if out.reviews, err = q.ListCompetenceReviews(ctx, id); err != nil {
+		return out, fmt.Errorf("staff: list person %d's competence reviews: %w", id, err)
+	}
 	return out, nil
 }
 
-// withVerifiers is f with the names of its competences' verifiers, as a
-// reads them, read from the user directory after the snapshot.
+// withVerifiers is f with the names of its competences' verifiers and its
+// reviews' reviewers, as a reads them, read from the user directory after
+// the snapshot in one call, each user once.
 func (s *server) withVerifiers(ctx context.Context, f personalDataSnapshot, a audience) (personalDataSnapshot, error) {
-	var err error
-	f.verifiers, err = s.verifierNames(ctx, a, mapRows(f.competences, func(r store.GetPersonCompetenceRow) store.StaffPersonCompetence {
-		return r.StaffPersonCompetence
-	}))
-	return f, err
+	var ids []uuid.UUID
+	seen := map[uuid.UUID]bool{}
+	add := func(id uuid.UUID) {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if a.reads(groupCompetenceDetail) {
+		for _, r := range f.competences {
+			if r.StaffPersonCompetence.VerifiedByUserID != nil {
+				add(*r.StaffPersonCompetence.VerifiedByUserID)
+			}
+		}
+	}
+	if a.reads(groupReviews) {
+		for _, r := range f.reviews {
+			add(r.ReviewerUserID)
+		}
+	}
+	users, err := s.usersUsers(ctx, ids)
+	if err != nil {
+		return f, fmt.Errorf("staff: read the verifiers' and reviewers' names: %w", err)
+	}
+	f.verifiers = make(map[uuid.UUID]string, len(users))
+	for _, u := range users {
+		f.verifiers[u.ID] = u.DisplayName
+	}
+	return f, nil
 }
 
 // openedSealed is the sealed values of the complete file, opened.
@@ -288,7 +332,24 @@ func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSeal
 		Competences: mapRows(f.competences, func(r store.GetPersonCompetenceRow) gen.StaffPersonCompetence {
 			return personCompetenceResponse(r, a, today, f.verifiers)
 		}),
+		// Delivery B's four sections are required: an empty list to an
+		// audience outside their group, never absent.
+		Interests:    readList(a.reads(groupWishes), f.interests, interestResponse),
+		Preferences:  readList(a.reads(groupWishes), f.preferences, preferenceResponse),
+		Availability: readList(a.reads(groupWishes), f.availability, declarationResponse),
+		CompetenceReviews: readList(a.reads(groupReviews), f.reviews, func(r store.StaffCompetenceReview) gen.StaffCompetenceReview {
+			return competenceReviewResponse(r, f.verifiers)
+		}),
 	}
+}
+
+// readList is rows through f when the audience reads them, else the empty
+// list.
+func readList[R, T any](reads bool, rows []R, f func(R) T) []T {
+	if !reads {
+		return []T{}
+	}
+	return mapRows(rows, f)
 }
 
 // personalDataAccount is the account flag as the file carries it, with the

@@ -13,7 +13,7 @@ import (
 )
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates, default_account_kind, account_kind_seeded, directory_fields, provider_status FROM staff.settings WHERE id = 1
+SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates, default_account_kind, account_kind_seeded, directory_fields, provider_status, competence_review_interval_months FROM staff.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row (design §3.6). The
@@ -47,12 +47,13 @@ func (q *Queries) GetSettings(ctx context.Context) (StaffSetting, error) {
 		&i.AccountKindSeeded,
 		&i.DirectoryFields,
 		&i.ProviderStatus,
+		&i.CompetenceReviewIntervalMonths,
 	)
 	return i, err
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates, default_account_kind, account_kind_seeded, directory_fields, provider_status FROM staff.settings WHERE id = 1 FOR UPDATE
+SELECT id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates, default_account_kind, account_kind_seeded, directory_fields, provider_status, competence_review_interval_months FROM staff.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings reads the settings row and holds it for the rest of the
@@ -88,6 +89,7 @@ func (q *Queries) LockSettings(ctx context.Context) (StaffSetting, error) {
 		&i.AccountKindSeeded,
 		&i.DirectoryFields,
 		&i.ProviderStatus,
+		&i.CompetenceReviewIntervalMonths,
 	)
 	return i, err
 }
@@ -194,34 +196,36 @@ UPDATE staff.settings SET
     erase_sick_case_dates = coalesce($18::boolean, erase_sick_case_dates),
     default_account_kind = coalesce($19::varchar, default_account_kind),
     directory_fields = coalesce($20::jsonb, directory_fields),
+    competence_review_interval_months = coalesce($21::smallint, competence_review_interval_months),
     revision = revision + 1,
-    updated_at = $21::timestamptz
+    updated_at = $22::timestamptz
 WHERE id = 1
-RETURNING id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates, default_account_kind, account_kind_seeded, directory_fields, provider_status
+RETURNING id, employee_number_prefix, next_employee_number, self_cert_policy, self_cert_days_per_occurrence, self_cert_occurrences_per_year, self_cert_days_per_year, self_cert_after_months, auto_carry_over, create_before_days, delete_external_after_days, retention_grace_days, health_retention_days, pension_provider, injury_insurer, thresholds_acknowledged, revision, updated_at, auto_carry_over_since, erase_pregnancy_health_types, erase_sick_case_dates, default_account_kind, account_kind_seeded, directory_fields, provider_status, competence_review_interval_months
 `
 
 type UpdateSettingsParams struct {
-	EmployeeNumberPrefix       string
-	NextEmployeeNumber         int64
-	PensionProvider            *string
-	InjuryInsurer              *string
-	RetentionGraceDays         *int16
-	HealthRetentionDays        *int16
-	SelfCertPolicy             string
-	SelfCertDaysPerOccurrence  int16
-	SelfCertOccurrencesPerYear int16
-	SelfCertDaysPerYear        int16
-	SelfCertAfterMonths        int16
-	AutoCarryOver              bool
-	AutoCarryOverSince         pgtype.Date
-	CreateBeforeDays           *int16
-	SetDeleteExternalAfterDays bool
-	DeleteExternalAfterDays    *int16
-	ErasePregnancyHealthTypes  *bool
-	EraseSickCaseDates         *bool
-	DefaultAccountKind         *string
-	DirectoryFields            []byte
-	Now                        time.Time
+	EmployeeNumberPrefix           string
+	NextEmployeeNumber             int64
+	PensionProvider                *string
+	InjuryInsurer                  *string
+	RetentionGraceDays             *int16
+	HealthRetentionDays            *int16
+	SelfCertPolicy                 string
+	SelfCertDaysPerOccurrence      int16
+	SelfCertOccurrencesPerYear     int16
+	SelfCertDaysPerYear            int16
+	SelfCertAfterMonths            int16
+	AutoCarryOver                  bool
+	AutoCarryOverSince             pgtype.Date
+	CreateBeforeDays               *int16
+	SetDeleteExternalAfterDays     bool
+	DeleteExternalAfterDays        *int16
+	ErasePregnancyHealthTypes      *bool
+	EraseSickCaseDates             *bool
+	DefaultAccountKind             *string
+	DirectoryFields                []byte
+	CompetenceReviewIntervalMonths *int16
+	Now                            time.Time
 }
 
 // UpdateSettings replaces the settings the contract exposes and moves the
@@ -232,7 +236,8 @@ type UpdateSettingsParams struct {
 // NULL, delete_external_after_days unless @set_delete_external_after_days —
 // its NULL is a value, "never". The two erase settings (Task 5b) keep their
 // values when NULL, and so do the default account kind and the directory
-// profile's switches (00060), which the caller merges over the row's.
+// profile's switches (00060), which the caller merges over the row's. The
+// competence review interval (00067) keeps its value when NULL.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (StaffSetting, error) {
 	row := q.db.QueryRow(ctx, updateSettings,
 		arg.EmployeeNumberPrefix,
@@ -255,6 +260,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.EraseSickCaseDates,
 		arg.DefaultAccountKind,
 		arg.DirectoryFields,
+		arg.CompetenceReviewIntervalMonths,
 		arg.Now,
 	)
 	var i StaffSetting
@@ -284,6 +290,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.AccountKindSeeded,
 		&i.DirectoryFields,
 		&i.ProviderStatus,
+		&i.CompetenceReviewIntervalMonths,
 	)
 	return i, err
 }

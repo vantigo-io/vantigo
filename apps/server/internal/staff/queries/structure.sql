@@ -144,6 +144,13 @@ RETURNING *;
 -- name: ListLocations :many
 SELECT * FROM staff.locations ORDER BY name, id;
 
+-- name: LocationsByIDs :many
+-- LocationsByIDs is the locations of those ids that exist, archived or not,
+-- for a preference naming them (staff competence design S9), and holds them
+-- against an archive or a delete until the transaction ends, as
+-- ShareCompetence holds a competence.
+SELECT id, archived_at FROM staff.locations WHERE id = ANY(@ids::bigint[]) FOR SHARE;
+
 -- name: LockLocation :one
 SELECT * FROM staff.locations WHERE id = @id FOR UPDATE;
 

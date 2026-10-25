@@ -82,6 +82,7 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 	manager := person("M1", nil)
 	person("R1", &manager)
 	nobody := person("N1", nil)
+	reviewEvery12 := store.StaffSetting{CompetenceReviewIntervalMonths: 12}
 
 	for _, tc := range []struct {
 		name    string
@@ -93,16 +94,20 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 		// A manager's include the requests they decide and the open cases'
 		// milestones (delivery B, Task 6) — the oldest request only when one
 		// waits — and the declared and expiring competences (staff
-		// competence delivery A).
-		{"a manager", callerContext{Person: &manager, Today: today}, 8, 1},
+		// competence delivery A); with a review interval, the latest
+		// competence reviews too, and R1, employed since January 2025 and
+		// never reviewed, is overdue (staff competence delivery B).
+		{"a manager", callerContext{Person: &manager, Today: today, Settings: reviewEvery12}, 9, 2},
+		{"a manager, the review interval 0", callerContext{Person: &manager, Today: today}, 8, 1},
 		// staff:manage's statements include the self-approved absences, the
 		// ferie affected by sickness, the requests and the milestones
 		// (delivery B), the account items' links and people (delivery C), and
 		// the identity providers' recorded status with the people of each
 		// provider's kind (Entra delivery B), and the failed group sections
 		// (Entra delivery D), and the declared and expiring competences (staff
-		// competence delivery A); in October no holiday item is read.
-		{"staff:manage", callerContext{Manage: true, Today: today}, 17, -1},
+		// competence delivery A) and the latest competence reviews (its
+		// delivery B); in October no holiday item is read.
+		{"staff:manage", callerContext{Manage: true, Today: today, Settings: reviewEvery12}, 18, -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})

@@ -54,6 +54,20 @@ type StaffAbsenceType struct {
 	UpdatedAt     time.Time
 }
 
+type StaffAvailabilityDeclaration struct {
+	ID           int64
+	PersonID     int64
+	Kind         string
+	Weekday      *int16
+	FromDate     pgtype.Date
+	ToDate       pgtype.Date
+	StartMinute  *int16
+	EndMinute    *int16
+	SeenAt       *time.Time
+	SeenByUserID *uuid.UUID
+	CreatedAt    time.Time
+}
+
 type StaffBusinessUnit struct {
 	ID            int64
 	LegalEntityID int64
@@ -98,6 +112,15 @@ type StaffCompetenceCategory struct {
 	Revision   int32
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+type StaffCompetenceReview struct {
+	ID               int64
+	PersonID         int64
+	ReviewedOn       pgtype.Date
+	ReviewerUserID   uuid.UUID
+	ReviewerPersonID *int64
+	CreatedAt        time.Time
 }
 
 type StaffDepartment struct {
@@ -441,6 +464,29 @@ type StaffPersonCompetence struct {
 	Revision           int32
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+	SeenAt             *time.Time
+	SeenByUserID       *uuid.UUID
+}
+
+type StaffPersonInterest struct {
+	ID           int64
+	PersonID     int64
+	CompetenceID int64
+	SeenAt       *time.Time
+	SeenByUserID *uuid.UUID
+	CreatedAt    time.Time
+}
+
+type StaffPersonPreference struct {
+	ID           int64
+	PersonID     int64
+	Kind         string
+	Value        []byte
+	Weight       int16
+	SeenAt       *time.Time
+	SeenByUserID *uuid.UUID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type StaffPersonRole struct {
@@ -454,31 +500,32 @@ type StaffPersonRole struct {
 }
 
 type StaffSetting struct {
-	ID                         int16
-	EmployeeNumberPrefix       string
-	NextEmployeeNumber         int64
-	SelfCertPolicy             string
-	SelfCertDaysPerOccurrence  int16
-	SelfCertOccurrencesPerYear int16
-	SelfCertDaysPerYear        int16
-	SelfCertAfterMonths        int16
-	AutoCarryOver              bool
-	CreateBeforeDays           int16
-	DeleteExternalAfterDays    *int16
-	RetentionGraceDays         int16
-	HealthRetentionDays        int16
-	PensionProvider            *string
-	InjuryInsurer              *string
-	ThresholdsAcknowledged     []byte
-	Revision                   int32
-	UpdatedAt                  time.Time
-	AutoCarryOverSince         pgtype.Date
-	ErasePregnancyHealthTypes  bool
-	EraseSickCaseDates         bool
-	DefaultAccountKind         string
-	AccountKindSeeded          bool
-	DirectoryFields            []byte
-	ProviderStatus             []byte
+	ID                             int16
+	EmployeeNumberPrefix           string
+	NextEmployeeNumber             int64
+	SelfCertPolicy                 string
+	SelfCertDaysPerOccurrence      int16
+	SelfCertOccurrencesPerYear     int16
+	SelfCertDaysPerYear            int16
+	SelfCertAfterMonths            int16
+	AutoCarryOver                  bool
+	CreateBeforeDays               int16
+	DeleteExternalAfterDays        *int16
+	RetentionGraceDays             int16
+	HealthRetentionDays            int16
+	PensionProvider                *string
+	InjuryInsurer                  *string
+	ThresholdsAcknowledged         []byte
+	Revision                       int32
+	UpdatedAt                      time.Time
+	AutoCarryOverSince             pgtype.Date
+	ErasePregnancyHealthTypes      bool
+	EraseSickCaseDates             bool
+	DefaultAccountKind             string
+	AccountKindSeeded              bool
+	DirectoryFields                []byte
+	ProviderStatus                 []byte
+	CompetenceReviewIntervalMonths int16
 }
 
 type StaffSickCase struct {

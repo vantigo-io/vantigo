@@ -200,6 +200,8 @@ func TestSettings_EachBadFieldIsA400OnThatField(t *testing.T) {
 		{"pensionProvider", long},
 		{"pensionProvider", "   "},
 		{"injuryInsurer", long},
+		{"competenceReviewIntervalMonths", 61},
+		{"competenceReviewIntervalMonths", -1},
 	} {
 		p := refused(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{c.field: c.value}), ifMatch(1)),
 			http.StatusBadRequest, "")
@@ -258,6 +260,35 @@ func TestSettings_TheAccountSettings(t *testing.T) {
 	do(t, hr, http.MethodPut, settingsPath, body, http.StatusOK, &cleared, ifMatch(saved.Revision))
 	if cleared.CreateBeforeDays != 90 || cleared.DeleteExternalAfterDays != nil {
 		t.Errorf("a null deleteExternalAfterDays: %d / %v, want 90 kept and it cleared", cleared.CreateBeforeDays, cleared.DeleteExternalAfterDays)
+	}
+}
+
+// The competence review interval (staff competence design §3.9, S11): 0 to
+// 60 months, 12 by default; 0 turns the overdue item off; left out, it keeps
+// its value.
+func TestSettings_TheCompetenceReviewInterval(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	if fresh := raw(t, hr.Do(http.MethodGet, settingsPath, nil)); fresh["competenceReviewIntervalMonths"] != float64(12) {
+		t.Errorf("competenceReviewIntervalMonths = %v, want 12", fresh["competenceReviewIntervalMonths"])
+	}
+	for _, v := range []int{-1, 61} {
+		pr := refused(t, hr.Do(http.MethodPut, settingsPath, settingsBody(map[string]any{"competenceReviewIntervalMonths": v}), ifMatch(1)),
+			http.StatusBadRequest, "")
+		if len(pr.Errors["competenceReviewIntervalMonths"]) == 0 || len(pr.Errors) != 1 {
+			t.Errorf("%d: errors = %v, want exactly competenceReviewIntervalMonths named", v, pr.Errors)
+		}
+	}
+	var saved gen.StaffSettings
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"competenceReviewIntervalMonths": 0}), http.StatusOK, &saved, ifMatch(1))
+	if saved.CompetenceReviewIntervalMonths != 0 {
+		t.Errorf("saved %d, want 0", saved.CompetenceReviewIntervalMonths)
+	}
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(map[string]any{"competenceReviewIntervalMonths": 60}), http.StatusOK, &saved, ifMatch(saved.Revision))
+	do(t, hr, http.MethodPut, settingsPath, settingsBody(nil), http.StatusOK, &saved, ifMatch(saved.Revision))
+	if saved.CompetenceReviewIntervalMonths != 60 {
+		t.Errorf("left out: %d, want 60 kept", saved.CompetenceReviewIntervalMonths)
 	}
 }
 

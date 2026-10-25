@@ -144,6 +144,21 @@ const (
 	eventCompetenceUpdated       = "competence_updated"
 )
 
+// The one-to-one's events (staff competence design S16, delivery B): the
+// person's wishes changed — the count of interests or declarations before
+// and after, the kinds of preference changed, never a value — the manager's
+// Seen with the rows it stamped, and the review the two recorded, dated. Each
+// field is in fieldClasses as D and in shaping.go's fieldGroups under the
+// Wishes or the Reviews group, so an audience outside the group reads
+// "changed".
+const (
+	eventInterestsChanged    = "interests_changed"
+	eventPreferencesChanged  = "preferences_changed"
+	eventAvailabilityChanged = "availability_changed"
+	eventWishesSeen          = "wishes_seen"
+	eventCompetenceReviewed  = "competence_reviewed"
+)
+
 // holdEventKinds are the hold's kinds: about the record's retention and who
 // exported it rather than about the person's work, so they are listed only to
 // an audience that reads the hold group — and to the person themselves, who
@@ -240,6 +255,10 @@ var fieldClasses = map[string]string{
 	// a person was erased and reassessed is class C, who was employed when
 	// (design §3.1).
 	"legalHold": "F", "legalHoldReason": "F", "erasedAt": "C", "reassessedAt": "C",
+
+	// The one-to-one's fields (staff competence design S16, delivery B) are
+	// class D, the wish and review rows': counts and kinds, never a value.
+	"interests": "D", "preferences": "D", "declarations": "D", "seen": "D", "reviewedOn": "D",
 }
 
 // classOfField is a payload field's retention class. A field the table does

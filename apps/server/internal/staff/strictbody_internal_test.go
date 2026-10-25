@@ -57,9 +57,10 @@ func TestKeepRawBody_KeepsAllButUploads(t *testing.T) {
 	}
 }
 
-// The mount fails unless the contract closes StaffPersonRequest,
-// StaffPersonAccountRequest, StaffMeRequest and StaffAbsenceTypeChangeRequest (additionalProperties false): the unknown-property refusal reads that, and
-// a contract that lost it — or the schema — would silently accept anything.
+// The mount fails unless the contract closes every schema of closedSchemas
+// (additionalProperties false), and the rows of every list of closedRows:
+// the unknown-property refusal reads that, and a contract that lost it — or
+// the schema — would silently accept anything.
 func TestCheckClosedSchemas_FailsTheMountOnAnOpenOrMissingSchema(t *testing.T) {
 	t.Parallel()
 	doc, err := openapi.Load(context.Background(), "staff")
@@ -69,8 +70,14 @@ func TestCheckClosedSchemas_FailsTheMountOnAnOpenOrMissingSchema(t *testing.T) {
 	if err := checkClosedSchemas(doc); err != nil {
 		t.Errorf("the real contract: %v, want nil", err)
 	}
-	if !slices.Equal(closedSchemas, []string{personRequestSchema, accountRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema, competenceChangeSchema}) {
-		t.Errorf("closed schemas = %v, want StaffPersonRequest, StaffPersonAccountRequest, StaffMeRequest, StaffAbsenceTypeChangeRequest, StaffAbsenceChangeRequest, StaffAbsenceRequest, StaffAbsenceDecisionRequest and StaffCompetenceChangeRequest", closedSchemas)
+	if !slices.Equal(closedSchemas, []string{personRequestSchema, accountRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema, competenceChangeSchema,
+		interestsRequestSchema, preferencesRequestSchema, availabilityRequestSchema, competenceReviewRequestSchema}) {
+		t.Errorf("closed schemas = %v, want StaffPersonRequest, StaffPersonAccountRequest, StaffMeRequest, StaffAbsenceTypeChangeRequest, StaffAbsenceChangeRequest, StaffAbsenceRequest, StaffAbsenceDecisionRequest, StaffCompetenceChangeRequest, the three wish lists and StaffCompetenceReviewRequest", closedSchemas)
+	}
+	if want := []struct{ schema, list string }{
+		{interestsRequestSchema, "interests"}, {preferencesRequestSchema, "preferences"}, {availabilityRequestSchema, "declarations"},
+	}; !slices.Equal(closedRows, want) {
+		t.Errorf("closed rows = %v, want the three wish lists' rows", closedRows)
 	}
 	open := true
 	for _, name := range closedSchemas {
@@ -83,6 +90,18 @@ func TestCheckClosedSchemas_FailsTheMountOnAnOpenOrMissingSchema(t *testing.T) {
 		delete(missing.Components.Schemas, name)
 		if err := checkClosedSchemas(missing); err == nil {
 			t.Errorf("a contract without %s passed, want an error", name)
+		}
+	}
+	for _, c := range closedRows {
+		opened, _ := openapi.Load(context.Background(), "staff")
+		opened.Components.Schemas[c.schema].Value.Properties[c.list].Value.Items.Value.AdditionalProperties = openapi3.AdditionalProperties{}
+		if err := checkClosedSchemas(opened); err == nil {
+			t.Errorf("the rows of %s.%s without additionalProperties passed, want an error", c.schema, c.list)
+		}
+		reopened, _ := openapi.Load(context.Background(), "staff")
+		reopened.Components.Schemas[c.schema].Value.Properties[c.list].Value.Items.Value.AdditionalProperties = openapi3.AdditionalProperties{Has: &open}
+		if err := checkClosedSchemas(reopened); err == nil {
+			t.Errorf("open rows of %s.%s passed, want an error", c.schema, c.list)
 		}
 	}
 	if err := checkClosedSchemas(nil); err == nil {

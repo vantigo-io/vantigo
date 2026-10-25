@@ -20,12 +20,13 @@ import (
 // adjustments, the sick-leave cases and their milestones, and the types and
 // schemes they name — and Entra delivery D's groups, their members, owners
 // and sections per provider — and the person's competences (staff
-// competence design S17).
+// competence design S17) — and what the person wants and their competence
+// reviews (delivery B, §3.4–3.7).
 var classedTables = []string{
 	"people", "next_of_kin", "person_roles", "employments", "employment_terms", "identity_links", "documents",
 	"absences", "holiday_adjustments", "sick_cases", "sick_case_milestones", "absence_types", "holiday_schemes",
 	"groups", "group_members", "group_owners", "group_traits",
-	"person_competences",
+	"person_competences", "person_interests", "person_preferences", "availability_declarations", "competence_reviews",
 }
 
 // Every column of the tables the erase reaches has a class, and every class
@@ -107,6 +108,13 @@ func TestFieldClasses_AgreeWithTheirColumns(t *testing.T) {
 		"bankAccount": "people.bank_account_sealed",
 		// snake() reads "Under12" as one word; the column has the digits apart.
 		"childrenUnder12": "people.children_under_12",
+		// The one-to-one's (delivery B): a list's count or kinds record its
+		// table's rows, the Seen its stamps, the review its day.
+		"interests":    "person_interests.competence_id",
+		"preferences":  "person_preferences.kind",
+		"declarations": "availability_declarations.kind",
+		"seen":         "person_interests.seen_at",
+		"reviewedOn":   "competence_reviews.reviewed_on",
 	}
 	// A field is its column in the first of these tables that has it.
 	searched := []string{"people", "employments", "employment_terms"}

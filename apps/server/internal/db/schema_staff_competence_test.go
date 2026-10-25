@@ -28,6 +28,10 @@ const staffCompetenceVersion = 66
 func TestStaffCompetence_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, staffCompetenceVersion)
+	// What is pinned below is 00066's own schema: the later migrations —
+	// 00067's seen stamp on person_competences among them — are rolled back
+	// first, and pinned by their own tests.
+	migrateTo(t, url, staffCompetenceVersion)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

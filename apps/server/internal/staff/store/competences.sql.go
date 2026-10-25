@@ -44,7 +44,7 @@ func (q *Queries) CompetenceInUse(ctx context.Context, competenceID int64) (bool
 }
 
 const currentPersonCompetenceOf = `-- name: CurrentPersonCompetenceOf :one
-SELECT id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at FROM staff.person_competences
+SELECT id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at, seen_at, seen_by_user_id FROM staff.person_competences
 WHERE person_id = $1 AND competence_id = $2 AND superseded_by_id IS NULL
 `
 
@@ -80,6 +80,8 @@ func (q *Queries) CurrentPersonCompetenceOf(ctx context.Context, arg CurrentPers
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SeenAt,
+		&i.SeenByUserID,
 	)
 	return i, err
 }
@@ -148,7 +150,7 @@ func (q *Queries) GetCompetence(ctx context.Context, id int64) (StaffCompetence,
 }
 
 const getPersonCompetence = `-- name: GetPersonCompetence :one
-SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at,
+SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at, pc.seen_at, pc.seen_by_user_id,
        c.key AS competence_key, c.name_en AS competence_name_en, c.name_nb AS competence_name_nb,
        c.kind AS competence_kind, c.has_level AS competence_has_level, c.category_id AS competence_category_id,
        c.archived_at AS competence_archived_at, c.reminder_lead_days AS competence_reminder_lead_days,
@@ -200,6 +202,8 @@ func (q *Queries) GetPersonCompetence(ctx context.Context, id int64) (GetPersonC
 		&i.StaffPersonCompetence.Revision,
 		&i.StaffPersonCompetence.CreatedAt,
 		&i.StaffPersonCompetence.UpdatedAt,
+		&i.StaffPersonCompetence.SeenAt,
+		&i.StaffPersonCompetence.SeenByUserID,
 		&i.CompetenceKey,
 		&i.CompetenceNameEn,
 		&i.CompetenceNameNb,
@@ -389,7 +393,7 @@ INSERT INTO staff.person_competences (
     $11, $12, $13, $14,
     $15::timestamptz, $15::timestamptz
 )
-RETURNING id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at
+RETURNING id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at, seen_at, seen_by_user_id
 `
 
 type InsertPersonCompetenceParams struct {
@@ -453,6 +457,8 @@ func (q *Queries) InsertPersonCompetence(ctx context.Context, arg InsertPersonCo
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SeenAt,
+		&i.SeenByUserID,
 	)
 	return i, err
 }
@@ -564,7 +570,7 @@ func (q *Queries) ListCompetences(ctx context.Context, arg ListCompetencesParams
 }
 
 const listDeclaredCompetences = `-- name: ListDeclaredCompetences :many
-SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at,
+SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at, pc.seen_at, pc.seen_by_user_id,
        p.display_name AS person_display_name, p.erased_at AS person_erased_at,
        c.key AS competence_key, c.name_en AS competence_name_en, c.name_nb AS competence_name_nb,
        c.kind AS competence_kind
@@ -619,6 +625,8 @@ func (q *Queries) ListDeclaredCompetences(ctx context.Context) ([]ListDeclaredCo
 			&i.StaffPersonCompetence.Revision,
 			&i.StaffPersonCompetence.CreatedAt,
 			&i.StaffPersonCompetence.UpdatedAt,
+			&i.StaffPersonCompetence.SeenAt,
+			&i.StaffPersonCompetence.SeenByUserID,
 			&i.PersonDisplayName,
 			&i.PersonErasedAt,
 			&i.CompetenceKey,
@@ -637,7 +645,7 @@ func (q *Queries) ListDeclaredCompetences(ctx context.Context) ([]ListDeclaredCo
 }
 
 const listExpiringCompetences = `-- name: ListExpiringCompetences :many
-SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at,
+SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at, pc.seen_at, pc.seen_by_user_id,
        p.display_name AS person_display_name, p.erased_at AS person_erased_at,
        c.key AS competence_key, c.name_en AS competence_name_en, c.name_nb AS competence_name_nb,
        c.kind AS competence_kind, c.reminder_lead_days AS competence_reminder_lead_days
@@ -693,6 +701,8 @@ func (q *Queries) ListExpiringCompetences(ctx context.Context) ([]ListExpiringCo
 			&i.StaffPersonCompetence.Revision,
 			&i.StaffPersonCompetence.CreatedAt,
 			&i.StaffPersonCompetence.UpdatedAt,
+			&i.StaffPersonCompetence.SeenAt,
+			&i.StaffPersonCompetence.SeenByUserID,
 			&i.PersonDisplayName,
 			&i.PersonErasedAt,
 			&i.CompetenceKey,
@@ -712,7 +722,7 @@ func (q *Queries) ListExpiringCompetences(ctx context.Context) ([]ListExpiringCo
 }
 
 const listPersonCompetenceHistory = `-- name: ListPersonCompetenceHistory :many
-SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at,
+SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at, pc.seen_at, pc.seen_by_user_id,
        c.key AS competence_key, c.name_en AS competence_name_en, c.name_nb AS competence_name_nb,
        c.kind AS competence_kind, c.has_level AS competence_has_level, c.category_id AS competence_category_id,
        c.archived_at AS competence_archived_at, c.reminder_lead_days AS competence_reminder_lead_days,
@@ -772,6 +782,8 @@ func (q *Queries) ListPersonCompetenceHistory(ctx context.Context, personID int6
 			&i.StaffPersonCompetence.Revision,
 			&i.StaffPersonCompetence.CreatedAt,
 			&i.StaffPersonCompetence.UpdatedAt,
+			&i.StaffPersonCompetence.SeenAt,
+			&i.StaffPersonCompetence.SeenByUserID,
 			&i.CompetenceKey,
 			&i.CompetenceNameEn,
 			&i.CompetenceNameNb,
@@ -795,7 +807,7 @@ func (q *Queries) ListPersonCompetenceHistory(ctx context.Context, personID int6
 }
 
 const listPersonCompetences = `-- name: ListPersonCompetences :many
-SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at,
+SELECT pc.id, pc.person_id, pc.competence_id, pc.level, pc.issued_on, pc.valid_from, pc.valid_to, pc.issuer, pc.reference, pc.evidence_document_id, pc.source, pc.verified_at, pc.verified_by_user_id, pc.verified_basis, pc.verified_note, pc.superseded_by_id, pc.expiring_notified_at, pc.expired_notified_at, pc.revision, pc.created_at, pc.updated_at, pc.seen_at, pc.seen_by_user_id,
        c.key AS competence_key, c.name_en AS competence_name_en, c.name_nb AS competence_name_nb,
        c.kind AS competence_kind, c.has_level AS competence_has_level, c.category_id AS competence_category_id,
        c.archived_at AS competence_archived_at, c.reminder_lead_days AS competence_reminder_lead_days,
@@ -856,6 +868,8 @@ func (q *Queries) ListPersonCompetences(ctx context.Context, personID int64) ([]
 			&i.StaffPersonCompetence.Revision,
 			&i.StaffPersonCompetence.CreatedAt,
 			&i.StaffPersonCompetence.UpdatedAt,
+			&i.StaffPersonCompetence.SeenAt,
+			&i.StaffPersonCompetence.SeenByUserID,
 			&i.CompetenceKey,
 			&i.CompetenceNameEn,
 			&i.CompetenceNameNb,
@@ -936,7 +950,7 @@ func (q *Queries) LockCompetenceCategory(ctx context.Context, id int64) (StaffCo
 }
 
 const lockPersonCompetence = `-- name: LockPersonCompetence :one
-SELECT id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at FROM staff.person_competences WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at, seen_at, seen_by_user_id FROM staff.person_competences WHERE id = $1 FOR NO KEY UPDATE
 `
 
 // LockPersonCompetence takes a person's row after its person's lock, for the
@@ -966,6 +980,8 @@ func (q *Queries) LockPersonCompetence(ctx context.Context, id int64) (StaffPers
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SeenAt,
+		&i.SeenByUserID,
 	)
 	return i, err
 }
@@ -1054,22 +1070,31 @@ func (q *Queries) RestorePredecessorOf(ctx context.Context, arg RestorePredecess
 const setPersonCompetenceEvidence = `-- name: SetPersonCompetenceEvidence :one
 UPDATE staff.person_competences SET
     evidence_document_id = $1::bigint,
+    seen_at = CASE WHEN $2::boolean THEN NULL ELSE seen_at END,
+    seen_by_user_id = CASE WHEN $2::boolean THEN NULL ELSE seen_by_user_id END,
     revision = revision + 1,
-    updated_at = $2::timestamptz
-WHERE id = $3
-RETURNING id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at
+    updated_at = $3::timestamptz
+WHERE id = $4
+RETURNING id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at, seen_at, seen_by_user_id
 `
 
 type SetPersonCompetenceEvidenceParams struct {
 	EvidenceDocumentID int64
+	ClearSeen          bool
 	Now                time.Time
 	ID                 int64
 }
 
 // SetPersonCompetenceEvidence names the row's evidence document; an earlier
-// one stays in the archive.
+// one stays in the archive. clear_seen drops the one-to-one's Seen stamp, for
+// the person's own upload (staff competence design S8, amendment 17).
 func (q *Queries) SetPersonCompetenceEvidence(ctx context.Context, arg SetPersonCompetenceEvidenceParams) (StaffPersonCompetence, error) {
-	row := q.db.QueryRow(ctx, setPersonCompetenceEvidence, arg.EvidenceDocumentID, arg.Now, arg.ID)
+	row := q.db.QueryRow(ctx, setPersonCompetenceEvidence,
+		arg.EvidenceDocumentID,
+		arg.ClearSeen,
+		arg.Now,
+		arg.ID,
+	)
 	var i StaffPersonCompetence
 	err := row.Scan(
 		&i.ID,
@@ -1093,6 +1118,8 @@ func (q *Queries) SetPersonCompetenceEvidence(ctx context.Context, arg SetPerson
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SeenAt,
+		&i.SeenByUserID,
 	)
 	return i, err
 }
@@ -1281,10 +1308,12 @@ UPDATE staff.person_competences SET
     expired_notified_at = CASE WHEN valid_to IS DISTINCT FROM $4::date THEN NULL ELSE expired_notified_at END,
     verified_at = CASE WHEN $7::boolean THEN $8::timestamptz ELSE verified_at END,
     verified_by_user_id = CASE WHEN $7::boolean THEN $9::uuid ELSE verified_by_user_id END,
+    seen_at = CASE WHEN $10::boolean THEN NULL ELSE seen_at END,
+    seen_by_user_id = CASE WHEN $10::boolean THEN NULL ELSE seen_by_user_id END,
     revision = revision + 1,
     updated_at = $8::timestamptz
-WHERE id = $10
-RETURNING id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at
+WHERE id = $11
+RETURNING id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at, seen_at, seen_by_user_id
 `
 
 type UpdatePersonCompetenceParams struct {
@@ -1297,13 +1326,16 @@ type UpdatePersonCompetenceParams struct {
 	Restamp   bool
 	Now       time.Time
 	Verifier  uuid.UUID
+	ClearSeen bool
 	ID        int64
 }
 
 // UpdatePersonCompetence replaces a row's level, dates, issuer and reference.
 // A new end clears the worker's two stamps, so the row is mailed again ahead
 // of it; restamp moves the verification's instant and verifier to the
-// verifier changing a verified row's level, its basis and note kept.
+// verifier changing a verified row's level, its basis and note kept;
+// clear_seen drops the one-to-one's Seen stamp, for the person's own change
+// of their declared row (staff competence design S8, amendment 17).
 func (q *Queries) UpdatePersonCompetence(ctx context.Context, arg UpdatePersonCompetenceParams) (StaffPersonCompetence, error) {
 	row := q.db.QueryRow(ctx, updatePersonCompetence,
 		arg.Level,
@@ -1315,6 +1347,7 @@ func (q *Queries) UpdatePersonCompetence(ctx context.Context, arg UpdatePersonCo
 		arg.Restamp,
 		arg.Now,
 		arg.Verifier,
+		arg.ClearSeen,
 		arg.ID,
 	)
 	var i StaffPersonCompetence
@@ -1340,6 +1373,8 @@ func (q *Queries) UpdatePersonCompetence(ctx context.Context, arg UpdatePersonCo
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SeenAt,
+		&i.SeenByUserID,
 	)
 	return i, err
 }
@@ -1354,7 +1389,7 @@ UPDATE staff.person_competences SET
     revision = revision + 1,
     updated_at = $6::timestamptz
 WHERE id = $7
-RETURNING id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at
+RETURNING id, person_id, competence_id, level, issued_on, valid_from, valid_to, issuer, reference, evidence_document_id, source, verified_at, verified_by_user_id, verified_basis, verified_note, superseded_by_id, expiring_notified_at, expired_notified_at, revision, created_at, updated_at, seen_at, seen_by_user_id
 `
 
 type VerifyPersonCompetenceParams struct {
@@ -1402,6 +1437,8 @@ func (q *Queries) VerifyPersonCompetence(ctx context.Context, arg VerifyPersonCo
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SeenAt,
+		&i.SeenByUserID,
 	)
 	return i, err
 }

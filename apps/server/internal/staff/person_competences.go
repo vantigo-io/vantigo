@@ -56,7 +56,7 @@ func competenceFieldGroup(name string) fieldGroup {
 		"expiring", "expired", "declaredAt", "revision", "chain", "restored":
 		return groupCompetence
 	case "issuedOn", "issuer", "reference", "evidence", "documentId", "source", "verifiedAt", "verifiedBy",
-		"verifiedBasis", "basis", "verifiedNote":
+		"verifiedBasis", "basis", "verifiedNote", "seenAt":
 		return groupCompetenceDetail
 	}
 	return groupNobody
@@ -116,6 +116,7 @@ func personCompetenceResponse(row store.GetPersonCompetenceRow, a audience, toda
 	out.VerifiedAt = r.VerifiedAt
 	out.VerifiedBasis = r.VerifiedBasis
 	out.VerifiedNote = r.VerifiedNote
+	out.SeenAt = r.SeenAt
 	if r.VerifiedByUserID != nil {
 		name, ok := names[*r.VerifiedByUserID]
 		if !ok {
@@ -554,19 +555,32 @@ func (s *server) PutStaffPersonCompetencesById(ctx context.Context, req gen.PutS
 		// A verifier who changes a verified row's level verifies that level:
 		// the stamp is theirs now, its basis and note kept.
 		restamp := role.verifies() && isVerified(l.row) && !equalInt16(level, l.row.Level)
-		row, err := txq.UpdatePersonCompetence(ctx, store.UpdatePersonCompetenceParams{
+		params := store.UpdatePersonCompetenceParams{
 			ID: l.row.ID, Level: level, IssuedOn: pgTime(fields.IssuedOn), ValidFrom: dayParam(fields.ValidFrom),
 			ValidTo: pgTime(fields.ValidTo), Issuer: fields.Issuer, Reference: fields.Reference,
 			Restamp: restamp, Verifier: caller.UserID, Now: s.deps.Clock(),
-		})
+		}
+		before, err := rowValues(l.row)
+		if err != nil {
+			return err
+		}
+		wanted := l.row
+		wanted.Level, wanted.IssuedOn, wanted.ValidFrom = params.Level, params.IssuedOn, params.ValidFrom
+		wanted.ValidTo, wanted.Issuer, wanted.Reference = params.ValidTo, params.Issuer, params.Reference
+		next, err := rowValues(wanted)
+		if err != nil {
+			return err
+		}
+		// The person's own change of their declared row is news to the
+		// one-to-one, so it loses its Seen stamp (S8, amendment 17); a
+		// verifier's or HR's edit is not, and a change that changes nothing
+		// keeps it.
+		params.ClearSeen = role == roleSelf && len(diffFields(before, next)) > 0
+		row, err := txq.UpdatePersonCompetence(ctx, params)
 		if err != nil {
 			return fmt.Errorf("staff: change competence row %d: %w", l.row.ID, err)
 		}
 		if saved, err = readCompetenceRow(ctx, txq, row.ID); err != nil {
-			return err
-		}
-		before, err := rowValues(l.row)
-		if err != nil {
 			return err
 		}
 		after, err := rowValues(row)
@@ -1075,8 +1089,10 @@ func (s *server) PostStaffPersonCompetencesByIdEvidence(ctx context.Context, req
 		if err := s.recordDocumentEvent(ctx, txq, document, eventDocumentAdded, who, diffFields(nil, values), category); err != nil {
 			return err
 		}
+		// The person's own upload is news to the one-to-one: the row loses
+		// its Seen stamp (S8, amendment 17); HR's filing is not.
 		row, err := txq.SetPersonCompetenceEvidence(ctx, store.SetPersonCompetenceEvidenceParams{
-			ID: l.row.ID, EvidenceDocumentID: document.ID, Now: s.deps.Clock(),
+			ID: l.row.ID, EvidenceDocumentID: document.ID, ClearSeen: a.Self, Now: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("staff: name competence row %d's evidence: %w", l.row.ID, err)

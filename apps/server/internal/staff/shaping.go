@@ -89,10 +89,19 @@ const (
 	// source and the verification — the person's, their manager's, the
 	// Approver's and HR's; never a colleague's.
 	groupCompetenceDetail
+	// groupWishes is what the person wants — their interests, preferences and
+	// availability declaration, and the Seen stamp on them (§5's "Wishes"
+	// row, delivery B): the person's, their manager's and HR's; never the
+	// Approver's (plan reading 16) and never a colleague's.
+	groupWishes
+	// groupReviews is the competence reviews and the person's last one (§5's
+	// "Reviews" row, delivery B): the person's, their manager's, the
+	// Approver's and HR's — whoever may record one, and the person.
+	groupReviews
 )
 
 func (g fieldGroup) String() string {
-	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail", "accommodation", "competence", "competence-detail"}[g]
+	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail", "accommodation", "competence", "competence-detail", "wishes", "reviews"}[g]
 }
 
 // fieldGroups is the one table: every field of the person — as the contract
@@ -211,6 +220,15 @@ var fieldGroups = map[string]fieldGroup{
 	"legalHoldReason": groupHold,
 	"erasedAt":        groupHold,
 	"reassessedAt":    groupHold,
+
+	// The one-to-one (staff competence design §5, delivery B): the fields
+	// its events name, and the person's last review.
+	"interests":            groupWishes,
+	"preferences":          groupWishes,
+	"declarations":         groupWishes,
+	"seen":                 groupWishes,
+	"reviewedOn":           groupReviews,
+	"lastCompetenceReview": groupReviews,
 }
 
 // groupOf is a field's group, groupNobody for a field the table does not
@@ -272,6 +290,10 @@ func (a audience) reads(g fieldGroup) bool {
 		return a.Self || a.Manager || a.Colleague || a.Approver || hr
 	case groupCompetenceDetail:
 		return a.Self || a.Manager || a.Approver || hr
+	case groupWishes:
+		return a.Self || a.Manager || hr
+	case groupReviews:
+		return a.Self || a.Manager || a.Approver || hr
 	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCareDays:
 		return a.Self || hr
 	case groupHRNotes, groupHold:
@@ -327,8 +349,10 @@ func shown[T any](a audience, field string, v *T) *T {
 // says. user is the linked user as the directory named them, nil when there
 // is no link; it is read outside any transaction, and only for an audience
 // that reads the link. canDecide is whether the caller decides the person's
-// absence requests (deciders.go).
-func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.StaffPersonUser, canDecide bool) gen.StaffPerson {
+// absence requests (deciders.go). lastReview is the person's latest
+// competence review, nil when there is none; it is shown to the reviews
+// group alone.
+func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.StaffPersonUser, canDecide bool, lastReview *gen.StaffLastCompetenceReview) gen.StaffPerson {
 	out := gen.StaffPerson{
 		Status:            p.status,
 		Manager:           shown(a, "manager", p.manager),
@@ -357,6 +381,11 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 			// The verifier's rule (staff competence design §4): needs no
 			// I/O, since the audience says it — never the person.
 			CanVerifyCompetence: (a.Manager || a.Approver || a.Manage) && !a.Self,
+			// The wishes (plan reading 16): read by the Wishes group, stamped
+			// Seen by the manager and staff:manage — never the person, never
+			// the Approver alone.
+			CanReadWishes:      a.reads(groupWishes),
+			CanStampWishesSeen: (a.Manager || a.Manage) && !a.Self,
 		},
 		WorkEmail:    shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:    shown(a, "phoneWork", row.PhoneWork),
@@ -374,6 +403,8 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 		ErasedAt:     shown(a, "erasedAt", row.ErasedAt),
 		ReassessedAt: shown(a, "reassessedAt", row.ReassessedAt),
 		LegalHold:    shown(a, "legalHold", legalHoldOf(row)),
+
+		LastCompetenceReview: shown(a, "lastCompetenceReview", lastReview),
 
 		ChildrenUnder12:        shown(a, "childrenUnder12", int32Of(row.ChildrenUnder12)),
 		SoleCarer:              shown(a, "soleCarer", row.SoleCarer),

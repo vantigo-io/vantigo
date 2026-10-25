@@ -548,7 +548,7 @@ func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerC
 		return nil, err
 	}
 	if c.Manage || c.Approve || len(in.reports) > 0 {
-		if in.competences, err = readCompetenceAttention(ctx, q); err != nil {
+		if in.competences, err = readCompetenceAttention(ctx, q, reviewsOverdue(c, in.reports)); err != nil {
 			return nil, err
 		}
 	}

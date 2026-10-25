@@ -29,7 +29,7 @@ func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 		},
 		{
 			Key: "staff:approve", Display: "Decide absence",
-			Description: "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, mark their milestones, and verify competences.",
+			Description: "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, mark their milestones, verify competences and record competence reviews.",
 			Category:    "Staff", Sensitive: false, Delegable: true,
 		},
 		{

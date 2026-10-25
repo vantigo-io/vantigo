@@ -264,6 +264,27 @@ func (e StaffAppointmentForm) Valid() bool {
 	}
 }
 
+// Defines values for StaffAvailabilityKind.
+const (
+	Available   StaffAvailabilityKind = "available"
+	Preferred   StaffAvailabilityKind = "preferred"
+	Unavailable StaffAvailabilityKind = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the StaffAvailabilityKind enum.
+func (e StaffAvailabilityKind) Valid() bool {
+	switch e {
+	case Available:
+		return true
+	case Preferred:
+		return true
+	case Unavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffBankAccountKind.
 const (
 	Bban StaffBankAccountKind = "bban"
@@ -894,6 +915,39 @@ func (e StaffPersonStatusState) Valid() bool {
 	}
 }
 
+// Defines values for StaffPreferenceKind.
+const (
+	StaffPreferenceKindLocation           StaffPreferenceKind = "location"
+	StaffPreferenceKindMaxConsecutiveDays StaffPreferenceKind = "max_consecutive_days"
+	StaffPreferenceKindMaxHoursPerWeek    StaffPreferenceKind = "max_hours_per_week"
+	StaffPreferenceKindRemote             StaffPreferenceKind = "remote"
+	StaffPreferenceKindTimeOfDay          StaffPreferenceKind = "time_of_day"
+	StaffPreferenceKindTravel             StaffPreferenceKind = "travel"
+	StaffPreferenceKindWeekdays           StaffPreferenceKind = "weekdays"
+)
+
+// Valid indicates whether the value is a known member of the StaffPreferenceKind enum.
+func (e StaffPreferenceKind) Valid() bool {
+	switch e {
+	case StaffPreferenceKindLocation:
+		return true
+	case StaffPreferenceKindMaxConsecutiveDays:
+		return true
+	case StaffPreferenceKindMaxHoursPerWeek:
+		return true
+	case StaffPreferenceKindRemote:
+		return true
+	case StaffPreferenceKindTimeOfDay:
+		return true
+	case StaffPreferenceKindTravel:
+		return true
+	case StaffPreferenceKindWeekdays:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffRelationshipType.
 const (
 	Freelancer     StaffRelationshipType = "freelancer"
@@ -1014,6 +1068,7 @@ const (
 	CompetenceDeclared         StaffStatsAttentionItemType = "competenceDeclared"
 	CompetenceExpired          StaffStatsAttentionItemType = "competenceExpired"
 	CompetenceExpiring         StaffStatsAttentionItemType = "competenceExpiring"
+	CompetenceReviewOverdue    StaffStatsAttentionItemType = "competenceReviewOverdue"
 	ContractOverdue            StaffStatsAttentionItemType = "contractOverdue"
 	EmployeeRoleMissing        StaffStatsAttentionItemType = "employeeRoleMissing"
 	EmployeeRoleUnsafe         StaffStatsAttentionItemType = "employeeRoleUnsafe"
@@ -1098,6 +1153,8 @@ func (e StaffStatsAttentionItemType) Valid() bool {
 	case CompetenceExpired:
 		return true
 	case CompetenceExpiring:
+		return true
+	case CompetenceReviewOverdue:
 		return true
 	case ContractOverdue:
 		return true
@@ -1595,6 +1652,61 @@ type StaffAssignableUser struct {
 	Id          openapi_types.UUID `json:"id"`
 }
 
+// StaffAvailabilityDeclaration One row of a person's availability declaration (staff competence design S10) — recurring, on a weekday, between optional first and last days, or dated, from fromDate to toDate (fromDate alone without toDate); the whole day, or from startMinute to endMinute. Data only — nothing in Staff enforces or sums it. Read by the person, their managers today, staff:manage and staff:personal-data.
+type StaffAvailabilityDeclaration struct {
+	// EndMinute The minute of the day the row ends, 0 to 1440, after startMinute. Absent, with startMinute, for the whole day.
+	EndMinute *int32 `json:"endMinute,omitempty"`
+
+	// FromDate A dated row's day, or its first day; a recurring row's first day, when bounded. Absent on a recurring row without a first day.
+	FromDate *openapi_types.Date `json:"fromDate,omitempty"`
+
+	// Kind What the person declares for the row's days and hours — available, unavailable or preferred.
+	Kind StaffAvailabilityKind `json:"kind"`
+
+	// SeenAt When the person's manager or HR stamped the row Seen. Absent when it has not been seen since it was written.
+	SeenAt *time.Time `json:"seenAt,omitempty"`
+
+	// StartMinute The minute of the day the row starts, 0 to 1440, before endMinute. Absent, with endMinute, for the whole day.
+	StartMinute *int32 `json:"startMinute,omitempty"`
+
+	// ToDate The last day, on or after fromDate. Absent on a dated row of one day and on a recurring row without a last day.
+	ToDate *openapi_types.Date `json:"toDate,omitempty"`
+
+	// Weekday A recurring row's ISO weekday, 1 (Monday) to 7 (Sunday). Absent on a dated row.
+	Weekday *int32 `json:"weekday,omitempty"`
+}
+
+// StaffAvailabilityKind What the person declares for the row's days and hours — available, unavailable or preferred.
+type StaffAvailabilityKind string
+
+// StaffAvailabilityList A person's availability declaration, every row — the recurring rows by weekday first, then the dated ones by day, each by its start.
+type StaffAvailabilityList struct {
+	Declarations []StaffAvailabilityDeclaration `json:"declarations"`
+}
+
+// StaffAvailabilityRequest A person's availability declaration, every row — a full replace, by the person alone; an empty list removes it. At most fifty rows, each keyed by its index when a field does not pass (declarations[0].fromDate): weekday 1 to 7 or absent; without a weekday, fromDate is required; toDate on or after fromDate; startMinute and endMinute both or neither, 0 to 1440, endMinute after startMinute; a row equal in every field to another sent is refused on the later index. A property a row does not name is refused.
+type StaffAvailabilityRequest struct {
+	Declarations []struct {
+		// EndMinute The minute of the day the row ends, 0 to 1440, after startMinute. Absent, with startMinute, for the whole day.
+		EndMinute *int32 `json:"endMinute,omitempty"`
+
+		// FromDate A dated row's day, or its first day; a recurring row's first day, when bounded. Absent on a recurring row without a first day.
+		FromDate *openapi_types.Date `json:"fromDate,omitempty"`
+
+		// Kind What the person declares for the row's days and hours — available, unavailable or preferred.
+		Kind StaffAvailabilityKind `json:"kind"`
+
+		// StartMinute The minute of the day the row starts, 0 to 1440, before endMinute. Absent, with endMinute, for the whole day.
+		StartMinute *int32 `json:"startMinute,omitempty"`
+
+		// ToDate The last day, on or after fromDate. Absent on a dated row of one day and on a recurring row without a last day.
+		ToDate *openapi_types.Date `json:"toDate,omitempty"`
+
+		// Weekday A recurring row's ISO weekday, 1 (Monday) to 7 (Sunday). Absent on a dated row.
+		Weekday *int32 `json:"weekday,omitempty"`
+	} `json:"declarations"`
+}
+
 // StaffBankAccountKind defines model for StaffBankAccountKind.
 type StaffBankAccountKind string
 
@@ -1959,6 +2071,23 @@ type StaffCompetenceRequest struct {
 	ValidityMonths   *int32               `json:"validityMonths,omitempty"`
 }
 
+// StaffCompetenceReview A competence review (staff competence design S11) — the day the person and whoever may verify their competences went through the person's Competence tab together. No notes and no goals.
+type StaffCompetenceReview struct {
+	Id int64 `json:"id"`
+
+	// RecordedAt When the review was recorded.
+	RecordedAt time.Time          `json:"recordedAt"`
+	ReviewedOn openapi_types.Date `json:"reviewedOn"`
+
+	// Reviewer The reviewer's name, as the user directory names them.
+	Reviewer string `json:"reviewer"`
+}
+
+// StaffCompetenceReviewRequest A competence review being recorded. reviewedOn left out is today; a day after today is refused on reviewedOn. The body may be left out altogether.
+type StaffCompetenceReviewRequest struct {
+	ReviewedOn *openapi_types.Date `json:"reviewedOn,omitempty"`
+}
+
 // StaffCompetenceSummary The competence a person's row names, as every row carries it, archived or not.
 type StaffCompetenceSummary struct {
 	// Archived The competence is archived; the row keeps it.
@@ -2312,7 +2441,7 @@ type StaffEvent struct {
 	At    time.Time       `json:"at"`
 	Id    int64           `json:"id"`
 
-	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed, account_mismatched and identity_erased for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the groups' — group_joined and group_left, naming the group (groupId, groupName, groupKey) and how the person came in or went (source, listed or derived); the competences' — competence_declared, competence_changed, competence_verified, competence_renewed, competence_removed and competence_evidence_added, naming the competence by its key, with its level, and never the verifier's note (competence_created and competence_updated are the catalogue's installation events, never a person's); the kinds grow with the module.
+	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed, account_mismatched and identity_erased for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the groups' — group_joined and group_left, naming the group (groupId, groupName, groupKey) and how the person came in or went (source, listed or derived); the competences' — competence_declared, competence_changed, competence_verified, competence_renewed, competence_removed and competence_evidence_added, naming the competence by its key, with its level, and never the verifier's note (competence_created and competence_updated are the catalogue's installation events, never a person's); the one-to-one's — interests_changed and availability_changed with the count before and after, preferences_changed with the kinds added, changed or removed and never a value, wishes_seen with the rows stamped and competence_reviewed with the review's day; the kinds grow with the module.
 	Kind string `json:"kind"`
 
 	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}. An erase records up to two: the health kinds (health, cases, childSick, withdrawal, pregnancyHealth) in one of class E, listed to the person and staff:personal-data alone, and D and A in one read by HR and listed as the hold's kinds are — not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone.
@@ -2759,6 +2888,14 @@ type StaffImportResult struct {
 // StaffLanguage The language the person reads Vantigo and its mail in.
 type StaffLanguage string
 
+// StaffLastCompetenceReview The person's latest competence review by reviewedOn (staff competence design S11) — the reviews group, read by the person, their managers today, staff:approve, staff:manage and staff:personal-data. Absent from the person when they were never reviewed.
+type StaffLastCompetenceReview struct {
+	ReviewedOn openapi_types.Date `json:"reviewedOn"`
+
+	// Reviewer The reviewer's name, as the user directory names them.
+	Reviewer string `json:"reviewer"`
+}
+
 // StaffLegalEntity A legal entity, the juridisk enhet (design S6).
 type StaffLegalEntity struct {
 	// ArchivedAt When it was archived. Absent while it is in use.
@@ -2890,6 +3027,9 @@ type StaffMeta struct {
 	// HolidaySchemes Every holiday scheme, archived ones included, with its figures converted to working days.
 	HolidaySchemes []StaffHolidayScheme `json:"holidaySchemes"`
 
+	// Locations The locations not archived, by name — every caller's, so the person's location preference (staff competence design S9) is picked from the company's places without the directory; the structure's list, archived ones included, stays staff:view's and staff:manage's.
+	Locations []StaffLocation `json:"locations"`
+
 	// Providers staff:manage only — every external identity provider an enabled module offers (the IdentityProvisioner slot), each with the status the provider answers now, asked before any snapshot; a provider that could not be asked reads failing, unreachable. The entra kind is offered only when its provider is among them. Empty when no enabled module offers one; absent to anyone else.
 	Providers *[]StaffIdentityProvider `json:"providers,omitempty"`
 
@@ -3007,7 +3147,7 @@ type StaffPayComponent struct {
 // StaffPayPeriod defines model for StaffPayPeriod.
 type StaffPayPeriod string
 
-// StaffPerson A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the one who manages them today — the manager the terms name when they are employed today, else the department's manager climbing the parents, a manager who has left skipped (design §4 Managers, §9) — absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone; erasedAt, legalHold and reassessedAt (the hold group) are staff:manage's and staff:personal-data's. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.
+// StaffPerson A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the one who manages them today — the manager the terms name when they are employed today, else the department's manager climbing the parents, a manager who has left skipped (design §4 Managers, §9) — absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone; erasedAt, legalHold and reassessedAt (the hold group) are staff:manage's and staff:personal-data's; lastCompetenceReview (the reviews group) is the person's, their managers', staff:approve's and HR's, absent when they were never reviewed. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person.
 type StaffPerson struct {
 	// BankAccount The bank account on file, as its kind and its last four digits. Present for the person themselves, staff:manage and staff:personal-data, when one is on file.
 	BankAccount *StaffPersonBankAccount `json:"bankAccount,omitempty"`
@@ -3046,6 +3186,9 @@ type StaffPerson struct {
 	Gender    *StaffGender `json:"gender,omitempty"`
 	GivenName string       `json:"givenName"`
 	Id        int64        `json:"id"`
+
+	// LastCompetenceReview The person's latest competence review by reviewedOn (staff competence design S11) — the reviews group, read by the person, their managers today, staff:approve, staff:manage and staff:personal-data. Absent from the person when they were never reviewed.
+	LastCompetenceReview *StaffLastCompetenceReview `json:"lastCompetenceReview,omitempty"`
 
 	// LegalHold The legal hold (design S15, class F) — while held, no retention erase touches the person. reason and at are absent when the person is not held.
 	LegalHold *StaffLegalHold `json:"legalHold,omitempty"`
@@ -3199,6 +3342,9 @@ type StaffPersonCapabilities struct {
 	// CanManageAccount staff:manage — the self-service link to a user and the account flag (PUT /people/{id}/account).
 	CanManageAccount bool `json:"canManageAccount"`
 
+	// CanReadWishes The caller reads what the person wants — their interests, preferences and availability declaration (staff competence design S18) — the person, their managers today, staff:manage and staff:personal-data; never staff:approve alone (GET /people/{id}/interests).
+	CanReadWishes bool `json:"canReadWishes"`
+
 	// CanRevealIdentifiers staff:personal-data — reveal and write the national identity number and the bank account.
 	CanRevealIdentifiers bool `json:"canRevealIdentifiers"`
 
@@ -3207,6 +3353,9 @@ type StaffPersonCapabilities struct {
 
 	// CanSeePay The person themselves, staff:manage or staff:personal-data — the pay terms of the person's employments.
 	CanSeePay bool `json:"canSeePay"`
+
+	// CanStampWishesSeen The caller stamps what the person wants Seen — the person's manager today or staff:manage, never the person and never staff:approve alone (POST /people/{id}/wishes/seen).
+	CanStampWishesSeen bool `json:"canStampWishesSeen"`
 
 	// CanVerifyCompetence The caller verifies the person's competences (staff competence design S4) — the person's manager today, staff:approve or staff:manage, never the person (POST /person-competences/{id}/verify).
 	CanVerifyCompetence bool `json:"canVerifyCompetence"`
@@ -3218,7 +3367,7 @@ type StaffPersonCapabilities struct {
 	Self bool `json:"self"`
 }
 
-// StaffPersonCompetence A person's competence row (staff competence design S3–S6) — current, or superseded by its renewal. A row is declared until it is verified. The detail fields (issuedOn, issuer, reference, evidence, source and the verification's) are absent to a colleague, who reads the competence, its level and its validity alone.
+// StaffPersonCompetence A person's competence row (staff competence design S3–S6) — current, or superseded by its renewal. A row is declared until it is verified. The detail fields (issuedOn, issuer, reference, evidence, source, the verification's and seenAt) are absent to a colleague, who reads the competence, its level and its validity alone.
 type StaffPersonCompetence struct {
 	// Competence The competence a person's row names, as every row carries it, archived or not.
 	Competence StaffCompetenceSummary `json:"competence"`
@@ -3247,6 +3396,9 @@ type StaffPersonCompetence struct {
 
 	// Revision Send it back as If-Match on PUT /person-competences/{id}.
 	Revision int32 `json:"revision"`
+
+	// SeenAt When the person's manager or HR stamped a current row Seen (POST /people/{id}/wishes/seen). Absent when it has not been seen.
+	SeenAt *time.Time `json:"seenAt,omitempty"`
 
 	// Source Who entered the row — self (the person declared it), manager (a manager of theirs or staff:approve) or hr (staff:manage).
 	Source *string `json:"source,omitempty"`
@@ -3302,6 +3454,31 @@ type StaffPersonGroup struct {
 
 	// Source listed — HR names the members — or derived — the rule does, daily.
 	Source *StaffGroupKind `json:"source,omitempty"`
+}
+
+// StaffPersonInterest One of a person's interests in a competence (staff competence design S8). Read by the person, their managers today, staff:manage and staff:personal-data.
+type StaffPersonInterest struct {
+	// Competence The competence a person's row names, as every row carries it, archived or not.
+	Competence   StaffCompetenceSummary `json:"competence"`
+	CompetenceId int64                  `json:"competenceId"`
+
+	// Held The person holds a current row of the competence, declared or verified — they want to use it more; otherwise they want to learn it.
+	Held bool `json:"held"`
+
+	// SeenAt When the person's manager or HR stamped the interest Seen. Absent when it has not been seen since it was written.
+	SeenAt *time.Time `json:"seenAt,omitempty"`
+}
+
+// StaffPersonInterestList A person's interests, in the catalogue's order.
+type StaffPersonInterestList struct {
+	Interests []StaffPersonInterest `json:"interests"`
+}
+
+// StaffPersonInterestsRequest A person's interests, all of them — a full replace, by the person alone; an empty list removes them. At most twenty; a competence named twice is refused on the later index (interests[3].competenceId), and a new interest in an unknown, hidden or archived competence is competence_unavailable on its competenceId — one already on file is kept as it is. A property a row does not name is refused.
+type StaffPersonInterestsRequest struct {
+	Interests []struct {
+		CompetenceId int64 `json:"competenceId"`
+	} `json:"interests"`
 }
 
 // StaffPersonLink A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody.
@@ -3369,6 +3546,40 @@ type StaffPersonListItem struct {
 type StaffPersonNationalId struct {
 	Kind   *StaffNationalIdKind `json:"kind,omitempty"`
 	OnFile bool                 `json:"onFile"`
+}
+
+// StaffPersonPreference One of a person's preferences (staff competence design S9), one per kind. Read by the person, their managers today, staff:manage and staff:personal-data.
+type StaffPersonPreference struct {
+	// Kind What a preference is about (staff competence design S9) — the weekdays, the time of day, the locations, how far the person travels, how much of the work is remote, the most consecutive working days and the most hours a week. An unknown kind is a field error.
+	Kind StaffPreferenceKind `json:"kind"`
+
+	// SeenAt When the person's manager or HR stamped the preference Seen. Absent when it has not been seen since it was written.
+	SeenAt *time.Time `json:"seenAt,omitempty"`
+
+	// Value The preference, its shape by kind — weekdays {"days": [1..7]}, ISO weekdays, 1 to 7 distinct; time_of_day {"parts": ["morning" | "day" | "evening" | "night"]}, 1 to 4 distinct; location {"locationIds": [...]}, 1 to 10 distinct ids of locations not archived; travel {"extent": "none" | "regional" | "national" | "international"}; remote {"share": "never" | "some" | "mostly" | "only"}; max_consecutive_days {"days": 1..14}; max_hours_per_week {"hours": 1..60}. No kind carries free text. Answered in its canonical form, the days and parts sorted.
+	Value map[string]interface{} `json:"value"`
+
+	// Weight 1 (nice to have), 2 (matters) or 3 (important).
+	Weight int32 `json:"weight"`
+}
+
+// StaffPersonPreferenceList A person's preferences, by kind.
+type StaffPersonPreferenceList struct {
+	Preferences []StaffPersonPreference `json:"preferences"`
+}
+
+// StaffPersonPreferencesRequest A person's preferences, all of them — a full replace, by the person alone; an empty list removes them. At most seven, one per kind (a kind sent again is refused on the later index, preferences[1].kind); weight 1 to 3 (preferences[0].weight); the value as StaffPersonPreference describes it, a key the kind does not take refused (preferences[0].value), and an unknown or archived location in a new or changed preference refused on its value. A property a row does not name is refused.
+type StaffPersonPreferencesRequest struct {
+	Preferences []struct {
+		// Kind What a preference is about (staff competence design S9) — the weekdays, the time of day, the locations, how far the person travels, how much of the work is remote, the most consecutive working days and the most hours a week. An unknown kind is a field error.
+		Kind StaffPreferenceKind `json:"kind"`
+
+		// Value The kind's object, as StaffPersonPreference's value describes it.
+		Value map[string]interface{} `json:"value"`
+
+		// Weight 1 to 3.
+		Weight int32 `json:"weight"`
+	} `json:"preferences"`
 }
 
 // StaffPersonRequest A person's editable fields, the whole record as staff:manage replaces it (design §3.1, §5): the work group, the private group and HR's notes. The national identity number and the bank account are written through their own operations under staff:personal-data, and the self-service link through its own; a property this schema does not name — one of those among them — is refused as a 400 naming it. On a change every optional field left out is cleared, except displayName, which stays.
@@ -3489,7 +3700,7 @@ type StaffPersonUser struct {
 	Id          openapi_types.UUID `json:"id"`
 }
 
-// StaffPersonalData A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads), every competence row with its evidence document's details, every absence, the holiday adjustments, every sick-leave case with its milestones, this year's care days, the standing of egenmelding today and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history and its absence, cases and care days as the person reads them.
+// StaffPersonalData A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads), every competence row with its evidence document's details, the interests, the preferences, the availability declaration and the competence reviews, every absence, the holiday adjustments, every sick-leave case with its milestones, this year's care days, the standing of egenmelding today and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history and its absence, cases and care days as the person reads them.
 type StaffPersonalData struct {
 	// Absences Every absence of the person, in any status, newest first.
 	Absences []StaffAbsence `json:"absences"`
@@ -3497,11 +3708,17 @@ type StaffPersonalData struct {
 	// Account The account flag and the link's state, as the person's file carries them.
 	Account StaffPersonalDataAccount `json:"account"`
 
+	// Availability Every row of the person's availability declaration.
+	Availability []StaffAvailabilityDeclaration `json:"availability"`
+
 	// CareDays A person's care days (omsorgsdager) for a year (design S11, ftrl. § 9-6 and § 9-8). Using more than the entitlement is shown (exceeded), never refused.
 	CareDays StaffCareDays `json:"careDays"`
 
 	// Cases Every sick-leave case of the person with its milestones, newest first.
 	Cases []StaffCase `json:"cases"`
+
+	// CompetenceReviews Every competence review of the person, newest first.
+	CompetenceReviews []StaffCompetenceReview `json:"competenceReviews"`
 
 	// Competences Every competence row of the person, superseded ones included, newest first.
 	Competences []StaffPersonCompetence       `json:"competences"`
@@ -3515,13 +3732,19 @@ type StaffPersonalData struct {
 	// HolidayAdjustments Every adjustment of the person's holiday account, newest year first.
 	HolidayAdjustments []StaffHolidayAdjustment `json:"holidayAdjustments"`
 
+	// Interests Every interest of the person, in the catalogue's order.
+	Interests []StaffPersonInterest `json:"interests"`
+
 	// Link A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody.
 	Link      StaffPersonLink  `json:"link"`
 	NextOfKin []StaffNextOfKin `json:"nextOfKin"`
 
 	// Person The person's record in a personal-data file — every field of theirs, each absent when not set, the care-day fields included. notes, erasedAt, legalHold and reassessedAt are in the complete file only.
 	Person StaffPersonalDataPerson `json:"person"`
-	Roles  []StaffPersonRole       `json:"roles"`
+
+	// Preferences Every preference of the person, by kind.
+	Preferences []StaffPersonPreference `json:"preferences"`
+	Roles       []StaffPersonRole       `json:"roles"`
 
 	// SelfCertification A person's standing under the self-certification policy today (design S10, §4 Egenmelding): the limits by the policy's name, the occurrences and calendar days used in the rolling year ending today — a run of contiguous egenmelding days, days off between included, being one occurrence — and the withdrawal.
 	SelfCertification StaffSelfCertification `json:"selfCertification"`
@@ -3608,6 +3831,9 @@ type StaffPersonalDataPerson struct {
 	WorkCountry string            `json:"workCountry"`
 	WorkEmail   *string           `json:"workEmail,omitempty"`
 }
+
+// StaffPreferenceKind What a preference is about (staff competence design S9) — the weekdays, the time of day, the locations, how far the person travels, how much of the work is remote, the most consecutive working days and the most hours a week. An unknown kind is a field error.
+type StaffPreferenceKind string
 
 // StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), own_record (403: the person verifying their own competence row), skill_no_validity (400, a field error on validTo: an end on a row of a skill; 409: a renewal of a skill's row), level_not_allowed (400, a field error on level: a level on a competence without one) and level_required (400, a field error on level: none on a competence with one). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
@@ -3747,6 +3973,9 @@ type StaffSettings struct {
 	// AutoCarryOverSince The day autoCarryOver was last turned on; the derived carry-over reaches no year before it. Absent when it never was.
 	AutoCarryOverSince *openapi_types.Date `json:"autoCarryOverSince,omitempty"`
 
+	// CompetenceReviewIntervalMonths The months after which a person in employment today is review-overdue (staff competence design S11) — counted from their latest competence review, or from the start of their current unbroken employment run when that is later; 0 to 60, 12 by default; 0 turns the overdue item off.
+	CompetenceReviewIntervalMonths int32 `json:"competenceReviewIntervalMonths"`
+
 	// CreateBeforeDays How many days before the account's effective date the accounts worker prepares it, disabled (design S22); 0 to 90, 14 by default.
 	CreateBeforeDays int32 `json:"createBeforeDays"`
 
@@ -3811,10 +4040,13 @@ type StaffSettings struct {
 	TimeZone string `json:"timeZone"`
 }
 
-// StaffSettingsRequest A replace of the settings. The two retention periods, the self-certification policy, the carry-over, the four account settings and the two erase settings left out keep the values they have; everything else is replaced.
+// StaffSettingsRequest A replace of the settings. The two retention periods, the self-certification policy, the carry-over, the four account settings, the two erase settings and the competence review interval left out keep the values they have; everything else is replaced.
 type StaffSettingsRequest struct {
 	// AutoCarryOver Left out, it keeps its value. Turning it on records today as autoCarryOverSince.
 	AutoCarryOver *bool `json:"autoCarryOver,omitempty"`
+
+	// CompetenceReviewIntervalMonths 0 to 60 months; 0 turns the overdue item off. Left out, it keeps its value.
+	CompetenceReviewIntervalMonths *int32 `json:"competenceReviewIntervalMonths,omitempty"`
 
 	// CreateBeforeDays 0 to 90 days. Left out, it keeps its value.
 	CreateBeforeDays *int32 `json:"createBeforeDays,omitempty"`
@@ -3907,7 +4139,7 @@ type StaffStats struct {
 
 // StaffStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. The host words the sentence from `type`; `title` is the name of the thing — a person's name — or, for the three items about the installation, an English sentence the host replaces. "Today" is the day in the settings' time zone; a date-only occurredAt is that day at midnight UTC.
 //
-// Fifty-five types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie”s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt the ferie”s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (the external kind): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created for the local kind, the person's kind now one that never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `erasureIncomplete`: for an erased person whose managed identity link could not be erased by the retention run (refused by identity, or the call failed), retried daily by the retention run, with the neutral title "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). The provider items (delivery B, Entra design D7; staff:manage alone, the same way) are read from the person's provider link as the worker wrote it, and from what the worker last saw of each provider (the settings' provider_status), never by asking the provider at read time; they are named for Entra, though their codes are the slot's. One per person, as above, unless said: `accountNotArrived`: Staff announced the external account to identity more than ninety days ago and no user has arrived for it; occurredAt the announcement. `accountAmbiguousInEntra`: two accounts in the directory hold the person's employee number. `accountAddressTakenInEntra`: the person's work email is another account's in the directory. `accountUnconfirmedInEntra`: the directory holds an account under the person's employee number that Vantigo did not create; a holder of entra:manage confirms the adoption on the Microsoft Entra ID page before Staff acts on it. `accountSyncedOnPremises`: the account is synchronised from an on-premises directory, whose attributes the provider cannot write. `accountPrivilegedInEntra`: the account holds an administrative role in the directory (refused, or reported privileged), which an administrator handles by hand. `hireDateNotWritten`: the directory refused the hire date. `licenceUnavailable`: a licence of the person's groups could not be assigned, none being left — one per person whatever the licences; no title names the licence. `passUnrevealed`: the provider issued a pass for the person a day ago or more and nobody has shown it; occurredAt when it was issued. `managerNotInEntra`: the person's manager has no account in the directory, so the account carries no manager. Four are the installation's, one each with entityId the literal 'settings', id the type, count the people of a provider's kind whose flag is on and occurredAt when the worker last checked the provider, raised only while someone has that kind: `entraNotConnected` (the provider has no connection yet), `entraFailing` (its last check failed — a credential refused or consent withdrawn), `secretExpiring` (the newest valid client secret ends within thirty days), `secretExpired` (it has ended). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items; on a provider link, provider_unavailable to entraNotConnected or entraFailing by the provider's status, external_ambiguous, external_address_taken, external_synced_on_premises, external_privileged and external_unconfirmed to their items, the reported privileged to accountPrivilegedInEntra, hire_date_not_written to hireDateNotWritten, licence_unavailable to licenceUnavailable, manager_not_in_entra to managerNotInEntra, user_gone to accountUserGone and invalid_actor to accountFailing. `groupSyncFailed` (staff:manage alone, Entra design D14): a group's section under a provider the accounts worker could not sync — a trait value the provider refused, a group in its directory it may not manage, or its calls failing — one per section, id `groupSyncFailed/<groupId>/<provider>`, entityId the group's id, title the group's name and nothing more (the code is on the group page), occurredAt today; it clears when the sync succeeds. The competence items (staff competence design §4) are read for active people's current rows alone, one per row, id `<type>/<rowId>`, entityId the person's id, title the person's name and nothing more, never the person's own rows to the person: `competenceDeclared` (the person's managers today — a manager their reports alone — staff:approve and staff:manage): a current row the person declared that nobody has verified; occurredAt when it was declared. `competenceExpiring` (the person's managers today and staff:manage): a current row whose validTo is within the competence's reminder lead days of today and has not passed; occurredAt its validTo. `competenceExpired` (the same): a current row whose validTo has passed; occurredAt its validTo. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
+// Fifty-six types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie”s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt the ferie”s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (the external kind): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created for the local kind, the person's kind now one that never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `erasureIncomplete`: for an erased person whose managed identity link could not be erased by the retention run (refused by identity, or the call failed), retried daily by the retention run, with the neutral title "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). The provider items (delivery B, Entra design D7; staff:manage alone, the same way) are read from the person's provider link as the worker wrote it, and from what the worker last saw of each provider (the settings' provider_status), never by asking the provider at read time; they are named for Entra, though their codes are the slot's. One per person, as above, unless said: `accountNotArrived`: Staff announced the external account to identity more than ninety days ago and no user has arrived for it; occurredAt the announcement. `accountAmbiguousInEntra`: two accounts in the directory hold the person's employee number. `accountAddressTakenInEntra`: the person's work email is another account's in the directory. `accountUnconfirmedInEntra`: the directory holds an account under the person's employee number that Vantigo did not create; a holder of entra:manage confirms the adoption on the Microsoft Entra ID page before Staff acts on it. `accountSyncedOnPremises`: the account is synchronised from an on-premises directory, whose attributes the provider cannot write. `accountPrivilegedInEntra`: the account holds an administrative role in the directory (refused, or reported privileged), which an administrator handles by hand. `hireDateNotWritten`: the directory refused the hire date. `licenceUnavailable`: a licence of the person's groups could not be assigned, none being left — one per person whatever the licences; no title names the licence. `passUnrevealed`: the provider issued a pass for the person a day ago or more and nobody has shown it; occurredAt when it was issued. `managerNotInEntra`: the person's manager has no account in the directory, so the account carries no manager. Four are the installation's, one each with entityId the literal 'settings', id the type, count the people of a provider's kind whose flag is on and occurredAt when the worker last checked the provider, raised only while someone has that kind: `entraNotConnected` (the provider has no connection yet), `entraFailing` (its last check failed — a credential refused or consent withdrawn), `secretExpiring` (the newest valid client secret ends within thirty days), `secretExpired` (it has ended). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items; on a provider link, provider_unavailable to entraNotConnected or entraFailing by the provider's status, external_ambiguous, external_address_taken, external_synced_on_premises, external_privileged and external_unconfirmed to their items, the reported privileged to accountPrivilegedInEntra, hire_date_not_written to hireDateNotWritten, licence_unavailable to licenceUnavailable, manager_not_in_entra to managerNotInEntra, user_gone to accountUserGone and invalid_actor to accountFailing. `groupSyncFailed` (staff:manage alone, Entra design D14): a group's section under a provider the accounts worker could not sync — a trait value the provider refused, a group in its directory it may not manage, or its calls failing — one per section, id `groupSyncFailed/<groupId>/<provider>`, entityId the group's id, title the group's name and nothing more (the code is on the group page), occurredAt today; it clears when the sync succeeds. The competence items (staff competence design §4) are read for active people's current rows alone, one per row, id `<type>/<rowId>`, entityId the person's id, title the person's name and nothing more, never the person's own rows to the person: `competenceDeclared` (the person's managers today — a manager their reports alone — staff:approve and staff:manage): a current row the person declared that nobody has verified; occurredAt when it was declared. `competenceExpiring` (the person's managers today and staff:manage): a current row whose validTo is within the competence's reminder lead days of today and has not passed; occurredAt its validTo. `competenceExpired` (the same): a current row whose validTo has passed; occurredAt its validTo. `competenceReviewOverdue` (the person's managers today — a manager their reports alone — and staff:manage; never staff:approve alone, and never about oneself): a person in employment today, not erased, whose latest competence review — or the start of their current unbroken employment run, when that is later — lies more than the settings' competenceReviewIntervalMonths before today; none while the interval is 0; one per person, id `competenceReviewOverdue/<personId>`, occurredAt the day it fell due. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
 type StaffStatsAttentionItem struct {
 	// Count How many the item stands for — the failing ledger rows, the headcount of a threshold, the requests waiting, or the links an installation account item stands for. Absent on the other types.
 	Count *int32 `json:"count,omitempty"`
@@ -4169,6 +4401,22 @@ type StaffThresholdsAcknowledged struct {
 	N5  *time.Time `json:"5,omitempty"`
 	N50 *time.Time `json:"50,omitempty"`
 	Otp *time.Time `json:"otp,omitempty"`
+}
+
+// StaffWishesSeen What a Seen stamped (staff competence design S8) — the rows of each list that carried no stamp, all stamped at seenAt. Zero everywhere when everything had been seen.
+type StaffWishesSeen struct {
+	// Competences The person's current competence rows stamped.
+	Competences int32 `json:"competences"`
+
+	// Declarations The availability declaration's rows stamped.
+	Declarations int32 `json:"declarations"`
+
+	// Interests The interests stamped.
+	Interests int32 `json:"interests"`
+
+	// Preferences The preferences stamped.
+	Preferences int32     `json:"preferences"`
+	SeenAt      time.Time `json:"seenAt"`
 }
 
 // StaffWorkingHoursScheme The a-melding's arbeidstidsordning: not_shift (ikkeSkift), shift_365 (skift365), offshore_336 (offshore336), continuous_336 (helkontinuerligSkiftOgAndreOrdninger336), round_the_clock_355 (doegnkontinuerligSkiftOgTurnus355), other_shift (andreSkift).
@@ -4625,11 +4873,17 @@ type PutStaffPeopleByIdJSONRequestBody = StaffPersonRequest
 // PutStaffPeopleByIdAccountJSONRequestBody defines body for PutStaffPeopleByIdAccount for application/json ContentType.
 type PutStaffPeopleByIdAccountJSONRequestBody = StaffPersonAccountRequest
 
+// PutStaffPeopleByIdAvailabilityJSONRequestBody defines body for PutStaffPeopleByIdAvailability for application/json ContentType.
+type PutStaffPeopleByIdAvailabilityJSONRequestBody = StaffAvailabilityRequest
+
 // PutStaffPeopleByIdBankAccountJSONRequestBody defines body for PutStaffPeopleByIdBankAccount for application/json ContentType.
 type PutStaffPeopleByIdBankAccountJSONRequestBody = StaffBankAccountRequest
 
 // PostStaffPeopleByIdCarryOverJSONRequestBody defines body for PostStaffPeopleByIdCarryOver for application/json ContentType.
 type PostStaffPeopleByIdCarryOverJSONRequestBody = StaffCarryOverRequest
+
+// PostStaffPeopleByIdCompetenceReviewsJSONRequestBody defines body for PostStaffPeopleByIdCompetenceReviews for application/json ContentType.
+type PostStaffPeopleByIdCompetenceReviewsJSONRequestBody = StaffCompetenceReviewRequest
 
 // PostStaffPeopleByIdCompetencesJSONRequestBody defines body for PostStaffPeopleByIdCompetences for application/json ContentType.
 type PostStaffPeopleByIdCompetencesJSONRequestBody = StaffPersonCompetenceRequest
@@ -4643,6 +4897,9 @@ type PostStaffPeopleByIdEmploymentsJSONRequestBody = StaffEmploymentRequest
 // PostStaffPeopleByIdHolidayAdjustmentsJSONRequestBody defines body for PostStaffPeopleByIdHolidayAdjustments for application/json ContentType.
 type PostStaffPeopleByIdHolidayAdjustmentsJSONRequestBody = StaffHolidayAdjustmentRequest
 
+// PutStaffPeopleByIdInterestsJSONRequestBody defines body for PutStaffPeopleByIdInterests for application/json ContentType.
+type PutStaffPeopleByIdInterestsJSONRequestBody = StaffPersonInterestsRequest
+
 // PutStaffPeopleByIdLegalHoldJSONRequestBody defines body for PutStaffPeopleByIdLegalHold for application/json ContentType.
 type PutStaffPeopleByIdLegalHoldJSONRequestBody = StaffLegalHoldRequest
 
@@ -4651,6 +4908,9 @@ type PutStaffPeopleByIdNationalIdJSONRequestBody = StaffNationalIdRequest
 
 // PutStaffPeopleByIdNextOfKinJSONRequestBody defines body for PutStaffPeopleByIdNextOfKin for application/json ContentType.
 type PutStaffPeopleByIdNextOfKinJSONRequestBody = StaffNextOfKinRequest
+
+// PutStaffPeopleByIdPreferencesJSONRequestBody defines body for PutStaffPeopleByIdPreferences for application/json ContentType.
+type PutStaffPeopleByIdPreferencesJSONRequestBody = StaffPersonPreferencesRequest
 
 // PutStaffPeopleByIdRolesJSONRequestBody defines body for PutStaffPeopleByIdRoles for application/json ContentType.
 type PutStaffPeopleByIdRolesJSONRequestBody = StaffPersonRolesRequest
@@ -4981,6 +5241,12 @@ type ServerInterface interface {
 	// PostStaffPeopleByIdAccountRun Run a person's account now
 	// (POST /api/v1/staff/people/{id}/account/run)
 	PostStaffPeopleByIdAccountRun(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffPeopleByIdAvailability List a person's availability declaration
+	// (GET /api/v1/staff/people/{id}/availability)
+	GetStaffPeopleByIdAvailability(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffPeopleByIdAvailability Replace a person's availability declaration
+	// (PUT /api/v1/staff/people/{id}/availability)
+	PutStaffPeopleByIdAvailability(w http.ResponseWriter, r *http.Request, id int64)
 	// PutStaffPeopleByIdBankAccount Set a person's bank account
 	// (PUT /api/v1/staff/people/{id}/bank-account)
 	PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request, id int64)
@@ -4993,6 +5259,12 @@ type ServerInterface interface {
 	// PostStaffPeopleByIdCarryOver Carry holiday over
 	// (POST /api/v1/staff/people/{id}/carry-over)
 	PostStaffPeopleByIdCarryOver(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffPeopleByIdCompetenceReviews List a person's competence reviews
+	// (GET /api/v1/staff/people/{id}/competence-reviews)
+	GetStaffPeopleByIdCompetenceReviews(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdCompetenceReviews Record a competence review
+	// (POST /api/v1/staff/people/{id}/competence-reviews)
+	PostStaffPeopleByIdCompetenceReviews(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffPeopleByIdCompetences List a person's competences
 	// (GET /api/v1/staff/people/{id}/competences)
 	GetStaffPeopleByIdCompetences(w http.ResponseWriter, r *http.Request, id int64, params GetStaffPeopleByIdCompetencesParams)
@@ -5023,6 +5295,12 @@ type ServerInterface interface {
 	// PostStaffPeopleByIdHolidayAdjustments Adjust a person's holiday account
 	// (POST /api/v1/staff/people/{id}/holiday-adjustments)
 	PostStaffPeopleByIdHolidayAdjustments(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffPeopleByIdInterests List a person's interests
+	// (GET /api/v1/staff/people/{id}/interests)
+	GetStaffPeopleByIdInterests(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffPeopleByIdInterests Replace a person's interests
+	// (PUT /api/v1/staff/people/{id}/interests)
+	PutStaffPeopleByIdInterests(w http.ResponseWriter, r *http.Request, id int64)
 	// PutStaffPeopleByIdLegalHold Set or lift a person's legal hold
 	// (PUT /api/v1/staff/people/{id}/legal-hold)
 	PutStaffPeopleByIdLegalHold(w http.ResponseWriter, r *http.Request, id int64)
@@ -5044,6 +5322,12 @@ type ServerInterface interface {
 	// GetStaffPeopleByIdPersonalData Export a person's data
 	// (GET /api/v1/staff/people/{id}/personal-data)
 	GetStaffPeopleByIdPersonalData(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffPeopleByIdPreferences List a person's preferences
+	// (GET /api/v1/staff/people/{id}/preferences)
+	GetStaffPeopleByIdPreferences(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffPeopleByIdPreferences Replace a person's preferences
+	// (PUT /api/v1/staff/people/{id}/preferences)
+	PutStaffPeopleByIdPreferences(w http.ResponseWriter, r *http.Request, id int64)
 	// PostStaffPeopleByIdReassessed Record a reassessment
 	// (POST /api/v1/staff/people/{id}/reassessed)
 	PostStaffPeopleByIdReassessed(w http.ResponseWriter, r *http.Request, id int64)
@@ -5065,6 +5349,9 @@ type ServerInterface interface {
 	// PutStaffPeopleByIdUser Link a person to a user
 	// (PUT /api/v1/staff/people/{id}/user)
 	PutStaffPeopleByIdUser(w http.ResponseWriter, r *http.Request, id int64)
+	// PostStaffPeopleByIdWishesSeen Mark a person's wishes seen
+	// (POST /api/v1/staff/people/{id}/wishes/seen)
+	PostStaffPeopleByIdWishesSeen(w http.ResponseWriter, r *http.Request, id int64)
 	// DeleteStaffPersonCompetencesById Remove a competence
 	// (DELETE /api/v1/staff/person-competences/{id})
 	DeleteStaffPersonCompetencesById(w http.ResponseWriter, r *http.Request, id int64, params DeleteStaffPersonCompetencesByIdParams)
@@ -8309,6 +8596,58 @@ func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdAccountRun(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffPeopleByIdAvailability operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdAvailability(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdAvailability(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffPeopleByIdAvailability operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdAvailability(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffPeopleByIdAvailability(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutStaffPeopleByIdBankAccount operation middleware
 func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request) {
 
@@ -8420,6 +8759,58 @@ func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdCarryOver(w http.ResponseW
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostStaffPeopleByIdCarryOver(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPeopleByIdCompetenceReviews operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdCompetenceReviews(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdCompetenceReviews(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleByIdCompetenceReviews operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdCompetenceReviews(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdCompetenceReviews(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8750,6 +9141,58 @@ func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdHolidayAdjustments(w http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffPeopleByIdInterests operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdInterests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdInterests(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffPeopleByIdInterests operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdInterests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffPeopleByIdInterests(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutStaffPeopleByIdLegalHold operation middleware
 func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdLegalHold(w http.ResponseWriter, r *http.Request) {
 
@@ -8960,6 +9403,58 @@ func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdPersonalData(w http.Respons
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffPeopleByIdPreferences operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdPreferences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdPreferences(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffPeopleByIdPreferences operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdPreferences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffPeopleByIdPreferences(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostStaffPeopleByIdReassessed operation middleware
 func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdReassessed(w http.ResponseWriter, r *http.Request) {
 
@@ -9161,6 +9656,32 @@ func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdUser(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutStaffPeopleByIdUser(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffPeopleByIdWishesSeen operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdWishesSeen(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffPeopleByIdWishesSeen(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9797,10 +10318,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/account/disable", wrapper.PostStaffPeopleByIdAccountDisable)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/account/pass", wrapper.PostStaffPeopleByIdAccountPass)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/account/run", wrapper.PostStaffPeopleByIdAccountRun)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/availability", wrapper.GetStaffPeopleByIdAvailability)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/availability", wrapper.PutStaffPeopleByIdAvailability)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account", wrapper.PutStaffPeopleByIdBankAccount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account/reveal", wrapper.PostStaffPeopleByIdBankAccountReveal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/care-days", wrapper.GetStaffPeopleByIdCareDays)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/carry-over", wrapper.PostStaffPeopleByIdCarryOver)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/competence-reviews", wrapper.GetStaffPeopleByIdCompetenceReviews)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/competence-reviews", wrapper.PostStaffPeopleByIdCompetenceReviews)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/competences", wrapper.GetStaffPeopleByIdCompetences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/competences", wrapper.PostStaffPeopleByIdCompetences)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/documents", wrapper.GetStaffPeopleByIdDocuments)
@@ -9811,6 +10336,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/holiday-account", wrapper.GetStaffPeopleByIdHolidayAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/holiday-adjustments", wrapper.GetStaffPeopleByIdHolidayAdjustments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/holiday-adjustments", wrapper.PostStaffPeopleByIdHolidayAdjustments)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/interests", wrapper.GetStaffPeopleByIdInterests)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/interests", wrapper.PutStaffPeopleByIdInterests)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/legal-hold", wrapper.PutStaffPeopleByIdLegalHold)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id", wrapper.PutStaffPeopleByIdNationalId)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/national-id/reveal", wrapper.PostStaffPeopleByIdNationalIdReveal)
@@ -9818,6 +10345,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/next-of-kin", wrapper.PutStaffPeopleByIdNextOfKin)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/org", wrapper.GetStaffPeopleByIdOrg)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/personal-data", wrapper.GetStaffPeopleByIdPersonalData)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/preferences", wrapper.GetStaffPeopleByIdPreferences)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/preferences", wrapper.PutStaffPeopleByIdPreferences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/reassessed", wrapper.PostStaffPeopleByIdReassessed)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/roles", wrapper.GetStaffPeopleByIdRoles)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/roles", wrapper.PutStaffPeopleByIdRoles)
@@ -9825,6 +10354,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/self-certification/withdrawal", wrapper.PutStaffPeopleByIdSelfCertificationWithdrawal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.GetStaffPeopleByIdUser)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/user", wrapper.PutStaffPeopleByIdUser)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/wishes/seen", wrapper.PostStaffPeopleByIdWishesSeen)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/staff/person-competences/{id}", wrapper.DeleteStaffPersonCompetencesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/person-competences/{id}", wrapper.PutStaffPersonCompetencesById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/person-competences/{id}/evidence", wrapper.GetStaffPersonCompetencesByIdEvidence)
@@ -17168,6 +17698,151 @@ func (response PostStaffPeopleByIdAccountRun503ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type GetStaffPeopleByIdAvailabilityRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdAvailabilityResponseObject interface {
+	VisitGetStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdAvailability200JSONResponse StaffAvailabilityList
+
+func (response GetStaffPeopleByIdAvailability200JSONResponse) VisitGetStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdAvailability401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdAvailability401JSONResponse) VisitGetStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdAvailability403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdAvailability403JSONResponse) VisitGetStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdAvailability404Response struct {
+}
+
+func (response GetStaffPeopleByIdAvailability404Response) VisitGetStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdAvailabilityRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutStaffPeopleByIdAvailabilityJSONRequestBody
+}
+
+type PutStaffPeopleByIdAvailabilityResponseObject interface {
+	VisitPutStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error
+}
+
+type PutStaffPeopleByIdAvailability200JSONResponse StaffAvailabilityList
+
+func (response PutStaffPeopleByIdAvailability200JSONResponse) VisitPutStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdAvailability400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdAvailability400ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdAvailability401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdAvailability401JSONResponse) VisitPutStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdAvailability403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdAvailability403JSONResponse) VisitPutStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdAvailability404Response struct {
+}
+
+func (response PutStaffPeopleByIdAvailability404Response) VisitPutStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdAvailability409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdAvailability409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdAvailabilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutStaffPeopleByIdBankAccountRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PutStaffPeopleByIdBankAccountJSONRequestBody
@@ -17472,6 +18147,165 @@ func (response PostStaffPeopleByIdCarryOver404Response) VisitPostStaffPeopleById
 type PostStaffPeopleByIdCarryOver409ApplicationProblemPlusJSONResponse StaffProblem
 
 func (response PostStaffPeopleByIdCarryOver409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdCarryOverResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceReviewsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdCompetenceReviewsResponseObject interface {
+	VisitGetStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdCompetenceReviews200JSONResponse []StaffCompetenceReview
+
+func (response GetStaffPeopleByIdCompetenceReviews200JSONResponse) VisitGetStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceReviews401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdCompetenceReviews401JSONResponse) VisitGetStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceReviews403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdCompetenceReviews403JSONResponse) VisitGetStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceReviews404Response struct {
+}
+
+func (response GetStaffPeopleByIdCompetenceReviews404Response) VisitGetStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdCompetenceReviewsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostStaffPeopleByIdCompetenceReviewsJSONRequestBody
+}
+
+type PostStaffPeopleByIdCompetenceReviewsResponseObject interface {
+	VisitPostStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdCompetenceReviews201JSONResponse StaffCompetenceReview
+
+func (response PostStaffPeopleByIdCompetenceReviews201JSONResponse) VisitPostStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdCompetenceReviews400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdCompetenceReviews400ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdCompetenceReviews401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdCompetenceReviews401JSONResponse) VisitPostStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdCompetenceReviews403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdCompetenceReviews403JSONResponse) VisitPostStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdCompetenceReviews403ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdCompetenceReviews403ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdCompetenceReviews404Response struct {
+}
+
+func (response PostStaffPeopleByIdCompetenceReviews404Response) VisitPostStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdCompetenceReviews409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdCompetenceReviews409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdCompetenceReviewsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -18262,6 +19096,151 @@ func (response PostStaffPeopleByIdHolidayAdjustments409ApplicationProblemPlusJSO
 	return err
 }
 
+type GetStaffPeopleByIdInterestsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdInterestsResponseObject interface {
+	VisitGetStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdInterests200JSONResponse StaffPersonInterestList
+
+func (response GetStaffPeopleByIdInterests200JSONResponse) VisitGetStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdInterests401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdInterests401JSONResponse) VisitGetStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdInterests403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdInterests403JSONResponse) VisitGetStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdInterests404Response struct {
+}
+
+func (response GetStaffPeopleByIdInterests404Response) VisitGetStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdInterestsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutStaffPeopleByIdInterestsJSONRequestBody
+}
+
+type PutStaffPeopleByIdInterestsResponseObject interface {
+	VisitPutStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error
+}
+
+type PutStaffPeopleByIdInterests200JSONResponse StaffPersonInterestList
+
+func (response PutStaffPeopleByIdInterests200JSONResponse) VisitPutStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdInterests400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdInterests400ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdInterests401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdInterests401JSONResponse) VisitPutStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdInterests403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdInterests403JSONResponse) VisitPutStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdInterests404Response struct {
+}
+
+func (response PutStaffPeopleByIdInterests404Response) VisitPutStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdInterests409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdInterests409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutStaffPeopleByIdLegalHoldRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PutStaffPeopleByIdLegalHoldJSONRequestBody
@@ -18750,6 +19729,151 @@ type GetStaffPeopleByIdPersonalData404Response struct {
 func (response GetStaffPeopleByIdPersonalData404Response) VisitGetStaffPeopleByIdPersonalDataResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetStaffPeopleByIdPreferencesRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdPreferencesResponseObject interface {
+	VisitGetStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdPreferences200JSONResponse StaffPersonPreferenceList
+
+func (response GetStaffPeopleByIdPreferences200JSONResponse) VisitGetStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdPreferences401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdPreferences401JSONResponse) VisitGetStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdPreferences403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdPreferences403JSONResponse) VisitGetStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdPreferences404Response struct {
+}
+
+func (response GetStaffPeopleByIdPreferences404Response) VisitGetStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdPreferencesRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutStaffPeopleByIdPreferencesJSONRequestBody
+}
+
+type PutStaffPeopleByIdPreferencesResponseObject interface {
+	VisitPutStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error
+}
+
+type PutStaffPeopleByIdPreferences200JSONResponse StaffPersonPreferenceList
+
+func (response PutStaffPeopleByIdPreferences200JSONResponse) VisitPutStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdPreferences400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdPreferences400ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdPreferences401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdPreferences401JSONResponse) VisitPutStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdPreferences403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdPreferences403JSONResponse) VisitPutStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdPreferences404Response struct {
+}
+
+func (response PutStaffPeopleByIdPreferences404Response) VisitPutStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdPreferences409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdPreferences409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PostStaffPeopleByIdReassessedRequestObject struct {
@@ -19270,6 +20394,78 @@ func (response PutStaffPeopleByIdUser503ApplicationProblemPlusJSONResponse) Visi
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdWishesSeenRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostStaffPeopleByIdWishesSeenResponseObject interface {
+	VisitPostStaffPeopleByIdWishesSeenResponse(w http.ResponseWriter) error
+}
+
+type PostStaffPeopleByIdWishesSeen200JSONResponse StaffWishesSeen
+
+func (response PostStaffPeopleByIdWishesSeen200JSONResponse) VisitPostStaffPeopleByIdWishesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdWishesSeen401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdWishesSeen401JSONResponse) VisitPostStaffPeopleByIdWishesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdWishesSeen403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffPeopleByIdWishesSeen403JSONResponse) VisitPostStaffPeopleByIdWishesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffPeopleByIdWishesSeen404Response struct {
+}
+
+func (response PostStaffPeopleByIdWishesSeen404Response) VisitPostStaffPeopleByIdWishesSeenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostStaffPeopleByIdWishesSeen409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffPeopleByIdWishesSeen409ApplicationProblemPlusJSONResponse) VisitPostStaffPeopleByIdWishesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20658,6 +21854,12 @@ type StrictServerInterface interface {
 	// PostStaffPeopleByIdAccountRun Run a person's account now
 	// (POST /api/v1/staff/people/{id}/account/run)
 	PostStaffPeopleByIdAccountRun(ctx context.Context, request PostStaffPeopleByIdAccountRunRequestObject) (PostStaffPeopleByIdAccountRunResponseObject, error)
+	// GetStaffPeopleByIdAvailability List a person's availability declaration
+	// (GET /api/v1/staff/people/{id}/availability)
+	GetStaffPeopleByIdAvailability(ctx context.Context, request GetStaffPeopleByIdAvailabilityRequestObject) (GetStaffPeopleByIdAvailabilityResponseObject, error)
+	// PutStaffPeopleByIdAvailability Replace a person's availability declaration
+	// (PUT /api/v1/staff/people/{id}/availability)
+	PutStaffPeopleByIdAvailability(ctx context.Context, request PutStaffPeopleByIdAvailabilityRequestObject) (PutStaffPeopleByIdAvailabilityResponseObject, error)
 	// PutStaffPeopleByIdBankAccount Set a person's bank account
 	// (PUT /api/v1/staff/people/{id}/bank-account)
 	PutStaffPeopleByIdBankAccount(ctx context.Context, request PutStaffPeopleByIdBankAccountRequestObject) (PutStaffPeopleByIdBankAccountResponseObject, error)
@@ -20670,6 +21872,12 @@ type StrictServerInterface interface {
 	// PostStaffPeopleByIdCarryOver Carry holiday over
 	// (POST /api/v1/staff/people/{id}/carry-over)
 	PostStaffPeopleByIdCarryOver(ctx context.Context, request PostStaffPeopleByIdCarryOverRequestObject) (PostStaffPeopleByIdCarryOverResponseObject, error)
+	// GetStaffPeopleByIdCompetenceReviews List a person's competence reviews
+	// (GET /api/v1/staff/people/{id}/competence-reviews)
+	GetStaffPeopleByIdCompetenceReviews(ctx context.Context, request GetStaffPeopleByIdCompetenceReviewsRequestObject) (GetStaffPeopleByIdCompetenceReviewsResponseObject, error)
+	// PostStaffPeopleByIdCompetenceReviews Record a competence review
+	// (POST /api/v1/staff/people/{id}/competence-reviews)
+	PostStaffPeopleByIdCompetenceReviews(ctx context.Context, request PostStaffPeopleByIdCompetenceReviewsRequestObject) (PostStaffPeopleByIdCompetenceReviewsResponseObject, error)
 	// GetStaffPeopleByIdCompetences List a person's competences
 	// (GET /api/v1/staff/people/{id}/competences)
 	GetStaffPeopleByIdCompetences(ctx context.Context, request GetStaffPeopleByIdCompetencesRequestObject) (GetStaffPeopleByIdCompetencesResponseObject, error)
@@ -20700,6 +21908,12 @@ type StrictServerInterface interface {
 	// PostStaffPeopleByIdHolidayAdjustments Adjust a person's holiday account
 	// (POST /api/v1/staff/people/{id}/holiday-adjustments)
 	PostStaffPeopleByIdHolidayAdjustments(ctx context.Context, request PostStaffPeopleByIdHolidayAdjustmentsRequestObject) (PostStaffPeopleByIdHolidayAdjustmentsResponseObject, error)
+	// GetStaffPeopleByIdInterests List a person's interests
+	// (GET /api/v1/staff/people/{id}/interests)
+	GetStaffPeopleByIdInterests(ctx context.Context, request GetStaffPeopleByIdInterestsRequestObject) (GetStaffPeopleByIdInterestsResponseObject, error)
+	// PutStaffPeopleByIdInterests Replace a person's interests
+	// (PUT /api/v1/staff/people/{id}/interests)
+	PutStaffPeopleByIdInterests(ctx context.Context, request PutStaffPeopleByIdInterestsRequestObject) (PutStaffPeopleByIdInterestsResponseObject, error)
 	// PutStaffPeopleByIdLegalHold Set or lift a person's legal hold
 	// (PUT /api/v1/staff/people/{id}/legal-hold)
 	PutStaffPeopleByIdLegalHold(ctx context.Context, request PutStaffPeopleByIdLegalHoldRequestObject) (PutStaffPeopleByIdLegalHoldResponseObject, error)
@@ -20721,6 +21935,12 @@ type StrictServerInterface interface {
 	// GetStaffPeopleByIdPersonalData Export a person's data
 	// (GET /api/v1/staff/people/{id}/personal-data)
 	GetStaffPeopleByIdPersonalData(ctx context.Context, request GetStaffPeopleByIdPersonalDataRequestObject) (GetStaffPeopleByIdPersonalDataResponseObject, error)
+	// GetStaffPeopleByIdPreferences List a person's preferences
+	// (GET /api/v1/staff/people/{id}/preferences)
+	GetStaffPeopleByIdPreferences(ctx context.Context, request GetStaffPeopleByIdPreferencesRequestObject) (GetStaffPeopleByIdPreferencesResponseObject, error)
+	// PutStaffPeopleByIdPreferences Replace a person's preferences
+	// (PUT /api/v1/staff/people/{id}/preferences)
+	PutStaffPeopleByIdPreferences(ctx context.Context, request PutStaffPeopleByIdPreferencesRequestObject) (PutStaffPeopleByIdPreferencesResponseObject, error)
 	// PostStaffPeopleByIdReassessed Record a reassessment
 	// (POST /api/v1/staff/people/{id}/reassessed)
 	PostStaffPeopleByIdReassessed(ctx context.Context, request PostStaffPeopleByIdReassessedRequestObject) (PostStaffPeopleByIdReassessedResponseObject, error)
@@ -20742,6 +21962,9 @@ type StrictServerInterface interface {
 	// PutStaffPeopleByIdUser Link a person to a user
 	// (PUT /api/v1/staff/people/{id}/user)
 	PutStaffPeopleByIdUser(ctx context.Context, request PutStaffPeopleByIdUserRequestObject) (PutStaffPeopleByIdUserResponseObject, error)
+	// PostStaffPeopleByIdWishesSeen Mark a person's wishes seen
+	// (POST /api/v1/staff/people/{id}/wishes/seen)
+	PostStaffPeopleByIdWishesSeen(ctx context.Context, request PostStaffPeopleByIdWishesSeenRequestObject) (PostStaffPeopleByIdWishesSeenResponseObject, error)
 	// DeleteStaffPersonCompetencesById Remove a competence
 	// (DELETE /api/v1/staff/person-competences/{id})
 	DeleteStaffPersonCompetencesById(ctx context.Context, request DeleteStaffPersonCompetencesByIdRequestObject) (DeleteStaffPersonCompetencesByIdResponseObject, error)
@@ -23700,6 +24923,65 @@ func (sh *strictHandler) PostStaffPeopleByIdAccountRun(w http.ResponseWriter, r 
 	}
 }
 
+// GetStaffPeopleByIdAvailability operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdAvailability(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdAvailabilityRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdAvailability(ctx, request.(GetStaffPeopleByIdAvailabilityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdAvailability")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdAvailabilityResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdAvailabilityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffPeopleByIdAvailability operation middleware
+func (sh *strictHandler) PutStaffPeopleByIdAvailability(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutStaffPeopleByIdAvailabilityRequestObject
+
+	request.Id = id
+
+	var body PutStaffPeopleByIdAvailabilityJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffPeopleByIdAvailability(ctx, request.(PutStaffPeopleByIdAvailabilityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffPeopleByIdAvailability")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffPeopleByIdAvailabilityResponseObject); ok {
+		if err := validResponse.VisitPutStaffPeopleByIdAvailabilityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PutStaffPeopleByIdBankAccount operation middleware
 func (sh *strictHandler) PutStaffPeopleByIdBankAccount(w http.ResponseWriter, r *http.Request, id int64) {
 	var request PutStaffPeopleByIdBankAccountRequestObject
@@ -23812,6 +25094,68 @@ func (sh *strictHandler) PostStaffPeopleByIdCarryOver(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostStaffPeopleByIdCarryOverResponseObject); ok {
 		if err := validResponse.VisitPostStaffPeopleByIdCarryOverResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdCompetenceReviews operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdCompetenceReviews(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdCompetenceReviewsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdCompetenceReviews(ctx, request.(GetStaffPeopleByIdCompetenceReviewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdCompetenceReviews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdCompetenceReviewsResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdCompetenceReviewsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdCompetenceReviews operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdCompetenceReviews(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdCompetenceReviewsRequestObject
+
+	request.Id = id
+
+	var body PostStaffPeopleByIdCompetenceReviewsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdCompetenceReviews(ctx, request.(PostStaffPeopleByIdCompetenceReviewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdCompetenceReviews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdCompetenceReviewsResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdCompetenceReviewsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -24110,6 +25454,65 @@ func (sh *strictHandler) PostStaffPeopleByIdHolidayAdjustments(w http.ResponseWr
 	}
 }
 
+// GetStaffPeopleByIdInterests operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdInterests(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdInterestsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdInterests(ctx, request.(GetStaffPeopleByIdInterestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdInterests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdInterestsResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdInterestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffPeopleByIdInterests operation middleware
+func (sh *strictHandler) PutStaffPeopleByIdInterests(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutStaffPeopleByIdInterestsRequestObject
+
+	request.Id = id
+
+	var body PutStaffPeopleByIdInterestsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffPeopleByIdInterests(ctx, request.(PutStaffPeopleByIdInterestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffPeopleByIdInterests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffPeopleByIdInterestsResponseObject); ok {
+		if err := validResponse.VisitPutStaffPeopleByIdInterestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PutStaffPeopleByIdLegalHold operation middleware
 func (sh *strictHandler) PutStaffPeopleByIdLegalHold(w http.ResponseWriter, r *http.Request, id int64) {
 	var request PutStaffPeopleByIdLegalHoldRequestObject
@@ -24314,6 +25717,65 @@ func (sh *strictHandler) GetStaffPeopleByIdPersonalData(w http.ResponseWriter, r
 	}
 }
 
+// GetStaffPeopleByIdPreferences operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdPreferences(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdPreferencesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdPreferences(ctx, request.(GetStaffPeopleByIdPreferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdPreferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdPreferencesResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdPreferencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffPeopleByIdPreferences operation middleware
+func (sh *strictHandler) PutStaffPeopleByIdPreferences(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutStaffPeopleByIdPreferencesRequestObject
+
+	request.Id = id
+
+	var body PutStaffPeopleByIdPreferencesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffPeopleByIdPreferences(ctx, request.(PutStaffPeopleByIdPreferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffPeopleByIdPreferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffPeopleByIdPreferencesResponseObject); ok {
+		if err := validResponse.VisitPutStaffPeopleByIdPreferencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostStaffPeopleByIdReassessed operation middleware
 func (sh *strictHandler) PostStaffPeopleByIdReassessed(w http.ResponseWriter, r *http.Request, id int64) {
 	var request PostStaffPeopleByIdReassessedRequestObject
@@ -24511,6 +25973,32 @@ func (sh *strictHandler) PutStaffPeopleByIdUser(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffPeopleByIdUserResponseObject); ok {
 		if err := validResponse.VisitPutStaffPeopleByIdUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffPeopleByIdWishesSeen operation middleware
+func (sh *strictHandler) PostStaffPeopleByIdWishesSeen(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostStaffPeopleByIdWishesSeenRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffPeopleByIdWishesSeen(ctx, request.(PostStaffPeopleByIdWishesSeenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffPeopleByIdWishesSeen")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffPeopleByIdWishesSeenResponseObject); ok {
+		if err := validResponse.VisitPostStaffPeopleByIdWishesSeenResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

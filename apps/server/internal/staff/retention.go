@@ -204,6 +204,28 @@ var columnClasses = map[string]string{
 	"person_competences.superseded_by_id": "D", "person_competences.expiring_notified_at": "D",
 	"person_competences.expired_notified_at": "D", "person_competences.revision": "D",
 	"person_competences.created_at": "D", "person_competences.updated_at": "D",
+	// The Seen stamp (delivery B, plan reading 17), the row's as the rest.
+	"person_competences.seen_at": "D", "person_competences.seen_by_user_id": "D",
+
+	// What the person wants and the competence reviews (staff competence
+	// design §3.4–3.7, delivery B) are class D whole: every column, so the D
+	// erase deletes the rows.
+	"person_interests.id": "D", "person_interests.person_id": "D", "person_interests.competence_id": "D",
+	"person_interests.seen_at": "D", "person_interests.seen_by_user_id": "D", "person_interests.created_at": "D",
+
+	"person_preferences.id": "D", "person_preferences.person_id": "D", "person_preferences.kind": "D",
+	"person_preferences.value": "D", "person_preferences.weight": "D", "person_preferences.seen_at": "D",
+	"person_preferences.seen_by_user_id": "D", "person_preferences.created_at": "D", "person_preferences.updated_at": "D",
+
+	"availability_declarations.id": "D", "availability_declarations.person_id": "D", "availability_declarations.kind": "D",
+	"availability_declarations.weekday": "D", "availability_declarations.from_date": "D", "availability_declarations.to_date": "D",
+	"availability_declarations.start_minute": "D", "availability_declarations.end_minute": "D",
+	"availability_declarations.seen_at": "D", "availability_declarations.seen_by_user_id": "D",
+	"availability_declarations.created_at": "D",
+
+	"competence_reviews.id": "D", "competence_reviews.person_id": "D", "competence_reviews.reviewed_on": "D",
+	"competence_reviews.reviewer_user_id": "D", "competence_reviews.reviewer_person_id": "D",
+	"competence_reviews.created_at": "D",
 
 	// Entra delivery D (00062): the groups are the installation's, about
 	// nobody, C whole as the structure is; a membership or an ownership says

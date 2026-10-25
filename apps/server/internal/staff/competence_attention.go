@@ -18,24 +18,34 @@ import (
 //   - competenceExpiring, a current row whose end is within its
 //     competence's lead (a lead of null raises nothing), and
 //     competenceExpired, a current row whose end has passed — to
-//     staff:manage for everyone, and to a manager for their reports.
+//     staff:manage for everyone, and to a manager for their reports;
+//   - competenceReviewOverdue (delivery B, S11 and reading 8), a person in
+//     employment today whose latest competence review, or the start of
+//     their current unbroken employment run when that is later, lies more
+//     than the review interval ago — to staff:manage for everyone and to a
+//     manager for their reports, never to staff:approve; an interval of 0
+//     raises none.
 //
 // Only the rows of people in employment today and not erased raise items,
 // and never a caller's own rows to the caller: the person sees their own on
-// the Competence tab. Each item is keyed <type>/<rowId>, its entity the
-// person, its title the person's name; a declaration is dated its row's
-// creation, an expiry its row's last valid day.
+// the Competence tab. A row's item is keyed <type>/<rowId>, the overdue
+// review <type>/<personId>, its entity the person, its title the person's
+// name; a declaration is dated its row's creation, an expiry its row's last
+// valid day, an overdue review the day it fell due.
 
 // competenceAttention is the competence items' rows: the current declared
-// rows and the current rows with an end.
+// rows, the current rows with an end, and each person's latest review day
+// (only when the caller's overdue items are judged).
 type competenceAttention struct {
 	declared []store.ListDeclaredCompetencesRow
 	expiring []store.ListExpiringCompetencesRow
+	reviews  map[int64]time.Time
 }
 
 // readCompetenceAttention reads the competence items' rows on q, a
-// snapshot's.
-func readCompetenceAttention(ctx context.Context, q *store.Queries) (competenceAttention, error) {
+// snapshot's; the latest reviews only when withReviews — the caller has
+// overdue items to judge.
+func readCompetenceAttention(ctx context.Context, q *store.Queries, withReviews bool) (competenceAttention, error) {
 	var a competenceAttention
 	var err error
 	if a.declared, err = q.ListDeclaredCompetences(ctx); err != nil {
@@ -44,7 +54,25 @@ func readCompetenceAttention(ctx context.Context, q *store.Queries) (competenceA
 	if a.expiring, err = q.ListExpiringCompetences(ctx); err != nil {
 		return a, fmt.Errorf("staff: read the expiring competences for attention: %w", err)
 	}
+	if !withReviews {
+		return a, nil
+	}
+	latest, err := q.LatestCompetenceReviews(ctx)
+	if err != nil {
+		return a, fmt.Errorf("staff: read the latest competence reviews for attention: %w", err)
+	}
+	a.reviews = make(map[int64]time.Time, len(latest))
+	for _, r := range latest {
+		a.reviews[r.PersonID] = civil(r.ReviewedOn)
+	}
 	return a, nil
+}
+
+// reviewsOverdue reports whether the caller's overdue review items are
+// judged: an interval above 0, and the caller staff:manage or a manager of
+// somebody today — an approver alone never has one.
+func reviewsOverdue(c *callerContext, reports []int64) bool {
+	return c.Settings.CompetenceReviewIntervalMonths > 0 && (c.Manage || len(reports) > 0)
 }
 
 // competenceItems is the caller's competence items: every active person's
@@ -78,6 +106,48 @@ func (in attentionInput) competenceItems(c *callerContext) []gen.StaffStatsAtten
 		}
 		if kind, ok := competenceExpiryItem(pc, r.CompetenceReminderLeadDays, c.Today); ok {
 			out = append(out, personItem(kind, pc.ID, pc.PersonID, r.PersonDisplayName, civil(pc.ValidTo)))
+		}
+	}
+	if reviewsOverdue(c, in.reports) {
+		out = append(out, in.reviewOverdueItems(c, reports, active)...)
+	}
+	return out
+}
+
+// reviewOverdueItems is the overdue reviews the caller is told of: of every
+// person in employment today for staff:manage, of a manager's reports
+// otherwise, never the caller's own nor an erased person's. Each falls due
+// the interval after the later of the person's latest review and the start
+// of their current unbroken employment run, and is overdue the day after.
+func (in attentionInput) reviewOverdueItems(c *callerContext, reports map[int64]bool, active map[int64]int64) []gen.StaffStatsAttentionItem {
+	// The people, with their erase, are read for HR's roles alone; a plain
+	// manager's reports need no such read, since nobody in employment today
+	// is erased — the erase waits for every employment to end (DuePeopleD)
+	// and a rehire clears it.
+	erased := map[int64]bool{}
+	for _, p := range in.people {
+		erased[p.ID] = p.ErasedAt != nil
+	}
+	spans := map[int64][]store.StaffEmployment{}
+	for _, e := range in.employments {
+		spans[e.PersonID] = append(spans[e.PersonID], e)
+	}
+	interval := int(c.Settings.CompetenceReviewIntervalMonths)
+	var out []gen.StaffStatsAttentionItem
+	for personID := range active {
+		if erased[personID] || (c.Person != nil && *c.Person == personID) || (!c.Manage && !reports[personID]) {
+			continue
+		}
+		start := unbrokenStart(employmentSpans(spans[personID]), c.Today)
+		if start == nil {
+			continue
+		}
+		anchor := *start
+		if reviewed, ok := in.competences.reviews[personID]; ok && reviewed.After(anchor) {
+			anchor = reviewed
+		}
+		if due := addMonths(anchor, interval); c.Today.After(due) {
+			out = append(out, personItem(gen.CompetenceReviewOverdue, personID, personID, in.names[personID], due))
 		}
 	}
 	return out

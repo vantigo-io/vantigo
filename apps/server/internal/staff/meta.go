@@ -61,6 +61,19 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 	if err != nil {
 		return nil, fmt.Errorf("staff: list the holiday schemes: %w", err)
 	}
+	// The locations not archived are every caller's (delivery B): the
+	// person's location preference is picked from the company's places, which
+	// hold no personal data, as the absence types are picked.
+	locations, err := q.ListLocations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("staff: list the locations: %w", err)
+	}
+	offered := make([]store.StaffLocation, 0, len(locations))
+	for _, l := range locations {
+		if l.ArchivedAt == nil {
+			offered = append(offered, l)
+		}
+	}
 	meta := gen.StaffMeta{
 		TimeZone: caller.Zone.String(),
 		Today:    openapi_types.Date{Time: caller.Today},
@@ -76,6 +89,7 @@ func (s *server) GetStaffMeta(ctx context.Context, _ gen.GetStaffMetaRequestObje
 		},
 		AbsenceTypes:         mapRows(types, absenceTypeResponse),
 		HolidaySchemes:       mapRows(schemes, holidaySchemeResponse),
+		Locations:            mapRows(offered, locationResponse),
 		ProvisioningRolesSet: rolesSet,
 		Providers:            providers,
 	}

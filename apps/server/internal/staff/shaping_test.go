@@ -139,6 +139,43 @@ func TestShaping_PersonPerAudience(t *testing.T) {
 	}
 }
 
+// lastCompetenceReview is the Reviews group's (staff competence design S11,
+// §5): absent when the person has no review — so the matrix above stands —
+// and, once they have one, in the key set of every audience that reads the
+// group (the person, HR, staff:personal-data), never a colleague's. The
+// Manager's and the Approver's are TestCompetenceReviews_LastOnThePerson's.
+func TestShaping_PersonPerAudienceWithAReview(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	p := seedShapedPerson(t, h, hr)
+	_, reviewer := signInNamed(t, h, "Rolf Reviewer")
+	seedReview(t, h, p.id, "2026-09-01", reviewer)
+	colleague, _ := signIn(t, h, "staff:view")
+	personalData, _ := signIn(t, h, "staff:personal-data")
+
+	review := []string{"lastCompetenceReview"}
+	for _, c := range []struct {
+		name   string
+		client *modtest.Client
+		want   []string
+	}{
+		{"self", p.self, fields(workFields, placedFields, privateFields, sealedFields, linkFields, review)},
+		{"colleague", colleague, fields(workFields, placedFields)},
+		{"staff:manage", hr, fields(workFields, placedFields, privateFields, sealedFields, linkFields, hrFields, holdFields, review)},
+		{"staff:personal-data", personalData, fields(workFields, placedFields, privateFields, sealedFields, linkFields, hrFields, holdFields, review)},
+	} {
+		body := raw(t, c.client.Do(http.MethodGet, personPath(p.id), nil))
+		if got := slices.Sorted(maps.Keys(body)); !slices.Equal(got, c.want) {
+			t.Errorf("%s sees %v, want %v", c.name, got, c.want)
+		}
+		if last, ok := body["lastCompetenceReview"].(map[string]any); ok &&
+			(len(last) != 2 || last["reviewedOn"] != "2026-09-01" || last["reviewer"] != "Rolf Reviewer") {
+			t.Errorf("%s lastCompetenceReview = %v, want the date and the reviewer's name", c.name, last)
+		}
+	}
+}
+
 // The person's sub-resources follow their groups: next of kin are private
 // (the person and HR), roles are work (everyone who sees the person), and the
 // history is the person's, HR's and the manager's, never a
