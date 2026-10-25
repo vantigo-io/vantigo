@@ -92,6 +92,14 @@ type Deps struct {
 	// though never while it serves; it is nil when time is disabled, which a
 	// caller reads as "time tracking is off".
 	Actuals contracts.ProjectActuals
+	// Timesheets is the hours logged per identity user and week, the one
+	// sanctioned way a module reads another's weekly total of logged work
+	// (see contracts.Timesheets). It performs no authorization: the consumer
+	// decides who may see whose hours. Compose sets it, on every module's
+	// Deps copy, from whichever enabled module declares Module.Timesheets;
+	// it is nil when time is disabled, which a caller reads as "time
+	// tracking is off".
+	Timesheets contracts.Timesheets
 	// Expenses is what a project's expenses cost and bill, the one sanctioned
 	// way a module reads another's record of recorded costs (see
 	// contracts.ProjectExpenses). Compose sets it, on every module's Deps
@@ -293,6 +301,12 @@ type Module struct {
 	// every module's Deps, including the provider's own, the same way it
 	// resolves Directory.
 	Actuals func(Deps) contracts.ProjectActuals
+	// Timesheets builds this module's contracts.Timesheets implementation,
+	// if it provides one (time). At most one enabled module may set it;
+	// Compose calls it before any Mount runs — after it has resolved
+	// Actuals — and puts the result on every module's Deps, including the
+	// provider's own, the same way it resolves Actuals.
+	Timesheets func(Deps) contracts.Timesheets
 	// Expenses builds this module's contracts.ProjectExpenses
 	// implementation, if it provides one. At most one enabled module may set
 	// it; Compose calls it before any Mount runs — after it has resolved
