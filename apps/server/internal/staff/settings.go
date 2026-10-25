@@ -25,7 +25,8 @@ import (
 // settings (delivery C, account_settings.go) and the two erase settings the
 // owner asked for (delivery C, Task 5b; retention.go reads them), and the
 // default account kind and the directory profile's switches (Entra delivery
-// B, account_settings.go and directory_profile.go). There is
+// B, account_settings.go and directory_profile.go), and the competence
+// review interval (staff competence delivery B). There is
 // exactly one row, written by the migration, and a replace is guarded by its
 // revision.
 
@@ -41,7 +42,17 @@ type parsedSettings struct {
 	// Policy is delivery B's: the self-certification policy and automatic
 	// carry-over (absence_settings.go), each left out keeping its value.
 	Policy parsedPolicy
+	// CompetenceReviewIntervalMonths is staff competence delivery B's
+	// (design §3.9, S11): the months after which a person is
+	// review-overdue, 0 turning the item off; nil keeps it.
+	CompetenceReviewIntervalMonths *int16
 }
+
+// The competence review interval's bounds, in months (design §3.9).
+const (
+	competenceReviewIntervalMin = 0
+	competenceReviewIntervalMax = 60
+)
 
 // The retention periods' bounds (design S15, plan "Exact values"): the grace
 // before the D erase may be nothing — an installation that erases at once —
@@ -111,6 +122,9 @@ func parseSettings(body gen.StaffSettingsRequest) (parsedSettings, fieldErrors) 
 	out.HealthRetentionDays, msg = retentionPeriod("The health documents' period", body.HealthRetentionDays, healthRetentionDaysMin)
 	f.add("healthRetentionDays", msg)
 	out.Policy = parsePolicy(body, &f)
+	out.CompetenceReviewIntervalMonths, msg = boundedSmall("The competence review interval", body.CompetenceReviewIntervalMonths,
+		competenceReviewIntervalMin, competenceReviewIntervalMax)
+	f.add("competenceReviewIntervalMonths", msg)
 	return out, f
 }
 
@@ -229,7 +243,8 @@ func retentionState(ctx context.Context, q *store.Queries, withHealth bool) (gen
 // periods, B's self-certification policy and carry-over, C's two account
 // settings (account_settings.go) and its two erase settings, and Entra B's
 // default account kind and directory switches — a switch left out of the
-// map keeps its value too — each keep their value when left out. A change of
+// map keeps its value too — and the competence review interval each keep
+// their value when left out. A change of
 // the default kind while the account kinds are unseeded (account_seed.go,
 // tried first) is 503 accounts_unavailable: the seed would overwrite it. The
 // policy is resolved against the row as locked, and
@@ -292,27 +307,28 @@ func (s *server) PutStaffSettings(ctx context.Context, req gen.PutStaffSettingsR
 			return err
 		}
 		saved, err = txq.UpdateSettings(ctx, store.UpdateSettingsParams{
-			EmployeeNumberPrefix:       parsed.Prefix,
-			NextEmployeeNumber:         parsed.Next,
-			PensionProvider:            parsed.PensionProvider,
-			InjuryInsurer:              parsed.InjuryInsurer,
-			RetentionGraceDays:         parsed.RetentionGraceDays,
-			HealthRetentionDays:        parsed.HealthRetentionDays,
-			SelfCertPolicy:             policy.Policy,
-			SelfCertDaysPerOccurrence:  policy.DaysPerOccurrence,
-			SelfCertOccurrencesPerYear: policy.OccurrencesPerYear,
-			SelfCertDaysPerYear:        policy.DaysPerYear,
-			SelfCertAfterMonths:        policy.AfterMonths,
-			AutoCarryOver:              policy.AutoCarryOver,
-			AutoCarryOverSince:         policy.AutoCarryOverSince,
-			CreateBeforeDays:           accounts.createBeforeDays,
-			SetDeleteExternalAfterDays: accounts.deleteExternal,
-			DeleteExternalAfterDays:    accounts.deleteExternalAfterDays,
-			ErasePregnancyHealthTypes:  erase.pregnancyHealth,
-			EraseSickCaseDates:         erase.sickCaseDates,
-			DefaultAccountKind:         defaultKind,
-			DirectoryFields:            directory,
-			Now:                        now,
+			EmployeeNumberPrefix:           parsed.Prefix,
+			NextEmployeeNumber:             parsed.Next,
+			PensionProvider:                parsed.PensionProvider,
+			InjuryInsurer:                  parsed.InjuryInsurer,
+			RetentionGraceDays:             parsed.RetentionGraceDays,
+			HealthRetentionDays:            parsed.HealthRetentionDays,
+			SelfCertPolicy:                 policy.Policy,
+			SelfCertDaysPerOccurrence:      policy.DaysPerOccurrence,
+			SelfCertOccurrencesPerYear:     policy.OccurrencesPerYear,
+			SelfCertDaysPerYear:            policy.DaysPerYear,
+			SelfCertAfterMonths:            policy.AfterMonths,
+			AutoCarryOver:                  policy.AutoCarryOver,
+			AutoCarryOverSince:             policy.AutoCarryOverSince,
+			CreateBeforeDays:               accounts.createBeforeDays,
+			SetDeleteExternalAfterDays:     accounts.deleteExternal,
+			DeleteExternalAfterDays:        accounts.deleteExternalAfterDays,
+			ErasePregnancyHealthTypes:      erase.pregnancyHealth,
+			EraseSickCaseDates:             erase.sickCaseDates,
+			DefaultAccountKind:             defaultKind,
+			DirectoryFields:                directory,
+			CompetenceReviewIntervalMonths: parsed.CompetenceReviewIntervalMonths,
+			Now:                            now,
 		})
 		if err != nil {
 			return fmt.Errorf("staff: change the settings: %w", err)

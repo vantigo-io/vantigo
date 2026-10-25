@@ -559,6 +559,39 @@ func (q *Queries) ListLocations(ctx context.Context) ([]StaffLocation, error) {
 	return items, nil
 }
 
+const locationsByIDs = `-- name: LocationsByIDs :many
+SELECT id, archived_at FROM staff.locations WHERE id = ANY($1::bigint[]) FOR SHARE
+`
+
+type LocationsByIDsRow struct {
+	ID         int64
+	ArchivedAt *time.Time
+}
+
+// LocationsByIDs is the locations of those ids that exist, archived or not,
+// for a preference naming them (staff competence design S9), and holds them
+// against an archive or a delete until the transaction ends, as
+// ShareCompetence holds a competence.
+func (q *Queries) LocationsByIDs(ctx context.Context, ids []int64) ([]LocationsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, locationsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LocationsByIDsRow
+	for rows.Next() {
+		var i LocationsByIDsRow
+		if err := rows.Scan(&i.ID, &i.ArchivedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockBusinessUnit = `-- name: LockBusinessUnit :one
 SELECT id, legal_entity_id, name, org_number, is_default, archived_at, revision, created_at, updated_at FROM staff.business_units WHERE id = $1 FOR UPDATE
 `

@@ -19,7 +19,8 @@ SELECT * FROM staff.settings WHERE id = 1 FOR UPDATE;
 -- NULL, delete_external_after_days unless @set_delete_external_after_days —
 -- its NULL is a value, "never". The two erase settings (Task 5b) keep their
 -- values when NULL, and so do the default account kind and the directory
--- profile's switches (00060), which the caller merges over the row's.
+-- profile's switches (00060), which the caller merges over the row's. The
+-- competence review interval (00067) keeps its value when NULL.
 UPDATE staff.settings SET
     employee_number_prefix = @employee_number_prefix,
     next_employee_number = @next_employee_number,
@@ -41,6 +42,7 @@ UPDATE staff.settings SET
     erase_sick_case_dates = coalesce(sqlc.narg(erase_sick_case_dates)::boolean, erase_sick_case_dates),
     default_account_kind = coalesce(sqlc.narg(default_account_kind)::varchar, default_account_kind),
     directory_fields = coalesce(sqlc.narg(directory_fields)::jsonb, directory_fields),
+    competence_review_interval_months = coalesce(sqlc.narg(competence_review_interval_months)::smallint, competence_review_interval_months),
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = 1

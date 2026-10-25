@@ -145,9 +145,82 @@ const absenceRequestSchema = "StaffAbsenceRequest"
 // HR learns it was not written (staff competence design S1).
 const competenceChangeSchema = "StaffCompetenceChangeRequest"
 
+// interestsRequestSchema, preferencesRequestSchema and
+// availabilityRequestSchema are the contract's names for the person's three
+// wish lists (staff competence design S8–S10), closed at the top and on each
+// row: a property a row does not name is refused (unknownRowProperties),
+// so the person learns it was not written.
+const (
+	interestsRequestSchema    = "StaffPersonInterestsRequest"
+	preferencesRequestSchema  = "StaffPersonPreferencesRequest"
+	availabilityRequestSchema = "StaffAvailabilityRequest"
+)
+
+// competenceReviewRequestSchema is the contract's name for a competence
+// review being recorded, which carries its day alone: a note sent is
+// refused, so the reviewer learns it was not written (S11).
+const competenceReviewRequestSchema = "StaffCompetenceReviewRequest"
+
 // closedSchemas are the request schemas whose handlers refuse a property the
 // contract does not name.
-var closedSchemas = []string{personRequestSchema, accountRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema, absenceRequestSchema, decisionSchema, competenceChangeSchema}
+var closedSchemas = []string{
+	personRequestSchema, accountRequestSchema, meRequestSchema, absenceTypeChangeSchema, absenceChangeSchema,
+	absenceRequestSchema, decisionSchema, competenceChangeSchema,
+	interestsRequestSchema, preferencesRequestSchema, availabilityRequestSchema,
+	competenceReviewRequestSchema,
+}
+
+// closedRows are the closed schemas whose list property is an array of
+// closed objects, each pair the schema and its list: their handlers refuse a
+// property a row does not name (unknownRowProperties).
+var closedRows = []struct{ schema, list string }{
+	{interestsRequestSchema, "interests"},
+	{preferencesRequestSchema, "preferences"},
+	{availabilityRequestSchema, "declarations"},
+}
+
+// unknownRowProperties is unknownProperties one level down, for a closed
+// schema whose property list is an array of closed objects: each row's
+// properties the contract's row schema does not name, as field errors keyed
+// by the row's place (interests[2].note) — nothing when the body or the list
+// is not what the decoder has already judged, or the rows admit any
+// property.
+func (s *server) unknownRowProperties(ctx context.Context, schema, list string) fieldErrors {
+	var f fieldErrors
+	body, _ := ctx.Value(rawBodyKey{}).([]byte)
+	if len(body) == 0 || s.deps.Doc == nil {
+		return f
+	}
+	ref := s.deps.Doc.Components.Schemas[schema]
+	if ref == nil || ref.Value == nil {
+		return f
+	}
+	property := ref.Value.Properties[list]
+	if property == nil || property.Value == nil || property.Value.Items == nil || property.Value.Items.Value == nil {
+		return f
+	}
+	row := property.Value.Items.Value
+	if admits := row.AdditionalProperties.Has; admits == nil || *admits {
+		return f
+	}
+	var lists map[string][]map[string]json.RawMessage
+	if json.Unmarshal(body, &lists) != nil {
+		return f
+	}
+	for i, r := range lists[list] {
+		names := make([]string, 0, len(r))
+		for name := range r {
+			if _, ok := row.Properties[name]; !ok {
+				names = append(names, name)
+			}
+		}
+		slices.Sort(names)
+		for _, name := range names {
+			f.add(fmt.Sprintf("%s[%d].%s", list, i, name), "This property is not one this request takes; the request was not applied")
+		}
+	}
+	return f
+}
 
 // bodyHas reports whether the request's JSON body names property at its top
 // level — for a required property the generated decoder cannot tell from
@@ -179,9 +252,10 @@ func bodyHasValue(ctx context.Context, property string) bool {
 }
 
 // checkClosedSchemas fails the mount unless the contract has every schema of
-// closedSchemas and closes each (additionalProperties false): the refusal
-// reads exactly that, so a contract that lost the schema, or opened it,
-// would otherwise let a sealed field be sent and silently dropped.
+// closedSchemas and closes each (additionalProperties false), and closes the
+// rows of every list of closedRows the same way: the refusal reads exactly
+// that, so a contract that lost the schema, or opened it or its rows, would
+// otherwise let a sealed field be sent and silently dropped.
 func checkClosedSchemas(doc *openapi3.T) error {
 	if doc == nil || doc.Components == nil {
 		return errors.New("staff: no contract to check the closed request schemas against")
@@ -193,6 +267,19 @@ func checkClosedSchemas(doc *openapi3.T) error {
 		}
 		if admits := ref.Value.AdditionalProperties.Has; admits == nil || *admits {
 			return fmt.Errorf("staff: the contract's %s must declare additionalProperties: false", name)
+		}
+	}
+	for _, c := range closedRows {
+		ref := doc.Components.Schemas[c.schema]
+		if ref == nil || ref.Value == nil {
+			return fmt.Errorf("staff: the contract has no %s schema", c.schema)
+		}
+		property := ref.Value.Properties[c.list]
+		if property == nil || property.Value == nil || property.Value.Items == nil || property.Value.Items.Value == nil {
+			return fmt.Errorf("staff: the contract's %s has no list of rows %s", c.schema, c.list)
+		}
+		if admits := property.Value.Items.Value.AdditionalProperties.Has; admits == nil || *admits {
+			return fmt.Errorf("staff: the rows of the contract's %s.%s must declare additionalProperties: false", c.schema, c.list)
 		}
 	}
 	return nil

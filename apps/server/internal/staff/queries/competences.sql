@@ -186,7 +186,9 @@ RETURNING *;
 -- UpdatePersonCompetence replaces a row's level, dates, issuer and reference.
 -- A new end clears the worker's two stamps, so the row is mailed again ahead
 -- of it; restamp moves the verification's instant and verifier to the
--- verifier changing a verified row's level, its basis and note kept.
+-- verifier changing a verified row's level, its basis and note kept;
+-- clear_seen drops the one-to-one's Seen stamp, for the person's own change
+-- of their declared row (staff competence design S8, amendment 17).
 UPDATE staff.person_competences SET
     level = sqlc.narg(level),
     issued_on = sqlc.narg(issued_on),
@@ -198,6 +200,8 @@ UPDATE staff.person_competences SET
     expired_notified_at = CASE WHEN valid_to IS DISTINCT FROM sqlc.narg(valid_to)::date THEN NULL ELSE expired_notified_at END,
     verified_at = CASE WHEN @restamp::boolean THEN @now::timestamptz ELSE verified_at END,
     verified_by_user_id = CASE WHEN @restamp::boolean THEN @verifier::uuid ELSE verified_by_user_id END,
+    seen_at = CASE WHEN @clear_seen::boolean THEN NULL ELSE seen_at END,
+    seen_by_user_id = CASE WHEN @clear_seen::boolean THEN NULL ELSE seen_by_user_id END,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = @id
@@ -228,9 +232,12 @@ WHERE id = @id;
 
 -- name: SetPersonCompetenceEvidence :one
 -- SetPersonCompetenceEvidence names the row's evidence document; an earlier
--- one stays in the archive.
+-- one stays in the archive. clear_seen drops the one-to-one's Seen stamp, for
+-- the person's own upload (staff competence design S8, amendment 17).
 UPDATE staff.person_competences SET
     evidence_document_id = @evidence_document_id::bigint,
+    seen_at = CASE WHEN @clear_seen::boolean THEN NULL ELSE seen_at END,
+    seen_by_user_id = CASE WHEN @clear_seen::boolean THEN NULL ELSE seen_by_user_id END,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = @id

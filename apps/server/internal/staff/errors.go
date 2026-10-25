@@ -205,6 +205,10 @@ const (
 	invalidCompetenceTitle         = "Invalid competence"
 	invalidPersonCompetenceTitle   = "Invalid competence row"
 	invalidVerificationTitle       = "Invalid verification"
+
+	invalidInterestsTitle    = "Invalid interests"
+	invalidPreferencesTitle  = "Invalid preferences"
+	invalidAvailabilityTitle = "Invalid availability declaration"
 )
 
 // withFieldError adds one message to a map another rule may already have put

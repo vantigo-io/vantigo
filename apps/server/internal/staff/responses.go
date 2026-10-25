@@ -49,6 +49,8 @@ func settingsResponse(row store.StaffSetting, retention gen.StaffRetentionState,
 
 		DefaultAccountKind: gen.StaffAccountKind(row.DefaultAccountKind),
 		DirectoryFields:    directoryFieldsOf(row),
+
+		CompetenceReviewIntervalMonths: int32(row.CompetenceReviewIntervalMonths),
 	}, nil
 }
 

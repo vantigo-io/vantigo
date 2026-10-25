@@ -1602,6 +1602,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's availability declaration
+         * @description A person's availability declaration (staff competence design S10), the recurring rows by weekday first, then the dated ones by day. Data only — nothing in Staff enforces or sums it. Read by the person, their managers today by the one manager rule, staff:manage and staff:personal-data; anyone else — a colleague, staff:approve alone — gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdAvailability"];
+        /**
+         * Replace a person's availability declaration
+         * @description Replaces a person's availability declaration — the person alone, on their own record, at most fifty rows; recorded as availability_changed (the count before and after) when the rows change. A row equal in every field to one on file keeps it and its Seen stamp; a new row is unstamped; a row no longer sent is deleted. No If-Match: the person is the only writer, and the list is not under the person's revision. Anyone else who sees the person gets the uniform 403; a person the caller may not see is the bare 404.
+         */
+        put: operations["putStaffPeopleByIdAvailability"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/{id}/bank-account": {
         parameters: {
             query?: never;
@@ -1676,6 +1700,30 @@ export interface paths {
          * @description Records the carry-over of a year's untaken holiday into the next: agreed — capped at the scheme's maximum, converted — or forced, uncapped and with a note. days defaults to the year's remaining, rounded down to a tenth. At most one carry-over per person and year it comes from, judged under the person's lock and held by a unique index: a second answers carry_over_recorded. Recorded as carry_over_recorded.
          */
         post: operations["postStaffPeopleByIdCarryOver"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/competence-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's competence reviews
+         * @description A person's competence reviews (staff competence design S11), newest first, each with the reviewer's name as the user directory names them. Read by the person, their managers today by the one manager rule, staff:approve, staff:manage and staff:personal-data; a colleague, or anyone the person is not visible to, gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdCompetenceReviews"];
+        put?: never;
+        /**
+         * Record a competence review
+         * @description Records that the person and the caller went through the person's Competence tab together (staff competence design S11), on reviewedOn — today when left out, never a day after today; recorded as competence_reviewed (the day). Whoever may verify the person's competences records it: a manager of theirs today by the one manager rule, staff:approve or staff:manage — never the person (403 own_record). staff:personal-data, who reads the person's reviews but records none, gets the uniform 403; a colleague, who sees the person but not their reviews, or anyone the person is not visible to, gets the bare 404, identical to an unknown id. No notes and no goals. The person's lastCompetenceReview is then the latest by reviewedOn.
+         */
+        post: operations["postStaffPeopleByIdCompetenceReviews"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1818,6 +1866,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/interests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's interests
+         * @description A person's interests in competences (staff competence design S8), in the catalogue's order, each with whether the person holds the competence. Read by the person, their managers today by the one manager rule, staff:manage and staff:personal-data; anyone else — a colleague, staff:approve alone — gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdInterests"];
+        /**
+         * Replace a person's interests
+         * @description Replaces a person's interests — the person alone, on their own record, at most twenty; recorded as interests_changed (the count before and after) when the set changes. An interest already on file keeps its row and its Seen stamp; a new one is unstamped; one no longer sent is deleted. No If-Match: the person is the only writer, and the list is not under the person's revision. Anyone else who sees the person gets the uniform 403; a person the caller may not see is the bare 404.
+         */
+        put: operations["putStaffPeopleByIdInterests"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/{id}/legal-hold": {
         parameters: {
             query?: never;
@@ -1942,6 +2014,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's preferences
+         * @description A person's preferences (staff competence design S9), one per kind, by kind. Read by the person, their managers today by the one manager rule, staff:manage and staff:personal-data; anyone else — a colleague, staff:approve alone — gets a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdPreferences"];
+        /**
+         * Replace a person's preferences
+         * @description Replaces a person's preferences — the person alone, on their own record, at most one per kind; recorded as preferences_changed (the kinds added, changed or removed, never a value) when any changes. A preference whose value and weight are unchanged keeps its row and its Seen stamp; a changed or new one is unstamped; a kind no longer sent is deleted. No If-Match: the person is the only writer, and the list is not under the person's revision. Anyone else who sees the person gets the uniform 403; a person the caller may not see is the bare 404.
+         */
+        put: operations["putStaffPeopleByIdPreferences"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/{id}/reassessed": {
         parameters: {
             query?: never;
@@ -2044,6 +2140,26 @@ export interface paths {
          */
         put: operations["putStaffPeopleByIdUser"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/wishes/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a person's wishes seen
+         * @description Stamps Seen, with the caller and the instant, every row of the person's interests, preferences and availability declaration that carries no stamp, and every current competence row that carries none (staff competence design S8) — so a wish added or changed after the one-to-one is unmistakably new; recorded as wishes_seen (the rows stamped) when anything was stamped. A second Seen with nothing new answers zeros and records nothing. The person's manager today by the one manager rule or staff:manage — never the person and never staff:approve alone: anyone else who reads the person's wishes gets the uniform 403; a person whose wishes the caller may not read is the bare 404.
+         */
+        post: operations["postStaffPeopleByIdWishesSeen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2634,6 +2750,80 @@ export interface components {
             /** Format: uuid */
             id: string;
         };
+        /** @description One row of a person's availability declaration (staff competence design S10) — recurring, on a weekday, between optional first and last days, or dated, from fromDate to toDate (fromDate alone without toDate); the whole day, or from startMinute to endMinute. Data only — nothing in Staff enforces or sums it. Read by the person, their managers today, staff:manage and staff:personal-data. */
+        StaffAvailabilityDeclaration: {
+            /**
+             * Format: int32
+             * @description The minute of the day the row ends, 0 to 1440, after startMinute. Absent, with startMinute, for the whole day.
+             */
+            endMinute?: number;
+            /**
+             * Format: date
+             * @description A dated row's day, or its first day; a recurring row's first day, when bounded. Absent on a recurring row without a first day.
+             */
+            fromDate?: string;
+            kind: components["schemas"]["StaffAvailabilityKind"];
+            /**
+             * Format: date-time
+             * @description When the person's manager or HR stamped the row Seen. Absent when it has not been seen since it was written.
+             */
+            seenAt?: string;
+            /**
+             * Format: int32
+             * @description The minute of the day the row starts, 0 to 1440, before endMinute. Absent, with endMinute, for the whole day.
+             */
+            startMinute?: number;
+            /**
+             * Format: date
+             * @description The last day, on or after fromDate. Absent on a dated row of one day and on a recurring row without a last day.
+             */
+            toDate?: string;
+            /**
+             * Format: int32
+             * @description A recurring row's ISO weekday, 1 (Monday) to 7 (Sunday). Absent on a dated row.
+             */
+            weekday?: number;
+        };
+        /**
+         * @description What the person declares for the row's days and hours — available, unavailable or preferred.
+         * @enum {string}
+         */
+        StaffAvailabilityKind: "available" | "unavailable" | "preferred";
+        /** @description A person's availability declaration, every row — the recurring rows by weekday first, then the dated ones by day, each by its start. */
+        StaffAvailabilityList: {
+            declarations: components["schemas"]["StaffAvailabilityDeclaration"][];
+        };
+        /** @description A person's availability declaration, every row — a full replace, by the person alone; an empty list removes it. At most fifty rows, each keyed by its index when a field does not pass (declarations[0].fromDate): weekday 1 to 7 or absent; without a weekday, fromDate is required; toDate on or after fromDate; startMinute and endMinute both or neither, 0 to 1440, endMinute after startMinute; a row equal in every field to another sent is refused on the later index. A property a row does not name is refused. */
+        StaffAvailabilityRequest: {
+            declarations: {
+                /**
+                 * Format: int32
+                 * @description The minute of the day the row ends, 0 to 1440, after startMinute. Absent, with startMinute, for the whole day.
+                 */
+                endMinute?: number;
+                /**
+                 * Format: date
+                 * @description A dated row's day, or its first day; a recurring row's first day, when bounded. Absent on a recurring row without a first day.
+                 */
+                fromDate?: string;
+                kind: components["schemas"]["StaffAvailabilityKind"];
+                /**
+                 * Format: int32
+                 * @description The minute of the day the row starts, 0 to 1440, before endMinute. Absent, with endMinute, for the whole day.
+                 */
+                startMinute?: number;
+                /**
+                 * Format: date
+                 * @description The last day, on or after fromDate. Absent on a dated row of one day and on a recurring row without a last day.
+                 */
+                toDate?: string;
+                /**
+                 * Format: int32
+                 * @description A recurring row's ISO weekday, 1 (Monday) to 7 (Sunday). Absent on a dated row.
+                 */
+                weekday?: number;
+            }[];
+        };
         /** @enum {string} */
         StaffBankAccountKind: "bban" | "iban";
         /** @description A bank account to seal on the person (design S4): a Norwegian kontonummer (bban, eleven digits with a valid MOD11 control digit; spaces and full stops are dropped) or an IBAN (spaces dropped; the ISO 13616 check digits, and for a Norwegian IBAN the embedded account's MOD11). The value is sealed; only its kind and last four digits are kept in clear, and no refusal echoes it. */
@@ -3002,6 +3192,25 @@ export interface components {
             reminderLeadDays?: number;
             /** Format: int32 */
             validityMonths?: number;
+        };
+        /** @description A competence review (staff competence design S11) — the day the person and whoever may verify their competences went through the person's Competence tab together. No notes and no goals. */
+        StaffCompetenceReview: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: date-time
+             * @description When the review was recorded.
+             */
+            recordedAt: string;
+            /** Format: date */
+            reviewedOn: string;
+            /** @description The reviewer's name, as the user directory names them. */
+            reviewer: string;
+        };
+        /** @description A competence review being recorded. reviewedOn left out is today; a day after today is refused on reviewedOn. The body may be left out altogether. */
+        StaffCompetenceReviewRequest: {
+            /** Format: date */
+            reviewedOn?: string;
         };
         /** @description The competence a person's row names, as every row carries it, archived or not. */
         StaffCompetenceSummary: {
@@ -3379,7 +3588,7 @@ export interface components {
             at: string;
             /** Format: int64 */
             id: number;
-            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed, account_mismatched and identity_erased for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the groups' — group_joined and group_left, naming the group (groupId, groupName, groupKey) and how the person came in or went (source, listed or derived); the competences' — competence_declared, competence_changed, competence_verified, competence_renewed, competence_removed and competence_evidence_added, naming the competence by its key, with its level, and never the verifier's note (competence_created and competence_updated are the catalogue's installation events, never a person's); the kinds grow with the module. */
+            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed, account_mismatched and identity_erased for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the groups' — group_joined and group_left, naming the group (groupId, groupName, groupKey) and how the person came in or went (source, listed or derived); the competences' — competence_declared, competence_changed, competence_verified, competence_renewed, competence_removed and competence_evidence_added, naming the competence by its key, with its level, and never the verifier's note (competence_created and competence_updated are the catalogue's installation events, never a person's); the one-to-one's — interests_changed and availability_changed with the count before and after, preferences_changed with the kinds added, changed or removed and never a value, wishes_seen with the rows stamped and competence_reviewed with the review's day; the kinds grow with the module. */
             kind: string;
             /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}. An erase records up to two: the health kinds (health, cases, childSick, withdrawal, pregnancyHealth) in one of class E, listed to the person and staff:personal-data alone, and D and A in one read by HR and listed as the hold's kinds are — not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone. */
             payload: {
@@ -3856,6 +4065,13 @@ export interface components {
          * @enum {string}
          */
         StaffLanguage: "en" | "nb";
+        /** @description The person's latest competence review by reviewedOn (staff competence design S11) — the reviews group, read by the person, their managers today, staff:approve, staff:manage and staff:personal-data. Absent from the person when they were never reviewed. */
+        StaffLastCompetenceReview: {
+            /** Format: date */
+            reviewedOn: string;
+            /** @description The reviewer's name, as the user directory names them. */
+            reviewer: string;
+        };
         /** @description A legal entity, the juridisk enhet (design S6). */
         StaffLegalEntity: {
             /**
@@ -3964,6 +4180,8 @@ export interface components {
             /** @description Every holiday scheme, archived ones included, with its figures converted to working days. */
             holidaySchemes: components["schemas"]["StaffHolidayScheme"][];
             defaultAccountKind?: components["schemas"]["StaffAccountKind"];
+            /** @description The locations not archived, by name — every caller's, so the person's location preference (staff competence design S9) is picked from the company's places without the directory; the structure's list, archived ones included, stays staff:view's and staff:manage's. */
+            locations: components["schemas"]["StaffLocation"][];
             /** @description staff:manage only — every external identity provider an enabled module offers (the IdentityProvisioner slot), each with the status the provider answers now, asked before any snapshot; a provider that could not be asked reads failing, unreachable. The entra kind is offered only when its provider is among them. Empty when no enabled module offers one; absent to anyone else. */
             providers?: components["schemas"]["StaffIdentityProvider"][];
             /** @description staff:manage only — whether an Owner has named the roles Staff may give (identity's employee roles), without which a local account cannot be enabled. Absent to anyone else, and when accounts are unavailable. */
@@ -4063,7 +4281,7 @@ export interface components {
         };
         /** @enum {string} */
         StaffPayPeriod: "monthly" | "yearly" | "hourly" | "once";
-        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the one who manages them today — the manager the terms name when they are employed today, else the department's manager climbing the parents, a manager who has left skipped (design §4 Managers, §9) — absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone; erasedAt, legalHold and reassessedAt (the hold group) are staff:manage's and staff:personal-data's. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
+        /** @description A person (design §3.1), shaped by who is asking (§5): every field belongs to a field group — work, private, HR's notes, the national identity number, the bank account, the account link — and a group the caller may not read is absent, never null. The work group is everyone's who may see the person, manager, department, title, business unit and location among it — each from the terms in force today and their employment, the manager the one who manages them today — the manager the terms name when they are employed today, else the department's manager climbing the parents, a manager who has left skipped (design §4 Managers, §9) — absent when there is none; the private group, the national identity number, the bank account and the user are the person's own and HR's (staff:manage, staff:personal-data); notes are HR's alone; erasedAt, legalHold and reassessedAt (the hold group) are staff:manage's and staff:personal-data's; lastCompetenceReview (the reviews group) is the person's, their managers', staff:approve's and HR's, absent when they were never reviewed. status is where the person stands today. The national identity number is answered as its kind and whether one is on file, the bank account as its kind and last four digits — never more. capabilities say what the caller may do with this person. */
         StaffPerson: {
             bankAccount?: components["schemas"]["StaffPersonBankAccount"];
             /**
@@ -4100,6 +4318,7 @@ export interface components {
             givenName: string;
             /** Format: int64 */
             id: number;
+            lastCompetenceReview?: components["schemas"]["StaffLastCompetenceReview"];
             legalHold?: components["schemas"]["StaffLegalHold"];
             location?: components["schemas"]["StaffLocationSummary"];
             manager?: components["schemas"]["StaffPersonSummary"];
@@ -4154,12 +4373,16 @@ export interface components {
             canHold: boolean;
             /** @description staff:manage — the self-service link to a user and the account flag (PUT /people/{id}/account). */
             canManageAccount: boolean;
+            /** @description The caller reads what the person wants — their interests, preferences and availability declaration (staff competence design S18) — the person, their managers today, staff:manage and staff:personal-data; never staff:approve alone (GET /people/{id}/interests). */
+            canReadWishes: boolean;
             /** @description staff:personal-data — reveal and write the national identity number and the bank account. */
             canRevealIdentifiers: boolean;
             /** @description The person themselves or staff:personal-data — the person's health documents. */
             canSeeHealth: boolean;
             /** @description The person themselves, staff:manage or staff:personal-data — the pay terms of the person's employments. */
             canSeePay: boolean;
+            /** @description The caller stamps what the person wants Seen — the person's manager today or staff:manage, never the person and never staff:approve alone (POST /people/{id}/wishes/seen). */
+            canStampWishesSeen: boolean;
             /** @description The caller verifies the person's competences (staff competence design S4) — the person's manager today, staff:approve or staff:manage, never the person (POST /person-competences/{id}/verify). */
             canVerifyCompetence: boolean;
             /** @description The caller manages the person today by the one manager rule — a manager of theirs, who decides their absence, ticks their sick-leave case's milestones and writes its accommodation note. False for oneself. */
@@ -4167,7 +4390,7 @@ export interface components {
             /** @description The caller's self-service link names the person — the person themselves. */
             self: boolean;
         };
-        /** @description A person's competence row (staff competence design S3–S6) — current, or superseded by its renewal. A row is declared until it is verified. The detail fields (issuedOn, issuer, reference, evidence, source and the verification's) are absent to a colleague, who reads the competence, its level and its validity alone. */
+        /** @description A person's competence row (staff competence design S3–S6) — current, or superseded by its renewal. A row is declared until it is verified. The detail fields (issuedOn, issuer, reference, evidence, source, the verification's and seenAt) are absent to a colleague, who reads the competence, its level and its validity alone. */
         StaffPersonCompetence: {
             competence: components["schemas"]["StaffCompetenceSummary"];
             /**
@@ -4199,6 +4422,11 @@ export interface components {
              * @description Send it back as If-Match on PUT /person-competences/{id}.
              */
             revision: number;
+            /**
+             * Format: date-time
+             * @description When the person's manager or HR stamped a current row Seen (POST /people/{id}/wishes/seen). Absent when it has not been seen.
+             */
+            seenAt?: string;
             /** @description Who entered the row — self (the person declared it), manager (a manager of theirs or staff:approve) or hr (staff:manage). */
             source?: string;
             /** @description The row was renewed by a newer one, and is valid on no day. */
@@ -4321,6 +4549,30 @@ export interface components {
             since?: string;
             source?: components["schemas"]["StaffGroupKind"];
         };
+        /** @description One of a person's interests in a competence (staff competence design S8). Read by the person, their managers today, staff:manage and staff:personal-data. */
+        StaffPersonInterest: {
+            competence: components["schemas"]["StaffCompetenceSummary"];
+            /** Format: int64 */
+            competenceId: number;
+            /** @description The person holds a current row of the competence, declared or verified — they want to use it more; otherwise they want to learn it. */
+            held: boolean;
+            /**
+             * Format: date-time
+             * @description When the person's manager or HR stamped the interest Seen. Absent when it has not been seen since it was written.
+             */
+            seenAt?: string;
+        };
+        /** @description A person's interests, in the catalogue's order. */
+        StaffPersonInterestList: {
+            interests: components["schemas"]["StaffPersonInterest"][];
+        };
+        /** @description A person's interests, all of them — a full replace, by the person alone; an empty list removes them. At most twenty; a competence named twice is refused on the later index (interests[3].competenceId), and a new interest in an unknown, hidden or archived competence is competence_unavailable on its competenceId — one already on file is kept as it is. A property a row does not name is refused. */
+        StaffPersonInterestsRequest: {
+            interests: {
+                /** Format: int64 */
+                competenceId: number;
+            }[];
+        };
         /** @description A person's self-service link to a user (design S24, §3.6) — the link that makes the user the person themselves to this module, and nothing else. linked is false, and every other field absent, when the person is linked to nobody. */
         StaffPersonLink: {
             linked: boolean;
@@ -4368,6 +4620,43 @@ export interface components {
         StaffPersonNationalId: {
             kind?: components["schemas"]["StaffNationalIdKind"];
             onFile: boolean;
+        };
+        /** @description One of a person's preferences (staff competence design S9), one per kind. Read by the person, their managers today, staff:manage and staff:personal-data. */
+        StaffPersonPreference: {
+            kind: components["schemas"]["StaffPreferenceKind"];
+            /**
+             * Format: date-time
+             * @description When the person's manager or HR stamped the preference Seen. Absent when it has not been seen since it was written.
+             */
+            seenAt?: string;
+            /** @description The preference, its shape by kind — weekdays {"days": [1..7]}, ISO weekdays, 1 to 7 distinct; time_of_day {"parts": ["morning" | "day" | "evening" | "night"]}, 1 to 4 distinct; location {"locationIds": [...]}, 1 to 10 distinct ids of locations not archived; travel {"extent": "none" | "regional" | "national" | "international"}; remote {"share": "never" | "some" | "mostly" | "only"}; max_consecutive_days {"days": 1..14}; max_hours_per_week {"hours": 1..60}. No kind carries free text. Answered in its canonical form, the days and parts sorted. */
+            value: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: int32
+             * @description 1 (nice to have), 2 (matters) or 3 (important).
+             */
+            weight: number;
+        };
+        /** @description A person's preferences, by kind. */
+        StaffPersonPreferenceList: {
+            preferences: components["schemas"]["StaffPersonPreference"][];
+        };
+        /** @description A person's preferences, all of them — a full replace, by the person alone; an empty list removes them. At most seven, one per kind (a kind sent again is refused on the later index, preferences[1].kind); weight 1 to 3 (preferences[0].weight); the value as StaffPersonPreference describes it, a key the kind does not take refused (preferences[0].value), and an unknown or archived location in a new or changed preference refused on its value. A property a row does not name is refused. */
+        StaffPersonPreferencesRequest: {
+            preferences: {
+                kind: components["schemas"]["StaffPreferenceKind"];
+                /** @description The kind's object, as StaffPersonPreference's value describes it. */
+                value: {
+                    [key: string]: unknown;
+                };
+                /**
+                 * Format: int32
+                 * @description 1 to 3.
+                 */
+                weight: number;
+            }[];
         };
         /** @description A person's editable fields, the whole record as staff:manage replaces it (design §3.1, §5): the work group, the private group and HR's notes. The national identity number and the bank account are written through their own operations under staff:personal-data, and the self-service link through its own; a property this schema does not name — one of those among them — is refused as a 400 naming it. On a change every optional field left out is cleared, except displayName, which stays. */
         StaffPersonRequest: {
@@ -4498,14 +4787,18 @@ export interface components {
             /** Format: uuid */
             id: string;
         };
-        /** @description A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads), every competence row with its evidence document's details, every absence, the holiday adjustments, every sick-leave case with its milestones, this year's care days, the standing of egenmelding today and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history and its absence, cases and care days as the person reads them. */
+        /** @description A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads), every competence row with its evidence document's details, the interests, the preferences, the availability declaration and the competence reviews, every absence, the holiday adjustments, every sick-leave case with its milestones, this year's care days, the standing of egenmelding today and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history and its absence, cases and care days as the person reads them. */
         StaffPersonalData: {
             /** @description Every absence of the person, in any status, newest first. */
             absences: components["schemas"]["StaffAbsence"][];
             account: components["schemas"]["StaffPersonalDataAccount"];
+            /** @description Every row of the person's availability declaration. */
+            availability: components["schemas"]["StaffAvailabilityDeclaration"][];
             careDays: components["schemas"]["StaffCareDays"];
             /** @description Every sick-leave case of the person with its milestones, newest first. */
             cases: components["schemas"]["StaffCase"][];
+            /** @description Every competence review of the person, newest first. */
+            competenceReviews: components["schemas"]["StaffCompetenceReview"][];
             /** @description Every competence row of the person, superseded ones included, newest first. */
             competences: components["schemas"]["StaffPersonCompetence"][];
             documents: components["schemas"]["StaffDocument"][];
@@ -4516,9 +4809,13 @@ export interface components {
             exportedAt: string;
             /** @description Every adjustment of the person's holiday account, newest year first. */
             holidayAdjustments: components["schemas"]["StaffHolidayAdjustment"][];
+            /** @description Every interest of the person, in the catalogue's order. */
+            interests: components["schemas"]["StaffPersonInterest"][];
             link: components["schemas"]["StaffPersonLink"];
             nextOfKin: components["schemas"]["StaffNextOfKin"][];
             person: components["schemas"]["StaffPersonalDataPerson"];
+            /** @description Every preference of the person, by kind. */
+            preferences: components["schemas"]["StaffPersonPreference"][];
             roles: components["schemas"]["StaffPersonRole"][];
             selfCertification: components["schemas"]["StaffSelfCertification"];
         };
@@ -4593,6 +4890,11 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
+        /**
+         * @description What a preference is about (staff competence design S9) — the weekdays, the time of day, the locations, how far the person travels, how much of the work is remote, the most consecutive working days and the most hours a week. An unknown kind is a field error.
+         * @enum {string}
+         */
+        StaffPreferenceKind: "weekdays" | "time_of_day" | "location" | "travel" | "remote" | "max_consecutive_days" | "max_hours_per_week";
         /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), own_record (403: the person verifying their own competence row), skill_no_validity (400, a field error on validTo: an end on a row of a skill; 409: a renewal of a skill's row), level_not_allowed (400, a field error on level: a level on a competence without one) and level_required (400, a field error on level: none on a competence with one). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
@@ -4770,6 +5072,11 @@ export interface components {
             autoCarryOverSince?: string;
             /**
              * Format: int32
+             * @description The months after which a person in employment today is review-overdue (staff competence design S11) — counted from their latest competence review, or from the start of their current unbroken employment run when that is later; 0 to 60, 12 by default; 0 turns the overdue item off.
+             */
+            competenceReviewIntervalMonths: number;
+            /**
+             * Format: int32
              * @description How many days before the account's effective date the accounts worker prepares it, disabled (design S22); 0 to 90, 14 by default.
              */
             createBeforeDays: number;
@@ -4839,10 +5146,15 @@ export interface components {
             /** @description The workspace's business time zone, an IANA name — answered here, never set here (an Owner sets it under Workspace administration, PUT /api/v1/identity/owner/workspace). Every date in Staff — a start, an end, "today" — is a calendar day in it. */
             timeZone: string;
         };
-        /** @description A replace of the settings. The two retention periods, the self-certification policy, the carry-over, the four account settings and the two erase settings left out keep the values they have; everything else is replaced. */
+        /** @description A replace of the settings. The two retention periods, the self-certification policy, the carry-over, the four account settings, the two erase settings and the competence review interval left out keep the values they have; everything else is replaced. */
         StaffSettingsRequest: {
             /** @description Left out, it keeps its value. Turning it on records today as autoCarryOverSince. */
             autoCarryOver?: boolean;
+            /**
+             * Format: int32
+             * @description 0 to 60 months; 0 turns the overdue item off. Left out, it keeps its value.
+             */
+            competenceReviewIntervalMonths?: number;
             /**
              * Format: int32
              * @description 0 to 90 days. Left out, it keeps its value.
@@ -4962,7 +5274,7 @@ export interface components {
         /**
          * @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. The host words the sentence from `type`; `title` is the name of the thing — a person's name — or, for the three items about the installation, an English sentence the host replaces. "Today" is the day in the settings' time zone; a date-only occurredAt is that day at midnight UTC.
          *
-         *     Fifty-five types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie''s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt the ferie''s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (the external kind): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created for the local kind, the person's kind now one that never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `erasureIncomplete`: for an erased person whose managed identity link could not be erased by the retention run (refused by identity, or the call failed), retried daily by the retention run, with the neutral title "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). The provider items (delivery B, Entra design D7; staff:manage alone, the same way) are read from the person's provider link as the worker wrote it, and from what the worker last saw of each provider (the settings' provider_status), never by asking the provider at read time; they are named for Entra, though their codes are the slot's. One per person, as above, unless said: `accountNotArrived`: Staff announced the external account to identity more than ninety days ago and no user has arrived for it; occurredAt the announcement. `accountAmbiguousInEntra`: two accounts in the directory hold the person's employee number. `accountAddressTakenInEntra`: the person's work email is another account's in the directory. `accountUnconfirmedInEntra`: the directory holds an account under the person's employee number that Vantigo did not create; a holder of entra:manage confirms the adoption on the Microsoft Entra ID page before Staff acts on it. `accountSyncedOnPremises`: the account is synchronised from an on-premises directory, whose attributes the provider cannot write. `accountPrivilegedInEntra`: the account holds an administrative role in the directory (refused, or reported privileged), which an administrator handles by hand. `hireDateNotWritten`: the directory refused the hire date. `licenceUnavailable`: a licence of the person's groups could not be assigned, none being left — one per person whatever the licences; no title names the licence. `passUnrevealed`: the provider issued a pass for the person a day ago or more and nobody has shown it; occurredAt when it was issued. `managerNotInEntra`: the person's manager has no account in the directory, so the account carries no manager. Four are the installation's, one each with entityId the literal 'settings', id the type, count the people of a provider's kind whose flag is on and occurredAt when the worker last checked the provider, raised only while someone has that kind: `entraNotConnected` (the provider has no connection yet), `entraFailing` (its last check failed — a credential refused or consent withdrawn), `secretExpiring` (the newest valid client secret ends within thirty days), `secretExpired` (it has ended). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items; on a provider link, provider_unavailable to entraNotConnected or entraFailing by the provider's status, external_ambiguous, external_address_taken, external_synced_on_premises, external_privileged and external_unconfirmed to their items, the reported privileged to accountPrivilegedInEntra, hire_date_not_written to hireDateNotWritten, licence_unavailable to licenceUnavailable, manager_not_in_entra to managerNotInEntra, user_gone to accountUserGone and invalid_actor to accountFailing. `groupSyncFailed` (staff:manage alone, Entra design D14): a group's section under a provider the accounts worker could not sync — a trait value the provider refused, a group in its directory it may not manage, or its calls failing — one per section, id `groupSyncFailed/<groupId>/<provider>`, entityId the group's id, title the group's name and nothing more (the code is on the group page), occurredAt today; it clears when the sync succeeds. The competence items (staff competence design §4) are read for active people's current rows alone, one per row, id `<type>/<rowId>`, entityId the person's id, title the person's name and nothing more, never the person's own rows to the person: `competenceDeclared` (the person's managers today — a manager their reports alone — staff:approve and staff:manage): a current row the person declared that nobody has verified; occurredAt when it was declared. `competenceExpiring` (the person's managers today and staff:manage): a current row whose validTo is within the competence's reminder lead days of today and has not passed; occurredAt its validTo. `competenceExpired` (the same): a current row whose validTo has passed; occurredAt its validTo. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
+         *     Fifty-six types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie''s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person''s id, title the person''s name, occurredAt the ferie''s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (the external kind): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created for the local kind, the person's kind now one that never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `erasureIncomplete`: for an erased person whose managed identity link could not be erased by the retention run (refused by identity, or the call failed), retried daily by the retention run, with the neutral title "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). The provider items (delivery B, Entra design D7; staff:manage alone, the same way) are read from the person's provider link as the worker wrote it, and from what the worker last saw of each provider (the settings' provider_status), never by asking the provider at read time; they are named for Entra, though their codes are the slot's. One per person, as above, unless said: `accountNotArrived`: Staff announced the external account to identity more than ninety days ago and no user has arrived for it; occurredAt the announcement. `accountAmbiguousInEntra`: two accounts in the directory hold the person's employee number. `accountAddressTakenInEntra`: the person's work email is another account's in the directory. `accountUnconfirmedInEntra`: the directory holds an account under the person's employee number that Vantigo did not create; a holder of entra:manage confirms the adoption on the Microsoft Entra ID page before Staff acts on it. `accountSyncedOnPremises`: the account is synchronised from an on-premises directory, whose attributes the provider cannot write. `accountPrivilegedInEntra`: the account holds an administrative role in the directory (refused, or reported privileged), which an administrator handles by hand. `hireDateNotWritten`: the directory refused the hire date. `licenceUnavailable`: a licence of the person's groups could not be assigned, none being left — one per person whatever the licences; no title names the licence. `passUnrevealed`: the provider issued a pass for the person a day ago or more and nobody has shown it; occurredAt when it was issued. `managerNotInEntra`: the person's manager has no account in the directory, so the account carries no manager. Four are the installation's, one each with entityId the literal 'settings', id the type, count the people of a provider's kind whose flag is on and occurredAt when the worker last checked the provider, raised only while someone has that kind: `entraNotConnected` (the provider has no connection yet), `entraFailing` (its last check failed — a credential refused or consent withdrawn), `secretExpiring` (the newest valid client secret ends within thirty days), `secretExpired` (it has ended). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items; on a provider link, provider_unavailable to entraNotConnected or entraFailing by the provider's status, external_ambiguous, external_address_taken, external_synced_on_premises, external_privileged and external_unconfirmed to their items, the reported privileged to accountPrivilegedInEntra, hire_date_not_written to hireDateNotWritten, licence_unavailable to licenceUnavailable, manager_not_in_entra to managerNotInEntra, user_gone to accountUserGone and invalid_actor to accountFailing. `groupSyncFailed` (staff:manage alone, Entra design D14): a group's section under a provider the accounts worker could not sync — a trait value the provider refused, a group in its directory it may not manage, or its calls failing — one per section, id `groupSyncFailed/<groupId>/<provider>`, entityId the group's id, title the group's name and nothing more (the code is on the group page), occurredAt today; it clears when the sync succeeds. The competence items (staff competence design §4) are read for active people's current rows alone, one per row, id `<type>/<rowId>`, entityId the person's id, title the person's name and nothing more, never the person's own rows to the person: `competenceDeclared` (the person's managers today — a manager their reports alone — staff:approve and staff:manage): a current row the person declared that nobody has verified; occurredAt when it was declared. `competenceExpiring` (the person's managers today and staff:manage): a current row whose validTo is within the competence's reminder lead days of today and has not passed; occurredAt its validTo. `competenceExpired` (the same): a current row whose validTo has passed; occurredAt its validTo. `competenceReviewOverdue` (the person's managers today — a manager their reports alone — and staff:manage; never staff:approve alone, and never about oneself): a person in employment today, not erased, whose latest competence review — or the start of their current unbroken employment run, when that is later — lies more than the settings' competenceReviewIntervalMonths before today; none while the interval is 0; one per person, id `competenceReviewOverdue/<personId>`, occurredAt the day it fell due. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
          */
         StaffStatsAttentionItem: {
             /**
@@ -4977,7 +5289,7 @@ export interface components {
             occurredAt: string;
             title: string;
             /** @enum {string} */
-            type: "contractOverdue" | "probationEnding" | "temporaryNoticeDue" | "temporaryConverts" | "reportsWithoutManager" | "reassessmentDue" | "retentionFailing" | "otpThreshold" | "headcountThreshold" | "selfApproved" | "holidayAffectedBySickness" | "absenceAwaitingDecision" | "hrOnlyAwaitingDecision" | "hrOnlySelfApproved" | "sickMilestoneDue" | "holidayUntaken" | "mainPeriodShort" | "accountNoEmployment" | "accountEmailMissing" | "accountNotFound" | "accountNotManaged" | "accountBlockedByOwner" | "accountDisabledByOwner" | "accountUserGone" | "accountPrivileged" | "accountMismatch" | "accountModeChanged" | "accountEmailDiffers" | "accountEmailTaken" | "accountNumberTaken" | "accountFailing" | "invitationUnanswered" | "invitationRevoked" | "employeeRoleMissing" | "employeeRoleUnsafe" | "accountModeMismatch" | "entraNotConnected" | "entraFailing" | "accountNotArrived" | "accountAmbiguousInEntra" | "accountAddressTakenInEntra" | "accountUnconfirmedInEntra" | "accountSyncedOnPremises" | "accountPrivilegedInEntra" | "hireDateNotWritten" | "licenceUnavailable" | "passUnrevealed" | "secretExpiring" | "secretExpired" | "managerNotInEntra" | "groupSyncFailed" | "erasureIncomplete" | "competenceDeclared" | "competenceExpiring" | "competenceExpired";
+            type: "contractOverdue" | "probationEnding" | "temporaryNoticeDue" | "temporaryConverts" | "reportsWithoutManager" | "reassessmentDue" | "retentionFailing" | "otpThreshold" | "headcountThreshold" | "selfApproved" | "holidayAffectedBySickness" | "absenceAwaitingDecision" | "hrOnlyAwaitingDecision" | "hrOnlySelfApproved" | "sickMilestoneDue" | "holidayUntaken" | "mainPeriodShort" | "accountNoEmployment" | "accountEmailMissing" | "accountNotFound" | "accountNotManaged" | "accountBlockedByOwner" | "accountDisabledByOwner" | "accountUserGone" | "accountPrivileged" | "accountMismatch" | "accountModeChanged" | "accountEmailDiffers" | "accountEmailTaken" | "accountNumberTaken" | "accountFailing" | "invitationUnanswered" | "invitationRevoked" | "employeeRoleMissing" | "employeeRoleUnsafe" | "accountModeMismatch" | "entraNotConnected" | "entraFailing" | "accountNotArrived" | "accountAmbiguousInEntra" | "accountAddressTakenInEntra" | "accountUnconfirmedInEntra" | "accountSyncedOnPremises" | "accountPrivilegedInEntra" | "hireDateNotWritten" | "licenceUnavailable" | "passUnrevealed" | "secretExpiring" | "secretExpired" | "managerNotInEntra" | "groupSyncFailed" | "erasureIncomplete" | "competenceDeclared" | "competenceExpiring" | "competenceExpired" | "competenceReviewOverdue";
         };
         /** @description The company's structure, present on GET /meta only for a caller holding staff:view or staff:manage. Archived rows are included so a stored reference can still be named; the pickers leave them out. */
         StaffStructure: {
@@ -5225,6 +5537,31 @@ export interface components {
             50?: string;
             /** Format: date-time */
             otp?: string;
+        };
+        /** @description What a Seen stamped (staff competence design S8) — the rows of each list that carried no stamp, all stamped at seenAt. Zero everywhere when everything had been seen. */
+        StaffWishesSeen: {
+            /**
+             * Format: int32
+             * @description The person's current competence rows stamped.
+             */
+            competences: number;
+            /**
+             * Format: int32
+             * @description The availability declaration's rows stamped.
+             */
+            declarations: number;
+            /**
+             * Format: int32
+             * @description The interests stamped.
+             */
+            interests: number;
+            /**
+             * Format: int32
+             * @description The preferences stamped.
+             */
+            preferences: number;
+            /** Format: date-time */
+            seenAt: string;
         };
         /**
          * @description The a-melding's arbeidstidsordning: not_shift (ikkeSkift), shift_365 (skift365), offshore_336 (offshore336), continuous_336 (helkontinuerligSkiftOgAndreOrdninger336), round_the_clock_355 (doegnkontinuerligSkiftOgTurnus355), other_shift (andreSkift).
@@ -10979,6 +11316,122 @@ export interface operations {
             };
         };
     };
+    getStaffPeopleByIdAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAvailabilityList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or not one whose wishes the caller may read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffPeopleByIdAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffAvailabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAvailabilityList"];
+                };
+            };
+            /** @description Bad Request — more than fifty, or a field did not pass, keyed by its index (declarations[0].fromDate). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no person has that id, or the caller may not see them. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     putStaffPeopleByIdBankAccount: {
         parameters: {
             query?: never;
@@ -11215,6 +11668,123 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — carry_over_recorded, or person_erased. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    getStaffPeopleByIdCompetenceReviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCompetenceReview"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or not one whose reviews the caller may read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postStaffPeopleByIdCompetenceReviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StaffCompetenceReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCompetenceReview"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; reviewedOn after today, or a property the request does not take. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the uniform 403, or own_record (the person recording a review of their own). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Not Found — no person has that id, or the caller may not see them or their reviews (a colleague). The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -11839,6 +12409,122 @@ export interface operations {
             };
         };
     };
+    getStaffPeopleByIdInterests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonInterestList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or not one whose wishes the caller may read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffPeopleByIdInterests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffPersonInterestsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonInterestList"];
+                };
+            };
+            /** @description Bad Request — more than twenty, or a field did not pass, keyed by its index (interests[1].competenceId); competence_unavailable on a new interest's competenceId (an unknown, hidden or archived competence). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no person has that id, or the caller may not see them. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
     putStaffPeopleByIdLegalHold: {
         parameters: {
             query?: never;
@@ -12227,6 +12913,122 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getStaffPeopleByIdPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonPreferenceList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or not one whose wishes the caller may read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putStaffPeopleByIdPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffPersonPreferencesRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonPreferenceList"];
+                };
+            };
+            /** @description Bad Request — a kind sent twice, or a field did not pass, keyed by its index (preferences[1].kind, preferences[0].value, preferences[0].weight). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no person has that id, or the caller may not see them. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };
@@ -12637,6 +13439,62 @@ export interface operations {
             };
             /** @description Service Unavailable — accounts_unavailable when identity could not say whether the user is Staff-managed. Nothing was changed. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    postStaffPeopleByIdWishesSeen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffWishesSeen"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such person, or not one whose wishes the caller may read. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

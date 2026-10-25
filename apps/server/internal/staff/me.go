@@ -86,7 +86,8 @@ func (p parsedMe) applyTo(current store.GetPersonRow) store.GetPersonRow {
 }
 
 // respondSelf is the person as they read themselves, placed on today, the
-// linked user read from the directory after any transaction.
+// linked user and their latest competence review's reviewer read from the
+// directory after any transaction.
 func (s *server) respondSelf(ctx context.Context, caller *callerContext, row store.GetPersonRow, link *string) (gen.StaffPerson, error) {
 	placements, err := placementsOf(ctx, store.New(s.deps.Pool), []int64{row.ID}, caller.Today)
 	if err != nil {
@@ -100,7 +101,11 @@ func (s *server) respondSelf(ctx context.Context, caller *callerContext, row sto
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}
-	return personResponse(row, placements[row.ID], selfAudience, user, d.decides), nil
+	last, err := s.lastCompetenceReview(ctx, selfAudience, row.ID)
+	if err != nil {
+		return gen.StaffPerson{}, err
+	}
+	return personResponse(row, placements[row.ID], selfAudience, user, d.decides, last), nil
 }
 
 // GetStaffMe Get my own record
