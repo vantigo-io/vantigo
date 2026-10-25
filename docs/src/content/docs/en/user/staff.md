@@ -328,6 +328,37 @@ A certificate within its reminder of its end shows **Expiring** with the days le
 and **Expired** once the day has passed; both are on your dashboard, and you and the
 person get an email. When the new certificate is there, press **Renewed** on the row.
 
+**What they want.** Under the competences, **What they want** shows what the person
+wrote for the one-to-one, as they wrote it: their **Interests** — each competence
+marked *Wants to learn*, or *Wants to use more* when they already hold it — their
+**Preferences** — how they would rather work, each with how much it matters: *Nice to
+have*, *Matters* or *Important* — and their **Availability**, the days and hours they
+can, cannot or would rather work. It is the person's voice: there is nothing for you to
+edit, and nothing in it asks for a reason — if a preference needs one, it is said in the
+conversation. A row the person added or changed since it was last seen carries **New**.
+When you have read it, press **Mark as seen**: every such row, and every competence on
+the tab not yet seen, then reads *Seen* with the day — for the person too, so they know
+it was read — and a competence row's detail shows the day as **Seen in the one-to-one**.
+If the person then changes a declared competence or adds its evidence, that row is new
+again. The button is greyed out while there is nothing new. The person's manager and HR read
+**What they want** and mark it as seen; `staff:personal-data` reads it and marks
+nothing; whoever holds `staff:approve` without being the manager does not see it, and
+neither do colleagues. The rules are under
+[what the person wants](/en/reference/staff/#what-the-person-wants).
+
+**Reviewed together.** Last on the tab, **Reviewed together** shows **Last reviewed** —
+the day and who recorded it, or *Never* — and, behind **Show earlier reviews**, the
+reviews before it. When the two of you have gone through the tab, press **Reviewed
+today** and confirm: it records that you went through the competences together that
+day, and nothing more — no notes, no goals. The manager, whoever holds `staff:approve`
+and HR may press it, never on their own record; the person sees the line but does not
+record a review of themselves. When no review is recorded within the interval HR sets
+under [Competence reviews](#competence-reviews) — 12 months by default, counted from
+the last review or from the start of the current employment, whichever is later — the
+dashboard tells the manager and HR *The competence review of … is overdue*, and My team
+lists the person under **Reviews overdue**. See
+[the review](/en/reference/staff/#the-review).
+
 ### History
 
 **History** lists every change to the person, newest first and paged: what changed,
@@ -915,8 +946,9 @@ anyone, **My team**:
 - **History** — the changes to your record, without HR's notes.
 - **Documents** — your documents, health documents included, to download; HR files and
   changes them. Under **My data**, **Download my data** saves a file (JSON) with your
-  record, your next of kin, roles, employments and terms, your documents' details and
-  your history — without the values HR keeps sealed (your national identity number and
+  record, your next of kin, roles, employments and terms, your documents' details, your
+  competences, what you want — your interests, preferences and availability — your
+  competence reviews and your history — without the values HR keeps sealed (your national identity number and
   bank account in full) and without HR's notes. The file lists your documents without
   their contents: download each from the list. Downloading your data records nothing.
   When Staff gave you your account, it disables it the day after your last
@@ -925,15 +957,16 @@ anyone, **My team**:
 - **Absence** — your holiday account, your egenmelding standing, your care days and
   your absences, with **Request absence** (see
   [Request absence](#request-absence-from-your-phone) below).
-- **Competence** — what you can do, with **Add competence** (see
-  [Your competence](#your-competence) below).
+- **Competence** — what you can do, with **Add competence**, and what you want — your
+  interests, preferences and availability (see [Your competence](#your-competence) and
+  [What I want](#what-i-want) below).
 - **Account** — whether Staff gives you a user to sign in with, from which day and at
   which address, and how your account stands: pending your password, active,
   disabled, with your invitation, and the **Groups** card: the groups you are in, how
   you came in and since when. It is read-only: ask HR to change it.
 - **My team** — only when you manage someone today: the requests you decide, your
-  reports' absence this month and their open sick-leave cases (see
-  [My team](#my-team) below).
+  reports' absence this month, their open sick-leave cases and what waits on their
+  competences (see [My team](#my-team) below).
 
 If HR has not linked your user to a record yet, My page says *You have no record in
 Staff yet* and explains how it comes to be; ask HR if you think yours is missing.
@@ -964,8 +997,8 @@ The **Absence** tab of My page shows, as Staff counts them:
 ### Your competence
 
 The **Competence** tab of My page is what you can do — skills with a level and
-certificates with a validity — as you and your manager keep it together. It is made
-for your phone.
+certificates with a validity — as you and your manager keep it together, and, under it,
+what you want. It is made for your phone.
 
 To add a competence:
 
@@ -1003,6 +1036,45 @@ new one waits for your manager's verification, as a new one does.
 competences, their levels, whether they are verified and how long they are valid. The
 detail — the evidence, the issuer, the reference and the verification — is seen by
 you, your manager, whoever holds `staff:approve` and HR.
+
+#### What I want
+
+Under your competences, **What I want** is yours to write for the one-to-one: what you
+would like to learn or do more of, how you would rather work, and when you can work.
+Only you write it; your manager reads it, before or in the conversation. Each part is
+saved on its own:
+
+- **Interests** — under **Your interests**, search the catalogue and pick the
+  competences you are interested in, at most 20, then press **Save interests**. One you
+  already have reads *Wants to use more*; one you do not, *Wants to learn*. Take one off
+  with its cross and save again.
+- **Preferences** — one card for each kind: **Weekdays** (the days you would rather
+  work), **Time of day** (*Morning*, *Day*, *Evening* or *Night*), **Location** (up to
+  ten of the company's locations), **Travel** (*No travel*, *Within the region*,
+  *Within the country* or *Abroad too*), **Remote work** (*Never*, *Some days*,
+  *Mostly* or *Only remote*), **Most days in a row** (1 to 14) and **Most hours a week**
+  (1 to 60). Turn on **I have a preference** on a card, fill it in and choose **How much
+  it matters**: *Nice to have*, *Matters* or *Important*. Turn the switch off to take a
+  preference away. Press **Save preferences**.
+- **Availability** — when you can, cannot or would rather work. Press **Add
+  declaration** and choose the **Kind** — *Available*, *Unavailable* or *Preferred* —
+  and how it **Repeats**: **Every week**, on a **Weekday**, with a **First day** and a
+  **Last day** if it begins or ends; or **On dates**, from a **First day** to a **Last
+  day** (left empty, the one day). Turn on **Part of the day** to say when it **Starts**
+  and **Ends**; otherwise it is the whole day. Press **Add**. Add as many as you need,
+  at most 50, take one away with its button in the table, and press **Save
+  availability**. It is data only: nobody plans from it yet.
+
+There is no field for a reason anywhere, on purpose. A reason for "no night shifts"
+easily becomes a fact about your health, and that does not belong in a form: if a
+preference needs explaining, say it in the conversation.
+
+When your manager or HR has read what you wrote, each row reads *Seen* with the day; a
+row you add or change after that has no mark until they have read it again, and so has
+a competence you add. Below, **Reviewed together** shows **Last reviewed**: the last
+time you and your manager went through the tab together, and who recorded it. Your
+manager and HR read **What I want**; colleagues do not, and neither does someone who
+holds `staff:approve` without being your manager.
 
 ### Request absence from your phone
 
@@ -1049,6 +1121,15 @@ team lead needs no other permission for their own reports. It shows:
   **Mark done**, or **Waive** with why it is not needed (never a diagnosis); the end of
   the employer's period follows from the absences and is neither. **Change the
   accommodation note** writes the notes about tilrettelegging that the person reads too.
+- **Awaiting your verification** — the competences your reports declared themselves,
+  each with the day it was declared.
+- **Certificates expiring** — your reports' certificates that expire soon or have
+  expired, the expired first and marked **Expired**, each with its day.
+- **Reviews overdue** — your reports whose competence review is overdue, each with the
+  day it fell due.
+
+In the three competence cards, a name opens the person's **Competence** tab, where you
+verify, renew or press **Reviewed today**.
 
 ## The Absence page
 
@@ -1223,6 +1304,7 @@ type is counted only for `staff:personal-data`:
 | … declared a competence awaiting verification | Someone added a competence — or renewed a certificate — themselves, and nobody has verified it yet. A manager sees their own people's; `staff:approve` and HR everyone's. Verify it, or remove it. | The person's Competence tab |
 | A certificate of … expires soon | A certificate is within its reminder of its last valid day. A manager sees their own people's; HR everyone's. Press **Renewed** on it when the new one is there. | The person's Competence tab |
 | A certificate of … has expired | A certificate's last valid day has passed. Renew it, or remove it if the person no longer needs it. | The person's Competence tab |
+| The competence review of … is overdue | Someone in employment has had no competence review recorded within the interval set under [Competence reviews](#competence-reviews) — counted from their last review, or from the start of their current employment when that is later. A manager sees their own people's; HR everyone's. Go through the tab together and press **Reviewed today**. | The person's Competence tab |
 | The group … is not in sync with its directory | A group could not be kept in the directory — a setting the directory refused, a group there holding its key that Vantigo may not change, or a directory that could not be reached three times in a row; the group's page says why. One per group and directory, for HR. | The group |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
@@ -1232,8 +1314,8 @@ Staff settings.
 ## Change the settings
 
 **Staff settings** (`staff:manage`) has the general settings first, then the company's
-structure, the document categories, two cards for competence — **Competence
-categories** and **Competences** — three cards for absence — **Absence types**,
+structure, the document categories, three cards for competence — **Competence
+categories**, **Competences** and **Competence reviews** — three cards for absence — **Absence types**,
 **Holiday schemes** and **Egenmelding and carry-over** — four cards for the data —
 **Import and export people**, **Payroll export**, **Retention** and **Thresholds** — and
 **Accounts** and **Directory profile**.
@@ -1356,6 +1438,17 @@ licences B, C and D, code 95, hot work and work zone signage.
   retires one of your own, and **Restore** brings it back; one whose category is
   archived is restored only once its category is. Either way, everyone who holds the
   competence keeps it, shown by its name.
+
+### Competence reviews
+
+**Competence reviews** sets how often a manager goes through each person's competences
+with them. **Review interval, months** is 0 to 60, 12 by default. A person in
+employment with no review recorded within it — counted from the last time somebody
+pressed **Reviewed today** on their tab, or from the start of their current employment
+when that is later — becomes *The competence review of … is overdue* on the dashboard
+of their manager and HR, and is listed under **Reviews overdue** on their manager's My
+team. 0 turns the item off. Press **Save**. If somebody else saved the settings since
+you opened the page, they are reloaded and the page says so: make your change again.
 
 ### Absence types
 

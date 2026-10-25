@@ -695,5 +695,17 @@ tilbake dropper de tre tabellene med alle personers kompetanserader; dokumentasj
 blir liggende blant personenes dokumenter. Se
 [Ansatte](/nb/admin/staff/#kompetansearbeideren).
 
+**Utgivelsen med kompetansesamtalen.** Den har `00067_staff_one_to_one.sql`: fire tomme
+tabeller for det hver person ønsker — interessene, preferansene og
+tilgjengelighetserklæringen deres — og for kompetansesamtaler; Sett-stempelet på
+personenes kompetanserader; og intervallet for kompetansesamtaler i innstillingene, 12
+måneder som standard, så dashbordet begynner å vise en forfalt samtale for alle i
+arbeid som ikke har hatt en innen intervallet etter den siste samtalen eller starten på
+det arbeidsforholdet de er i nå — sett det til 0 under
+[innstillingene](/nb/admin/staff/#innstillingene) først for å holde punktet av. Ingen
+rettighet er ny: `staff:approve` registrerer nå også kompetansesamtaler. Å rulle
+migreringen tilbake dropper de fire tabellene med alle personers ønsker og samtaler,
+Sett-stempelene på kompetanseradene og intervallinnstillingen.
+
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

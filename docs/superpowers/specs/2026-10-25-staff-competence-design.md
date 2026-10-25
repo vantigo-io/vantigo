@@ -4,9 +4,10 @@ The second phase of the `staff` module. Research: `docs/superpowers/research/202
 ("R", cited by section) and the discussion note
 `docs/superpowers/research/2026-10-25-staff-competence.md` ("N"), whose §3 holds the
 sixteen decisions the owner took on 2026-10-24 and 2026-10-25, which this design
-implements and does not reopen. Revision 2: revision 1 was the design before review; the
+implements and does not reopen. Revision 3: revision 1 was the design before review; the
 code review and the build of delivery A (2026-10-25) amended it as §13 lists, and the
-sections above are read with §13. Code references
+build of delivery B (2026-10-25) added §13's amendments 16–22; the sections above are
+read with §13. Code references
 are against `main` at `65a369c6`; `srv/` abbreviates `apps/server/internal/`, `mig/`
 `srv/db/migrations/`, `boundaries.md` the page
 `docs/src/content/docs/en/contributing/module-boundaries.md`, "the reference"
@@ -728,3 +729,37 @@ Each entry names the section it amends; the section's text above stands otherwis
     categories, not a tab.
 15. **§4 — the lead-days default** applies when a validity is given and no lead; a change
     request leaving the lead out resets it to the default.
+
+The following were decided while building delivery B (2026-10-25); the plan is
+`docs/superpowers/plans/2026-10-25-staff-one-to-one.md`.
+
+16. **S8, S18, §5 — the Seen set is the manager's and HR's, never the Approver's**: the
+    table's "—" for the Approver on Wishes stands, so `POST /people/{id}/wishes/seen` is
+    open to `(Manager ∨ Manage) ∧ ¬Self` alone; an Approver who is neither reads no
+    wishes and stamps none. The capability block gains `canReadWishes` (S18) **and**
+    `canStampWishesSeen`, so the apps carry no audience logic.
+17. **S8, §3.3 — the Seen stamp reaches `person_competences`**: the two columns §3.3
+    lists as B's are stamped on every **current** competence row with none, so a
+    declaration the manager has read but not yet verified is acknowledged. The stamp is
+    `seenAt` on each row (the Competence detail group for a competence row), and the
+    Seen's response counts the rows stamped per table. The person's own change of their
+    declared row, or their evidence upload, clears the row's stamp ("changed since");
+    a verifier's or HR's edit or upload does not.
+18. **§4 — a whole-list PUT is a diff, not a wipe**: a row equal to an existing one
+    (an interest by `competenceId`; a preference by `kind`, `value` and `weight`; a
+    declaration by every field) keeps its row and its Seen stamp; a new or changed row is
+    inserted unstamped; a row no longer sent is deleted. "Changed since" (S8) is "not yet
+    stamped". Catalogue availability — a hidden or archived competence, an archived
+    location — is judged on new or changed rows only; an unchanged row is kept.
+19. **§3.4–3.7 — no CHECK constraints** on the four tables, as 00042 and 00066 say: the
+    module's validation owns §3.6's rules and reports them per field.
+20. **§4, reading 15 — no person revision bump and no `If-Match` on the lists**: the
+    person is their only writer, and the lists are not under the person's revision.
+21. **S16 — the event payloads carry counts and kinds, never values**: `interests_changed`
+    the count before and after; `preferences_changed` the kinds added, changed or removed;
+    `availability_changed` the count before and after; `wishes_seen` the rows stamped;
+    `competence_reviewed` the review's date. Every field is class D.
+22. **§6 — no new refusal code**: a bad weekday, minute, date, weight or kind is a plain
+    field error at its index (`preferences[1].kind`); `competence_unavailable` is reused on
+    `interests[i].competenceId`; a review dated after today is a plain error on
+    `reviewedOn`; the review reuses `own_record` for the person on their own.

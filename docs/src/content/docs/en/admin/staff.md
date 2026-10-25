@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: Enabling the Staff module, giving people access to it, linking people to their users, turning on accounts for a person and the accounts worker with the groups it keeps, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, the competence worker and its mails, and the settings — the business time zone, the employee number sequence, the retention periods and the account settings.
+description: Enabling the Staff module, giving people access to it, linking people to their users, turning on accounts for a person and the accounts worker with the groups it keeps, the personal-data permission and health documents, the document categories, answering an innsyn request, a legal hold, rehiring an erased person, importing and exporting the register, exporting a month for payroll, retention — the erase and the deletion ledger — the headcount and pension thresholds, absence types and their a-melding mapping, holiday schemes, the self-certification policy and automatic carry-over, carrying holiday over, correcting a registered sick absence, withdrawing egenmelding, following a sick-leave case, the care-day fields and care days, who decides absence and the absence mails, the bank-change mail, the competence worker and its mails, and the settings — the business time zone, the employee number sequence, the retention periods, the account settings and the competence review interval.
 sidebar:
   order: 44
 sources:
@@ -84,7 +84,7 @@ Every Staff operation requires `staff:access`, and four permissions sit above it
 | --- | --- |
 | `staff:access` | Everyone who should see their own record. |
 | `staff:view` | Colleagues who should see the directory and the company's structure. |
-| `staff:approve` | Whoever decides everyone's absence: they approve, reject and cancel requests, see every person's work details and absences (an HR-only type as leave), the approvals inbox and the calendar, and open sick-leave cases (their milestones, not the notes) — no pay, no private details, no history. They also verify anyone's competences but their own. |
+| `staff:approve` | Whoever decides everyone's absence: they approve, reject and cancel requests, see every person's work details and absences (an HR-only type as leave), the approvals inbox and the calendar, and open sick-leave cases (their milestones, not the notes) — no pay, no private details, no history. They also verify anyone's competences but their own, and record their competence reviews. They read no one's wishes. |
 | `staff:manage` | HR: people, employments, documents other than health documents, the document categories, the competence catalogue and everyone's competences, the structure and the settings. Sensitive. |
 | `staff:personal-data` | Whoever may reveal national identity numbers and bank accounts, and read and file health documents. Sensitive. |
 
@@ -1515,6 +1515,12 @@ changing the settings at once cannot overwrite each other unseen.
   refused on `directoryFields.<field>`. A field turned off is no longer sent: Staff
   stops writing it, and Entra keeps whatever it last held. The names, the employee number, the user principal name and
   the work country are always written ([the mapping](/en/reference/staff/#the-directory-profile)).
+- **Competence review interval** (`competenceReviewIntervalMonths`, 12, from 0 to 60,
+  the **Competence reviews** card): how many months after a person's latest competence
+  review — or the start of their current unbroken employment, when that is later — the
+  review is overdue, raising an item on the dashboard for their manager and
+  `staff:manage` ([the review](/en/reference/staff/#the-review)). 0 turns the item off.
+  Left out of a replace, it keeps its value.
 - **Retention state** (`retention`, read-only): the deletion ledger's pending and
   failing files, the oldest pending, and the last erase ([The deletion
   ledger](#the-deletion-ledger)). Files the store has refused at least once and that

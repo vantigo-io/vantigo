@@ -331,6 +331,37 @@ dagene som er igjen, og **Utløpt** når dagen er passert; begge står på dashb
 og du og personen får en e-post. Når det nye sertifikatet er der, trykker du
 **Fornyet** på raden.
 
+**Det personen ønsker.** Under kompetansene viser **Det personen ønsker** det personen har skrevet
+til medarbeidersamtalen, slik hen skrev det: **Interesser** — hver kompetanse merket
+*Vil lære*, eller *Vil bruke mer* når hen allerede har den — **Preferanser** — hvordan
+hen helst vil jobbe, hver med hvor mye det betyr: *Fint å ha*, *Betyr noe* eller
+*Viktig* — og **Tilgjengelighet**, dagene og tidene hen kan, ikke kan eller helst vil
+jobbe. Det er personens egne ord: det er ingenting for deg å endre, og ingenting der
+spør etter en begrunnelse — trenger en preferanse en, sies den i samtalen. En rad
+personen har lagt til eller endret siden den sist ble sett, er merket **Ny**. Når du har
+lest det, trykker du **Merk som sett**: hver slik rad, og hver kompetanse på fanen som
+ikke er sett ennå, viser da *Sett* med dagen — også for personen, så hen vet at det ble
+lest — og detaljene på en kompetanserad viser dagen som **Sett i medarbeidersamtalen**.
+Endrer personen så en egenerklært kompetanse eller legger til dokumentasjon på den, er
+raden ny igjen. Knappen er grå så lenge det ikke er noe nytt. Personens leder og HR leser
+**Det personen ønsker** og merker det som sett; `staff:personal-data` leser det og merker ingenting;
+den som har `staff:approve` uten å være leder for personen, ser det ikke, og det gjør
+heller ikke kolleger. Reglene står under
+[det personen ønsker](/en/reference/staff/#what-the-person-wants).
+
+**Gjennomgått sammen.** Sist på fanen viser **Gjennomgått sammen** **Sist gjennomgått**
+— dagen og hvem som registrerte den, eller *Aldri* — og, bak **Vis tidligere
+gjennomganger**, gjennomgangene før den. Når dere to har gått gjennom fanen, trykker du
+**Gjennomgått i dag** og bekrefter: det registrerer at dere gikk gjennom kompetansen
+sammen den dagen, og ikke noe mer — ingen notater, ingen mål. Lederen, den som har
+`staff:approve`, og HR kan trykke den, aldri på sin egen oppføring; personen ser linjen,
+men registrerer ingen gjennomgang av seg selv. Er ingen gjennomgang registrert innen
+intervallet HR setter under [Kompetansesamtaler](#kompetansesamtaler) — 12 måneder som
+standard, regnet fra siste gjennomgang eller fra starten på det nåværende
+arbeidsforholdet, det som er senest — sier dashbordet til lederen og HR *Kompetansesamtalen
+med … er forfalt*, og Mitt team viser personen under **Forfalte gjennomganger**. Se
+[gjennomgangen](/en/reference/staff/#the-review).
+
 ### Historikk
 
 **Historikk** lister hver endring av personen, nyeste først og sidevis: hva som ble
@@ -910,7 +941,9 @@ har. Den har de fire fanene en persons side har, og så **Fravær**, **Kompetans
 - **Dokumenter** — dokumentene dine, helsedokumenter medregnet, til nedlasting; HR
   arkiverer og endrer dem. Under **Mine data** lagrer **Last ned mine data** en fil
   (JSON) med oppføringen din, pårørende, roller, arbeidsforhold og vilkår,
-  opplysninger om dokumentene dine og historikken din — uten verdiene HR holder
+  opplysninger om dokumentene dine, kompetansen din, det du ønsker — interessene,
+  preferansene og tilgjengeligheten din — kompetansesamtalene dine og historikken din —
+  uten verdiene HR holder
   forseglet (hele fødselsnummeret og bankkontoen) og uten HRs notater. Filen lister
   dokumentene uten innholdet: last ned hvert av dem fra listen. Å laste ned dataene
   dine registrerer ingenting. Når Ansatte ga deg kontoen, deaktiverer den kontoen dagen
@@ -919,15 +952,16 @@ har. Den har de fire fanene en persons side har, og så **Fravær**, **Kompetans
   personopplysninger.
 - **Fravær** — feriekontoen din, egenmeldingsstatusen, omsorgsdagene og fraværene
   dine, med **Be om fravær** (se [Be om fravær](#be-om-fravær-fra-mobilen) nedenfor).
-- **Kompetanse** — det du kan, med **Legg til kompetanse** (se
-  [Kompetansen din](#kompetansen-din) nedenfor).
+- **Kompetanse** — det du kan, med **Legg til kompetanse**, og det du ønsker —
+  interessene, preferansene og tilgjengeligheten din (se
+  [Kompetansen din](#kompetansen-din) og [Det jeg ønsker](#det-jeg-ønsker) nedenfor).
 - **Konto** — om Ansatte gir deg en bruker å logge inn med, fra hvilken dag og på
   hvilken adresse, og hvordan kontoen din står: venter på passordet ditt, aktiv,
   deaktivert, med invitasjonen din, og kortet **Grupper**: gruppene du er med i, hvordan
   du kom inn og siden når. Den er skrivebeskyttet: spør HR om å endre den.
 - **Mitt team** — bare når du er leder for noen i dag: søknadene du avgjør, fraværet
-  denne måneden til dem du er leder for, og de åpne sykefraværssakene deres (se
-  [Mitt team](#mitt-team) nedenfor).
+  denne måneden til dem du er leder for, de åpne sykefraværssakene deres og det som
+  venter på kompetansen deres (se [Mitt team](#mitt-team) nedenfor).
 
 Har HR ikke koblet brukeren din til en oppføring ennå, sier Min side *Du har ingen
 oppføring i Ansatte ennå* og forklarer hvordan den kommer på plass; spør HR hvis du
@@ -958,8 +992,8 @@ Fanen **Fravær** på Min side viser, slik Ansatte teller dem:
 ### Kompetansen din
 
 Fanen **Kompetanse** på Min side er det du kan — ferdigheter med et nivå og
-sertifikater med en gyldighet — slik du og lederen din holder den ved like sammen. Den
-er laget for mobilen.
+sertifikater med en gyldighet — slik du og lederen din holder den ved like sammen, og
+under det, det du ønsker. Den er laget for mobilen.
 
 Slik legger du til en kompetanse:
 
@@ -999,6 +1033,45 @@ nytt gjør.
 nivåene, om de er bekreftet og hvor lenge de gjelder. Detaljene — dokumentasjonen,
 utstederen, referansen og bekreftelsen — ser du, lederen din, den som har
 `staff:approve`, og HR.
+
+#### Det jeg ønsker
+
+Under kompetansene dine er **Det jeg ønsker** ditt å skrive til medarbeidersamtalen: hva
+du vil lære eller gjøre mer av, hvordan du helst vil jobbe, og når du kan jobbe. Bare du
+skriver det; lederen din leser det, før eller i samtalen. Hver del lagres for seg:
+
+- **Interesser** — under **Dine interesser** søker du i katalogen og velger
+  kompetansene du er interessert i, høyst 20, og trykker **Lagre interesser**. En du
+  allerede har, viser *Vil bruke mer*; en du ikke har, *Vil lære*. Ta bort en med
+  krysset og lagre igjen.
+- **Preferanser** — ett kort for hver type: **Ukedager** (dagene du helst vil jobbe),
+  **Tid på døgnet** (*Morgen*, *Dag*, *Kveld* eller *Natt*), **Arbeidssted** (opptil ti
+  av selskapets arbeidssteder), **Reising** (*Ingen reising*, *I regionen*, *I landet*
+  eller *Også utenlands*), **Hjemmekontor** (*Aldri*, *Noen dager*, *For det meste*
+  eller *Bare hjemmefra*), **Flest dager på rad** (1 til 14) og **Flest timer i uken**
+  (1 til 60). Slå på **Jeg har en preferanse** på et kort, fyll det ut og velg **Hvor
+  mye det betyr**: *Fint å ha*, *Betyr noe* eller *Viktig*. Slå bryteren av for å ta
+  bort en preferanse. Trykk **Lagre preferanser**.
+- **Tilgjengelighet** — når du kan, ikke kan eller helst vil jobbe. Trykk **Legg til
+  erklæring** og velg **Type** — *Tilgjengelig*, *Ikke tilgjengelig* eller
+  *Foretrukket* — og hvordan den **Gjentas**: **Hver uke**, på en **Ukedag**, med
+  **Første dag** og **Siste dag** hvis den begynner eller slutter; eller **På datoer**,
+  fra en **Første dag** til en **Siste dag** (står den tom, den ene dagen). Slå på **Del
+  av dagen** for å si når den **Starter** og **Slutter**; ellers gjelder den hele dagen.
+  Trykk **Legg til**. Legg til så mange du trenger, høyst 50, ta bort en med knappen i
+  tabellen, og trykk **Lagre tilgjengelighet**. Det er bare opplysninger: ingen
+  planlegger etter dem ennå.
+
+Det finnes ikke noe felt for en begrunnelse noe sted, med vilje. En begrunnelse for
+«ingen nattevakter» blir lett en opplysning om helsen din, og den hører ikke hjemme i et
+skjema: trenger en preferanse en forklaring, si den i samtalen.
+
+Når lederen din eller HR har lest det du skrev, viser hver rad *Sett* med dagen; en rad
+du legger til eller endrer etter det, har ikke noe merke før de har lest den igjen, og
+det har heller ikke en kompetanse du legger til. Nedenfor viser **Gjennomgått sammen**
+**Sist gjennomgått**: siste gang du og lederen din gikk gjennom fanen sammen, og hvem
+som registrerte det. Lederen din og HR leser **Det jeg ønsker**; kolleger gjør det ikke,
+og heller ikke den som har `staff:approve` uten å være lederen din.
 
 ### Be om fravær fra mobilen
 
@@ -1044,6 +1117,15 @@ en teamleder trenger ingen annen rettighet for dem hen er leder for. Den viser:
   **Marker som gjort**, eller **Frafall** med hvorfor den ikke trengs (aldri en diagnose);
   slutten på arbeidsgiverperioden følger av fraværene og er ingen av delene. **Endre
   tilretteleggingsnotatet** skriver notatene om tilrettelegging, som personen også leser.
+- **Venter på din bekreftelse** — kompetansene dem du er leder for, har egenerklært,
+  hver med dagen den ble erklært.
+- **Sertifikater som utløper** — sertifikatene til dem du er leder for, som snart
+  utløper eller har utløpt, de utløpte først og merket **Utløpt**, hvert med sin dag.
+- **Forfalte gjennomganger** — de du er leder for, der kompetansesamtalen er forfalt,
+  hver med dagen den forfalt.
+
+I de tre kompetansekortene åpner et navn personens fane **Kompetanse**, der du
+bekrefter, fornyer eller trykker **Gjennomgått i dag**.
 
 ## Fraværssiden
 
@@ -1217,6 +1299,7 @@ bare for `staff:personal-data`:
 | … har registrert en kompetanse som venter på bekreftelse | Noen har lagt inn en kompetanse — eller fornyet et sertifikat — selv, og ingen har bekreftet den ennå. En leder ser sine egne folks; `staff:approve` og HR alles. Bekreft den, eller fjern den. | Personens kompetansefane |
 | Et sertifikat for … utløper snart | Et sertifikat er innenfor påminnelsen før siste gyldige dag. En leder ser sine egne folks; HR alles. Trykk **Fornyet** på det når det nye er der. | Personens kompetansefane |
 | Et sertifikat for … har utløpt | Siste gyldige dag for et sertifikat er passert. Forny det, eller fjern det hvis personen ikke lenger trenger det. | Personens kompetansefane |
+| Kompetansesamtalen med … er forfalt | En som er i arbeid, har ingen kompetansesamtale registrert innen intervallet som er satt under [Kompetansesamtaler](#kompetansesamtaler) — regnet fra siste gjennomgang, eller fra starten på det nåværende arbeidsforholdet når det er senere. En leder ser sine egne folks; HR alles. Gå gjennom fanen sammen og trykk **Gjennomgått i dag**. | Personens kompetansefane |
 | Gruppen … er ikke synkronisert med katalogen | En gruppe kunne ikke holdes i katalogen — en innstilling katalogen avviste, en gruppe der med nøkkelen som Vantigo ikke får endre, eller en katalog som ikke kunne nås tre ganger på rad; gruppesiden forteller hvorfor. Én per gruppe og katalog, for HR. | Gruppen |
 
 Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
@@ -1226,8 +1309,8 @@ Ansatteinnstillinger.
 ## Endre innstillingene
 
 **Ansatteinnstillinger** (`staff:manage`) har de generelle innstillingene først, så
-selskapets struktur, dokumentkategoriene, to kort for kompetanse — **Kompetansekategorier**
-og **Kompetanser** — tre kort for fravær — **Fraværstyper**,
+selskapets struktur, dokumentkategoriene, tre kort for kompetanse — **Kompetansekategorier**,
+**Kompetanser** og **Kompetansesamtaler** — tre kort for fravær — **Fraværstyper**,
 **Ferieordninger** og **Egenmelding og overføring** — fire kort for dataene —
 **Importer og eksporter personer**, **Lønnseksport**, **Oppbevaring** og **Terskler** — og
 **Kontoer** og **Katalogprofil**. Den som ikke har `staff:manage` og åpner siden med adressen, ser ingen av dem.
@@ -1348,6 +1431,17 @@ stillasbygger, førerkort klasse B, C og D, kode 95, varme arbeider og arbeidsva
   **Arkiver** tar bort en egen, og **Gjenopprett** henter den tilbake; en som ligger i
   en arkivert kategori, gjenopprettes først når kategorien er det. Uansett beholder
   alle som har kompetansen, den, vist med navnet.
+
+### Kompetansesamtaler
+
+**Kompetansesamtaler** setter hvor ofte en leder går gjennom kompetansen med hver
+medarbeider. **Intervall, måneder** er 0 til 60, 12 som standard. En som er i arbeid og
+ikke har noen gjennomgang registrert innenfor det — regnet fra siste gang noen trykket
+**Gjennomgått i dag** på fanen deres, eller fra starten på det nåværende arbeidsforholdet
+når det er senere — blir *Kompetansesamtalen med … er forfalt* på dashbordet til lederen
+og HR, og står under **Forfalte gjennomganger** i lederens Mitt team. 0 slår av punktet.
+Trykk **Lagre**. Har noen andre lagret innstillingene siden du åpnet siden, lastes de
+inn på nytt, og siden sier fra: gjør endringen din igjen.
 
 ### Fraværstyper
 
