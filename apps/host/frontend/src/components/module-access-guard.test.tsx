@@ -214,6 +214,9 @@ describe("ModuleAccessGuard", () => {
     ["/staff/people", ["staff:access"]],
     ["/staff/people/12", ["staff:access"]],
     ["/staff/settings", ["staff:manage"]],
+    // The Competence area is the directory's and HR's (staff competence design S14).
+    ["/staff/competence", ["staff:view"]],
+    ["/staff/competence", ["staff:manage"]],
   ])("guards %s behind %s", (pathname, permissions) => {
     renderGuardFor(pathname, []);
     expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
@@ -221,6 +224,18 @@ describe("ModuleAccessGuard", () => {
     cleanup();
     renderGuardFor(pathname, permissions);
     expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
+  it("refuses the Competence area to a caller holding staff:access alone", () => {
+    renderGuardFor("/staff/competence", ["staff:access"]);
+
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+  });
+
+  it("refuses the Competence area to an Approver holding staff:access and staff:approve", () => {
+    renderGuardFor("/staff/competence", ["staff:access", "staff:approve"]);
+
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
   });
 
   it("refuses the staff settings to a caller holding only staff:access and staff:view", () => {

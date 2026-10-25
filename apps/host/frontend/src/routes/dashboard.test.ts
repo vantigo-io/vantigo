@@ -864,6 +864,28 @@ describe("the dashboard's staff account attention items", () => {
     }
   });
 
+  // A competence profile not met (Staff phase 2, delivery C): one item per
+  // person, its count the items not met, dealt with on their Competence tab.
+  it("opens the person's Competence tab for a gap, and words it with the name and the items not met", () => {
+    expect(attentionHref({ module: "staff", type: "competenceGap", entityId: "1042" })).toBe(
+      "/staff/people/1042?tab=competence",
+    );
+    const key = attentionTitleKey({ module: "staff", type: "competenceGap" }) as string;
+    expect(key).toBe("dashboard.staffCompetenceGap");
+    expect(i18n.t(key, { ns: "host", lng: "en", name: "Kari Nordmann", count: 2 })).toBe(
+      "Kari Nordmann does not meet their competence profile (2 items)",
+    );
+    expect(i18n.t(key, { ns: "host", lng: "nb", name: "Kari Nordmann", count: 2 })).toBe(
+      "Kari Nordmann oppfyller ikke kompetanseprofilen sin (2 punkter)",
+    );
+    expect(i18n.t(key, { ns: "host", lng: "en", name: "Kari Nordmann", count: 1 })).toBe(
+      "Kari Nordmann does not meet their competence profile (1 item)",
+    );
+    expect(i18n.t(key, { ns: "host", lng: "nb", name: "Kari Nordmann", count: 1 })).toBe(
+      "Kari Nordmann oppfyller ikke kompetanseprofilen sin (1 punkt)",
+    );
+  });
+
   it("opens Staff's Settings for the installation's items", () => {
     for (const type of installationTypes) {
       expect(attentionHref({ module: "staff", type, entityId: "settings" }), type).toBe("/staff/settings");

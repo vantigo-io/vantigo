@@ -276,6 +276,95 @@ describe("SettingsPage — the structure", () => {
     expect(fetchMock.actualCalls.some(([url]) => String(url).includes("/staff/people?q=grace"))).toBe(true);
   });
 
+  // The department's default competence profile (delivery C, plan reading 35): a full-replace field.
+  it("names each department's default profile, and sets one, sent by id", async () => {
+    const fetchMock = stubStaffApi();
+    renderRoute("/staff/settings");
+
+    expect(await tableRow("Departments", "Operations")).toHaveTextContent("Operator");
+    const engineering = await tableRow("Departments", "Engineering");
+    await userEvent.click(within(engineering).getByRole("button", { name: "Change Engineering" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change the department" });
+    await choose(dialog, "Default competence profile", "Field electrician");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(write(fetchMock, "PUT", "/staff/departments/21").url).toBeDefined());
+    const put = write(fetchMock, "PUT", "/staff/departments/21");
+    expect(put.ifMatch).toBe("1");
+    expect(put.body).toEqual({ code: "ENG", name: "Engineering", managerPersonId: 101, competenceProfileId: 1001 });
+    expect(await tableRow("Departments", "Engineering")).toHaveTextContent("Field electrician");
+  });
+
+  it("leaves the default profile out when it is cleared, which clears it", async () => {
+    const fetchMock = stubStaffApi();
+    renderRoute("/staff/settings");
+
+    const operations = await tableRow("Departments", "Operations");
+    await userEvent.click(within(operations).getByRole("button", { name: "Change Operations" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change the department" });
+    expect(within(dialog).getByRole("combobox", { name: "Default competence profile" })).toHaveValue("Operator");
+    // Choosing the chosen one again deselects it.
+    await choose(dialog, "Default competence profile", "Operator");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(write(fetchMock, "PUT", "/staff/departments/22").url).toBeDefined());
+    expect(write(fetchMock, "PUT", "/staff/departments/22").body).toEqual({
+      code: "OPS",
+      name: "Operations",
+      parentId: 21,
+    });
+    expect(fetchMock.state.departments.find((one) => one.id === 22)?.competenceProfileId).toBeUndefined();
+  });
+
+  // A department keeps its own default once archived (plan reading 26): offered, marked, and saved again.
+  it("offers a department its own archived default, marked, and saves it again", async () => {
+    const fetchMock = stubStaffApi();
+    const operator = fetchMock.state.competenceProfiles.find((one) => one.id === 1002);
+    if (operator) operator.archivedAt = "2026-10-01T08:00:00Z";
+    renderRoute("/staff/settings");
+
+    const operations = await tableRow("Departments", "Operations");
+    await waitFor(() => expect(operations).toHaveTextContent("Operator (archived)"));
+    await userEvent.click(within(operations).getByRole("button", { name: "Change Operations" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change the department" });
+    expect(within(dialog).getByRole("combobox", { name: "Default competence profile" })).toHaveValue(
+      "Operator (archived)",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(write(fetchMock, "PUT", "/staff/departments/22").url).toBeDefined());
+    expect(write(fetchMock, "PUT", "/staff/departments/22").body).toEqual({
+      code: "OPS",
+      name: "Operations",
+      parentId: 21,
+      competenceProfileId: 1002,
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Change the department" })).not.toBeInTheDocument(),
+    );
+    expect(fetchMock.state.departments.find((one) => one.id === 22)?.competenceProfileId).toBe(1002);
+  });
+
+  it("puts the server's refusal of an archived profile on the default profile's field", async () => {
+    stubStaffApi({
+      write: (method, path) =>
+        method === "PUT" && path.endsWith("/departments/22")
+          ? staffProblem(400, {
+              title: "Invalid department",
+              errors: { competenceProfileId: ["The profile is archived"] },
+            })
+          : undefined,
+    });
+    renderRoute("/staff/settings");
+
+    const operations = await tableRow("Departments", "Operations");
+    await userEvent.click(within(operations).getByRole("button", { name: "Change Operations" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change the department" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await within(dialog).findByText("The profile is archived")).toBeInTheDocument();
+  });
+
   it("names a manager it cannot read by id rather than waiting for ever", async () => {
     stubStaffApi({ departments: [{ id: 23, code: "LEG", name: "Legal", managerPersonId: 999, revision: 1 }] });
     renderRoute("/staff/settings");

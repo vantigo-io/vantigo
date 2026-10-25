@@ -216,15 +216,16 @@ const staffGroupAttentionTypes = ["groupSyncFailed"];
 
 /**
  * Staff's competence items (phase 2, delivery A): a declaration awaiting
- * verification and a certificate expiring or expired — and delivery B's
- * overdue competence review — entityId the person's id, dealt with on the
- * person's Competence tab.
+ * verification and a certificate expiring or expired — delivery B's overdue
+ * competence review and delivery C's competence profile not met — entityId
+ * the person's id, dealt with on the person's Competence tab.
  */
 const staffCompetenceAttentionTypes = [
   "competenceDeclared",
   "competenceExpiring",
   "competenceExpired",
   "competenceReviewOverdue",
+  "competenceGap",
 ];
 
 /** Staff's attention types about the requests waiting a decision: the approvals inbox's (delivery B). */
@@ -425,6 +426,7 @@ const staffAttentionTitleKeys: Record<string, string> = {
   competenceExpiring: "dashboard.staffCompetenceExpiring",
   competenceExpired: "dashboard.staffCompetenceExpired",
   competenceReviewOverdue: "dashboard.staffCompetenceReviewOverdue",
+  competenceGap: "dashboard.staffCompetenceGap",
 };
 
 /**

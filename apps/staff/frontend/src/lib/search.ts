@@ -1,4 +1,5 @@
 import type { PeopleStatusFilter } from "../api/people";
+import { isIsoDate } from "./dates";
 
 /**
  * How long a picker waits after the last keystroke before it searches. The
@@ -118,5 +119,43 @@ export const validateAbsenceSearch = (search: Record<string, unknown>): AbsenceS
   if (typeof search.month === "string" && MONTH.test(search.month)) out.month = search.month;
   const departmentId = positiveId(search.departmentId);
   if (departmentId !== undefined) out.departmentId = departmentId;
+  return out;
+};
+
+/** The Competence area's tabs (design §7, delivery C): the matrix, and HR's interests overview. */
+export const competenceTabs = ["matrix", "interests"] as const;
+export type CompetenceTab = (typeof competenceTabs)[number];
+
+/**
+ * The Competence area's URL search: the tab and the matrix's five filters
+ * (design S14), so a filtered matrix survives a refresh and travels in a link.
+ */
+export interface CompetenceSearch {
+  tab?: CompetenceTab;
+  categoryId?: number;
+  competenceId?: number[];
+  minLevel?: number;
+  validOn?: string;
+  verifiedOnly?: boolean;
+}
+
+/** Ids from a repeated parameter, a comma-joined one or a single one; anything else is left out. */
+const positiveIds = (value: unknown): number[] => {
+  const parts = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [value];
+  return [...new Set(parts.map(positiveId).filter((id): id is number => id !== undefined))];
+};
+
+/** The host route's `validateSearch` for the Competence area; what a hand-edited link invents is left out. */
+export const validateCompetenceSearch = (search: Record<string, unknown>): CompetenceSearch => {
+  const out: CompetenceSearch = {};
+  if (competenceTabs.includes(search.tab as CompetenceTab)) out.tab = search.tab as CompetenceTab;
+  const categoryId = positiveId(search.categoryId);
+  if (categoryId !== undefined) out.categoryId = categoryId;
+  const competenceId = search.competenceId === undefined ? [] : positiveIds(search.competenceId);
+  if (competenceId.length > 0) out.competenceId = competenceId;
+  const minLevel = search.minLevel === undefined || search.minLevel === "" ? Number.NaN : Number(search.minLevel);
+  if (Number.isInteger(minLevel) && minLevel >= 0 && minLevel <= 4) out.minLevel = minLevel;
+  if (isIsoDate(search.validOn)) out.validOn = search.validOn;
+  if (search.verifiedOnly === true || search.verifiedOnly === "true") out.verifiedOnly = true;
   return out;
 };

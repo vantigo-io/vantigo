@@ -91,6 +91,11 @@ export const eventKinds = [
   "availability_changed",
   "wishes_seen",
   "competence_reviewed",
+  // Profiles (phase 2, delivery C): the profiles assigned a person, by
+  // their keys (plan reading 34), and the catalogue's two installation events.
+  "profiles_assigned",
+  "competence_profile_created",
+  "competence_profile_updated",
 ] as const;
 
 /**
@@ -129,6 +134,8 @@ const fieldLabelOverrides: Record<string, string> = {
   preferences: "preferenceKind",
   declarations: "availability",
   seen: "wishesSeenRows",
+  // Delivery C's assignment: the profiles' keys before and after.
+  profiles: "competenceProfiles",
 };
 
 export const eventFieldLabelKey = (field: string): string => fieldLabelOverrides[field] ?? field;
@@ -230,6 +237,8 @@ export const eventFields = [
   "declarations",
   "seen",
   "reviewedOn",
+  // Delivery C's (plan reading 34): the profiles assigned, by key.
+  "profiles",
 ] as const;
 
 /** What one field of a payload says: its values before and after, or only that it changed. */

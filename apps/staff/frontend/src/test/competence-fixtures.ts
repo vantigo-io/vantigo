@@ -2,6 +2,7 @@ import type {
   StaffAvailabilityDeclaration,
   StaffCompetence,
   StaffCompetenceCategory,
+  StaffCompetenceProfile,
   StaffCompetenceReview,
   StaffPersonCompetence,
   StaffPersonPreference,
@@ -220,3 +221,43 @@ export const availabilityDeclarations = (): StoredDeclaration[] => [
 export const competenceReviews = (): StoredReview[] => [
   { id: 4001, personId: 101, reviewedOn: "2025-11-01", reviewer: "Hedy Lamarr", recordedAt: "2025-11-01T13:00:00Z" },
 ];
+
+/** A profile's item as the catalogue answers it: the competence's summary beside its id. */
+const profileItem = (competenceId: number, minLevel?: number, mustBeValid = true) => ({
+  competenceId,
+  competence: summaryOf(competenceId),
+  ...(minLevel !== undefined ? { minLevel } : {}),
+  mustBeValid,
+});
+
+/**
+ * The competence profiles (delivery C, design S12), ordered by key, each
+ * item in the catalogue's order: a field electrician needs welding at 3 or
+ * above and a valid FSE certificate; an operator a valid FSE and English at
+ * 2 or above. Operations has the operator as its default (`departments()`).
+ */
+export const competenceProfiles = (): StaffCompetenceProfile[] => [
+  {
+    id: 1001,
+    key: "field-electrician",
+    names: { en: "Field electrician", nb: "Feltelektriker" },
+    items: [profileItem(2004, 3), profileItem(2001)],
+    revision: 1,
+  },
+  {
+    id: 1002,
+    key: "operator",
+    names: { en: "Operator", nb: "Operatør" },
+    items: [profileItem(2001), profileItem(2005, 2)],
+    revision: 2,
+  },
+];
+
+/** A profile HR assigned a person, as the fake keeps it. */
+export interface StoredPersonProfile {
+  personId: number;
+  profileId: number;
+}
+
+/** Grace is assigned the field electrician, and is an operator by her department's default; Ada has none. */
+export const personProfiles = (): StoredPersonProfile[] => [{ personId: 102, profileId: 1001 }];

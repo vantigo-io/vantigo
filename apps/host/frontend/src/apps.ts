@@ -10,6 +10,7 @@ import {
   IconCalendarEvent,
   IconCashBanknote,
   IconCategory,
+  IconCertificate,
   IconChartLine,
   IconChecklist,
   IconClock,
@@ -122,6 +123,7 @@ const staffNavPresentation: Record<StaffNavItem["key"], Pick<NavItem, "label" | 
   myPage: { label: "navigation.staffMyPage", icon: IconId },
   people: { label: "navigation.staffPeople", icon: IconUsersGroup },
   absence: { label: "navigation.staffAbsence", icon: IconCalendarEvent },
+  competence: { label: "navigation.staffCompetence", icon: IconCertificate },
   groups: { label: "navigation.staffGroups", icon: IconUsers },
   settings: { label: "navigation.staffSettings", icon: IconAdjustments },
 };

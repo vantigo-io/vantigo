@@ -5,6 +5,7 @@ import { IconAlertCircle, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
+import { competenceProfilesQueryOptions } from "../api/competences";
 import { personQueryOptions } from "../api/people";
 import { STAFF_QUERY_KEY } from "../api/request";
 import {
@@ -16,6 +17,7 @@ import {
   updateStructureRow,
 } from "../api/structure";
 import "../i18n";
+import { competenceName } from "../lib/competences";
 import { isRevisionConflict, refusalMessage } from "../lib/errors";
 import { StructureFormModal, type StructureModalState } from "./-structure-form-modal";
 
@@ -314,8 +316,9 @@ export const BusinessUnitsTable = () => {
 };
 
 export const DepartmentsTable = () => {
-  const { t } = useI18n("staff");
+  const { t, locale } = useI18n("staff");
   const { data, isPending, error } = useQuery(structureQueryOptions("departments"));
+  const profiles = useQuery(competenceProfilesQueryOptions());
   const { confirmArchive } = useRowActions("departments");
   const [modal, setModal] = useState<StructureModalState | null>(null);
   const rows = data ?? [];
@@ -335,6 +338,14 @@ export const DepartmentsTable = () => {
   const departmentName = (id?: number) => {
     const found = rows.find((row) => row.id === id);
     return found ? found.name : t("notSet");
+  };
+  // The default competence profile (delivery C), by its name in the reader's language; nothing while the
+  // profiles load.
+  const profileName = (id?: number) => {
+    const found = profiles.data?.find((profile) => profile.id === id);
+    if (!found) return id !== undefined && profiles.isPending ? null : t("notSet");
+    const name = competenceName(found, locale);
+    return found.archivedAt ? t("archivedName", { name }) : name;
   };
 
   return (
@@ -356,6 +367,7 @@ export const DepartmentsTable = () => {
             <Table.Th>{t("name")}</Table.Th>
             <Table.Th>{t("manager")}</Table.Th>
             <Table.Th>{t("parentDepartment")}</Table.Th>
+            <Table.Th>{t("defaultProfile")}</Table.Th>
             <Table.Th>{t("status")}</Table.Th>
             <Table.Th>{t("rowActions")}</Table.Th>
           </Table.Tr>
@@ -367,6 +379,7 @@ export const DepartmentsTable = () => {
               <Table.Td>{row.name}</Table.Td>
               <Table.Td>{managerName(row.managerPersonId)}</Table.Td>
               <Table.Td>{departmentName(row.parentId)}</Table.Td>
+              <Table.Td>{profileName(row.competenceProfileId)}</Table.Td>
               <Table.Td>
                 <RowState archivedAt={row.archivedAt} />
               </Table.Td>

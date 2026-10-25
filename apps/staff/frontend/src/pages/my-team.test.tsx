@@ -270,6 +270,26 @@ describe("My page — My team, what waits on my reports' competences", () => {
     expect(sent(fetchMock, "GET", /\/stats\/attention$/).length).toBeGreaterThan(0);
   });
 
+  // Delivery C: a report whose competence profiles are not met, with how many items.
+  it("shows Grace's profiles not met, with the items not met, opening her tab", async () => {
+    stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me?tab=team");
+
+    const gaps = await region("Profiles not met");
+    const grace = await within(gaps).findByRole("link", { name: "Grace Hopper" });
+    expect(grace).toHaveAttribute("href", "/staff/people/102?tab=competence");
+    expect(grace.closest("li")).toHaveTextContent("3 not met");
+  });
+
+  it("raises no gap for a report no profile reaches", async () => {
+    stubStaffApi({ role: "access", me: 101, personProfiles: [], departments: [] });
+    renderRoute("/staff/me?tab=team");
+
+    expect(
+      await within(await region("Profiles not met")).findByText("Every report meets their profiles"),
+    ).toBeInTheDocument();
+  });
+
   it("raises no overdue review for a report hired within the interval", async () => {
     stubStaffApi({ role: "access", me: 101 });
     renderRoute("/staff/me?tab=team");

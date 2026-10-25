@@ -71,6 +71,7 @@ import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsSecurityRouteImport } from './routes/settings/security'
 import { Route as StaffIndexRouteImport } from './routes/staff/index'
 import { Route as StaffAbsenceRouteImport } from './routes/staff/absence'
+import { Route as StaffCompetenceRouteImport } from './routes/staff/competence'
 import { Route as StaffMeRouteImport } from './routes/staff/me'
 import { Route as StaffSettingsRouteImport } from './routes/staff/settings'
 import { Route as TimeIndexRouteImport } from './routes/time/index'
@@ -425,6 +426,11 @@ const StaffAbsenceRoute = StaffAbsenceRouteImport.update({
   path: '/absence',
   getParentRoute: () => StaffRoute,
 } as any)
+const StaffCompetenceRoute = StaffCompetenceRouteImport.update({
+  id: '/competence',
+  path: '/competence',
+  getParentRoute: () => StaffRoute,
+} as any)
 const StaffMeRoute = StaffMeRouteImport.update({
   id: '/me',
   path: '/me',
@@ -702,6 +708,7 @@ export interface FileRoutesByFullPath {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/staff/absence': typeof StaffAbsenceRoute
+  '/staff/competence': typeof StaffCompetenceRoute
   '/staff/me': typeof StaffMeRoute
   '/staff/settings': typeof StaffSettingsRoute
   '/time/approvals': typeof TimeApprovalsRoute
@@ -792,6 +799,7 @@ export interface FileRoutesByTo {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/staff/absence': typeof StaffAbsenceRoute
+  '/staff/competence': typeof StaffCompetenceRoute
   '/staff/me': typeof StaffMeRoute
   '/staff/settings': typeof StaffSettingsRoute
   '/time/approvals': typeof TimeApprovalsRoute
@@ -899,6 +907,7 @@ export interface FileRoutesById {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/staff/absence': typeof StaffAbsenceRoute
+  '/staff/competence': typeof StaffCompetenceRoute
   '/staff/me': typeof StaffMeRoute
   '/staff/settings': typeof StaffSettingsRoute
   '/time/approvals': typeof TimeApprovalsRoute
@@ -1007,6 +1016,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/security'
     | '/staff/absence'
+    | '/staff/competence'
     | '/staff/me'
     | '/staff/settings'
     | '/time/approvals'
@@ -1097,6 +1107,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/security'
     | '/staff/absence'
+    | '/staff/competence'
     | '/staff/me'
     | '/staff/settings'
     | '/time/approvals'
@@ -1203,6 +1214,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/security'
     | '/staff/absence'
+    | '/staff/competence'
     | '/staff/me'
     | '/staff/settings'
     | '/time/approvals'
@@ -1722,6 +1734,13 @@ declare module '@tanstack/react-router' {
       path: '/absence'
       fullPath: '/staff/absence'
       preLoaderRoute: typeof StaffAbsenceRouteImport
+      parentRoute: typeof StaffRoute
+    }
+    '/staff/competence': {
+      id: '/staff/competence'
+      path: '/competence'
+      fullPath: '/staff/competence'
+      preLoaderRoute: typeof StaffCompetenceRouteImport
       parentRoute: typeof StaffRoute
     }
     '/staff/me': {
@@ -2268,6 +2287,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 interface StaffRouteChildren {
   StaffAbsenceRoute: typeof StaffAbsenceRoute
+  StaffCompetenceRoute: typeof StaffCompetenceRoute
   StaffMeRoute: typeof StaffMeRoute
   StaffSettingsRoute: typeof StaffSettingsRoute
   StaffIndexRoute: typeof StaffIndexRoute
@@ -2279,6 +2299,7 @@ interface StaffRouteChildren {
 
 const StaffRouteChildren: StaffRouteChildren = {
   StaffAbsenceRoute: StaffAbsenceRoute,
+  StaffCompetenceRoute: StaffCompetenceRoute,
   StaffMeRoute: StaffMeRoute,
   StaffSettingsRoute: StaffSettingsRoute,
   StaffIndexRoute: StaffIndexRoute,

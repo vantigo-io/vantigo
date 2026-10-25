@@ -10,10 +10,10 @@ import accountsWorkerGo from "../../../server/internal/staff/accounts_worker.go?
 import eventsGo from "../../../server/internal/staff/events.go?raw";
 import retentionGo from "../../../server/internal/staff/retention.go?raw";
 import { staffCatalog } from "./i18n";
-import { competenceBases, competenceKinds, competenceSources, LEVELS } from "./lib/competences";
+import { competenceBases, competenceKinds, competenceSources, gapStatuses, LEVELS } from "./lib/competences";
 import { eventFieldLabelKey, eventFields, eventKinds } from "./lib/events";
 import { staffNavItems } from "./lib/navigation";
-import { myPageTabs, personTabs } from "./lib/search";
+import { competenceTabs, myPageTabs, personTabs } from "./lib/search";
 import {
   appointmentFormsFor,
   bankAccountKinds,
@@ -81,6 +81,7 @@ describe("the staff catalog", () => {
       ...["present", "missing", "not_applicable"].map((value) => `contractState_${value}`),
       ...personTabs.map((value) => `tab_${value}`),
       ...myPageTabs.map((value) => `tab_${value}`),
+      ...competenceTabs.map((value) => `tab_${value}`),
       ...eventKinds.map((value) => `event_${value}`),
     ];
     for (const key of keys) expect(en[key], `no label for ${key}`).toBeDefined();
@@ -134,8 +135,11 @@ describe("the staff catalog", () => {
       ...competenceKinds.map((kind) => `competenceKind_${kind}`),
       ...competenceBases.map((basis) => `competenceBasis_${basis}`),
       ...competenceSources.map((source) => `competenceSource_${source}`),
+      ...gapStatuses.map((status) => `gapStatus_${status}`),
     ];
     for (const code of codes) expect(staffYaml, `the contract names ${code}`).toContain(code);
+    // The gap statuses are the contract's six (design S13).
+    for (const status of gapStatuses) expect(staffYaml, `the contract names ${status}`).toContain(`- ${status}`);
     for (const [language, catalog] of Object.entries(staffCatalog)) {
       const words = catalog as Record<string, string>;
       for (const code of codes) expect(words[`refusal.${code}`], `${language} refusal.${code}`).toBeDefined();

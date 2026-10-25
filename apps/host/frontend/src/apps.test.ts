@@ -83,6 +83,7 @@ describe("the app registry", () => {
       "/staff/me",
       "/staff/people",
       "/staff/absence",
+      "/staff/competence",
       "/staff/groups",
       "/staff/settings",
       "/invoices",
@@ -382,6 +383,7 @@ describe("the app registry", () => {
         ["staff:view", "staff:approve", "staff:manage", "staff:personal-data"],
         ["staff:access"],
       ],
+      ["navigation.staffCompetence", "/staff/competence", ["staff:view", "staff:manage"], undefined],
       ["navigation.staffGroups", "/staff/groups", ["staff:manage"], undefined],
       ["navigation.staffSettings", "/staff/settings", ["staff:manage"], undefined],
     ]);
@@ -410,15 +412,29 @@ describe("the app registry", () => {
     // Approver, HR, and staff:personal-data, which decides the HR-only types.
     expect(paths(["staff:access", "staff:approve"])).toEqual(["/staff/me", "/staff/absence"]);
     expect(paths(["staff:access", "staff:personal-data"])).toEqual(["/staff/me", "/staff/absence"]);
-    expect(paths(["staff:access", "staff:view"])).toEqual(["/staff/me", "/staff/people", "/staff/absence"]);
+    // The Competence area for the directory and HR (staff competence design S14).
+    expect(paths(["staff:access", "staff:view"])).toEqual([
+      "/staff/me",
+      "/staff/people",
+      "/staff/absence",
+      "/staff/competence",
+    ]);
     expect(paths(["staff:access", "staff:manage"])).toEqual([
       "/staff/me",
       "/staff/people",
       "/staff/absence",
+      "/staff/competence",
       "/staff/groups",
       "/staff/settings",
     ]);
-    expect(paths(["*"])).toEqual(["/staff/me", "/staff/people", "/staff/absence", "/staff/groups", "/staff/settings"]);
+    expect(paths(["*"])).toEqual([
+      "/staff/me",
+      "/staff/people",
+      "/staff/absence",
+      "/staff/competence",
+      "/staff/groups",
+      "/staff/settings",
+    ]);
   });
 
   it("treats Home as always enabled and module apps as enabled when their module is", () => {

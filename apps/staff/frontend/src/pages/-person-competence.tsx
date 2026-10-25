@@ -62,6 +62,7 @@ import {
 import { DOCUMENT_ACCEPT, fileRefusal, placeDocumentRefusal } from "../lib/documents";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 import { useStaffFormat } from "../lib/format";
+import { PersonProfileGaps } from "./-person-profile-gaps";
 import { PersonReviews, PersonWishes } from "./-person-wishes";
 
 type Translate = (key: string, values?: Record<string, unknown>) => string;
@@ -222,6 +223,8 @@ export const PersonCompetence = ({
 
   return (
     <Stack gap="md">
+      {/* What the person's profiles ask (delivery C) heads the tab, for the Profiles group's readers. */}
+      <PersonProfileGaps person={person} self={self} />
       <FieldGroup
         title={t("competences")}
         description={t("competencesDescription")}
