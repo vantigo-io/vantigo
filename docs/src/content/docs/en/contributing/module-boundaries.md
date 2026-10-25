@@ -380,8 +380,11 @@ Communications' outbox is the working example.
     sole provider, applies the Colleague rule — `staff:view` (or, for the catalogue
     alone, `staff:manage`), and the person active today — to the principal in `ctx`,
     under a request or `AsUser`, and answers nothing, not an error, to anyone else or
-    to a context with neither; a declared certificate is not held. Staffing, its
-    intended consumer, never re-states the rule
+    to a context with neither; a declared certificate is not held. The fit for a
+    proposed booking — a score and the kinds of preference that lowered it, never a
+    preference's value — is written into the reference ahead of Staffing and added to
+    the interface with Staffing's first delivery. Staffing, its intended consumer,
+    never re-states the rule
     ([Staff](/en/reference/staff/#the-workforce-contract)).
 13. **Staff writes a provider's directory.** The fifth sanctioned cross-module
     direction, Staff → a provider module, made for the accounts and groups of the

@@ -707,5 +707,15 @@ rettighet er ny: `staff:approve` registrerer nå også kompetansesamtaler. Å ru
 migreringen tilbake dropper de fire tabellene med alle personers ønsker og samtaler,
 Sett-stempelene på kompetanseradene og intervallinnstillingen.
 
+**Utgivelsen med kompetanseprofiler.** Den har
+`00068_staff_competence_profiles.sql`: tre tomme tabeller for kompetanseprofilene —
+profilene, punktene deres og profilene som er tildelt personer — og en kolonne på
+avdelingene for en avdelings standardprofil, som kan stå tom og er tom. Ingen innstilling og
+ingen rettighet er ny: `staff:manage` holder profilene sammen med kompetansekatalogen.
+Dashbordet begynner å vise at noen ikke oppfyller kompetanseprofilen sin først når HR
+har opprettet en profil og tildelt den til noen eller gjort den til en avdelings
+standardprofil. Å rulle migreringen tilbake dropper profilene, punktene deres,
+tildelingene og avdelingenes standardprofiler.
+
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

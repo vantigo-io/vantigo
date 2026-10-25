@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page with its documents, their competences and their account, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, absence and the holiday account, and the Groups and their place in the directory, and the Staff settings with the company's structure, the document categories, the competence catalogue, the register's import and export, the payroll export, retention, the thresholds and the accounts.
+description: The people register — People, a person's page with its documents, their competences, what their profile asks and their account, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, the Competence page with its matrix and the interests, absence and the holiday account, and the Groups and their place in the directory, and the Staff settings with the company's structure, the document categories, the competence catalogue and its profiles, the register's import and export, the payroll export, retention, the thresholds and the accounts.
 sidebar:
   order: 45
 sources:
@@ -27,6 +27,7 @@ permissions give you:
 | **My page** | everyone with `staff:access` |
 | **Staff directory** (the People screen) | `staff:view`, or `staff:manage` — an HR role without `staff:view` still lists people and reads the structure |
 | **Absence** (the calendar and the approvals) | `staff:view`, `staff:approve`, `staff:manage` or `staff:personal-data`; a manager without those opens it from the dashboard's link, and decides on [My team](#my-team) |
+| **Competence** (the matrix and, for HR, the interests) | `staff:view` or `staff:manage` |
 | **Groups** | `staff:manage` |
 | **Staff settings** | `staff:manage` |
 
@@ -295,6 +296,48 @@ grouped by category, but not the same tab:
 A competence the person added themselves carries the **Declared** badge until
 somebody verifies it, and the dashboard lists it for the person's manager under
 *… declared a competence awaiting verification*.
+
+**What their profile asks.** At the top of the tab, **What their profile asks** lists
+each competence profile that applies to the person — what their position needs, as HR
+describes it under [Competence profiles](#competence-profiles) — with *Assigned* under
+its name when HR assigned it to them, and *Default for* a department when it is the
+default of the department their terms place them in today; a profile can be both. Each
+profile carries *2 not met*, or *All met*, and a row for each competence it asks: what
+it **Asks** — *At least* a level, *Valid* for a certificate, or *Held* when holding it
+is enough — its **Status**, and what the person **Holds**: their level and the day it
+is valid to. The statuses, and what you do about each:
+
+- **Met** — the person holds it as the profile asks. With the **Declared** badge
+  beside it, they declared it themselves and nobody has verified it yet: it counts, and
+  you **Verify** it as any declared competence.
+- **Expires soon** — met, but the certificate is within its reminder of its end. It
+  still counts; press **Renewed** when the new certificate is there.
+- **Declared, not verified** — a certificate the person declared themselves. It does
+  not count until somebody verifies it: look at the evidence and **Verify** it.
+- **Below the level** — the person holds the competence below the level the profile
+  asks. Agree on how they get there; when they have, **Edit** or **Verify** it at the
+  new level.
+- **Expired** — the certificate's last valid day has passed. Renew it and press
+  **Renewed**.
+- **Missing** — the person has no current row of it, or the certificate is not valid
+  yet. Add it with **Add competence** if you have seen it in the work, or plan how the
+  person gets it.
+
+Every status but **Met** and **Expires soon** is not met. A competence archived since
+the profile was written stays on it, marked *(archived)*, and still counts; a profile HR
+has archived asks nothing and is not shown. When no profile applies, the tab says *No
+profile asks anything of* the person. The items not met also reach the dashboard of the
+person's manager and HR — *… does not meet their competence profile* — and the
+manager's My team, under **Profiles not met**.
+
+HR has **Assign profiles** above the list: choose the profiles that apply to the person,
+at most 20, and press **Save profiles** — the profiles chosen replace those assigned
+before. It offers the profiles that are not archived, and keeps one archived since
+until you take it off. A department's default is not assigned here: it applies by
+itself, and is set on the department under [The structure](#the-structure). The
+person, their manager, whoever holds `staff:approve`, `staff:personal-data` and HR see
+**What their profile asks**; colleagues do not. The rules are under
+[profiles and gaps](/en/reference/staff/#profiles-and-gaps).
 
 **In the one-to-one.** Open your report's page on **Competence** and go through it
 together:
@@ -996,9 +1039,23 @@ The **Absence** tab of My page shows, as Staff counts them:
 
 ### Your competence
 
-The **Competence** tab of My page is what you can do — skills with a level and
-certificates with a validity — as you and your manager keep it together, and, under it,
-what you want. It is made for your phone.
+The **Competence** tab of My page is what your position asks of you, what you can do —
+skills with a level and certificates with a validity — as you and your manager keep it
+together, and, under it, what you want. It is made for your phone.
+
+**What your profile asks.** At the top of the tab, **What your profile asks** shows each
+competence profile that applies to you — what your position needs, assigned to you by
+HR or your department's default — and, for each competence it asks, whether you meet
+it. **Met** means you do; with the **Declared** badge it counts too, and your manager
+verifies it when you next meet. **Expires soon** still counts: renew the certificate
+before its last day. **Declared, not verified** is a certificate you added yourself: it
+counts once your manager has verified it, so add the evidence. **Below the level** asks
+for more than the level you hold: talk to your manager about how to get there, and say
+under **What I want** that you want to learn it. **Expired** is a certificate past its
+last day: renew it and press **Renewed**. **Missing** is a competence you have not
+added, or a certificate not valid yet: if you hold it, add it with its evidence. Each
+profile says how many items are not met, or *All met*. When no profile applies to you,
+the tab says *No profile asks anything of you*.
 
 To add a competence:
 
@@ -1127,9 +1184,11 @@ team lead needs no other permission for their own reports. It shows:
   expired, the expired first and marked **Expired**, each with its day.
 - **Reviews overdue** — your reports whose competence review is overdue, each with the
   day it fell due.
+- **Profiles not met** — your reports who do not hold what their competence profiles
+  ask, each with how many items are not met (*2 not met*).
 
-In the three competence cards, a name opens the person's **Competence** tab, where you
-verify, renew or press **Reviewed today**.
+In the four competence cards, a name opens the person's **Competence** tab, where you
+verify, renew, press **Reviewed today** or go through **What their profile asks**.
 
 ## The Absence page
 
@@ -1184,6 +1243,51 @@ dashboard until the absence ends.
 - **A holder of `staff:personal-data`** is mailed about every request of a type that
   reveals health or family matters, by someone else: "An absence request awaits your
   decision", with no name, type or days — open **Approvals** to see it.
+
+## The Competence page
+
+**Competence** in the sidebar, for `staff:view` and `staff:manage`, answers who in the
+company holds what. It has two tabs: **Matrix**, and, for HR, **Interests**. The tab and
+every filter are kept in the page's address, so a link carries them.
+
+### Matrix
+
+**Matrix** lists every person active today, by name, with the competences they hold
+that are valid on a day, a column for each competence. Narrow it with the filters:
+
+- **Category** — the competences of one category.
+- **Competences** — one or more competences, searched by name and grouped by category.
+  Only the people who hold every one chosen are listed, with those as the columns.
+- **Minimum level** — leaves out a level below it; a competence without a level, such
+  as most certificates, is not touched.
+- **Valid on** — the day the competences must be valid, today unless you choose
+  another; clear it to go back to today. A certificate expired on that day, or not yet
+  valid, is not shown: the person's tab says when it ran out.
+- **Verified only** — leaves out what a person declared and nobody has verified.
+
+With no competence chosen, everyone active is listed and the columns are the
+competences the people shown hold; someone who holds none of them has an empty row.
+Each cell shows the level, or a check for a competence without one, the **Declared**
+badge when nobody has verified it — a declared certificate is shown too, unless you
+turn on **Verified only** — and *Valid to* a date when it ends. A name opens the
+person's **Competence** tab. On a phone each person is a card listing what they hold.
+When nobody is left, the page says *Nobody meets the filter*: widen it.
+
+The matrix shows what a colleague sees on the tab — the names, the levels, whether
+verified and how long valid — and nothing of the detail. See
+[the matrix](/en/reference/staff/#the-matrix).
+
+### Interests
+
+**Interests** is HR's (`staff:manage`) alone: who wants to learn what. A card for each
+competence somebody has picked among their interests on My page lists those who **Wants
+to learn** it — they do not hold it — and those who **Wants to use more** of it,
+holding it already, each name opening the person's **Competence** tab. Read beside the
+profiles, it says whom to train: someone whose profile shows **Below the level** or
+**Missing** on a competence they want to learn is the first to ask. Only people active
+today are listed, and whoever holds `staff:approve` without `staff:manage` does not see
+the tab. With nothing written yet, it says *Nobody has written an interest yet*. See
+[the interests overview](/en/reference/staff/#the-interests-overview).
 
 ## Absence and your holiday
 
@@ -1305,6 +1409,7 @@ type is counted only for `staff:personal-data`:
 | A certificate of … expires soon | A certificate is within its reminder of its last valid day. A manager sees their own people's; HR everyone's. Press **Renewed** on it when the new one is there. | The person's Competence tab |
 | A certificate of … has expired | A certificate's last valid day has passed. Renew it, or remove it if the person no longer needs it. | The person's Competence tab |
 | The competence review of … is overdue | Someone in employment has had no competence review recorded within the interval set under [Competence reviews](#competence-reviews) — counted from their last review, or from the start of their current employment when that is later. A manager sees their own people's; HR everyone's. Go through the tab together and press **Reviewed today**. | The person's Competence tab |
+| … does not meet their competence profile (2 items) | A competence profile that applies to someone active today asks for competences they do not meet — missing, below the level, a certificate declared but not verified, or expired — counted. One per person, for their manager and HR, never for the person themselves or for `staff:approve` alone. It goes away when every item is met or expires soon. | The person's Competence tab |
 | The group … is not in sync with its directory | A group could not be kept in the directory — a setting the directory refused, a group there holding its key that Vantigo may not change, or a directory that could not be reached three times in a row; the group's page says why. One per group and directory, for HR. | The group |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
@@ -1314,8 +1419,8 @@ Staff settings.
 ## Change the settings
 
 **Staff settings** (`staff:manage`) has the general settings first, then the company's
-structure, the document categories, three cards for competence — **Competence
-categories**, **Competences** and **Competence reviews** — three cards for absence — **Absence types**,
+structure, the document categories, four cards for competence — **Competence
+categories**, **Competences**, **Competence profiles** and **Competence reviews** — three cards for absence — **Absence types**,
 **Holiday schemes** and **Egenmelding and carry-over** — four cards for the data —
 **Import and export people**, **Payroll export**, **Retention** and **Thresholds** — and
 **Accounts** and **Directory profile**.
@@ -1349,9 +1454,12 @@ Four tables, each with an **Add** button, a pencil to change a row, and **Archiv
 - **Business units** — the virksomhet the a-melding reports per, each listed with the
   legal entity it sits under.
 - **Departments** — a code, a name, a **Manager** (a person in Staff: type a name or an
-  employee number to find them), a **Parent department**, a cost centre and a
-  division. A department's manager manages the people whose terms name the department
-  and no manager of their own.
+  employee number to find them), a **Parent department**, a **Default competence
+  profile**, a cost centre and a division. A department's manager manages the people
+  whose terms name the department and no manager of their own. Its default competence
+  profile applies to everyone whose terms place them in the department today, beside
+  the profiles assigned to them; the table shows it as **Default profile**. Clear it to
+  leave the department without one.
 - **Locations** — the workplace with its address; the country is Norway when left
   empty.
 
@@ -1438,6 +1546,38 @@ licences B, C and D, code 95, hot work and work zone signage.
   retires one of your own, and **Restore** brings it back; one whose category is
   archived is restored only once its category is. Either way, everyone who holds the
   competence keeps it, shown by its name.
+
+### Competence profiles
+
+**Competence profiles** describes what a position needs: a named list of competences,
+each with a minimum level when it has one and whether it must be valid. The table lists
+each profile's **Key**, **English name** and **Norwegian name**, how many **Items** it
+has and whether it is **Archived**.
+
+To add one:
+
+1. Press **New profile**.
+2. Type a **Key** — 1 to 40 characters of a–z, 0–9 and hyphens; it cannot be changed
+   later — the **Name in English** and the **Name in Norwegian**.
+3. Under **Items**, press **Add item** for each competence the position needs and
+   choose the **Competence**. If it has a level, choose the **Minimum level**; left
+   empty, any level will do. For a certificate with a fixed validity, **Must be
+   valid** — on by default — asks that it is valid today; turn it off when holding it is
+   enough. Remove an item with its bin. A profile holds at most 50 items, each
+   competence once.
+4. Press **Add**.
+
+The pencil changes a profile's names and items. An item you leave as it was stays even
+if its competence has been archived since; a new or changed one must name a competence
+that is offered. Turn on **Archived** and press **Save** to archive the profile: an
+archived profile asks nothing of anyone until you restore it, by turning the switch off
+again. It stays assigned to the people who had it, and a department keeps it as its
+default, without effect while it is archived. If somebody else saved the profile since
+you opened it, it is reloaded and the page says so: make your change again.
+
+Assign a profile on a person's **Competence** tab with **Assign profiles**, or make it
+a department's **Default competence profile** under [The structure](#the-structure).
+The rules are under [profiles and gaps](/en/reference/staff/#profiles-and-gaps).
 
 ### Competence reviews
 

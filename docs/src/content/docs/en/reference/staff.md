@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, groups — listed or derived by a rule, their owners, the traits a provider declares, the sync with the provider's directory and the licences they give — and My page, the document archive with its categories and retention classes, competence — the catalogue with the Norwegian certificates seeded, a person's competences declared, verified, renewed and removed with their evidence, what the person wants — their interests, preferences and availability declaration, stamped Seen by their manager — the competence review and its overdue item, the competence worker and its mails, and the Workforce contract — the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, groups — listed or derived by a rule, their owners, the traits a provider declares, the sync with the provider's directory and the licences they give — and My page, the document archive with its categories and retention classes, competence — the catalogue with the Norwegian certificates seeded, a person's competences declared, verified, renewed and removed with their evidence, what the person wants — their interests, preferences and availability declaration, stamped Seen by their manager — the competence review and its overdue item, competence profiles assigned or defaulted by department with the gap list and its item, the matrix and the interests overview, the competence worker and its mails, and the Workforce contract with the matching contract's Staff side — the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00062_staff_groups.sql
   - apps/server/internal/db/migrations/00066_staff_competence.sql
   - apps/server/internal/db/migrations/00067_staff_one_to_one.sql
+  - apps/server/internal/db/migrations/00068_staff_competence_profiles.sql
 ---
 The Staff module is the company's register of the people who work for it: who they
 are, how to reach them and their next of kin, their employments as Norwegian
@@ -48,7 +49,8 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 [a person's competences](#a-persons-competences),
 [what the person wants](#what-the-person-wants) — [interests](#interests),
 [preferences](#preferences) and [the availability declaration](#the-availability-declaration) —
-[the review](#the-review), the
+[the review](#the-review), [profiles and gaps](#profiles-and-gaps),
+[the matrix](#the-matrix), [the interests overview](#the-interests-overview), the
 [competence worker](#the-competence-worker) and the
 [Workforce contract](#the-workforce-contract) —
 [absence](#absence) — the [types](#absence-types), the [holiday schemes](#holiday-schemes) and the
@@ -192,14 +194,31 @@ module's validation owns a preference's kind and value, the weight, the weekday,
 days and the minutes, and the interval, and reports each per field. The Down drops the
 four tables, the settings column and the two stamp columns.
 
+Delivery C adds `00068_staff_competence_profiles.sql`: [profiles and gaps](#profiles-and-gaps).
+Three tables — `competence_profiles` (unique `key`, `ux_competence_profiles_key`;
+`archived_at` and `revision`), `competence_profile_items` (unique per profile and
+competence, `ux_competence_profile_items_profile_competence`; indexed by competence,
+for `competence_in_use`; `min_level` a nullable `smallint`, `must_be_valid` true by
+default) and `person_profiles` (unique per person and profile,
+`ux_person_profiles_person_profile`; indexed by profile) — and one column,
+`departments.competence_profile_id`, referencing `competence_profiles` and indexed
+(`ix_departments_competence_profile`): the department's default profile. The profiles,
+their items and the departments' column are about no person and have no retention
+class; `person_profiles` is class D. None of the new keys cascades: the delete of a
+person created in error deletes their assignments, and the erase deletes them. Still
+no CHECK constraint: the module's validation owns the key, the items' bounds, one item
+per competence, the levels and the archived profile, and reports each per field.
+Nothing about a gap is stored — the gap list, its item and the matrix are computed on
+read. The Down drops the departments' index and column, then the three tables.
+
 ## Permissions
 
 | Key | Name | Grants | Sensitive |
 | --- | --- | --- | --- |
-| `staff:access` | Use Staff | The app at all: your own record, absence, documents, competences and export; the [competence catalogue](#the-catalogue)'s visible rows. **Every operation requires it.** | no |
-| `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure, the [calendar](#the-calendar) with types hidden, and the active people's [competences](#a-persons-competences) without their detail; the [Workforce contract](#the-workforce-contract)'s answers. | no |
+| `staff:access` | Use Staff | The app at all: your own record, absence, documents, competences and export; the [competence catalogue](#the-catalogue)'s visible rows and every [competence profile](#profiles-and-gaps). **Every operation requires it.** | no |
+| `staff:view` | View the staff directory | Everyone's work details, employments and terms without pay, the structure — the departments' default competence profiles with it — the [calendar](#the-calendar) with types hidden, and the active people's [competences](#a-persons-competences) without their detail, in the [competence matrix](#the-matrix) too; the [Workforce contract](#the-workforce-contract)'s answers. | no |
 | `staff:approve` | Decide absence | Decide anyone's absence, see types other than HR-only and open cases' dates, mark milestones. It [decides](#decisions) anyone's absence requests but an HR-only type's, is the [Approver audience](#field-groups-and-audiences), sees the [inbox](#the-approvals-inbox) and the [calendar](#the-calendar), and makes `GET /meta`'s `canDecide` true; it reads open [sick-leave cases](#sick-leave-cases) and marks their milestones; it [verifies](#verification) anyone's competences but its holder's own, and adds, changes, renews and removes them, and [records their competence reviews](#the-review); it reads no one's [wishes](#what-the-person-wants). | no |
-| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the [competence catalogue](#the-catalogue) and anyone's competences — their chains included — the settings, documents other than health and their categories, the [account flag](#accounts), the [groups](#groups), imports and exports, the retention run by hand, the thresholds' acknowledgement. | yes |
+| `staff:manage` | Manage staff | HR: people (not the sealed fields), employments and terms with pay, the structure, absence types and holiday schemes, the [competence catalogue](#the-catalogue) and the [competence profiles](#profiles-and-gaps), anyone's competences — their chains included — and the profiles assigned to them, the [matrix](#the-matrix) and the [interests overview](#the-interests-overview), the settings, documents other than health and their categories, the [account flag](#accounts), the [groups](#groups), imports and exports, the retention run by hand, the thresholds' acknowledgement. | yes |
 | `staff:personal-data` | Reveal and erase personal data | Reads every person's every group; reveals and sets the national identity number and the bank account; health documents and notes, HR-only absence types, anyone's personal-data export, legal holds, erasure. It changes nothing else of a person but documents — the rest is `staff:manage`'s. Erasure is the [retention run](#retention)'s, on its schedule (run by hand by `staff:manage`); it alone writes the milestones' notes and [decides HR-only types](#decisions). | yes |
 
 All five are in the category "Staff" and delegable. The Owner holds them through the
@@ -332,9 +351,15 @@ Four small tables, not an org tree (design S6):
   organisation number of its own. The a-melding reports per business unit, and an
   employment names one.
 - **Departments** — a code, a name, an optional manager (a person), an optional
-  parent department, a cost centre and a division. A department's manager is the
-  default manager of the people whose terms name the department and no manager of
-  their own.
+  parent department, a cost centre, a division and an optional default
+  [competence profile](#profiles-and-gaps) (`competenceProfileId`). A department's
+  manager is the default manager of the people whose terms name the department and no
+  manager of their own; its default profile reaches every person whose place's terms in
+  force today name it. The profile must exist and, newly named, not be archived — a
+  plain field error on `competenceProfileId` (400) otherwise — while a department keeps
+  its own default archived since, as it keeps an archived parent; that default reaches
+  nobody while it stays archived. Left out of a write, the department has no default.
+  The department's write records no event, as before.
 - **Locations** — the arbeidssted, with an address and a country (Norway when none is
   given).
 
@@ -526,6 +551,7 @@ from the response — never null.
 | Competence detail | a row's `issuedOn`, `issuer`, `reference`, `evidence`, `source`, `verifiedAt`, `verifiedBy`, `verifiedBasis`, `verifiedNote`, `seenAt` | ✓ file evidence | — | ✓ | ✓ | ✎ file evidence | ✓ file evidence |
 | Wishes | [what the person wants](#what-the-person-wants): the interests, the preferences, the availability declaration and each row's `seenAt` | ✎ the three lists | — | ✓ stamp Seen | — | ✓ stamp Seen | ✓ |
 | Reviews | the [competence reviews](#the-review) and `lastCompetenceReview` | ✓ | — | ✎ record | ✎ record | ✎ record | ✓ |
+| Profiles and gaps | the [competence profiles](#profiles-and-gaps) that reach the person, their gap list and the export's `profileAssignments` | ✓ | — | ✓ | ✓ | ✎ assign | ✓ |
 
 - **Self** is the user a person's self-service link names, in whatever state the
   accounts worker left it (pending, disabled, failed …) — except a worker link the
@@ -575,10 +601,11 @@ Each person carries `capabilities`: `canEdit` and `canManageAccount` (`staff:man
 caller [verifies](#verification) the person's competences and records their
 [reviews](#the-review): a manager of theirs today, `staff:approve` or `staff:manage`,
 never the person), `canReadWishes` (the caller reads the Wishes group: the person, a
-manager of theirs today, `staff:manage`, `staff:personal-data`) and
+manager of theirs today, `staff:manage`, `staff:personal-data`),
 `canStampWishesSeen` (the caller [stamps their wishes Seen](#what-the-person-wants): a
 manager of theirs today or `staff:manage`, never the person, never `staff:approve`
-alone), and who the caller is to the
+alone) and `canAssignProfiles` (the caller [assigns the person's competence
+profiles](#profiles-and-gaps): `staff:manage`), and who the caller is to the
 person: `self` (the caller's self-service link names them) and `isManager` (the caller
 manages them today by [the manager rule](#managers-and-the-org-view); false for oneself) —
 which the page reads to offer a manager's writes on a sick-leave case, never guessing.
@@ -2198,7 +2225,10 @@ caller about themselves.
 - **The Competence tab** has no `/me` path of its own: My page calls
   [a person's competence operations](#a-persons-competences) with the linked person's
   id, as Self — the person declares, changes and removes their own declared rows,
-  renews their own and [files their evidence](#evidence), and never verifies one.
+  renews their own and [files their evidence](#evidence), and never verifies one. The
+  tab's top is **What your profile asks**: [the gap list](#profiles-and-gaps) of the
+  profiles that reach the person, read through `/people/{id}/competence-gaps` with the
+  same id; the person assigns none.
 - **What the person wants** has no `/me` path either: My page reads and replaces
   [the interests, the preferences and the availability declaration](#what-the-person-wants)
   through `/people/{id}/interests`, `/preferences` and `/availability` with the linked
@@ -2355,9 +2385,15 @@ who holds what, valid on a date. Delivery B, the one-to-one, adds
 [preferences](#preferences) and [availability declaration](#the-availability-declaration),
 written by the person alone and stamped **Seen** by their manager or HR — and
 [the review](#the-review), the record that the two went through the tab together,
-with its interval setting and overdue item. No permission is new: `staff:manage` keeps
-the catalogue, `staff:approve` verifies and records reviews, and a manager needs none
-for their own reports.
+with its interval setting and overdue item. Delivery C completes the phase:
+[competence profiles](#profiles-and-gaps) — what a position needs, assigned to people
+by HR or made a department's default — with the gap list at the top of the tab and
+its dashboard item, [the matrix](#the-matrix) of who holds what valid on a day,
+[the interests overview](#the-interests-overview) for HR, and the matching contract's
+Staff side, written into [the Workforce contract](#the-workforce-contract). No
+permission is new: `staff:manage` keeps the catalogue and the profiles,
+`staff:approve` verifies and records reviews, and a manager needs none for their own
+reports.
 
 ### The catalogue
 
@@ -2866,6 +2902,178 @@ default, 0 to 60 — makes a person **review-overdue**, raising the
   and a review recorded clears it.
 - **An interval of 0** raises no item for anyone.
 
+### Profiles and gaps
+
+`staff.competence_profiles` and `staff.competence_profile_items` are the profiles
+catalogue (S12): a **competence profile** is what a position needs — a `key`, `names`
+`{en, nb}` and a list of **items**, each a competence the person must hold, with an
+optional minimum level and whether their row must be valid. Like the competence
+catalogue it is about no person: no retention class, never touched by an erase.
+
+- **`GET /competence-profiles`** lists every profile by key, archived ones included
+  (with `archivedAt`) so Settings restores one, each with its `revision` and its items
+  in the catalogue's order — `{competenceId, competence, minLevel, mustBeValid}`,
+  `competence` the summary a competence row carries. Every caller with `staff:access`
+  reads them: the catalogue holds no personal data (reading 36).
+- **`POST /competence-profiles`** (`staff:manage`; 201) adds one: a `key` of 1–40
+  characters `[a-z0-9-]`, unique (another profile's is a 400 on `key`), `names` (each
+  1–100 characters) and `items`, required, an empty list allowed. The key is **fixed
+  from then on** (reading 27).
+- **`PUT /competence-profiles/{id}`** (`staff:manage`, `If-Match`) replaces `names`,
+  `archived` and `items`, all three required. The body is closed: a `key` is a 400
+  naming it. An unknown id is the bare 404, a revision that has moved on
+  `revision_conflict` (409). The items are replaced whole as a diff: an item on a
+  competence still named keeps its row, changed in place when its level or validity
+  rule changed, and a competence no longer named loses its item.
+- **The items** (reading 28). At most **50** (`items`, 400, past them). A competence
+  named twice is refused on the later index (`items[1].competenceId`). An unknown,
+  hidden or archived competence on a **new or changed** item is
+  `competence_unavailable` (400) on `items[i].competenceId`, as on a new competence row;
+  an item sent unchanged — the same competence, `minLevel` and `mustBeValid` — that
+  names a competence hidden or archived since is kept, as an interest on file is, and
+  reported on the gap list. `minLevel` is 0–4 (a plain field error otherwise) and only on
+  a competence with a level: on one without it is `level_not_allowed` on
+  `items[i].minLevel`. `mustBeValid` left out is true. Each item is closed: a property it
+  does not take is a field error on it (`items[0].level`).
+- **In use.** An item with a `minLevel` counts as the competence being in use: changing
+  a company competence's `hasLevel` while one names it is `competence_in_use` (409), so
+  no item's level is orphaned.
+- **Archiving** is never refused, whoever the profile is assigned to and whichever
+  department has it as its default: an archived profile **reaches nobody** until it is
+  restored (below).
+- **History.** Each write is an installation event, `competence_profile_created` or
+  `competence_profile_updated`, naming the profile (`competenceProfileId`) and the fields
+  set or changed ([the competence events](#the-competence-events)); a change that changes
+  nothing moves the revision and records no event.
+
+**How a profile reaches a person** (reading 25) — two ways, and the person's list says
+which:
+
+- **Assigned**: a `staff.person_profiles` row, written by `staff:manage` as a set.
+- **Their department's default**: `departments.competence_profile_id` of the
+  [department](#the-structure) the terms in force today of the person's **place** name —
+  the earliest of their employments in force today, by start and then id, as a
+  [group's rule](#the-rule) judges the place. A person with no employment in force today
+  has only their assigned profiles; one whose place's terms name no department, or a
+  department without a default, has no default.
+
+`GET /people/{id}/competence-profiles` answers `{profiles: [...]}` by key, each
+`{profile, assigned, department}`: `profile` the summary `{id, key, names, archived}`,
+`assigned` whether it is assigned, and `department` (`{id, code, name}`) when it is the
+department's default — one row when both. **An archived profile reaches nobody**
+(reading 26): an assigned one is still listed, `archived` true, so HR sees the
+assignment, but it is on no gap list and raises no item; a department whose default is
+archived has no default while it stays so, and the profile is not listed through it.
+
+**Assigning.** `PUT /people/{id}/competence-profiles` replaces the profiles assigned to
+the person with `{profileIds: [...]}`: at most **20** (`profileIds`, 400), a profile
+named twice refused on the later index (`profileIds[1]`), an empty list removing them
+all.
+
+- **Who.** `staff:manage` alone: anyone else who reads the person's profiles — the
+  person, their manager, the Approver, `staff:personal-data` — gets the uniform 403,
+  and a caller outside the group the bare 404. Who may is judged in a snapshot first,
+  before the body's rules, and again under the person's lock; an erased person is
+  `person_erased` (409).
+- **What is judged.** A profile already assigned is kept as it is, archived since or
+  not — never judged again; a new one must exist and not be archived, a plain field
+  error on `profileIds[i]` otherwise (no code of its own).
+- **No `If-Match`.** `staff:manage` is the only writer, and the list is not under the
+  person's revision: a replace moves no revision, and the last write wins.
+- **The answer** is the list as `GET` answers it, the department's default included —
+  which is written on the department, never here.
+- **The event.** A change of the set records `profiles_assigned` on the person, the
+  caller its actor, with the assigned profiles' sorted **keys** before and after
+  (reading 34) — catalogue words naming a position, never a value of the person's; a
+  replace that changes nothing records nothing.
+
+**The gap list.** `GET /people/{id}/competence-gaps` (S13) judges each item of every
+unarchived profile that reaches the person on their **current row** of the item's
+competence, today in the [business time zone](#the-business-time-zone), in this order
+(reading 23):
+
+1. No current row: `missing`.
+2. A **declared certificate**: `declared_only`.
+3. `minLevel` set and the row's level below it: `below_level`. A row without a level is
+   never below.
+4. `mustBeValid` and the row not valid today: `expired` when its `validTo` has passed,
+   `missing` when its `validFrom` is not yet reached.
+5. `mustBeValid` and its `validTo` within the competence's `reminderLeadDays` of today —
+   the lead rule of a row's `expiring`: `expiring`.
+6. Otherwise `met`.
+
+With `mustBeValid` false the validity is not judged (reading 24): an expired or
+not-yet-valid row is `met` — or `below_level`, or `declared_only` for a certificate —
+and `expiring` is never answered; an item asking a valid row of a competence without a
+validity is met whenever a row is held. A **declared skill** at the level is met, with
+the flag (N3.16): every item carries `declared` (the person's row is unverified) and
+`archived` (its competence is archived — the item stays on the profile, is reported and
+counts, §9), beside `verified` and, from the row when there is one, `level` and
+`validTo`. Each item is `{competenceId, competence, minLevel, mustBeValid, status,
+declared, archived, verified, level, validTo}`, each profile `{profile, assigned,
+department, items, notMet}`, and the list `{profiles, notMet}`. **Not met** is every
+status but `met` and `expiring`: `notMet` counts the items not met per profile and
+across every profile, an archived competence's included — the
+[dashboard item's](#the-competence-items) count. Nothing about a gap is stored.
+
+**Who reads.** Both GETs are the **Profiles and gaps**
+[field group's](#field-groups-and-audiences) (reading 32): the person, a manager of
+theirs today by the [one manager rule](#managers-and-the-org-view), `staff:approve`,
+`staff:manage` and `staff:personal-data`. Anyone else — the colleague, a caller who does
+not see the person, an unknown id — gets the bare 404. Each is read in one snapshot. The
+person reads theirs at the top of their own Competence tab ([My page](#my-page)). Each
+person carries `canAssignProfiles` (`staff:manage`) among its capabilities, so the apps
+carry no audience logic.
+
+### The matrix
+
+`GET /competence-matrix` (S14, reading 29) answers who holds what, valid on a day. It is
+`staff:view`'s and `staff:manage`'s, judged in the module; anyone else — the Approver, a
+manager, the person — gets the uniform 403. It is the directory with competences: the
+Competence group of every active person and nothing more.
+
+- **The people** are every person active **today** and not erased — the colleague
+  directory's rule, whatever day is asked — by name, then id.
+- **The rows** are each person's current rows **valid on `validOn`** — a date, today in
+  the business zone when left out. A row not valid on the day is absent, never shown as
+  expired: the gap list says that. Each cell is
+  `{competenceId, level, verified, validFrom, validTo}`.
+- **The competences selected** are the `competenceId`s given (the parameter repeated),
+  else `categoryId`'s, else all of them — hidden and archived ones included where a row
+  names them. Given together, `categoryId` and the ids intersect: a competence outside
+  the category has no rows, so nobody holds every one given.
+- **`verifiedOnly`** drops the declared rows. Without it a declared certificate is
+  shown, `verified` false for its badge: only the filter treats it as not held.
+- **`minLevel`** (0–4) drops the rows of a competence with a level whose level is below
+  it, or that carry none, and leaves a competence without a level untouched.
+- **With `competenceId`s given** a person is listed only when, after those filters, they
+  hold every one; otherwise every active person is listed, with no cells when they hold
+  nothing selected.
+- **The answer** is `{validOn, competences, people}`: the columns as competence
+  summaries in the catalogue's order — the `competenceId`s given, or, when none is, the
+  competences of the cells shown — and the rows as `{personId, name, competences}`.
+- **Refused.** A `minLevel` outside 0–4 or an unknown `competenceId` is a plain field
+  error on its name (400, *Invalid matrix filter*); a `validOn` that is not a date, like
+  any parameter of the wrong type, is the bare 400 of a request that does not decode. An
+  unknown `categoryId` answers no rows and no columns.
+
+### The interests overview
+
+`GET /competence-interests` (S14, reading 30) is the gap-to-train view: who wants to
+learn or use more of what. It is `staff:manage`'s alone — never the Approver's, who
+reads no wishes (amendment 16) — and anyone else gets the uniform 403.
+
+- It groups every [interest](#interests) of a person **active today** and not erased by
+  competence, in the catalogue's order, and lists only the competences somebody wants —
+  hidden or archived ones included when an interest names them, since an interest on
+  file is kept.
+- Each entry is `{competence, wantsToLearn, wantsMore}`, the people as
+  `{id, displayName, employeeNumber}` by name: under `wantsMore` when they hold a current
+  row of the competence, declared or verified, and under `wantsToLearn` when they do
+  not — the interest's `held`, derived as on the person's list.
+- It names people and competences and nothing else of the wish: no Seen stamp, no
+  preference, no declaration.
+
 ### The competence worker
 
 `staff-competence` (S7) runs every `STAFF_WORKERS_POLL` (default `1h`, at least `1m`)
@@ -2914,13 +3122,25 @@ evidence:
 
 ### The competence items
 
-Four [attention items](#attention-items) — `competenceDeclared`,
-`competenceExpiring`, `competenceExpired` and `competenceReviewOverdue` — are computed
-on read in the dashboard's snapshot, never waiting for the worker. Only people in
-employment today and not erased raise them, and never a caller's own to the caller: the
-person sees their own rows on the tab. The three row items are one per current row,
-`id` `<type>/<row id>`; the overdue review is one per person, `id`
-`<type>/<person id>`, dated the day the review fell due ([the review](#the-review)).
+Five [attention items](#attention-items) — `competenceDeclared`,
+`competenceExpiring`, `competenceExpired`, `competenceReviewOverdue` and
+`competenceGap` — are computed on read in the dashboard's snapshot, never waiting for
+the worker. Only people in employment today and not erased raise them, and never a
+caller's own to the caller: the person sees their own rows and gaps on the tab. The
+three row items are one per current row, `id` `<type>/<row id>`; the overdue review and
+the gap are one per person, `id` `<type>/<person id>` — the overdue review dated the
+day the review fell due ([the review](#the-review)), the gap dated today, since it is
+computed on read and has no day of its own (reading 31).
+
+**The gap item**, `competenceGap`, counts in `count` the items not met across the
+person's unarchived [profiles](#profiles-and-gaps), assigned or their department's
+default, by the gap list's rule; a person with none raises none. It goes to
+`staff:manage` for everyone and to a manager today for their reports — never to
+`staff:approve` alone. It is read — the assignments, the departments' defaults, then the
+profiles, their items and the current rows of the people concerned, stopping as soon as
+no profile reaches anyone — only for `staff:manage` or a caller who manages someone
+today, so the Approver's and anyone else's dashboard reads nothing more.
+
 Each has `entityId` the person and `title` the person's name; the host opens the
 person's Competence tab. Their audiences and triggers are in the
 [attention table](#attention-items).
@@ -2951,7 +3171,40 @@ caller, or the user `contracts.AsUser` names; a context with neither answers not
   date after its end, though the dashboard still shows it.
 - The consumer calls with the request's context, never inside a transaction of its
   own. What a person **wants** is never a method: it reaches Staffing only as a fit
-  Staff scores, which delivery C writes down.
+  Staff scores (below).
+
+**The matching contract's Staff side** (S15, reading 36). What a person wants reaches a
+planner as a **fit** for a proposed booking — a number and the kinds that lowered it —
+never the wishes themselves, so Staffing weighs preferences nobody but the person's
+manager and HR read. The method is not on the interface yet: an interface method
+without a consumer is dead code, so it is added with Staffing's first delivery, in this
+shape:
+
+```go
+PreferenceFit(ctx context.Context, personID int64, b Booking) (Fit, error)
+
+type Booking struct {
+    From, To        civil.Date
+    Weekdays        []int    // ISO 1 (Monday) to 7 (Sunday)
+    Parts           []string // morning, day, evening, night
+    LocationID      *int64
+    HoursPerWeek    *int
+    ConsecutiveDays *int
+    Travel          string   // none, regional, national, international
+    Remote          string   // never, some, mostly, only
+}
+
+type Fit struct {
+    Score   int      // 0 to 100
+    Lowered []string // the preference kinds the booking contradicts
+}
+```
+
+- **The rule.** The score starts at 100; each of the person's
+  [preferences](#preferences) the booking contradicts lowers it by its weight × 10 — 10,
+  20 or 30 — and names its kind in `Lowered`, never its value.
+- **The availability declaration is not scored**: whether a row is hard or soft, and
+  how it meets the booking, is Staffing's to enforce (S10).
 
 ### The exports and the erase
 
@@ -2973,10 +3226,19 @@ caller, or the user `contracts.AsUser` names; a context with neither answers not
   `availability_declarations` and `competence_reviews` — are class D in every column,
   so the D erase deletes the person's rows whole, under kind `D`; the Seen stamp on a
   competence row is class D with the row.
+- Both exports carry `profileAssignments` (reading 33): the
+  [profiles](#profiles-and-gaps) that reach the person, assigned or their department's
+  default, as `GET /people/{id}/competence-profiles` answers them, to an audience that
+  reads the Profiles and gaps group — the person's own export included, since the tab
+  shows them their profiles — and an empty list, never absent, to anyone else.
+- `person_profiles` is class D in every column: the D erase deletes the person's
+  assignments whole, under kind `D`. The profiles, their items and the departments'
+  defaults are about no person and are never touched.
 - `DELETE /people/{id}` refuses a person with a competence row (`person_in_use`, "has
   competences"); the delete of a person created in error deletes their interests,
-  preferences, availability declaration and reviews, whose keys to the person do not
-  cascade, and clears the reviewer's person on any review they recorded of someone else.
+  preferences, availability declaration, reviews and assigned profiles, whose keys to
+  the person do not cascade, and clears the reviewer's person on any review they recorded
+  of someone else. Assigned profiles do not make a person in use.
 - The register's CSV import and export and the payroll export carry no competence and
   no wish.
 
@@ -2999,12 +3261,16 @@ key, the fields that changed, before and after:
 | `availability_changed` | `{"fields": {"declarations": {"from": n, "to": n}}}` — the count of rows before and after. |
 | `wishes_seen` | `{"fields": {"seen": {"to": n}}}` — the rows the [Seen](#what-the-person-wants) stamped, the four lists together; the actor is the manager or HR who stamped. |
 | `competence_reviewed` | `{"fields": {"reviewedOn": {"to": "YYYY-MM-DD"}}}` — the [review's](#the-review) day; the actor is the reviewer. |
+| `profiles_assigned` | `{"fields": {"profiles": {"from": ["key", …], "to": ["key", …]}}}` — the keys of the profiles [assigned](#profiles-and-gaps) before and after, sorted, an empty side left out; the actor is HR. |
+| `competence_profile_created`, `competence_profile_updated` | Installation-level (no person): `competenceProfileId`, the profile, and `fields` over `key`, `names`, `archived` and `items` — the items as `[{competenceId, minLevel, mustBeValid}]` in the catalogue's order — each field set or changed, before and after. |
 
 The one-to-one's five kinds carry counts, kinds and a day, never a value (amendment
 21): every field is class D, `interests`, `preferences`, `declarations` and `seen` in
 the Wishes group and `reviewedOn` in the Reviews group, so an audience outside a group
 would read `"changed"`; every reader of the history — the person, their manager, HR —
-reads both.
+reads both. `profiles_assigned` carries the profiles' keys — catalogue words naming a
+position, never a value of the person's (reading 34) — and its field `profiles` is
+class D, in the Profiles and gaps group.
 
 Each person event carries `classes`, its own map of each field's class — every one D,
 the row's — which the D erase blanks it by. They are listed to everyone who reads the
@@ -3013,10 +3279,11 @@ field; every reader of the history reads both.
 
 ### What comes next
 
-- **C — profiles, gaps and the overview**: competence profiles, assigned to people or
-  defaulted by department, with the gap list and its item; the matrix and the
-  interests overview; and the matching contract's Staff side — a fit for a proposed
-  booking, never the wishes themselves — written into this page.
+The phase is built: A — the catalogue, a person's competences, the worker and the
+Workforce contract; B — what the person wants and the review; C — profiles and gaps,
+the matrix and the interests overview. Staffing is the consumer next: it reads who
+holds what through `contracts.Workforce` and, from its first delivery, the fit Staff
+scores for a booking ([the matching contract's Staff side](#the-workforce-contract)).
 
 ## Absence
 
@@ -3940,7 +4207,9 @@ every [sick-leave case](#sick-leave-cases) with its milestones (`cases`), this y
 superseded ones included, newest first, with its detail (`competences`),
 [what they want](#what-the-person-wants) — their `interests`, `preferences` and
 `availability`, each row with its Seen stamp — their [competence reviews](#the-review),
-newest first, each reviewer named (`competenceReviews`), and every
+newest first, each reviewer named (`competenceReviews`), the
+[competence profiles](#profiles-and-gaps) that reach them, assigned or their
+department's default (`profileAssignments`), and every
 event of their history, oldest first. Each absence
 array is shaped as the file's reader reads it: the complete file whole, the person's
 own copy as the person reads their own — both read every type as itself, a milestone's
@@ -4330,6 +4599,7 @@ holds every payload field to its column's class, and a third holds this table to
 | `person_preferences` | D | every column: `id`, `person_id`, `kind`, `value`, `weight`, `seen_at`, `seen_by_user_id`, `created_at`, `updated_at` — the D erase deletes the rows |
 | `availability_declarations` | D | every column: `id`, `person_id`, `kind`, `weekday`, `from_date`, `to_date`, `start_minute`, `end_minute`, `seen_at`, `seen_by_user_id`, `created_at` — the D erase deletes the rows |
 | `competence_reviews` | D | every column: `id`, `person_id`, `reviewed_on`, `reviewer_user_id`, `reviewer_person_id`, `created_at` — the D erase deletes the rows |
+| `person_profiles` | D | every column: `id`, `person_id`, `profile_id`, `created_at` — the D erase deletes the rows |
 
 Ids, foreign keys, revisions and timestamps are C: they say that a row existed and
 when. An event's `payload_classes` are its fields' classes (`fieldClasses` in
@@ -4734,7 +5004,8 @@ gets `[]`, never a 403. A caller with none of `staff:manage`, `staff:personal-da
 `staff:approve` is judged as a manager on the employments, their terms and the
 departments alone, and gets `[]` at once when they manage nobody today; a manager's
 read adds only their reports' names, the requests they decide, the open cases'
-milestones and their reports' [competence rows](#the-competence-items). Every count and item shown to a caller without `staff:personal-data`
+milestones and their reports' [competence rows](#the-competence-items) and
+[profiles](#profiles-and-gaps). Every count and item shown to a caller without `staff:personal-data`
 leaves out the requests of an HR-only type, so none reveals one.
 
 The **dashboard's manager rule** is the [manager rule](#managers-and-the-org-view) —
@@ -4772,6 +5043,7 @@ the caller's roles find is listed once.
 | `competenceExpiring` | manage: everyone's; a manager today: their reports' (not approve) | A current row whose `validTo` is today or later and no more than its competence's `reminderLeadDays` away — none for a competence without a lead — of a person in employment today and not erased; never the caller's own; raised whatever the [worker](#the-competence-worker) has mailed. One per row; `id` `competenceExpiring/<row id>`. | The `validTo`. | The person. |
 | `competenceExpired` | the same | A current row whose `validTo` has passed, on the same terms. Renewing the row supersedes it, and the item goes. One per row; `id` `competenceExpired/<row id>`. | The `validTo`. | The person. |
 | `competenceReviewOverdue` | manage: everyone's; a manager today: their reports' (not approve) | A person in employment today and not erased whose [review](#the-review) is overdue: today is after the due day — `competenceReviewIntervalMonths` calendar months after the later of their latest review and the start of their current unbroken employment run. None while the interval is 0; never the caller's own. One per person; `id` `competenceReviewOverdue/<person id>`. A review recorded clears it. | The day the review fell due. | The person. |
+| `competenceGap` | manage: everyone's; a manager today: their reports' (not approve) | A person in employment today and not erased with an item not met — every [gap status](#profiles-and-gaps) but `met` and `expiring`, an archived competence's item included — across their unarchived competence profiles, assigned or their department's default; never the caller's own. One per person; `id` `competenceGap/<person id>`. Meeting the items, or archiving the profile, clears it. | Today: a gap is computed on read and has no day of its own. | The person; `count` the items not met. |
 | `mainPeriodShort` | manage | From 1 April to 30 September (reading 23): a person with an employment in force today that began before 1 June, with fewer approved ferie working days in 1 June – 30 September than the main period, converted, of the scheme the holiday account reads — the earliest employment's in the year (whole-branch review) — 18 virkedager are 15 days (ferieloven § 7 (1)). One per person. | 1 April. | The person. |
 
 **The account items** (delivery C, `accounts_attention.go`; pre-flight I8) are
@@ -4873,8 +5145,8 @@ no date of its failure; the code and the field stay on the group's page. It goes
 the section is no longer `failed`; a retired section keeps its code and raises none.
 
 `id` is `<type>/<employment id>` for the employment items, `<type>/<row id>` for the
-three competence row items, `<type>/<person id>` for the overdue competence review and
-the other person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
+three competence row items, `<type>/<person id>` for the overdue competence review, the
+competence gap and the other person items, `retentionFailing`, `otpThreshold` and `headcountThreshold/<key>`.
 `title` is the person's display name — class C, so it survives the erase — with the
 employment number after it, in brackets, on an employment item of a person who has
 more than one; for the installation types it is an English sentence, and for the
@@ -4976,11 +5248,11 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `holiday_postponement_not_applicable` | 409 | A demand to postpone holiday on a row that is no 100 % sykmelding, or one over no approved ferie. |
 | `holiday_postponement_too_late` | 409 | A demand to postpone holiday for sickness that began before it, made after the last working day before the holiday (ferieloven § 9 first paragraph). |
 | `competence_held` | 409 | Declaring or adding a competence the person holds a current row of: change or renew that row instead. |
-| `competence_unavailable` | 400 | A new competence row naming a competence that is hidden, archived or unknown (on `competenceId`), or a new interest naming one (on `interests[i].competenceId`). |
-| `competence_in_use` | 409 | Changing whether a company competence has a level once a person's row names it. |
+| `competence_unavailable` | 400 | A new competence row naming a competence that is hidden, archived or unknown (on `competenceId`), a new interest naming one (on `interests[i].competenceId`), or a new or changed competence profile item naming one (on `items[i].competenceId`). |
+| `competence_in_use` | 409 | Changing whether a company competence has a level once a person's row, or a competence profile's item with a minimum level, names it. |
 | `verified_row` | 409 | The person changing or removing their own verified competence row: renew it instead. |
 | `superseded` | 409 | Changing, verifying, renewing or removing a competence row a renewal has superseded, or filing its evidence; removed only with its chain. |
-| `level_not_allowed` | 400 | A level on a competence row, or a verification, of a competence without one (on `level`). |
+| `level_not_allowed` | 400 | A level on a competence row, or a verification, of a competence without one (on `level`); a competence profile item's `minLevel` on one (on `items[i].minLevel`). |
 | `level_required` | 400 | No level on a competence row, or a verification, of a competence with one (on `level`). |
 | `own_record` | 403 | The person verifying their own competence row, or recording a review of their own, whatever they hold. |
 | `skill_no_validity` | 400, 409 | A `validTo` on a skill's competence row — declared, added or changed (400 on `validTo`); renewing a skill's row (409). |
@@ -5017,7 +5289,14 @@ code of their own: a bad weekday, minute, day, weight, kind or value is a plain 
 error at its index (`preferences[1].kind`, `declarations[0].endMinute`), a new interest
 in a competence not offered reuses `competence_unavailable`, a review dated after today
 is a plain field error on `reviewedOn`, and the person recording their own review
-reuses `own_record`.
+reuses `own_record`. Nor do [profiles and gaps](#profiles-and-gaps) and
+[the matrix](#the-matrix): assigning an unknown or archived profile is a plain field
+error on `profileIds[i]`, and a department's default naming one on
+`competenceProfileId`; a profile assigned twice, or a competence named twice in a
+profile, is one on the later index (`profileIds[1]`, `items[1].competenceId`); a
+matrix filter that does not pass — a `minLevel` outside 0–4, an unknown
+`competenceId` — is one on its name; and a profile's item reuses
+`competence_unavailable` and `level_not_allowed`.
 
 Every mutable row carries a `revision`, starting at 1 and moving on with each change.
 A `PUT` requires `If-Match` carrying the revision the row was read at — bare (`3`) or
@@ -5028,7 +5307,10 @@ told the first won. Archiving needs no revision: it is idempotent. A person's ne
 kin and roles carry no revision of their own: their replace is guarded by the
 person's, which it moves on when the list changes. The person's interests, preferences
 and availability declaration take no `If-Match` and move no revision: the person is
-their only writer, and the last write wins.
+their only writer, and the last write wins. A competence profile carries its own
+revision, which `PUT /competence-profiles/{id}` takes as `If-Match`, its items replaced
+under it; the profiles assigned to a person take none and move none — `staff:manage`
+is their only writer.
 
 ## Locks
 
@@ -5126,6 +5408,17 @@ their only writer, and the last write wins.
 - **The competence catalogue.** A category's change takes its row `FOR NO KEY UPDATE`,
   which a competence filed under it — added, or moved there — takes too, so an archive
   and a competence filed under the category are judged one after the other.
+- **A competence profile.** A profile's change takes its row `FOR NO KEY UPDATE` and
+  judges the `If-Match` revision on it; a new profile and a change then take each
+  competence an item names `FOR SHARE`, as a competence row does, so a change of the
+  competence's level and an item naming it are judged one after the other. An
+  assignment takes the person's row (`withPersonLock`), then each profile it newly
+  names `FOR SHARE`; a department's write takes the manager graph's lock, the
+  department's row, then the default profile it names `FOR SHARE`. So an archive and a
+  new assignment or default are judged one after the other: whichever comes second
+  waits on the profile's row — an assignment after the archive finds the profile
+  archived, an archive after the assignment leaves it assigned and reaching nobody. A
+  profile's write takes no person and no department.
 - **The sequence.** A create that generates an employee number holds the settings row
   until it commits, so two creators take numbers one after the other.
 - **The delete.** `DELETE /people/{id}` takes the person's row, then the manager graph,
@@ -5172,6 +5465,12 @@ All under `/api/v1/staff`.
 | `POST /people/{id}/wishes/seen` | `staff:access`, then a manager of the person today or `staff:manage`, never the person (otherwise 403; outside the Wishes group 404) |
 | `GET /people/{id}/competence-reviews` | `staff:access`, then the Reviews group — the person, a manager of theirs today, `staff:approve`, `staff:manage`, `staff:personal-data` (otherwise 404) |
 | `POST /people/{id}/competence-reviews` | `staff:access`, then a manager of the person today, `staff:approve` or `staff:manage` — never the person (`own_record`; otherwise 403; outside the Reviews group 404) |
+| `GET /competence-profiles` | `staff:access` |
+| `POST /competence-profiles`, `PUT /competence-profiles/{id}` | `staff:manage` |
+| `GET /people/{id}/competence-profiles`, `GET /people/{id}/competence-gaps` | `staff:access`, then the Profiles and gaps group — the person, a manager of theirs today, `staff:approve`, `staff:manage`, `staff:personal-data` (otherwise 404) |
+| `PUT /people/{id}/competence-profiles` | `staff:access`, then `staff:manage` (otherwise 403; outside the Profiles and gaps group 404) |
+| `GET /competence-matrix` | `staff:view` or `staff:manage` (judged in the module; otherwise 403) |
+| `GET /competence-interests` | `staff:manage` |
 | `POST /document-categories`, `PUT /document-categories/{id}` | `staff:manage` |
 | `GET /absence-types`, `GET /holiday-schemes` | `staff:access` (hidden types to `staff:manage` alone) |
 | `POST /absence-types`, `PUT /absence-types/{id}`, `POST /holiday-schemes`, `PUT /holiday-schemes/{id}` | `staff:manage` |
