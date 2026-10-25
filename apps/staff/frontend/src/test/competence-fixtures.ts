@@ -1,4 +1,11 @@
-import type { StaffCompetence, StaffCompetenceCategory, StaffPersonCompetence } from "../api/competences";
+import type {
+  StaffAvailabilityDeclaration,
+  StaffCompetence,
+  StaffCompetenceCategory,
+  StaffCompetenceReview,
+  StaffPersonCompetence,
+  StaffPersonPreference,
+} from "../api/competences";
 
 /** The five seeded categories (staff competence design S1), in order, and one of the company's own. */
 export const competenceCategories = (): StaffCompetenceCategory[] => [
@@ -173,4 +180,43 @@ export const personCompetences = (): StaffPersonCompetence[] => [
     declaredAt: "2026-10-01T08:00:00Z",
     revision: 1,
   },
+];
+
+/** An interest as the fake keeps it: whose, in which competence, and the Seen stamp. */
+export interface StoredInterest {
+  personId: number;
+  competenceId: number;
+  seenAt?: string;
+}
+export type StoredPreference = StaffPersonPreference & { personId: number };
+export type StoredDeclaration = StaffAvailabilityDeclaration & { personId: number };
+export type StoredReview = StaffCompetenceReview & { personId: number };
+
+/**
+ * What the people want (delivery B). Ada wants to use her welding more —
+ * which her manager has seen — and to learn English; Grace wants to learn
+ * welding. Nothing of Grace's is seen yet.
+ */
+export const personInterests = (): StoredInterest[] => [
+  { personId: 101, competenceId: 2004, seenAt: "2026-09-15T10:00:00Z" },
+  { personId: 101, competenceId: 2005 },
+  { personId: 102, competenceId: 2004 },
+];
+
+/** Ada would rather work Monday to Wednesday (matters) and in the day (important); Grace mostly from home. */
+export const personPreferences = (): StoredPreference[] => [
+  { personId: 101, kind: "weekdays", value: { days: [1, 2, 3] }, weight: 2 },
+  { personId: 101, kind: "time_of_day", value: { parts: ["day"] }, weight: 3 },
+  { personId: 102, kind: "remote", value: { share: "mostly" }, weight: 2 },
+];
+
+/** Ada is not available on Friday afternoons; Grace is away the first week of November. */
+export const availabilityDeclarations = (): StoredDeclaration[] => [
+  { personId: 101, kind: "unavailable", weekday: 5, startMinute: 720, endMinute: 1440 },
+  { personId: 102, kind: "unavailable", fromDate: "2026-11-02", toDate: "2026-11-06" },
+];
+
+/** Ada went through her competences with Hedy Lamarr last November; Grace never has. */
+export const competenceReviews = (): StoredReview[] => [
+  { id: 4001, personId: 101, reviewedOn: "2025-11-01", reviewer: "Hedy Lamarr", recordedAt: "2025-11-01T13:00:00Z" },
 ];

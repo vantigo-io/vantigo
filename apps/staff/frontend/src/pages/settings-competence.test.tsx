@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { choose, sent } from "../test/helpers";
+import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
 
@@ -151,5 +151,40 @@ describe("Settings — the competence catalogue", () => {
     expect(within(dialog).getByRole("switch", { name: /^Has a level/ })).toBeDisabled();
     expect(within(dialog).getByRole("textbox", { name: /^Validity \(months\)/ })).toBeDisabled();
     expect(within(dialog).getByRole("textbox", { name: /^Reminder/ })).toBeEnabled();
+  });
+});
+
+describe("Settings — the competence review interval", () => {
+  it("saves the interval with the settings' revision, the rest sent back as read", async () => {
+    const fetchMock = stubStaffApi({ role: "manage" });
+    renderRoute("/staff/settings");
+
+    const card = await region("Competence reviews");
+    const interval = within(card).getByRole("textbox", { name: "Review interval, months" });
+    expect(interval).toHaveValue("12");
+    // Above 60 the field holds the bound; empty, it says the range.
+    await retype(interval, "");
+    await userEvent.click(within(card).getByRole("button", { name: "Save" }));
+    expect(await within(card).findByText("0 to 60 months")).toBeInTheDocument();
+    expect(sent(fetchMock, "PUT", /\/settings$/)).toHaveLength(0);
+
+    await retype(interval, "18");
+    await userEvent.click(within(card).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/settings$/)).toHaveLength(1));
+    const [put] = sent(fetchMock, "PUT", /\/settings$/);
+    expect(put.ifMatch).toBe("3");
+    expect(put.body).toEqual({
+      employeeNumberPrefix: "E-",
+      nextEmployeeNumber: 8,
+      pensionProvider: "Storebrand",
+      competenceReviewIntervalMonths: 18,
+      createBeforeDays: 14,
+      // "Never", as the account settings send it back.
+      deleteExternalAfterDays: null,
+      erasePregnancyHealthTypes: false,
+      eraseSickCaseDates: false,
+    });
+    expect(fetchMock.state.settings.competenceReviewIntervalMonths).toBe(18);
   });
 });

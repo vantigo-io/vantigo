@@ -1,8 +1,11 @@
 import type {
+  StaffAvailabilityDeclaration,
   StaffCompetence,
   StaffCompetenceCategory,
   StaffCompetenceChange,
   StaffPersonCompetence,
+  StaffPersonInterest,
+  StaffPersonPreference,
 } from "../api/competences";
 import type { StaffImportResult } from "../api/data";
 import type { StaffDocument, StaffDocumentCategory } from "../api/documents";
@@ -20,7 +23,16 @@ import type { StaffRetentionRun } from "../api/retention";
 import type { StaffSettings, StaffSettingsInput, StaffThreshold } from "../api/settings";
 import type { StaffBusinessUnit, StaffDepartment, StaffLegalEntity, StaffLocation } from "../api/structure";
 import type { components } from "../api-schema";
-import { daysUntil, proposedExpiry } from "../lib/competences";
+import {
+  availabilityKinds,
+  daysUntil,
+  preferenceKinds,
+  proposedExpiry,
+  remoteShares,
+  sameDeclaration,
+  timeOfDayParts,
+  travelExtents,
+} from "../lib/competences";
 import { defaultFullTimeHours, fullTimeHoursMismatch } from "../lib/terms";
 import {
   allAbsenceTypes,
@@ -35,9 +47,17 @@ import {
 } from "./absence-fixtures";
 import { jsonResponse } from "./api";
 import {
+  availabilityDeclarations as defaultAvailability,
   competenceCategories as defaultCompetenceCategories,
+  competenceReviews as defaultCompetenceReviews,
   competences as defaultCompetences,
   personCompetences as defaultPersonCompetences,
+  personInterests as defaultPersonInterests,
+  personPreferences as defaultPersonPreferences,
+  type StoredDeclaration,
+  type StoredInterest,
+  type StoredPreference,
+  type StoredReview,
 } from "./competence-fixtures";
 import { type StubbedFetch, stubFetch } from "./fetch";
 import {
@@ -125,6 +145,12 @@ export interface StaffServer {
   competences?: StaffCompetence[];
   /** Every person's competence rows with every detail field; the fake shapes them per reader. */
   personCompetences?: StaffPersonCompetence[];
+  /** What each person wants (delivery B): their interests, preferences and availability, with the Seen stamps. */
+  interests?: StoredInterest[];
+  preferences?: StoredPreference[];
+  availability?: StoredDeclaration[];
+  /** The competence reviews recorded, any person's; the latest by day is the person's lastCompetenceReview. */
+  reviews?: StoredReview[];
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
   /** Answers a read instead of the fake's own, as `write` does a write. */
@@ -192,6 +218,10 @@ export interface StaffState {
   competenceCategories: StaffCompetenceCategory[];
   competences: StaffCompetence[];
   personCompetences: StaffPersonCompetence[];
+  interests: StoredInterest[];
+  preferences: StoredPreference[];
+  availability: StoredDeclaration[];
+  reviews: StoredReview[];
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -443,17 +473,83 @@ const meRequestProperties = [
  * The server's strict body (`strictbody.go`): a top-level property the
  * request does not take is refused, named, and nothing is applied.
  */
-const unknownProperties = (body: unknown, allowed: readonly string[]): Response | undefined => {
+const unknownProperties = (
+  body: unknown,
+  allowed: readonly string[],
+  title = "Invalid person",
+): Response | undefined => {
   const unknown = Object.keys((body ?? {}) as Record<string, unknown>)
     .filter((key) => !allowed.includes(key))
     .sort();
   if (unknown.length === 0) return undefined;
   return staffProblem(400, {
-    title: "Invalid person",
+    title,
     errors: Object.fromEntries(
       unknown.map((key) => [key, ["This property is not one this request takes; the request was not applied"]]),
     ),
   });
+};
+
+/**
+ * Why `value` is no value of the preference kind (`canonicalPreference`), or
+ * nothing when it is one: the days 1 to 7, the parts, the extent, the share
+ * and the limits of their kinds, every list one to its most, each value once.
+ * Whether a location exists is judged under the lock, on the new and changed rows.
+ */
+const preferenceValueRefusal = (kind: string, value: unknown): string | undefined => {
+  const fields = (value ?? {}) as Record<string, unknown>;
+  const only = (key: string) => Object.keys(fields).every((one) => one === key);
+  const list = (key: string, most: number, valid: (one: unknown) => boolean, message: string) => {
+    const values = fields[key];
+    if (!only(key) || !Array.isArray(values)) return message;
+    if (values.length === 0 || values.length > most) return `The ${key} are 1 to ${most} values`;
+    if (new Set(values).size !== values.length) return `The ${key} name a value twice`;
+    return values.every(valid) ? undefined : message;
+  };
+  const whole = (key: string, most: number, message: string) => {
+    const number = fields[key];
+    return only(key) && Number.isInteger(number) && (number as number) >= 1 && (number as number) <= most
+      ? undefined
+      : message;
+  };
+  const of = (key: string, allowed: readonly string[], message: string) =>
+    only(key) && allowed.includes(fields[key] as string) ? undefined : message;
+  switch (kind) {
+    case "weekdays":
+      return list(
+        "days",
+        7,
+        (one) => Number.isInteger(one) && (one as number) >= 1 && (one as number) <= 7,
+        "The days are 1 to 7",
+      );
+    case "time_of_day":
+      return list(
+        "parts",
+        timeOfDayParts.length,
+        (one) => (timeOfDayParts as readonly unknown[]).includes(one),
+        "The parts are of morning, day, evening, night",
+      );
+    case "location": {
+      const ids = fields.locationIds;
+      if (!only("locationIds") || !Array.isArray(ids) || !ids.every(Number.isInteger))
+        return 'A location preference is {"locationIds": [...]}';
+      if (ids.length === 0 || ids.length > 10) return "A location preference names 1 to 10 locations";
+      return new Set(ids).size === ids.length ? undefined : "A location is named twice";
+    }
+    case "travel":
+      return of(
+        "extent",
+        travelExtents,
+        'A travel preference is {"extent": "none" | "regional" | "national" | "international"}',
+      );
+    case "remote":
+      return of("share", remoteShares, 'A remote preference is {"share": "never" | "some" | "mostly" | "only"}');
+    case "max_consecutive_days":
+      return whole("days", 14, 'A most-consecutive-days preference is {"days": 1..14}');
+    case "max_hours_per_week":
+      return whole("hours", 60, 'A most-hours-a-week preference is {"hours": 1..60}');
+  }
+  return `${kind} is no preference kind`;
 };
 
 /**
@@ -528,6 +624,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     competenceCategories: server.competenceCategories ?? defaultCompetenceCategories(),
     competences: server.competences ?? defaultCompetences(),
     personCompetences: server.personCompetences ?? defaultPersonCompetences(),
+    interests: server.interests ?? defaultPersonInterests(),
+    preferences: server.preferences ?? defaultPersonPreferences(),
+    availability: server.availability ?? defaultAvailability(),
+    reviews: server.reviews ?? defaultCompetenceReviews(),
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -539,6 +639,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const managesAnyone = server.me !== undefined && state.people.some((one) => managerToday(one)?.id === server.me);
     const base = {
       ...meta,
+      // Every caller's: the locations not archived, as the table holds them now.
+      locations: state.locations.filter((one) => !one.archivedAt),
       capabilities: {
         ...meta.capabilities,
         managesAnyone,
@@ -749,15 +851,46 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         // Who verifies the person's competences: their manager, an Approver
         // or HR, never they themselves (staff competence design S4).
         canVerifyCompetence: (audience.manager || audience.hr || role === "approve") && !audience.self,
+        // Who reads what the person wants, and who stamps it Seen: the
+        // manager and HR, never the Approver alone (plan reading 16).
+        canReadWishes: audience.self || audience.manager || audience.hr || audience.personalData,
+        canStampWishesSeen: (audience.manager || audience.hr) && !audience.self,
         // Who the caller is to the person: themselves, or their manager today.
         self: audience.self,
         isManager: audience.manager && !audience.self,
       },
     };
-    return shape(audience, whole, ["id", "revision", "capabilities", "status"], personGroupOf);
+    const shaped = shape(audience, whole, ["id", "revision", "capabilities", "status"], personGroupOf);
+    // The reviews group (delivery B): the person's, their manager's, an
+    // Approver's and HR's; absent when they were never reviewed.
+    const last = latestReview(stored.id);
+    return last && readsReviews(audience)
+      ? { ...shaped, lastCompetenceReview: { reviewedOn: last.reviewedOn, reviewer: last.reviewer } }
+      : shaped;
   };
 
+  /** Whether the audience reads the person's competence reviews: all but a colleague as such. */
+  const readsReviews = (audience: Audience) =>
+    audience.self || audience.manager || audience.hr || audience.personalData || role === "approve";
+
+  /** The person's latest review by day, the later recorded on a tie. */
+  const latestReview = (personId: number): StoredReview | undefined =>
+    state.reviews
+      .filter((one) => one.personId === personId)
+      .sort((a, b) => b.reviewedOn.localeCompare(a.reviewedOn) || b.id - a.id)[0];
+
   const findPerson = (id: number) => state.people.find((one) => one.id === id);
+
+  /** Who the caller is by name: their linked person's, HR's otherwise. */
+  const callerDisplayName = () =>
+    (server.me === undefined ? undefined : findPerson(server.me)?.displayName) ?? "Harriet HR";
+
+  /** A stored wish or review as the wire carries it, without whose it is. */
+  const unowned = <T extends { personId: number }>(row: T): Omit<T, "personId"> => {
+    const copy: Partial<T> = { ...row };
+    delete copy.personId;
+    return copy as Omit<T, "personId">;
+  };
 
   /**
    * An account with what the server derives (design S22): the address the
@@ -2043,6 +2176,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         "verifiedBy",
         "verifiedBasis",
         "verifiedNote",
+        "seenAt",
       ];
       return Object.fromEntries(
         Object.entries(whole).filter(([field]) => !detail.includes(field)),
@@ -2304,6 +2438,385 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       }
     }
     return undefined;
+  };
+
+  /**
+   * What the person wants and the reviews (delivery B, design S8–S11), as
+   * the server judges them: the three lists read by the person, their
+   * manager, HR and staff:personal-data — anyone else the unknown person's
+   * 404 (a colleague, an Approver) — and written whole by the person alone
+   * (the uniform 403 for anyone else who sees them, a colleague and an
+   * Approver included; no If-Match). A write is judged as the server judges
+   * it: a property the request or a row does not take (`interests[0].level`),
+   * then the list's rules — every refusal collected, keyed by the row's
+   * place, a duplicate declaration on the row alone (`declarations[1]`) —
+   * then the erased person (409), then, on the new and changed rows, a
+   * competence or a location no longer offered. A list replaced keeps a row
+   * equal to one it had, with its Seen stamp; a new or changed row is
+   * unstamped (plan reading 18). The interests read in the catalogue's
+   * order. A new interest in a hidden or archived competence is
+   * `competence_unavailable` at its index.
+   * The Seen is the manager's and HR's, never the person's (403), and stamps
+   * every unstamped wish and current competence row, answering the counts.
+   * A review is the verifier's — `own_record` for the person, the uniform
+   * 403 for anyone else who reads the reviews, the 404 for a colleague —
+   * dated today unless the body says an earlier day. It does not model the
+   * events.
+   */
+  const wishesRoutes = (method: string, path: string, body: unknown): Response | undefined => {
+    const lists = /^\/api\/v1\/staff\/people\/(\d+)\/(interests|preferences|availability)$/.exec(path);
+    const seenPath = /^\/api\/v1\/staff\/people\/(\d+)\/wishes\/seen$/.exec(path);
+    const reviewsPath = /^\/api\/v1\/staff\/people\/(\d+)\/competence-reviews$/.exec(path);
+    const match = lists ?? seenPath ?? reviewsPath;
+    if (!match) return undefined;
+    const found = seen(Number(match[1]));
+    if (!found) return notFound();
+    const { stored, audience } = found;
+    const readsWishes = audience.self || audience.manager || audience.hr || audience.personalData;
+    const now = "2026-10-11T09:00:00Z";
+    const invalid = (title: string, field: string, message: string, code?: string) =>
+      staffProblem(400, { title, ...(code ? { code } : {}), errors: { [field]: [message] } });
+
+    if (reviewsPath) {
+      if (!readsReviews(audience)) return notFound();
+      if (method === "GET")
+        return jsonResponse(
+          200,
+          state.reviews
+            .filter((one) => one.personId === stored.id)
+            .sort((a, b) => b.reviewedOn.localeCompare(a.reviewedOn) || b.id - a.id)
+            .map(unowned),
+        );
+      if (method !== "POST") return undefined;
+      if (audience.self)
+        return staffProblem(403, {
+          code: "own_record",
+          title: "Own record",
+          detail: "A review of one's own competences is recorded by somebody else.",
+        });
+      if (!(audience.manager || audience.hr || role === "approve")) return forbidden();
+      if (stored.erasedAt) return erasedRefusal();
+      const reviewedOn = (body as { reviewedOn?: string } | undefined)?.reviewedOn ?? TODAY;
+      if (reviewedOn > TODAY)
+        return invalid("Invalid competence review", "reviewedOn", "A review is dated today or earlier");
+      const review: StoredReview = {
+        id: nextId++,
+        personId: stored.id,
+        reviewedOn,
+        reviewer: callerDisplayName(),
+        recordedAt: now,
+      };
+      state.reviews.push(review);
+      return jsonResponse(201, unowned(review));
+    }
+
+    if (seenPath) {
+      if (!readsWishes) return notFound();
+      if (method !== "POST") return undefined;
+      if (!((audience.manager || audience.hr) && !audience.self)) return forbidden();
+      if (stored.erasedAt) return erasedRefusal();
+      const stamp = <T extends { personId: number; seenAt?: string }>(rows: T[], current: (row: T) => boolean) => {
+        let count = 0;
+        for (const row of rows)
+          if (row.personId === stored.id && !row.seenAt && current(row)) {
+            row.seenAt = now;
+            count += 1;
+          }
+        return count;
+      };
+      return jsonResponse(200, {
+        seenAt: now,
+        interests: stamp(state.interests, () => true),
+        preferences: stamp(state.preferences, () => true),
+        declarations: stamp(state.availability, () => true),
+        competences: stamp(state.personCompetences, (row) => !row.superseded),
+      });
+    }
+
+    const kind = lists?.[2] as "interests" | "preferences" | "availability";
+    const held = (competenceId: number) =>
+      state.personCompetences.some(
+        (row) => row.personId === stored.id && row.competence.id === competenceId && !row.superseded,
+      );
+    // The catalogue's order (ListPersonInterests): the category's sort, then the competence's.
+    const catalogueOrder = (competence: StaffCompetence) => {
+      const category = state.competenceCategories.find((one) => one.id === competence.categoryId);
+      return [category?.sort ?? 0, competence.categoryId, competence.sort, competence.id];
+    };
+    const byCatalogue = (a: StaffCompetence, b: StaffCompetence) => {
+      const [x, y] = [catalogueOrder(a), catalogueOrder(b)];
+      return x.map((value, index) => value - y[index]).find((difference) => difference !== 0) ?? 0;
+    };
+    const answer = (): Response => {
+      const own = <T extends { personId: number }>(rows: T[]) =>
+        rows.filter((row) => row.personId === stored.id).map(unowned);
+      if (kind === "interests")
+        return jsonResponse(200, {
+          interests: own(state.interests)
+            .map((row) => ({
+              row,
+              competence: state.competences.find((one) => one.id === row.competenceId) as StaffCompetence,
+            }))
+            .sort((a, b) => byCatalogue(a.competence, b.competence))
+            .map(
+              ({ row, competence }): StaffPersonInterest => ({
+                competenceId: row.competenceId,
+                competence: {
+                  id: competence.id,
+                  key: competence.key,
+                  names: competence.names,
+                  kind: competence.kind,
+                  hasLevel: competence.hasLevel,
+                  categoryId: competence.categoryId,
+                  archived: competence.archivedAt !== undefined,
+                },
+                held: held(row.competenceId),
+                ...(row.seenAt ? { seenAt: row.seenAt } : {}),
+              }),
+            ),
+        });
+      if (kind === "preferences") return jsonResponse(200, { preferences: own(state.preferences) });
+      return jsonResponse(200, { declarations: own(state.availability) });
+    };
+    if (method === "GET") return readsWishes ? answer() : notFound();
+    if (method !== "PUT") return undefined;
+    // selfOnly: the 404 is for whoever does not see the person (seen() above); a colleague,
+    // an Approver and anyone else who sees them but is not them is the uniform 403.
+    if (!audience.self) return forbidden();
+    const others = <T extends { personId: number }>(rows: T[]) => rows.filter((row) => row.personId !== stored.id);
+    const mine = <T extends { personId: number }>(rows: T[]) => rows.filter((row) => row.personId === stored.id);
+
+    // Every refusal of a stage collected before answering, as the server's fieldErrors are.
+    const errors: Record<string, string[]> = {};
+    let code: string | undefined;
+    const refuse = (field: string, message: string, coded?: string) => {
+      errors[field] = [...(errors[field] ?? []), message];
+      code = code ?? coded;
+    };
+    const failed = () => Object.keys(errors).length > 0;
+    const refusal = (title: string) => staffProblem(400, { title, ...(code ? { code } : {}), errors });
+
+    // strictRows: a property the request or a row does not take, then the list itself when it is not said.
+    const strictRows = (title: string, list: string, rowKeys: readonly string[]): Response | undefined => {
+      const top = unknownProperties(body, [list], title);
+      if (top) return top;
+      const rows = (body as Record<string, unknown> | undefined)?.[list];
+      if (Array.isArray(rows))
+        for (const [index, row] of rows.entries())
+          for (const key of Object.keys((row ?? {}) as Record<string, unknown>)
+            .filter((one) => !rowKeys.includes(one))
+            .sort())
+            refuse(
+              `${list}[${index}].${key}`,
+              "This property is not one this request takes; the request was not applied",
+            );
+      if (failed()) return refusal(title);
+      if (!Array.isArray(rows)) {
+        refuse(list, `${list} is required: the whole list, or [] to remove every row`);
+        return refusal(title);
+      }
+      return undefined;
+    };
+
+    if (kind === "interests") {
+      const title = "Invalid interests";
+      const strict = strictRows(title, "interests", ["competenceId"]);
+      if (strict) return strict;
+      const sent = (body as { interests: { competenceId: number }[] }).interests;
+      if (sent.length > 20) {
+        refuse("interests", `A person has at most 20 interests, but ${sent.length} were given`);
+        return refusal(title);
+      }
+      const ids: number[] = [];
+      for (const [index, { competenceId }] of sent.entries()) {
+        if (ids.includes(competenceId))
+          refuse(`interests[${index}].competenceId`, `Competence ${competenceId} is named twice`);
+        else ids.push(competenceId);
+      }
+      if (failed()) return refusal(title);
+      if (stored.erasedAt) return erasedRefusal();
+      // Under the lock: a new interest names a competence that is offered; one on file is kept as it is.
+      const before = mine(state.interests);
+      for (const [index, competenceId] of ids.entries()) {
+        if (before.some((one) => one.competenceId === competenceId)) continue;
+        const competence = state.competences.find((one) => one.id === competenceId);
+        if (!competence || competence.hidden || competence.archivedAt)
+          refuse(
+            `interests[${index}].competenceId`,
+            `Competence ${competenceId} is unknown, hidden or archived, and no new interest names it`,
+            "competence_unavailable",
+          );
+      }
+      if (failed()) return refusal(title);
+      state.interests = [
+        ...others(state.interests),
+        ...ids.map(
+          (competenceId) =>
+            before.find((one) => one.competenceId === competenceId) ?? { personId: stored.id, competenceId },
+        ),
+      ];
+      return answer();
+    }
+
+    if (kind === "preferences") {
+      const title = "Invalid preferences";
+      const strict = strictRows(title, "preferences", ["kind", "value", "weight"]);
+      if (strict) return strict;
+      const sent = (body as { preferences: Omit<StaffPersonPreference, "seenAt">[] }).preferences;
+      if (sent.length > 7) {
+        refuse("preferences", `A person has at most 7 preferences, one per kind, but ${sent.length} were given`);
+        return refusal(title);
+      }
+      const kinds: string[] = [];
+      for (const [index, row] of sent.entries()) {
+        const field = (name: string) => `preferences[${index}].${name}`;
+        let known = preferenceKinds.includes(row.kind);
+        if (!known) refuse(field("kind"), `A kind is one of ${preferenceKinds.join(", ")}, but was '${row.kind}'`);
+        else if (kinds.includes(row.kind)) {
+          refuse(field("kind"), `A person has one preference of the kind ${row.kind}; it is given twice`);
+          known = false;
+        }
+        if (!Number.isInteger(row.weight) || row.weight < 1 || row.weight > 3)
+          refuse(field("weight"), "A weight is 1 to 3");
+        if (!known) continue;
+        kinds.push(row.kind);
+        const message = preferenceValueRefusal(row.kind, row.value);
+        if (message) refuse(field("value"), message);
+      }
+      if (failed()) return refusal(title);
+      if (stored.erasedAt) return erasedRefusal();
+      const before = mine(state.preferences);
+      const same = (a: Omit<StaffPersonPreference, "seenAt">, b: StaffPersonPreference) =>
+        a.kind === b.kind && a.weight === b.weight && JSON.stringify(a.value) === JSON.stringify(b.value);
+      // Under the lock: a new or changed location preference names locations that exist and are not archived.
+      for (const [index, row] of sent.entries()) {
+        if (row.kind !== "location" || before.some((one) => same(row, one))) continue;
+        const ids = (row.value as { locationIds: number[] }).locationIds;
+        const missing = ids.find((id) => !state.locations.some((one) => one.id === id && !one.archivedAt));
+        if (missing !== undefined)
+          refuse(
+            `preferences[${index}].value`,
+            `Location ${missing} is unknown or archived, and no new or changed preference names it`,
+          );
+      }
+      if (failed()) return refusal(title);
+      state.preferences = [
+        ...others(state.preferences),
+        ...sent.map((row) => before.find((one) => same(row, one)) ?? { ...row, personId: stored.id }),
+      ];
+      return answer();
+    }
+
+    const title = "Invalid availability";
+    const strict = strictRows(title, "declarations", [
+      "kind",
+      "weekday",
+      "fromDate",
+      "toDate",
+      "startMinute",
+      "endMinute",
+    ]);
+    if (strict) return strict;
+    const sent = (body as { declarations: Omit<StaffAvailabilityDeclaration, "seenAt">[] }).declarations;
+    if (sent.length > 50) {
+      refuse("declarations", `A declaration has at most 50 rows, but ${sent.length} were given`);
+      return refusal(title);
+    }
+    const accepted: Omit<StaffAvailabilityDeclaration, "seenAt">[] = [];
+    for (const [index, row] of sent.entries()) {
+      let fail = false;
+      const add = (name: string, message: string) => {
+        refuse(`declarations[${index}].${name}`, message);
+        fail = true;
+      };
+      const { weekday, startMinute: start, endMinute: end } = row;
+      if (!availabilityKinds.includes(row.kind))
+        add("kind", `A kind is one of ${availabilityKinds.join(", ")}, but was '${row.kind}'`);
+      if (weekday !== undefined && (weekday < 1 || weekday > 7))
+        add("weekday", "A weekday is 1 (Monday) to 7 (Sunday)");
+      if (weekday === undefined && !row.fromDate)
+        add("fromDate", "A row without a weekday is dated, and needs its first day");
+      if (row.fromDate && row.toDate && row.toDate < row.fromDate)
+        add("toDate", "The last day is on or after the first");
+      if (start !== undefined && end === undefined)
+        add("endMinute", "A row with a start minute needs its end minute too");
+      else if (start === undefined && end !== undefined)
+        add("startMinute", "A row with an end minute needs its start minute too");
+      else if (start !== undefined && end !== undefined) {
+        if (start < 0 || start > 1440) add("startMinute", "A minute of the day is 0 to 1440");
+        if (end < 0 || end > 1440) add("endMinute", "A minute of the day is 0 to 1440");
+        else if (end <= start) add("endMinute", "The end minute is after the start minute");
+      }
+      if (fail) continue;
+      // A row equal in every field to one before it is refused on its own index, no field named.
+      if (accepted.some((one) => sameDeclaration(one, row)))
+        refuse(`declarations[${index}]`, "This row is given twice");
+      else accepted.push(row);
+    }
+    if (failed()) return refusal(title);
+    if (stored.erasedAt) return erasedRefusal();
+    const before = mine(state.availability);
+    state.availability = [
+      ...others(state.availability),
+      ...sent.map((row) => before.find((one) => sameDeclaration(one, row)) ?? { ...row, personId: stored.id }),
+    ];
+    return answer();
+  };
+
+  /**
+   * The attention items My team reads (`GET /stats/attention`), the
+   * competence ones alone (Staff phase 2): a declared row, a certificate
+   * expiring within its competence's lead or expired, and an overdue review
+   * — the interval after the later of the person's last review and the
+   * start of their employment (the fixtures' runs are unbroken). HR reads
+   * everyone's, an Approver the declared rows, a manager their reports';
+   * never one's own, only people active today and not erased.
+   */
+  const attention = (): Response => {
+    const hr = manages(role);
+    const reportOf = (personId: number) => {
+      const person = findPerson(personId);
+      return person !== undefined && server.me !== undefined && managerToday(person)?.id === server.me;
+    };
+    const counted = (personId: number) => {
+      const person = findPerson(personId);
+      return person?.status.state === "active" && !person.erasedAt && personId !== server.me;
+    };
+    const item = (type: string, key: number, personId: number, occurredAt: string) => ({
+      id: `${type}/${key}`,
+      type,
+      title: findPerson(personId)?.displayName ?? "",
+      entityId: String(personId),
+      occurredAt,
+    });
+    const items = [];
+    for (const row of state.personCompetences) {
+      if (row.superseded || !counted(row.personId)) continue;
+      if (!row.verified && (hr || role === "approve" || reportOf(row.personId)))
+        items.push(item("competenceDeclared", row.id, row.personId, row.declaredAt));
+      if (!row.validTo || !(hr || reportOf(row.personId))) continue;
+      const lead = state.competences.find((one) => one.id === row.competence.id)?.reminderLeadDays;
+      if (row.validTo < TODAY) items.push(item("competenceExpired", row.id, row.personId, `${row.validTo}T00:00:00Z`));
+      else if (lead !== undefined && daysUntil(TODAY, row.validTo) <= lead)
+        items.push(item("competenceExpiring", row.id, row.personId, `${row.validTo}T00:00:00Z`));
+    }
+    const interval = state.settings.competenceReviewIntervalMonths;
+    if (interval > 0)
+      for (const person of state.people) {
+        if (!counted(person.id) || !(hr || reportOf(person.id))) continue;
+        const start = state.employments
+          .filter(
+            (one) => one.personId === person.id && one.startDate <= TODAY && (!one.endDate || one.endDate >= TODAY),
+          )
+          .map((one) => one.startDate)
+          .sort()[0];
+        if (!start) continue;
+        const last = latestReview(person.id)?.reviewedOn;
+        const anchor = last && last > start ? last : start;
+        const due = proposedExpiry(anchor, interval) as string;
+        if (TODAY > due) items.push(item("competenceReviewOverdue", person.id, person.id, `${due}T00:00:00Z`));
+      }
+    return jsonResponse(200, items);
   };
 
   /**
@@ -3045,6 +3558,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           eraseSickCaseDates,
           defaultAccountKind,
           directoryFields,
+          competenceReviewIntervalMonths,
           ...kept
         } = state.settings;
         // The self-certification policy and the carry-over left out keep theirs too.
@@ -3073,6 +3587,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
           // The two erase settings left out keep theirs too (Task 5b).
           erasePregnancyHealthTypes,
           eraseSickCaseDates,
+          // The competence review interval left out keeps its value (Staff phase 2, B).
+          competenceReviewIntervalMonths,
           selfCertPolicy,
           selfCertDaysPerOccurrence,
           selfCertOccurrencesPerYear,
@@ -3198,6 +3714,11 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
 
     const competenceAnswer = competenceRoutes(method, path, url, init, body);
     if (competenceAnswer) return Promise.resolve(competenceAnswer);
+
+    const wishesAnswer = wishesRoutes(method, path, body);
+    if (wishesAnswer) return Promise.resolve(wishesAnswer);
+
+    if (path === "/api/v1/staff/stats/attention" && method === "GET") return Promise.resolve(attention());
 
     return Promise.resolve(personRoutes(method, path, url, init, body) ?? notFound());
   }) as StaffStub;

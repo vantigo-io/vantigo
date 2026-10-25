@@ -97,6 +97,8 @@ export const PersonPage = () => {
           canRevealIdentifiers: false,
           canHold: false,
           canVerifyCompetence: false,
+          // Read-only: the wishes stay readable (canReadWishes), never stamped.
+          canStampWishesSeen: false,
         },
       }
     : data;

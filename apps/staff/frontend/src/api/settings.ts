@@ -31,6 +31,19 @@ export const updateStaffSettings = (input: StaffSettingsInput, revision: number)
   request<StaffSettings>("/api/v1/staff/settings", json("PUT", input, revision));
 
 /**
+ * The settings every other form leaves alone, sent back as read: `PUT
+ * /settings` is a replace that clears an optional field left out (the M9
+ * lesson), and the retention periods it keeps are not this form's. The
+ * egenmelding policy and the competence review interval send them.
+ */
+export const generalSettingsOf = (settings: StaffSettings): StaffSettingsInput => ({
+  ...(settings.employeeNumberPrefix ? { employeeNumberPrefix: settings.employeeNumberPrefix } : {}),
+  nextEmployeeNumber: settings.nextEmployeeNumber,
+  ...(settings.pensionProvider ? { pensionProvider: settings.pensionProvider } : {}),
+  ...(settings.injuryInsurer ? { injuryInsurer: settings.injuryInsurer } : {}),
+});
+
+/**
  * The two account settings (delivery C) as read, for a settings form that
  * does not edit them to send back whole: `createBeforeDays`, and
  * `deleteExternalAfterDays` — null for "never", which the server answers absent.

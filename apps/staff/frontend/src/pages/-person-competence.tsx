@@ -62,6 +62,7 @@ import {
 import { DOCUMENT_ACCEPT, fileRefusal, placeDocumentRefusal } from "../lib/documents";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 import { useStaffFormat } from "../lib/format";
+import { PersonReviews, PersonWishes } from "./-person-wishes";
 
 type Translate = (key: string, values?: Record<string, unknown>) => string;
 
@@ -302,6 +303,9 @@ export const PersonCompetence = ({
           </Stack>
         ))}
       </FieldGroup>
+      {/* What the person wants and the reviews (delivery B), each as the capabilities allow. */}
+      {caps.canReadWishes && <PersonWishes person={person} self={self} timeZone={timeZone} />}
+      {(verifier || self || person.lastCompetenceReview) && <PersonReviews person={person} />}
       <Modal
         opened={dialog !== null}
         onClose={close}
@@ -434,6 +438,7 @@ const CompetenceRow = ({
             [t("competenceIssuer"), row.issuer],
             [t("competenceReference"), row.reference],
             [t("competenceSource"), row.source ? sourceLabel(t, row.source) : undefined],
+            [t("competenceSeen"), row.seenAt ? day(row.seenAt, timeZone) : undefined],
             [
               t("competenceEvidence"),
               row.evidence && (

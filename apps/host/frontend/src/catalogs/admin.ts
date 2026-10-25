@@ -787,7 +787,7 @@ const en = {
     "See everyone's work details, employments and terms without pay, the company's structure, and the calendar with absence types hidden.",
   "admin.permission.staffApprove": "Decide absence",
   "admin.permission.staffApproveDescription":
-    "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, mark their milestones, and verify competences.",
+    "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, mark their milestones, verify competences and record competence reviews.",
   "admin.permission.staffManage": "Manage staff",
   "admin.permission.staffManageDescription":
     "Create and edit people (not their national identity number or bank account), employments and terms with pay, the company's structure, absence types and holiday schemes, the competence catalogue, the settings, documents other than health documents, the account flag, imports, exports and the payroll export.",
@@ -1369,7 +1369,7 @@ const nb: { [Key in keyof typeof en]: string } = {
     "Se alles arbeidsopplysninger, arbeidsforhold og vilkår uten lønn, selskapets struktur, og kalenderen med fraværstypene skjult.",
   "admin.permission.staffApprove": "Avgjøre fravær",
   "admin.permission.staffApproveDescription":
-    "Avgjøre alles fraværssøknader, se andre fraværstyper enn dem bare HR ser og datoene for åpne sykefraværssaker, krysse av milepælene deres og bekrefte kompetanser.",
+    "Avgjøre alles fraværssøknader, se andre fraværstyper enn dem bare HR ser og datoene for åpne sykefraværssaker, krysse av milepælene deres, bekrefte kompetanser og registrere kompetansesamtaler.",
   "admin.permission.staffManage": "Administrere ansatte",
   "admin.permission.staffManageDescription":
     "Opprette og endre personer (ikke fødselsnummeret eller bankkontoen deres), arbeidsforhold og vilkår med lønn, selskapets struktur, fraværstyper og ferieordninger, kompetansekatalogen, innstillingene, andre dokumenter enn helsedokumenter, kontoflagget, import, eksport og lønnseksporten.",

@@ -25,6 +25,7 @@ import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 import { AbsenceTypesTable } from "./-absence-types";
 import { AccountSettingsPanel } from "./-account-settings";
 import { CompetenceCategoriesTable, CompetencesTable } from "./-competence-catalogue";
+import { CompetenceReviewSettings } from "./-competence-review-settings";
 import { DocumentCategoriesTable } from "./-document-categories";
 import { HolidaySchemesTable } from "./-holiday-schemes";
 import { RegisterDataCard } from "./-import-modal";
@@ -39,7 +40,7 @@ import { ThresholdsPanel } from "./-thresholds-panel";
  * employee number is generated, the pension provider and the insurer — the
  * company's structure, the document categories, and A2's data operations:
  * the register's import and export, the payroll month, retention and the
- * thresholds — phase 2's competence categories and catalogue — and delivery B's absence types, holiday schemes, the
+ * thresholds — phase 2's competence categories, catalogue and review interval — and delivery B's absence types, holiday schemes, the
  * egenmelding policy and automatic carry-over — and delivery C's account
  * settings with Run accounts now. The page is `staff:manage`'s; the navigation offers it to
  * that permission alone, and the data cards are drawn only for a reader
@@ -72,6 +73,7 @@ export const SettingsPage = () => {
           {/* The competence catalogue is HR's to edit; everyone else reads it through the Competence tab. */}
           <CompetenceCategoriesTable />
           <CompetencesTable />
+          {settings.data && <CompetenceReviewSettings settings={settings.data} />}
           <AbsenceTypesTable />
           <HolidaySchemesTable />
           {settings.data && <SelfCertPolicyForm settings={settings.data} />}

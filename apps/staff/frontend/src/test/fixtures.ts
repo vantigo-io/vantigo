@@ -249,6 +249,8 @@ export const meta = (role: Role = "manage", overrides: Partial<StaffMeta> = {}):
   holidaySchemes: holidaySchemes(),
   // The structure is staff:view's and staff:manage's (plan reading 15).
   ...(readsDirectory(role) ? { structure: structure() } : {}),
+  // The unarchived locations by name are every caller's (the location preference, design S9).
+  locations: locations().filter((one) => !one.archivedAt),
   // The default account kind, the providers and the employee roles' state are
   // staff:manage's (delivery C, Entra B): no enabled module offers a provider here.
   ...(manages(role) ? { defaultAccountKind: "local" as const, providers: [], provisioningRolesSet: true } : {}),
@@ -301,6 +303,7 @@ export const settings = (overrides: Partial<StaffSettings> = {}): StaffSettings 
   eraseSickCaseDates: false,
   defaultAccountKind: "local",
   directoryFields: { ...defaultDirectoryFields },
+  competenceReviewIntervalMonths: 12,
   revision: 3,
   ...overrides,
 });

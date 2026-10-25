@@ -1,4 +1,10 @@
-import type { StaffCompetence, StaffCompetenceKind } from "../api/competences";
+import type {
+  StaffAvailabilityDeclaration,
+  StaffAvailabilityKind,
+  StaffCompetence,
+  StaffCompetenceKind,
+  StaffPreferenceKind,
+} from "../api/competences";
 import { fromUtc, isIsoDate, toUtc } from "./dates";
 
 /** A translation function, as `useI18n` hands one out. */
@@ -48,3 +54,94 @@ export const competenceName = (row: { names: { en: string; nb: string } }, local
 /** The catalogue a new row may name: neither hidden nor archived. */
 export const offeredCompetences = (catalogue: readonly StaffCompetence[]) =>
   catalogue.filter((one) => !one.hidden && !one.archivedAt);
+
+/** The seven preference kinds (design S9), in the table's order. */
+export const preferenceKinds: readonly StaffPreferenceKind[] = [
+  "weekdays",
+  "time_of_day",
+  "location",
+  "travel",
+  "remote",
+  "max_consecutive_days",
+  "max_hours_per_week",
+];
+export const WEIGHTS = [1, 2, 3] as const;
+export const timeOfDayParts = ["morning", "day", "evening", "night"] as const;
+export const travelExtents = ["none", "regional", "national", "international"] as const;
+export const remoteShares = ["never", "some", "mostly", "only"] as const;
+export const availabilityKinds: readonly StaffAvailabilityKind[] = ["available", "unavailable", "preferred"];
+/** ISO weekdays, Monday first. */
+export const ISO_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+export const preferenceKindLabel = (t: Translate, kind: string): string => t(`preferenceKind_${kind}`);
+/** A weight in words: *nice to have*, *matters*, *important*. */
+export const weightLabel = (t: Translate, weight: number): string => t(`weight_${weight}`);
+export const availabilityKindLabel = (t: Translate, kind: string): string => t(`availabilityKind_${kind}`);
+export const timeOfDayLabel = (t: Translate, part: string): string => t(`timeOfDay_${part}`);
+export const travelLabel = (t: Translate, extent: string): string => t(`travel_${extent}`);
+export const remoteLabel = (t: Translate, share: string): string => t(`remote_${share}`);
+
+/** A Monday the weekday names are read off (5 January 2026). */
+const MONDAY = Date.UTC(2026, 0, 5);
+
+/** An ISO weekday's name in the reader's language, long or short, from a fixed Monday. */
+export const weekdayLabel = (
+  formatDate: (date: Date, options?: Intl.DateTimeFormatOptions) => string,
+  isoWeekday: number,
+  width: "long" | "short" = "long",
+): string => formatDate(new Date(MONDAY + (isoWeekday - 1) * 86_400_000), { weekday: width, timeZone: "UTC" });
+
+/** Minutes after midnight as `HH:MM`; 1440 is the day's end, `24:00`. */
+export const minutesLabel = (minutes: number): string =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+/** The quarter hours from `first` to `last` minutes after midnight, both included, as a select's options. */
+export const quarterHourOptions = (first = 0, last = 1440) =>
+  Array.from({ length: Math.floor((last - first) / 15) + 1 }, (_, index) => {
+    const minutes = first + index * 15;
+    return { value: String(minutes), label: minutesLabel(minutes) };
+  });
+
+/** A declaration starts on a quarter hour from 00:00 to 23:45 … */
+export const startOptions = () => quarterHourOptions(0, 1425);
+/** … and ends on one from 00:15 to 24:00. */
+export const endOptions = () => quarterHourOptions(15, 1440);
+
+/** Whether two declarations say the same thing, field by field (the diff's equality, plan reading 18). */
+export const sameDeclaration = (a: StaffAvailabilityDeclaration, b: StaffAvailabilityDeclaration): boolean =>
+  a.kind === b.kind &&
+  a.weekday === b.weekday &&
+  a.fromDate === b.fromDate &&
+  a.toDate === b.toDate &&
+  a.startMinute === b.startMinute &&
+  a.endMinute === b.endMinute;
+
+/** A declaration as the request takes it: its fields and no stamp. */
+export const declarationInput = (row: StaffAvailabilityDeclaration): StaffAvailabilityDeclaration => {
+  const input = { ...row };
+  delete input.seenAt;
+  return input;
+};
+
+/**
+ * A list of declarations as one string, for telling two lists equal
+ * whatever their order: each row's fields in a fixed order, no stamp, sorted.
+ */
+export const declarationsKey = (rows: readonly StaffAvailabilityDeclaration[]): string =>
+  JSON.stringify(
+    rows
+      .map((row) => JSON.stringify([row.kind, row.weekday, row.fromDate, row.toDate, row.startMinute, row.endMinute]))
+      .sort(),
+  );
+
+/** A list of interests, by their competences' ids, as one string whatever their order. */
+export const interestsKey = (ids: readonly string[]): string => [...ids].sort().join(",");
+
+/**
+ * Whether an editor's draft follows the server's rows as they change: when
+ * it says what the server last said (nothing changed in the editor) or what
+ * the server says now (the person's own save came back). Any other draft is
+ * kept, and the editor says the rows changed elsewhere.
+ */
+export const followsServer = (draft: string, seeded: string, loaded: string): boolean =>
+  draft === seeded || draft === loaded;
