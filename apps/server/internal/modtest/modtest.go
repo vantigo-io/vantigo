@@ -133,6 +133,7 @@ type setup struct {
 	products        contracts.ProductCatalog
 	projects        contracts.ProjectDirectory
 	actuals         contracts.ProjectActuals
+	timesheets      contracts.Timesheets
 	expenses        contracts.ProjectExpenses
 	receivables     contracts.CustomerReceivables
 	holders         []contracts.CustomerReferenceHolder
@@ -241,6 +242,17 @@ func WithProjects(p contracts.ProjectDirectory) Option {
 // would provide it.
 func WithActuals(p contracts.ProjectActuals) Option {
 	return func(s *setup) { s.actuals = p }
+}
+
+// WithTimesheets sets Deps.Timesheets directly to p, for a module under test
+// that reads a user's hours in a week (contracts.Timesheets) without
+// composing time beside it, for WithActuals' reason. module.Compose only ever
+// overwrites Deps.Timesheets when one of the composed modules declares
+// Module.Timesheets, so a value set here survives Compose unchanged. Leaving
+// it out is the installation without time: the slot stays nil, which a
+// consumer reads as "time tracking is off".
+func WithTimesheets(p contracts.Timesheets) Option {
+	return func(s *setup) { s.timesheets = p }
 }
 
 // WithExpenses sets Deps.Expenses directly to p, for a module under test that
@@ -596,6 +608,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Products:                 s.products,
 		Projects:                 s.projects,
 		Actuals:                  s.actuals,
+		Timesheets:               s.timesheets,
 		Expenses:                 s.expenses,
 		Receivables:              s.receivables,
 		CustomerReferenceHolders: s.holders,

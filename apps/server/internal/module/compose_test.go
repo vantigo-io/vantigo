@@ -1064,6 +1064,90 @@ func TestCompose_PresetActualsSurviveWhenNoProvider(t *testing.T) {
 	}
 }
 
+type fakeTimesheets struct{}
+
+func (*fakeTimesheets) WeekHours(context.Context, time.Time, []uuid.UUID) (map[uuid.UUID]contracts.WeekHours, error) {
+	return nil, nil
+}
+
+// Timesheets is a sole-provider slot (contracts.Timesheets) and resolves like
+// Actuals: before any Mount runs, onto every module's Deps.
+func TestCompose_InjectsTimesheetsProvider(t *testing.T) {
+	timesheets := &fakeTimesheets{}
+	var got Deps
+
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Timesheets: func(Deps) contracts.Timesheets { return timesheets }, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Timesheets != timesheets {
+		t.Errorf("Deps.Timesheets = %v, want the provider's timesheets", got.Timesheets)
+	}
+}
+
+// Two modules both declaring Timesheets is a compose error naming both.
+func TestCompose_DuplicateTimesheetsProvider_Fails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Timesheets: func(Deps) contracts.Timesheets { return &fakeTimesheets{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Timesheets: func(Deps) contracts.Timesheets { return &fakeTimesheets{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules declare timesheets")
+	}
+	if !strings.Contains(err.Error(), "timesheets") {
+		t.Errorf("error %q does not say \"timesheets\"", err)
+	}
+	if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("error %q does not name both modules", err)
+	}
+}
+
+// With time disabled, the consumer's Deps.Timesheets is nil — which is how
+// staff tells "time tracking is off" from "nothing logged".
+func TestCompose_DisabledTimesheetsProvider_LeavesNil(t *testing.T) {
+	var got Deps
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", Timesheets: func(Deps) contracts.Timesheets { return &fakeTimesheets{} }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Timesheets != nil {
+		t.Errorf("Deps.Timesheets = %v, want nil: beta (the timesheets provider) is disabled", got.Timesheets)
+	}
+}
+
+// A value preset on Deps.Timesheets survives when no enabled module declares
+// Module.Timesheets: the seam modtest.WithTimesheets relies on.
+func TestCompose_PresetTimesheetsSurviveWhenNoProvider(t *testing.T) {
+	preset := &fakeTimesheets{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}, Timesheets: preset}, fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Timesheets != preset {
+		t.Errorf("Deps.Timesheets = %v, want the preset value to survive with no provider", got.Timesheets)
+	}
+}
+
 type fakeProjectExpenses struct {
 	projects contracts.ProjectDirectory // whatever Deps carried when it was built
 }

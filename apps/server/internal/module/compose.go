@@ -246,6 +246,17 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.Actuals = actualsProvider.Actuals(deps)
 	}
 
+	// Timesheets resolves right after actuals: the same module owns both,
+	// and a consumer reads it with the request's context, never inside a
+	// transaction (contracts.Timesheets).
+	timesheetsProvider, err := soleProvider(mods, "timesheets", func(m Module) bool { return m.Timesheets != nil })
+	if err != nil {
+		return nil, err
+	}
+	if timesheetsProvider != nil {
+		deps.Timesheets = timesheetsProvider.Timesheets(deps)
+	}
+
 	// Project expenses resolves beside actuals, and for the same reason: the
 	// module that owns expenses may read the one that owns projects while its
 	// provider is built, never while it serves (contracts.ProjectExpenses).

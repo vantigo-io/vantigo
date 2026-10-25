@@ -21,11 +21,13 @@
 // "time" without "projects" and "projects" without "customers", so the
 // directory is always there when time is — and the rate chain still checks it
 // for nil where it reads it, a defensive floor rather than a mode (a harness
-// can compose time without customers), never at mount. It provides two
+// can compose time without customers), never at mount. It provides three
 // contracts of its own: contracts.ProjectActuals (actuals.go), what has been
-// logged against a project, which projects reads its economy from, and
+// logged against a project, which projects reads its economy from,
 // contracts.BillableHours (billable.go), the approved, billable, priced
-// entries not yet invoiced, row by row, which an invoice is built from. And it
+// entries not yet invoiced, row by row, which an invoice is built from, and
+// contracts.Timesheets (timesheets.go), a user's hours in a week, which staff
+// reads a person's at-a-glance figure from. And it
 // fills the InvoicedWork slot (invoiced_work.go, module-boundaries rule 10):
 // the holder through which the invoices issue stamps an entry invoiced, and a
 // credit note's issue takes the stamp back — the one way in and out of the
@@ -76,6 +78,9 @@ func Module() module.Module {
 		Actuals:       newActuals,
 		BillableHours: newBillableHours,
 		InvoicedWork:  newInvoicedWorkHolder,
+		// Timesheets is a user's hours in a week, consumer-gated: staff
+		// decides who reads whose (timesheets.go).
+		Timesheets: newTimesheets,
 		// CalendarSource is the caller's own entries on the calendar
 		// (calendar design D1, calendar_source.go).
 		CalendarSource: newCalendarSource,
