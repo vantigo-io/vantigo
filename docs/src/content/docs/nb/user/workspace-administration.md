@@ -346,8 +346,8 @@ kredittstyringen — bankimport og avvikskøen, purrekjøringer og brev, vent, o
 til inkasso, en kundes purreregel og å registrere en dags Vipps-betalinger som avstemt. I Ansatte er **Vise og slette
 personopplysninger** den eneste tillatelsen som viser et fødselsnummer eller en bankkonto
 — **Administrere ansatte** gjør det ikke, men holder kompetansekatalogen — og **Avgjøre
-fravær** avgjør alles fravær og bekrefter også folks kompetanse, aldri innehaverens
-egen. **Administrer
+fravær** avgjør alles fravær og bekrefter også folks kompetanse og registrerer
+kompetansesamtalene deres, aldri innehaverens egne. **Administrer
 identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse.
 
 ### Tildelinger

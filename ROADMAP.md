@@ -1519,7 +1519,7 @@ Decisions taken while building it that change the design:
 *Unblocks:* a hire who exists before their first day and can sign in on it, a leaver
 who cannot sign in the day after, and an employee who requests holiday from a phone.
 
-### Phase 2 — Competence and preferences (A built)
+### Phase 2 — Competence and preferences (A, B built)
 
 What competence means for this company was discussed first, in
 [`docs/superpowers/research/2026-10-25-staff-competence.md`](docs/superpowers/research/2026-10-25-staff-competence.md)
@@ -1573,12 +1573,46 @@ Decisions taken while building it that change the design:
 - **`contracts.Workforce` answers people active today**, whatever date is asked, and
   `HeldCompetences` needs `staff:view` alone.
 
-**B — The one-to-one.** Interests, weighted preferences and the availability
-declaration, written by the person alone on My page and read by their manager and
-HR, never by colleagues and with no free-text reason; the manager's Seen stamp per row;
-the review stamp the manager and the person record together, with its interval setting
-and an overdue item; My team's cards for declarations awaiting verification,
-certificates expiring and reviews overdue; the tab's second half, *What I want*.
+**B — The one-to-one, built** on `claude/staff-phase-2-delivery-b-2ec898`
+([the plan](docs/superpowers/plans/2026-10-25-staff-one-to-one.md);
+[the reference](docs/src/content/docs/en/reference/staff.md#what-the-person-wants)):
+what the person wants, written by them alone on My page and read by their manager and
+HR, never by colleagues or the Approver — interests in competences, read as *wants to
+learn* or *wants to use more* by whether they hold it; preferences of seven kinds
+(weekdays, time of day, locations, travel, remote work, most consecutive days, most
+hours a week), each weighted *nice to have*, *matters* or *important*, with no free
+text; and an availability declaration of recurring and dated rows, data only until
+Staffing reads it — each list replaced whole and refused per row; the manager's or HR's
+**Seen**, stamped per row on the three lists and on the person's current competence
+rows, so what was added or changed since the one-to-one stands out; the competence
+review the manager and the person record together — a day and the reviewer, no notes —
+with `lastCompetenceReview` on the person, the review interval in the settings (12
+months, 0 off) and the `competenceReviewOverdue` attention item, counted from the later
+of the last review and the start of the current unbroken employment; the five events,
+the exports' four sections and the D erase of the four tables; and on the apps the
+tab's second half, *What I want*, the manager's view with **Seen** and **Reviewed
+today**, My team's cards and the settings card.
+
+Decisions taken while building it that change the design:
+
+- **The Seen is the manager's and HR's, never the Approver's**: the Approver reads no
+  wishes and stamps none; the person carries `canReadWishes` and `canStampWishesSeen`,
+  so the apps hold no audience rule.
+- **The Seen reaches the competence rows**: every current row without a stamp is
+  stamped too, so a declaration read but not yet verified is acknowledged.
+- **A whole-list replace is a diff, not a wipe**: an unchanged row keeps its row and
+  its stamp, a new or changed one is written unstamped, so "changed since" is "not yet
+  stamped"; a hidden or archived competence and an archived location are judged on new
+  and changed rows alone.
+- **No CHECK constraints** on the four tables: the module's validation owns the rules
+  and reports them per field.
+- **No `If-Match` and no revision on the lists**: the person is their only writer.
+- **The events carry counts and kinds, never values**: the interests and declarations
+  before and after, the preference kinds touched, the rows stamped, the review's day.
+- **No new refusal code**: every rule is a field error at its index;
+  `competence_unavailable` and `own_record` are reused.
+
+One migration, `00067_staff_one_to_one.sql`.
 
 **C — Profiles, gaps and the overview.** Competence profiles — a named list of
 competence, minimum level and must-be-valid — assigned to people or defaulted by

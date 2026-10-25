@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, slå på konto for en person og kontoarbeideren med gruppene den holder, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, kompetansearbeideren og e-postene dens, og innstillingene — forretningstidssonen, ansattnummerserien, oppbevaringstidene og kontoinnstillingene.
+description: Slå på Ansatte-modulen, gi folk tilgang til den, koble personer til brukerne sine, slå på konto for en person og kontoarbeideren med gruppene den holder, rettigheten for personopplysninger og helsedokumenter, dokumentkategoriene, å svare på en innsynsbegjæring, slettesperre, å ansette en slettet person på nytt, å importere og eksportere registeret, å eksportere en måned til lønn, oppbevaring — slettingen og sletteloggen — tersklene for antall ansatte og tjenestepensjon, fraværstyper og a-meldingskodene deres, ferieordninger, reglene for egenmelding og automatisk overføring, å overføre ferie, å rette et registrert sykefravær, å trekke tilbake retten til egenmelding, å følge en sykefraværssak, omsorgsdagfeltene og omsorgsdagene, hvem som avgjør fravær og e-postene om fravær, e-posten om endret kontonummer, kompetansearbeideren og e-postene dens, og innstillingene — forretningstidssonen, ansattnummerserien, oppbevaringstidene, kontoinnstillingene og intervallet for kompetansesamtaler.
 sidebar:
   order: 44
 sources:
@@ -84,7 +84,7 @@ Hver operasjon i Ansatte krever `staff:access`, og fire rettigheter ligger over 
 | --- | --- |
 | `staff:access` | Alle som skal se sine egne opplysninger. |
 | `staff:view` | Kolleger som skal se katalogen og bedriftens struktur. |
-| `staff:approve` | Den som avgjør alles fravær: godkjenner, avslår og trekker tilbake søknader, ser alles arbeidsopplysninger og fravær (en HR-type som permisjon), godkjenningsinnboksen og kalenderen, og åpne sykefraværssaker (milepælene, ikke notatene) — ikke lønn, private opplysninger eller historikk. De bekrefter også alles kompetanse unntatt sin egen. |
+| `staff:approve` | Den som avgjør alles fravær: godkjenner, avslår og trekker tilbake søknader, ser alles arbeidsopplysninger og fravær (en HR-type som permisjon), godkjenningsinnboksen og kalenderen, og åpne sykefraværssaker (milepælene, ikke notatene) — ikke lønn, private opplysninger eller historikk. De bekrefter også alles kompetanse unntatt sin egen, og registrerer kompetansesamtalene deres. De leser ingens ønsker. |
 | `staff:manage` | HR: personer, arbeidsforhold, dokumenter unntatt helsedokumenter, dokumentkategoriene, kompetansekatalogen og alles kompetanse, strukturen og innstillingene. Sensitiv. |
 | `staff:personal-data` | Den som får vise fødselsnumre og kontonumre, og lese og arkivere helsedokumenter. Sensitiv. |
 
@@ -1529,6 +1529,12 @@ endrer innstillingene samtidig ikke kan overskrive hverandre uten å merke det.
   `directoryFields.<felt>`. Et felt som slås av, sendes ikke lenger: Ansatte slutter å
   skrive det, og Entra beholder det det sist hadde. Navnene, ansattnummeret, brukerhovednavnet og arbeidslandet skrives
   alltid ([tilordningen](/en/reference/staff/#the-directory-profile)).
+- **Intervall for kompetansesamtaler** (`competenceReviewIntervalMonths`, 12, fra 0 til
+  60, kortet **Kompetansesamtaler**): hvor mange måneder etter personens siste
+  kompetansesamtale — eller starten på det sammenhengende arbeidsforholdet de er i nå,
+  når den er senere — samtalen er forfalt, og gir et punkt på dashbordet for lederen
+  deres og `staff:manage` ([samtalen](/en/reference/staff/#the-review)). 0 slår punktet
+  av. Utelatt fra en erstatning beholder den verdien sin.
 - **Oppbevaringsstatus** (`retention`, skrivebeskyttet): sletteloggens ventende og
   avviste filer, den eldste ventende, og den siste slettingen
   ([Sletteloggen](#sletteloggen)). Filer lageret har avvist minst én gang, og som ble

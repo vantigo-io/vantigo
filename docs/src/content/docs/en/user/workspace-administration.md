@@ -336,7 +336,7 @@ policy and marking a day's Vipps payments reconciled. In Staff,
 **Reveal and erase personal data** is the only permission that shows a national identity
 number or a bank account — **Manage staff** does not, though it keeps the competence
 catalogue — and **Decide absence** decides anyone's absence and also verifies people's
-competences, never the holder's own. **Manage identity**
+competences and records their competence reviews, never the holder's own. **Manage identity**
 (`identity:manage`) is the one permission of the identity module itself.
 
 ### Assignments

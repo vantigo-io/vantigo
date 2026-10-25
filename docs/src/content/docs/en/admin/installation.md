@@ -672,5 +672,17 @@ the migration back drops the three tables with every person's competence rows; t
 evidence stays among the people's documents. See
 [Staff](/en/admin/staff/#the-competence-worker).
 
+**The release with the competence one-to-one.** It brings
+`00067_staff_one_to_one.sql`: four empty tables for what each person wants — their
+interests, preferences and availability declaration — and for competence reviews; the
+Seen stamp on people's competence rows; and the competence review interval in the
+settings, 12 months by default, so the dashboard starts showing an overdue review for
+anyone in employment who has not had one within the interval of their latest review or
+of the start of their current employment — set it to 0 under
+[the settings](/en/admin/staff/#the-settings) first to keep the item off. No permission
+is new: `staff:approve` now also records competence reviews. Rolling the migration back
+drops the four tables with every person's wishes and reviews, the Seen stamps on the
+competence rows and the interval setting.
+
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).
