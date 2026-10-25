@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, groups — listed or derived by a rule, their owners, the traits a provider declares, the sync with the provider's directory and the licences they give — and My page, the document archive with its categories and retention classes, competence — the catalogue with the Norwegian certificates seeded, a person's competences declared, verified, renewed and removed with their evidence, what the person wants — their interests, preferences and availability declaration, stamped Seen by their manager — the competence review and its overdue item, competence profiles assigned or defaulted by department with the gap list and its item, the matrix and the interests overview, the competence worker and its mails, and the Workforce contract with the matching contract's Staff side — the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, the person's photo, the at-a-glance cards and the hours they read from Time, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, groups — listed or derived by a rule, their owners, the traits a provider declares, the sync with the provider's directory and the licences they give — and My page, the document archive with its categories and retention classes, competence — the catalogue with the Norwegian certificates seeded, a person's competences declared, verified, renewed and removed with their evidence, what the person wants — their interests, preferences and availability declaration, stamped Seen by their manager — the competence review and its overdue item, competence profiles assigned or defaulted by department with the gap list and its item, the matrix and the interests overview, the competence worker and its mails, and the Workforce contract with the matching contract's Staff side — the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00066_staff_competence.sql
   - apps/server/internal/db/migrations/00067_staff_one_to_one.sql
   - apps/server/internal/db/migrations/00068_staff_competence_profiles.sql
+  - apps/server/internal/db/migrations/00069_staff_person_photo.sql
 ---
 The Staff module is the company's register of the people who work for it: who they
 are, how to reach them and their next of kin, their employments as Norwegian
@@ -19,10 +20,11 @@ user and the history of every change. It is a vertical-slice module inside the s
 Vantigo binary (`apps/server/internal/staff`), owns the `staff` schema in the shared
 PostgreSQL database, and serves `openapi/staff.yaml` under `/api/v1/staff`.
 
-It depends on nobody but identity: it reads users through `contracts.UserDirectory`,
-which identity always provides, sends its one mail through the platform's SMTP seam,
-and keeps its documents' bytes in the platform's object store under its own scope,
-`staff`. `MODULES=staff` alone is a valid installation. It provides one contract,
+It depends on identity, and optionally on Time ([contracts consumed](#contracts-consumed)):
+it reads users through `contracts.UserDirectory`, which identity always provides, sends
+its one mail through the platform's SMTP seam, and keeps its documents' bytes and the
+people's photos in the platform's object store under its own scope, `staff`.
+`MODULES=staff` alone is a valid installation. It provides one contract,
 `contracts.Workforce` — the [competences people hold](#the-workforce-contract), valid on
 a date — as the sole provider of that slot, and fills the many-provider calendar slot
 with the caller's own absences ([on the calendar](#on-the-calendar)); nothing else of
@@ -34,10 +36,11 @@ identity providers an enabled module offers, whose directory the
 [module boundaries](/en/contributing/module-boundaries/). With none, nothing changes but
 that the `entra` kind cannot be chosen.
 
-This page grows with the module. What is here today: the [permissions](#permissions),
+This page grows with the module. What is here today: the [contracts it consumes](#contracts-consumed), the [permissions](#permissions),
 the [settings](#settings), the [business time zone](#the-business-time-zone), the
 [structure](#the-structure), [people](#people) — the record, the
 [directory](#the-directory), the [field groups and audiences](#field-groups-and-audiences),
+[the photo](#the-photo), [at a glance](#at-a-glance),
 the [history](#the-history) and [deletion](#deleting-a-person) —
 [employments](#employments) and their [terms](#terms), the
 [derived dates](#the-derived-dates), the [§ 14-6 check](#the--14-6-check),
@@ -62,6 +65,24 @@ the [history](#the-history) and [deletion](#deleting-a-person) —
 the [legal hold](#the-legal-hold) and the [reassessment](#the-reassessment), the
 dashboard's [figures and attention items](#stats-and-attention) and the
 [thresholds](#the-thresholds), [how a refusal looks](#refusals-and-revisions), the [locks](#locks) and the [endpoints](#endpoints).
+
+## Contracts consumed
+
+Beside identity's `contracts.UserDirectory` and the many-provider
+`contracts.IdentityProvisioner`, Staff reads one business module, optionally:
+**`contracts.Timesheets`** (`Deps.Timesheets`), the hours each identity user logged and
+had approved in a week, which Time provides as the slot's sole provider — for the hours
+card [at a glance](#at-a-glance). It is **consumer-gated**, as
+`contracts.ProjectActuals` is: Time performs no authorization, and Staff's own rule
+decides who may see whose hours — the Hours group: the person, a manager of theirs today
+by [the one manager rule](#managers-and-the-org-view), `staff:manage` and
+`staff:personal-data` — before it asks. It asks through one accessor, `timesheetsWeek` in
+`contractscalls.go`, with the request's context and never inside one of its
+transactions, for the one user the person's self-service link names. With `time`
+disabled the slot is nil: the card says time tracking is off, never zero, nothing fails,
+and `MODULES=staff` alone stays a valid installation. Nothing else of Time is read, and
+Time's own permissions, screens and rules are untouched — see the consumer-gated
+contracts beside rule 12 in the [module boundaries](/en/contributing/module-boundaries/).
 
 ## The schema
 
@@ -210,6 +231,16 @@ no CHECK constraint: the module's validation owns the key, the items' bounds, on
 per competence, the levels and the archived profile, and reports each per field.
 Nothing about a gap is stored — the gap list, its item and the matrix are computed on
 read. The Down drops the departments' index and column, then the three tables.
+
+The person-glance delivery adds `00069_staff_person_photo.sql`: [the photo](#the-photo).
+Three nullable columns on `people` — `photo_object_key` (`varchar(200)`, the photo's key
+in the object store under the `staff` scope, `people/<person id>/photo/<uuid>`),
+`photo_content_type` (`varchar(40)`, `image/jpeg` or `image/png`) and `photo_updated_at`
+(`timestamptz`, when it was set, the apps' cache key) — all class D. No table, no index,
+no setting. Still no CHECK constraint: the module's validation owns the type, the size
+and the dimensions, and reports them on `file`. Nothing about [a glance](#at-a-glance) is
+stored. The Down drops the three columns; the objects they named stay in the store,
+named by nothing.
 
 ## Permissions
 
@@ -536,7 +567,7 @@ from the response — never null.
 
 | Group | Fields | Self | Colleague (`staff:view`) | Manager | Approver (`staff:approve`) | `staff:manage` | `staff:personal-data` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Work | name, employee number, work email and phone, work country, language, roles; the person's place today — `manager`, `department`, `title`, `businessUnit`, `location` | ✓ | ✓ | ✓ | ✓ | ✎ | ✓ |
+| Work | name, employee number, work email and phone, work country, language, roles; the person's place today — `manager`, `department`, `title`, `businessUnit`, `location`; `photoUpdatedAt` and [the photo](#the-photo) itself | ✓ | ✓ | ✓ | ✓ | ✎ | ✓ |
 | Employment dates | `status`; an employment's `startDate`, `endDate`, `fteChangedAt`; a terms row's `validFrom`, `validTo`, `employmentType`, `ftePercent` | ✓ | ✓ | ✓ | ✓ | ✎ | ✓ |
 | Employment | every other field of an employment and its terms but the pay | ✓ | — | ✓ | ✓ | ✎ | ✓ |
 | Pay | `remunerationType`, `payComponents`, `payMethod`, `paydayText`, `seniorityDate`, `payGrade`, `salaryChangedAt` | ✓ | — | — | — | ✎ | ✓ |
@@ -552,6 +583,8 @@ from the response — never null.
 | Wishes | [what the person wants](#what-the-person-wants): the interests, the preferences, the availability declaration and each row's `seenAt` | ✎ the three lists | — | ✓ stamp Seen | — | ✓ stamp Seen | ✓ |
 | Reviews | the [competence reviews](#the-review) and `lastCompetenceReview` | ✓ | — | ✎ record | ✎ record | ✎ record | ✓ |
 | Profiles and gaps | the [competence profiles](#profiles-and-gaps) that reach the person, their gap list and the export's `profileAssignments` | ✓ | — | ✓ | ✓ | ✎ assign | ✓ |
+| Contract | the contract card [at a glance](#at-a-glance): whether the employment in force is signed | — | — | — | — | ✓ | — |
+| Hours | the hours card [at a glance](#at-a-glance): this week's hours logged and approved, read from Time, against the hours the contract expects | ✓ | — | ✓ | — | ✓ | ✓ |
 
 - **Self** is the user a person's self-service link names, in whatever state the
   accounts worker left it (pending, disabled, failed …) — except a worker link the
@@ -572,7 +605,9 @@ from the response — never null.
   is every one of them at once and reads what any may. **Approver** is `staff:approve`
   (delivery B, plan reading 18): every person's work and non-pay employment, and their
   absences with every type but an HR-only one (read as leave) and the detail — no
-  history, no private fields, no pay, no documents.
+  history, no private fields, no pay, no documents, no hours: the Approver verifies
+  competence and decides absence, and the Hours group is the person's, their
+  manager's and HR's alone.
 - **The place today** — the manager, the department, the title and the location of the
   terms in force today, and their employment's business unit, each as an id and a
   name — is the work group's, everyone's who sees the person. A terms row's own
@@ -605,7 +640,9 @@ manager of theirs today, `staff:manage`, `staff:personal-data`),
 `canStampWishesSeen` (the caller [stamps their wishes Seen](#what-the-person-wants): a
 manager of theirs today or `staff:manage`, never the person, never `staff:approve`
 alone) and `canAssignProfiles` (the caller [assigns the person's competence
-profiles](#profiles-and-gaps): `staff:manage`), and who the caller is to the
+profiles](#profiles-and-gaps): `staff:manage`), `canSetPhoto` (the caller [sets and
+removes the person's photo](#the-photo): the person themselves, `staff:manage` or
+`staff:personal-data`; false for an erased person), and who the caller is to the
 person: `self` (the caller's self-service link names them) and `isManager` (the caller
 manages them today by [the manager rule](#managers-and-the-org-view); false for oneself) —
 which the page reads to offer a manager's writes on a sick-leave case, never guessing.
@@ -614,6 +651,167 @@ The **hold** group is about the record's retention rather than the person: wheth
 legal hold stands, with its reason and when it was set, when the retention run erased
 the person and when they were reassessed. It is HR's alone — `erasedAt` and
 `reassessedAt` are absent until set, `legalHold` is `{held: false}` when there is none.
+
+### The photo
+
+A person has at most one **photo** (`GET|PUT|DELETE /people/{id}/photo`, person-glance
+design S1): the register's own, not identity's avatar, which only the user and an Owner
+reach and which a person who never has a user cannot have. Its bytes are in the object
+store under the module's `staff` scope, at `people/<person id>/photo/<uuid>` — a fresh
+key per upload, so a replaced photo is never overwritten in place; the person's row holds
+the key, the type and when it was set (`photo_object_key`, `photo_content_type`,
+`photo_updated_at`, class D).
+
+- **Who sets it.** `PUT` sets the photo or replaces it whole, and `DELETE` removes it:
+  the person themselves through their self-service link (My page calls both with the
+  person's own id), `staff:manage` and `staff:personal-data` — `canSetPhoto` on the
+  person's capabilities. Anyone else who sees the person — a manager, a colleague, the
+  Approver — gets the uniform 403, and anyone who does not the unknown id's 404. The
+  caller is judged in a snapshot first, so a caller who may not see an erased person
+  learns nothing from its 409, and again under the lock. An [erased](#the-erased-state)
+  person is `person_erased` (409). Neither takes `If-Match`: the row's revision moves
+  on, and the last write wins. `PUT` answers 200 with the person as the caller reads
+  them; `DELETE` answers 204, and the 404 when there is no photo.
+- **The file.** One multipart part, `file` — any other part is skipped — read no
+  further than 5 MiB and a byte; the router caps the operation's body at 5 MiB and
+  64 KiB of framing. Its own bytes decide what it is: the name and the type it was sent
+  under are no evidence either way. It must sniff as a JPEG or a PNG (the documents'
+  sniffing, `sniffDocumentType`), and `image.DecodeConfig` — which reads the header
+  alone and never decompresses, so a decompression bomb costs nothing — must decode it
+  as that same format, each side at most 4096 pixels (identity's rule for an avatar). It
+  is stored and served as the type it sniffed as, and stored **without its metadata**:
+  a JPEG's Exif and XMP (`APP1`) and `APP13` segments, and a PNG's `eXIf`, `tEXt`,
+  `zTXt` and `iTXt` chunks, are cut out before the object is written — the pixels are
+  never decoded or re-encoded — so a phone's location and camera details never reach
+  the store. The upload carries the documents' rate limit (`StaffDocumentUpload`, 600
+  an hour per client address), 429 past it. A file that breaks a rule is
+  `photo_invalid` (400) on `file`, with the rule's words: *The photo must be a JPEG or
+  PNG*, *A photo is at most 5 MiB*, *A photo is at most 4096 pixels on each side*. No
+  `file`, an empty one, two `file` parts and a body that cannot be read as a multipart
+  form are plain field errors on `file`, with no code.
+- **The order.** The object is written to the store before the person's lock is taken —
+  a store that cannot write it is `storage_unavailable` (503), with nothing recorded.
+  Then, under the person's lock (`withPersonLock`, refusing an erased person), the caller
+  is judged again, the row set and its revision moved on, the replaced photo's object
+  queued in the [deletion ledger](#the-deletion-ledger) and `photo_set` recorded, in one
+  transaction. Whatever refuses or fails after the write removes the new object again,
+  in one attempt. A `DELETE` clears the three columns, queues the object and records
+  `photo_removed` the same way. A replaced or removed photo's object is never removed
+  inline: the ledger removes it once the transaction has committed.
+- **Reading it.** `GET /people/{id}/photo` streams the bytes to everyone who reads the
+  person's Work group — everyone who sees them — with its type, its length,
+  `Cache-Control: private, max-age=300`, `X-Content-Type-Options: nosniff` and no
+  `Content-Disposition`: it is shown in place. The row is read in a snapshot and the
+  object after it. A person the caller may not see, one with no photo, and one whose
+  object the store no longer has, is the bare 404; a store that cannot be read is
+  `storage_unavailable` (503).
+- **The cache key** (reading 7). The person's response and the directory's row carry
+  `photoUpdatedAt`, the Work group's, absent when there is no photo. The apps fetch
+  `GET /people/{id}/photo?v=<photoUpdatedAt>`, so a new photo is a new URL; the server
+  ignores `v`.
+- **The events** (reading 8). `photo_set` and `photo_removed` name the field `photo`
+  with the content type alone — `{"fields": {"photo": {"from": "image/png", "to":
+  "image/jpeg"}}}`, without `from` on a first photo; `photo_removed` carries `from` —
+  never the bytes. The field is class D and the Work group's, so everyone who reads the
+  person's [history](#the-history) reads the events whole.
+- **The exports and the erase.** Both [personal-data exports](#the-personal-data-exports)
+  carry `photo`, `{contentType, updatedAt}`, or null when there is none; the bytes are
+  `GET /people/{id}/photo`'s. The [D erase](#what-an-erase-does) queues the photo's object
+  in the ledger and nulls the three columns with the other D columns, and the
+  [delete of a person created in error](#deleting-a-person) queues it likewise. The
+  photo is in neither the register's [CSV import and export](#the-registers-import-and-export)
+  nor the payroll export.
+
+### At a glance
+
+`GET /people/{id}/glance` (person-glance design S4, S5) answers, in one response, every
+card of the Profile tab's **At a glance** row the caller may read. It is computed on
+read — nothing about it is stored — with "today" the business zone's day and "this year"
+its calendar year (reading 6). Whoever sees the person reads it; anyone else gets the
+unknown id's 404. Each section is present when the caller reads its group and absent
+otherwise — never zero, never null — and a section's own fields may be narrower still.
+Each is read through the rule its own endpoint already has, so the glance never counts a
+day differently from the tab it sums up.
+
+| Section | Content | Audience (field group) |
+| --- | --- | --- |
+| `sickDays` | `selfCertified` (kind `sick_self`, egenmelding) and `certified` (`sick_certified`, sykmelding): this year's sick working days in approved and registered rows, each weighted as the payroll file weighs it | Absence type: the person, their manager, the Approver, HR |
+| `selfCertification` | `occurrencesUsed` and `daysUsed`, with `occurrencesLimit` under the minimum policy, `daysLimit` under the extended one, both under a custom one — the [egenmelding standing](#egenmelding) as `GET /people/{id}/self-certification` reports it, over its twelve months | Absence detail: the person, their manager, the Approver, HR |
+| `holiday` | `takenToDate`, `planned`, `remaining` and `overdrawn`, in working days, from this year's [holiday account](#the-holiday-account) | Absence detail |
+| `childSick` | `days`: this year's registered `sykt_barn` working days; `entitlement` and `remaining`, the [care days](#care-days)' | Absence type; `entitlement` and `remaining` Care days alone (the person, HR), and only when the care-day fields are recorded |
+| `employment` | `startDate`, `tenureMonths`, `ftePercent` and `title`; `probationEndsOn` | Employment dates, a colleague included; `probationEndsOn` Employment (the person, their manager, the Approver, HR) |
+| `absence` | `now` and `next`, each `{firstDay, lastDay, shownAs, typeId?}`; `openCase`, `{firstDay, day}` | Absence, a colleague included; `openCase` Absence detail |
+| `contract` | `signed`: `true`, `false`, or null with no employment in force | Contract: `staff:manage` alone |
+| `hours` | `timeTracking`; `weekStart`, `logged`, `approved` and `expected` | Hours: the person, their manager, `staff:manage`, `staff:personal-data` |
+
+- **The place.** The employment in force is the person's place today: of the employments
+  in force, the earliest by start, then the lowest id — the rule a group's rule and a
+  department's default profile judge a person on. Its terms row in force today gives
+  `ftePercent`, `title` and the probation, and its `contractSignedAt` — the
+  contract-signing stamp the [§ 14-6 check](#the--14-6-check) reports as
+  `contractSigned` — gives `contract.signed`. With no employment in force they are
+  absent and `signed` is null. `startDate` is the start of the current unbroken run of
+  employments — one beginning the day after another ended continues it — and
+  `tenureMonths` the whole months from it to today; `employment` is an empty object when
+  nothing is in force.
+- **The probation.** `probationEndsOn` is the extension's end when one is agreed, else
+  the terms row's probation end, and is answered only while it is today or later.
+- **Sick days.** The whole calendar year counts, days registered after today included
+  (a sykmelding registered ahead). Each working day of an approved or registered row
+  counts by its degree, less leave on the same day, and nothing under a holiday-kind
+  row — the payroll file's per-day rule; a request, a refusal and a cancel count
+  nothing.
+- **Holiday.** `takenToDate` is the approved and registered holiday working days from
+  1 January to today, and `planned` the approved, registered and requested ones from
+  tomorrow to 31 December, both over the account's own rows and their shares.
+  `remaining` and `overdrawn` are the account's for the year, as
+  `GET /people/{id}/holiday-account` answers them — and the account already subtracts
+  every approved and registered day whatever its date, so the three figures do not sum
+  to the entitlement: a day planned and approved is both in `planned` and gone from
+  `remaining`.
+- **Sick child** (reading 4). `days` is every registered `sykt_barn` working day this
+  year, the days before the four weeks' employment the right needs included (the care
+  days' `used` and `ineligibleDays` together). A manager and the Approver read the count;
+  the entitlement and what remains of it stay the Care-days group's, as
+  `GET /people/{id}/care-days` is.
+- **Absence now and next** (reading 9). `now` is the day row covering today — requested,
+  approved or registered, among the rows the caller may see by the absence rule — a
+  decided row before a request, then the earliest start, then the lowest id; `next` is
+  the earliest such row starting after today, the lowest id on a tie. An hour row is
+  neither. Each is shaped as `GET /absences` shapes the row for the caller: the type to
+  its readers (`shownAs: type`, `typeId`), and `leave` for an HR-only type to all but
+  the person and `staff:personal-data`, who are then shown approved and registered rows
+  only. A **colleague** is never shown a row: `now` and `next` are the
+  [coalesced spans](#absences) `GET /absences` gives them — the person's approved and
+  registered day rows joined where they overlap or adjoin, `shownAs: absent` — so a
+  sykmelding over ferie reads as one span, and never a row's own first or last day.
+- **The open case.** `openCase` is the newest open [sick-leave case](#sick-leave-cases)
+  whose first day is not after today; `day` counts its first day as day 1.
+- **The contract.** `contract` is the Contract group's, `staff:manage`'s alone: not
+  `staff:personal-data`'s without it, nor the person's or a manager's, though they read
+  the § 14-6 check itself.
+- **The hours** (S2; readings 3, 5, 10 and 11). `weekStart` is this business week's
+  Monday. `logged` is every entry of the person's linked user dated in the seven days
+  from it and not rejected — drafts, submitted, approved and invoiced — and `approved`
+  the approved and invoiced ones, on every project, whatever the caller's project rights
+  or Time permissions: the week's total, with no split by project and no entry. They are
+  read from Time through [`contracts.Timesheets`](#contracts-consumed). A linked user
+  with nothing in the week reads `logged: 0`, `approved: 0`; a person linked to no user
+  has neither. `expected` is the full-time hours per week × the FTE / 100 of the terms
+  in force today, summed over **every** employment in force today — two 50 % posts
+  expect a full week — and rounded to a quarter of an hour: the contract's week, not
+  reduced by absence or public holidays. It is absent with no terms in force. With `time` disabled the section is
+  `{timeTracking: false}` and nothing else: off, never zero. So a manager reads their
+  report's weekly total without `time:view-all`, through this page alone; Time's own
+  screens are unchanged.
+- **Two snapshots, Time between them.** The person, the audience and the link are read
+  in a short snapshot of their own; Time is asked after it has closed, with the
+  request's context, and only for a reader of the Hours group, with Time on and a link;
+  then every other section is read in a second snapshot, where the audience is judged
+  again, and a section the caller does not read is not read at all. A person gone, or no
+  longer seen, between the two is the 404. A Time provider that fails fails the whole
+  glance (500), never a card left out: absent must never also mean "could not be read"
+  ([module boundaries](/en/contributing/module-boundaries/), rule 12).
 
 ### The history
 
@@ -628,6 +826,8 @@ just before (`actor { kind, displayName, userId }`; a user it no longer knows is
 | `person_updated` | `fields`: each field that changed, `from` and `to` (either absent when the field was empty). |
 | `next_of_kin_updated` | `fields.nextOfKin`: the list before and after. |
 | `roles_updated` | `fields.roles`: the list before and after. |
+| `photo_set` | `fields.photo`: the content type before (absent on a first photo) and after — never the bytes ([the photo](#the-photo)). |
+| `photo_removed` | `fields.photo`: the content type as `from`. |
 | `person_deleted` | Installation-level (no person): `employeeNumber` only. |
 | `national_id_set` | `fields.nationalId`: `{kind, country}` before and after — never a digit. |
 | `national_id_revealed` | Empty; the actor is the viewer. |
@@ -721,9 +921,10 @@ and then the manager-graph lock before it judges, so no write can start naming t
 person between the check and the delete, and a foreign key that refuses anyway is still
 `person_in_use`. In one transaction it removes the next of kin, the roles, the person's
 rows in [groups](#members-and-owners) — as a member and as an owner, with no event — and the
-person's own history — the one exception to the history's append-only rule — and
-records an installation-level `person_deleted` event carrying the employee number and
-nothing else. It answers 204.
+person's own history — the one exception to the history's append-only rule — queues
+the object of the person's [photo](#the-photo), if any, in the
+[deletion ledger](#the-deletion-ledger), and records an installation-level
+`person_deleted` event carrying the employee number and nothing else. It answers 204.
 
 ## Employments
 
@@ -2235,6 +2436,10 @@ caller about themselves.
   person's id — the only caller who may replace them — and reads their
   [reviews](#the-review) through `/people/{id}/competence-reviews`, recording none.
   `GET /me` carries `lastCompetenceReview`, as the person reads the Reviews group.
+- **The photo and the glance** have no `/me` path either: My page sets and removes the
+  person's [photo](#the-photo) through `/people/{id}/photo` with the linked person's id,
+  as Self, and its Profile tab opens on [at a glance](#at-a-glance), read through
+  `/people/{id}/glance` with the same id — Self reads every section but the contract.
 - **`GET /me/export`** is the person's own copy of their data — see
   [the personal-data exports](#the-personal-data-exports).
 
@@ -4209,7 +4414,9 @@ superseded ones included, newest first, with its detail (`competences`),
 `availability`, each row with its Seen stamp — their [competence reviews](#the-review),
 newest first, each reviewer named (`competenceReviews`), the
 [competence profiles](#profiles-and-gaps) that reach them, assigned or their
-department's default (`profileAssignments`), and every
+department's default (`profileAssignments`), their [photo](#the-photo)'s type and when
+it was set (`photo`, `{contentType, updatedAt}` or null; the bytes are read through
+`GET /people/{id}/photo`), and every
 event of their history, oldest first. Each absence
 array is shaped as the file's reader reads it: the complete file whole, the person's
 own copy as the person reads their own — both read every type as itself, a milestone's
@@ -4567,7 +4774,7 @@ holds every payload field to its column's class, and a third holds this table to
 | Table | Class | Columns |
 | --- | --- | --- |
 | `people` | C | `id`, `employee_number`, `given_name`, `family_name`, `display_name`, `birth_date`, `gender`, `national_id_kind`, `work_country`, `preferred_language`, `provision_account`, `provision_from`, `account_email_kind`, `account_revision`, `account_kind`, `erased_at`, `reassessed_at`, `reassessed_by_user_id`, `revision`, `created_at`, `updated_at` |
-| `people` | D | `national_id_sealed`, `national_id_mac`, `national_id_country`, `work_email`, `phone_work`, `phone_mobile`, `phone_private`, `private_email`, `street`, `postal_code`, `city`, `country`, `bank_account_sealed`, `bank_account_last4`, `bank_account_kind`, `children_under_12`, `sole_carer`, `chronically_ill_children`, `notes` |
+| `people` | D | `national_id_sealed`, `national_id_mac`, `national_id_country`, `work_email`, `phone_work`, `phone_mobile`, `phone_private`, `private_email`, `street`, `postal_code`, `city`, `country`, `bank_account_sealed`, `bank_account_last4`, `bank_account_kind`, `children_under_12`, `sole_carer`, `chronically_ill_children`, `notes`, `photo_object_key`, `photo_content_type`, `photo_updated_at` |
 | `people` | E | `self_cert_withdrawn_until`, `self_cert_withdrawn_reason`, `self_cert_withdrawn_from` |
 | `people` | F | `legal_hold`, `legal_hold_reason`, `legal_hold_by_user_id`, `legal_hold_at` |
 | `next_of_kin` | D | every column: `id`, `person_id`, `position`, `name`, `relationship`, `phone`, `note`, `created_at`, `updated_at` |
@@ -4682,7 +4889,9 @@ since the cycle chose the person is seen there:
 
 - **D** nulls every D column of the person and of their terms rows, deletes their next
   of kin and their [competence rows](#the-exports-and-the-erase) — the evidence among
-  their documents — deletes their documents of class D, replaces every value of class D in their
+  their documents — deletes their documents of class D, queues their
+  [photo](#the-photo)'s object in the ledger (its three columns are class D and nulled
+  with the rest), replaces every value of class D in their
   history's payloads, and sets `erased_at` — the person is then
   [read-only](#the-erased-state).
 - **health** deletes their documents in restricted categories filed under no case and
@@ -5227,6 +5436,7 @@ element's field is named by its place, a nested one by its path: `nextOfKin[0].n
 | `document_type_unsupported` | 400 | A file that is not a PDF, JPEG, PNG or HEIC, or whose bytes disagree with its declared type or extension. |
 | `document_too_large` | 400 | A file over 10 MiB. |
 | `document_count_exceeded` | 409 | Filing a document for a person who has 200. |
+| `photo_invalid` | 400 | A [photo](#the-photo) that is not a JPEG or PNG by its own bytes, or that `image.DecodeConfig` does not decode as the type it sniffed as; one over 5 MiB; one with a side over 4096 pixels — on `file`. |
 | `category_restricted` | 403 | Filing, moving into or out of, or removing a health document without `staff:personal-data`. |
 | `category_in_use` | 409 | Archiving a category documents are filed under, or a competence category a competence not archived is filed under. |
 | `seed_immutable` | 409 | Changing a seeded document category or competence category; changing a seeded absence type beyond its names, order and `hidden`, or showing the reserved `absent`; changing a seeded competence beyond its names, `reminderLeadDays`, `issuerHint` and `hidden`, or archiving it. |
@@ -5296,7 +5506,9 @@ error on `profileIds[i]`, and a department's default naming one on
 profile, is one on the later index (`profileIds[1]`, `items[1].competenceId`); a
 matrix filter that does not pass — a `minLevel` outside 0–4, an unknown
 `competenceId` — is one on its name; and a profile's item reuses
-`competence_unavailable` and `level_not_allowed`.
+`competence_unavailable` and `level_not_allowed`. A [photo](#the-photo) upload with no
+`file`, an empty one, two of them or a body that is no multipart form is a plain field
+error on `file`; only the file's own rules are `photo_invalid`.
 
 Every mutable row carries a `revision`, starting at 1 and moving on with each change.
 A `PUT` requires `If-Match` carrying the revision the row was read at — bare (`3`) or
@@ -5314,7 +5526,8 @@ is their only writer.
 
 ## Locks
 
-- **No call out of a transaction.** The user directory, the mail and the object store
+- **No call out of a transaction.** The user directory, Time's hours
+  ([`contracts.Timesheets`](#contracts-consumed)), the mail and the object store
   are reached before a transaction opens or after it commits, never inside one —
   neither a locked one nor a read-only snapshot, which holds a pool connection just the
   same. Every such call goes through one accessor — in `contractscalls.go`, or
@@ -5419,6 +5632,16 @@ is their only writer.
   waits on the profile's row — an assignment after the archive finds the profile
   archived, an archive after the assignment leaves it assigned and reaching nobody. A
   profile's write takes no person and no department.
+- **The photo.** A [photo](#the-photo)'s object is written to the store before the
+  person's lock is taken. The row, its revision, the ledger's row for the object it
+  replaces or removes and the event are then written in one transaction under the
+  person's row (`withPersonLock`, refusing an erased person), the caller judged again
+  in it; the store is never called inside it, and the ledger removes the old object
+  after it has committed.
+- **The glance.** [At a glance](#at-a-glance) takes no lock: Time's `WeekHours` is asked
+  after the short snapshot that read the person, the audience and the link has closed
+  and before the snapshot that reads the rest opens — through `timesheetsWeek` in
+  `contractscalls.go`, which refuses a call made inside a transaction.
 - **The sequence.** A create that generates an employee number holds the settings row
   until it commits, so two creators take numbers one after the other.
 - **The delete.** `DELETE /people/{id}` takes the person's row, then the manager graph,
@@ -5443,6 +5666,9 @@ All under `/api/v1/staff`.
 | `GET /people/{id}`, `/next-of-kin`, `/roles`, `/events` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `POST /people`, `PUT /people/{id}`, `DELETE /people/{id}`, `PUT /people/{id}/next-of-kin`, `PUT /people/{id}/roles` | `staff:manage` |
 | `GET /people/{id}/user` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
+| `GET /people/{id}/photo` | `staff:access`, then the Work group — everyone who sees the person (otherwise, or without a photo, 404) |
+| `PUT /people/{id}/photo`, `DELETE /people/{id}/photo` | `staff:access`, then the person, `staff:manage` or `staff:personal-data` (otherwise 403; a person the caller may not see 404); the `PUT` rate-limited (`StaffDocumentUpload`) |
+| `GET /people/{id}/glance` | `staff:access`, then the [audience](#field-groups-and-audiences) — each section by its group, the contract `staff:manage`'s (otherwise 404) |
 | `GET /people/{id}/account` | `staff:access`, then the person, `staff:manage` or `staff:personal-data` (otherwise 404) |
 | `PUT /people/{id}/account`, `POST /people/{id}/account/run`, `POST /people/{id}/account/disable`, `POST /people/{id}/account/pass`, `POST /accounts/run` | `staff:manage` |
 | `PUT /people/{id}/user`, `GET /assignable-users` | `staff:manage` |

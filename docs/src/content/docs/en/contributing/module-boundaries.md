@@ -80,14 +80,15 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are thirteen single-provider slots, each filled by at most one enabled module:
+   There are fourteen single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
    it, which every module judges "today" by), `Accounts`
    (`contracts.AccountProvisioning`, identity — rule 11), `Products` (`contracts.ProductCatalog`,
    products), `Projects` (`contracts.ProjectDirectory`, projects), `Actuals`
-   (`contracts.ProjectActuals`, time), `Expenses`
+   (`contracts.ProjectActuals`, time), `Timesheets` (`contracts.Timesheets`, time — the
+   hours a user logged in a week, consumer-gated), `Expenses`
    (`contracts.ProjectExpenses`, expenses), `Receivables`
    (`contracts.CustomerReceivables`, invoices — what a customer was invoiced and
    owes, every state judged on the provider's own business day), and the three line-level reads an
@@ -99,7 +100,8 @@ Communications' outbox is the working example.
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`
    and then `Accounts` are resolved right after `Users`, so the accounts provider may
-   read the user directory while it is built; `Actuals`,
+   read the user directory while it is built; `Actuals`, `Timesheets` (right after
+   `Actuals`, the same module owning both),
    `Expenses`, `Receivables` and the three `Billable*` are resolved last, after
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
    the project directory or the customer directory (none does, but a future
@@ -386,6 +388,16 @@ Communications' outbox is the working example.
     the interface with Staffing's first delivery. Staffing, its intended consumer,
     never re-states the rule
     ([Staff](/en/reference/staff/#the-workforce-contract)).
+
+    Two single-provider reads are the other class, **consumer-gated**:
+    `contracts.ProjectActuals` (Time → Projects) and `contracts.Timesheets` (Time →
+    Staff). Their provider performs no authorization at all, because the rule that
+    decides who may see the figures is the consumer's and the provider cannot know it —
+    Projects' financial rights, Staff's manager rule. The consumer decides before it
+    calls, with the request's context and never inside a transaction, and shows only
+    what its own rule allows; the provider answers whatever was logged. A contract is
+    one class or the other, said in its doc comment: a provider-gated read is never
+    called without a principal, and a consumer-gated one never trusted to filter.
 13. **Staff writes a provider's directory.** The fifth sanctioned cross-module
     direction, Staff → a provider module, made for the accounts and groups of the
     people Staff registers: `contracts.IdentityProvisioner`, in the many-provider slot
@@ -717,7 +729,7 @@ which a provider contract cannot see or grant on its behalf. See
 [`docs/projects.md`](/en/reference/projects/#project-economy) for what each shaping level
 returns.
 
-Time consumes four contracts and provides two, and fills one many-provider slot:
+Time consumes four contracts and provides three, and fills one many-provider slot:
 `contracts.ProjectDirectory` (required — hence the config check — including
 `WorkType`, the project's work type an entry picked, whose multipliers the rate
 chain's last step applies and which is read before a save's transaction opens like
@@ -736,7 +748,10 @@ consumer, above), reading its own `time` tables and never calling back into
 arrives in the request, because Projects is the module that owns that fact. Beside
 that aggregate it provides `contracts.BillableHours` — the approved, billable,
 priced entries not yet invoiced, row by row, read on the pool and never under a
-lock — and it fills `InvoicedWork` with the holder that stamps an entry invoiced
+lock — and `contracts.Timesheets`, a user's hours logged and approved in a week, for
+Staff's hours card at a glance: consumer-gated as `ProjectActuals` is, read on the pool
+from its own `time.entries` alone, nil when `time` is disabled — and it fills
+`InvoicedWork` with the holder that stamps an entry invoiced
 inside an invoice's issue and releases it in a credit note's (rule 10). It also
 keeps the rule every module keeps (rule 10's restatement): **no call that takes its
 own connection or leaves the process while a transaction holds locks**, enforced by
@@ -818,9 +833,16 @@ and `invoices:access`, and renders `CustomerInvoicesPanel` from `@vantigo/invoic
 which reads only the invoices API (`GET /invoices?customerId=`); the customers package
 and the invoices package never import each other (rule 7). See [Invoices](/en/reference/invoices/).
 
-**Staff depends on nobody but identity**, as Expenses does: `MODULES=staff` alone is a
-valid installation, and no other module's state changes what Staff answers. It reaches
-three things outside its schema: identity's `Deps.Users` (`contracts.UserDirectory`,
+**Staff depends on identity, and optionally on Time through `contracts.Timesheets`.**
+`MODULES=staff` alone is a valid installation: with `time` disabled `Deps.Timesheets` is
+nil, the hours card on a person's glance answers `{timeTracking: false}` — "time
+tracking is off", never zero — and nothing else changes; with it on, Staff asks Time for
+the week's hours of the one user a person's self-service link names, after deciding by
+its own rule (the person, their manager today, `staff:manage`, `staff:personal-data`)
+that the caller may see them — the contract is consumer-gated (after rule 12) — through
+its accessor `timesheetsWeek`, with the request's context, before the glance's snapshot
+opens. Beyond that no other module's state changes what Staff answers. It reaches
+three further things outside its schema: identity's `Deps.Users` (`contracts.UserDirectory`,
 always set: `User`, `Users`, `SearchUsers`) for names — whoever writes a history event,
 the user a self-service link names — and the picker HR links a person with; the
 platform's mail seam (`Deps.SMTPSend`, or `mail.SendOutbound` when unset) for the mails
@@ -832,8 +854,8 @@ one the user directory would have to name; and the object store
 (`Deps.ObjectStore` when a harness sets one, else its own `staff`-scoped store built
 from the configuration, in the API and a worker alike, with a construction error kept
 for the calls that need a store rather than failing the process) for the bytes of
-people's documents. It counts the working days an absence takes by the platform
-calendar (`internal/holidays`), never a holiday list of its own. It reads no business module. It provides one contract,
+people's documents and photos. It counts the working days an absence takes by the platform
+calendar (`internal/holidays`), never a holiday list of its own. It reads no business module but Time's hours, optionally. It provides one contract,
 `contracts.Workforce` — the competences people hold, valid on a date, for Staffing, its
 intended consumer, which does not exist yet — as that slot's sole provider, and fills
 the many-provider `CalendarSources` slot with the caller's own absences; with Staff
@@ -841,7 +863,7 @@ switched off `Deps.Workforce` is nil, which a consumer must handle, and nothing 
 another module is stranded — but it does strand its
 own objects and the rows of its ledger of objects still to remove
 (`staff.object_deletions`), which wait untouched until the module is on again. It keeps
-rule 10's restatement strictly: all three are reached **before a transaction opens or
+rule 10's restatement strictly: all three, and Time's hours, are reached **before a transaction opens or
 after it commits, never inside one** — neither under a person's lock nor inside a
 read-only snapshot, which holds a pool connection just the same. Each goes through one
 accessor — in `internal/staff/contractscalls.go`, or `internal/staff/objects.go` for the

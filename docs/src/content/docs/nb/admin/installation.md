@@ -717,5 +717,22 @@ har opprettet en profil og tildelt den til noen eller gjort den til en avdelings
 standardprofil. Å rulle migreringen tilbake dropper profilene, punktene deres,
 tildelingene og avdelingenes standardprofiler.
 
+**Utgivelsen med bilder av personene.** Den har `00069_staff_person_photo.sql`: tre
+kolonner på Ansattes personer, som kan stå tomme og er tomme — bildets nøkkel i
+objektlageret, typen og når det ble lagt inn. Ingen innstilling og ingen rettighet er
+ny: personen selv, `staff:manage` og `staff:personal-data` legger inn bildet til en
+person, og alle som ser personen, ser det. Selve bildene ligger i objektlageret under
+`staff`-området, slik personenes dokumenter gjør, så en installasjon uten objektlager
+(`STORAGE_PROVIDER`) svarer at lagringen ikke er tilgjengelig når noen laster opp et
+bilde; et byttet eller fjernet bilde, og bildet til en person som er slettet, fjernes
+fra lageret av sletteloggen i Ansatte, som oppbevaringsarbeideren kjører. Den samme
+utgivelsen viser en persons timer denne uken på personsiden når Timer-modulen er på,
+lest fra Timer uten noen ny rettighet; med `time` av sier kortet at timeføring er slått
+av. Å rulle migreringen tilbake dropper de tre kolonnene, men ikke objektene: bildene
+personene har akkurat da, blir liggende i lageret uten at noe peker på dem, og objekter
+som alt står i kø, fjernes fortsatt av sletteloggen. Vil du ikke la noe bilde bli igjen,
+får du fjernet alle bildene — eller sletter nøklene `people/*/photo/` under
+`staff`-området for hånd — og lar sletteloggen kjøre før du ruller tilbake.
+
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

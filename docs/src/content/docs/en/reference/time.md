@@ -1,6 +1,6 @@
 ---
 title: "Time module"
-description: "Time entries, the rate chain and its snapshots, the approval state machine, weekly submission, the period lock and permissions."
+description: "Time entries, the rate chain and its snapshots, the approval state machine, weekly submission, the period lock and permissions, and what Time reports to other modules — the project actuals, the billable hours and a user's hours in a week."
 sources:
   - apps/server/internal/time
   - apps/time/frontend
@@ -567,8 +567,29 @@ caller to shape.
   currency arrives *in* the request (`ActualsRequest.Currency`) instead of being
   looked up.
 
-See [module boundaries](/en/contributing/module-boundaries/) for how this contract is resolved
-without either module importing the other.
+**`contracts.Timesheets`** (`internal/time/timesheets.go`, its query in
+`queries/timesheets.sql`) is the other thing Time reports: a user's hours in one week,
+for [Staff's hours card at a glance](/en/reference/staff/#at-a-glance), where a manager
+reads their report's week beside the hours the contract expects.
+
+- **`WeekHours(ctx, weekStart, userIDs)`** answers, for each identity user with anything
+  dated in the seven days from `weekStart`, `Logged` — every entry not rejected: draft,
+  submitted, approved and invoiced — and `Approved` — the approved and invoiced ones —
+  in hours, summed over every project. The consumer passes a Monday; any other date is
+  read as the seven days from it. A user with no entry in the week is absent from the
+  map, and no user ids answer an empty map without a query.
+- **Consumer-gated, as `ProjectActuals` is.** It consults no role, no permission and no
+  caller: who may see whose hours on a person's page is Staff's manager rule, which Time
+  cannot know, so Staff decides before it asks, with the request's context and never
+  inside a transaction of its own. It reads on the pool from `time.entries` alone and
+  fails rather than under-reports: an error means the hours could not be read.
+- **The slot.** Time is its sole provider (`Module.Timesheets`), which Compose resolves
+  right after `Actuals`; with `time` disabled `Deps.Timesheets` is nil, which Staff reads
+  as "time tracking is off", never as nothing logged. No permission, endpoint or screen
+  of Time is new, and `time:view-all` still governs Time's own screens alone.
+
+See [module boundaries](/en/contributing/module-boundaries/) for how these contracts are
+resolved without either module importing the other.
 
 ### On the calendar
 
@@ -614,7 +635,8 @@ step always has a directory to ask.
 With `time` off, `contracts.BillableHours` is not composed, so Invoices offers no
 hours to invoice; the invoiced-work holder is composed all the same, so an invoice
 already holding hours still stamps them when it is issued, and a credit note still
-releases them ([what Time gives invoicing](#what-time-gives-invoicing)).
+releases them ([what Time gives invoicing](#what-time-gives-invoicing)). Nor is
+`contracts.Timesheets`: Staff's hours card at a glance then says time tracking is off.
 
 Time contributes **no background worker** and **no rate-limited operation**.
 

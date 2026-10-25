@@ -1,6 +1,6 @@
 ---
 title: Staff
-description: The people register — People, a person's page with its documents, their competences, what their profile asks and their account, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, the Competence page with its matrix and the interests, absence and the holiday account, and the Groups and their place in the directory, and the Staff settings with the company's structure, the document categories, the competence catalogue and its profiles, the register's import and export, the payroll export, retention, the thresholds and the accounts.
+description: The people register — People, a person's page with the person's photo, the at-a-glance cards, its documents, their competences, what their profile asks and their account, the legal hold, an erased record and its rehire, New person, My page, the Absence calendar and approvals, the Competence page with its matrix and the interests, absence and the holiday account, and the Groups and their place in the directory, and the Staff settings with the company's structure, the document categories, the competence catalogue and its profiles, the register's import and export, the payroll export, retention, the thresholds and the accounts.
 sidebar:
   order: 45
 sources:
@@ -90,9 +90,26 @@ holding `staff:view` and HR each see a different page; the full table is under
 [field groups and audiences](/en/reference/staff/#field-groups-and-audiences). A person
 you may not see answers exactly as one who does not exist.
 
+At the top, beside the name, is the person's **photo** — or their initials when there is
+none — with their title and department under the name. Everyone who may open the page
+sees the photo, colleagues included. The person themselves, HR (`staff:manage`) and
+`staff:personal-data` can change it:
+
+1. Press the photo (the button **Photo of** and the person's name).
+2. Choose **Change photo** and pick a JPEG or PNG — on a phone, take one with the camera
+   or choose one from the library. The new photo shows at once.
+3. Or choose **Remove photo** and confirm: the initials are shown in its place.
+
+A photo is at most 5 MiB and 4096 pixels on each side; any other file is refused with
+the reason. Where a phone photo was taken, and with which camera, is removed
+before it is stored. A manager, `staff:approve` and a colleague see the photo and have no menu.
+The person's history says that a photo was set or removed, never the picture.
+
 ### Profile
 
-- **Work** — the names, the employee number, the work email and phone, the title, the
+The tab opens on [At a glance](#at-a-glance), then the person's groups:
+
+- **Work** — the photo, the names, the employee number, the work email and phone, the title, the
   department, the business unit, the location and the manager in force today, the
   language and the work country. Everyone who may open the page sees it.
 - **Private** — the birth date, gender, mobile and private phone, private email and home
@@ -116,6 +133,47 @@ you may not see answers exactly as one who does not exist.
 A manager sees the work group, the roles and the organisation of the people they
 manage; a colleague the same of anyone active today. A manager who has left manages
 nobody: their people go to the department's manager, or the next one up.
+
+#### At a glance
+
+At the top of the Profile tab is a row of small cards — what you would otherwise look
+for across the tabs before talking to someone. Each is a figure with a line under it,
+and a card's label opens the tab it sums up (Absence, Employments or Documents). You
+see a card only when you may read what it shows: a card that is not yours is not there
+at all, never a zero.
+
+- **Sick days** — the sick days this year, and how many of them were egenmelding and
+  how many sykmelding; a part-time sykmelding counts by its degree. The person, their
+  manager, `staff:approve` and HR.
+- **Egenmelding** — how much of the egenmelding policy the person has used in the last
+  12 months: *2 of 4 times*, or *6 of 24 days*. The same readers.
+- **Holiday** — the holiday days left this year, with what was taken so far and what is
+  planned ahead, requests still waiting included; in red, as the days overdrawn, when
+  the account is overdrawn. Approved holiday ahead is already gone from what is left,
+  as on the Absence tab, so the three do not add up to the year's days. The same
+  readers.
+- **Sick child** — the days at home with a sick child this year. You see the count as
+  the person's manager or `staff:approve`; the person and HR also see it against their
+  care days (*of 10 this year*).
+- **Position** — the FTE, the title, since when and for how long the person has been
+  employed, and, while it lasts, when the probation ends. Everyone who may open the page
+  sees the first three; the probation the person, their manager, `staff:approve` and HR.
+- **Absence** — what the person is away on today (*Away*), the next absence ahead
+  (*Next*), and a sick-leave case open since when, with its day; *Nothing now or
+  planned* when there is none. A colleague sees *Away* and *Next* as an absence, never
+  which kind, and only once it is approved or registered; a manager sees the type, but
+  an HR-only type reads as leave. The open case is for the person, their manager,
+  `staff:approve` and HR.
+- **Contract** — *Signed*, or *Not signed* in red, for the employment in force today;
+  *No employment* when none is. It opens the Documents tab. HR (`staff:manage`) only.
+- **Hours this week** — the hours logged in the Time app this week, every project
+  together, against the hours the contract expects (*31.5 of 37.5 h*), with how many are
+  approved. The expected week is the full-time hours times the FTE, added up over every
+  employment the person is in today, not reduced for absence or public holidays — the Absence card says why a week is short. *Time
+  tracking is off* when the Time app is not in use, and *No user linked* when the person
+  has no user to log hours with. The person, their manager, `staff:manage` and
+  `staff:personal-data` — not `staff:approve`, and not a colleague. You need no
+  permission in the Time app to see it.
 
 #### Change the details (HR)
 
@@ -974,7 +1032,8 @@ linked it to, and shows what you see of yourself — whatever else you may hold.
 a person's four tabs, then **Absence**, **Competence**, **Account** and, when you manage
 anyone, **My team**:
 
-- **Profile** — your work details, your private details, your national identity number
+- **Profile** — [At a glance](#at-a-glance) first, your own cards (all but the
+  contract), then your work details, your private details, your national identity number
   as **On file** and your bank account's last four digits, your next of kin, your roles
   and where you sit in the organisation, and under them **Your groups**: by name, the
   groups you are in, as HR keeps them (*You are not in any group.* when there are none).
@@ -991,7 +1050,7 @@ anyone, **My team**:
   changes them. Under **My data**, **Download my data** saves a file (JSON) with your
   record, your next of kin, roles, employments and terms, your documents' details, your
   competences, what you want — your interests, preferences and availability — your
-  competence reviews and your history — without the values HR keeps sealed (your national identity number and
+  competence reviews, your photo's type and when it was set, and your history — without the values HR keeps sealed (your national identity number and
   bank account in full) and without HR's notes. The file lists your documents without
   their contents: download each from the list. Downloading your data records nothing.
   When Staff gave you your account, it disables it the day after your last
@@ -1016,6 +1075,22 @@ Staff yet* and explains how it comes to be; ask HR if you think yours is missing
 
 My page is made for a phone first: on a narrow screen everything is one column, the
 form takes the whole screen and the request sheet opens from the bottom.
+
+### Your photo
+
+Your photo, or your initials when there is none, is beside the page's title.
+
+1. Press it (the button **Photo of** and your name).
+2. Choose **Change photo** and pick a JPEG or PNG: on a phone, take one with the camera
+   or choose one from your library.
+3. To take it away, choose **Remove photo** and confirm; your initials are shown in its
+   place.
+
+A photo is at most 5 MiB and 4096 pixels on each side; any other file is refused with
+the reason. Where a phone photo was taken, and with which camera, is removed
+before it is stored. Everyone who can open your page in Staff sees it, colleagues included, and
+HR can change or remove it too. Your history says that a photo was set or removed,
+never the picture.
 
 ### Your absence
 
