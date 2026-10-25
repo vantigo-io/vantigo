@@ -136,7 +136,7 @@ describe("the admin permission catalog", () => {
     );
     expect(en["admin.permission.staffApprove"]).toBe("Decide absence");
     expect(en["admin.permission.staffApproveDescription"]).toBe(
-      "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, mark their milestones, and verify competences.",
+      "Decide anyone's absence requests, see absence types other than HR-only ones and the dates of open sick-leave cases, mark their milestones, verify competences and record competence reviews.",
     );
     expect(en["admin.permission.staffManage"]).toBe("Manage staff");
     expect(en["admin.permission.staffManageDescription"]).toBe(

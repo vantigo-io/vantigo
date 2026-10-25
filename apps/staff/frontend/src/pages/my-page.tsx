@@ -153,7 +153,14 @@ export const MyPage = () => {
         </Tabs.Panel>
         {managesAnyone && (
           <Tabs.Panel value="team" pt="lg">
-            {current === "team" && <MyTeam person={person} today={meta.data.today} types={meta.data.absenceTypes} />}
+            {current === "team" && (
+              <MyTeam
+                person={person}
+                today={meta.data.today}
+                types={meta.data.absenceTypes}
+                timeZone={meta.data.timeZone}
+              />
+            )}
           </Tabs.Panel>
         )}
       </PageTabs>

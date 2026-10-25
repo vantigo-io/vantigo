@@ -836,8 +836,8 @@ describe("the dashboard's staff account attention items", () => {
   });
 
   // The competence items (Staff phase 2, delivery A): a declaration awaiting
-  // verification and a certificate expiring or expired, each about a person
-  // and dealt with on their Competence tab.
+  // verification and a certificate expiring or expired — and delivery B's
+  // overdue review — each about a person and dealt with on their Competence tab.
   it("opens the person's Competence tab for a competence item, and words it with the name", () => {
     const sentences = {
       competenceDeclared: [
@@ -849,6 +849,10 @@ describe("the dashboard's staff account attention items", () => {
         "Et sertifikat for Kari Nordmann utløper snart",
       ],
       competenceExpired: ["A certificate of Kari Nordmann has expired", "Et sertifikat for Kari Nordmann har utløpt"],
+      competenceReviewOverdue: [
+        "The competence review of Kari Nordmann is overdue",
+        "Kompetansesamtalen med Kari Nordmann er forfalt",
+      ],
     };
     for (const [type, [en, nb]] of Object.entries(sentences)) {
       expect(attentionHref({ module: "staff", type, entityId: "1042" }), type).toBe(

@@ -84,6 +84,13 @@ export const eventKinds = [
   "competence_evidence_added",
   "competence_created",
   "competence_updated",
+  // What the person wants and the review (phase 2, delivery B): counts and
+  // kinds, never the values (plan reading 21).
+  "interests_changed",
+  "preferences_changed",
+  "availability_changed",
+  "wishes_seen",
+  "competence_reviewed",
 ] as const;
 
 /**
@@ -117,6 +124,11 @@ const fieldLabelOverrides: Record<string, string> = {
   basis: "competenceBasis",
   documentId: "competenceEvidence",
   chain: "removeCompetenceChain",
+  // Delivery B's payloads: the preferences' kinds are named under
+  // `preferenceKind_<kind>`, the declarations counted as the availability.
+  preferences: "preferenceKind",
+  declarations: "availability",
+  seen: "wishesSeenRows",
 };
 
 export const eventFieldLabelKey = (field: string): string => fieldLabelOverrides[field] ?? field;
@@ -212,6 +224,12 @@ export const eventFields = [
   "basis",
   "documentId",
   "chain",
+  // Delivery B's (plan reading 21): the counts, the kinds and the review's day.
+  "interests",
+  "preferences",
+  "declarations",
+  "seen",
+  "reviewedOn",
 ] as const;
 
 /** What one field of a payload says: its values before and after, or only that it changed. */

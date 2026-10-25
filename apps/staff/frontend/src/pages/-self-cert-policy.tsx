@@ -8,8 +8,8 @@ import { STAFF_QUERY_KEY } from "../api/request";
 import {
   accountSettingsOf,
   eraseSettingsOf,
+  generalSettingsOf,
   type StaffSettings,
-  type StaffSettingsInput,
   updateStaffSettings,
 } from "../api/settings";
 import { FieldGroup } from "../components/field-group";
@@ -43,18 +43,6 @@ const valuesOf = (settings: StaffSettings): PolicyValues => ({
 
 const whole = (value: number | string, min: number, max: number) =>
   value !== "" && Number.isInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
-
-/**
- * The settings every other form leaves alone, sent back as read: `PUT
- * /settings` is a replace that clears an optional field left out (the M9
- * lesson), and the retention periods it keeps are not this form's.
- */
-const generalOf = (settings: StaffSettings): StaffSettingsInput => ({
-  ...(settings.employeeNumberPrefix ? { employeeNumberPrefix: settings.employeeNumberPrefix } : {}),
-  nextEmployeeNumber: settings.nextEmployeeNumber,
-  ...(settings.pensionProvider ? { pensionProvider: settings.pensionProvider } : {}),
-  ...(settings.injuryInsurer ? { injuryInsurer: settings.injuryInsurer } : {}),
-});
 
 const shownFields = [
   "selfCertPolicy",
@@ -110,7 +98,7 @@ export const SelfCertPolicyForm = ({ settings }: { settings: StaffSettings }) =>
     mutationFn: (values: PolicyValues) =>
       updateStaffSettings(
         {
-          ...generalOf(settings),
+          ...generalSettingsOf(settings),
           selfCertPolicy: values.policy,
           // A preset writes its own numbers: they are sent under custom only.
           ...(custom(values)

@@ -20,6 +20,17 @@ export type StaffPersonCompetenceInput = Schemas["StaffPersonCompetenceRequest"]
 export type StaffPersonCompetenceChange = Schemas["StaffPersonCompetenceChangeRequest"];
 export type StaffCompetenceVerify = Schemas["StaffCompetenceVerifyRequest"];
 export type StaffCompetenceRenew = Schemas["StaffCompetenceRenewRequest"];
+export type StaffPersonInterest = Schemas["StaffPersonInterest"];
+export type StaffPersonInterestsInput = Schemas["StaffPersonInterestsRequest"];
+export type StaffPreferenceKind = Schemas["StaffPreferenceKind"];
+export type StaffPersonPreference = Schemas["StaffPersonPreference"];
+export type StaffPersonPreferencesInput = Schemas["StaffPersonPreferencesRequest"];
+export type StaffAvailabilityKind = Schemas["StaffAvailabilityKind"];
+export type StaffAvailabilityDeclaration = Schemas["StaffAvailabilityDeclaration"];
+export type StaffAvailabilityInput = Schemas["StaffAvailabilityRequest"];
+export type StaffWishesSeen = Schemas["StaffWishesSeen"];
+export type StaffCompetenceReview = Schemas["StaffCompetenceReview"];
+export type StaffCompetenceReviewInput = Schemas["StaffCompetenceReviewRequest"];
 
 /** Every competence category in order, archived ones included, so a competence still names its own. */
 export const competenceCategoriesQueryOptions = () =>
@@ -64,6 +75,41 @@ export const personCompetencesQueryOptions = (personId: number, history = false)
         `/api/v1/staff/people/${personId}/competences${history ? "?history=true" : ""}`,
         { signal },
       ),
+  });
+
+/*
+ * What the person wants (delivery B, design S8–S10): three lists the person
+ * alone writes, each whole; read by them, their manager, HR and
+ * `staff:personal-data` — anyone else gets the unknown person's 404.
+ */
+
+export const interestsQueryOptions = (personId: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", personId, "interests"],
+    queryFn: ({ signal }) =>
+      request<Schemas["StaffPersonInterestList"]>(`/api/v1/staff/people/${personId}/interests`, { signal }),
+  });
+
+export const preferencesQueryOptions = (personId: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", personId, "preferences"],
+    queryFn: ({ signal }) =>
+      request<Schemas["StaffPersonPreferenceList"]>(`/api/v1/staff/people/${personId}/preferences`, { signal }),
+  });
+
+export const availabilityQueryOptions = (personId: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", personId, "availability"],
+    queryFn: ({ signal }) =>
+      request<Schemas["StaffAvailabilityList"]>(`/api/v1/staff/people/${personId}/availability`, { signal }),
+  });
+
+/** The reviews recorded with the person (design S11), newest first; a colleague gets the 404. */
+export const competenceReviewsQueryOptions = (personId: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", personId, "competence-reviews"],
+    queryFn: ({ signal }) =>
+      request<StaffCompetenceReview[]>(`/api/v1/staff/people/${personId}/competence-reviews`, { signal }),
   });
 
 export const createCompetenceCategory = (input: StaffCompetenceCategoryInput): Promise<StaffCompetenceCategory> =>
@@ -143,3 +189,41 @@ export const uploadEvidence = (id: number, file: File): Promise<StaffPersonCompe
  */
 export const downloadEvidence = (rowId: number, fileName: string): Promise<FileDownload> =>
   downloadFile(`/api/v1/staff/person-competences/${rowId}/evidence`, fileName);
+
+/*
+ * The wishes' writes (delivery B) go through the same sender, so a refusal
+ * keyed `interests[2].competenceId` keeps its code (`competence_unavailable`).
+ * No If-Match: the person is the lists' only writer (plan reading 20).
+ */
+
+/** The person's interests, replaced whole (at most 20). */
+export const replaceInterests = (
+  personId: number,
+  input: StaffPersonInterestsInput,
+): Promise<Schemas["StaffPersonInterestList"]> =>
+  sendAbsenceWrite(`/api/v1/staff/people/${personId}/interests`, "PUT", input);
+
+/** The person's preferences, one per kind, replaced whole. */
+export const replacePreferences = (
+  personId: number,
+  input: StaffPersonPreferencesInput,
+): Promise<Schemas["StaffPersonPreferenceList"]> =>
+  sendAbsenceWrite(`/api/v1/staff/people/${personId}/preferences`, "PUT", input);
+
+/** The person's availability declaration, replaced whole (at most 50 rows). */
+export const replaceAvailability = (
+  personId: number,
+  input: StaffAvailabilityInput,
+): Promise<Schemas["StaffAvailabilityList"]> =>
+  sendAbsenceWrite(`/api/v1/staff/people/${personId}/availability`, "PUT", input);
+
+/** The manager's or HR's Seen: every unstamped wish and current competence row stamped, the counts answered. */
+export const markWishesSeen = (personId: number): Promise<StaffWishesSeen> =>
+  sendAbsenceWrite(`/api/v1/staff/people/${personId}/wishes/seen`, "POST");
+
+/** Records that the two went through the Competence tab together; today when no day is given. */
+export const recordCompetenceReview = (
+  personId: number,
+  input: StaffCompetenceReviewInput = {},
+): Promise<StaffCompetenceReview> =>
+  sendAbsenceWrite(`/api/v1/staff/people/${personId}/competence-reviews`, "POST", input);

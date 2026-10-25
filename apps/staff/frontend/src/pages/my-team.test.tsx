@@ -2,6 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { cases } from "../test/absence-fixtures";
+import { personCompetences } from "../test/competence-fixtures";
+import { peopleWithRecords, settings } from "../test/fixtures";
 import { region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { staffProblem, stubStaffApi } from "../test/server";
@@ -239,5 +241,145 @@ describe("My page — My team", () => {
           .map((one) => one.textContent),
       ).toHaveLength(2);
     }
+  });
+});
+
+describe("My page — My team, what waits on my reports' competences", () => {
+  it("shows Grace's declaration awaiting me, no certificate of mine, and her overdue review", async () => {
+    // Grace was hired on 15 January 2026 and never reviewed: under six months she is overdue.
+    const fetchMock = stubStaffApi({
+      role: "access",
+      me: 101,
+      settings: settings({ competenceReviewIntervalMonths: 6 }),
+    });
+    renderRoute("/staff/me?tab=team");
+
+    const awaiting = await region("Awaiting your verification");
+    const declared = await within(awaiting).findByRole("link", { name: "Grace Hopper" });
+    expect(declared).toHaveAttribute("href", "/staff/people/102?tab=competence");
+    expect(within(awaiting).getByText("Declared Oct 1, 2026")).toBeInTheDocument();
+    // Ada's own expiring FSE is not her team's.
+    const expiring = await region("Certificates expiring");
+    expect(await within(expiring).findByText("No certificate expires soon")).toBeInTheDocument();
+    const overdue = await region("Reviews overdue");
+    expect(await within(overdue).findByRole("link", { name: "Grace Hopper" })).toHaveAttribute(
+      "href",
+      "/staff/people/102?tab=competence",
+    );
+    expect(within(overdue).getByText("Due Jul 15, 2026")).toBeInTheDocument();
+    expect(sent(fetchMock, "GET", /\/stats\/attention$/).length).toBeGreaterThan(0);
+  });
+
+  it("raises no overdue review for a report hired within the interval", async () => {
+    stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/me?tab=team");
+
+    expect(await within(await region("Reviews overdue")).findByText("No review is overdue")).toBeInTheDocument();
+  });
+
+  it("puts an expired certificate of a report first, with its badge", async () => {
+    stubStaffApi({
+      role: "access",
+      me: 101,
+      personCompetences: [
+        ...personCompetences(),
+        {
+          ...personCompetences()[0],
+          id: 3010,
+          personId: 102,
+          validTo: "2026-10-20",
+          declaredAt: "2025-10-20T08:00:00Z",
+        },
+        {
+          ...personCompetences()[0],
+          id: 3011,
+          personId: 102,
+          validTo: "2026-09-30",
+          declaredAt: "2025-09-30T08:00:00Z",
+        },
+      ],
+    });
+    renderRoute("/staff/me?tab=team");
+
+    const expiring = await region("Certificates expiring");
+    const list = await within(expiring).findByRole("list", { name: "Certificates expiring" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "Grace HopperExpiredExpired Sep 30, 2026",
+      "Grace HopperExpires Oct 20, 2026",
+    ]);
+  });
+
+  it("keeps to my reports when the server answers me the whole company's", async () => {
+    // HR who also manages Grace: GET /stats/attention answers everyone's, Barbara's declaration too.
+    stubStaffApi({
+      role: "manage",
+      me: 101,
+      people: peopleWithRecords().map((one) => (one.id === 105 ? { ...one, status: { state: "active" } } : one)),
+      personCompetences: [...personCompetences(), { ...personCompetences()[2], id: 3012, personId: 105 }],
+    });
+    renderRoute("/staff/me?tab=team");
+
+    const awaiting = await region("Awaiting your verification");
+    expect(await within(awaiting).findByRole("link", { name: "Grace Hopper" })).toBeInTheDocument();
+    expect(within(awaiting).queryByText("Barbara Liskov")).not.toBeInTheDocument();
+  });
+
+  it("sorts the expired and the expiring each by their day", async () => {
+    const certificate = (id: number, validTo: string) => ({
+      ...personCompetences()[0],
+      id,
+      personId: 102,
+      validTo,
+      declaredAt: `${validTo}T08:00:00Z`,
+    });
+    stubStaffApi({
+      role: "access",
+      me: 101,
+      personCompetences: [
+        ...personCompetences(),
+        certificate(3013, "2026-10-30"),
+        certificate(3014, "2026-10-20"),
+        certificate(3015, "2026-10-01"),
+        certificate(3016, "2026-09-15"),
+      ],
+    });
+    renderRoute("/staff/me?tab=team");
+
+    const list = await within(await region("Certificates expiring")).findByRole("list", {
+      name: "Certificates expiring",
+    });
+    expect(
+      within(list)
+        .getAllByRole("listitem")
+        .map((row) => row.textContent),
+    ).toEqual([
+      "Grace HopperExpiredExpired Sep 15, 2026",
+      "Grace HopperExpiredExpired Oct 1, 2026",
+      "Grace HopperExpires Oct 20, 2026",
+      "Grace HopperExpires Oct 30, 2026",
+    ]);
+  });
+
+  it("says so when what waits cannot be read", async () => {
+    stubStaffApi({
+      role: "access",
+      me: 101,
+      read: (path) =>
+        path === "/api/v1/staff/stats/attention" ? staffProblem(500, { title: "Internal error" }) : undefined,
+    });
+    renderRoute("/staff/me?tab=team");
+
+    expect(await screen.findByRole("alert", { name: "Could not load what waits" })).toBeInTheDocument();
+    // The rest of My team stands.
+    expect(await region("Open sick-leave cases")).toBeInTheDocument();
+  });
+
+  it("reads nothing of what waits for one who manages nobody", async () => {
+    const fetchMock = stubStaffApi({ role: "access", me: 102 });
+    renderRoute("/staff/me?tab=team");
+
+    await screen.findByRole("tab", { name: "Absence" });
+    expect(sent(fetchMock, "GET", /stats\/attention/)).toHaveLength(0);
   });
 });

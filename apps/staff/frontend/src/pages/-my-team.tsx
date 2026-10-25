@@ -1,11 +1,13 @@
-import { Alert, List, Stack, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Group, List, Stack, Text } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, useI18n, useLocale } from "@vantigo/frontend-shell";
 import { calendarQueryOptions, type StaffAbsence } from "../api/absence";
 import { openCasesQueryOptions } from "../api/cases";
 import type { StaffAbsenceType } from "../api/meta";
 import { orgQueryOptions, type StaffPerson, type StaffPersonSummary } from "../api/people";
+import { attentionQueryOptions, type StaffAttentionType, type StaffStatsAttentionItem } from "../api/stats";
 import { ApprovalsInbox } from "../components/approvals";
 import { CaseCard } from "../components/case-card";
 import { FieldGroup } from "../components/field-group";
@@ -13,23 +15,29 @@ import "../i18n";
 import { absenceDays, absenceName } from "../lib/absence";
 import { toUtc } from "../lib/dates";
 import { useStaffFormat } from "../lib/format";
+import { personLinkOptions } from "../lib/routes";
 import { monthOf } from "../lib/workdays";
 
 /**
  * My team (design §7, plan reading 6): a section of My page for a caller who
  * manages anyone — the requests they decide, their reports' absence this
  * month and their reports' open sick-leave cases, every row as the server
- * shaped it for a manager (an HR-only type as "leave", no milestone note).
- * The reports are the organisation's answer for me today (`GET /people/{id}/org`).
+ * shaped it for a manager (an HR-only type as "leave", no milestone note) —
+ * and, from competence's delivery B, what waits on their reports'
+ * competences. The reports are the organisation's answer for me today
+ * (`GET /people/{id}/org`).
  */
 export const MyTeam = ({
   person,
   today,
   types,
+  timeZone,
 }: {
   person: StaffPerson;
   today: string;
   types: readonly StaffAbsenceType[];
+  /** The business time zone, the day a declaration was made is told in. */
+  timeZone?: string;
 }) => {
   const { t } = useStaffFormat();
   const org = useQuery(orgQueryOptions(person.id));
@@ -45,6 +53,7 @@ export const MyTeam = ({
       <ApprovalsInbox types={types} />
       <MonthAbsence reports={org.data.reports} today={today} types={types} />
       <OpenCases reports={org.data.reports} />
+      <CompetenceAttention reports={org.data.reports} timeZone={timeZone} />
     </Stack>
   );
 };
@@ -128,6 +137,118 @@ const OpenCases = ({ reports }: { reports: StaffPersonSummary[] }) => {
           title={t("caseLabel", { person: names.get(sickCase.personId) ?? "", date: date(sickCase.firstDay) })}
         />
       ))}
+    </FieldGroup>
+  );
+};
+
+/**
+ * What waits on my reports' competences (staff competence design §7, B):
+ * declarations awaiting my verification, certificates expiring or expired,
+ * and reviews overdue — the attention items the server answers me as their
+ * manager, each row opening the person's Competence tab. The items are
+ * kept to my reports: to a caller who also holds staff:manage or
+ * staff:approve the server answers the whole company's.
+ */
+const CompetenceAttention = ({ reports, timeZone }: { reports: StaffPersonSummary[]; timeZone?: string }) => {
+  const { t } = useStaffFormat();
+  const attention = useQuery(attentionQueryOptions());
+  const ids = new Set(reports.map((report) => String(report.id)));
+  if (attention.isError)
+    return (
+      <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadAttention")}>
+        {attention.error.message}
+      </Alert>
+    );
+  const of = (...types: StaffAttentionType[]) =>
+    (attention.data ?? []).filter((item) => types.includes(item.type) && ids.has(item.entityId));
+  const byDay = (items: StaffStatsAttentionItem[]) =>
+    [...items].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+  return (
+    <>
+      <AttentionCard
+        title={t("competenceAwaiting")}
+        description={t("competenceAwaitingDescription")}
+        empty={t("nothingAwaiting")}
+        loading={attention.isPending}
+        items={of("competenceDeclared")}
+        timeZone={timeZone}
+      />
+      <AttentionCard
+        title={t("certificatesExpiring")}
+        description={t("certificatesExpiringDescription")}
+        empty={t("noneExpiring")}
+        loading={attention.isPending}
+        // The expired first: they are past their day already.
+        items={[...byDay(of("competenceExpired")), ...byDay(of("competenceExpiring"))]}
+        timeZone={timeZone}
+      />
+      <AttentionCard
+        title={t("reviewsOverdue")}
+        description={t("reviewsOverdueDescription")}
+        empty={t("noneOverdue")}
+        loading={attention.isPending}
+        items={of("competenceReviewOverdue")}
+        timeZone={timeZone}
+      />
+    </>
+  );
+};
+
+const AttentionCard = ({
+  title,
+  description,
+  empty,
+  loading,
+  items,
+  timeZone,
+}: {
+  title: string;
+  description: string;
+  empty: string;
+  loading: boolean;
+  items: StaffStatsAttentionItem[];
+  timeZone?: string;
+}) => {
+  const { t, date, day } = useStaffFormat();
+  // A declaration is dated by when it was made; an expiry and a due review by their civil day.
+  const when = (item: StaffStatsAttentionItem) => {
+    if (item.type === "competenceDeclared") return t("attentionDeclared", { date: day(item.occurredAt, timeZone) });
+    const civil = date(item.occurredAt.slice(0, 10));
+    if (item.type === "competenceExpired") return t("attentionExpired", { date: civil });
+    if (item.type === "competenceExpiring") return t("attentionExpires", { date: civil });
+    return t("attentionDue", { date: civil });
+  };
+  return (
+    <FieldGroup title={title} description={description}>
+      {loading && <ContentSkeleton rows={2} rowHeight={32} />}
+      {!loading && items.length === 0 && <Text size="sm">{empty}</Text>}
+      {items.length > 0 && (
+        <List spacing={4} listStyleType="none" aria-label={title}>
+          {items.map((item) => (
+            <List.Item key={item.id}>
+              <Group gap="xs" wrap="wrap">
+                <Anchor
+                  size="sm"
+                  fw={500}
+                  renderRoot={(props) => (
+                    <Link {...personLinkOptions(Number(item.entityId))} search={{ tab: "competence" }} {...props} />
+                  )}
+                >
+                  {item.title}
+                </Anchor>
+                {item.type === "competenceExpired" && (
+                  <Badge size="sm" variant="light" color="red">
+                    {t("competenceExpired")}
+                  </Badge>
+                )}
+                <Text size="sm" c="dimmed">
+                  {when(item)}
+                </Text>
+              </Group>
+            </List.Item>
+          ))}
+        </List>
+      )}
     </FieldGroup>
   );
 };
