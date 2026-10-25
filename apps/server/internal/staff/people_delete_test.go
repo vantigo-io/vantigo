@@ -246,3 +246,24 @@ func TestDeletePerson_TakesTheProfilesAssigned(t *testing.T) {
 		t.Errorf("%d profiles left after the delete, want none", n)
 	}
 }
+
+// The photo of a person created in error goes with them through the ledger
+// (person-glance design §4): queued in the delete's transaction, removed by
+// the ledger's pass, never by the delete itself.
+func TestDeletePerson_QueuesThePhotosObject(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	p := createPerson(t, hr, newPerson("Kari", "Nordmann"))
+	setPhoto(t, hr, p.Id, testPNG(t))
+	key, _ := photoKey(t, h, p.Id)
+
+	do(t, hr, http.MethodDelete, personPath(p.Id), nil, http.StatusNoContent, nil)
+	if !queued(t, h, key) || !h.objects.has(key) {
+		t.Fatalf("after the delete: queued %v, stored %v; want queued and left to the ledger", queued(t, h, key), h.objects.has(key))
+	}
+	runLedger(t, h)
+	if h.objects.has(key) || queued(t, h, key) {
+		t.Error("the ledger did not remove the deleted person's photo")
+	}
+}

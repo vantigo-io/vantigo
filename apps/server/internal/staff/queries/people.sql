@@ -12,7 +12,8 @@ SELECT
     street, postal_code, city, country, work_country, preferred_language,
     bank_account_kind, bank_account_last4, notes, revision,
     legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
-    children_under_12, sole_carer, chronically_ill_children
+    children_under_12, sole_carer, chronically_ill_children,
+    photo_object_key, photo_content_type, photo_updated_at
 FROM staff.people
 WHERE id = @id;
 
@@ -183,7 +184,8 @@ AND (
 -- ListPeople is one page of the directory, by display name, the work group's
 -- columns only, filtered as CountPeople counts.
 SELECT p.id, p.employee_number, p.given_name, p.family_name, p.display_name,
-       p.work_email, p.phone_work, p.work_country, p.preferred_language, p.erased_at
+       p.work_email, p.phone_work, p.work_country, p.preferred_language, p.erased_at,
+       p.photo_updated_at
 FROM staff.people p
 WHERE NOT EXISTS (
     SELECT 1 FROM unnest(@patterns::text[]) AS s(pattern)
@@ -287,6 +289,50 @@ DELETE FROM staff.person_roles WHERE person_id = @person_id;
 INSERT INTO staff.person_roles (person_id, role, from_date, to_date, created_at, updated_at)
 VALUES (@person_id, @role, @from_date, @to_date, @now::timestamptz, @now::timestamptz);
 
+-- name: SetPersonPhoto :one
+-- SetPersonPhoto records a person's new photo (person-glance design S1): the
+-- object's key and type, set now, and moves the revision on — the photo is
+-- part of what the person response shows. The old object, if any, is the
+-- caller's to queue in the deletion ledger. It answers the person as
+-- GetPerson reads one, never a sealed column.
+UPDATE staff.people SET
+    photo_object_key = @photo_object_key::text,
+    photo_content_type = @photo_content_type::text,
+    photo_updated_at = @now::timestamptz,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE id = @id
+RETURNING
+    id, employee_number, given_name, family_name, display_name, birth_date, gender,
+    national_id_kind, (national_id_mac IS NOT NULL)::boolean AS national_id_on_file,
+    work_email, phone_work, phone_mobile, phone_private, private_email,
+    street, postal_code, city, country, work_country, preferred_language,
+    bank_account_kind, bank_account_last4, notes, revision,
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
+    children_under_12, sole_carer, chronically_ill_children,
+    photo_object_key, photo_content_type, photo_updated_at;
+
+-- name: ClearPersonPhoto :one
+-- ClearPersonPhoto removes a person's photo: the three columns cleared and
+-- the revision moved on, as SetPersonPhoto moves it. It answers the person as
+-- GetPerson reads one.
+UPDATE staff.people SET
+    photo_object_key = NULL,
+    photo_content_type = NULL,
+    photo_updated_at = NULL,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE id = @id
+RETURNING
+    id, employee_number, given_name, family_name, display_name, birth_date, gender,
+    national_id_kind, (national_id_mac IS NOT NULL)::boolean AS national_id_on_file,
+    work_email, phone_work, phone_mobile, phone_private, private_email,
+    street, postal_code, city, country, work_country, preferred_language,
+    bank_account_kind, bank_account_last4, notes, revision,
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
+    children_under_12, sole_carer, chronically_ill_children,
+    photo_object_key, photo_content_type, photo_updated_at;
+
 -- name: SetLegalHold :exec
 -- SetLegalHold sets or lifts a person's legal hold (design S15, class F): set,
 -- with the reason, who set it and when; lifted, all three cleared. The
@@ -362,7 +408,8 @@ SELECT
     street, postal_code, city, country, work_country, preferred_language,
     bank_account_kind, bank_account_last4, notes, revision,
     legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
-    children_under_12, sole_carer, chronically_ill_children
+    children_under_12, sole_carer, chronically_ill_children,
+    photo_object_key, photo_content_type, photo_updated_at
 FROM staff.people
 ORDER BY id
 LIMIT @max_rows;

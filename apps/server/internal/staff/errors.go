@@ -173,6 +173,11 @@ const (
 	codeSkillNoValidity       = "skill_no_validity"
 )
 
+// photo_invalid is the person's photo refused on file (person-glance design
+// §4): not a JPEG or PNG by its own bytes, larger than 5 MiB, or a side over
+// 4096 pixels.
+const codePhotoInvalid = "photo_invalid"
+
 // The titles this module's validation problems carry, one per thing a request
 // writes, so a client can tell a refusal of the settings from one of a legal
 // entity without reading the field errors.
@@ -212,6 +217,8 @@ const (
 
 	invalidCompetenceProfileTitle = "Invalid competence profile"
 	invalidPersonProfilesTitle    = "Invalid profile assignment"
+
+	invalidPhotoTitle = "Invalid photo"
 )
 
 // competenceProfileKeyIndex is the unique index on the profiles' keys, as

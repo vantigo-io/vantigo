@@ -126,8 +126,9 @@ func payTerms(kv ...any) map[string]any {
 
 // fullPerson is a person with every field of class D the API writes set —
 // contact and address, both sealed values, HR's notes, a next of kin — the
-// care-day fields and the foreign id's country written directly (delivery B
-// exposes them), a role and a link.
+// care-day fields, the foreign id's country and the photo's columns written
+// directly (delivery B exposes the first, the photo's lane the last), a role
+// and a link.
 func fullPerson(t *testing.T, h *harness, hr *modtest.Client, given string) gen.StaffPerson {
 	t.Helper()
 	p := createPerson(t, hr, with(newPerson(given, "Glemt"), "birthDate", "1990-01-01", "gender", "male",
@@ -139,7 +140,8 @@ func fullPerson(t *testing.T, h *harness, hr *modtest.Client, given string) gen.
 	putNextOfKin(t, h, hr, p.Id, map[string]any{"nextOfKin": []any{kin("Ola Glemt", "spouse", "phone", "+47 900 00 003", "note", "Evenings")}})
 	putRoles(t, h, hr, p.Id, map[string]any{"roles": []any{map[string]any{"role": "verneombud"}}})
 	h.Exec(t, `UPDATE staff.people SET children_under_12 = 2, sole_carer = true, chronically_ill_children = 1,
-		national_id_country = 'NO' WHERE id = $1`, p.Id)
+		national_id_country = 'NO', photo_object_key = 'people/' || id || '/photo/seeded',
+		photo_content_type = 'image/png', photo_updated_at = now() WHERE id = $1`, p.Id)
 	return p
 }
 
@@ -212,6 +214,11 @@ func TestRetention_TheDEraseNullsEveryDColumn(t *testing.T) {
 	}
 	if !h.objects.has(otherKey) {
 		t.Error("the erase called the object store: the ledger finishes the objects, not the erase")
+	}
+	// The photo's object (person-glance design §4), whose key the erase
+	// nulled with the rest of class D, waits in the ledger.
+	if photo := fmt.Sprintf("people/%d/photo/seeded", p.Id); h.Count(t, `SELECT count(*) FROM staff.object_deletions WHERE object_key = $1`, photo) != 1 {
+		t.Errorf("the photo's object %s is not queued in the ledger", photo)
 	}
 
 	// The history: every value of class D replaced by "changed", in the

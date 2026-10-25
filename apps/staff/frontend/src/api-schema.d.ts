@@ -1950,6 +1950,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/people/{id}/glance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a person at a glance
+         * @description A person at a glance (person-glance design §4) — sick days, the egenmelding standing, holiday, sick-child days, the employment, absence now and next, the contract check and this week's hours — in one response, each section shaped by the caller's field groups and absent when the caller does not read it. The hours are read from the time module (contracts.Timesheets) for the person, their manager today, staff:manage and staff:personal-data, whatever the caller's rights in time; the contract section is staff:manage's. It is read in two snapshots with time's hours read between them, outside any transaction: the person, the caller's audience and the link in the first; the audience judged again and the sections read in the second, which shapes them — the hours go only to a caller who reads them in both. Anyone who may not see the person, in either snapshot, gets a 404 identical to an unknown id. A time module that fails to answer fails the glance (500), never a zero.
+         */
+        get: operations["getStaffPeopleByIdGlance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/people/{id}/holiday-account": {
         parameters: {
             query?: never;
@@ -2137,6 +2157,34 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/people/{id}/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a person's photo
+         * @description Streams the person's photo with its type, Cache-Control private, max-age=300, never sniffed and with no Content-Disposition — to everyone who reads the person's Work group. The apps send photoUpdatedAt as v to bust a cache; the server ignores it. A person the caller may not see, one without a photo, or one whose photo was removed from the store between the row's read and the object's, is a 404 identical to an unknown id.
+         */
+        get: operations["getStaffPeopleByIdPhoto"];
+        /**
+         * Set a person's photo
+         * @description Sets the person's photo (person-glance design S1): a JPEG or PNG of at most 5 MiB, each side at most 4096 pixels, in the multipart field file — its own bytes decide its type — replacing any photo whole; the old object is queued in the deletion ledger. Its metadata is stripped before it is stored, the pixels untouched: a JPEG's APP1 (Exif, XMP) and APP13 (IPTC) segments, a PNG's eXIf, tEXt, zTXt and iTXt chunks; the photo served is the stripped file. The object is stored before the person's lock is taken; the row, its revision and a photo_set event are written under it. The person themselves, staff:manage and staff:personal-data; anyone else who sees the person gets the uniform 403, and anyone who may not see them a 404 identical to an unknown id.
+         */
+        put: operations["putStaffPeopleByIdPhoto"];
+        post?: never;
+        /**
+         * Remove a person's photo
+         * @description Removes the person's photo (person-glance design S1): the three columns cleared and the revision moved on under the person's lock, the object queued in the deletion ledger, a photo_removed event. The person themselves, staff:manage and staff:personal-data; anyone else who sees the person gets the uniform 403, and anyone who may not see them a 404 identical to an unknown id — as does a person without a photo.
+         */
+        delete: operations["deleteStaffPeopleByIdPhoto"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3886,7 +3934,7 @@ export interface components {
             at: string;
             /** Format: int64 */
             id: number;
-            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed, account_mismatched and identity_erased for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the groups' — group_joined and group_left, naming the group (groupId, groupName, groupKey) and how the person came in or went (source, listed or derived); the competences' — competence_declared, competence_changed, competence_verified, competence_renewed, competence_removed and competence_evidence_added, naming the competence by its key, with its level, and never the verifier's note (competence_created and competence_updated are the catalogue's installation events, never a person's); the one-to-one's — interests_changed and availability_changed with the count before and after, preferences_changed with the kinds added, changed or removed and never a value, wishes_seen with the rows stamped and competence_reviewed with the review's day; the profiles' — profiles_assigned, naming the profiles' keys before and after (competence_profile_created and competence_profile_updated are the profiles catalogue's installation events, never a person's); the kinds grow with the module. */
+            /** @description person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed, account_mismatched and identity_erased for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the groups' — group_joined and group_left, naming the group (groupId, groupName, groupKey) and how the person came in or went (source, listed or derived); the competences' — competence_declared, competence_changed, competence_verified, competence_renewed, competence_removed and competence_evidence_added, naming the competence by its key, with its level, and never the verifier's note (competence_created and competence_updated are the catalogue's installation events, never a person's); the one-to-one's — interests_changed and availability_changed with the count before and after, preferences_changed with the kinds added, changed or removed and never a value, wishes_seen with the rows stamped and competence_reviewed with the review's day; the profiles' — profiles_assigned, naming the profiles' keys before and after (competence_profile_created and competence_profile_updated are the profiles catalogue's installation events, never a person's); the photo's — photo_set and photo_removed, in the Work group, carrying the content type and never the bytes; the kinds grow with the module. */
             kind: string;
             /** @description The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}. An erase records up to two: the health kinds (health, cases, childSick, withdrawal, pregnancyHealth) in one of class E, listed to the person and staff:personal-data alone, and D and A in one read by HR and listed as the hold's kinds are — not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone. */
             payload: {
@@ -3909,6 +3957,125 @@ export interface components {
          * @enum {string}
          */
         StaffGender: "female" | "male" | "other" | "unspecified";
+        /** @description Absence at a glance (person-glance design §4): the sick-leave case open now, the absence covering today and the next one after it. now and next are the Absence group's, read as GET /absences gives them to the caller. A colleague reads coalesced spans — the person's approved and registered day rows, over their whole history, joined where they overlap or adjoin — each as absent with no typeId, so never where one row ends and the next begins: now is the span covering today, next the first span starting after it. Anyone else reads the rows themselves, each shaped as GET /absences shapes it for them: now the day row covering today (a decided one before a request), next the first one starting after today. openCase is the Absence detail group's. Each is absent when there is none or the caller does not read it. */
+        StaffGlanceAbsence: {
+            next?: components["schemas"]["StaffGlanceAbsenceSpan"];
+            now?: components["schemas"]["StaffGlanceAbsenceSpan"];
+            openCase?: components["schemas"]["StaffGlanceOpenCase"];
+        };
+        /** @description One absence row — to a colleague, one coalesced span — reduced to its days and how the caller is shown its type. */
+        StaffGlanceAbsenceSpan: {
+            /** Format: date */
+            firstDay: string;
+            /** Format: date */
+            lastDay: string;
+            shownAs: components["schemas"]["StaffAbsenceShownAs"];
+            /**
+             * Format: int64
+             * @description The row's type when shownAs is type. Absent otherwise.
+             */
+            typeId?: number;
+        };
+        /** @description This year's sick-child days (person-glance design S3): days, the registered child-sick working days, is the Absence type group's — the person, their manager today, staff:approve and HR; entitlement and remaining are the Care-days group's (the person, staff:manage and staff:personal-data) and absent to anyone else, or when the care-day fields are not recorded. */
+        StaffGlanceChildSick: {
+            /** Format: int32 */
+            days: number;
+            /** Format: int32 */
+            entitlement?: number;
+            /**
+             * Format: int32
+             * @description entitlement − the year's used care days; below zero when exceeded.
+             */
+            remaining?: number;
+        };
+        /** @description The § 14-6 check's verdict for the employment in force today — staff:manage's alone. */
+        StaffGlanceContract: {
+            /** @description Whether the employment records a signed contract; null when no employment is in force today. */
+            signed: boolean | null;
+        };
+        /** @description The person's employment at a glance: startDate (the start of the current unbroken run of employments), tenureMonths (whole months from it to today), ftePercent and title (the terms in force today) are the Employment dates group's — a colleague reads them too; probationEndsOn is the Employment group's (the person, their manager today, staff:approve and HR). Each is absent when there is none or the caller does not read it. */
+        StaffGlanceEmployment: {
+            /** Format: double */
+            ftePercent?: number;
+            /**
+             * Format: date
+             * @description The last day of the probation in force today — the extension's when one is agreed. Absent when there is none or it has ended.
+             */
+            probationEndsOn?: string;
+            /** Format: date */
+            startDate?: string;
+            /** Format: int32 */
+            tenureMonths?: number;
+            title?: string;
+        };
+        /** @description This year's holiday account at a glance, in working days — the Absence detail group's (the person, their manager today, staff:approve and HR). takenToDate is this year's approved and registered holiday working days on or before today; planned the approved, requested and registered holiday working days after today, to the year's end; remaining and overdrawn are the account's (GET /people/{id}/holiday-account), whose remaining already subtracts every approved and registered day of the year whatever its date — so takenToDate + planned + remaining is not the entitlement. */
+        StaffGlanceHoliday: {
+            overdrawn: boolean;
+            /** Format: double */
+            planned: number;
+            /** Format: double */
+            remaining: number;
+            /** Format: double */
+            takenToDate: number;
+        };
+        /** @description The hours of this business week against the contract (person-glance design S2) — the Hours group's: the person, their manager today, staff:manage and staff:personal-data. timeTracking is false, and every other field absent, when the time module is disabled: time tracking is off, never zero. logged and approved are absent when the person has no linked user; expected is absent when no terms are in force today. */
+        StaffGlanceHours: {
+            /**
+             * Format: double
+             * @description The week's approved and invoiced hours.
+             */
+            approved?: number;
+            /**
+             * Format: double
+             * @description The full-time hours per week times the FTE of the terms in force today, summed over every employment in force today and rounded to a quarter of an hour once summed — the contracts' week, not reduced by absence. Two employments at 50 % each expect the full week.
+             */
+            expected?: number;
+            /**
+             * Format: double
+             * @description The week's hours in every entry not rejected, on every project.
+             */
+            logged?: number;
+            timeTracking: boolean;
+            /**
+             * Format: date
+             * @description This business week's Monday.
+             */
+            weekStart?: string;
+        };
+        /** @description The sick-leave case open today. */
+        StaffGlanceOpenCase: {
+            /**
+             * Format: int32
+             * @description The case's day today — 1 on its first day.
+             */
+            day: number;
+            /** Format: date */
+            firstDay: string;
+        };
+        /** @description The person's egenmelding standing today, as GET /people/{id}/self-certification reports it — the Absence detail group's (the person, their manager today, staff:approve and HR): the occurrences used against the minimum policy's limit, or the days used against the extended policy's. */
+        StaffGlanceSelfCertification: {
+            /**
+             * Format: int32
+             * @description The days a year the extended policy allows. Absent under minimum.
+             */
+            daysLimit?: number;
+            /** Format: int32 */
+            daysUsed: number;
+            /**
+             * Format: int32
+             * @description The occurrences a year the minimum policy allows. Absent under extended.
+             */
+            occurrencesLimit?: number;
+            /** Format: int32 */
+            occurrencesUsed: number;
+        };
+        /** @description This year's sick days in working days, each weighted by its row's degree, from approved and registered rows — the Absence type group's (the person, their manager today, staff:approve and HR): selfCertified of kind sick_self (egenmelding), certified of kind sick_certified (sykmelding). */
+        StaffGlanceSickDays: {
+            /** Format: double */
+            certified: number;
+            /** Format: double */
+            selfCertified: number;
+        };
         /** @description A group in Staff (Entra design D9): listed — HR names the members — or derived, its members the people its rule yields on the business day, which the accounts worker materialises before it works the links. Its key is the providers' reference to it and never changes. members and owners are answered by GET /groups/{id} and the writes of one group, never by the list. groups are staff:manage's alone. */
         StaffGroup: {
             /**
@@ -4629,6 +4796,11 @@ export interface components {
             phonePrivate?: string;
             /** @description Absent when not set. */
             phoneWork?: string;
+            /**
+             * Format: date-time
+             * @description When the person's photo was set — the Work group; the apps fetch the photo (GET /people/{id}/photo) with it as the cache key. Absent when there is none.
+             */
+            photoUpdatedAt?: string;
             /** @description Private. Absent when not set. */
             postalCode?: string;
             preferredLanguage: components["schemas"]["StaffLanguage"];
@@ -4681,6 +4853,8 @@ export interface components {
             canSeeHealth: boolean;
             /** @description The person themselves, staff:manage or staff:personal-data — the pay terms of the person's employments. */
             canSeePay: boolean;
+            /** @description The caller sets and removes the person's photo — the person themselves, staff:manage or staff:personal-data (PUT and DELETE /people/{id}/photo). False for an erased person, whose photo is person_erased. */
+            canSetPhoto: boolean;
             /** @description The caller stamps what the person wants Seen — the person's manager today or staff:manage, never the person and never staff:approve alone (POST /people/{id}/wishes/seen). */
             canStampWishesSeen: boolean;
             /** @description The caller verifies the person's competences (staff competence design S4) — the person's manager today, staff:approve or staff:manage, never the person (POST /person-competences/{id}/verify). */
@@ -4835,6 +5009,17 @@ export interface components {
              */
             provisionFrom?: string | null;
         };
+        /** @description A person at a glance (person-glance design §4), computed on read — "today" and "this year" in the business time zone. Each section is present when the caller reads its field group and absent otherwise, never zero; a section's own fields may be narrower still. The employment card's title and ftePercent, its probation and the contract card are the person's place's — the earliest employment in force today by start date, then id; the hours card's expected is every employment's in force today. */
+        StaffPersonGlance: {
+            absence?: components["schemas"]["StaffGlanceAbsence"];
+            childSick?: components["schemas"]["StaffGlanceChildSick"];
+            contract?: components["schemas"]["StaffGlanceContract"];
+            employment?: components["schemas"]["StaffGlanceEmployment"];
+            holiday?: components["schemas"]["StaffGlanceHoliday"];
+            hours?: components["schemas"]["StaffGlanceHours"];
+            selfCertification?: components["schemas"]["StaffGlanceSelfCertification"];
+            sickDays?: components["schemas"]["StaffGlanceSickDays"];
+        };
         /** @description A group a person is in, archived groups aside. */
         StaffPersonGroup: {
             /** Format: int64 */
@@ -4908,6 +5093,11 @@ export interface components {
             onLeaveToday: boolean;
             /** @description Absent when not set. */
             phoneWork?: string;
+            /**
+             * Format: date-time
+             * @description When the person's photo was set, the cache key of GET /people/{id}/photo. Absent when there is none.
+             */
+            photoUpdatedAt?: string;
             preferredLanguage: components["schemas"]["StaffLanguage"];
             status: components["schemas"]["StaffPersonStatus"];
             /** @description The job title of the terms in force today. Absent when there is none. */
@@ -5129,6 +5319,8 @@ export interface components {
             link: components["schemas"]["StaffPersonLink"];
             nextOfKin: components["schemas"]["StaffNextOfKin"][];
             person: components["schemas"]["StaffPersonalDataPerson"];
+            /** @description The person's photo, its type and when it was set; null when there is none. */
+            photo: components["schemas"]["StaffPersonalDataPhoto"] | null;
             /** @description Every preference of the person, by kind. */
             preferences: components["schemas"]["StaffPersonPreference"][];
             /** @description The competence profiles that reach the person, assigned or their department's default, by key — filled for an audience that reads the person's profiles, the person's own export included, and an empty list to anyone else. */
@@ -5207,12 +5399,19 @@ export interface components {
             workCountry: string;
             workEmail?: string;
         };
+        /** @description The person's photo as the file carries it — its type and when it was set; the bytes are read through GET /people/{id}/photo. */
+        StaffPersonalDataPhoto: {
+            /** @description image/jpeg or image/png. */
+            contentType: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
         /**
          * @description What a preference is about (staff competence design S9) — the weekdays, the time of day, the locations, how far the person travels, how much of the work is remote, the most consecutive working days and the most hours a week. An unknown kind is a field error.
          * @enum {string}
          */
         StaffPreferenceKind: "weekdays" | "time_of_day" | "location" | "travel" | "remote" | "max_consecutive_days" | "max_hours_per_week";
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row or a competence profile's minimum level names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), own_record (403: the person verifying their own competence row), skill_no_validity (400, a field error on validTo: an end on a row of a skill; 409: a renewal of a skill's row), level_not_allowed (400, a field error on level: a level on a competence without one) and level_required (400, a field error on level: none on a competence with one). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row or a competence profile's minimum level names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), own_record (403: the person verifying their own competence row), skill_no_validity (400, a field error on validTo: an end on a row of a skill; 409: a renewal of a skill's row), level_not_allowed (400, a field error on level: a level on a competence without one), level_required (400, a field error on level: none on a competence with one) and photo_invalid (400, a field error on file: not a JPEG or PNG, larger than 5 MiB, or a side over 4096 pixels). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         StaffProblem: {
             code?: string | null;
             detail?: string | null;
@@ -12971,6 +13170,53 @@ export interface operations {
             };
         };
     };
+    getStaffPeopleByIdGlance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPersonGlance"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no person has that id, or the caller may not see them. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getStaffPeopleByIdHolidayAccount: {
         parameters: {
             query?: {
@@ -13650,6 +13896,211 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getStaffPeopleByIdPhoto: {
+        parameters: {
+            query?: {
+                /** @description The photo's photoUpdatedAt, which the apps send to bust a cache. Ignored. */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no person has that id, the caller may not see them, or they have no photo. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — storage_unavailable, the object store could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    putStaffPeopleByIdPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPerson"];
+                };
+            };
+            /** @description Bad Request — on file, photo_invalid (not a JPEG or PNG, its segments or chunks broken, larger than 5 MiB, or a side over 4096 pixels), and a plain field error, with no code, when the file is missing, empty or sent more than once, or the body cannot be read as a multipart form. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — neither the person, staff:manage nor staff:personal-data (the uniform 403). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no person has that id, or the caller may not see them. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+            /** @description Too Many Requests — at most 600 uploads an hour from one client address, counted together with the document and evidence uploads. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, the object store could not be written to; nothing was recorded. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
+            };
+        };
+    };
+    deleteStaffPeopleByIdPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — neither the person, staff:manage nor staff:personal-data (the uniform 403). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no person has that id, the caller may not see them, or they have no photo. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — person_erased when the person has been erased (read-only but for the legal hold, the reassessment, an unlink and a rehire). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["StaffProblem"];
+                };
             };
         };
     };

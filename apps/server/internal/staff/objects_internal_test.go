@@ -25,8 +25,9 @@ func TestDocumentUpload_PolicyAndBodyLimit(t *testing.T) {
 	if policyDocumentUpload != want {
 		t.Errorf("policyDocumentUpload = %+v, want %+v", policyDocumentUpload, want)
 	}
-	if len(limits) != 6 || limits["postStaffPeopleByIdDocuments"] != policyDocumentUpload ||
+	if len(limits) != 7 || limits["postStaffPeopleByIdDocuments"] != policyDocumentUpload ||
 		limits["postStaffPersonCompetencesByIdEvidence"] != policyDocumentUpload ||
+		limits["putStaffPeopleByIdPhoto"] != policyDocumentUpload ||
 		limits["postStaffAccountsRun"] != policyAccountsRun ||
 		limits["postStaffPeopleByIdAccountRun"] != policyAccountAction || limits["postStaffPeopleByIdAccountDisable"] != policyAccountAction ||
 		limits["postStaffPeopleByIdAccountPass"] != policyAccountAction {
@@ -36,10 +37,11 @@ func TestDocumentUpload_PolicyAndBodyLimit(t *testing.T) {
 		policyAccountAction.Limit != 120 || policyAccountAction.Window != time.Hour {
 		t.Errorf("the account runs' policies = %+v, %+v; want 30 and 120 an hour", policyAccountsRun, policyAccountAction)
 	}
-	if len(bodyLimits) != 3 || bodyLimits["postStaffPeopleByIdDocuments"] != 10*1024*1024+64*1024 ||
+	if len(bodyLimits) != 4 || bodyLimits["postStaffPeopleByIdDocuments"] != 10*1024*1024+64*1024 ||
 		bodyLimits["postStaffPersonCompetencesByIdEvidence"] != 10*1024*1024+64*1024 ||
-		bodyLimits["postStaffPeopleImport"] != 5*1024*1024+64*1024 {
-		t.Errorf("bodyLimits = %v, want the uploads' 10 MiB + 64 KiB and the import's 5 MiB + 64 KiB alone", bodyLimits)
+		bodyLimits["postStaffPeopleImport"] != 5*1024*1024+64*1024 ||
+		bodyLimits["putStaffPeopleByIdPhoto"] != 5*1024*1024+64*1024 {
+		t.Errorf("bodyLimits = %v, want the uploads' 10 MiB + 64 KiB, the import's and the photo's 5 MiB + 64 KiB alone", bodyLimits)
 	}
 }
 
@@ -50,6 +52,16 @@ func TestDocumentObjectKey(t *testing.T) {
 	pattern := regexp.MustCompile(`^people/1042/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	if !pattern.MatchString(a) || a == b {
 		t.Errorf("keys %q and %q, want two distinct people/1042/<uuid>", a, b)
+	}
+}
+
+// A photo's key is people/<personId>/photo/<a fresh uuid> (person-glance
+// design §3.1), so a replaced photo is never overwritten in place.
+func TestPhotoObjectKey(t *testing.T) {
+	a, b := photoObjectKey(1042), photoObjectKey(1042)
+	pattern := regexp.MustCompile(`^people/1042/photo/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	if !pattern.MatchString(a) || a == b {
+		t.Errorf("keys %q and %q, want two distinct people/1042/photo/<uuid>", a, b)
 	}
 }
 

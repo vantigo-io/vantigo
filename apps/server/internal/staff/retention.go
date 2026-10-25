@@ -74,6 +74,9 @@ var columnClasses = map[string]string{
 	"people.legal_hold":   "F", "people.legal_hold_reason": "F", "people.legal_hold_by_user_id": "F", "people.legal_hold_at": "F",
 	"people.erased_at": "C", "people.reassessed_at": "C", "people.reassessed_by_user_id": "C",
 	"people.notes": "D", "people.revision": "C", "people.created_at": "C", "people.updated_at": "C",
+	// The photo (person-glance design S1): the key, the type and when it was
+	// set, erased with the record — the object itself through the ledger.
+	"people.photo_object_key": "D", "people.photo_content_type": "D", "people.photo_updated_at": "D",
 
 	// The next of kin are class D whole (§3.1): every column, so the D erase
 	// deletes the rows.
@@ -797,10 +800,19 @@ func (s *server) erasePerson(ctx context.Context, conn *pgxpool.Conn, personID i
 
 // eraseD is the D erase (S15): every D column of the person and their terms
 // nulled, their next of kin deleted, their documents of class D deleted and
-// queued, every value of class D in their history replaced, the person out
-// of every group and every group's owners, and erased_at set. Class C is
-// otherwise untouched.
+// queued, their photo's object queued, every value of class D in their
+// history replaced, the person out of every group and every group's owners,
+// and erased_at set. Class C is otherwise untouched.
 func (s *server) eraseD(ctx context.Context, tx pgx.Tx, txq *store.Queries, personID int64, now time.Time) (int64, error) {
+	// The photo's key is class D and nulled with the rest below, so its
+	// object is queued for the ledger first (person-glance design §4).
+	photo, err := txq.GetPerson(ctx, personID)
+	if err != nil {
+		return 0, fmt.Errorf("staff: read person %d's photo: %w", personID, err)
+	}
+	if err := s.queuePhotoObject(ctx, txq, personID, photo.PhotoObjectKey); err != nil {
+		return 0, err
+	}
 	var count int64
 	for _, table := range tablesWith("D") {
 		n, err := eraseColumns(ctx, tx, table, "D", personScope(table), personID, now)

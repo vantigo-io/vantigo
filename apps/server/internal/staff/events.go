@@ -171,6 +171,15 @@ const (
 	eventCompetenceProfileUpdated = "competence_profile_updated"
 )
 
+// The photo's events (person-glance design S1, plan reading 8): a photo set
+// or replaced, and one removed, naming the field photo with the content type
+// before and after — never the bytes; class D in fieldClasses and the Work
+// group in shaping.go's fieldGroups.
+const (
+	eventPhotoSet     = "photo_set"
+	eventPhotoRemoved = "photo_removed"
+)
+
 // holdEventKinds are the hold's kinds: about the record's retention and who
 // exported it rather than about the person's work, so they are listed only to
 // an audience that reads the hold group — and to the person themselves, who
@@ -275,6 +284,10 @@ var fieldClasses = map[string]string{
 	// The profiles assigned (delivery C, plan reading 34) are class D, the
 	// person_profiles rows'.
 	"profiles": "D",
+
+	// The photo (person-glance design S1) is class D, the people row's three
+	// photo columns.
+	"photo": "D",
 }
 
 // classOfField is a payload field's retention class. A field the table does
