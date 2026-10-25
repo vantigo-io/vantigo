@@ -66,6 +66,28 @@ describe("History", () => {
     expect(within(updated).getByText("Work email: grace@old.example → grace@fjord.example")).toBeInTheDocument();
   });
 
+  it("names a photo's content type by its format", async () => {
+    stubStaffApi({
+      role: "manage",
+      events: {
+        102: [
+          {
+            id: 901,
+            kind: "photo_set",
+            at: "2026-10-11T09:00:00Z",
+            actor: hr,
+            payload: { fields: { photo: { from: "image/png", to: "image/jpeg" } } },
+          },
+        ],
+      },
+    });
+    renderRoute("/staff/people/102?tab=history");
+
+    const [set] = await events();
+    expect(within(set).getByText("Photo set")).toBeInTheDocument();
+    expect(within(set).getByText("Photo: PNG → JPEG")).toBeInTheDocument();
+  });
+
   it("offers a colleague no history at all", async () => {
     stubStaffApi({ role: "view" });
     renderRoute("/staff/people/101");

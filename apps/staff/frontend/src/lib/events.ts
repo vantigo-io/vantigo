@@ -96,6 +96,9 @@ export const eventKinds = [
   "profiles_assigned",
   "competence_profile_created",
   "competence_profile_updated",
+  // The person's photo (person-glance design S1): the content type, never the bytes.
+  "photo_set",
+  "photo_removed",
 ] as const;
 
 /**
@@ -239,6 +242,8 @@ export const eventFields = [
   "reviewedOn",
   // Delivery C's (plan reading 34): the profiles assigned, by key.
   "profiles",
+  // The photo's (person-glance plan reading 8): its content type.
+  "photo",
 ] as const;
 
 /** What one field of a payload says: its values before and after, or only that it changed. */

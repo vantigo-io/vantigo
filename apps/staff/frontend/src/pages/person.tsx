@@ -8,6 +8,7 @@ import { personHolidayAccountQueryOptions } from "../api/absence";
 import { staffMetaQueryOptions } from "../api/meta";
 import { personEventsQueryOptions, personQueryOptions, type StaffPerson } from "../api/people";
 import { NotFoundError } from "../api/request";
+import { PersonAvatar } from "../components/person-avatar";
 import { ErasedBadge, PersonStatusBadge } from "../components/person-status";
 import "../i18n";
 import { readsDocuments } from "../lib/documents";
@@ -101,6 +102,8 @@ export const PersonPage = () => {
           canStampWishesSeen: false,
           // The profiles stay readable; none is assigned to an erased record.
           canAssignProfiles: false,
+          // An erased record's photo is gone with it; none is set again.
+          canSetPhoto: false,
         },
       }
     : data;
@@ -124,25 +127,34 @@ export const PersonPage = () => {
 
   return (
     <Stack gap="lg">
-      <PageHeader
-        breadcrumbs={[{ label: t("people"), to: PEOPLE_ROUTE_PATH }, { label: data.displayName }]}
-        title={data.displayName}
-        description={
-          <Group gap="xs" component="span">
-            <Text component="span">{data.employeeNumber}</Text>
-            <PersonStatusBadge status={data.status} />
-            {erased && <ErasedBadge />}
-          </Group>
-        }
-        actions={
-          data.capabilities.canHold && (
-            <Group gap="xs" wrap="wrap">
-              <PersonalDataDownload person={data} />
-              <LegalHoldButton person={data} />
-            </Group>
-          )
-        }
-      />
+      {/* The photo beside the header, not in it: the heading stays the name. */}
+      <Group gap="md" wrap="nowrap" align="center">
+        <PersonAvatar person={shown} size="lg" editable />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <PageHeader
+            breadcrumbs={[{ label: t("people"), to: PEOPLE_ROUTE_PATH }, { label: data.displayName }]}
+            title={data.displayName}
+            description={
+              <Group gap="xs" component="span">
+                <Text component="span">{data.employeeNumber}</Text>
+                <PersonStatusBadge status={data.status} />
+                {erased && <ErasedBadge />}
+                {(data.title || data.department) && (
+                  <Text component="span">{[data.title, data.department?.name].filter(Boolean).join(" · ")}</Text>
+                )}
+              </Group>
+            }
+            actions={
+              data.capabilities.canHold && (
+                <Group gap="xs" wrap="wrap">
+                  <PersonalDataDownload person={data} />
+                  <LegalHoldButton person={data} />
+                </Group>
+              )
+            }
+          />
+        </div>
+      </Group>
       <ErasedBanner person={data} timeZone={timeZone} />
       <LegalHoldAlert person={data} timeZone={timeZone} />
       <PageTabs

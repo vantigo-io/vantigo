@@ -809,3 +809,32 @@ export const retentionRun = (): StaffRetentionRun => ({
   },
   deletions: { attempted: 4, succeeded: 4 },
 });
+
+/** A person's photo as the fake keeps it: its type and when it was set (person-glance design S1). */
+export interface StoredPhoto {
+  contentType: "image/jpeg" | "image/png";
+  updatedAt: string;
+}
+
+/** Ada has a photo; nobody else has one. */
+export const photos = (): Record<number, StoredPhoto> => ({
+  101: { contentType: "image/png", updatedAt: "2026-09-01T08:00:00Z" },
+});
+
+/**
+ * What a person's glance reads that no other fixture holds: Grace's
+ * probation, which her terms do not record, and the week's hours Time would
+ * answer for Ada's linked user — Grace has no user, so none are hers. The
+ * rest of the glance is worked out from the employments, the terms, the
+ * absence fixtures and the cases.
+ */
+export interface GlanceFacts {
+  probationEndsOn?: string;
+  logged?: number;
+  approved?: number;
+}
+
+export const glanceFacts = (): Record<number, GlanceFacts> => ({
+  101: { logged: 31.5, approved: 20 },
+  102: { probationEndsOn: "2026-11-15" },
+});

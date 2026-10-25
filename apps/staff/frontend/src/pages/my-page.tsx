@@ -15,6 +15,7 @@ import { nextOfKinQueryOptions, type StaffNextOfKin, type StaffPerson } from "..
 import { NotFoundError, STAFF_QUERY_KEY } from "../api/request";
 import { DocumentList } from "../components/document-list";
 import { FieldGroup } from "../components/field-group";
+import { PersonAvatar } from "../components/person-avatar";
 import "../i18n";
 import { isRevisionConflict, listPath, mappedRefusals } from "../lib/errors";
 import {
@@ -54,7 +55,15 @@ export const MyPage = () => {
   const me = useQuery(meQueryOptions());
   const [editing, setEditing] = useState(false);
 
-  const header = <PageHeader title={t("navMyPage")} description={t("myPageDescription")} />;
+  const header = (
+    <Group gap="md" wrap="nowrap" align="center">
+      {/* My own photo, mine to change (person-glance design S1). */}
+      {me.data && <PersonAvatar person={me.data} size="lg" editable />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <PageHeader title={t("navMyPage")} description={t("myPageDescription")} />
+      </div>
+    </Group>
+  );
   // `/me` has no id to be unknown: its one 404 is `no_person`.
   if (me.error instanceof NotFoundError)
     return (
