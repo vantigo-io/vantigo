@@ -383,3 +383,36 @@ func TestPersonalData_TheProfileAssignments(t *testing.T) {
 		t.Errorf("a person without profiles: profileAssignments = %v, want an empty list", file.ProfileAssignments)
 	}
 }
+
+// Both files carry the photo (person-glance design §4): its type and when it
+// was set, or null — the key always there — when there is none.
+func TestPersonalData_ThePhoto(t *testing.T) {
+	t.Parallel()
+	w := newAbsenceWorld(t)
+	files := func() map[string]*modtest.Response {
+		return map[string]*modtest.Response{
+			"HR's":         w.pd.Do(http.MethodGet, personalDataPath(w.kari.Id), nil),
+			"the person's": w.kariC.Do(http.MethodGet, meExportPath, nil),
+		}
+	}
+	for name, r := range files() {
+		if photo, ok := raw(t, r)["photo"]; !ok || photo != nil {
+			t.Errorf("%s file without a photo: photo = %v (present %v), want null", name, photo, ok)
+		}
+	}
+
+	set := setPhoto(t, w.kariC, w.kari.Id, testPNG(t))
+	for name, r := range files() {
+		file := exportOf(t, r)
+		if file.Photo == nil || file.Photo.ContentType != "image/png" || !file.Photo.UpdatedAt.Equal(*set.PhotoUpdatedAt) {
+			t.Errorf("%s file: photo = %+v, want image/png set at %v", name, file.Photo, set.PhotoUpdatedAt)
+		}
+	}
+
+	do(t, w.hr, http.MethodDelete, photoPath(w.kari.Id), nil, http.StatusNoContent, nil)
+	for name, r := range files() {
+		if photo, ok := raw(t, r)["photo"]; !ok || photo != nil {
+			t.Errorf("%s file after the delete: photo = %v (present %v), want null", name, photo, ok)
+		}
+	}
+}

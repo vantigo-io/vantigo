@@ -3,6 +3,7 @@ package staff
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -18,7 +19,9 @@ import (
 // write direction, staff → identity), the identity provisioners
 // (deps.IdentityProvisioners, a provider module's
 // contracts.IdentityProvisioner — Entra delivery B's, staff → a provider's
-// directory, module-boundaries rule 13) and the SMTP seam (deps.SMTPSend,
+// directory, module-boundaries rule 13), time's week hours (deps.Timesheets,
+// contracts.Timesheets — consumer-gated, read optionally for a person's
+// glance) and the SMTP seam (deps.SMTPSend,
 // or the platform's guarded mail.SendOutbound) here, and the object store the
 // documents' bytes live in there (delivery A2). Every call is made through
 // one of the thin accessors and through nowhere else, so "what does Staff ask
@@ -378,6 +381,24 @@ func (s *server) providerDeleteGroup(ctx context.Context, p contracts.IdentityPr
 		return errProviderUnavailable
 	}
 	return p.DeleteGroup(ctx, actor, groupID)
+}
+
+// timesheetsWeek is time's hours of the week from weekStart for each user
+// (contracts.Timesheets, person-glance design S2): the hours card on a
+// person's glance. The contract is consumer-gated — time performs no
+// authorization — so the caller has decided by its own rule (the Hours group)
+// that whoever is asking may read these users' hours before it calls. With
+// time disabled (Deps.Timesheets nil) it answers nil and no error without
+// asking anybody; the caller tells "time tracking is off" from "nothing
+// logged" by s.deps.Timesheets itself, never by the empty answer.
+func (s *server) timesheetsWeek(ctx context.Context, weekStart time.Time, userIDs []uuid.UUID) (map[uuid.UUID]contracts.WeekHours, error) {
+	if s.deps.Timesheets == nil {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "Timesheets.WeekHours"); err != nil {
+		return nil, err
+	}
+	return s.deps.Timesheets.WeekHours(ctx, weekStart, userIDs)
 }
 
 // smtpSend hands one mail to the installation's SMTP server: Deps.SMTPSend

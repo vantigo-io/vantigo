@@ -72,13 +72,15 @@ const documentFormField = "file"
 const documentFallbackName = "document"
 
 // bodyLimits raises the router's request-body cap for the document uploads
-// — a competence's evidence among them — and the register's import (people_import.go); every other operation keeps
+// — a competence's evidence among them — the person's photo and the register's import (people_import.go); every other operation keeps
 // the platform default (1 MiB).
 var bodyLimits = map[string]int64{
 	"postStaffPeopleByIdDocuments": maxDocumentRequestBytes,
 	"postStaffPeopleImport":        maxImportRequestBytes,
 	// A competence's evidence is a document (staff competence design S6).
 	"postStaffPersonCompetencesByIdEvidence": maxDocumentRequestBytes,
+	// The person's photo (person-glance design §4): 5 MiB and the framing.
+	"putStaffPeopleByIdPhoto": maxPhotoRequestBytes,
 }
 
 // documentUploadsPerHour is how many uploads one client address may make. Two
@@ -96,13 +98,16 @@ var policyDocumentUpload = ratelimit.Policy{
 	Message: "Too many document uploads. Please wait a little before adding more.",
 }
 
-// limits maps each rate-limited operationId to its policy: the upload, the
-// one operation that writes bytes outside the database, and the account runs,
-// which call identity and may mail (accounts_run.go), with the pass, which
-// calls the person's provider (account_pass.go).
+// limits maps each rate-limited operationId to its policy: the uploads, the
+// operations that write bytes outside the database — a document, a
+// competence's evidence and the person's photo, one bound shared by the
+// three, since a policy is counted by its name — and the account runs, which
+// call identity and may mail (accounts_run.go), with the pass, which calls
+// the person's provider (account_pass.go).
 var limits = map[string]ratelimit.Policy{
 	"postStaffPeopleByIdDocuments":           policyDocumentUpload,
 	"postStaffPersonCompetencesByIdEvidence": policyDocumentUpload,
+	"putStaffPeopleByIdPhoto":                policyDocumentUpload,
 	"postStaffAccountsRun":                   policyAccountsRun,
 	"postStaffPeopleByIdAccountRun":          policyAccountAction,
 	"postStaffPeopleByIdAccountDisable":      policyAccountAction,
@@ -209,6 +214,14 @@ func (s *server) removeObject(ctx context.Context, personID int64, key string) b
 // or reads anything out of one. It is relative to the module's scope.
 func documentObjectKey(personID int64) string {
 	return fmt.Sprintf("people/%d/%s", personID, uuid.New().String())
+}
+
+// photoObjectKey is where a person's photo goes (person-glance design §3.1):
+// the person, the photo's own prefix and a fresh random name, so a replaced
+// photo's object is never overwritten in place and the old one can be queued
+// for the ledger. It is relative to the module's scope.
+func photoObjectKey(personID int64) string {
+	return fmt.Sprintf("people/%d/photo/%s", personID, uuid.New().String())
 }
 
 // documentType is one of design S14's four formats: what it is stored and

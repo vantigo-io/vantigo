@@ -323,6 +323,7 @@ func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSeal
 		SelfCertification: f.selfCert,
 		ExportedAt:        exportedAt,
 		Person:            personalDataPerson(f, a, opened),
+		Photo:             personalDataPhoto(f.person, a),
 		NextOfKin:         mapRows(f.nextOfKin, nextOfKinResponse),
 		Roles:             mapRows(f.roles, personRoleResponse),
 		Employments: mapRows(f.employments, func(e store.StaffEmployment) gen.StaffPersonalDataEmployment {
@@ -350,6 +351,17 @@ func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSeal
 		// audience outside the Profiles group (reading 33).
 		ProfileAssignments: readList(a.reads(groupProfiles), f.profiles, personProfileResponse),
 	}
+}
+
+// personalDataPhoto is the person's photo as the file carries it (person-glance
+// design §4) — its type and when it was set, the bytes being GET
+// /people/{id}/photo's — or nil when there is none or a does not read the
+// Work group.
+func personalDataPhoto(row store.GetPersonRow, a audience) *gen.StaffPersonalDataPhoto {
+	if !a.reads(groupWork) || row.PhotoContentType == nil || row.PhotoUpdatedAt == nil {
+		return nil
+	}
+	return &gen.StaffPersonalDataPhoto{ContentType: *row.PhotoContentType, UpdatedAt: *row.PhotoUpdatedAt}
 }
 
 // readList is rows through f when the audience reads them, else the empty

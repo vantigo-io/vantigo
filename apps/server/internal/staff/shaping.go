@@ -103,10 +103,20 @@ const (
 	// delivery C, plan reading 32): the person's, their manager's, the
 	// Approver's and HR's; never a colleague's.
 	groupProfiles
+	// groupHours is the hours the person logged this week against the hours
+	// their contract expects (person-glance design S2 and §4's Hours row):
+	// the person's, their manager's and HR's — never the Approver's, who
+	// verifies competence and decides absence, not hours, and never a
+	// colleague's.
+	groupHours
+	// groupContract is the § 14-6 check's verdict on a person's glance
+	// (person-glance design §4's contract row): staff:manage's alone — not
+	// staff:personal-data's, who reads HR's notes, nor the person's.
+	groupContract
 )
 
 func (g fieldGroup) String() string {
-	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail", "accommodation", "competence", "competence-detail", "wishes", "reviews", "profiles"}[g]
+	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail", "accommodation", "competence", "competence-detail", "wishes", "reviews", "profiles", "hours", "contract"}[g]
 }
 
 // fieldGroups is the one table: every field of the person — as the contract
@@ -125,6 +135,11 @@ var fieldGroups = map[string]fieldGroup{
 	"workCountry":       groupWork,
 	"preferredLanguage": groupWork,
 	"roles":             groupWork,
+	// The photo (person-glance design S1): when it was set, on the person and
+	// the directory's row, and the field photo_set and photo_removed name —
+	// everyone's who sees the person.
+	"photoUpdatedAt": groupWork,
+	"photo":          groupWork,
 
 	"birthDate":    groupPrivate,
 	"gender":       groupPrivate,
@@ -241,6 +256,35 @@ var fieldGroups = map[string]fieldGroup{
 	"profileAssignments": groupProfiles,
 }
 
+// glanceFieldGroups is the group each section of a person at a glance is
+// read by (person-glance design §4's table): a section the audience does not
+// read is absent. It is a table of its own, as a competence row's is, since
+// the sections are not fields of the person nor named by any event — "hours"
+// or "absence" in fieldGroups would shape an event payload that happened to
+// name one. A section's own fields may be narrower still: childSick's
+// entitlement and remaining are the care-days group's, absence's openCase
+// the absence detail's, employment's probationEndsOn the employment group's.
+var glanceFieldGroups = map[string]fieldGroup{
+	"sickDays":          groupAbsenceType,
+	"selfCertification": groupAbsenceDetail,
+	"holiday":           groupAbsenceDetail,
+	"childSick":         groupAbsenceType,
+	"employment":        groupEmploymentDates,
+	"absence":           groupAbsence,
+	// The § 14-6 verdict is staff:manage's alone (§4's contract row).
+	"contract": groupContract,
+	"hours":    groupHours,
+}
+
+// glanceGroupOf is a glance section's group, groupNobody for a section the
+// table does not name.
+func glanceGroupOf(section string) fieldGroup {
+	if g, ok := glanceFieldGroups[section]; ok {
+		return g
+	}
+	return groupNobody
+}
+
 // groupOf is a field's group, groupNobody for a field the table does not
 // name.
 func groupOf(field string) fieldGroup {
@@ -286,7 +330,8 @@ func shownOnPerson[T any](a audience, field string, v *T) *T {
 // bank account's last four digits, the link, the documents and the care-day
 // fields are the person's own and HR's; HR's notes are HR's alone; the health documents and
 // health events are the person's and staff:personal-data's; the hold group is
-// HR's, as the notes are.
+// HR's, as the notes are; the glance's contract verdict is staff:manage's
+// alone.
 func (a audience) reads(g fieldGroup) bool {
 	hr := a.Manage || a.PersonalData
 	switch g {
@@ -300,7 +345,7 @@ func (a audience) reads(g fieldGroup) bool {
 		return a.Self || a.Manager || a.Colleague || a.Approver || hr
 	case groupCompetenceDetail:
 		return a.Self || a.Manager || a.Approver || hr
-	case groupWishes:
+	case groupWishes, groupHours:
 		return a.Self || a.Manager || hr
 	case groupReviews, groupProfiles:
 		return a.Self || a.Manager || a.Approver || hr
@@ -310,6 +355,8 @@ func (a audience) reads(g fieldGroup) bool {
 		return hr
 	case groupHealth:
 		return a.Self || a.PersonalData
+	case groupContract:
+		return a.Manage
 	}
 	return false
 }
@@ -398,23 +445,27 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 			CanStampWishesSeen: (a.Manager || a.Manage) && !a.Self,
 			// The profiles (plan reading 32): assigned by staff:manage alone.
 			CanAssignProfiles: a.Manage,
+			// The photo (person-glance design S1): the person and HR — never
+			// on an erased record, whose PUT and DELETE are person_erased.
+			CanSetPhoto: (a.Self || a.Manage || a.PersonalData) && row.ErasedAt == nil,
 		},
-		WorkEmail:    shown(a, "workEmail", row.WorkEmail),
-		PhoneWork:    shown(a, "phoneWork", row.PhoneWork),
-		BirthDate:    shown(a, "birthDate", dateOf(row.BirthDate)),
-		Gender:       shown(a, "gender", enumOf[gen.StaffGender](row.Gender)),
-		PhoneMobile:  shown(a, "phoneMobile", row.PhoneMobile),
-		PhonePrivate: shown(a, "phonePrivate", row.PhonePrivate),
-		PrivateEmail: shown(a, "privateEmail", row.PrivateEmail),
-		Street:       shown(a, "street", row.Street),
-		PostalCode:   shown(a, "postalCode", row.PostalCode),
-		City:         shown(a, "city", row.City),
-		Country:      shown(a, "country", row.Country),
-		Notes:        shown(a, "notes", row.Notes),
-		User:         shown(a, "user", user),
-		ErasedAt:     shown(a, "erasedAt", row.ErasedAt),
-		ReassessedAt: shown(a, "reassessedAt", row.ReassessedAt),
-		LegalHold:    shown(a, "legalHold", legalHoldOf(row)),
+		WorkEmail:      shown(a, "workEmail", row.WorkEmail),
+		PhoneWork:      shown(a, "phoneWork", row.PhoneWork),
+		PhotoUpdatedAt: shown(a, "photoUpdatedAt", row.PhotoUpdatedAt),
+		BirthDate:      shown(a, "birthDate", dateOf(row.BirthDate)),
+		Gender:         shown(a, "gender", enumOf[gen.StaffGender](row.Gender)),
+		PhoneMobile:    shown(a, "phoneMobile", row.PhoneMobile),
+		PhonePrivate:   shown(a, "phonePrivate", row.PhonePrivate),
+		PrivateEmail:   shown(a, "privateEmail", row.PrivateEmail),
+		Street:         shown(a, "street", row.Street),
+		PostalCode:     shown(a, "postalCode", row.PostalCode),
+		City:           shown(a, "city", row.City),
+		Country:        shown(a, "country", row.Country),
+		Notes:          shown(a, "notes", row.Notes),
+		User:           shown(a, "user", user),
+		ErasedAt:       shown(a, "erasedAt", row.ErasedAt),
+		ReassessedAt:   shown(a, "reassessedAt", row.ReassessedAt),
+		LegalHold:      shown(a, "legalHold", legalHoldOf(row)),
 
 		LastCompetenceReview: shown(a, "lastCompetenceReview", lastReview),
 
@@ -456,6 +507,7 @@ func personListItemResponse(row store.ListPeopleRow, p placement, a audience) ge
 		PreferredLanguage: gen.StaffLanguage(row.PreferredLanguage),
 		WorkEmail:         shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:         shown(a, "phoneWork", row.PhoneWork),
+		PhotoUpdatedAt:    shown(a, "photoUpdatedAt", row.PhotoUpdatedAt),
 		ErasedAt:          shown(a, "erasedAt", row.ErasedAt),
 	}
 }

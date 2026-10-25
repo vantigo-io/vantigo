@@ -65,6 +65,116 @@ func (q *Queries) ClearErasure(ctx context.Context, arg ClearErasureParams) erro
 	return err
 }
 
+const clearPersonPhoto = `-- name: ClearPersonPhoto :one
+UPDATE staff.people SET
+    photo_object_key = NULL,
+    photo_content_type = NULL,
+    photo_updated_at = NULL,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE id = $2
+RETURNING
+    id, employee_number, given_name, family_name, display_name, birth_date, gender,
+    national_id_kind, (national_id_mac IS NOT NULL)::boolean AS national_id_on_file,
+    work_email, phone_work, phone_mobile, phone_private, private_email,
+    street, postal_code, city, country, work_country, preferred_language,
+    bank_account_kind, bank_account_last4, notes, revision,
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
+    children_under_12, sole_carer, chronically_ill_children,
+    photo_object_key, photo_content_type, photo_updated_at
+`
+
+type ClearPersonPhotoParams struct {
+	Now time.Time
+	ID  int64
+}
+
+type ClearPersonPhotoRow struct {
+	ID                     int64
+	EmployeeNumber         string
+	GivenName              string
+	FamilyName             string
+	DisplayName            string
+	BirthDate              pgtype.Date
+	Gender                 *string
+	NationalIDKind         *string
+	NationalIDOnFile       bool
+	WorkEmail              *string
+	PhoneWork              *string
+	PhoneMobile            *string
+	PhonePrivate           *string
+	PrivateEmail           *string
+	Street                 *string
+	PostalCode             *string
+	City                   *string
+	Country                *string
+	WorkCountry            string
+	PreferredLanguage      string
+	BankAccountKind        *string
+	BankAccountLast4       *string
+	Notes                  *string
+	Revision               int32
+	LegalHold              bool
+	LegalHoldReason        *string
+	LegalHoldByUserID      *uuid.UUID
+	LegalHoldAt            *time.Time
+	ErasedAt               *time.Time
+	ReassessedAt           *time.Time
+	ChildrenUnder12        *int16
+	SoleCarer              *bool
+	ChronicallyIllChildren *int16
+	PhotoObjectKey         *string
+	PhotoContentType       *string
+	PhotoUpdatedAt         *time.Time
+}
+
+// ClearPersonPhoto removes a person's photo: the three columns cleared and
+// the revision moved on, as SetPersonPhoto moves it. It answers the person as
+// GetPerson reads one.
+func (q *Queries) ClearPersonPhoto(ctx context.Context, arg ClearPersonPhotoParams) (ClearPersonPhotoRow, error) {
+	row := q.db.QueryRow(ctx, clearPersonPhoto, arg.Now, arg.ID)
+	var i ClearPersonPhotoRow
+	err := row.Scan(
+		&i.ID,
+		&i.EmployeeNumber,
+		&i.GivenName,
+		&i.FamilyName,
+		&i.DisplayName,
+		&i.BirthDate,
+		&i.Gender,
+		&i.NationalIDKind,
+		&i.NationalIDOnFile,
+		&i.WorkEmail,
+		&i.PhoneWork,
+		&i.PhoneMobile,
+		&i.PhonePrivate,
+		&i.PrivateEmail,
+		&i.Street,
+		&i.PostalCode,
+		&i.City,
+		&i.Country,
+		&i.WorkCountry,
+		&i.PreferredLanguage,
+		&i.BankAccountKind,
+		&i.BankAccountLast4,
+		&i.Notes,
+		&i.Revision,
+		&i.LegalHold,
+		&i.LegalHoldReason,
+		&i.LegalHoldByUserID,
+		&i.LegalHoldAt,
+		&i.ErasedAt,
+		&i.ReassessedAt,
+		&i.ChildrenUnder12,
+		&i.SoleCarer,
+		&i.ChronicallyIllChildren,
+		&i.PhotoObjectKey,
+		&i.PhotoContentType,
+		&i.PhotoUpdatedAt,
+	)
+	return i, err
+}
+
 const countPeople = `-- name: CountPeople :one
 SELECT count(*)
 FROM staff.people p
@@ -234,7 +344,8 @@ SELECT
     street, postal_code, city, country, work_country, preferred_language,
     bank_account_kind, bank_account_last4, notes, revision,
     legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
-    children_under_12, sole_carer, chronically_ill_children
+    children_under_12, sole_carer, chronically_ill_children,
+    photo_object_key, photo_content_type, photo_updated_at
 FROM staff.people
 WHERE id = $1
 `
@@ -273,6 +384,9 @@ type GetPersonRow struct {
 	ChildrenUnder12        *int16
 	SoleCarer              *bool
 	ChronicallyIllChildren *int16
+	PhotoObjectKey         *string
+	PhotoContentType       *string
+	PhotoUpdatedAt         *time.Time
 }
 
 // The people (design S2, §3.1), their next of kin and their roles. No query
@@ -317,6 +431,9 @@ func (q *Queries) GetPerson(ctx context.Context, id int64) (GetPersonRow, error)
 		&i.ChildrenUnder12,
 		&i.SoleCarer,
 		&i.ChronicallyIllChildren,
+		&i.PhotoObjectKey,
+		&i.PhotoContentType,
+		&i.PhotoUpdatedAt,
 	)
 	return i, err
 }
@@ -511,7 +628,8 @@ func (q *Queries) ListNextOfKin(ctx context.Context, personID int64) ([]ListNext
 
 const listPeople = `-- name: ListPeople :many
 SELECT p.id, p.employee_number, p.given_name, p.family_name, p.display_name,
-       p.work_email, p.phone_work, p.work_country, p.preferred_language, p.erased_at
+       p.work_email, p.phone_work, p.work_country, p.preferred_language, p.erased_at,
+       p.photo_updated_at
 FROM staff.people p
 WHERE NOT EXISTS (
     SELECT 1 FROM unnest($1::text[]) AS s(pattern)
@@ -586,6 +704,7 @@ type ListPeopleRow struct {
 	WorkCountry       string
 	PreferredLanguage string
 	ErasedAt          *time.Time
+	PhotoUpdatedAt    *time.Time
 }
 
 // ListPeople is one page of the directory, by display name, the work group's
@@ -620,6 +739,7 @@ func (q *Queries) ListPeople(ctx context.Context, arg ListPeopleParams) ([]ListP
 			&i.WorkCountry,
 			&i.PreferredLanguage,
 			&i.ErasedAt,
+			&i.PhotoUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -639,7 +759,8 @@ SELECT
     street, postal_code, city, country, work_country, preferred_language,
     bank_account_kind, bank_account_last4, notes, revision,
     legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
-    children_under_12, sole_carer, chronically_ill_children
+    children_under_12, sole_carer, chronically_ill_children,
+    photo_object_key, photo_content_type, photo_updated_at
 FROM staff.people
 ORDER BY id
 LIMIT $1
@@ -679,6 +800,9 @@ type ListPeopleForExportRow struct {
 	ChildrenUnder12        *int16
 	SoleCarer              *bool
 	ChronicallyIllChildren *int16
+	PhotoObjectKey         *string
+	PhotoContentType       *string
+	PhotoUpdatedAt         *time.Time
 }
 
 // ListPeopleForExport is the register's file: every person, erased ones
@@ -728,6 +852,9 @@ func (q *Queries) ListPeopleForExport(ctx context.Context, maxRows int32) ([]Lis
 			&i.ChildrenUnder12,
 			&i.SoleCarer,
 			&i.ChronicallyIllChildren,
+			&i.PhotoObjectKey,
+			&i.PhotoContentType,
+			&i.PhotoUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -955,6 +1082,125 @@ func (q *Queries) SetLegalHold(ctx context.Context, arg SetLegalHoldParams) erro
 		arg.ID,
 	)
 	return err
+}
+
+const setPersonPhoto = `-- name: SetPersonPhoto :one
+UPDATE staff.people SET
+    photo_object_key = $1::text,
+    photo_content_type = $2::text,
+    photo_updated_at = $3::timestamptz,
+    revision = revision + 1,
+    updated_at = $3::timestamptz
+WHERE id = $4
+RETURNING
+    id, employee_number, given_name, family_name, display_name, birth_date, gender,
+    national_id_kind, (national_id_mac IS NOT NULL)::boolean AS national_id_on_file,
+    work_email, phone_work, phone_mobile, phone_private, private_email,
+    street, postal_code, city, country, work_country, preferred_language,
+    bank_account_kind, bank_account_last4, notes, revision,
+    legal_hold, legal_hold_reason, legal_hold_by_user_id, legal_hold_at, erased_at, reassessed_at,
+    children_under_12, sole_carer, chronically_ill_children,
+    photo_object_key, photo_content_type, photo_updated_at
+`
+
+type SetPersonPhotoParams struct {
+	PhotoObjectKey   string
+	PhotoContentType string
+	Now              time.Time
+	ID               int64
+}
+
+type SetPersonPhotoRow struct {
+	ID                     int64
+	EmployeeNumber         string
+	GivenName              string
+	FamilyName             string
+	DisplayName            string
+	BirthDate              pgtype.Date
+	Gender                 *string
+	NationalIDKind         *string
+	NationalIDOnFile       bool
+	WorkEmail              *string
+	PhoneWork              *string
+	PhoneMobile            *string
+	PhonePrivate           *string
+	PrivateEmail           *string
+	Street                 *string
+	PostalCode             *string
+	City                   *string
+	Country                *string
+	WorkCountry            string
+	PreferredLanguage      string
+	BankAccountKind        *string
+	BankAccountLast4       *string
+	Notes                  *string
+	Revision               int32
+	LegalHold              bool
+	LegalHoldReason        *string
+	LegalHoldByUserID      *uuid.UUID
+	LegalHoldAt            *time.Time
+	ErasedAt               *time.Time
+	ReassessedAt           *time.Time
+	ChildrenUnder12        *int16
+	SoleCarer              *bool
+	ChronicallyIllChildren *int16
+	PhotoObjectKey         *string
+	PhotoContentType       *string
+	PhotoUpdatedAt         *time.Time
+}
+
+// SetPersonPhoto records a person's new photo (person-glance design S1): the
+// object's key and type, set now, and moves the revision on — the photo is
+// part of what the person response shows. The old object, if any, is the
+// caller's to queue in the deletion ledger. It answers the person as
+// GetPerson reads one, never a sealed column.
+func (q *Queries) SetPersonPhoto(ctx context.Context, arg SetPersonPhotoParams) (SetPersonPhotoRow, error) {
+	row := q.db.QueryRow(ctx, setPersonPhoto,
+		arg.PhotoObjectKey,
+		arg.PhotoContentType,
+		arg.Now,
+		arg.ID,
+	)
+	var i SetPersonPhotoRow
+	err := row.Scan(
+		&i.ID,
+		&i.EmployeeNumber,
+		&i.GivenName,
+		&i.FamilyName,
+		&i.DisplayName,
+		&i.BirthDate,
+		&i.Gender,
+		&i.NationalIDKind,
+		&i.NationalIDOnFile,
+		&i.WorkEmail,
+		&i.PhoneWork,
+		&i.PhoneMobile,
+		&i.PhonePrivate,
+		&i.PrivateEmail,
+		&i.Street,
+		&i.PostalCode,
+		&i.City,
+		&i.Country,
+		&i.WorkCountry,
+		&i.PreferredLanguage,
+		&i.BankAccountKind,
+		&i.BankAccountLast4,
+		&i.Notes,
+		&i.Revision,
+		&i.LegalHold,
+		&i.LegalHoldReason,
+		&i.LegalHoldByUserID,
+		&i.LegalHoldAt,
+		&i.ErasedAt,
+		&i.ReassessedAt,
+		&i.ChildrenUnder12,
+		&i.SoleCarer,
+		&i.ChronicallyIllChildren,
+		&i.PhotoObjectKey,
+		&i.PhotoContentType,
+		&i.PhotoUpdatedAt,
+	)
+	return i, err
 }
 
 const setReassessed = `-- name: SetReassessed :exec

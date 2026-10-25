@@ -60,6 +60,16 @@ func TestFieldGroups_CoverEveryPersonField(t *testing.T) {
 			t.Errorf("%s.%s has no field group", competence.Name(), name)
 		}
 	}
+	// A person at a glance (person-glance design §4) has a table of its own:
+	// every section is read by one group, and a section added without one
+	// is nobody's.
+	glance := reflect.TypeOf(gen.StaffPersonGlance{})
+	for i := range glance.NumField() {
+		name, _, _ := strings.Cut(glance.Field(i).Tag.Get("json"), ",")
+		if glanceGroupOf(name) == groupNobody {
+			t.Errorf("%s.%s has no field group", glance.Name(), name)
+		}
+	}
 	if g := groupOf("noSuchField"); g != groupNobody {
 		t.Errorf("an unknown field's group = %v, want groupNobody, which no audience reads", g)
 	}
@@ -71,7 +81,7 @@ func TestFieldGroups_CoverEveryPersonField(t *testing.T) {
 // so a change to who reads what is a change to this table.
 func TestAudience_ReadsItsGroups(t *testing.T) {
 	t.Parallel()
-	groups := []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles, groupNobody}
+	groups := []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles, groupHours, groupContract, groupNobody}
 	for _, c := range []struct {
 		name   string
 		a      audience
@@ -79,12 +89,12 @@ func TestAudience_ReadsItsGroups(t *testing.T) {
 		events bool
 	}{
 		{"nobody", audience{}, nil, false},
-		{"self", audience{Self: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles}, true},
-		{"manager", audience{Manager: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles}, true},
+		{"self", audience{Self: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles, groupHours}, true},
+		{"manager", audience{Manager: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles, groupHours}, true},
 		{"colleague", audience{Colleague: true}, []fieldGroup{groupWork, groupEmploymentDates, groupCompetence}, false},
 		{"staff:approve", audience{Approver: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupCompetence, groupCompetenceDetail, groupReviews, groupProfiles}, false},
-		{"staff:manage", audience{Manage: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles}, true},
-		{"staff:personal-data", audience{PersonalData: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles}, true},
+		{"staff:manage", audience{Manage: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles, groupHours, groupContract}, true},
+		{"staff:personal-data", audience{PersonalData: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles, groupHours}, true},
 	} {
 		for _, g := range groups {
 			want := false

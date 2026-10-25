@@ -145,6 +145,12 @@ func (s *server) DeleteStaffPeopleById(ctx context.Context, req gen.DeleteStaffP
 		if err := txq.DeletePerson(ctx, req.Id); err != nil {
 			return personDeleteError(err)
 		}
+		// The photo's object (person-glance design §4) goes through the
+		// ledger, as an erased document's does: queued here, removed once
+		// the delete has committed.
+		if err := s.queuePhotoObject(ctx, txq, req.Id, row.PhotoObjectKey); err != nil {
+			return err
+		}
 		return s.recordEvent(ctx, txq, nil, eventPersonDeleted, who,
 			map[string]any{"employeeNumber": row.EmployeeNumber}, []string{fieldClasses["employeeNumber"]})
 	})

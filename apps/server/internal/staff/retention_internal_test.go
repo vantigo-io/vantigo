@@ -119,6 +119,8 @@ func TestFieldClasses_AgreeWithTheirColumns(t *testing.T) {
 		"reviewedOn":   "competence_reviews.reviewed_on",
 		// The profiles' (delivery C): the assignment's keys record its rows.
 		"profiles": "person_profiles.profile_id",
+		// The photo's (person-glance design S1): its events carry the type.
+		"photo": "people.photo_content_type",
 	}
 	// A field is its column in the first of these tables that has it.
 	searched := []string{"people", "employments", "employment_terms"}

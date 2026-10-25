@@ -461,6 +461,9 @@ type StaffPerson struct {
 	SelfCertWithdrawnFrom   pgtype.Date
 	AccountRevision         int32
 	AccountKind             string
+	PhotoObjectKey          *string
+	PhotoContentType        *string
+	PhotoUpdatedAt          *time.Time
 }
 
 type StaffPersonCompetence struct {
