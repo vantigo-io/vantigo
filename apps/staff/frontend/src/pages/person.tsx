@@ -99,6 +99,8 @@ export const PersonPage = () => {
           canVerifyCompetence: false,
           // Read-only: the wishes stay readable (canReadWishes), never stamped.
           canStampWishesSeen: false,
+          // The profiles stay readable; none is assigned to an erased record.
+          canAssignProfiles: false,
         },
       }
     : data;

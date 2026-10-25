@@ -13,6 +13,8 @@ export const PERSON_ROUTE_PATH = "/staff/people/$id";
 export const STAFF_SETTINGS_ROUTE_PATH = "/staff/settings";
 /** The absence calendar and the approvals inbox; the dashboard's approval items open it. */
 export const ABSENCE_ROUTE_PATH = "/staff/absence";
+/** The Competence area (staff competence design S14, delivery C): the matrix and, for HR, the interests. */
+export const COMPETENCE_ROUTE_PATH = "/staff/competence";
 /** The groups (Entra delivery D), HR's; the dashboard's `groupSyncFailed` item opens one group. */
 export const GROUPS_ROUTE_PATH = "/staff/groups";
 export const GROUP_ROUTE_PATH = "/staff/groups/$id";

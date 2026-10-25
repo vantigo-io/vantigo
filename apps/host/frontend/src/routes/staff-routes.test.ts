@@ -2,6 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, isNotFound, isRedirect } from "@tanstack/react-router";
 import {
   ABSENCE_ROUTE_PATH,
+  COMPETENCE_ROUTE_PATH,
   GROUP_ROUTE_PATH,
   GROUPS_ROUTE_PATH,
   MY_PAGE_ROUTE_PATH,
@@ -11,6 +12,7 @@ import {
   STAFF_SETTINGS_ROUTE_PATH,
   staffNavItems,
   validateAbsenceSearch,
+  validateCompetenceSearch,
   validateMyPageSearch,
   validatePeopleSearch,
   validatePersonSearch,
@@ -20,6 +22,7 @@ import { routeTree } from "../routeTree.gen";
 import { attentionHref } from "./dashboard";
 import { Route as StaffRoute } from "./staff";
 import { Route as StaffAbsenceRoute } from "./staff/absence";
+import { Route as StaffCompetenceRoute } from "./staff/competence";
 import { Route as StaffGroupRoute } from "./staff/groups.$id";
 import { Route as StaffIndexRoute } from "./staff/index";
 import { Route as StaffMeRoute } from "./staff/me";
@@ -82,6 +85,14 @@ describe("the staff routes", () => {
     for (const type of ["absenceAwaitingDecision", "hrOnlyAwaitingDecision"])
       expect(attentionHref({ module: "staff", type, entityId: "approvals" })).toBe(ABSENCE_ROUTE_PATH);
     expect(StaffAbsenceRoute.options.validateSearch).toBe(validateAbsenceSearch);
+  });
+
+  // The Competence area (staff competence design S14): the matrix's filters in the URL.
+  it("mounts the Competence area with the package's validator", () => {
+    expect(COMPETENCE_ROUTE_PATH).toBe("/staff/competence");
+    expect(matchedRouteIds(COMPETENCE_ROUTE_PATH)).toContain(COMPETENCE_ROUTE_PATH);
+    expect(matchedRouteIds(COMPETENCE_ROUTE_PATH)).toContain(STAFF_HOME_PATH);
+    expect(StaffCompetenceRoute.options.validateSearch).toBe(validateCompetenceSearch);
   });
 
   // The groups (Entra delivery D): the list and one group are siblings, as

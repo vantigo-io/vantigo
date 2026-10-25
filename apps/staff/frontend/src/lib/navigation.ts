@@ -1,5 +1,6 @@
 import {
   ABSENCE_ROUTE_PATH,
+  COMPETENCE_ROUTE_PATH,
   GROUPS_ROUTE_PATH,
   MY_PAGE_ROUTE_PATH,
   PEOPLE_ROUTE_PATH,
@@ -14,7 +15,7 @@ import {
  * and this package's own gate cannot disagree.
  */
 export interface StaffNavItem {
-  key: "myPage" | "people" | "absence" | "groups" | "settings";
+  key: "myPage" | "people" | "absence" | "competence" | "groups" | "settings";
   /** A key in the `staff` catalog. */
   label: string;
   to: string;
@@ -50,6 +51,14 @@ export const staffNavItems: readonly StaffNavItem[] = [
     // URL — the dashboard's link — is guarded by the app alone.
     requiredPermissions: ["staff:view", "staff:approve", "staff:manage", "staff:personal-data"],
     guardPermissions: ["staff:access"],
+  },
+  // The matrix is the directory with competences (design S14): staff:view's
+  // and staff:manage's, the URL guarded the same — the interests are HR's tab.
+  {
+    key: "competence",
+    label: "navCompetence",
+    to: COMPETENCE_ROUTE_PATH,
+    requiredPermissions: ["staff:view", "staff:manage"],
   },
   // The groups are staff:manage's alone, the list and every group (Entra design D9).
   { key: "groups", label: "navGroups", to: GROUPS_ROUTE_PATH, requiredPermissions: ["staff:manage"] },

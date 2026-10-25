@@ -144,7 +144,8 @@ const OpenCases = ({ reports }: { reports: StaffPersonSummary[] }) => {
 /**
  * What waits on my reports' competences (staff competence design §7, B):
  * declarations awaiting my verification, certificates expiring or expired,
- * and reviews overdue — the attention items the server answers me as their
+ * reviews overdue and — delivery C — reports whose competence profiles are
+ * not met, with the items not met — the attention items the server answers me as their
  * manager, each row opening the person's Competence tab. The items are
  * kept to my reports: to a caller who also holds staff:manage or
  * staff:approve the server answers the whole company's.
@@ -190,6 +191,14 @@ const CompetenceAttention = ({ reports, timeZone }: { reports: StaffPersonSummar
         items={of("competenceReviewOverdue")}
         timeZone={timeZone}
       />
+      <AttentionCard
+        title={t("profilesNotMet")}
+        description={t("profilesNotMetDescription")}
+        empty={t("noneNotMet")}
+        loading={attention.isPending}
+        items={of("competenceGap")}
+        timeZone={timeZone}
+      />
     </>
   );
 };
@@ -213,6 +222,8 @@ const AttentionCard = ({
   // A declaration is dated by when it was made; an expiry and a due review by their civil day.
   const when = (item: StaffStatsAttentionItem) => {
     if (item.type === "competenceDeclared") return t("attentionDeclared", { date: day(item.occurredAt, timeZone) });
+    // A gap has no day of its own (plan reading 31): it says how many items are not met.
+    if (item.type === "competenceGap") return t("gapsNotMet", { count: item.count ?? 0 });
     const civil = date(item.occurredAt.slice(0, 10));
     if (item.type === "competenceExpired") return t("attentionExpired", { date: civil });
     if (item.type === "competenceExpiring") return t("attentionExpires", { date: civil });

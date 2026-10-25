@@ -76,7 +76,8 @@ export const businessUnits = (): StaffBusinessUnit[] => [
 
 export const departments = (): StaffDepartment[] => [
   { id: 21, code: "ENG", name: "Engineering", managerPersonId: 101, revision: 1 },
-  { id: 22, code: "OPS", name: "Operations", parentId: 21, revision: 1 },
+  // Operations has the operator competence profile as its default (delivery C).
+  { id: 22, code: "OPS", name: "Operations", parentId: 21, competenceProfileId: 1002, revision: 1 },
 ];
 
 export const locations = (): StaffLocation[] => [

@@ -2,6 +2,7 @@ import type {
   StaffAvailabilityDeclaration,
   StaffAvailabilityKind,
   StaffCompetence,
+  StaffCompetenceGapStatus,
   StaffCompetenceKind,
   StaffPreferenceKind,
 } from "../api/competences";
@@ -145,3 +146,24 @@ export const interestsKey = (ids: readonly string[]): string => [...ids].sort().
  */
 export const followsServer = (draft: string, seeded: string, loaded: string): boolean =>
   draft === seeded || draft === loaded;
+
+/** The six gap statuses (design S13, plan reading 23), in the order the server judges them. */
+export const gapStatuses: readonly StaffCompetenceGapStatus[] = [
+  "missing",
+  "declared_only",
+  "below_level",
+  "expired",
+  "expiring",
+  "met",
+];
+
+/** A gap status in words: *Met*, *Declared, not verified*, *Below the level* … */
+export const gapStatusLabel = (t: Translate, status: string): string => t(`gapStatus_${status}`);
+
+/** A gap status's badge colour: met teal, expiring orange, declared only yellow, the rest red. */
+export const gapStatusColor = (status: StaffCompetenceGapStatus): string => {
+  if (status === "met") return "teal";
+  if (status === "expiring") return "orange";
+  if (status === "declared_only") return "yellow";
+  return "red";
+};

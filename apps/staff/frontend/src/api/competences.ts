@@ -31,6 +31,30 @@ export type StaffAvailabilityInput = Schemas["StaffAvailabilityRequest"];
 export type StaffWishesSeen = Schemas["StaffWishesSeen"];
 export type StaffCompetenceReview = Schemas["StaffCompetenceReview"];
 export type StaffCompetenceReviewInput = Schemas["StaffCompetenceReviewRequest"];
+export type StaffCompetenceProfile = Schemas["StaffCompetenceProfile"];
+export type StaffCompetenceProfileSummary = Schemas["StaffCompetenceProfileSummary"];
+export type StaffCompetenceProfileItem = Schemas["StaffCompetenceProfileItem"];
+export type StaffCompetenceProfileItemInput = Schemas["StaffCompetenceProfileItemRequest"];
+export type StaffCompetenceProfileInput = Schemas["StaffCompetenceProfileRequest"];
+export type StaffCompetenceProfileChange = Schemas["StaffCompetenceProfileChangeRequest"];
+export type StaffPersonProfile = Schemas["StaffPersonProfile"];
+export type StaffPersonProfileList = Schemas["StaffPersonProfileList"];
+export type StaffCompetenceGaps = Schemas["StaffCompetenceGaps"];
+export type StaffCompetenceGapProfile = Schemas["StaffCompetenceGapProfile"];
+export type StaffCompetenceGapItem = Schemas["StaffCompetenceGapItem"];
+export type StaffCompetenceGapStatus = Schemas["StaffCompetenceGapStatus"];
+export type StaffCompetenceMatrix = Schemas["StaffCompetenceMatrix"];
+export type StaffCompetenceMatrixCell = Schemas["StaffCompetenceMatrixCell"];
+export type StaffCompetenceInterestsEntry = Schemas["StaffCompetenceInterestsEntry"];
+
+/** The matrix's five filters (design S14), as `GET /competence-matrix` takes them; each left out is no filter. */
+export interface StaffCompetenceMatrixFilters {
+  categoryId?: number;
+  competenceId?: number[];
+  minLevel?: number;
+  validOn?: string;
+  verifiedOnly?: boolean;
+}
 
 /** Every competence category in order, archived ones included, so a competence still names its own. */
 export const competenceCategoriesQueryOptions = () =>
@@ -110,6 +134,62 @@ export const competenceReviewsQueryOptions = (personId: number) =>
     queryKey: [STAFF_QUERY_KEY, "people", "detail", personId, "competence-reviews"],
     queryFn: ({ signal }) =>
       request<StaffCompetenceReview[]>(`/api/v1/staff/people/${personId}/competence-reviews`, { signal }),
+  });
+
+/*
+ * Profiles and gaps (delivery C, design S12–S14). The catalogue of profiles
+ * is read by anyone in the app, archived ones included; a person's profiles
+ * and gaps by the Profiles group's readers — the person, their manager, an
+ * Approver, HR and staff:personal-data — anyone else gets the unknown
+ * person's 404, which the tab reads as the group's absence.
+ */
+
+/** Every competence profile with its items, archived ones included (`archivedAt`), ordered by key. */
+export const competenceProfilesQueryOptions = () =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "competence-profiles"],
+    queryFn: ({ signal }) => request<StaffCompetenceProfile[]>("/api/v1/staff/competence-profiles", { signal }),
+  });
+
+/** The profiles that reach a person: assigned, their department's default, or both (plan reading 25). */
+export const personProfilesQueryOptions = (personId: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", personId, "competence-profiles"],
+    queryFn: ({ signal }) =>
+      request<StaffPersonProfileList>(`/api/v1/staff/people/${personId}/competence-profiles`, { signal }),
+  });
+
+/** Per profile and item, what the person's current rows meet (design S13), computed by the server on read. */
+export const competenceGapsQueryOptions = (personId: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", personId, "competence-gaps"],
+    queryFn: ({ signal }) =>
+      request<StaffCompetenceGaps>(`/api/v1/staff/people/${personId}/competence-gaps`, { signal }),
+  });
+
+/** The matrix (design S14): the people active today and their rows valid on the day, filtered as asked. */
+export const competenceMatrixQueryOptions = (filters: StaffCompetenceMatrixFilters) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "competence-matrix", filters],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (filters.categoryId !== undefined) params.set("categoryId", String(filters.categoryId));
+      for (const id of filters.competenceId ?? []) params.append("competenceId", String(id));
+      if (filters.minLevel !== undefined) params.set("minLevel", String(filters.minLevel));
+      if (filters.validOn) params.set("validOn", filters.validOn);
+      if (filters.verifiedOnly) params.set("verifiedOnly", "true");
+      const query = params.toString();
+      return request<StaffCompetenceMatrix>(`/api/v1/staff/competence-matrix${query ? `?${query}` : ""}`, {
+        signal,
+      });
+    },
+  });
+
+/** Who wants to learn what, and who wants to use more of what they hold — staff:manage's alone. */
+export const competenceInterestsQueryOptions = () =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "competence-interests"],
+    queryFn: ({ signal }) => request<StaffCompetenceInterestsEntry[]>("/api/v1/staff/competence-interests", { signal }),
   });
 
 export const createCompetenceCategory = (input: StaffCompetenceCategoryInput): Promise<StaffCompetenceCategory> =>
@@ -227,3 +307,25 @@ export const recordCompetenceReview = (
   input: StaffCompetenceReviewInput = {},
 ): Promise<StaffCompetenceReview> =>
   sendAbsenceWrite(`/api/v1/staff/people/${personId}/competence-reviews`, "POST", input);
+
+/*
+ * The profiles' writes (delivery C) go through the same sender, so a refusal
+ * keyed `items[1].minLevel` keeps its code (`level_not_allowed`,
+ * `competence_unavailable`) for the form to word.
+ */
+
+/** A new profile: its key (fixed for good), names and items. */
+export const createCompetenceProfile = (input: StaffCompetenceProfileInput): Promise<StaffCompetenceProfile> =>
+  sendAbsenceWrite("/api/v1/staff/competence-profiles", "POST", input);
+
+/** A profile's names, whether it is archived and its items, replaced whole under `If-Match`. */
+export const updateCompetenceProfile = (
+  id: number,
+  input: StaffCompetenceProfileChange,
+  revision: number,
+): Promise<StaffCompetenceProfile> =>
+  sendAbsenceWrite(`/api/v1/staff/competence-profiles/${id}`, "PUT", input, String(revision));
+
+/** The profiles HR assigns the person, replaced whole (at most 20); no If-Match — HR is the only writer. */
+export const replacePersonProfiles = (personId: number, profileIds: number[]): Promise<StaffPersonProfileList> =>
+  sendAbsenceWrite(`/api/v1/staff/people/${personId}/competence-profiles`, "PUT", { profileIds });

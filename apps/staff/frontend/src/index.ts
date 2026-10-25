@@ -26,6 +26,7 @@ export * from "./lib/terms";
 export * from "./lib/terms-form";
 export { NewPersonModal, type NewPersonModalProps } from "./pages/-new-person-modal";
 export { AbsencePage } from "./pages/absence";
+export { CompetencePage } from "./pages/competence";
 export { GroupPage } from "./pages/group";
 export { GroupsPage } from "./pages/groups";
 export { MyPage } from "./pages/my-page";

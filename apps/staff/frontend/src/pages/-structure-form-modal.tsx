@@ -3,6 +3,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
+import { competenceProfilesQueryOptions } from "../api/competences";
 import { personQueryOptions } from "../api/people";
 import { STAFF_QUERY_KEY } from "../api/request";
 import {
@@ -16,6 +17,7 @@ import {
 } from "../api/structure";
 import { PersonPicker } from "../components/person-picker";
 import "../i18n";
+import { competenceName } from "../lib/competences";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 
 /** Adding a row to one of the four tables, or changing the one the caller just read off it. */
@@ -217,8 +219,9 @@ const BusinessUnitForm = ({ row, onClose }: { row?: StaffBusinessUnit; onClose: 
 };
 
 const DepartmentForm = ({ row, onClose }: { row?: StaffDepartment; onClose: () => void }) => {
-  const { t } = useI18n("staff");
+  const { t, locale } = useI18n("staff");
   const { data: departments } = useQuery(structureQueryOptions("departments"));
+  const { data: profiles } = useQuery(competenceProfilesQueryOptions());
   const { data: manager } = useQuery({
     ...personQueryOptions(row?.managerPersonId ?? 0),
     enabled: Boolean(row?.managerPersonId),
@@ -229,6 +232,7 @@ const DepartmentForm = ({ row, onClose }: { row?: StaffDepartment; onClose: () =
       name: row?.name ?? "",
       managerPersonId: row?.managerPersonId ?? null,
       parentId: row?.parentId ? String(row.parentId) : null,
+      competenceProfileId: row?.competenceProfileId ? String(row.competenceProfileId) : null,
       costCentre: row?.costCentre ?? "",
       division: row?.division ?? "",
     } as {
@@ -236,6 +240,7 @@ const DepartmentForm = ({ row, onClose }: { row?: StaffDepartment; onClose: () =
       name: string;
       managerPersonId: number | null;
       parentId: string | null;
+      competenceProfileId: string | null;
       costCentre: string;
       division: string;
     },
@@ -246,7 +251,7 @@ const DepartmentForm = ({ row, onClose }: { row?: StaffDepartment; onClose: () =
   });
   const save = useSave(
     onClose,
-    ["code", "name", "managerPersonId", "parentId", "costCentre", "division"],
+    ["code", "name", "managerPersonId", "parentId", "competenceProfileId", "costCentre", "division"],
     form.setErrors,
     (values: typeof form.values) => {
       const input = {
@@ -254,6 +259,8 @@ const DepartmentForm = ({ row, onClose }: { row?: StaffDepartment; onClose: () =
         name: values.name.trim(),
         ...(values.managerPersonId ? { managerPersonId: values.managerPersonId } : {}),
         ...(values.parentId ? { parentId: Number(values.parentId) } : {}),
+        // A full replace: left out, the department has no default profile (plan reading 35).
+        ...(values.competenceProfileId ? { competenceProfileId: Number(values.competenceProfileId) } : {}),
         ...optional("costCentre", values.costCentre),
         ...optional("division", values.division),
       };
@@ -268,6 +275,14 @@ const DepartmentForm = ({ row, onClose }: { row?: StaffDepartment; onClose: () =
     .filter((department) => department.id !== row?.id)
     .filter((department) => !department.archivedAt || department.id === row?.parentId)
     .map((department) => ({ value: String(department.id), label: `${department.name} (${department.code})` }));
+  // The unarchived profiles, and the department's own even if archived since: the server keeps it, without
+  // effect while archived (plan reading 26).
+  const profileOptions = (profiles ?? [])
+    .filter((profile) => !profile.archivedAt || profile.id === row?.competenceProfileId)
+    .map((profile) => {
+      const name = competenceName(profile, locale);
+      return { value: String(profile.id), label: profile.archivedAt ? t("archivedName", { name }) : name };
+    });
   return (
     <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
       <Stack>
@@ -290,6 +305,13 @@ const DepartmentForm = ({ row, onClose }: { row?: StaffDepartment; onClose: () =
           error={form.errors.managerPersonId as string | undefined}
         />
         <Select label={t("parentDepartment")} clearable data={parents} {...form.getInputProps("parentId")} />
+        <Select
+          label={t("defaultCompetenceProfile")}
+          description={t("defaultCompetenceProfileDescription")}
+          clearable
+          data={profileOptions}
+          {...form.getInputProps("competenceProfileId")}
+        />
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput label={t("costCentre")} {...form.getInputProps("costCentre")} />
           <TextInput label={t("division")} {...form.getInputProps("division")} />

@@ -3,6 +3,11 @@ import type {
   StaffCompetence,
   StaffCompetenceCategory,
   StaffCompetenceChange,
+  StaffCompetenceGapItem,
+  StaffCompetenceGapStatus,
+  StaffCompetenceProfile,
+  StaffCompetenceProfileItemInput,
+  StaffCompetenceSummary,
   StaffPersonCompetence,
   StaffPersonInterest,
   StaffPersonPreference,
@@ -33,6 +38,7 @@ import {
   timeOfDayParts,
   travelExtents,
 } from "../lib/competences";
+import { isIsoDate } from "../lib/dates";
 import { defaultFullTimeHours, fullTimeHoursMismatch } from "../lib/terms";
 import {
   allAbsenceTypes,
@@ -49,13 +55,16 @@ import { jsonResponse } from "./api";
 import {
   availabilityDeclarations as defaultAvailability,
   competenceCategories as defaultCompetenceCategories,
+  competenceProfiles as defaultCompetenceProfiles,
   competenceReviews as defaultCompetenceReviews,
   competences as defaultCompetences,
   personCompetences as defaultPersonCompetences,
   personInterests as defaultPersonInterests,
   personPreferences as defaultPersonPreferences,
+  personProfiles as defaultPersonProfiles,
   type StoredDeclaration,
   type StoredInterest,
+  type StoredPersonProfile,
   type StoredPreference,
   type StoredReview,
 } from "./competence-fixtures";
@@ -151,6 +160,10 @@ export interface StaffServer {
   availability?: StoredDeclaration[];
   /** The competence reviews recorded, any person's; the latest by day is the person's lastCompetenceReview. */
   reviews?: StoredReview[];
+  /** The competence profiles (delivery C) with their items, archived ones included; the fixture's two by default. */
+  competenceProfiles?: StaffCompetenceProfile[];
+  /** The profiles HR assigned people; Grace's field electrician by default. */
+  personProfiles?: StoredPersonProfile[];
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
   /** Answers a read instead of the fake's own, as `write` does a write. */
@@ -222,6 +235,8 @@ export interface StaffState {
   preferences: StoredPreference[];
   availability: StoredDeclaration[];
   reviews: StoredReview[];
+  competenceProfiles: StaffCompetenceProfile[];
+  personProfiles: StoredPersonProfile[];
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -628,6 +643,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     preferences: server.preferences ?? defaultPersonPreferences(),
     availability: server.availability ?? defaultAvailability(),
     reviews: server.reviews ?? defaultCompetenceReviews(),
+    competenceProfiles: server.competenceProfiles ?? defaultCompetenceProfiles(),
+    personProfiles: server.personProfiles ?? defaultPersonProfiles(),
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -855,6 +872,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         // manager and HR, never the Approver alone (plan reading 16).
         canReadWishes: audience.self || audience.manager || audience.hr || audience.personalData,
         canStampWishesSeen: (audience.manager || audience.hr) && !audience.self,
+        // Who assigns the person's competence profiles: HR alone (plan reading 32).
+        canAssignProfiles: audience.hr,
         // Who the caller is to the person: themselves, or their manager today.
         self: audience.self,
         isManager: audience.manager && !audience.self,
@@ -2134,7 +2153,14 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
             "seed_immutable",
             "A seeded competence changes its names, reminderLeadDays, issuerHint and hidden alone.",
           );
-        if (input.hasLevel !== row.hasLevel && state.personCompetences.some((one) => one.competence.id === row.id))
+        if (
+          input.hasLevel !== row.hasLevel &&
+          (state.personCompetences.some((one) => one.competence.id === row.id) ||
+            // A profile item's minimum level is a use too (plan reading 28).
+            state.competenceProfiles.some((profile) =>
+              profile.items.some((item) => item.competenceId === row.id && item.minLevel !== undefined),
+            ))
+        )
           return problem(409, "competence_in_use", "A person's row names this competence; hasLevel is fixed.");
         delete row.validityMonths;
         delete row.reminderLeadDays;
@@ -2763,6 +2789,469 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     return answer();
   };
 
+  /** A competence's summary as the server answers it today, from the catalogue as it stands. */
+  const competenceSummary = (competenceId: number): StaffCompetenceSummary => {
+    const row = state.competences.find((one) => one.id === competenceId) as StaffCompetence;
+    return {
+      id: row.id,
+      key: row.key,
+      names: row.names,
+      kind: row.kind,
+      hasLevel: row.hasLevel,
+      categoryId: row.categoryId,
+      archived: row.archivedAt !== undefined,
+    };
+  };
+
+  /** The catalogue's order (`ListCompetences`): the category's sort, then the competence's, then the id. */
+  const catalogueRank = (competenceId: number): number[] => {
+    const competence = state.competences.find((one) => one.id === competenceId) as StaffCompetence;
+    const category = state.competenceCategories.find((one) => one.id === competence.categoryId);
+    return [category?.sort ?? 0, competence.categoryId, competence.sort, competence.id];
+  };
+  const byCatalogueOrder = (a: number, b: number) => {
+    const [x, y] = [catalogueRank(a), catalogueRank(b)];
+    return x.map((value, index) => value - y[index]).find((difference) => difference !== 0) ?? 0;
+  };
+
+  const profileSummary = (profile: StaffCompetenceProfile) => ({
+    id: profile.id,
+    key: profile.key,
+    names: profile.names,
+    archived: profile.archivedAt !== undefined,
+  });
+
+  /**
+   * The profiles that reach a person (plan reading 25): those HR assigned,
+   * archived ones listed with `archived`, and the default of the department
+   * their terms in force name today — none when no employment is in force,
+   * none while the default is archived (reading 26) — merged by profile and
+   * ordered by key.
+   */
+  const effectiveProfiles = (stored: StoredPerson) => {
+    const department =
+      stored.status.state === "active" ? state.departments.find((one) => one.id === stored.department?.id) : undefined;
+    const byDefault = state.competenceProfiles.find(
+      (one) => one.id === department?.competenceProfileId && !one.archivedAt,
+    );
+    const assigned = state.personProfiles
+      .filter((one) => one.personId === stored.id)
+      .map((one) => state.competenceProfiles.find((profile) => profile.id === one.profileId))
+      .filter((profile): profile is StaffCompetenceProfile => profile !== undefined);
+    const reached = [...new Set([...assigned, ...(byDefault ? [byDefault] : [])])];
+    return reached
+      .sort((a, b) => a.key.localeCompare(b.key) || a.id - b.id)
+      .map((profile) => ({
+        profile,
+        assigned: assigned.includes(profile),
+        department:
+          department && profile === byDefault
+            ? { id: department.id, code: department.code, name: department.name }
+            : undefined,
+      }));
+  };
+
+  const personProfileOf = ({ profile, assigned, department }: ReturnType<typeof effectiveProfiles>[number]) => ({
+    profile: profileSummary(profile),
+    assigned,
+    ...(department ? { department } : {}),
+  });
+
+  /**
+   * One item judged on the person's current row of its competence, in plan
+   * reading 23's order (`gapStatus`): no row is missing; a certificate
+   * declared is declared only; a level under the minimum is below it (a row
+   * without a level never is); then, when the item must be valid, a start
+   * not reached is missing, an expiry passed expired, an expiry within the
+   * competence's lead expiring; else met. A skill
+   * declared counts as met with `declared` (reading 24: `mustBeValid: false`
+   * never judges the validity).
+   */
+  const gapStatusOf = (
+    item: StaffCompetenceProfile["items"][number],
+    row: StaffPersonCompetence | undefined,
+  ): StaffCompetenceGapStatus => {
+    if (!row) return "missing";
+    const competence = state.competences.find((one) => one.id === item.competenceId) as StaffCompetence;
+    if (competence.kind === "certificate" && !row.verified) return "declared_only";
+    if (item.minLevel !== undefined && row.level !== undefined && row.level < item.minLevel) return "below_level";
+    if (!item.mustBeValid) return "met";
+    if (row.validFrom > TODAY) return "missing";
+    if (row.validTo !== undefined && row.validTo < TODAY) return "expired";
+    const lead = competence.reminderLeadDays;
+    if (row.validTo !== undefined && lead !== undefined && daysUntil(TODAY, row.validTo) <= lead) return "expiring";
+    return "met";
+  };
+  const counts = (status: StaffCompetenceGapStatus) => status !== "met" && status !== "expiring";
+
+  /** The gap list (design S13): every unarchived profile reaching the person, each item judged, the not met summed. */
+  const gapsOf = (stored: StoredPerson) => {
+    const rows = state.personCompetences.filter((row) => row.personId === stored.id && !row.superseded);
+    const profiles = effectiveProfiles(stored)
+      .filter(({ profile }) => !profile.archivedAt)
+      .map((reached) => {
+        const items: StaffCompetenceGapItem[] = reached.profile.items.map((item) => {
+          const row = rows.find((one) => one.competence.id === item.competenceId);
+          const competence = competenceSummary(item.competenceId);
+          return {
+            competenceId: item.competenceId,
+            competence,
+            ...(item.minLevel !== undefined ? { minLevel: item.minLevel } : {}),
+            mustBeValid: item.mustBeValid,
+            status: gapStatusOf(item, row),
+            declared: row !== undefined && !row.verified,
+            archived: competence.archived,
+            verified: row?.verified ?? false,
+            ...(row?.level !== undefined ? { level: row.level } : {}),
+            ...(row?.validTo !== undefined ? { validTo: row.validTo } : {}),
+          };
+        });
+        return {
+          ...personProfileOf(reached),
+          items,
+          notMet: items.filter((item) => counts(item.status)).length,
+        };
+      });
+    return { profiles, notMet: profiles.reduce((sum, profile) => sum + profile.notMet, 0) };
+  };
+
+  /**
+   * Profiles, gaps and the overview (delivery C, design S12–S14), as the
+   * server judges them. The catalogue is read by anyone in the app and
+   * written by HR — a POST's key, its names and items (at most 50, a
+   * competence once, a level 0 to 4), then each item's competence: unknown,
+   * or hidden or archived on a new or changed item, is
+   * `competence_unavailable`, a minimum level on one without a level
+   * `level_not_allowed`, both keyed `items[i]…` — a PUT under `If-Match`,
+   * its 404 and revision after the request is judged on its own. The matrix
+   * refuses an unknown `competenceId` on that field. A person's profiles and gaps are read by the person,
+   * their manager, an Approver, HR and staff:personal-data, anyone else the
+   * unknown person's 404; HR alone assigns (the uniform 403 for anyone else
+   * who reads them), at most 20, a profile once, an unarchived one known —
+   * each refused on `profileIds[i]` — after the erased person's 409. The
+   * matrix is the directory's (`staff:view`, `staff:manage`) and the
+   * interests overview HR's alone, the uniform 403 otherwise. It does not
+   * model the events.
+   */
+  const competenceProfileRoutes = (
+    method: string,
+    path: string,
+    url: URL,
+    init: RequestInit | undefined,
+    body: Record<string, unknown> | undefined,
+  ): Response | undefined => {
+    const hr = manages(role);
+    const invalid = (title: string, errors: Record<string, string[]>, code?: string) =>
+      staffProblem(400, { title, ...(code ? { code } : {}), errors });
+
+    const profileTitle = "Invalid competence profile";
+    type ProfileInput = {
+      key?: string;
+      names?: { en?: string; nb?: string };
+      archived?: boolean;
+      items: StaffCompetenceProfileItemInput[];
+    };
+
+    /** strictRows: a property the request or an item does not take, then the items when the body does not say them. */
+    const profileStrictRefusal = (allowed: readonly string[]): Response | undefined => {
+      const top = unknownProperties(body, allowed, profileTitle);
+      if (top) return top;
+      const items = body?.items;
+      const errors: Record<string, string[]> = {};
+      if (!Array.isArray(items)) errors.items = ["items is required: the whole list, or [] to remove every row"];
+      else
+        items.forEach((item, index) => {
+          for (const key of Object.keys((item ?? {}) as Record<string, unknown>)
+            .filter((one) => !["competenceId", "minLevel", "mustBeValid"].includes(one))
+            .sort())
+            errors[`items[${index}].${key}`] = [
+              "This property is not one this request takes; the request was not applied",
+            ];
+        });
+      return Object.keys(errors).length > 0 ? invalid(profileTitle, errors) : undefined;
+    };
+
+    /** The names (parseCompetenceNames) and the items on their own (parseProfileItems), collected into errors. */
+    const parseProfile = (input: ProfileInput, errors: Record<string, string[]>) => {
+      for (const [field, label, value] of [
+        ["names.en", "An English name", input.names?.en],
+        ["names.nb", "A Norwegian name", input.names?.nb],
+      ] as const) {
+        const length = [...(value ?? "").trim()].length;
+        if (length === 0) errors[field] = [`${label} is required`];
+        else if (length > 100)
+          errors[field] = [`${label} cannot be longer than 100 characters, the given value was ${length} characters`];
+      }
+      const items = input.items;
+      if (items.length > 50) {
+        errors.items = ["A profile has at most 50 items"];
+        return;
+      }
+      items.forEach((item, index) => {
+        if (items.findIndex((other) => other.competenceId === item.competenceId) < index)
+          errors[`items[${index}].competenceId`] = [
+            `Competence ${item.competenceId} is already an item of this profile`,
+          ];
+        if (
+          item.minLevel !== undefined &&
+          !(Number.isInteger(item.minLevel) && item.minLevel >= 0 && item.minLevel <= 4)
+        )
+          errors[`items[${index}].minLevel`] = ["A minimum level is 0 to 4"];
+      });
+    };
+
+    /**
+     * The items judged against the catalogue (judgeProfileItems): an unknown
+     * competence, or a hidden or archived one on a new or changed item, is
+     * `competence_unavailable`; a minimum level on one without a level
+     * `level_not_allowed` — the latter beside the former on the same index
+     * for a hidden or archived one. `kept` are the profile's stored items.
+     */
+    const judgeProfileItems = (
+      items: StaffCompetenceProfileItemInput[],
+      kept: StaffCompetenceProfile["items"],
+    ): Response | undefined => {
+      const errors: Record<string, string[]> = {};
+      let code: string | undefined;
+      const coded = (field: string, rule: string, message: string) => {
+        errors[field] = [...(errors[field] ?? []), message];
+        code = code ?? rule;
+      };
+      items.forEach((item, index) => {
+        const competence = state.competences.find((one) => one.id === item.competenceId);
+        if (!competence) {
+          coded(
+            `items[${index}].competenceId`,
+            "competence_unavailable",
+            `Competence ${item.competenceId} is unknown, hidden or archived; a new or changed item cannot name it`,
+          );
+          return;
+        }
+        const unchanged = kept.some(
+          (one) =>
+            one.competenceId === item.competenceId &&
+            one.minLevel === item.minLevel &&
+            one.mustBeValid === (item.mustBeValid ?? true),
+        );
+        if ((competence.hidden || competence.archivedAt) && !unchanged)
+          coded(
+            `items[${index}].competenceId`,
+            "competence_unavailable",
+            `Competence ${item.competenceId} is hidden or archived; a new or changed item cannot name it`,
+          );
+        if (item.minLevel !== undefined && !competence.hasLevel)
+          coded(`items[${index}].minLevel`, "level_not_allowed", "This competence takes no level");
+      });
+      return Object.keys(errors).length > 0 ? invalid(profileTitle, errors, code) : undefined;
+    };
+    const itemsOf = (items: StaffCompetenceProfileItemInput[]): StaffCompetenceProfile["items"] =>
+      items.map((item) => ({
+        competenceId: item.competenceId,
+        competence: competenceSummary(item.competenceId),
+        ...(item.minLevel !== undefined ? { minLevel: item.minLevel } : {}),
+        mustBeValid: item.mustBeValid ?? true,
+      }));
+    const ordered = (items: StaffCompetenceProfile["items"]) =>
+      [...items].sort((a, b) => byCatalogueOrder(a.competenceId, b.competenceId));
+    const namesOf = (input: ProfileInput) => ({
+      en: (input.names?.en ?? "").trim(),
+      nb: (input.names?.nb ?? "").trim(),
+    });
+
+    // The server's order: If-Match, the strict body, the request on its own
+    // (key, names, items), then — under the lock — the 404, the revision
+    // and the catalogue; a POST's key taken last.
+    const catalogue = /^\/api\/v1\/staff\/competence-profiles(?:\/(\d+))?$/.exec(path);
+    if (catalogue) {
+      if (method === "GET" && !catalogue[1]) return jsonResponse(200, state.competenceProfiles);
+      if (!hr) return forbidden();
+      if (method === "POST" && !catalogue[1]) {
+        const strict = profileStrictRefusal(["key", "names", "items"]);
+        if (strict) return strict;
+        const input = body as ProfileInput;
+        const errors: Record<string, string[]> = {};
+        if (!/^[a-z0-9-]{1,40}$/.test(input.key ?? ""))
+          errors.key = ["A key is 1 to 40 characters of a–z, 0–9 and hyphens"];
+        parseProfile(input, errors);
+        if (Object.keys(errors).length > 0) return invalid(profileTitle, errors);
+        const refused = judgeProfileItems(input.items, []);
+        if (refused) return refused;
+        if (state.competenceProfiles.some((one) => one.key === input.key))
+          return invalid(profileTitle, { key: ["Another profile already has this key"] });
+        const created: StaffCompetenceProfile = {
+          id: nextId++,
+          key: input.key ?? "",
+          names: namesOf(input),
+          items: ordered(itemsOf(input.items)),
+          revision: 1,
+        };
+        state.competenceProfiles.push(created);
+        state.competenceProfiles.sort((a, b) => a.key.localeCompare(b.key) || a.id - b.id);
+        return jsonResponse(201, created);
+      }
+      if (method !== "PUT" || !catalogue[1]) return undefined;
+      if (new Headers(init?.headers).get("If-Match") === null) return staffProblem(428, { title: "If-Match required" });
+      const strict = profileStrictRefusal(["names", "archived", "items"]);
+      if (strict) return strict;
+      const input = body as ProfileInput;
+      const errors: Record<string, string[]> = {};
+      parseProfile(input, errors);
+      if (Object.keys(errors).length > 0) return invalid(profileTitle, errors);
+      const profile = state.competenceProfiles.find((one) => one.id === Number(catalogue[1]));
+      if (!profile) return notFound();
+      const stale = staleRevision(init, profile.revision, "competence profile");
+      if (stale) return stale;
+      const refused = judgeProfileItems(input.items, profile.items);
+      if (refused) return refused;
+      profile.names = namesOf(input);
+      profile.items = ordered(itemsOf(input.items));
+      if (input.archived) profile.archivedAt = profile.archivedAt ?? "2026-10-11T08:00:00Z";
+      else delete profile.archivedAt;
+      profile.revision += 1;
+      return jsonResponse(200, profile);
+    }
+
+    const person = /^\/api\/v1\/staff\/people\/(\d+)\/(competence-profiles|competence-gaps)$/.exec(path);
+    if (person) {
+      const found = seen(Number(person[1]));
+      if (!found) return notFound();
+      const { stored, audience } = found;
+      // The Profiles group (plan reading 32): never the colleague as such.
+      const reads = audience.self || audience.manager || audience.hr || audience.personalData || role === "approve";
+      if (!reads) return notFound();
+      if (person[2] === "competence-gaps") return method === "GET" ? jsonResponse(200, gapsOf(stored)) : undefined;
+      const answer = () => jsonResponse(200, { profiles: effectiveProfiles(stored).map(personProfileOf) });
+      if (method === "GET") return answer();
+      if (method !== "PUT") return undefined;
+      if (!audience.hr) return forbidden();
+      const ids = ((body as { profileIds?: number[] } | undefined)?.profileIds ?? []).map(Number);
+      const title = "Invalid profile assignment";
+      if (ids.length > 20) return invalid(title, { profileIds: ["A person is assigned at most 20 profiles"] });
+      const duplicates = Object.fromEntries(
+        ids.flatMap((id, index) =>
+          ids.indexOf(id) < index ? [[`profileIds[${index}]`, ["This profile is assigned already"]]] : [],
+        ),
+      );
+      if (Object.keys(duplicates).length > 0) return invalid(title, duplicates);
+      if (stored.erasedAt) return erasedRefusal();
+      const unavailable = Object.fromEntries(
+        ids.flatMap((id, index) => {
+          const profile = state.competenceProfiles.find((one) => one.id === id);
+          if (!profile) return [[`profileIds[${index}]`, [`No competence profile has id ${id}`]]];
+          // An archived profile kept as it was assigned is no new assignment.
+          const kept = state.personProfiles.some((one) => one.personId === stored.id && one.profileId === id);
+          return profile.archivedAt && !kept ? [[`profileIds[${index}]`, ["The profile is archived"]]] : [];
+        }),
+      );
+      if (Object.keys(unavailable).length > 0) return invalid(title, unavailable);
+      state.personProfiles = [
+        ...state.personProfiles.filter((one) => one.personId !== stored.id),
+        ...ids.map((profileId) => ({ personId: stored.id, profileId })),
+      ];
+      return answer();
+    }
+
+    if (path === "/api/v1/staff/competence-matrix" && method === "GET") {
+      if (!readsDirectory(role)) return forbidden();
+      const query = url.searchParams;
+      const errors: Record<string, string[]> = {};
+      const validOn = query.get("validOn") ?? TODAY;
+      if (!isIsoDate(validOn)) errors.validOn = ["A day is YYYY-MM-DD"];
+      const minLevelText = query.get("minLevel");
+      const minLevel = minLevelText === null ? undefined : Number(minLevelText);
+      if (minLevel !== undefined && !(Number.isInteger(minLevel) && minLevel >= 0 && minLevel <= 4))
+        errors.minLevel = ["A level is 0 to 4"];
+      const categoryText = query.get("categoryId");
+      const categoryId = categoryText === null ? undefined : Number(categoryText);
+      if (categoryId !== undefined && !(Number.isInteger(categoryId) && categoryId > 0))
+        errors.categoryId = ["An id is a positive whole number"];
+      const competenceIds = query.getAll("competenceId").map(Number);
+      if (competenceIds.some((id) => !(Number.isInteger(id) && id > 0)))
+        errors.competenceId = ["An id is a positive whole number"];
+      if (Object.keys(errors).length > 0) return invalid("Invalid matrix filter", errors);
+      // A competence the catalogue does not know — hidden and archived ones it does — on competenceId.
+      const unknown = competenceIds.filter((id) => !state.competences.some((one) => one.id === id));
+      if (unknown.length > 0)
+        return invalid("Invalid matrix filter", {
+          competenceId: unknown.map((id) => `No competence has id ${id}`),
+        });
+      const verifiedOnly = query.get("verifiedOnly") === "true";
+
+      const competenceOf = (id: number) => state.competences.find((one) => one.id === id) as StaffCompetence;
+      const rowsOf = (personId: number) =>
+        state.personCompetences.filter((row) => {
+          const competence = competenceOf(row.competence.id);
+          return (
+            row.personId === personId &&
+            !row.superseded &&
+            row.validFrom <= validOn &&
+            (row.validTo === undefined || row.validTo >= validOn) &&
+            (categoryId === undefined || competence.categoryId === categoryId) &&
+            (competenceIds.length === 0 || competenceIds.includes(competence.id)) &&
+            (!verifiedOnly || row.verified) &&
+            (minLevel === undefined || !competence.hasLevel || (row.level ?? -1) >= minLevel)
+          );
+        });
+      const people = state.people
+        .filter((one) => one.status.state === "active" && !one.erasedAt)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName) || a.id - b.id)
+        .map((one) => ({ person: one, rows: rowsOf(one.id) }))
+        // Given competences, a person is listed when they hold every one.
+        .filter(({ rows }) => competenceIds.every((id) => rows.some((row) => row.competence.id === id)));
+      const columns = (
+        competenceIds.length > 0
+          ? [...new Set(competenceIds)]
+          : [...new Set(people.flatMap(({ rows }) => rows.map((row) => row.competence.id)))]
+      ).sort(byCatalogueOrder);
+      return jsonResponse(200, {
+        validOn,
+        competences: columns.map(competenceSummary),
+        people: people.map(({ person: one, rows }) => ({
+          personId: one.id,
+          name: one.displayName,
+          competences: [...rows]
+            .sort((a, b) => byCatalogueOrder(a.competence.id, b.competence.id))
+            .map((row) => ({
+              competenceId: row.competence.id,
+              ...(row.level !== undefined ? { level: row.level } : {}),
+              verified: row.verified,
+              validFrom: row.validFrom,
+              ...(row.validTo !== undefined ? { validTo: row.validTo } : {}),
+            })),
+        })),
+      });
+    }
+
+    if (path === "/api/v1/staff/competence-interests" && method === "GET") {
+      if (!hr) return forbidden();
+      const active = (id: number) => {
+        const one = findPerson(id);
+        return one?.status.state === "active" && !one.erasedAt ? one : undefined;
+      };
+      const held = (personId: number, competenceId: number) =>
+        state.personCompetences.some(
+          (row) => row.personId === personId && row.competence.id === competenceId && !row.superseded,
+        );
+      const wanted = state.interests.filter((one) => active(one.personId));
+      const competenceIdsWanted = [...new Set(wanted.map((one) => one.competenceId))].sort(byCatalogueOrder);
+      const peopleOf = (competenceId: number, holds: boolean) =>
+        wanted
+          .filter((one) => one.competenceId === competenceId && held(one.personId, competenceId) === holds)
+          .map((one) => active(one.personId) as StoredPerson)
+          .sort((a, b) => a.displayName.localeCompare(b.displayName) || a.id - b.id)
+          .map(summaryOf);
+      return jsonResponse(
+        200,
+        competenceIdsWanted.map((competenceId) => ({
+          competence: competenceSummary(competenceId),
+          wantsToLearn: peopleOf(competenceId, false),
+          wantsMore: peopleOf(competenceId, true),
+        })),
+      );
+    }
+    return undefined;
+  };
+
   /**
    * The attention items My team reads (`GET /stats/attention`), the
    * competence ones alone (Staff phase 2): a declared row, a certificate
@@ -2816,6 +3305,14 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         const due = proposedExpiry(anchor, interval) as string;
         if (TODAY > due) items.push(item("competenceReviewOverdue", person.id, person.id, `${due}T00:00:00Z`));
       }
+    // A gap (delivery C, plan reading 31): one per person with an item not
+    // met, to HR and the person's manager, never the Approver alone.
+    for (const person of state.people) {
+      if (!counted(person.id) || !(hr || reportOf(person.id))) continue;
+      const { notMet } = gapsOf(person);
+      if (notMet > 0)
+        items.push({ ...item("competenceGap", person.id, person.id, `${TODAY}T00:00:00Z`), count: notMet });
+    }
     return jsonResponse(200, items);
   };
 
@@ -3621,9 +4118,27 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (method !== "GET" && !manages(role)) return Promise.resolve(forbidden());
       const table = tables[structure[1] as keyof typeof tables];
       const rows = table.rows() as Row[];
+      // A department's default profile is a known one, and an unarchived one
+      // unless it is the department's own already (plan reading 26,
+      // checkDepartmentEdges): a plain field error otherwise.
+      const profileRefusal = (current: number | undefined) => {
+        const profileId = (body as { competenceProfileId?: number } | undefined)?.competenceProfileId;
+        if (structure[1] !== "departments" || profileId === undefined) return undefined;
+        const profile = state.competenceProfiles.find((one) => one.id === profileId);
+        const message = !profile
+          ? `No competence profile has id ${profileId}`
+          : profile.archivedAt && profileId !== current
+            ? `The profile ${profile.names.en} is archived; a department does not take an archived profile as its default`
+            : undefined;
+        return message
+          ? staffProblem(400, { title: "Invalid department", errors: { competenceProfileId: [message] } })
+          : undefined;
+      };
       if (!structure[2]) {
         if (method === "GET") return Promise.resolve(jsonResponse(200, rows));
         if (method === "POST") {
+          const refused = profileRefusal(undefined);
+          if (refused) return Promise.resolve(refused);
           const { isDefault, ...fields } = body;
           const row: Row = { ...fields, id: nextId++, revision: 1, ...(table.defaults ? { isDefault: false } : {}) };
           rows.push(row);
@@ -3642,6 +4157,8 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (method === "PUT") {
         const stale = staleRevision(init, row.revision, table.what);
         if (stale) return Promise.resolve(stale);
+        const refused = profileRefusal((row as { competenceProfileId?: number }).competenceProfileId);
+        if (refused) return Promise.resolve(refused);
         const { isDefault, ...fields } = body;
         if (isDefault === false && row.isDefault) return Promise.resolve(structureDefault(table.what));
         // A full replace: every optional field left out is cleared.
@@ -3717,6 +4234,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
 
     const wishesAnswer = wishesRoutes(method, path, body);
     if (wishesAnswer) return Promise.resolve(wishesAnswer);
+
+    const profilesAnswer = competenceProfileRoutes(method, path, url, init, body);
+    if (profilesAnswer) return Promise.resolve(profilesAnswer);
 
     if (path === "/api/v1/staff/stats/attention" && method === "GET") return Promise.resolve(attention());
 
