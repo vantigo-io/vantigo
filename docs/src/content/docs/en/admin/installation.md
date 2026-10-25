@@ -694,5 +694,22 @@ HR has created a profile and assigned it to someone or made it a department's de
 Rolling the migration back drops the profiles, their items, the assignments and the
 departments' defaults.
 
+**The release with people's photos.** It brings `00069_staff_person_photo.sql`: three
+nullable columns on Staff's people — the photo's key in the object store, its type and
+when it was set — empty. No setting and no permission is new: the person, `staff:manage`
+and `staff:personal-data` set a person's photo, and everyone who sees the person sees
+it. The photos themselves are kept in the object store under the `staff` scope, as
+people's documents are, so an installation without object storage
+(`STORAGE_PROVIDER`) answers a photo upload *storage unavailable*; a replaced or
+removed photo, and the photo of a person erased or deleted, is removed from the store
+by Staff's deletion ledger, which the retention worker runs. The same release shows a
+person's hours this week on their page when the Time module is on, read from Time with
+no new permission; with `time` off the card says time tracking is off. Rolling the
+migration back drops the three columns, but not the objects: the photos people have at
+that moment stay in the store, named by nothing, and objects already queued are still
+removed by the ledger. To leave no photo behind, have every photo removed — or delete
+the `people/*/photo/` keys under the `staff` scope by hand — and let the ledger run
+before rolling back.
+
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).

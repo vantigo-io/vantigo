@@ -1684,6 +1684,35 @@ One migration, `00068_staff_competence_profiles.sql`.
 *Unblocks:* "who can do this, and who wants to"; certificates that expire before the
 work does.
 
+**The person's photo and the at-a-glance cards, built** on `claude/staff-person-insights`
+([the spec](docs/superpowers/specs/2026-10-25-staff-person-glance-design.md);
+[the plan](docs/superpowers/plans/2026-10-25-staff-person-glance.md);
+[the reference](docs/src/content/docs/en/reference/staff.md#at-a-glance)): a photo per
+person in the page's header and on My page — the register's own, not identity's avatar —
+set by the person, `staff:manage` or `staff:personal-data`, a JPEG or PNG judged by its
+own bytes, its metadata stripped, replaced whole and its old object removed through the
+deletion ledger, erased with the record; and **At a glance** at the top of the Profile
+tab, one read (`GET /people/{id}/glance`) answering each card the caller may read — sick
+days this year, the egenmelding standing, holiday taken, planned and left, sick-child
+days, the position and tenure, absence now and next with an open case, the contract
+check for HR, and this week's hours from Time against the contract. Decisions taken
+while building it:
+
+- **Staff reads Time optionally**, through a new consumer-gated contract,
+  `contracts.Timesheets`: Time authorizes nothing, Staff's manager rule decides, and with
+  `time` off the card says time tracking is off; `MODULES=staff` stays valid.
+- **The cards count as the tabs do**: sick days by the payroll file's per-day rule over
+  the whole calendar year, holiday from the account (planned includes requests), the
+  egenmelding standing over its twelve months; a manager reads the sick-child count but
+  never the entitlement.
+- **A colleague reads only dates**: the position's start, tenure, FTE and title, and
+  absence now and next as coalesced *absent* spans; the contract card is `staff:manage`'s
+  alone, the hours card the person's, their manager's and HR's — never the Approver's.
+- **Expected hours are the contract's week** over every employment in force, not reduced
+  by absence.
+
+One migration, `00069_staff_person_photo.sql`.
+
 ### Later
 
 **The Entra module** has [a section of its own](#entra); its phase 1 is done and phase 2 is in

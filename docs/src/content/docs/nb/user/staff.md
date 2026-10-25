@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden med dokumentene, kompetansen, det profilen krever og kontoen, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, Kompetanse-siden med matrisen og interessene, fravær og feriekontoen, Grupper og plassen deres i katalogen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, kompetansekatalogen og kompetanseprofilene, import og eksport av registeret, lønnseksporten, oppbevaring, tersklene og kontoene.
+description: Personregisteret — Personer, personsiden med personens bilde, oversiktskortene, dokumentene, kompetansen, det profilen krever og kontoen, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, Kompetanse-siden med matrisen og interessene, fravær og feriekontoen, Grupper og plassen deres i katalogen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, kompetansekatalogen og kompetanseprofilene, import og eksport av registeret, lønnseksporten, oppbevaring, tersklene og kontoene.
 sidebar:
   order: 45
 sources:
@@ -91,9 +91,26 @@ tatt, heller ikke som en tom overskrift. Personen selv, en leder av dem, en koll
 [feltgrupper og målgrupper](/en/reference/staff/#field-groups-and-audiences) i
 referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
 
+Øverst, ved siden av navnet, står personens **bilde** — eller initialene når det ikke
+finnes noe — med tittelen og avdelingen under navnet. Alle som kan åpne siden, ser
+bildet, kolleger også. Personen selv, HR (`staff:manage`) og `staff:personal-data` kan
+endre det:
+
+1. Trykk på bildet (knappen **Bilde av** og personens navn).
+2. Velg **Bytt bilde** og velg en JPEG eller PNG — på mobilen tar du et med kameraet
+   eller velger et fra biblioteket. Det nye bildet vises med en gang.
+3. Eller velg **Fjern bilde** og bekreft: initialene vises i stedet.
+
+Et bilde er på høyst 5 MiB og 4096 piksler på hver side; en annen fil avvises med
+grunnen. Hvor et mobilbilde ble tatt, og med hvilket kamera, fjernes før det
+lagres. En leder, `staff:approve` og en kollega ser bildet og har ingen meny.
+Personens historikk sier at et bilde ble lagt inn eller fjernet, aldri selve bildet.
+
 ### Profil
 
-- **Jobb** — navnene, ansattnummeret, e-post og telefon på jobb, tittelen, avdelingen,
+Fanen åpner med [Oversikt](#oversikt), og så personens grupper:
+
+- **Jobb** — bildet, navnene, ansattnummeret, e-post og telefon på jobb, tittelen, avdelingen,
   virksomheten, arbeidsstedet og lederen som gjelder i dag, språket og arbeidslandet.
   Alle som kan åpne siden, ser den.
 - **Privat** — fødselsdato, kjønn, mobil og privat telefon, privat e-post og
@@ -117,6 +134,50 @@ referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
 En leder ser jobbgruppen, rollene og organisasjonen til dem de leder; en kollega det
 samme for alle som er aktive i dag. En leder som har sluttet, leder ingen: folkene deres
 går til avdelingens leder, eller nærmeste leder over.
+
+#### Oversikt
+
+Øverst på fanen Profil står en rad små kort — det du ellers ville lett etter på tvers av
+fanene før en samtale. Hvert kort er et tall med en linje under, og kortets navn åpner
+fanen det oppsummerer (Fravær, Arbeidsforhold eller Dokumenter). Du ser et kort bare når
+du kan lese det det viser: et kort som ikke er ditt, står ikke der i det hele tatt,
+aldri som null.
+
+- **Sykedager** — sykedagene i år, og hvor mange av dem som var egenmelding og hvor
+  mange sykmelding; en gradert sykmelding teller etter graden. Personen selv, lederen,
+  `staff:approve` og HR.
+- **Egenmelding** — hvor mye av egenmeldingsordningen personen har brukt de siste 12
+  månedene: *2 av 4 ganger*, eller *6 av 24 dager*. De samme.
+- **Ferie** — feriedagene som er igjen i år, med det som er tatt så langt og det som er
+  planlagt framover, søknader som venter medregnet; i rødt, som dagene kontoen er
+  overtrukket med, når den er overtrukket. Innvilget ferie framover er alt trukket fra
+  det som er igjen, som på fanen Fravær, så de tre tallene blir ikke til sammen årets
+  dager. De samme.
+- **Sykt barn** — dagene hjemme med sykt barn i år. Som leder eller med
+  `staff:approve` ser du antallet; personen selv og HR ser det også mot omsorgsdagene
+  (*av 10 i år*).
+- **Stilling** — stillingsprosenten, tittelen, siden når og hvor lenge personen har vært
+  ansatt, og, mens den varer, når prøvetiden slutter. Alle som kan åpne siden, ser de
+  tre første; prøvetiden personen selv, lederen, `staff:approve` og HR.
+- **Fravær** — det personen er borte på i dag (*Borte*), det neste fraværet framover
+  (*Neste*), og en sykefraværssak som er åpen siden når, med dagen den er på;
+  *Ingenting nå eller planlagt* når det ikke finnes noe. En kollega ser *Borte* og
+  *Neste* som fravær, aldri hvilken type, og først når det er innvilget eller
+  registrert; en leder ser typen, men en type bare HR ser, står som permisjon. Den åpne
+  saken er for personen selv, lederen, `staff:approve` og HR.
+- **Arbeidsavtale** — *Signert*, eller *Ikke signert* i rødt, for arbeidsforholdet som
+  gjelder i dag; *Ingen ansettelse* når ingen gjelder. Kortet åpner fanen Dokumenter.
+  Bare HR (`staff:manage`).
+- **Timer denne uken** — timene som er ført i Timer-appen denne uken, alle
+  prosjekter sammen, mot timene arbeidsavtalen forventer (*31,5 av 37,5 t*), med hvor
+  mange som er godkjent. Den forventede uken er timene i full stilling ganger
+  stillingsprosenten, lagt sammen over alle arbeidsforholdene personen er i i dag, ikke
+  redusert for fravær eller helligdager — kortet Fravær sier
+  hvorfor en uke er kort. *Timeføring er slått av* når Timer-appen ikke er i bruk,
+  og *Ingen tilknyttet bruker* når personen ikke har en bruker å føre timer med.
+  Personen selv, lederen, `staff:manage` og `staff:personal-data` — ikke
+  `staff:approve`, og ikke en kollega. Du trenger ingen rettighet i Timer-appen for
+  å se det.
 
 #### Endre opplysningene (HR)
 
@@ -971,7 +1032,8 @@ HR koblet den til, og viser det du ser av deg selv — uansett hvilke andre rett
 har. Den har de fire fanene en persons side har, og så **Fravær**, **Kompetanse**,
 **Konto** og, når du er leder for noen, **Mitt team**:
 
-- **Profil** — jobbopplysningene, de private opplysningene, fødselsnummeret som
+- **Profil** — [Oversikt](#oversikt) først, dine egne kort (alle unntatt
+  arbeidsavtalen), og så jobbopplysningene, de private opplysningene, fødselsnummeret som
   **Registrert** og de fire siste sifrene i bankkontoen, de pårørende, rollene og hvor
   du hører hjemme i organisasjonen, og under dem **Gruppene dine**: ved navn, gruppene
   du er med i, slik HR holder dem (*Du er ikke med i noen gruppe.* når det ikke finnes
@@ -987,7 +1049,8 @@ har. Den har de fire fanene en persons side har, og så **Fravær**, **Kompetans
   arkiverer og endrer dem. Under **Mine data** lagrer **Last ned mine data** en fil
   (JSON) med oppføringen din, pårørende, roller, arbeidsforhold og vilkår,
   opplysninger om dokumentene dine, kompetansen din, det du ønsker — interessene,
-  preferansene og tilgjengeligheten din — kompetansesamtalene dine og historikken din —
+  preferansene og tilgjengeligheten din — kompetansesamtalene dine, typen og datoen for
+  bildet ditt og historikken din —
   uten verdiene HR holder
   forseglet (hele fødselsnummeret og bankkontoen) og uten HRs notater. Filen lister
   dokumentene uten innholdet: last ned hvert av dem fra listen. Å laste ned dataene
@@ -1014,6 +1077,23 @@ mener din mangler.
 
 Min side er laget for mobilen først: på en smal skjerm står alt i én kolonne, skjemaet
 fyller hele skjermen, og søknadsarket åpnes nedenfra.
+
+### Bildet ditt
+
+Bildet ditt, eller initialene dine når det ikke finnes noe, står ved siden av sidens
+tittel.
+
+1. Trykk på det (knappen **Bilde av** og navnet ditt).
+2. Velg **Bytt bilde** og velg en JPEG eller PNG: på mobilen tar du et med kameraet
+   eller velger et fra biblioteket.
+3. For å ta det bort velger du **Fjern bilde** og bekrefter; initialene dine vises i
+   stedet.
+
+Et bilde er på høyst 5 MiB og 4096 piksler på hver side; en annen fil avvises med
+grunnen. Hvor et mobilbilde ble tatt, og med hvilket kamera, fjernes før det
+lagres. Alle som kan åpne siden din i Ansatte, ser det, kolleger også, og HR kan også
+bytte eller fjerne det. Historikken din sier at et bilde ble lagt inn eller fjernet,
+aldri selve bildet.
 
 ### Fraværet ditt
 
