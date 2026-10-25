@@ -49,6 +49,8 @@ import {
   holidayAccount as defaultHolidayAccount,
   myAbsences as defaultMyAbsences,
   selfCertification as defaultSelfCertification,
+  graceAbsencesAsHr,
+  graceAccount,
   type PersonAbsence,
 } from "./absence-fixtures";
 import { jsonResponse } from "./api";
@@ -79,21 +81,25 @@ import {
   documents as defaultDocuments,
   employments as defaultEmployments,
   events as defaultEvents,
+  glanceFacts as defaultGlanceFacts,
   holidaySchemes as defaultHolidaySchemes,
   importTally as defaultImportTally,
   legalEntities as defaultLegalEntities,
   locations as defaultLocations,
   meta as defaultMeta,
   peopleWithRecords as defaultPeople,
+  photos as defaultPhotos,
   retentionRun as defaultRetentionRun,
   settings as defaultSettings,
   terms as defaultTerms,
+  type GlanceFacts,
   holdsPersonalData,
   manages,
   type PersonRecord,
   type Role,
   readsDirectory,
   type StoredPerson,
+  type StoredPhoto,
   TODAY,
 } from "./fixtures";
 import {
@@ -164,6 +170,16 @@ export interface StaffServer {
   competenceProfiles?: StaffCompetenceProfile[];
   /** The profiles HR assigned people; Grace's field electrician by default. */
   personProfiles?: StoredPersonProfile[];
+  /** Each person's photo (person-glance design S1); Ada's alone by default. Read the writes back from the stub's `state`. */
+  photos?: Record<number, StoredPhoto>;
+  /**
+   * A person's glance as the caller reads it, section by section, over what
+   * the fake works out from the fixtures — the hours with time tracking off,
+   * an overdrawn holiday account.
+   */
+  glance?: Record<number, Partial<Schemas["StaffPersonGlance"]>>;
+  /** What the glance reads that no other fixture holds: a probation, the week's hours. */
+  glanceFacts?: Record<number, GlanceFacts>;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
   /** Answers a read instead of the fake's own, as `write` does a write. */
@@ -237,6 +253,7 @@ export interface StaffState {
   reviews: StoredReview[];
   competenceProfiles: StaffCompetenceProfile[];
   personProfiles: StoredPersonProfile[];
+  photos: Record<number, StoredPhoto>;
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -349,6 +366,7 @@ const groupOf: Record<string, Group> = {
       "department",
       "businessUnit",
       "location",
+      "photoUpdatedAt",
     ].map((field) => [field, "work" as Group]),
   ),
   ...Object.fromEntries(
@@ -645,6 +663,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     reviews: server.reviews ?? defaultCompetenceReviews(),
     competenceProfiles: server.competenceProfiles ?? defaultCompetenceProfiles(),
     personProfiles: server.personProfiles ?? defaultPersonProfiles(),
+    photos: server.photos ?? defaultPhotos(),
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -828,6 +847,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
   /** A stored person's wire row, with the manager who manages them today. */
   const placed = (stored: StoredPerson, onlyColleague: boolean) => {
     const item = listItem(stored);
+    // The photo's cache key is the Work group's, on a list row too.
+    const photo = state.photos[stored.id];
+    if (photo) item.photoUpdatedAt = photo.updatedAt;
+    else delete item.photoUpdatedAt;
     const manager = managerToday(stored);
     if (manager) item.manager = summaryOf(manager);
     else delete item.manager;
@@ -874,6 +897,9 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         canStampWishesSeen: (audience.manager || audience.hr) && !audience.self,
         // Who assigns the person's competence profiles: HR alone (plan reading 32).
         canAssignProfiles: audience.hr,
+        // Who sets and removes the person's photo: the person and HR
+        // (person-glance design S1).
+        canSetPhoto: audience.self || audience.hr || audience.personalData,
         // Who the caller is to the person: themselves, or their manager today.
         self: audience.self,
         isManager: audience.manager && !audience.self,
@@ -1199,6 +1225,232 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     return jsonResponse(200, page(rows, Math.max(1, Number(params.get("page")) || 1), pageSize));
   };
 
+  /** A PNG of one pixel: what the fake streams for any photo. */
+  const PIXEL = Uint8Array.from(
+    atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="),
+    (char) => char.charCodeAt(0),
+  );
+  let photoWrites = 0;
+
+  /**
+   * The person's photo (person-glance design S1): read by everyone who sees
+   * the person, set and removed by the person, staff:manage and
+   * staff:personal-data. The fake cannot read the bytes, so a file's type
+   * is the one it was sent under.
+   */
+  const photoRoutes = (method: string, path: string, init: RequestInit | undefined): Response | undefined => {
+    const match = /^\/api\/v1\/staff\/people\/(\d+)\/photo$/.exec(path);
+    if (!match) return undefined;
+    const found = seen(Number(match[1]));
+    if (!found) return notFound();
+    const { stored, audience } = found;
+    const photo = state.photos[stored.id];
+    if (method === "GET")
+      return photo
+        ? new Response(PIXEL, {
+            status: 200,
+            headers: { "Content-Type": photo.contentType, "Cache-Control": "private, max-age=300" },
+          })
+        : notFound();
+    if (!(audience.self || audience.hr || audience.personalData)) return forbidden();
+    if (method === "PUT") {
+      // As the server: the file is judged before the erasure.
+      const file = (init?.body as FormData | undefined)?.get("file");
+      if (!(file instanceof File) || file.size === 0)
+        return staffProblem(400, { title: "Invalid photo", errors: { file: ["A photo file is required"] } });
+      if (file.type !== "image/jpeg" && file.type !== "image/png")
+        return staffProblem(400, {
+          code: "photo_invalid",
+          title: "Invalid photo",
+          errors: { file: ["The photo must be a JPEG or PNG"] },
+        });
+      if (stored.erasedAt) return erasedRefusal();
+      photoWrites += 1;
+      state.photos[stored.id] = {
+        contentType: file.type,
+        updatedAt: `2026-10-11T09:00:${String(photoWrites).padStart(2, "0")}Z`,
+      };
+      bumpRevision(stored);
+      return jsonResponse(200, personOf(stored, audience));
+    }
+    if (method === "DELETE") {
+      if (stored.erasedAt) return erasedRefusal();
+      if (!photo) return notFound();
+      delete state.photos[stored.id];
+      bumpRevision(stored);
+      return new Response(null, { status: 204 });
+    }
+    return undefined;
+  };
+
+  /** Whole months from one day to another, as the server counts tenure. */
+  const monthsBetween = (from: string, to: string) => {
+    const [fy, fm, fd] = from.split("-").map(Number);
+    const [ty, tm, td] = to.split("-").map(Number);
+    return (ty - fy) * 12 + (tm - fm) - (td < fd ? 1 : 0);
+  };
+
+  /** The days from a case's first day to today, its first day being day 1. */
+  const caseDay = (firstDay: string) =>
+    Math.round((Date.parse(`${TODAY}T00:00:00Z`) - Date.parse(`${firstDay}T00:00:00Z`)) / 86_400_000) + 1;
+
+  /**
+   * A person's glance (person-glance design §4), each section for the
+   * audience its table names, worked out from the fixtures: Ada's own
+   * absences and Grace's as HR reads them, the holiday accounts, the
+   * egenmelding standing and the care days, the cases, the employments and
+   * terms, and `glanceFacts` for what nothing else holds. `glance` overrides
+   * a section as the test needs it.
+   */
+  const glanceOf = (stored: StoredPerson, audience: Audience): Schemas["StaffPersonGlance"] => {
+    const id = stored.id;
+    const approver = role === "approve";
+    const hr = audience.hr || audience.personalData;
+    const readsAbsence = audience.self || audience.manager || approver || hr;
+    const readsCareDays = audience.self || hr;
+    const readsHours = audience.self || audience.manager || hr;
+    // staff:view and nothing more: the absence's dates, as "absent", and nothing else.
+    const colleague = colleagueOnly(audience) && !approver;
+    const facts = (server.glanceFacts ?? defaultGlanceFacts())[id] ?? {};
+    // The rows as HR reads them: a test's `absence.people` when it gives the person's, else Ada's and Grace's fixtures.
+    const rows: Schemas["StaffAbsence"][] =
+      state.personAbsence[id]?.absences ?? (id === 101 ? defaultMyAbsences() : id === 102 ? graceAbsencesAsHr() : []);
+    const account = id === 102 ? graceAccount() : defaultHolidayAccount({ personId: id });
+    const care = defaultCareDays({ personId: id });
+    const standing = defaultSelfCertification({ personId: id });
+    const typeOf = (row: Schemas["StaffAbsence"]) => state.absenceTypes.find((one) => one.id === row.typeId);
+    const ofKind = (row: Schemas["StaffAbsence"], ...kinds: string[]) => kinds.includes(typeOf(row)?.kind ?? "");
+    const days = (list: Schemas["StaffAbsence"][]) =>
+      list.reduce((sum, row) => sum + (row.workingDays ?? 0) * ((row.degreePercent ?? 100) / 100), 0);
+    const settled = (row: Schemas["StaffAbsence"]) => row.status === "approved" || row.status === "registered";
+    const thisYear = rows.filter((row) => row.firstDay.startsWith(TODAY.slice(0, 4)));
+
+    const glance: Schemas["StaffPersonGlance"] = {};
+    if (readsAbsence) {
+      glance.sickDays = {
+        selfCertified: days(thisYear.filter((row) => settled(row) && ofKind(row, "sick_self"))),
+        certified: days(thisYear.filter((row) => settled(row) && ofKind(row, "sick_certified"))),
+      };
+      glance.selfCertification = {
+        occurrencesUsed: standing.occurrencesUsed,
+        daysUsed: standing.daysUsed,
+        ...(standing.policy === "minimum"
+          ? { occurrencesLimit: standing.occurrencesPerYear }
+          : { daysLimit: standing.daysPerYear }),
+      };
+      glance.holiday = {
+        takenToDate: days(thisYear.filter((row) => settled(row) && ofKind(row, "holiday") && row.lastDay <= TODAY)),
+        planned: days(
+          rows.filter(
+            (row) =>
+              (row.status === "approved" || row.status === "requested") &&
+              ofKind(row, "holiday") &&
+              row.firstDay > TODAY &&
+              row.firstDay.startsWith(TODAY.slice(0, 4)),
+          ),
+        ),
+        remaining: account.remaining,
+        overdrawn: account.overdrawn,
+      };
+      glance.childSick = {
+        days: care.used + care.ineligibleDays,
+        ...(readsCareDays && care.recorded ? { entitlement: care.entitlement, remaining: care.remaining } : {}),
+      };
+    }
+
+    const employment = state.employments.find(
+      (one) => one.personId === id && one.startDate <= TODAY && (!one.endDate || one.endDate >= TODAY),
+    );
+    const row = employment ? inForce(employment) : undefined;
+    // The extension's end only once it is agreed (probationEnd).
+    const probation =
+      (row?.probationExtensionAgreed ? row.probationExtendedTo : undefined) ??
+      row?.probationEndDate ??
+      facts.probationEndsOn;
+    glance.employment = {
+      ...(employment
+        ? { startDate: employment.startDate, tenureMonths: monthsBetween(employment.startDate, TODAY) }
+        : {}),
+      ...(row ? { ftePercent: row.ftePercent, ...(row.title ? { title: row.title } : {}) } : {}),
+      ...(employment && probation && probation >= TODAY && readsAbsence ? { probationEndsOn: probation } : {}),
+    };
+
+    // A row as GET /absences shapes it for the caller, reduced to its days.
+    const spanOf = (one: Schemas["StaffAbsence"]): Schemas["StaffGlanceAbsenceSpan"] => {
+      const days = { firstDay: one.firstDay, lastDay: one.lastDay };
+      if (colleague) return { ...days, shownAs: "absent" };
+      const hrOnly = one.shownAs === "leave" || typeOf(one)?.visibility === "hr_only";
+      if (hrOnly && !(audience.self || audience.personalData)) return { ...days, shownAs: "leave" };
+      return one.typeId === undefined
+        ? { ...days, shownAs: "leave" }
+        : { ...days, shownAs: "type", typeId: one.typeId };
+    };
+    // As absenceSection: day rows a request, a decision or a registration,
+    // among those the caller sees (seesAbsence) — to a colleague, and an
+    // HR-only row read as leave, the settled ones alone.
+    const sees = (one: Schemas["StaffAbsence"]) => {
+      if (!["requested", "approved", "registered"].includes(one.status ?? "")) return false;
+      if ((typeOf(one)?.unit ?? "days") !== "days") return false;
+      const asLeave =
+        (one.shownAs === "leave" || typeOf(one)?.visibility === "hr_only") && !(audience.self || audience.personalData);
+      return colleague || asLeave ? settled(one) : true;
+    };
+    const shown = rows.filter(sees);
+    const startsBefore = (a: Schemas["StaffAbsence"], b: Schemas["StaffAbsence"]) =>
+      a.firstDay.localeCompare(b.firstDay) || (a.id ?? 0) - (b.id ?? 0);
+    // nowBefore: a decided row before a request, then the earlier start, then the lower id.
+    const nowBefore = (a: Schemas["StaffAbsence"], b: Schemas["StaffAbsence"]) =>
+      Number(a.status === "requested") - Number(b.status === "requested") || startsBefore(a, b);
+    // A colleague reads spans, not rows (colleagueSpans): the settled day rows
+    // folded, by first day, where one overlaps or adjoins the span before it —
+    // so a sykmelding over ferie reads as one absence, with no type.
+    const dayAfter = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+    const candidates = colleague
+      ? [...shown].sort(startsBefore).reduce<Schemas["StaffAbsence"][]>((spans, one) => {
+          const last = spans.at(-1);
+          if (last && one.firstDay <= dayAfter(last.lastDay)) {
+            if (one.lastDay > last.lastDay) last.lastDay = one.lastDay;
+          } else spans.push({ ...one });
+          return spans;
+        }, [])
+      : shown;
+    const now = candidates.filter((one) => one.firstDay <= TODAY && one.lastDay >= TODAY).sort(nowBefore)[0];
+    const next = candidates.filter((one) => one.firstDay > TODAY).sort(startsBefore)[0];
+    const open = state.cases.find((one) => one.personId === id && one.open);
+    glance.absence = {
+      ...(now ? { now: spanOf(now) } : {}),
+      ...(next ? { next: spanOf(next) } : {}),
+      ...(open && readsAbsence ? { openCase: { firstDay: open.firstDay, day: caseDay(open.firstDay) } } : {}),
+    };
+
+    if (manages(role)) glance.contract = { signed: employment ? employment.contractSignedAt !== undefined : null };
+
+    if (readsHours) {
+      const fullTime = row?.fullTimeHoursPerWeek;
+      const expected =
+        row && fullTime !== undefined ? Math.round((fullTime * row.ftePercent) / 100 / 0.25) * 0.25 : undefined;
+      const linked = stored.record?.user !== undefined;
+      glance.hours = {
+        timeTracking: true,
+        weekStart: "2026-10-05",
+        ...(linked ? { logged: facts.logged ?? 0, approved: facts.approved ?? 0 } : {}),
+        ...(expected === undefined ? {} : { expected }),
+      };
+    }
+    // A test's override replaces only a section this audience reads: it never
+    // hands a card to a reader the server would leave it out for.
+    const overrides = Object.entries(server.glance?.[id] ?? {}).filter(([section]) => section in glance);
+    return { ...glance, ...Object.fromEntries(overrides) };
+  };
+
+  /** `GET /people/{id}/glance`: the sections the caller reads; the unknown id's 404 to an outsider. */
+  const glanceRoutes = (method: string, path: string): Response | undefined => {
+    const match = /^\/api\/v1\/staff\/people\/(\d+)\/glance$/.exec(path);
+    if (!match || method !== "GET") return undefined;
+    const found = seen(Number(match[1]));
+    return found ? jsonResponse(200, glanceOf(found.stored, found.audience)) : notFound();
+  };
+
   /** The person page's and My page's endpoints; undefined falls through to a 404. */
   const personRoutes = (
     method: string,
@@ -1318,6 +1570,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
             exportedAt: "2026-10-11T08:00:00Z",
             person: personOf(stored, audience),
             account: { provisionAccount: false, accountEmailKind: "work" },
+            photo: null,
             absences: [],
             holidayAdjustments: [],
             cases: [],
@@ -1828,7 +2081,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       const own = state.documents.filter((one) => one.personId === stored.id);
       if (path.endsWith("/documents")) return jsonResponse(200, own);
       return new Response(
-        JSON.stringify({ exportedAt: "2026-10-11T08:00:00Z", person: personOf(stored), documents: own }),
+        JSON.stringify({ exportedAt: "2026-10-11T08:00:00Z", person: personOf(stored), documents: own, photo: null }),
         {
           status: 200,
           headers: {
@@ -4216,6 +4469,12 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const employments = /^\/api\/v1\/staff\/people\/(\d+)\/employments$/.exec(path);
     if (employments && method === "POST")
       return Promise.resolve(manages(role) ? createEmployment(Number(employments[1]), body) : forbidden());
+
+    const photoAnswer = photoRoutes(method, path, init);
+    if (photoAnswer) return Promise.resolve(photoAnswer);
+
+    const glanceAnswer = glanceRoutes(method, path);
+    if (glanceAnswer) return Promise.resolve(glanceAnswer);
 
     const groupsAnswer = groupRoutes(method, path, init, body);
     if (groupsAnswer) return Promise.resolve(groupsAnswer);

@@ -18,7 +18,7 @@ export const isSickKind = (kind: StaffAbsenceType["kind"]): boolean =>
  * that `/meta` does not list (a hidden one) is "Absence" — never guessed.
  */
 export const absenceName = (
-  absence: StaffAbsence,
+  absence: Pick<StaffAbsence, "shownAs" | "typeId">,
   types: readonly StaffAbsenceType[],
   locale: string,
   t: Translate,

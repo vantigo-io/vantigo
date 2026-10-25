@@ -36,6 +36,7 @@ import { personLinkOptions } from "../lib/routes";
 import { MAX_PERSON_ROLES, personRoleKinds } from "../lib/terms";
 import { NextOfKinFields } from "./-next-of-kin-fields";
 import { PersonEditModal } from "./-person-edit-modal";
+import { PersonGlance } from "./-person-glance";
 import { PersonLinkGroup } from "./-person-link";
 
 export interface PersonProfileProps {
@@ -50,7 +51,7 @@ export interface PersonProfileProps {
 }
 
 /**
- * The Profile tab (design §7): the person's field groups as the response
+ * The Profile tab (design §7): the cards at a glance first, then the person's field groups as the response
  * carries them (§5) — a group the server left out is not drawn, not even as
  * a heading — then the next of kin, the roles, the self-service link and the
  * place in the organisation. What may be changed follows the person's
@@ -70,6 +71,7 @@ export const PersonProfile = ({ person, canOpenPeople, privateActions }: PersonP
 
   return (
     <Stack gap="lg">
+      <PersonGlance person={person} />
       <FieldGroup
         title={t("groupWork")}
         actions={

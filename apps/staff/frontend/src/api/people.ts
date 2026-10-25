@@ -1,7 +1,8 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import { appUrl } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
 import { downloadFile, type FileDownload } from "./documents";
-import { json, type Paginated, request, STAFF_QUERY_KEY } from "./request";
+import { json, NotFoundError, type Paginated, request, STAFF_QUERY_KEY } from "./request";
 
 type Schemas = components["schemas"];
 
@@ -190,3 +191,42 @@ export const findSimilarErased = (input: Schemas["StaffSimilarErasedRequest"]) =
  */
 export const downloadPersonalData = (person: StaffPerson): Promise<FileDownload> =>
   downloadFile(`/api/v1/staff/people/${person.id}/personal-data`, `staff-${person.employeeNumber}-personal-data.json`);
+
+// The photo and the glance (person-glance design S1, S5).
+
+export type StaffPersonGlance = Schemas["StaffPersonGlance"];
+export type StaffGlanceAbsenceSpan = Schemas["StaffGlanceAbsenceSpan"];
+
+/**
+ * The person's cards at a glance, each section there only when the caller
+ * reads its group. A 404 is the person gone or never this caller's to see,
+ * which asking again does not change.
+ */
+export const personGlanceQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [STAFF_QUERY_KEY, "people", "detail", id, "glance"],
+    queryFn: ({ signal }) => request<StaffPersonGlance>(`/api/v1/staff/people/${id}/glance`, { signal }),
+    retry: (count, error) => !(error instanceof NotFoundError) && count < 3,
+  });
+
+/**
+ * Where the person's photo is read, with `photoUpdatedAt` as the cache key:
+ * the server ignores `v`, and a new photo is a new address.
+ */
+export const personPhotoUrl = (id: number, updatedAt: string): string =>
+  appUrl(`/api/v1/staff/people/${id}/photo?v=${encodeURIComponent(updatedAt)}`);
+
+/**
+ * Sets the person's photo: one part named `file`, the `Content-Type` left to
+ * the browser. A `photo_invalid` refusal is a field error on `file`. Answers
+ * the person.
+ */
+export const uploadPersonPhoto = (id: number, file: File): Promise<StaffPerson> => {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return request<StaffPerson>(`/api/v1/staff/people/${id}/photo`, { method: "PUT", body: form });
+};
+
+/** Removes the person's photo; a person without one is a 404. */
+export const removePersonPhoto = (id: number) =>
+  request<void>(`/api/v1/staff/people/${id}/photo`, { method: "DELETE" });
