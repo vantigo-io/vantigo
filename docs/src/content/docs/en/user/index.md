@@ -36,7 +36,10 @@ headcount and pension thresholds not yet acknowledged, and the absence items: re
 awaiting your decision, sick-leave follow-ups due, holiday left from last year or too
 little holiday in the main period, a self-approved absence and sickness during approved
 holiday — for a holder of `staff:personal-data` also an HR-only absence the only such
-holder approved for themselves, which opens that person's Absence tab; and, for
+holder approved for themselves, which opens that person's Absence tab; the competence
+items, for a manager their own people's and for HR everyone's: a competence declared
+and awaiting verification, a certificate expiring or expired, a competence review
+overdue and a competence profile not met, each opening the person's Competence tab; and, for
 `staff:manage`, the accounts: each person whose account Staff cannot create, enable or
 keep up to date, saying why — no employment or no address to give it from, an account
 an Owner disabled, stopped managing or that belongs to someone else, a number or an
@@ -58,7 +61,7 @@ shorter than yours:
 | [Time](/en/user/time/) | My week, Approvals, People, Time settings |
 | [Calendar](/en/user/calendar/) | Calendar (your own, and a colleague's with the picker), My calendar (your calendar on your phone, and calendars from elsewhere) |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
-| [Staff](/en/user/staff/) | My page (its **Absence** tab and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Groups, Staff settings |
+| [Staff](/en/user/staff/) | My page (its **Absence** and **Competence** tabs and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Competence (the matrix and, for HR, the interests), Groups, Staff settings |
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |

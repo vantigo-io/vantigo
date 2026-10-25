@@ -4,10 +4,10 @@ The second phase of the `staff` module. Research: `docs/superpowers/research/202
 ("R", cited by section) and the discussion note
 `docs/superpowers/research/2026-10-25-staff-competence.md` ("N"), whose §3 holds the
 sixteen decisions the owner took on 2026-10-24 and 2026-10-25, which this design
-implements and does not reopen. Revision 3: revision 1 was the design before review; the
-code review and the build of delivery A (2026-10-25) amended it as §13 lists, and the
-build of delivery B (2026-10-25) added §13's amendments 16–22; the sections above are
-read with §13. Code references
+implements and does not reopen. Revision 4: revision 1 was the design before review; the
+code review and the build of delivery A (2026-10-25) amended it as §13 lists, the
+build of delivery B (2026-10-25) added §13's amendments 16–22, and the build of delivery
+C (2026-10-25) added its amendments 23–36; the sections above are read with §13. Code references
 are against `main` at `65a369c6`; `srv/` abbreviates `apps/server/internal/`, `mig/`
 `srv/db/migrations/`, `boundaries.md` the page
 `docs/src/content/docs/en/contributing/module-boundaries.md`, "the reference"
@@ -763,3 +763,111 @@ The following were decided while building delivery B (2026-10-25); the plan is
     field error at its index (`preferences[1].kind`); `competence_unavailable` is reused on
     `interests[i].competenceId`; a review dated after today is a plain error on
     `reviewedOn`; the review reuses `own_record` for the person on their own.
+
+The following were decided while building delivery C (2026-10-25); the plan is
+`docs/superpowers/plans/2026-10-25-staff-competence-profiles.md`.
+
+23. **S13 — the gap statuses are judged in one order** on the person's current row of
+    the item's competence: no current row → `missing`; a declared certificate →
+    `declared_only`; `minLevel` set and the row's level below it → `below_level` (a row
+    without a level is never below); `mustBeValid` and the row not valid today →
+    `expired` when `validTo` has passed, `missing` when `validFrom` is not yet reached;
+    `mustBeValid` and `validTo` within the competence's `reminderLeadDays` → `expiring`;
+    otherwise `met`. Every item carries `declared` (the row unverified — a declared skill
+    at the level is met, with the flag, N3.16) and `archived` (§9: the item stays and is
+    reported). **Not met** is every status but `met` and `expiring`; `notMet` counts them
+    per profile and in all, an archived competence's item included.
+24. **S13, §6 — `mustBeValid: false` judges no validity**: an expired or not-yet-valid
+    row is `met` (or `below_level`, or `declared_only` for a certificate), and `expiring`
+    is never answered for it; a `mustBeValid` item on a competence without validity is
+    accepted and met whenever a row is held.
+25. **S12 — a profile reaches a person two ways, and the list says which**: each row of
+    `GET /people/{id}/competence-profiles` and each profile of the gap list carries
+    `assigned` and `department` (the summary of the department whose default it is), one
+    row when both. The department is the one the terms in force today of the person's
+    **place** name — the earliest employment in force today, by start then id, as a
+    group's rule judges it (`placeDepartmentOf`); none without an employment in force
+    (§9: only assigned profiles apply).
+26. **S12, §9 — an archived profile reaches nobody**: it is listed on the person with
+    `archived: true` so HR sees the assignment, but raises no gap and no item, and a
+    department whose default it is has none while it stays archived. Archiving is never
+    refused. A new assignment of an archived or unknown profile is a plain field error on
+    `profileIds[i]`, while one kept from before is never judged again; a department
+    write naming an unknown profile, or an archived one that is not already its default,
+    is a plain field error on `competenceProfileId` — a department keeps its own
+    archived default, as it keeps an archived parent, without effect. No new code
+    (as amendment 22).
+27. **S12, S16 — a profile's `key` never changes** (as a competence's, amendment 2): the
+    change request carries `names`, `archived` and `items`, the items replaced whole
+    under the profile's `If-Match` as a diff that keeps an unchanged item's row. The
+    catalogue writes the installation events `competence_profile_created` and
+    `competence_profile_updated` with `competenceProfileId` and `fields` — `key`,
+    `names`, `archived`, and `items` as `[{competenceId, minLevel, mustBeValid}]` in
+    catalogue order, each set or changed — as the competences' are; a change that alters
+    nothing moves the revision and records no event.
+28. **S12, §4, §6 — a profile's items**: at most 50; a competence named twice is a plain
+    error on the later index (`items[i].competenceId`); an unknown, hidden or archived
+    competence on a **new or changed** item is `competence_unavailable` there, while an
+    unchanged item naming a competence archived since is kept (amendment 18's rule);
+    `minLevel` 0–4 only on a competence with a level, else `level_not_allowed` on
+    `items[i].minLevel`; `mustBeValid` left out is true. An item with a `minLevel` makes
+    the competence **in use** for `competence_in_use` (its `hasLevel` fixed), so no
+    item's level is orphaned.
+29. **S14 — the matrix** (`staff:view` or `staff:manage`, the uniform 403 otherwise)
+    lists every person **active today** and not erased (as the contract does, whatever
+    `validOn` asks), by name, each with their current rows **valid on `validOn`**
+    (default today) of the competences selected — the `competenceId`s given
+    (repeatable), else `categoryId`'s, else all — as `{competenceId, level, verified,
+    validFrom, validTo}`; a row not valid that day is absent. `verifiedOnly` drops
+    declared rows; without it a declared certificate shows with its badge (reading 11).
+    `minLevel` drops rows of a competence with a level below it (or none) and leaves a
+    competence without a level untouched. With `competenceId`s a person is listed only
+    when they hold every one after those judgements; otherwise everyone active is, with
+    no cells when they hold nothing selected. The columns are the `competenceId`s given,
+    in catalogue order, else the competences of the cells shown; given together the ids
+    and the category intersect. A `minLevel` outside 0–4 or an unknown `competenceId` is
+    a plain field error (400), a `validOn` that is not a date the decoder's bare 400; an
+    unknown `categoryId` answers no rows and no columns.
+30. **S14, §5 — the interests overview** (`GET /competence-interests`, `staff:manage`
+    alone — never the Approver, amendment 16) groups every interest of an active, not
+    erased person by competence in catalogue order, only competences somebody wants
+    (hidden or archived ones included), each with `wantsToLearn` and `wantsMore` as
+    person summaries by name — `held` decides the bucket as on the person's list.
+31. **§4 — the `competenceGap` item**: one per person, `id` `competenceGap/<person id>`,
+    `count` the items not met across the person's unarchived profiles, `occurredAt`
+    today (a gap is computed on read), `title` the person's name; to `staff:manage` for
+    everyone and to a manager for their reports today, never `staff:approve` alone, never
+    one's own; only people in employment today and not erased. It is read only when
+    `c.Manage || len(reports) > 0`, stopping once no profile reaches anyone, so the
+    Approver's and the linked nobody's statement counts stand.
+32. **§5, S18 — the field group Profiles and gaps** (`groupProfiles`) is read by Self,
+    Manager, Approver, `staff:manage` and `staff:personal-data`, never the colleague: the
+    two person GETs answer the bare 404 outside it. `PUT /people/{id}/competence-profiles`
+    is `staff:manage`'s — 403 to anyone else in the group, 404 outside it — with no
+    `If-Match`. The capability block gains `canAssignProfiles` (`staff:manage`).
+33. **S17 — `profileAssignments` is in both exports**, filled for an audience that reads
+    the Profiles group — the person's own export included, since the tab shows them
+    their profiles — and an empty list, never absent, to anyone else; "HR's gains" is
+    read as the complete export gaining it too.
+34. **S16, S17 — `profiles_assigned`** is recorded on the person when the set changes,
+    `{"fields": {"profiles": {"from": [keys], "to": [keys]}}}` with an empty side left
+    out — the sorted profile **keys**, catalogue words naming a position, not a value of
+    the person's (amendment 21 keeps values out of the wish payloads); class D, HR the
+    actor. `person_profiles` is class D whole; the catalogue, its items and the
+    departments' column have no class; the delete of a person created in error deletes
+    the assignments.
+35. **S12, §3.8 — the department's default is a full-replace field**:
+    `StaffDepartmentRequest.competenceProfileId` left out clears it, as
+    `managerPersonId` left out clears the manager; the response carries it when set; the
+    department write records no event, as today. It is judged under the manager-graph
+    lock the department write already holds, the profile taken `FOR SHARE`.
+36. **S15, S18 — the profiles catalogue is `staff:access`'s to read** (as the
+    competence catalogue, amendment 1: it holds no personal data), archived ones listed
+    with `archivedAt`; writes are `staff:manage`'s. **No `PreferenceFit` method** is
+    added to `contracts.Workforce`: its shape — `PreferenceFit(ctx, personID, Booking)
+    (Fit, error)`, `Booking{From, To; Weekdays; Parts; LocationID; HoursPerWeek;
+    ConsecutiveDays; Travel; Remote}`, `Fit{Score 0–100; Lowered []kind}` — and its rule
+    (start at 100; each preference the booking contradicts lowers it by its weight × 10,
+    the kind named, never the value; the availability declaration is Staffing's to
+    enforce, S10) are written into the reference's Workforce section as the matching
+    contract's Staff side, added to the interface with Staffing's first delivery.

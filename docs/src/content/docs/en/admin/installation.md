@@ -684,5 +684,15 @@ is new: `staff:approve` now also records competence reviews. Rolling the migrati
 drops the four tables with every person's wishes and reviews, the Seen stamps on the
 competence rows and the interval setting.
 
+**The release with competence profiles.** It brings
+`00068_staff_competence_profiles.sql`: three empty tables for the competence profiles —
+the profiles, their items and the profiles assigned to people — and a nullable column
+on the departments for a department's default profile, empty. No setting and no
+permission is new: `staff:manage` keeps the profiles with the competence catalogue. The
+dashboard starts showing that someone does not meet their competence profile only once
+HR has created a profile and assigned it to someone or made it a department's default.
+Rolling the migration back drops the profiles, their items, the assignments and the
+departments' defaults.
+
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).

@@ -38,7 +38,11 @@ bekreftet, og fraværspunktene: søknader som venter på din avgjørelse,
 sykefraværsoppfølging som forfaller, ferie igjen fra i fjor eller for lite ferie i
 hovedferien, fravær noen godkjente selv, og sykdom i godkjent ferie — for den som har
 `staff:personal-data` også HR-fravær som den eneste med den tilgangen godkjente for seg
-selv, som åpner fraværsfanen til personen; og, for `staff:manage`, kontoene: hver
+selv, som åpner fraværsfanen til personen; kompetansepunktene, for en leder sine egne
+folks og for HR alles: en kompetanse som er registrert og venter på bekreftelse, et
+sertifikat som utløper snart eller har utløpt, en forfalt kompetansesamtale og en
+kompetanseprofil som ikke er oppfylt, som hver åpner personens kompetansefane; og, for
+`staff:manage`, kontoene: hver
 person Ansatte ikke kan opprette, aktivere eller holde oppdatert en konto for, med
 grunnen — ikke noe arbeidsforhold eller ingen adresse å gi den fra, en konto en eier
 har deaktivert, sluttet å la Ansatte styre eller som tilhører en annen, et nummer
@@ -61,7 +65,7 @@ kortere enn din:
 | [Timer](/nb/user/time/) | Min uke, Godkjenning, Personer, Timeinnstillinger |
 | [Kalender](/nb/user/calendar/) | Kalender (din egen, og en kollegas med velgeren), Min kalender (kalenderen din på mobilen, og kalendere fra andre steder) |
 | [Utlegg](/nb/user/expenses/) | Mine utlegg, Godkjenning av utlegg, Refusjoner, Utleggsinnstillinger |
-| [Ansatte](/nb/user/staff/) | Min side (fanen **Fravær** og, for en leder, **Mitt team**), Ansattoversikt, Fravær (kalenderen og godkjenningene), Grupper, Ansatteinnstillinger |
+| [Ansatte](/nb/user/staff/) | Min side (fanene **Fravær** og **Kompetanse** og, for en leder, **Mitt team**), Ansattoversikt, Fravær (kalenderen og godkjenningene), Kompetanse (matrisen og, for HR, interessene), Grupper, Ansatteinnstillinger |
 | [Fakturaer](/nb/user/invoices/) | Fakturaer, Hurtigfaktura, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |

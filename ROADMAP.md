@@ -1519,7 +1519,7 @@ Decisions taken while building it that change the design:
 *Unblocks:* a hire who exists before their first day and can sign in on it, a leaver
 who cannot sign in the day after, and an employee who requests holiday from a phone.
 
-### Phase 2 — Competence and preferences (A, B built)
+### Phase 2 — Competence and preferences (built)
 
 What competence means for this company was discussed first, in
 [`docs/superpowers/research/2026-10-25-staff-competence.md`](docs/superpowers/research/2026-10-25-staff-competence.md)
@@ -1614,12 +1614,72 @@ Decisions taken while building it that change the design:
 
 One migration, `00067_staff_one_to_one.sql`.
 
-**C — Profiles, gaps and the overview.** Competence profiles — a named list of
-competence, minimum level and must-be-valid — assigned to people or defaulted by
-department, with the gap list and its attention item; the Competence area with the
-matrix (who holds what, at least which level, valid on a date, declared rows badged,
-verified only on request) and, for HR, the interests overview; and the matching
-contract's Staff side — a fit for a proposed booking — written into the reference.
+**C — Profiles, gaps and the overview, built** on `claude/staff-phase2-delivery-c-396013`
+([the plan](docs/superpowers/plans/2026-10-25-staff-competence-profiles.md);
+[the reference](docs/src/content/docs/en/reference/staff.md#profiles-and-gaps)): competence
+profiles — what a position needs, a named list of competences, each with an optional
+minimum level and whether it must be valid — kept by HR in a catalogue every
+`staff:access` holder reads, archived rather than deleted; a profile assigned to a person
+by HR as a set, or made a department's default and so reaching everyone whose terms
+place them there today; the gap list at the top of the Competence tab — **What your
+profile asks** on My page, **What their profile asks** for the manager — judging each
+item *met*, *declared only*, *below the level*, *expiring*, *expired* or *missing* on the
+person's current row, with **Assign profiles** for HR; the `competenceGap` attention item,
+one per person with the items not met, for their manager and HR, and My team's
+**Profiles not met** card; the Competence page — the matrix of who holds what, valid on a
+day, filtered by category, competences, minimum level and verified only, declared rows
+badged, and, for HR, the interests overview of who wants to learn or use more of what;
+Settings' **Competence profiles** card and the department form's **Default competence
+profile**; the three events, the exports' `profileAssignments` and the D erase of the
+assignments; and the matching contract's Staff side — `PreferenceFit`'s shape and rule,
+a score and the kinds that lowered it — written into the reference's Workforce section.
+
+Decisions taken while building it that change the design:
+
+- **The gap statuses are judged in a fixed order** on the current row — missing,
+  declared certificate, below the level, not valid (expired, or missing before its
+  first day), expiring, met; a declared skill at the level is met with the `declared`
+  flag, and an archived competence's item stays and counts. *Not met* is every status
+  but met and expiring.
+- **`mustBeValid: false` judges no validity**: an expired row is met, and `expiring` is
+  never answered for such an item.
+- **A profile reaches a person two ways, and the list says which**: `assigned`, and
+  `department` — the department named by the terms in force today of the person's place,
+  the earliest employment in force by start then id, as a group's rule judges it.
+- **An archived profile reaches nobody**: it stays listed on the person, raises no gap
+  and no item, and a department keeps it as its default without effect; assigning one
+  anew, or making it a department's new default, is a plain field error.
+- **A profile's key never changes**, its items are replaced whole under `If-Match`, and
+  the catalogue writes `competence_profile_created` and `competence_profile_updated` as
+  installation events.
+- **A profile's items**: at most 50, each competence once; `competence_unavailable` on a
+  new or changed item only, so an unchanged item on a competence archived since is
+  kept; `minLevel` only on a competence with a level (`level_not_allowed`); an item's
+  `minLevel` puts the competence in use for `competence_in_use`.
+- **The matrix is the directory with competences**: `staff:view` or `staff:manage`,
+  everyone active today, the rows valid on the day asked; a declared certificate is
+  shown with its badge and dropped only by *verified only*; competences named together
+  keep the people who hold every one.
+- **The interests overview is `staff:manage`'s alone**, never the Approver's, over
+  people active today, the bucket decided by whether they hold the competence.
+- **The `competenceGap` item** is one per person, counted, dated today, for their
+  manager and HR — never `staff:approve` alone, never one's own — and read only when
+  the caller manages someone or holds `staff:manage`, so nobody else's dashboard pays
+  for it.
+- **A new field group, *Profiles and gaps***, read by the person, their manager, the
+  Approver, HR and `staff:personal-data`, never a colleague; assigning is
+  `staff:manage`'s, carried to the apps as `canAssignProfiles`.
+- **`profileAssignments` is in both exports**, the person's own included, since the tab
+  shows them their profiles.
+- **`profiles_assigned` carries the profiles' keys**, sorted, before and after —
+  catalogue words naming a position, not the person's — class D.
+- **A department's default is a full-replace field**: left out, it is cleared; the
+  department's write records no event, as before.
+- **The profiles catalogue is everyone's to read**, archived ones included, and **no
+  `PreferenceFit` method is added yet**: its shape and rule are in the reference, and it
+  joins `contracts.Workforce` with Staffing's first delivery.
+
+One migration, `00068_staff_competence_profiles.sql`.
 
 *Unblocks:* "who can do this, and who wants to"; certificates that expire before the
 work does.
@@ -1627,7 +1687,7 @@ work does.
 ### Later
 
 **The Entra module** has [a section of its own](#entra); its phase 1 is done and phase 2 is in
-flight beside Staff phase 2.
+flight; Staff phase 2 is built.
 
 **Staffing.** One module owning every booking of a person's time — allocations,
 assignments with their notice periods and customer terms, and shifts — with staffing
@@ -1636,7 +1696,8 @@ manager's. It reads Projects through `contracts.ProjectDirectory` and Staff thro
 `contracts.Workforce` — the competences held, valid on a date, already answered under
 the Colleague rule, and, added with Staffing's first delivery, the employment on a date
 and a **fit** Staff scores for a proposed booking from the person's preferences, never
-the wishes themselves — the first module to consume two business modules at once; whether
+the wishes themselves, its shape already in
+[the reference](docs/src/content/docs/en/reference/staff.md#the-workforce-contract) — the first module to consume two business modules at once; whether
 Projects phase 5's allocations move into it or are read by it is its spec's first
 question. The statutory limits are warnings an installation can mark as hard, never
 built-in refusals.

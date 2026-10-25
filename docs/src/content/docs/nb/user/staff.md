@@ -1,6 +1,6 @@
 ---
 title: Ansatte
-description: Personregisteret — Personer, personsiden med dokumentene, kompetansen og kontoen, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, fravær og feriekontoen, Grupper og plassen deres i katalogen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, kompetansekatalogen, import og eksport av registeret, lønnseksporten, oppbevaring, tersklene og kontoene.
+description: Personregisteret — Personer, personsiden med dokumentene, kompetansen, det profilen krever og kontoen, slettesperren, en slettet person og nyansettelsen av den, Ny person, Min side, fraværskalenderen og godkjenningene, Kompetanse-siden med matrisen og interessene, fravær og feriekontoen, Grupper og plassen deres i katalogen, og Ansatteinnstillinger med selskapets struktur, dokumentkategoriene, kompetansekatalogen og kompetanseprofilene, import og eksport av registeret, lønnseksporten, oppbevaring, tersklene og kontoene.
 sidebar:
   order: 45
 sources:
@@ -28,6 +28,7 @@ deg:
 | **Min side** | alle med `staff:access` |
 | **Ansattoversikt** (skjermbildet Personer) | `staff:view`, eller `staff:manage` — en HR-rolle uten `staff:view` ser også listen og strukturen |
 | **Fravær** (kalenderen og godkjenningene) | `staff:view`, `staff:approve`, `staff:manage` eller `staff:personal-data`; en leder uten disse åpner den fra lenken på dashbordet, og avgjør under [Mitt team](#mitt-team) |
+| **Kompetanse** (matrisen og, for HR, interessene) | `staff:view` eller `staff:manage` |
 | **Grupper** | `staff:manage` |
 | **Ansatteinnstillinger** | `staff:manage` |
 
@@ -297,6 +298,50 @@ etter kategori, men ikke den samme fanen:
 En kompetanse personen la inn selv, har merket **Egenerklært** til noen bekrefter den,
 og dashbordet viser den for personens leder som *… har registrert en kompetanse som
 venter på bekreftelse*.
+
+**Det profilen krever.** Øverst på fanen viser **Det profilen krever** hver
+kompetanseprofil som gjelder for personen — det stillingen krever, slik HR beskriver det
+under [Kompetanseprofiler](#kompetanseprofiler) — med *Tildelt* under navnet når HR har
+tildelt den, og *Standardprofil for* en avdeling når den er standardprofilen for
+avdelingen vilkårene plasserer personen i i dag; en profil kan være begge deler. Hver
+profil viser *2 ikke oppfylt*, eller *Alt oppfylt*, og en rad for hver kompetanse den
+krever: **Krav** — *Minst* et nivå, *Gyldig* for et sertifikat, eller *Innehas* når det
+er nok å ha den — **Status**, og hva personen har **Registrert**: nivået og dagen den
+gjelder til. Statusene, og hva du gjør med hver:
+
+- **Oppfylt** — personen har kompetansen slik profilen krever. Med merket
+  **Egenerklært** ved siden av har hen erklært den selv, og ingen har bekreftet den
+  ennå: den teller, og du bekrefter den med **Bekreft** som enhver egenerklært
+  kompetanse.
+- **Utløper snart** — oppfylt, men sertifikatet er innenfor påminnelsen før det
+  utløper. Det teller fortsatt; trykk **Fornyet** når det nye sertifikatet er der.
+- **Egenerklært, ikke bekreftet** — et sertifikat personen har erklært selv. Det teller
+  ikke før noen har bekreftet det: se på dokumentasjonen og **Bekreft** det.
+- **Under nivået** — personen har kompetansen på et lavere nivå enn profilen krever.
+  Bli enige om hvordan hen kommer dit; når hen har gjort det, registrerer du det nye
+  nivået med **Endre** eller **Bekreft**.
+- **Utløpt** — siste gyldige dag for sertifikatet er passert. Forny det og trykk
+  **Fornyet**.
+- **Mangler** — personen har ingen gjeldende rad for den, eller sertifikatet gjelder
+  ikke ennå. Legg den til med **Legg til kompetanse** hvis du har sett den i arbeidet,
+  eller planlegg hvordan personen får den.
+
+Alle statuser unntatt **Oppfylt** og **Utløper snart** er ikke oppfylt. En kompetanse
+som er arkivert etter at profilen ble skrevet, blir stående på den, merket *(arkivert)*,
+og teller fortsatt; en profil HR har arkivert, krever ingenting og vises ikke. Når ingen
+profil gjelder, sier fanen *Ingen profil krever noe av* personen. Punktene som ikke er
+oppfylt, når også dashbordet til personens leder og HR — *… oppfyller ikke
+kompetanseprofilen sin* — og lederens Mitt team, under **Profiler som ikke er
+oppfylt**.
+
+HR har **Tildel profiler** over listen: velg profilene som gjelder for personen, høyst
+20, og trykk **Lagre profiler** — profilene du velger, erstatter dem som var tildelt.
+Den tilbyr profilene som ikke er arkivert, og beholder en som er arkivert siden, til du
+tar den bort. En avdelings standardprofil tildeles ikke her: den gjelder av seg selv og
+settes på avdelingen under [Strukturen](#strukturen). Personen, lederen, den som har
+`staff:approve`, `staff:personal-data` og HR ser **Det profilen krever**; kolleger gjør
+det ikke. Reglene står under
+[profiler og mangler](/en/reference/staff/#profiles-and-gaps).
 
 **I medarbeidersamtalen.** Åpne siden til den du er leder for, på **Kompetanse**, og gå
 gjennom den sammen:
@@ -991,9 +1036,24 @@ Fanen **Fravær** på Min side viser, slik Ansatte teller dem:
 
 ### Kompetansen din
 
-Fanen **Kompetanse** på Min side er det du kan — ferdigheter med et nivå og
-sertifikater med en gyldighet — slik du og lederen din holder den ved like sammen, og
-under det, det du ønsker. Den er laget for mobilen.
+Fanen **Kompetanse** på Min side er det stillingen din krever av deg, det du kan —
+ferdigheter med et nivå og sertifikater med en gyldighet — slik du og lederen din holder
+den ved like sammen, og under det, det du ønsker. Den er laget for mobilen.
+
+**Det profilen din krever.** Øverst på fanen viser **Det profilen din krever** hver
+kompetanseprofil som gjelder for deg — det stillingen din krever, tildelt deg av HR
+eller avdelingens standardprofil — og, for hver kompetanse den krever, om du oppfyller
+den. **Oppfylt** betyr at du gjør det; med merket **Egenerklært** teller den også, og
+lederen din bekrefter den neste gang dere møtes. **Utløper snart** teller fortsatt:
+forny sertifikatet før siste dag. **Egenerklært, ikke bekreftet** er et sertifikat du
+har lagt inn selv: det teller når lederen din har bekreftet det, så legg til
+dokumentasjonen. **Under nivået** krever mer enn nivået du har: snakk med lederen din om
+hvordan du kommer dit, og skriv under **Det jeg ønsker** at du vil lære det. **Utløpt**
+er et sertifikat som er forbi siste dag: forny det og trykk **Fornyet**. **Mangler** er
+en kompetanse du ikke har lagt inn, eller et sertifikat som ikke gjelder ennå: har du
+den, legg den til med dokumentasjonen. Hver profil sier hvor mange punkter som ikke er
+oppfylt, eller *Alt oppfylt*. Når ingen profil gjelder for deg, sier fanen *Ingen profil
+krever noe av deg*.
 
 Slik legger du til en kompetanse:
 
@@ -1123,9 +1183,13 @@ en teamleder trenger ingen annen rettighet for dem hen er leder for. Den viser:
   utløper eller har utløpt, de utløpte først og merket **Utløpt**, hvert med sin dag.
 - **Forfalte gjennomganger** — de du er leder for, der kompetansesamtalen er forfalt,
   hver med dagen den forfalt.
+- **Profiler som ikke er oppfylt** — de du er leder for, som ikke har det
+  kompetanseprofilene deres krever, hver med hvor mange punkter som ikke er oppfylt
+  (*2 ikke oppfylt*).
 
-I de tre kompetansekortene åpner et navn personens fane **Kompetanse**, der du
-bekrefter, fornyer eller trykker **Gjennomgått i dag**.
+I de fire kompetansekortene åpner et navn personens fane **Kompetanse**, der du
+bekrefter, fornyer, trykker **Gjennomgått i dag** eller går gjennom **Det profilen
+krever**.
 
 ## Fraværssiden
 
@@ -1179,6 +1243,52 @@ dashbordet til fraværet er over.
 - **Den som har `staff:personal-data`**, får e-post om hver søknad av en type som røper
   helse eller familieforhold, fra noen andre: «En fraværssøknad venter på avgjørelsen
   din», uten navn, type eller dager — åpne **Godkjenninger** for å se den.
+
+## Kompetansesiden
+
+**Kompetanse** i sidemenyen, for `staff:view` og `staff:manage`, svarer på hvem i
+selskapet som har hva. Den har to faner: **Matrise**, og, for HR, **Interesser**. Fanen
+og hvert filter står i adressen til siden, så en lenke tar dem med.
+
+### Matrise
+
+**Matrise** viser hver person som er aktiv i dag, etter navn, med kompetansene hen har
+som gjelder på en gitt dag, en kolonne for hver kompetanse. Snevre den inn med
+filtrene:
+
+- **Kategori** — kompetansene i én kategori.
+- **Kompetanser** — én eller flere kompetanser, søkt etter navn og gruppert etter
+  kategori. Bare de som har hver eneste av dem, vises, med dem som kolonner.
+- **Minste nivå** — utelater et nivå under det; en kompetanse uten nivå, som de fleste
+  sertifikater, berøres ikke.
+- **Gyldig på** — dagen kompetansene må gjelde, i dag med mindre du velger en annen;
+  tøm feltet for å gå tilbake til i dag. Et sertifikat som er utløpt den dagen, eller
+  som ikke gjelder ennå, vises ikke: personens fane sier når det gikk ut.
+- **Bare bekreftet** — utelater det en person har egenerklært og ingen har bekreftet.
+
+Uten noen kompetanse valgt vises alle som er aktive, og kolonnene er kompetansene de som
+vises, har; den som ikke har noen av dem, har en tom rad. Hver celle viser nivået, eller
+en hake for en kompetanse uten nivå, merket **Egenerklært** når ingen har bekreftet den
+— et egenerklært sertifikat vises også, med mindre du slår på **Bare bekreftet** — og
+*Gyldig til* en dato når den utløper. Et navn åpner personens fane **Kompetanse**. På
+mobilen er hver person et kort med det hen har. Når ingen er igjen, sier siden *Ingen
+oppfyller filteret*: utvid det.
+
+Matrisen viser det en kollega ser på fanen — navnene, nivåene, om de er bekreftet og
+hvor lenge de gjelder — og ingenting av detaljene. Se
+[matrisen](/en/reference/staff/#the-matrix).
+
+### Interesser
+
+**Interesser** er bare HRs (`staff:manage`): hvem som vil lære hva. Et kort for hver
+kompetanse noen har valgt blant interessene sine på Min side, viser dem som **Vil
+lære** den — de har den ikke — og dem som **Vil bruke mer** av den fordi de allerede
+har den, og hvert navn åpner personens fane **Kompetanse**. Lest ved siden av profilene
+sier den hvem som bør læres opp: den som har **Under nivået** eller **Mangler** i
+profilen sin på en kompetanse hen vil lære, er den første å spørre. Bare personer som er
+aktive i dag, vises, og den som har `staff:approve` uten `staff:manage`, ser ikke fanen.
+Er ingenting skrevet ennå, sier den *Ingen har lagt inn en interesse ennå*. Se
+[interesseoversikten](/en/reference/staff/#the-interests-overview).
 
 ## Fravær og ferien din
 
@@ -1300,6 +1410,7 @@ bare for `staff:personal-data`:
 | Et sertifikat for … utløper snart | Et sertifikat er innenfor påminnelsen før siste gyldige dag. En leder ser sine egne folks; HR alles. Trykk **Fornyet** på det når det nye er der. | Personens kompetansefane |
 | Et sertifikat for … har utløpt | Siste gyldige dag for et sertifikat er passert. Forny det, eller fjern det hvis personen ikke lenger trenger det. | Personens kompetansefane |
 | Kompetansesamtalen med … er forfalt | En som er i arbeid, har ingen kompetansesamtale registrert innen intervallet som er satt under [Kompetansesamtaler](#kompetansesamtaler) — regnet fra siste gjennomgang, eller fra starten på det nåværende arbeidsforholdet når det er senere. En leder ser sine egne folks; HR alles. Gå gjennom fanen sammen og trykk **Gjennomgått i dag**. | Personens kompetansefane |
+| … oppfyller ikke kompetanseprofilen sin (2 punkter) | En kompetanseprofil som gjelder for en som er aktiv i dag, krever kompetanse hen ikke oppfyller — den mangler, er under nivået, er et sertifikat som er egenerklært, men ikke bekreftet, eller er utløpt — talt opp. Ett per person, for lederen og HR, aldri for personen selv eller for bare `staff:approve`. Det forsvinner når hvert punkt er oppfylt eller utløper snart. | Personens kompetansefane |
 | Gruppen … er ikke synkronisert med katalogen | En gruppe kunne ikke holdes i katalogen — en innstilling katalogen avviste, en gruppe der med nøkkelen som Vantigo ikke får endre, eller en katalog som ikke kunne nås tre ganger på rad; gruppesiden forteller hvorfor. Én per gruppe og katalog, for HR. | Gruppen |
 
 Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
@@ -1309,8 +1420,8 @@ Ansatteinnstillinger.
 ## Endre innstillingene
 
 **Ansatteinnstillinger** (`staff:manage`) har de generelle innstillingene først, så
-selskapets struktur, dokumentkategoriene, tre kort for kompetanse — **Kompetansekategorier**,
-**Kompetanser** og **Kompetansesamtaler** — tre kort for fravær — **Fraværstyper**,
+selskapets struktur, dokumentkategoriene, fire kort for kompetanse — **Kompetansekategorier**,
+**Kompetanser**, **Kompetanseprofiler** og **Kompetansesamtaler** — tre kort for fravær — **Fraværstyper**,
 **Ferieordninger** og **Egenmelding og overføring** — fire kort for dataene —
 **Importer og eksporter personer**, **Lønnseksport**, **Oppbevaring** og **Terskler** — og
 **Kontoer** og **Katalogprofil**. Den som ikke har `staff:manage` og åpner siden med adressen, ser ingen av dem.
@@ -1344,9 +1455,12 @@ Fire tabeller, hver med en **Legg til**-knapp, en blyant for å endre en rad, og
 - **Virksomheter** — virksomheten a-meldingen rapporterer per, hver vist med den
   juridiske enheten den hører under.
 - **Avdelinger** — en kode, et navn, en **Leder** (en person i Ansatte: skriv et navn
-  eller et ansattnummer for å finne dem), en **Overordnet avdeling**, et kostnadssted og
-  en divisjon. Lederen for en avdeling er leder for dem hvis vilkår nevner avdelingen
-  og ingen egen leder.
+  eller et ansattnummer for å finne dem), en **Overordnet avdeling**, en
+  **Standardprofil**, et kostnadssted og en divisjon. Lederen for en avdeling er leder
+  for dem hvis vilkår nevner avdelingen og ingen egen leder. Standardprofilen er
+  kompetanseprofilen som gjelder for alle som vilkårene plasserer i avdelingen i dag, i
+  tillegg til profilene som er tildelt dem; tabellen viser den under **Standardprofil**.
+  Tøm feltet for å la avdelingen være uten.
 - **Arbeidssteder** — arbeidsstedet med adresse; landet er Norge når det står tomt.
 
 Nøyaktig én juridisk enhet og én virksomhet har merket **Standard**; et nytt
@@ -1431,6 +1545,39 @@ stillasbygger, førerkort klasse B, C og D, kode 95, varme arbeider og arbeidsva
   **Arkiver** tar bort en egen, og **Gjenopprett** henter den tilbake; en som ligger i
   en arkivert kategori, gjenopprettes først når kategorien er det. Uansett beholder
   alle som har kompetansen, den, vist med navnet.
+
+### Kompetanseprofiler
+
+**Kompetanseprofiler** beskriver det en stilling krever: en navngitt liste over
+kompetanser, hver med et minste nivå når den har nivå, og om den må være gyldig.
+Tabellen viser **Nøkkel**, **Engelsk navn** og **Norsk navn** for hver profil, hvor
+mange **Punkter** den har, og om den er **Arkivert**.
+
+Slik legger du til en:
+
+1. Trykk **Ny profil**.
+2. Skriv en **Nøkkel** — 1 til 40 tegn av a–z, 0–9 og bindestrek; den kan ikke endres
+   senere — **Navn på engelsk** og **Navn på norsk**.
+3. Under **Punkter** trykker du **Legg til punkt** for hver kompetanse stillingen
+   krever, og velger **Kompetanse**. Har den nivå, velger du **Minste nivå**; står det
+   tomt, holder ethvert nivå. For et sertifikat med fast gyldighet krever **Må være
+   gyldig** — på som standard — at det gjelder i dag; slå det av når det er nok å ha
+   det. Fjern et punkt med søppelbøtten. En profil har høyst 50 punkter, hver kompetanse
+   én gang.
+4. Trykk **Legg til**.
+
+Blyanten endrer navnene og punktene på en profil. Et punkt du lar være som det var,
+blir stående selv om kompetansen er arkivert siden; et nytt eller endret punkt må nevne
+en kompetanse som tilbys. Slå på **Arkivert** og trykk **Lagre** for å arkivere
+profilen: en arkivert profil krever ingenting av noen før du gjenoppretter den, ved å
+slå bryteren av igjen. Den blir stående tildelt dem som hadde den, og en avdeling
+beholder den som standardprofil, uten virkning så lenge den er arkivert. Har noen andre
+lagret profilen siden du åpnet den, lastes den inn på nytt, og siden sier fra: gjør
+endringen din igjen.
+
+Tildel en profil på en persons fane **Kompetanse** med **Tildel profiler**, eller gjør
+den til en avdelings **Standardprofil** under [Strukturen](#strukturen). Reglene står
+under [profiler og mangler](/en/reference/staff/#profiles-and-gaps).
 
 ### Kompetansesamtaler
 
