@@ -116,8 +116,13 @@ SELECT id, parent_id FROM staff.departments;
 SELECT EXISTS (SELECT 1 FROM staff.people WHERE id = @id) AS person_exists;
 
 -- name: InsertDepartment :one
-INSERT INTO staff.departments (code, name, manager_person_id, cost_centre, division, parent_id, created_at, updated_at)
-VALUES (@code, @name, @manager_person_id, @cost_centre, @division, @parent_id, @now::timestamptz, @now::timestamptz)
+INSERT INTO staff.departments (
+    code, name, manager_person_id, cost_centre, division, parent_id, competence_profile_id, created_at, updated_at
+)
+VALUES (
+    @code, @name, @manager_person_id, @cost_centre, @division, @parent_id, sqlc.narg(competence_profile_id),
+    @now::timestamptz, @now::timestamptz
+)
 RETURNING *;
 
 -- name: UpdateDepartment :one
@@ -128,6 +133,7 @@ UPDATE staff.departments SET
     cost_centre = @cost_centre,
     division = @division,
     parent_id = @parent_id,
+    competence_profile_id = sqlc.narg(competence_profile_id),
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = @id

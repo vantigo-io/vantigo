@@ -552,6 +552,11 @@ func (s *server) readAttention(ctx context.Context, q *store.Queries, c *callerC
 			return nil, err
 		}
 	}
+	if gapsJudged(c, in.reports) {
+		if in.competences.gaps, err = in.readCompetenceGaps(ctx, q, c); err != nil {
+			return nil, err
+		}
+	}
 	if !c.Manage {
 		return attentionFor(in, c), nil
 	}

@@ -47,7 +47,7 @@ UPDATE staff.departments SET
     revision = revision + CASE WHEN archived_at IS NULL THEN 1 ELSE 0 END,
     updated_at = CASE WHEN archived_at IS NULL THEN $1::timestamptz ELSE updated_at END
 WHERE id = $2
-RETURNING id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at
+RETURNING id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at, competence_profile_id
 `
 
 type ArchiveDepartmentParams struct {
@@ -70,6 +70,7 @@ func (q *Queries) ArchiveDepartment(ctx context.Context, arg ArchiveDepartmentPa
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompetenceProfileID,
 	)
 	return i, err
 }
@@ -301,19 +302,25 @@ func (q *Queries) InsertBusinessUnit(ctx context.Context, arg InsertBusinessUnit
 }
 
 const insertDepartment = `-- name: InsertDepartment :one
-INSERT INTO staff.departments (code, name, manager_person_id, cost_centre, division, parent_id, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $7::timestamptz)
-RETURNING id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at
+INSERT INTO staff.departments (
+    code, name, manager_person_id, cost_centre, division, parent_id, competence_profile_id, created_at, updated_at
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6, $7,
+    $8::timestamptz, $8::timestamptz
+)
+RETURNING id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at, competence_profile_id
 `
 
 type InsertDepartmentParams struct {
-	Code            string
-	Name            string
-	ManagerPersonID *int64
-	CostCentre      *string
-	Division        *string
-	ParentID        *int64
-	Now             time.Time
+	Code                string
+	Name                string
+	ManagerPersonID     *int64
+	CostCentre          *string
+	Division            *string
+	ParentID            *int64
+	CompetenceProfileID *int64
+	Now                 time.Time
 }
 
 func (q *Queries) InsertDepartment(ctx context.Context, arg InsertDepartmentParams) (StaffDepartment, error) {
@@ -324,6 +331,7 @@ func (q *Queries) InsertDepartment(ctx context.Context, arg InsertDepartmentPara
 		arg.CostCentre,
 		arg.Division,
 		arg.ParentID,
+		arg.CompetenceProfileID,
 		arg.Now,
 	)
 	var i StaffDepartment
@@ -339,6 +347,7 @@ func (q *Queries) InsertDepartment(ctx context.Context, arg InsertDepartmentPara
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompetenceProfileID,
 	)
 	return i, err
 }
@@ -452,7 +461,7 @@ func (q *Queries) ListBusinessUnits(ctx context.Context) ([]StaffBusinessUnit, e
 }
 
 const listDepartments = `-- name: ListDepartments :many
-SELECT id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at FROM staff.departments ORDER BY code, id
+SELECT id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at, competence_profile_id FROM staff.departments ORDER BY code, id
 `
 
 func (q *Queries) ListDepartments(ctx context.Context) ([]StaffDepartment, error) {
@@ -476,6 +485,7 @@ func (q *Queries) ListDepartments(ctx context.Context) ([]StaffDepartment, error
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CompetenceProfileID,
 		); err != nil {
 			return nil, err
 		}
@@ -614,7 +624,7 @@ func (q *Queries) LockBusinessUnit(ctx context.Context, id int64) (StaffBusiness
 }
 
 const lockDepartment = `-- name: LockDepartment :one
-SELECT id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at FROM staff.departments WHERE id = $1 FOR UPDATE
+SELECT id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at, competence_profile_id FROM staff.departments WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockDepartment(ctx context.Context, id int64) (StaffDepartment, error) {
@@ -632,6 +642,7 @@ func (q *Queries) LockDepartment(ctx context.Context, id int64) (StaffDepartment
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompetenceProfileID,
 	)
 	return i, err
 }
@@ -692,7 +703,7 @@ func (q *Queries) PersonExists(ctx context.Context, id int64) (bool, error) {
 }
 
 const shareDepartment = `-- name: ShareDepartment :one
-SELECT id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at FROM staff.departments WHERE id = $1 FOR SHARE
+SELECT id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at, competence_profile_id FROM staff.departments WHERE id = $1 FOR SHARE
 `
 
 // ShareDepartment reads the department a write is about to name as a parent
@@ -712,6 +723,7 @@ func (q *Queries) ShareDepartment(ctx context.Context, id int64) (StaffDepartmen
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompetenceProfileID,
 	)
 	return i, err
 }
@@ -792,21 +804,23 @@ UPDATE staff.departments SET
     cost_centre = $4,
     division = $5,
     parent_id = $6,
+    competence_profile_id = $7,
     revision = revision + 1,
-    updated_at = $7::timestamptz
-WHERE id = $8
-RETURNING id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at
+    updated_at = $8::timestamptz
+WHERE id = $9
+RETURNING id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at, competence_profile_id
 `
 
 type UpdateDepartmentParams struct {
-	Code            string
-	Name            string
-	ManagerPersonID *int64
-	CostCentre      *string
-	Division        *string
-	ParentID        *int64
-	Now             time.Time
-	ID              int64
+	Code                string
+	Name                string
+	ManagerPersonID     *int64
+	CostCentre          *string
+	Division            *string
+	ParentID            *int64
+	CompetenceProfileID *int64
+	Now                 time.Time
+	ID                  int64
 }
 
 func (q *Queries) UpdateDepartment(ctx context.Context, arg UpdateDepartmentParams) (StaffDepartment, error) {
@@ -817,6 +831,7 @@ func (q *Queries) UpdateDepartment(ctx context.Context, arg UpdateDepartmentPara
 		arg.CostCentre,
 		arg.Division,
 		arg.ParentID,
+		arg.CompetenceProfileID,
 		arg.Now,
 		arg.ID,
 	)
@@ -833,6 +848,7 @@ func (q *Queries) UpdateDepartment(ctx context.Context, arg UpdateDepartmentPara
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompetenceProfileID,
 	)
 	return i, err
 }

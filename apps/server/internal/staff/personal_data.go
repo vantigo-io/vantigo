@@ -76,6 +76,9 @@ type personalDataSnapshot struct {
 	preferences  []store.StaffPersonPreference
 	availability []store.StaffAvailabilityDeclaration
 	reviews      []store.StaffCompetenceReview
+	// Delivery C: the profiles that reach the person today — assigned, or
+	// their department's default (effectiveProfiles).
+	profiles []effectiveProfile
 }
 
 // readPersonalData reads one person's file on q, which is a snapshot's: the
@@ -179,6 +182,9 @@ func readPersonalData(ctx context.Context, q *store.Queries, id int64, today tim
 	}
 	if out.reviews, err = q.ListCompetenceReviews(ctx, id); err != nil {
 		return out, fmt.Errorf("staff: list person %d's competence reviews: %w", id, err)
+	}
+	if out.profiles, err = effectiveProfiles(ctx, q, id, today); err != nil {
+		return out, err
 	}
 	return out, nil
 }
@@ -340,6 +346,9 @@ func personalDataResponse(f personalDataSnapshot, a audience, opened *openedSeal
 		CompetenceReviews: readList(a.reads(groupReviews), f.reviews, func(r store.StaffCompetenceReview) gen.StaffCompetenceReview {
 			return competenceReviewResponse(r, f.verifiers)
 		}),
+		// Delivery C's section is required too: an empty list to an
+		// audience outside the Profiles group (reading 33).
+		ProfileAssignments: readList(a.reads(groupProfiles), f.profiles, personProfileResponse),
 	}
 }
 

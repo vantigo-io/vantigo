@@ -110,11 +110,18 @@ WHERE id = @id
 RETURNING *;
 
 -- name: CompetenceInUse :one
--- CompetenceInUse is whether any person's row, current or superseded, names
--- the competence, which fixes a company competence's key and kind
--- (competence_in_use). Asked under LockCompetence, which a person's write
--- sharing the competence waits for.
-SELECT EXISTS (SELECT 1 FROM staff.person_competences WHERE competence_id = @competence_id) AS in_use;
+-- CompetenceInUse is whether any person's row, current or superseded, or any
+-- profile item with a minimum level names the competence, which fixes a
+-- company competence's key and kind (competence_in_use) — an item's level is
+-- never orphaned (delivery C, reading 28). Asked under LockCompetence, which
+-- a person's write sharing the competence waits for.
+SELECT (
+    EXISTS (SELECT 1 FROM staff.person_competences pc WHERE pc.competence_id = @competence_id::bigint)
+    OR EXISTS (
+        SELECT 1 FROM staff.competence_profile_items i
+        WHERE i.competence_id = @competence_id::bigint AND i.min_level IS NOT NULL
+    )
+)::boolean AS in_use;
 
 -- name: ListPersonCompetences :many
 -- ListPersonCompetences is a person's current rows in the catalogue's order,

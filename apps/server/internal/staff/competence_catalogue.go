@@ -339,7 +339,7 @@ func (s *server) PutStaffCompetencesById(ctx context.Context, req gen.PutStaffCo
 			}
 			if inUse {
 				return refuseConflict(conflict(codeCompetenceInUse, "Competence in use",
-					fmt.Sprintf("People's rows name %s, so whether it takes a level does not change now; add another competence instead.", row.NameEn)))
+					fmt.Sprintf("People's rows or a competence profile's minimum level name %s, so whether it takes a level does not change now; add another competence instead.", row.NameEn)))
 			}
 		}
 		saved, err = txq.UpdateCompetence(ctx, store.UpdateCompetenceParams{

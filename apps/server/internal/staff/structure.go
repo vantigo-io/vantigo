@@ -532,11 +532,14 @@ type parsedDepartment struct {
 	CostCentre      *string
 	Division        *string
 	ParentID        *int64
+	// CompetenceProfileID is the department's default profile (delivery C,
+	// reading 35): left out, it has none.
+	CompetenceProfileID *int64
 }
 
 func parseDepartment(body gen.StaffDepartmentRequest) (parsedDepartment, fieldErrors) {
 	var f fieldErrors
-	out := parsedDepartment{ManagerPersonID: body.ManagerPersonId, ParentID: body.ParentId}
+	out := parsedDepartment{ManagerPersonID: body.ManagerPersonId, ParentID: body.ParentId, CompetenceProfileID: body.CompetenceProfileId}
 	var msg string
 	out.Code, msg = parseCode(body.Code)
 	f.add("code", msg)
@@ -549,14 +552,31 @@ func parseDepartment(body gen.StaffDepartmentRequest) (parsedDepartment, fieldEr
 	return out, f
 }
 
-// checkDepartmentEdges is the rule for a department's manager and parent,
-// judged under the manager-graph lock the caller holds: the manager is an
-// existing person; the parent an existing department, held against an archive
-// by a share lock, never an archived one the department did not already have
+// checkDepartmentEdges is the rule for a department's manager, default
+// profile and parent, judged under the manager-graph lock the caller holds:
+// the manager is an existing person; the default profile an existing one,
+// held against an archive by a share lock, never an archived one the
+// department did not already have (currentProfile is its default before this
+// write; reading 26 — kept, an archived default reaches nobody until it is
+// restored); the parent an existing department, held against an archive by a
+// share lock, never an archived one the department did not already have
 // (current is its parent before this write, nil for a new department or one
 // at the top), and never the department itself or one below it. id is the
 // department, 0 for a new one.
-func checkDepartmentEdges(ctx context.Context, txq *store.Queries, id int64, current *int64, d parsedDepartment) error {
+func checkDepartmentEdges(ctx context.Context, txq *store.Queries, id int64, current, currentProfile *int64, d parsedDepartment) error {
+	if d.CompetenceProfileID != nil {
+		profile, err := txq.ShareCompetenceProfile(ctx, *d.CompetenceProfileID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return refuseInvalid(invalidDepartmentTitle,
+				fieldErrors{errs: fieldError("competenceProfileId", fmt.Sprintf("No competence profile has id %d", *d.CompetenceProfileID))})
+		} else if err != nil {
+			return fmt.Errorf("staff: read competence profile %d: %w", *d.CompetenceProfileID, err)
+		}
+		if profile.ArchivedAt != nil && !sameID(currentProfile, d.CompetenceProfileID) {
+			return refuseInvalid(invalidDepartmentTitle,
+				fieldErrors{errs: fieldError("competenceProfileId", fmt.Sprintf("The profile %s is archived; a department does not take an archived profile as its default", profile.NameEn))})
+		}
+	}
 	if d.ManagerPersonID != nil {
 		exists, err := txq.PersonExists(ctx, *d.ManagerPersonID)
 		if err != nil {
@@ -596,14 +616,16 @@ func checkDepartmentEdges(ctx context.Context, txq *store.Queries, id int64, cur
 }
 
 // departmentWriteError is a department write's own database refusal: a code
-// another department holds, however it is cased, or a manager deleted since
-// the check.
+// another department holds, however it is cased, or a manager or a default
+// profile deleted since the check.
 func departmentWriteError(err error) error {
 	switch {
 	case db.IsUniqueViolation(err, departmentCodeIndex):
 		return refuseInvalid(invalidDepartmentTitle, fieldErrors{errs: fieldError("code", "Another department already has this code")})
 	case db.IsForeignKeyViolation(err, "departments_manager_person_id_fkey"):
 		return refuseInvalid(invalidDepartmentTitle, fieldErrors{errs: fieldError("managerPersonId", "The person no longer exists")})
+	case db.IsForeignKeyViolation(err, "departments_competence_profile_id_fkey"):
+		return refuseInvalid(invalidDepartmentTitle, fieldErrors{errs: fieldError("competenceProfileId", "The competence profile no longer exists")})
 	}
 	return err
 }
@@ -637,13 +659,14 @@ func (s *server) PostStaffDepartments(ctx context.Context, req gen.PostStaffDepa
 		if err := lockManagerGraph(ctx, txq); err != nil {
 			return err
 		}
-		if err := checkDepartmentEdges(ctx, txq, 0, nil, parsed); err != nil {
+		if err := checkDepartmentEdges(ctx, txq, 0, nil, nil, parsed); err != nil {
 			return err
 		}
 		var err error
 		created, err = txq.InsertDepartment(ctx, store.InsertDepartmentParams{
 			Code: parsed.Code, Name: parsed.Name, ManagerPersonID: parsed.ManagerPersonID,
-			CostCentre: parsed.CostCentre, Division: parsed.Division, ParentID: parsed.ParentID, Now: s.deps.Clock(),
+			CostCentre: parsed.CostCentre, Division: parsed.Division, ParentID: parsed.ParentID,
+			CompetenceProfileID: parsed.CompetenceProfileID, Now: s.deps.Clock(),
 		})
 		return departmentWriteError(err)
 	})
@@ -688,12 +711,13 @@ func (s *server) PutStaffDepartmentsById(ctx context.Context, req gen.PutStaffDe
 		if err := checkRevision("department", row.Revision, revision); err != nil {
 			return err
 		}
-		if err := checkDepartmentEdges(ctx, txq, row.ID, row.ParentID, parsed); err != nil {
+		if err := checkDepartmentEdges(ctx, txq, row.ID, row.ParentID, row.CompetenceProfileID, parsed); err != nil {
 			return err
 		}
 		saved, err = txq.UpdateDepartment(ctx, store.UpdateDepartmentParams{
 			ID: row.ID, Code: parsed.Code, Name: parsed.Name, ManagerPersonID: parsed.ManagerPersonID,
-			CostCentre: parsed.CostCentre, Division: parsed.Division, ParentID: parsed.ParentID, Now: s.deps.Clock(),
+			CostCentre: parsed.CostCentre, Division: parsed.Division, ParentID: parsed.ParentID,
+			CompetenceProfileID: parsed.CompetenceProfileID, Now: s.deps.Clock(),
 		})
 		if err != nil {
 			return departmentWriteError(err)

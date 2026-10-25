@@ -46,7 +46,7 @@ func (q *Queries) DeleteTerms(ctx context.Context, id int64) error {
 }
 
 const departmentsByID = `-- name: DepartmentsByID :many
-SELECT id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at FROM staff.departments WHERE id = ANY($1::bigint[])
+SELECT id, code, name, manager_person_id, cost_centre, division, parent_id, archived_at, revision, created_at, updated_at, competence_profile_id FROM staff.departments WHERE id = ANY($1::bigint[])
 `
 
 func (q *Queries) DepartmentsByID(ctx context.Context, ids []int64) ([]StaffDepartment, error) {
@@ -70,6 +70,7 @@ func (q *Queries) DepartmentsByID(ctx context.Context, ids []int64) ([]StaffDepa
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CompetenceProfileID,
 		); err != nil {
 			return nil, err
 		}

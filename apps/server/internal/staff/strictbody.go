@@ -161,6 +161,16 @@ const (
 // refused, so the reviewer learns it was not written (S11).
 const competenceReviewRequestSchema = "StaffCompetenceReviewRequest"
 
+// competenceProfileRequestSchema, competenceProfileChangeRequestSchema and
+// personProfilesRequestSchema are the contract's names for a new profile, a
+// profile's change and the profiles assigned to a person (delivery C), each
+// closed, and the profile's items closed row by row.
+const (
+	competenceProfileRequestSchema       = "StaffCompetenceProfileRequest"
+	competenceProfileChangeRequestSchema = "StaffCompetenceProfileChangeRequest"
+	personProfilesRequestSchema          = "StaffPersonProfilesRequest"
+)
+
 // closedSchemas are the request schemas whose handlers refuse a property the
 // contract does not name.
 var closedSchemas = []string{
@@ -168,6 +178,7 @@ var closedSchemas = []string{
 	absenceRequestSchema, decisionSchema, competenceChangeSchema,
 	interestsRequestSchema, preferencesRequestSchema, availabilityRequestSchema,
 	competenceReviewRequestSchema,
+	competenceProfileRequestSchema, competenceProfileChangeRequestSchema, personProfilesRequestSchema,
 }
 
 // closedRows are the closed schemas whose list property is an array of
@@ -177,6 +188,8 @@ var closedRows = []struct{ schema, list string }{
 	{interestsRequestSchema, "interests"},
 	{preferencesRequestSchema, "preferences"},
 	{availabilityRequestSchema, "declarations"},
+	{competenceProfileRequestSchema, "items"},
+	{competenceProfileChangeRequestSchema, "items"},
 }
 
 // unknownRowProperties is unknownProperties one level down, for a closed
@@ -184,7 +197,9 @@ var closedRows = []struct{ schema, list string }{
 // properties the contract's row schema does not name, as field errors keyed
 // by the row's place (interests[2].note) — nothing when the body or the list
 // is not what the decoder has already judged, or the rows admit any
-// property.
+// property. Only the list is decoded as rows, so the body's other
+// properties — a profile's key and names beside its items — never stop the
+// rows from being judged.
 func (s *server) unknownRowProperties(ctx context.Context, schema, list string) fieldErrors {
 	var f fieldErrors
 	body, _ := ctx.Value(rawBodyKey{}).([]byte)
@@ -203,11 +218,15 @@ func (s *server) unknownRowProperties(ctx context.Context, schema, list string) 
 	if admits := row.AdditionalProperties.Has; admits == nil || *admits {
 		return f
 	}
-	var lists map[string][]map[string]json.RawMessage
-	if json.Unmarshal(body, &lists) != nil {
+	var properties map[string]json.RawMessage
+	if json.Unmarshal(body, &properties) != nil {
 		return f
 	}
-	for i, r := range lists[list] {
+	var rows []map[string]json.RawMessage
+	if json.Unmarshal(properties[list], &rows) != nil {
+		return f
+	}
+	for i, r := range rows {
 		names := make([]string, 0, len(r))
 		for name := range r {
 			if _, ok := row.Properties[name]; !ok {

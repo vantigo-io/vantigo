@@ -229,7 +229,8 @@ func placementsOf(ctx context.Context, q *store.Queries, ids []int64, today time
 			}
 			if t.DepartmentID != nil {
 				if d, ok := byID[*t.DepartmentID]; ok {
-					p.department = &gen.StaffDepartmentSummary{Id: d.ID, Code: d.Code, Name: d.Name}
+					summary := departmentSummaryOf(d)
+					p.department = &summary
 				}
 			}
 			p.title = t.Title

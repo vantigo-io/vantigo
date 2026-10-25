@@ -436,3 +436,62 @@ func TestLocations_TheCountryAndTheAddress(t *testing.T) {
 	var departments []gen.StaffDepartment
 	do(t, hr, http.MethodGet, departmentsPath, nil, http.StatusOK, &departments)
 }
+
+// A department's default competence profile (reading 35): an unarchived
+// profile, carried by the response and by GET /meta's structure; a full
+// replace, so left out it is cleared. An unknown profile and an archived one
+// are plain field errors on competenceProfileId (reading 26) — but a default
+// the department already has, archived since, is kept on a change that names
+// it, as an archived parent is.
+func TestDepartments_TheDefaultCompetenceProfile(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	operator := addProfile(t, hr, profileBody("operator"))
+	old := addProfile(t, hr, profileBody("old"))
+	changeProfile(t, hr, old, "archived", true)
+
+	ops := createDepartment(t, hr, map[string]any{"code": "OPS", "name": "Operations", "competenceProfileId": operator.Id})
+	if ops.CompetenceProfileId == nil || *ops.CompetenceProfileId != operator.Id {
+		t.Errorf("created = %+v, want the default profile", ops)
+	}
+	var inMeta *gen.StaffDepartment
+	for _, d := range getMeta(t, hr).Structure.Departments {
+		if d.Id == ops.Id {
+			inMeta = &d
+		}
+	}
+	if inMeta == nil || inMeta.CompetenceProfileId == nil || *inMeta.CompetenceProfileId != operator.Id {
+		t.Errorf("GET /meta's department = %+v, want the default profile", inMeta)
+	}
+
+	for name, id := range map[string]int64{"an archived profile": old.Id, "an unknown profile": 9999999} {
+		p := refused(t, hr.Do(http.MethodPut, rowPath(departmentsPath, ops.Id),
+			map[string]any{"code": "OPS", "name": "Operations", "competenceProfileId": id}, ifMatch(ops.Revision)), http.StatusBadRequest, "")
+		if len(p.Errors["competenceProfileId"]) == 0 {
+			t.Errorf("%s: errors = %v, want one on competenceProfileId", name, p.Errors)
+		}
+		p = refused(t, hr.Do(http.MethodPost, departmentsPath, map[string]any{"code": "NEW", "name": "New", "competenceProfileId": id}),
+			http.StatusBadRequest, "")
+		if len(p.Errors["competenceProfileId"]) == 0 {
+			t.Errorf("%s on a new department: errors = %v, want one on competenceProfileId", name, p.Errors)
+		}
+	}
+
+	h.Exec(t, `UPDATE staff.competence_profiles SET archived_at = $1 WHERE id = $2`, h.Now(), operator.Id)
+	var renamed gen.StaffDepartment
+	do(t, hr, http.MethodPut, rowPath(departmentsPath, ops.Id),
+		map[string]any{"code": "OPS", "name": "Drift", "competenceProfileId": operator.Id}, http.StatusOK, &renamed, ifMatch(ops.Revision))
+	if renamed.CompetenceProfileId == nil || *renamed.CompetenceProfileId != operator.Id {
+		t.Errorf("renamed = %+v, want its own archived default kept", renamed)
+	}
+	var cleared gen.StaffDepartment
+	r := hr.Do(http.MethodPut, rowPath(departmentsPath, ops.Id), map[string]any{"code": "OPS", "name": "Drift"}, ifMatch(renamed.Revision))
+	if r.Status != http.StatusOK {
+		t.Fatalf("clear: status %d body %s", r.Status, r.Body)
+	}
+	r.JSON(&cleared)
+	if _, ok := raw(t, r)["competenceProfileId"]; ok || cleared.CompetenceProfileId != nil {
+		t.Errorf("cleared = %s, want no competenceProfileId", r.Body)
+	}
+}

@@ -71,7 +71,7 @@ func TestFieldGroups_CoverEveryPersonField(t *testing.T) {
 // so a change to who reads what is a change to this table.
 func TestAudience_ReadsItsGroups(t *testing.T) {
 	t.Parallel()
-	groups := []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupNobody}
+	groups := []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles, groupNobody}
 	for _, c := range []struct {
 		name   string
 		a      audience
@@ -79,12 +79,12 @@ func TestAudience_ReadsItsGroups(t *testing.T) {
 		events bool
 	}{
 		{"nobody", audience{}, nil, false},
-		{"self", audience{Self: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews}, true},
-		{"manager", audience{Manager: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews}, true},
+		{"self", audience{Self: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles}, true},
+		{"manager", audience{Manager: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles}, true},
 		{"colleague", audience{Colleague: true}, []fieldGroup{groupWork, groupEmploymentDates, groupCompetence}, false},
-		{"staff:approve", audience{Approver: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupCompetence, groupCompetenceDetail, groupReviews}, false},
-		{"staff:manage", audience{Manage: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews}, true},
-		{"staff:personal-data", audience{PersonalData: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews}, true},
+		{"staff:approve", audience{Approver: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupCompetence, groupCompetenceDetail, groupReviews, groupProfiles}, false},
+		{"staff:manage", audience{Manage: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles}, true},
+		{"staff:personal-data", audience{PersonalData: true}, []fieldGroup{groupWork, groupEmploymentDates, groupEmployment, groupPrivate, groupHRNotes, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupHealth, groupCompetence, groupCompetenceDetail, groupWishes, groupReviews, groupProfiles}, true},
 	} {
 		for _, g := range groups {
 			want := false

@@ -29,13 +29,20 @@ func (q *Queries) CompetenceCategoryInUse(ctx context.Context, categoryID int64)
 }
 
 const competenceInUse = `-- name: CompetenceInUse :one
-SELECT EXISTS (SELECT 1 FROM staff.person_competences WHERE competence_id = $1) AS in_use
+SELECT (
+    EXISTS (SELECT 1 FROM staff.person_competences pc WHERE pc.competence_id = $1::bigint)
+    OR EXISTS (
+        SELECT 1 FROM staff.competence_profile_items i
+        WHERE i.competence_id = $1::bigint AND i.min_level IS NOT NULL
+    )
+)::boolean AS in_use
 `
 
-// CompetenceInUse is whether any person's row, current or superseded, names
-// the competence, which fixes a company competence's key and kind
-// (competence_in_use). Asked under LockCompetence, which a person's write
-// sharing the competence waits for.
+// CompetenceInUse is whether any person's row, current or superseded, or any
+// profile item with a minimum level names the competence, which fixes a
+// company competence's key and kind (competence_in_use) — an item's level is
+// never orphaned (delivery C, reading 28). Asked under LockCompetence, which
+// a person's write sharing the competence waits for.
 func (q *Queries) CompetenceInUse(ctx context.Context, competenceID int64) (bool, error) {
 	row := q.db.QueryRow(ctx, competenceInUse, competenceID)
 	var in_use bool

@@ -159,6 +159,18 @@ const (
 	eventCompetenceReviewed  = "competence_reviewed"
 )
 
+// The profiles' events (staff competence design S12, delivery C, plan
+// readings 27 and 34): the profiles assigned to the person changed, named by
+// their sorted keys before and after — catalogue words, never a value of the
+// person's; its field is in fieldClasses as D and in shaping.go's fieldGroups
+// under the Profiles group. The catalogue's two are installation events,
+// naming the profile and the fields it changed, as the competences'.
+const (
+	eventProfilesAssigned         = "profiles_assigned"
+	eventCompetenceProfileCreated = "competence_profile_created"
+	eventCompetenceProfileUpdated = "competence_profile_updated"
+)
+
 // holdEventKinds are the hold's kinds: about the record's retention and who
 // exported it rather than about the person's work, so they are listed only to
 // an audience that reads the hold group — and to the person themselves, who
@@ -259,6 +271,10 @@ var fieldClasses = map[string]string{
 	// The one-to-one's fields (staff competence design S16, delivery B) are
 	// class D, the wish and review rows': counts and kinds, never a value.
 	"interests": "D", "preferences": "D", "declarations": "D", "seen": "D", "reviewedOn": "D",
+
+	// The profiles assigned (delivery C, plan reading 34) are class D, the
+	// person_profiles rows'.
+	"profiles": "D",
 }
 
 // classOfField is a payload field's retention class. A field the table does

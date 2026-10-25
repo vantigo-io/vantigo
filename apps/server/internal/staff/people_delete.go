@@ -121,8 +121,9 @@ func (s *server) DeleteStaffPeopleById(ctx context.Context, req gen.DeleteStaffP
 		// The person's group rows go before the person, with no event
 		// (Entra delivery D, reading 9): the next sync of each group removes
 		// them in the provider's directory. What the person wants and their
-		// competence reviews (staff competence delivery B) go too: their keys
-		// to the person have no cascade.
+		// competence reviews (staff competence delivery B) go too, as do the
+		// profiles assigned to them (delivery C): their keys to the person
+		// have no cascade.
 		for name, del := range map[string]func(context.Context, int64) error{
 			"next of kin":              txq.DeleteNextOfKin,
 			"roles":                    txq.DeletePersonRoles,
@@ -132,6 +133,7 @@ func (s *server) DeleteStaffPeopleById(ctx context.Context, req gen.DeleteStaffP
 			"preferences":              txq.DeletePersonPreferences,
 			"availability declaration": txq.DeletePersonAvailability,
 			"competence reviews":       txq.DeletePersonCompetenceReviews,
+			"competence profiles":      txq.DeletePersonProfiles,
 		} {
 			if err := del(ctx, req.Id); err != nil {
 				return fmt.Errorf("staff: delete person %d's %s: %w", req.Id, name, err)

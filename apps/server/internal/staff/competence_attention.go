@@ -3,6 +3,7 @@ package staff
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -24,7 +25,12 @@ import (
 //     their current unbroken employment run when that is later, lies more
 //     than the review interval ago — to staff:manage for everyone and to a
 //     manager for their reports, never to staff:approve; an interval of 0
-//     raises none.
+//     raises none;
+//   - competenceGap (delivery C, reading 31), a person whose unarchived
+//     profiles have items not met (competence_gaps.go), one per person
+//     with the count — to staff:manage for everyone and to a manager for
+//     their reports, never to staff:approve; dated today, since a gap is
+//     computed on read and has no day of its own.
 //
 // Only the rows of people in employment today and not erased raise items,
 // and never a caller's own rows to the caller: the person sees their own on
@@ -40,6 +46,10 @@ type competenceAttention struct {
 	declared []store.ListDeclaredCompetencesRow
 	expiring []store.ListExpiringCompetencesRow
 	reviews  map[int64]time.Time
+	// gaps is the items not met per person the caller is told of, read
+	// only for staff:manage and a manager of somebody (readCompetenceGaps);
+	// a person without one is absent.
+	gaps map[int64]int32
 }
 
 // readCompetenceAttention reads the competence items' rows on q, a
@@ -111,7 +121,132 @@ func (in attentionInput) competenceItems(c *callerContext) []gen.StaffStatsAtten
 	if reviewsOverdue(c, in.reports) {
 		out = append(out, in.reviewOverdueItems(c, reports, active)...)
 	}
+	for personID, count := range in.competences.gaps {
+		item := personItem(gen.CompetenceGap, personID, personID, in.names[personID], c.Today)
+		item.Count = &count
+		out = append(out, item)
+	}
 	return out
+}
+
+// gapsJudged reports whether the caller's competenceGap items are judged:
+// staff:manage, or a manager of somebody today — an approver alone never
+// has one.
+func gapsJudged(c *callerContext, reports []int64) bool { return c.Manage || len(reports) > 0 }
+
+// readCompetenceGaps reads on q, the snapshot's, the items not met of each
+// person the caller is told of (reading 31): in employment today, not
+// erased, not the caller, and staff:manage's everyone or a manager's
+// reports. A person's profiles are their unarchived assigned ones and the
+// unarchived default of the department of their place today
+// (placeDepartmentOf over the register already read); the items and the
+// current rows are read only when a profile reaches somebody concerned.
+func (in attentionInput) readCompetenceGaps(ctx context.Context, q *store.Queries, c *callerContext) (map[int64]int32, error) {
+	reports := make(map[int64]bool, len(in.reports))
+	for _, id := range in.reports {
+		reports[id] = true
+	}
+	// in.people is read for HR's roles alone; nobody in employment today is
+	// erased (reviewOverdueItems), so a plain manager's reports need no such
+	// read.
+	erased := map[int64]bool{}
+	for _, p := range in.people {
+		erased[p.ID] = p.ErasedAt != nil
+	}
+	spans := map[int64][]store.StaffEmployment{}
+	for _, e := range in.employments {
+		spans[e.PersonID] = append(spans[e.PersonID], e)
+	}
+	assignments, err := q.ListAllPersonProfiles(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the profile assignments for attention: %w", err)
+	}
+	defaults, err := q.DepartmentsWithDefaultProfile(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the departments' default profiles for attention: %w", err)
+	}
+	if len(assignments) == 0 && len(defaults) == 0 {
+		return nil, nil
+	}
+	catalogue, err := q.ListCompetenceProfiles(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the profiles for attention: %w", err)
+	}
+	profiles := make(map[int64]store.StaffCompetenceProfile, len(catalogue))
+	for _, p := range catalogue {
+		if p.ArchivedAt == nil {
+			profiles[p.ID] = p
+		}
+	}
+	defaultOf := make(map[int64]int64, len(defaults))
+	for _, d := range defaults {
+		defaultOf[d.ID] = *d.CompetenceProfileID
+	}
+	assigned := map[int64][]int64{}
+	for _, a := range assignments {
+		assigned[a.PersonID] = append(assigned[a.PersonID], a.ProfileID)
+	}
+	reach := map[int64][]effectiveProfile{}
+	var people, ids []int64
+	wanted := map[int64]bool{}
+	for personID := range in.activePeople(c.Today) {
+		if erased[personID] || (c.Person != nil && *c.Person == personID) || (!c.Manage && !reports[personID]) {
+			continue
+		}
+		var reached []effectiveProfile
+		add := func(id int64) {
+			p, ok := profiles[id]
+			if !ok || slices.ContainsFunc(reached, func(e effectiveProfile) bool { return e.Profile.ID == id }) {
+				return
+			}
+			reached = append(reached, effectiveProfile{Profile: p})
+			if !wanted[id] {
+				wanted[id] = true
+				ids = append(ids, id)
+			}
+		}
+		for _, id := range assigned[personID] {
+			add(id)
+		}
+		if department := placeDepartmentOf(spans[personID], in.chains, c.Today); department != nil {
+			if id, ok := defaultOf[*department]; ok {
+				add(id)
+			}
+		}
+		if len(reached) > 0 {
+			reach[personID] = reached
+			people = append(people, personID)
+		}
+	}
+	if len(people) == 0 {
+		return nil, nil
+	}
+	list, err := q.ListCompetenceProfileItems(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the profiles' items for attention: %w", err)
+	}
+	items := map[int64][]store.ListCompetenceProfileItemsRow{}
+	for _, it := range list {
+		items[it.StaffCompetenceProfileItem.ProfileID] = append(items[it.StaffCompetenceProfileItem.ProfileID], it)
+	}
+	current, err := q.ListCurrentCompetenceRowsOf(ctx, people)
+	if err != nil {
+		return nil, fmt.Errorf("staff: read the current competences for attention: %w", err)
+	}
+	rows := map[int64]map[int64]store.ListCurrentCompetenceRowsOfRow{}
+	for _, r := range current {
+		if rows[r.PersonID] == nil {
+			rows[r.PersonID] = map[int64]store.ListCurrentCompetenceRowsOfRow{}
+		}
+		rows[r.PersonID][r.CompetenceID] = r
+	}
+	out := map[int64]int32{}
+	for _, personID := range people {
+		if n := gapsOf(reach[personID], items, rows[personID], c.Today).NotMet; n > 0 {
+			out[personID] = n
+		}
+	}
+	return out, nil
 }
 
 // reviewOverdueItems is the overdue reviews the caller is told of: of every
