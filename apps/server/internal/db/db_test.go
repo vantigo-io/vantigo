@@ -88,9 +88,13 @@ func TestOpen_AppliesWithMaxConns(t *testing.T) {
 
 // A second migrator must wait on the advisory lock rather than race the first.
 // pg_stat_activity is the ground truth for "waiting on the lock", not a sleep.
+// The two budgets are generous on purpose: on CI the whole server suite runs
+// under the race detector against one Postgres, and a full migration run that
+// takes two seconds here has taken more than ten there.
 func TestApplyMigrations_WaitsForTheAdvisoryLock(t *testing.T) {
 	url := testdb.URL(t)
 	ctx := context.Background()
+	const budget = time.Minute
 
 	holder, err := pgx.Connect(ctx, url)
 	if err != nil {
@@ -104,7 +108,7 @@ func TestApplyMigrations_WaitsForTheAdvisoryLock(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- db.ApplyMigrations(ctx, url) }()
 
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(budget)
 	for {
 		var waiting int
 		err := holder.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
@@ -138,7 +142,7 @@ func TestApplyMigrations_WaitsForTheAdvisoryLock(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ApplyMigrations: %v", err)
 		}
-	case <-time.After(10 * time.Second):
+	case <-time.After(budget):
 		t.Fatal("ApplyMigrations did not finish after the lock was released")
 	}
 	if !tableExists(t, url, "platform.rate_limit") {
