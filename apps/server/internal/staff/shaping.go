@@ -98,10 +98,15 @@ const (
 	// "Reviews" row, delivery B): the person's, their manager's, the
 	// Approver's and HR's — whoever may record one, and the person.
 	groupReviews
+	// groupProfiles is the competence profiles that reach the person and
+	// their gap list (staff competence design §5's "Profiles and gaps" row,
+	// delivery C, plan reading 32): the person's, their manager's, the
+	// Approver's and HR's; never a colleague's.
+	groupProfiles
 )
 
 func (g fieldGroup) String() string {
-	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail", "accommodation", "competence", "competence-detail", "wishes", "reviews"}[g]
+	return [...]string{"nobody", "work", "employment-dates", "employment", "private", "hr-notes", "pay", "national-id", "bank-account", "links", "documents", "health", "hold", "care-days", "absence", "absence-type", "absence-detail", "accommodation", "competence", "competence-detail", "wishes", "reviews", "profiles"}[g]
 }
 
 // fieldGroups is the one table: every field of the person — as the contract
@@ -229,6 +234,11 @@ var fieldGroups = map[string]fieldGroup{
 	"seen":                 groupWishes,
 	"reviewedOn":           groupReviews,
 	"lastCompetenceReview": groupReviews,
+
+	// The profiles (staff competence design §5, delivery C): the field
+	// profiles_assigned names, and the export's section.
+	"profiles":           groupProfiles,
+	"profileAssignments": groupProfiles,
 }
 
 // groupOf is a field's group, groupNobody for a field the table does not
@@ -292,7 +302,7 @@ func (a audience) reads(g fieldGroup) bool {
 		return a.Self || a.Manager || a.Approver || hr
 	case groupWishes:
 		return a.Self || a.Manager || hr
-	case groupReviews:
+	case groupReviews, groupProfiles:
 		return a.Self || a.Manager || a.Approver || hr
 	case groupPrivate, groupPay, groupNationalID, groupBankAccount, groupLinks, groupDocuments, groupCareDays:
 		return a.Self || hr
@@ -386,6 +396,8 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 			// the Approver alone.
 			CanReadWishes:      a.reads(groupWishes),
 			CanStampWishesSeen: (a.Manager || a.Manage) && !a.Self,
+			// The profiles (plan reading 32): assigned by staff:manage alone.
+			CanAssignProfiles: a.Manage,
 		},
 		WorkEmail:    shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:    shown(a, "phoneWork", row.PhoneWork),

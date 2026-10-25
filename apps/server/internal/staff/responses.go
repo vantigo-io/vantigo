@@ -72,7 +72,7 @@ func departmentResponse(row store.StaffDepartment) gen.StaffDepartment {
 	return gen.StaffDepartment{
 		Id: row.ID, Code: row.Code, Name: row.Name, ManagerPersonId: row.ManagerPersonID,
 		CostCentre: row.CostCentre, Division: row.Division, ParentId: row.ParentID,
-		ArchivedAt: row.ArchivedAt, Revision: row.Revision,
+		CompetenceProfileId: row.CompetenceProfileID, ArchivedAt: row.ArchivedAt, Revision: row.Revision,
 	}
 }
 

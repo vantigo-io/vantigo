@@ -342,6 +342,36 @@ func (e StaffCaseStatus) Valid() bool {
 	}
 }
 
+// Defines values for StaffCompetenceGapStatus.
+const (
+	GapBelowLevel   StaffCompetenceGapStatus = "below_level"
+	GapDeclaredOnly StaffCompetenceGapStatus = "declared_only"
+	GapExpired      StaffCompetenceGapStatus = "expired"
+	GapExpiring     StaffCompetenceGapStatus = "expiring"
+	GapMet          StaffCompetenceGapStatus = "met"
+	GapMissing      StaffCompetenceGapStatus = "missing"
+)
+
+// Valid indicates whether the value is a known member of the StaffCompetenceGapStatus enum.
+func (e StaffCompetenceGapStatus) Valid() bool {
+	switch e {
+	case GapBelowLevel:
+		return true
+	case GapDeclaredOnly:
+		return true
+	case GapExpired:
+		return true
+	case GapExpiring:
+		return true
+	case GapMet:
+		return true
+	case GapMissing:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StaffCompetenceKind.
 const (
 	Certificate StaffCompetenceKind = "certificate"
@@ -1068,6 +1098,7 @@ const (
 	CompetenceDeclared         StaffStatsAttentionItemType = "competenceDeclared"
 	CompetenceExpired          StaffStatsAttentionItemType = "competenceExpired"
 	CompetenceExpiring         StaffStatsAttentionItemType = "competenceExpiring"
+	CompetenceGap              StaffStatsAttentionItemType = "competenceGap"
 	CompetenceReviewOverdue    StaffStatsAttentionItemType = "competenceReviewOverdue"
 	ContractOverdue            StaffStatsAttentionItemType = "contractOverdue"
 	EmployeeRoleMissing        StaffStatsAttentionItemType = "employeeRoleMissing"
@@ -1153,6 +1184,8 @@ func (e StaffStatsAttentionItemType) Valid() bool {
 	case CompetenceExpired:
 		return true
 	case CompetenceExpiring:
+		return true
+	case CompetenceGap:
 		return true
 	case CompetenceReviewOverdue:
 		return true
@@ -2036,13 +2069,175 @@ type StaffCompetenceEvidence struct {
 	SizeBytes   int64  `json:"sizeBytes"`
 }
 
+// StaffCompetenceGapItem One item of a profile judged on the person's current row of its competence (staff competence design S13).
+type StaffCompetenceGapItem struct {
+	// Archived The competence is archived; the item stays on the profile and is reported, and counts when not met.
+	Archived bool `json:"archived"`
+
+	// Competence The competence a person's row names, as every row carries it, archived or not.
+	Competence   StaffCompetenceSummary `json:"competence"`
+	CompetenceId int64                  `json:"competenceId"`
+
+	// Declared The person's row is declared and not yet verified. A skill declared at the level counts as met, with this flag.
+	Declared bool `json:"declared"`
+
+	// Level The level of the person's current row. Absent without a row or on a competence without a level.
+	Level *int32 `json:"level,omitempty"`
+
+	// MinLevel The level the profile asks for at least, 0 to 4. Absent when any level, or none, does.
+	MinLevel *int32 `json:"minLevel,omitempty"`
+
+	// MustBeValid The person's row must be valid today; when false its validity is not judged.
+	MustBeValid bool `json:"mustBeValid"`
+
+	// Status How an item is judged, in this order, on the person's current row of the item's competence: no current row is missing; a declared certificate is declared_only; minLevel set and the row's level below it is below_level; mustBeValid and the row not valid today is expired when its validTo has passed and missing when its validFrom is not yet reached; mustBeValid and validTo within the competence's reminderLeadDays is expiring; otherwise met. With mustBeValid false the validity is not judged, and expiring is never answered. Not met is every status but met and expiring.
+	Status StaffCompetenceGapStatus `json:"status"`
+
+	// ValidTo The last day the person's current row is valid. Absent without a row or without end.
+	ValidTo *openapi_types.Date `json:"validTo,omitempty"`
+
+	// Verified The person's current row is verified. False without a row.
+	Verified bool `json:"verified"`
+}
+
+// StaffCompetenceGapProfile One profile that reaches the person, with its items judged. An archived profile reaches nobody and is not listed here.
+type StaffCompetenceGapProfile struct {
+	// Assigned HR assigned the profile to the person.
+	Assigned bool `json:"assigned"`
+
+	// Department A department as the work group names it.
+	Department *StaffDepartmentSummary  `json:"department,omitempty"`
+	Items      []StaffCompetenceGapItem `json:"items"`
+
+	// NotMet The profile's items not met — every status but met and expiring.
+	NotMet int32 `json:"notMet"`
+
+	// Profile A profile as a person's list and the gap list name it.
+	Profile StaffCompetenceProfileSummary `json:"profile"`
+}
+
+// StaffCompetenceGapStatus How an item is judged, in this order, on the person's current row of the item's competence: no current row is missing; a declared certificate is declared_only; minLevel set and the row's level below it is below_level; mustBeValid and the row not valid today is expired when its validTo has passed and missing when its validFrom is not yet reached; mustBeValid and validTo within the competence's reminderLeadDays is expiring; otherwise met. With mustBeValid false the validity is not judged, and expiring is never answered. Not met is every status but met and expiring.
+type StaffCompetenceGapStatus string
+
+// StaffCompetenceGaps The gap list (staff competence design S13): every unarchived profile that reaches the person — assigned, or their department's default — with its items judged on the person's current rows. Read by the person, their managers today, staff:approve, staff:manage and staff:personal-data.
+type StaffCompetenceGaps struct {
+	// NotMet The items not met across every profile, the dashboard item's count.
+	NotMet   int32                       `json:"notMet"`
+	Profiles []StaffCompetenceGapProfile `json:"profiles"`
+}
+
+// StaffCompetenceInterestsEntry One competence somebody wants, with the active people who want to learn it (they hold no current row of it) and those who want to use it more (they do), each by name.
+type StaffCompetenceInterestsEntry struct {
+	// Competence The competence a person's row names, as every row carries it, archived or not.
+	Competence   StaffCompetenceSummary `json:"competence"`
+	WantsMore    []StaffPersonSummary   `json:"wantsMore"`
+	WantsToLearn []StaffPersonSummary   `json:"wantsToLearn"`
+}
+
 // StaffCompetenceKind skill, a proficiency with a level and never a validity, or certificate, issued by someone, with evidence and a validity or none.
 type StaffCompetenceKind string
+
+// StaffCompetenceMatrix The competence matrix (staff competence design S14): as columns the competences given as competenceId, or, when none is given, the competences of the cells shown, in catalogue order; and as rows every person active today and not erased, by name, with the rows valid on validOn of those competences.
+type StaffCompetenceMatrix struct {
+	Competences []StaffCompetenceSummary   `json:"competences"`
+	People      []StaffCompetenceMatrixRow `json:"people"`
+
+	// ValidOn The day the rows are valid on.
+	ValidOn openapi_types.Date `json:"validOn"`
+}
+
+// StaffCompetenceMatrixCell A person's current row of a competence, valid on the matrix's day. A row not valid that day is absent.
+type StaffCompetenceMatrixCell struct {
+	CompetenceId int64 `json:"competenceId"`
+
+	// Level 0 to 4. Absent on a competence without a level.
+	Level     *int32             `json:"level,omitempty"`
+	ValidFrom openapi_types.Date `json:"validFrom"`
+
+	// ValidTo Absent without end.
+	ValidTo *openapi_types.Date `json:"validTo,omitempty"`
+
+	// Verified The row is verified; a declared one is shown with the badge unless verifiedOnly drops it.
+	Verified bool `json:"verified"`
+}
+
+// StaffCompetenceMatrixRow One person of the matrix and their cells.
+type StaffCompetenceMatrixRow struct {
+	Competences []StaffCompetenceMatrixCell `json:"competences"`
+	Name        string                      `json:"name"`
+	PersonId    int64                       `json:"personId"`
+}
 
 // StaffCompetenceNames A competence's or a category's name in English and in Norwegian bokmål, each 1 to 100 characters.
 type StaffCompetenceNames struct {
 	En string `json:"en"`
 	Nb string `json:"nb"`
+}
+
+// StaffCompetenceProfile A competence profile (staff competence design S12) — what a position needs, a named list of competences, each with a minimum level and whether it must be valid. Assigned to a person by staff:manage or made a department's default. Its key never changes; an archived profile reaches nobody and keeps every assignment and default naming it.
+type StaffCompetenceProfile struct {
+	// ArchivedAt When the profile was archived. Absent while it is in use.
+	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
+	Id         int64      `json:"id"`
+
+	// Items The items in the catalogue's order.
+	Items []StaffCompetenceProfileItem `json:"items"`
+	Key   string                       `json:"key"`
+
+	// Names A competence's or a category's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names StaffCompetenceNames `json:"names"`
+
+	// Revision Send it back as If-Match on PUT /competence-profiles/{id}.
+	Revision int32 `json:"revision"`
+}
+
+// StaffCompetenceProfileChangeRequest A profile replaced as a whole but for its key, which never changes, and a property this schema does not name — key among them — is refused as a 400 naming it. The items are replaced whole, at most fifty, as on POST; a new or changed item naming an unknown, hidden or archived competence is competence_unavailable, while an unchanged one naming a competence archived since is kept.
+type StaffCompetenceProfileChangeRequest struct {
+	Archived bool                                `json:"archived"`
+	Items    []StaffCompetenceProfileItemRequest `json:"items"`
+
+	// Names A competence's or a category's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names StaffCompetenceNames `json:"names"`
+}
+
+// StaffCompetenceProfileItem One competence a profile asks for.
+type StaffCompetenceProfileItem struct {
+	// Competence The competence a person's row names, as every row carries it, archived or not.
+	Competence   StaffCompetenceSummary `json:"competence"`
+	CompetenceId int64                  `json:"competenceId"`
+
+	// MinLevel The level the person's row must reach at least, 0 to 4, only on a competence with a level. Absent when any level does.
+	MinLevel *int32 `json:"minLevel,omitempty"`
+
+	// MustBeValid The person's row must be valid today; when false its validity is not judged.
+	MustBeValid bool `json:"mustBeValid"`
+}
+
+// StaffCompetenceProfileItemRequest One item of a profile. A competence named twice is refused on the later index (items[3].competenceId); an unknown, hidden or archived competence is competence_unavailable there; minLevel 0 to 4, only on a competence with a level (level_not_allowed on items[i].minLevel). mustBeValid left out is true.
+type StaffCompetenceProfileItemRequest struct {
+	CompetenceId int64  `json:"competenceId"`
+	MinLevel     *int32 `json:"minLevel,omitempty"`
+	MustBeValid  *bool  `json:"mustBeValid,omitempty"`
+}
+
+// StaffCompetenceProfileRequest A new profile. The key is 1 to 40 characters of a–z, 0–9 and hyphens, unique, and fixed from now on; at most fifty items, an empty list allowed. A property this schema or an item does not name is refused.
+type StaffCompetenceProfileRequest struct {
+	Items []StaffCompetenceProfileItemRequest `json:"items"`
+	Key   string                              `json:"key"`
+
+	// Names A competence's or a category's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names StaffCompetenceNames `json:"names"`
+}
+
+// StaffCompetenceProfileSummary A profile as a person's list and the gap list name it.
+type StaffCompetenceProfileSummary struct {
+	// Archived The profile is archived; it reaches nobody.
+	Archived bool   `json:"archived"`
+	Id       int64  `json:"id"`
+	Key      string `json:"key"`
+
+	// Names A competence's or a category's name in English and in Norwegian bokmål, each 1 to 100 characters.
+	Names StaffCompetenceNames `json:"names"`
 }
 
 // StaffCompetenceRenewRequest The renewed certificate or skill, written as a new row that supersedes the current one; the old row keeps its dates and evidence, and the new row keeps its level. validFrom left out is issuedOn, else today; validTo left out is issuedOn plus the competence's validityMonths when both are known, else without end; validTo before validFrom is a field error. issuer at most 200 characters, reference at most 100.
@@ -2152,6 +2347,9 @@ type StaffDepartment struct {
 	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
 	Code       string     `json:"code"`
 
+	// CompetenceProfileId The profile every person whose terms in force name the department has by default. Absent when none.
+	CompetenceProfileId *int64 `json:"competenceProfileId,omitempty"`
+
 	// CostCentre Absent when not set.
 	CostCentre *string `json:"costCentre,omitempty"`
 
@@ -2172,6 +2370,9 @@ type StaffDepartment struct {
 type StaffDepartmentRequest struct {
 	// Code 1 to 20 letters, digits or hyphens, unique however it is cased.
 	Code string `json:"code"`
+
+	// CompetenceProfileId An unarchived profile. Left out, the department has no default.
+	CompetenceProfileId *int64 `json:"competenceProfileId,omitempty"`
 
 	// CostCentre Up to 40 characters. Left out, it is cleared.
 	CostCentre *string `json:"costCentre,omitempty"`
@@ -2441,7 +2642,7 @@ type StaffEvent struct {
 	At    time.Time       `json:"at"`
 	Id    int64           `json:"id"`
 
-	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed, account_mismatched and identity_erased for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the groups' — group_joined and group_left, naming the group (groupId, groupName, groupKey) and how the person came in or went (source, listed or derived); the competences' — competence_declared, competence_changed, competence_verified, competence_renewed, competence_removed and competence_evidence_added, naming the competence by its key, with its level, and never the verifier's note (competence_created and competence_updated are the catalogue's installation events, never a person's); the one-to-one's — interests_changed and availability_changed with the count before and after, preferences_changed with the kinds added, changed or removed and never a value, wishes_seen with the rows stamped and competence_reviewed with the review's day; the kinds grow with the module.
+	// Kind person_created, person_updated, next_of_kin_updated, roles_updated, national_id_set, national_id_revealed, bank_account_set, bank_account_revealed, user_linked, user_unlinked, employment_created, employment_updated, employment_ended, employment_reopened, terms_added, terms_corrected, terms_deleted, document_added, document_updated, document_removed, personal_data_exported, legal_hold_set, legal_hold_lifted, reassessed, person_rehired or erased; and absence's — absence_requested, absence_registered, absence_updated, absence_deleted, absence_cancelled, absence_approved, absence_self_approved, absence_rejected, absence_corrected, absence_split (absence_changed the neutral kind a row shown as leave would be listed as), holiday_adjusted, holiday_adjustment_deleted, carry_over_recorded, case_opened, case_updated, case_closed, case_merged, milestone_done, milestone_waived, milestone_note_updated, self_cert_withdrawn and self_cert_restored; the accounts' — account_flag_updated, account_prepared, account_activated, account_deactivated, account_updated, account_blocked, account_failed, account_mismatched and identity_erased for the identity link, and for the provider link account_announced (the external account announced to identity), account_external_prepared, account_external_activated, account_external_deactivated, account_external_updated, account_external_deleted, account_external_blocked, account_external_failed, work_email_set_by_provider (the address the provider made, written to a person who had none) and pass_revealed (naming the viewer, never the pass) — each with codes only, never an address; the groups' — group_joined and group_left, naming the group (groupId, groupName, groupKey) and how the person came in or went (source, listed or derived); the competences' — competence_declared, competence_changed, competence_verified, competence_renewed, competence_removed and competence_evidence_added, naming the competence by its key, with its level, and never the verifier's note (competence_created and competence_updated are the catalogue's installation events, never a person's); the one-to-one's — interests_changed and availability_changed with the count before and after, preferences_changed with the kinds added, changed or removed and never a value, wishes_seen with the rows stamped and competence_reviewed with the review's day; the profiles' — profiles_assigned, naming the profiles' keys before and after (competence_profile_created and competence_profile_updated are the profiles catalogue's installation events, never a person's); the kinds grow with the module.
 	Kind string `json:"kind"`
 
 	// Payload The change, shaped by the caller's field groups: {"fields": {"<field>": {"from": …, "to": …} | "changed"}}; an employment's and a terms row's events also carry employmentId, and a terms row's termsId. An absence, adjustment, case or withdrawal event names its row (absenceId, adjustmentId, caseId; a row's case as rowCaseId) and carries each field's retention class (classes) and the row's types (typeIds, typeClasses), shaped field by field by the absence groups. An erased event carries no fields but {"kinds": [{"kind": "D" | "health" | "A" | "cases" | "childSick" | "withdrawal" | "pregnancyHealth", "count": n}]}. An erase records up to two: the health kinds (health, cases, childSick, withdrawal, pregnancyHealth) in one of class E, listed to the person and staff:personal-data alone, and D and A in one read by HR and listed as the hold's kinds are — not to a manager, to the person with an empty payload. A value the retention run erased reads "changed" to everyone.
@@ -3330,6 +3531,9 @@ type StaffPersonBankAccount struct {
 
 // StaffPersonCapabilities What the caller may do with this person. The access layer still decides every request.
 type StaffPersonCapabilities struct {
+	// CanAssignProfiles The caller assigns competence profiles to the person (staff competence design S12) — staff:manage (PUT /people/{id}/competence-profiles).
+	CanAssignProfiles bool `json:"canAssignProfiles"`
+
 	// CanDecide The caller decides the person's absence requests today (design S12): a manager of theirs by the one manager rule, staff:approve or staff:manage — on oneself only for the self-approver (POST /absences/{id}/approve).
 	CanDecide bool `json:"canDecide"`
 
@@ -3582,6 +3786,28 @@ type StaffPersonPreferencesRequest struct {
 	} `json:"preferences"`
 }
 
+// StaffPersonProfile A profile that reaches the person, and how — assigned by staff:manage, the default of the department the terms in force today of the person's place name (the earliest employment in force today, by start then id), or both, in one row. With no employment in force only the assigned profiles reach them. An archived profile is listed so staff:manage sees the assignment, and reaches nobody.
+type StaffPersonProfile struct {
+	// Assigned staff:manage assigned the profile to the person.
+	Assigned bool `json:"assigned"`
+
+	// Department A department as the work group names it.
+	Department *StaffDepartmentSummary `json:"department,omitempty"`
+
+	// Profile A profile as a person's list and the gap list name it.
+	Profile StaffCompetenceProfileSummary `json:"profile"`
+}
+
+// StaffPersonProfileList The profiles that reach a person, by key.
+type StaffPersonProfileList struct {
+	Profiles []StaffPersonProfile `json:"profiles"`
+}
+
+// StaffPersonProfilesRequest The profiles assigned to a person, all of them — a full replace, by staff:manage alone; an empty list removes them. At most twenty; a profile named twice is refused on the later index (profileIds[1]), and an unknown or archived profile is a field error on its index. The department's default is not written here.
+type StaffPersonProfilesRequest struct {
+	ProfileIds []int64 `json:"profileIds"`
+}
+
 // StaffPersonRequest A person's editable fields, the whole record as staff:manage replaces it (design §3.1, §5): the work group, the private group and HR's notes. The national identity number and the bank account are written through their own operations under staff:personal-data, and the self-service link through its own; a property this schema does not name — one of those among them — is refused as a 400 naming it. On a change every optional field left out is cleared, except displayName, which stays.
 type StaffPersonRequest struct {
 	// BirthDate A calendar date. Private.
@@ -3700,7 +3926,7 @@ type StaffPersonUser struct {
 	Id          openapi_types.UUID `json:"id"`
 }
 
-// StaffPersonalData A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads), every competence row with its evidence document's details, the interests, the preferences, the availability declaration and the competence reviews, every absence, the holiday adjustments, every sick-leave case with its milestones, this year's care days, the standing of egenmelding today and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history and its absence, cases and care days as the person reads them.
+// StaffPersonalData A person's data in one file (design S16): the record, the next of kin, the roles, every employment with its terms, the self-service link, the documents' metadata (the files themselves are read through the documents' own downloads), every competence row with its evidence document's details, the interests, the preferences, the availability declaration, the competence reviews and the competence profiles that reach the person, every absence, the holiday adjustments, every sick-leave case with its milestones, this year's care days, the standing of egenmelding today and every event, read in one snapshot. exportedAt is when it was made. GET /people/{id}/personal-data's is the complete file, the sealed values opened and the events whole; GET /me/export's is the person's own, without the sealed values, HR's notes and the terms' notes, its events shaped as the person reads their history and its absence, cases and care days as the person reads them.
 type StaffPersonalData struct {
 	// Absences Every absence of the person, in any status, newest first.
 	Absences []StaffAbsence `json:"absences"`
@@ -3744,7 +3970,10 @@ type StaffPersonalData struct {
 
 	// Preferences Every preference of the person, by kind.
 	Preferences []StaffPersonPreference `json:"preferences"`
-	Roles       []StaffPersonRole       `json:"roles"`
+
+	// ProfileAssignments The competence profiles that reach the person, assigned or their department's default, by key — filled for an audience that reads the person's profiles, the person's own export included, and an empty list to anyone else.
+	ProfileAssignments []StaffPersonProfile `json:"profileAssignments"`
+	Roles              []StaffPersonRole    `json:"roles"`
 
 	// SelfCertification A person's standing under the self-certification policy today (design S10, §4 Egenmelding): the limits by the policy's name, the occurrences and calendar days used in the rolling year ending today — a run of contiguous egenmelding days, days off between included, being one occurrence — and the withdrawal.
 	SelfCertification StaffSelfCertification `json:"selfCertification"`
@@ -3835,7 +4064,7 @@ type StaffPersonalDataPerson struct {
 // StaffPreferenceKind What a preference is about (staff competence design S9) — the weekdays, the time of day, the locations, how far the person travels, how much of the work is remote, the most consecutive working days and the most hours a week. An unknown kind is a field error.
 type StaffPreferenceKind string
 
-// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), own_record (403: the person verifying their own competence row), skill_no_validity (400, a field error on validTo: an end on a row of a skill; 409: a renewal of a skill's row), level_not_allowed (400, a field error on level: a level on a competence without one) and level_required (400, a field error on level: none on a competence with one). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// StaffProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: in this delivery org_number_invalid, employee_number_too_long, employee_number_taken, work_email_taken, person_in_use, structure_archived, structure_default, department_cycle, revision_conflict, national_id_invalid, national_id_duplicate, national_id_birth_date_mismatch, bank_account_invalid, user_inactive, user_linked_elsewhere, no_person, employment_number_taken, end_reason_required, terms_required_fields, temporary_ground_required, appointment_form_mismatch, probation_too_long, full_time_hours_mismatch, terms_valid_from_taken, terms_before_start, terms_after_end, terms_first_row_start, terms_not_latest, self_manager, manager_cycle, document_type_unsupported, document_too_large, document_count_exceeded, category_restricted, category_in_use, seed_immutable, holiday_scheme_in_use, absence_type_in_use, absence_overlap, absence_note_on_sick, self_certification_exhausted, self_certification_too_early, self_certification_withdrawn, holiday_postponement_not_applicable, holiday_postponement_too_late, percent_not_allowed, hours_on_day_type, absence_not_requested, absence_not_cancellable, absence_status_change, absence_visibility_change (409: a change between an HR-only type and any other), carry_over_recorded, own_request, person_erased, storage_unavailable, legal_hold, reassessment_not_due, retention_busy, threshold_unknown, accounts_unavailable (503: no module provides accounts, or identity could not be reached), account_not_managed (409: Disable now on a user Staff does not manage), account_privileged (409: Disable now on an Owner, a SystemAdmin or the last active Owner), account_mismatch (409: Disable now on a user carrying another employee number), link_managed (409: the user is Staff-managed, or the link is the accounts worker's), accounts_busy (409: the accounts worker holds the person's link right now), account_kind_locked (409: a change of kind away from entra while the person's entra link is enabled or disabled), provider_missing (400, a field error on accountKind or defaultAccountKind: no enabled module offers that provider), pass_gone (409: the pass was shown already, has expired, or none was issued), provider_refused (409: the provider refused Run now or Disable now; detail carries its code, never its words), group_synced (409: a delete of a group a provider has in its directory, is being sent, or is turned on for; archive it instead), group_derived (409: the members of a derived group are its rule's), group_archived (409: a change of an archived group, its members, owners or providers), provider_unavailable (503: a provider turned on for a group could not declare its traits), competence_held (409: the person holds a current row of the competence), competence_unavailable (400, a field error on competenceId: an unknown, hidden or archived competence), competence_in_use (409: hasLevel changed on a competence a person's row or a competence profile's minimum level names), verified_row (409: the person changing or removing their own verified row), superseded (409: a write of a superseded row), own_record (403: the person verifying their own competence row), skill_no_validity (400, a field error on validTo: an end on a row of a skill; 409: a renewal of a skill's row), level_not_allowed (400, a field error on level: a level on a competence without one) and level_required (400, a field error on level: none on a competence with one). errors carries the field errors of a 400, keyed by the request's camelCase field (an element of a list as nextOfKin[0].name, a nested one as terms.ftePercent); a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type StaffProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -4139,9 +4368,9 @@ type StaffStats struct {
 
 // StaffStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. The host words the sentence from `type`; `title` is the name of the thing — a person's name — or, for the three items about the installation, an English sentence the host replaces. "Today" is the day in the settings' time zone; a date-only occurredAt is that day at midnight UTC.
 //
-// Fifty-six types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie”s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt the ferie”s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (the external kind): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created for the local kind, the person's kind now one that never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `erasureIncomplete`: for an erased person whose managed identity link could not be erased by the retention run (refused by identity, or the call failed), retried daily by the retention run, with the neutral title "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). The provider items (delivery B, Entra design D7; staff:manage alone, the same way) are read from the person's provider link as the worker wrote it, and from what the worker last saw of each provider (the settings' provider_status), never by asking the provider at read time; they are named for Entra, though their codes are the slot's. One per person, as above, unless said: `accountNotArrived`: Staff announced the external account to identity more than ninety days ago and no user has arrived for it; occurredAt the announcement. `accountAmbiguousInEntra`: two accounts in the directory hold the person's employee number. `accountAddressTakenInEntra`: the person's work email is another account's in the directory. `accountUnconfirmedInEntra`: the directory holds an account under the person's employee number that Vantigo did not create; a holder of entra:manage confirms the adoption on the Microsoft Entra ID page before Staff acts on it. `accountSyncedOnPremises`: the account is synchronised from an on-premises directory, whose attributes the provider cannot write. `accountPrivilegedInEntra`: the account holds an administrative role in the directory (refused, or reported privileged), which an administrator handles by hand. `hireDateNotWritten`: the directory refused the hire date. `licenceUnavailable`: a licence of the person's groups could not be assigned, none being left — one per person whatever the licences; no title names the licence. `passUnrevealed`: the provider issued a pass for the person a day ago or more and nobody has shown it; occurredAt when it was issued. `managerNotInEntra`: the person's manager has no account in the directory, so the account carries no manager. Four are the installation's, one each with entityId the literal 'settings', id the type, count the people of a provider's kind whose flag is on and occurredAt when the worker last checked the provider, raised only while someone has that kind: `entraNotConnected` (the provider has no connection yet), `entraFailing` (its last check failed — a credential refused or consent withdrawn), `secretExpiring` (the newest valid client secret ends within thirty days), `secretExpired` (it has ended). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items; on a provider link, provider_unavailable to entraNotConnected or entraFailing by the provider's status, external_ambiguous, external_address_taken, external_synced_on_premises, external_privileged and external_unconfirmed to their items, the reported privileged to accountPrivilegedInEntra, hire_date_not_written to hireDateNotWritten, licence_unavailable to licenceUnavailable, manager_not_in_entra to managerNotInEntra, user_gone to accountUserGone and invalid_actor to accountFailing. `groupSyncFailed` (staff:manage alone, Entra design D14): a group's section under a provider the accounts worker could not sync — a trait value the provider refused, a group in its directory it may not manage, or its calls failing — one per section, id `groupSyncFailed/<groupId>/<provider>`, entityId the group's id, title the group's name and nothing more (the code is on the group page), occurredAt today; it clears when the sync succeeds. The competence items (staff competence design §4) are read for active people's current rows alone, one per row, id `<type>/<rowId>`, entityId the person's id, title the person's name and nothing more, never the person's own rows to the person: `competenceDeclared` (the person's managers today — a manager their reports alone — staff:approve and staff:manage): a current row the person declared that nobody has verified; occurredAt when it was declared. `competenceExpiring` (the person's managers today and staff:manage): a current row whose validTo is within the competence's reminder lead days of today and has not passed; occurredAt its validTo. `competenceExpired` (the same): a current row whose validTo has passed; occurredAt its validTo. `competenceReviewOverdue` (the person's managers today — a manager their reports alone — and staff:manage; never staff:approve alone, and never about oneself): a person in employment today, not erased, whose latest competence review — or the start of their current unbroken employment run, when that is later — lies more than the settings' competenceReviewIntervalMonths before today; none while the interval is 0; one per person, id `competenceReviewOverdue/<personId>`, occurredAt the day it fell due. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
+// Fifty-seven types. `contractOverdue` (staff:manage): an employment that has started and not ended with neither a contract signing day typed nor a signed document in the contract category filed for it, from seven days after its start — from its start when, judged on the terms in force on the start, the person is hired out or a temporary row's expected end is under a month from the start — an end typed later does not count (aml. § 14-5); one per employment, id `contractOverdue/<employmentId>`, occurredAt the day it became overdue. `probationEnding` (staff:manage, and for a manager the employments whose manager today they are — each employment judged on its own terms, by the rule reportsWithoutManager reads): a probation — the extension's end when there is one — ending today or within the next thirty days on an employment in force today; one per employment, occurredAt the probation's end. `temporaryNoticeDue` (staff:manage): a temporary employment in force today that has lasted twelve months, owed a month's written notice of its end (aml. § 14-9); one per employment, occurredAt the start plus twelve months. `temporaryConverts` (staff:manage): a person whose unbroken run of temporary employments on ground a or b — each starting no later than the day after the one before it ended, the latest in force today — has passed thirty-six months (aml. § 14-9 (7)); one per person, occurredAt the day the thirty-six months passed. `reportsWithoutManager` (staff:manage): a person with an employment in force today that has no manager today — the manager its terms name, else the manager of its department or of the first department above it who is someone else, each candidate in employment today (a manager who has left is skipped); a person whose terms place them in a department they manage, with no manager named in any department above it, is not listed; one per person, occurredAt that employment's start. `reassessmentDue` (staff:personal-data): an erased person not yet reassessed, twelve months after their last employment ended; occurredAt that day. For these six entityId is the person's id and title the person's name, with the employment number after it for an employment item of a person who has more than one. `retentionFailing` (staff:manage): one item while ledger rows the object store has refused at least once have waited more than a day since they were queued; entityId is the literal 'retention', count those rows, occurredAt when the oldest of them was queued. `otpThreshold` (staff:manage): one item while, by the full-time percentages of the employments in force today summed per person, someone is at 75 % or more, or the people at 20 % or more add up to two full-time equivalents (OTP-loven § 2) — no owner is recorded, so the title names the exception, "unless the only such person is the owner" — and the threshold `otp` is not acknowledged; entityId is the literal 'thresholds', occurredAt today. `headcountThreshold` (staff:manage): one item for each threshold the headcount has crossed and that is not acknowledged — 5 at 5 or more, 30 at 30 or more, 50 at more than 50 — 5, a whistleblowing routine and a safety representative (aml. § 2 A-6, § 6-1); 30, a working environment committee (aml. § 7-1); 50, the activity and reporting duty on equality, an employer's with more than fifty (likestillings- og diskrimineringsloven § 26); entityId is the threshold, count the headcount, occurredAt today. `selfApproved` (staff:manage; provisional, plan reading 1): an absence its person approved themselves — a holder of staff:approve or staff:manage heading the structure with no manager with an active user — that has not ended; one per absence, id `selfApproved/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt when it was approved. `holidayAffectedBySickness` (staff:manage): approved ferie a 100 % sykmelding lies over, until four weeks after the ferie”s last day — one whose sickness began before it only until the holiday begins, when the § 9 (1) deadline has passed — the employee may demand to postpone it (ferieloven § 9), which HR records with POST /absences/{id}/postpone-holiday; one per ferie row, id `holidayAffectedBySickness/<absenceId>`, entityId the person”s id, title the person”s name, occurredAt the ferie”s first day. `absenceAwaitingDecision` (a decider: staff:approve, staff:manage, a manager of the person today, and for an HR-only type staff:personal-data alone): one item while requests the caller may decide wait — the approvals inbox's count, never the caller's own; a request of an HR-only type counts only for staff:personal-data, so no count reveals one to anyone else; id `absenceAwaitingDecision`, entityId the literal 'approvals', count the requests, occurredAt when the oldest was made. `hrOnlyAwaitingDecision` (staff:personal-data alone, never staff:manage without it): one item while requests of an HR-only type have waited more than seven days undecided — the caller's own included, unless the caller is the sole active holder of staff:personal-data, who decides their own and counts it under absenceAwaitingDecision instead; id `hrOnlyAwaitingDecision`, entityId 'approvals', count the requests, occurredAt the oldest's seventh day. `hrOnlySelfApproved` (staff:personal-data alone, never staff:manage without it): an absence of an HR-only type its person approved themselves as the sole active holder of staff:personal-data, that has not ended; one per absence, id `hrOnlySelfApproved/<absenceId>`, entityId the person's id, title the person's name and never the type, occurredAt when it was approved — read by every holder of staff:personal-data, so a holder added later sees it while the absence lasts. `sickMilestoneDue` (staff:manage and staff:approve every person's, a manager the people they manage today): a sick-leave case's milestone that is due — the case open and lasted to within a week of the milestone's date, neither done nor waived — whose date is within seven days or past; the end of the arbeidsgiverperiode is a date, never an action, and raises none; one per milestone, id `sickMilestoneDue/<caseId>/<kind>`, entityId the person's id, title the person's name, occurredAt the milestone's date. `holidayUntaken` (staff:manage, in January): a person with an employment in force today whose holiday account for last year has days remaining and no carry-over from it recorded — a carry-in derived by automatic carry-over counts as recorded; one per person, id `holidayUntaken/<personId>`, occurredAt 1 January. `mainPeriodShort` (staff:manage, 1 April to 30 September): a person with an employment in force today that began before 1 June who has fewer approved holiday working days between 1 June and 30 September than their scheme's main period converted (ferieloven § 7 (1)); one per person, id `mainPeriodShort/<personId>`, occurredAt 1 April. The account items (delivery C; staff:manage alone — never staff:personal-data without it, a manager, an Approver or a colleague) are read from Staff's own rows — the people and their links as the accounts worker wrote them — never by asking identity, and only for a person whose account flag is on and who is not erased (but, for a link carrying a disable Disable now asked for, accountFailing — or accountNotManaged, accountPrivileged or accountMismatch when that disable met a refusal or someone else's account, tried again daily); one per person, id `<type>/<personId>`, entityId the person's id, title the person's name and nothing more (no address, no reason beyond the type), occurredAt when the worker last wrote the link. `accountNoEmployment`: the person has no employment at all, so there is no day to give them an account from; occurredAt today. `accountEmailMissing`: the person has an employment that has not ended and does not have the address the flag names (work or private); occurredAt today. `accountNotFound` (the external kind): no user with the person's employee number exists yet — the identity provider has not created it. `accountNotManaged`: the link's user is no longer managed by Staff (an Owner stopped managing them, or promoted them). `accountBlockedByOwner`: an Owner disabled the pending user, so the worker does not enable them. `accountDisabledByOwner`: an Owner disabled the user while the person is employed. `accountUserGone`: the user the link names no longer exists; the worker never creates a second. `accountPrivileged`: the user is an Owner or a SystemAdmin, whom an Owner handles by hand. `accountMismatch`: the user identity found or the link names carries another employee number — someone else's account; nothing is done to it. `accountModeChanged`: a pending user created for the local kind, the person's kind now one that never invites. `accountEmailDiffers`: the user's address in identity differs from the person's chosen address after the first invitation naming the user was delivered (pending or not) — Staff no longer writes it; an Owner changes it in identity. `accountEmailTaken`: another user, not one Staff manages under this employee number, holds the address. `accountNumberTaken`: a user Staff does not manage holds the employee number. `accountFailing`: for a person whose flag is on, the worker's calls have failed three times in a row (last_error set), or failed by a fault of Staff's own (invalid_actor); whatever the flag, and for an erased person too, a disable Disable now asked for that identity has not confirmed — failed once, or waiting more than ten minutes, and not refused (a refusal raises its own item) — which the worker retries at every poll; for an erased person the title is the neutral "An erased person". `erasureIncomplete`: for an erased person whose managed identity link could not be erased by the retention run (refused by identity, or the call failed), retried daily by the retention run, with the neutral title "An erased person". `invitationUnanswered`: three invitations went unanswered; Run now sends a fresh one. `invitationRevoked`: an Owner revoked the pending user's invitation; Run now sends a fresh one. Three items are the installation's, one each with entityId the literal 'settings', id the type, count the people's links blocked on it and occurredAt the oldest such write: `employeeRoleMissing` (no Owner has named the roles Staff may give), `employeeRoleUnsafe` (a role named for Staff grants administration, so none is given until an Owner takes it out) and `accountModeMismatch` (a worker process derives another authority mode than the API recorded, so only deactivations run). The provider items (delivery B, Entra design D7; staff:manage alone, the same way) are read from the person's provider link as the worker wrote it, and from what the worker last saw of each provider (the settings' provider_status), never by asking the provider at read time; they are named for Entra, though their codes are the slot's. One per person, as above, unless said: `accountNotArrived`: Staff announced the external account to identity more than ninety days ago and no user has arrived for it; occurredAt the announcement. `accountAmbiguousInEntra`: two accounts in the directory hold the person's employee number. `accountAddressTakenInEntra`: the person's work email is another account's in the directory. `accountUnconfirmedInEntra`: the directory holds an account under the person's employee number that Vantigo did not create; a holder of entra:manage confirms the adoption on the Microsoft Entra ID page before Staff acts on it. `accountSyncedOnPremises`: the account is synchronised from an on-premises directory, whose attributes the provider cannot write. `accountPrivilegedInEntra`: the account holds an administrative role in the directory (refused, or reported privileged), which an administrator handles by hand. `hireDateNotWritten`: the directory refused the hire date. `licenceUnavailable`: a licence of the person's groups could not be assigned, none being left — one per person whatever the licences; no title names the licence. `passUnrevealed`: the provider issued a pass for the person a day ago or more and nobody has shown it; occurredAt when it was issued. `managerNotInEntra`: the person's manager has no account in the directory, so the account carries no manager. Four are the installation's, one each with entityId the literal 'settings', id the type, count the people of a provider's kind whose flag is on and occurredAt when the worker last checked the provider, raised only while someone has that kind: `entraNotConnected` (the provider has no connection yet), `entraFailing` (its last check failed — a credential refused or consent withdrawn), `secretExpiring` (the newest valid client secret ends within thirty days), `secretExpired` (it has ended). Every reason the worker records maps to one of these: no_employment and account_email_missing to the two person items, which are judged on the person's rows rather than the link; invalid_actor to accountFailing; mode_mismatch, employee_role_missing and employee_role_unsafe to the installation items; on a provider link, provider_unavailable to entraNotConnected or entraFailing by the provider's status, external_ambiguous, external_address_taken, external_synced_on_premises, external_privileged and external_unconfirmed to their items, the reported privileged to accountPrivilegedInEntra, hire_date_not_written to hireDateNotWritten, licence_unavailable to licenceUnavailable, manager_not_in_entra to managerNotInEntra, user_gone to accountUserGone and invalid_actor to accountFailing. `groupSyncFailed` (staff:manage alone, Entra design D14): a group's section under a provider the accounts worker could not sync — a trait value the provider refused, a group in its directory it may not manage, or its calls failing — one per section, id `groupSyncFailed/<groupId>/<provider>`, entityId the group's id, title the group's name and nothing more (the code is on the group page), occurredAt today; it clears when the sync succeeds. The competence items (staff competence design §4) are read for active people's current rows alone, one per row, id `<type>/<rowId>`, entityId the person's id, title the person's name and nothing more, never the person's own rows to the person: `competenceDeclared` (the person's managers today — a manager their reports alone — staff:approve and staff:manage): a current row the person declared that nobody has verified; occurredAt when it was declared. `competenceExpiring` (the person's managers today and staff:manage): a current row whose validTo is within the competence's reminder lead days of today and has not passed; occurredAt its validTo. `competenceExpired` (the same): a current row whose validTo has passed; occurredAt its validTo. `competenceReviewOverdue` (the person's managers today — a manager their reports alone — and staff:manage; never staff:approve alone, and never about oneself): a person in employment today, not erased, whose latest competence review — or the start of their current unbroken employment run, when that is later — lies more than the settings' competenceReviewIntervalMonths before today; none while the interval is 0; one per person, id `competenceReviewOverdue/<personId>`, occurredAt the day it fell due. `competenceGap` (the person's managers today — a manager their reports alone — and staff:manage; never staff:approve alone, and never about oneself): a person active today and not erased with an item not met across their unarchived competence profiles — assigned, or their department's default (staff competence design S13: every status but met and expiring, an archived competence's item included); one per person, id `competenceGap/<personId>`, title the person's name, count the items not met, occurredAt today. Oldest occurredAt first, then by type and id; each item once, whichever of the caller's roles found it; a caller with none of the roles gets an empty list.
 type StaffStatsAttentionItem struct {
-	// Count How many the item stands for — the failing ledger rows, the headcount of a threshold, the requests waiting, or the links an installation account item stands for. Absent on the other types.
+	// Count How many the item stands for — the failing ledger rows, the headcount of a threshold, the requests waiting, the links an installation account item stands for, or the items not met (competenceGap). Absent on the other types.
 	Count *int32 `json:"count,omitempty"`
 
 	// EntityId The person's id, a group's id (groupSyncFailed), or the literal 'retention', 'thresholds', 'approvals' or 'settings', or the headcount threshold ('5', '30', '50').
@@ -4509,6 +4738,30 @@ type PutStaffCompetenceCategoriesByIdParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// GetStaffCompetenceMatrixParams defines parameters for GetStaffCompetenceMatrix.
+type GetStaffCompetenceMatrixParams struct {
+	// CategoryId Only this category's competences.
+	CategoryId *int64 `form:"categoryId,omitempty" json:"categoryId,omitempty"`
+
+	// CompetenceId Only these competences, and only the people who hold every one; repeat the parameter for more.
+	CompetenceId *[]int64 `form:"competenceId,omitempty" json:"competenceId,omitempty"`
+
+	// MinLevel 0 to 4. Drops the rows of a competence with a level below it.
+	MinLevel *int32 `form:"minLevel,omitempty" json:"minLevel,omitempty"`
+
+	// ValidOn The day the rows are valid on. Left out, today.
+	ValidOn *openapi_types.Date `form:"validOn,omitempty" json:"validOn,omitempty"`
+
+	// VerifiedOnly Only verified rows.
+	VerifiedOnly *bool `form:"verifiedOnly,omitempty" json:"verifiedOnly,omitempty"`
+}
+
+// PutStaffCompetenceProfilesByIdParams defines parameters for PutStaffCompetenceProfilesById.
+type PutStaffCompetenceProfilesByIdParams struct {
+	// IfMatch The revision the profile was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
 // GetStaffCompetencesParams defines parameters for GetStaffCompetences.
 type GetStaffCompetencesParams struct {
 	// IncludeHidden With the hidden competences too (staff:manage).
@@ -4789,6 +5042,12 @@ type PostStaffCompetenceCategoriesJSONRequestBody = StaffCompetenceCategoryReque
 // PutStaffCompetenceCategoriesByIdJSONRequestBody defines body for PutStaffCompetenceCategoriesById for application/json ContentType.
 type PutStaffCompetenceCategoriesByIdJSONRequestBody = StaffCompetenceCategoryChangeRequest
 
+// PostStaffCompetenceProfilesJSONRequestBody defines body for PostStaffCompetenceProfiles for application/json ContentType.
+type PostStaffCompetenceProfilesJSONRequestBody = StaffCompetenceProfileRequest
+
+// PutStaffCompetenceProfilesByIdJSONRequestBody defines body for PutStaffCompetenceProfilesById for application/json ContentType.
+type PutStaffCompetenceProfilesByIdJSONRequestBody = StaffCompetenceProfileChangeRequest
+
 // PostStaffCompetencesJSONRequestBody defines body for PostStaffCompetences for application/json ContentType.
 type PostStaffCompetencesJSONRequestBody = StaffCompetenceRequest
 
@@ -4881,6 +5140,9 @@ type PutStaffPeopleByIdBankAccountJSONRequestBody = StaffBankAccountRequest
 
 // PostStaffPeopleByIdCarryOverJSONRequestBody defines body for PostStaffPeopleByIdCarryOver for application/json ContentType.
 type PostStaffPeopleByIdCarryOverJSONRequestBody = StaffCarryOverRequest
+
+// PutStaffPeopleByIdCompetenceProfilesJSONRequestBody defines body for PutStaffPeopleByIdCompetenceProfiles for application/json ContentType.
+type PutStaffPeopleByIdCompetenceProfilesJSONRequestBody = StaffPersonProfilesRequest
 
 // PostStaffPeopleByIdCompetenceReviewsJSONRequestBody defines body for PostStaffPeopleByIdCompetenceReviews for application/json ContentType.
 type PostStaffPeopleByIdCompetenceReviewsJSONRequestBody = StaffCompetenceReviewRequest
@@ -5034,6 +5296,21 @@ type ServerInterface interface {
 	// PutStaffCompetenceCategoriesById Change a competence category
 	// (PUT /api/v1/staff/competence-categories/{id})
 	PutStaffCompetenceCategoriesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffCompetenceCategoriesByIdParams)
+	// GetStaffCompetenceInterests List who wants which competence
+	// (GET /api/v1/staff/competence-interests)
+	GetStaffCompetenceInterests(w http.ResponseWriter, r *http.Request)
+	// GetStaffCompetenceMatrix Show the competence matrix
+	// (GET /api/v1/staff/competence-matrix)
+	GetStaffCompetenceMatrix(w http.ResponseWriter, r *http.Request, params GetStaffCompetenceMatrixParams)
+	// GetStaffCompetenceProfiles List competence profiles
+	// (GET /api/v1/staff/competence-profiles)
+	GetStaffCompetenceProfiles(w http.ResponseWriter, r *http.Request)
+	// PostStaffCompetenceProfiles Add a competence profile
+	// (POST /api/v1/staff/competence-profiles)
+	PostStaffCompetenceProfiles(w http.ResponseWriter, r *http.Request)
+	// PutStaffCompetenceProfilesById Change a competence profile
+	// (PUT /api/v1/staff/competence-profiles/{id})
+	PutStaffCompetenceProfilesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffCompetenceProfilesByIdParams)
 	// GetStaffCompetences List competences
 	// (GET /api/v1/staff/competences)
 	GetStaffCompetences(w http.ResponseWriter, r *http.Request, params GetStaffCompetencesParams)
@@ -5259,6 +5536,15 @@ type ServerInterface interface {
 	// PostStaffPeopleByIdCarryOver Carry holiday over
 	// (POST /api/v1/staff/people/{id}/carry-over)
 	PostStaffPeopleByIdCarryOver(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffPeopleByIdCompetenceGaps List a person's competence gaps
+	// (GET /api/v1/staff/people/{id}/competence-gaps)
+	GetStaffPeopleByIdCompetenceGaps(w http.ResponseWriter, r *http.Request, id int64)
+	// GetStaffPeopleByIdCompetenceProfiles List a person's competence profiles
+	// (GET /api/v1/staff/people/{id}/competence-profiles)
+	GetStaffPeopleByIdCompetenceProfiles(w http.ResponseWriter, r *http.Request, id int64)
+	// PutStaffPeopleByIdCompetenceProfiles Replace a person's competence profiles
+	// (PUT /api/v1/staff/people/{id}/competence-profiles)
+	PutStaffPeopleByIdCompetenceProfiles(w http.ResponseWriter, r *http.Request, id int64)
 	// GetStaffPeopleByIdCompetenceReviews List a person's competence reviews
 	// (GET /api/v1/staff/people/{id}/competence-reviews)
 	GetStaffPeopleByIdCompetenceReviews(w http.ResponseWriter, r *http.Request, id int64)
@@ -6507,6 +6793,187 @@ func (siw *ServerInterfaceWrapper) PutStaffCompetenceCategoriesById(w http.Respo
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutStaffCompetenceCategoriesById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffCompetenceInterests operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffCompetenceInterests(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffCompetenceInterests(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffCompetenceMatrix operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffCompetenceMatrix(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetStaffCompetenceMatrixParams
+
+	// ------------- Optional query parameter "categoryId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "categoryId", r.URL.Query(), &params.CategoryId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "categoryId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "categoryId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "competenceId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "competenceId", r.URL.Query(), &params.CompetenceId, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "competenceId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "competenceId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "minLevel" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "minLevel", r.URL.Query(), &params.MinLevel, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minLevel"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minLevel", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "validOn" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "validOn", r.URL.Query(), &params.ValidOn, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "validOn"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "validOn", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "verifiedOnly" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "verifiedOnly", r.URL.Query(), &params.VerifiedOnly, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "verifiedOnly"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "verifiedOnly", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffCompetenceMatrix(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffCompetenceProfiles operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffCompetenceProfiles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffCompetenceProfiles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostStaffCompetenceProfiles operation middleware
+func (siw *ServerInterfaceWrapper) PostStaffCompetenceProfiles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostStaffCompetenceProfiles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffCompetenceProfilesById operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffCompetenceProfilesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutStaffCompetenceProfilesByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffCompetenceProfilesById(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8768,6 +9235,84 @@ func (siw *ServerInterfaceWrapper) PostStaffPeopleByIdCarryOver(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// GetStaffPeopleByIdCompetenceGaps operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdCompetenceGaps(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdCompetenceGaps(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStaffPeopleByIdCompetenceProfiles operation middleware
+func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdCompetenceProfiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStaffPeopleByIdCompetenceProfiles(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutStaffPeopleByIdCompetenceProfiles operation middleware
+func (siw *ServerInterfaceWrapper) PutStaffPeopleByIdCompetenceProfiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutStaffPeopleByIdCompetenceProfiles(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStaffPeopleByIdCompetenceReviews operation middleware
 func (siw *ServerInterfaceWrapper) GetStaffPeopleByIdCompetenceReviews(w http.ResponseWriter, r *http.Request) {
 
@@ -10249,6 +10794,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/competence-categories", wrapper.GetStaffCompetenceCategories)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/competence-categories", wrapper.PostStaffCompetenceCategories)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/competence-categories/{id}", wrapper.PutStaffCompetenceCategoriesById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/competence-interests", wrapper.GetStaffCompetenceInterests)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/competence-matrix", wrapper.GetStaffCompetenceMatrix)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/competence-profiles", wrapper.GetStaffCompetenceProfiles)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/competence-profiles", wrapper.PostStaffCompetenceProfiles)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/competence-profiles/{id}", wrapper.PutStaffCompetenceProfilesById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/competences", wrapper.GetStaffCompetences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/competences", wrapper.PostStaffCompetences)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/competences/{id}", wrapper.PutStaffCompetencesById)
@@ -10324,6 +10874,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/bank-account/reveal", wrapper.PostStaffPeopleByIdBankAccountReveal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/care-days", wrapper.GetStaffPeopleByIdCareDays)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/carry-over", wrapper.PostStaffPeopleByIdCarryOver)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/competence-gaps", wrapper.GetStaffPeopleByIdCompetenceGaps)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/competence-profiles", wrapper.GetStaffPeopleByIdCompetenceProfiles)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/staff/people/{id}/competence-profiles", wrapper.PutStaffPeopleByIdCompetenceProfiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/competence-reviews", wrapper.GetStaffPeopleByIdCompetenceReviews)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/staff/people/{id}/competence-reviews", wrapper.PostStaffPeopleByIdCompetenceReviews)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/staff/people/{id}/competences", wrapper.GetStaffPeopleByIdCompetences)
@@ -12702,6 +13255,320 @@ func (response PutStaffCompetenceCategoriesById404Response) VisitPutStaffCompete
 type PutStaffCompetenceCategoriesById409ApplicationProblemPlusJSONResponse StaffProblem
 
 func (response PutStaffCompetenceCategoriesById409ApplicationProblemPlusJSONResponse) VisitPutStaffCompetenceCategoriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceInterestsRequestObject struct {
+}
+
+type GetStaffCompetenceInterestsResponseObject interface {
+	VisitGetStaffCompetenceInterestsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffCompetenceInterests200JSONResponse []StaffCompetenceInterestsEntry
+
+func (response GetStaffCompetenceInterests200JSONResponse) VisitGetStaffCompetenceInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceInterests401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffCompetenceInterests401JSONResponse) VisitGetStaffCompetenceInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceInterests403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffCompetenceInterests403JSONResponse) VisitGetStaffCompetenceInterestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceMatrixRequestObject struct {
+	Params GetStaffCompetenceMatrixParams
+}
+
+type GetStaffCompetenceMatrixResponseObject interface {
+	VisitGetStaffCompetenceMatrixResponse(w http.ResponseWriter) error
+}
+
+type GetStaffCompetenceMatrix200JSONResponse StaffCompetenceMatrix
+
+func (response GetStaffCompetenceMatrix200JSONResponse) VisitGetStaffCompetenceMatrixResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceMatrix400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response GetStaffCompetenceMatrix400ApplicationProblemPlusJSONResponse) VisitGetStaffCompetenceMatrixResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceMatrix401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffCompetenceMatrix401JSONResponse) VisitGetStaffCompetenceMatrixResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceMatrix403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffCompetenceMatrix403JSONResponse) VisitGetStaffCompetenceMatrixResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceProfilesRequestObject struct {
+}
+
+type GetStaffCompetenceProfilesResponseObject interface {
+	VisitGetStaffCompetenceProfilesResponse(w http.ResponseWriter) error
+}
+
+type GetStaffCompetenceProfiles200JSONResponse []StaffCompetenceProfile
+
+func (response GetStaffCompetenceProfiles200JSONResponse) VisitGetStaffCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceProfiles401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffCompetenceProfiles401JSONResponse) VisitGetStaffCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffCompetenceProfiles403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffCompetenceProfiles403JSONResponse) VisitGetStaffCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffCompetenceProfilesRequestObject struct {
+	Body *PostStaffCompetenceProfilesJSONRequestBody
+}
+
+type PostStaffCompetenceProfilesResponseObject interface {
+	VisitPostStaffCompetenceProfilesResponse(w http.ResponseWriter) error
+}
+
+type PostStaffCompetenceProfiles201JSONResponse StaffCompetenceProfile
+
+func (response PostStaffCompetenceProfiles201JSONResponse) VisitPostStaffCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffCompetenceProfiles400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PostStaffCompetenceProfiles400ApplicationProblemPlusJSONResponse) VisitPostStaffCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffCompetenceProfiles401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffCompetenceProfiles401JSONResponse) VisitPostStaffCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostStaffCompetenceProfiles403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostStaffCompetenceProfiles403JSONResponse) VisitPostStaffCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffCompetenceProfilesByIdRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutStaffCompetenceProfilesByIdParams
+	Body   *PutStaffCompetenceProfilesByIdJSONRequestBody
+}
+
+type PutStaffCompetenceProfilesByIdResponseObject interface {
+	VisitPutStaffCompetenceProfilesByIdResponse(w http.ResponseWriter) error
+}
+
+type PutStaffCompetenceProfilesById200JSONResponse StaffCompetenceProfile
+
+func (response PutStaffCompetenceProfilesById200JSONResponse) VisitPutStaffCompetenceProfilesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffCompetenceProfilesById400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffCompetenceProfilesById400ApplicationProblemPlusJSONResponse) VisitPutStaffCompetenceProfilesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffCompetenceProfilesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffCompetenceProfilesById401JSONResponse) VisitPutStaffCompetenceProfilesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffCompetenceProfilesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffCompetenceProfilesById403JSONResponse) VisitPutStaffCompetenceProfilesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffCompetenceProfilesById404Response struct {
+}
+
+func (response PutStaffCompetenceProfilesById404Response) VisitPutStaffCompetenceProfilesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffCompetenceProfilesById409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffCompetenceProfilesById409ApplicationProblemPlusJSONResponse) VisitPutStaffCompetenceProfilesByIdResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -18158,6 +19025,209 @@ func (response PostStaffPeopleByIdCarryOver409ApplicationProblemPlusJSONResponse
 	return err
 }
 
+type GetStaffPeopleByIdCompetenceGapsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdCompetenceGapsResponseObject interface {
+	VisitGetStaffPeopleByIdCompetenceGapsResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdCompetenceGaps200JSONResponse StaffCompetenceGaps
+
+func (response GetStaffPeopleByIdCompetenceGaps200JSONResponse) VisitGetStaffPeopleByIdCompetenceGapsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceGaps401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdCompetenceGaps401JSONResponse) VisitGetStaffPeopleByIdCompetenceGapsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceGaps403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdCompetenceGaps403JSONResponse) VisitGetStaffPeopleByIdCompetenceGapsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceGaps404Response struct {
+}
+
+func (response GetStaffPeopleByIdCompetenceGaps404Response) VisitGetStaffPeopleByIdCompetenceGapsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetStaffPeopleByIdCompetenceProfilesRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetStaffPeopleByIdCompetenceProfilesResponseObject interface {
+	VisitGetStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error
+}
+
+type GetStaffPeopleByIdCompetenceProfiles200JSONResponse StaffPersonProfileList
+
+func (response GetStaffPeopleByIdCompetenceProfiles200JSONResponse) VisitGetStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceProfiles401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdCompetenceProfiles401JSONResponse) VisitGetStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceProfiles403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetStaffPeopleByIdCompetenceProfiles403JSONResponse) VisitGetStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStaffPeopleByIdCompetenceProfiles404Response struct {
+}
+
+func (response GetStaffPeopleByIdCompetenceProfiles404Response) VisitGetStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdCompetenceProfilesRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutStaffPeopleByIdCompetenceProfilesJSONRequestBody
+}
+
+type PutStaffPeopleByIdCompetenceProfilesResponseObject interface {
+	VisitPutStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error
+}
+
+type PutStaffPeopleByIdCompetenceProfiles200JSONResponse StaffPersonProfileList
+
+func (response PutStaffPeopleByIdCompetenceProfiles200JSONResponse) VisitPutStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdCompetenceProfiles400ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdCompetenceProfiles400ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdCompetenceProfiles401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdCompetenceProfiles401JSONResponse) VisitPutStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdCompetenceProfiles403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutStaffPeopleByIdCompetenceProfiles403JSONResponse) VisitPutStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutStaffPeopleByIdCompetenceProfiles404Response struct {
+}
+
+func (response PutStaffPeopleByIdCompetenceProfiles404Response) VisitPutStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutStaffPeopleByIdCompetenceProfiles409ApplicationProblemPlusJSONResponse StaffProblem
+
+func (response PutStaffPeopleByIdCompetenceProfiles409ApplicationProblemPlusJSONResponse) VisitPutStaffPeopleByIdCompetenceProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStaffPeopleByIdCompetenceReviewsRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -21647,6 +22717,21 @@ type StrictServerInterface interface {
 	// PutStaffCompetenceCategoriesById Change a competence category
 	// (PUT /api/v1/staff/competence-categories/{id})
 	PutStaffCompetenceCategoriesById(ctx context.Context, request PutStaffCompetenceCategoriesByIdRequestObject) (PutStaffCompetenceCategoriesByIdResponseObject, error)
+	// GetStaffCompetenceInterests List who wants which competence
+	// (GET /api/v1/staff/competence-interests)
+	GetStaffCompetenceInterests(ctx context.Context, request GetStaffCompetenceInterestsRequestObject) (GetStaffCompetenceInterestsResponseObject, error)
+	// GetStaffCompetenceMatrix Show the competence matrix
+	// (GET /api/v1/staff/competence-matrix)
+	GetStaffCompetenceMatrix(ctx context.Context, request GetStaffCompetenceMatrixRequestObject) (GetStaffCompetenceMatrixResponseObject, error)
+	// GetStaffCompetenceProfiles List competence profiles
+	// (GET /api/v1/staff/competence-profiles)
+	GetStaffCompetenceProfiles(ctx context.Context, request GetStaffCompetenceProfilesRequestObject) (GetStaffCompetenceProfilesResponseObject, error)
+	// PostStaffCompetenceProfiles Add a competence profile
+	// (POST /api/v1/staff/competence-profiles)
+	PostStaffCompetenceProfiles(ctx context.Context, request PostStaffCompetenceProfilesRequestObject) (PostStaffCompetenceProfilesResponseObject, error)
+	// PutStaffCompetenceProfilesById Change a competence profile
+	// (PUT /api/v1/staff/competence-profiles/{id})
+	PutStaffCompetenceProfilesById(ctx context.Context, request PutStaffCompetenceProfilesByIdRequestObject) (PutStaffCompetenceProfilesByIdResponseObject, error)
 	// GetStaffCompetences List competences
 	// (GET /api/v1/staff/competences)
 	GetStaffCompetences(ctx context.Context, request GetStaffCompetencesRequestObject) (GetStaffCompetencesResponseObject, error)
@@ -21872,6 +22957,15 @@ type StrictServerInterface interface {
 	// PostStaffPeopleByIdCarryOver Carry holiday over
 	// (POST /api/v1/staff/people/{id}/carry-over)
 	PostStaffPeopleByIdCarryOver(ctx context.Context, request PostStaffPeopleByIdCarryOverRequestObject) (PostStaffPeopleByIdCarryOverResponseObject, error)
+	// GetStaffPeopleByIdCompetenceGaps List a person's competence gaps
+	// (GET /api/v1/staff/people/{id}/competence-gaps)
+	GetStaffPeopleByIdCompetenceGaps(ctx context.Context, request GetStaffPeopleByIdCompetenceGapsRequestObject) (GetStaffPeopleByIdCompetenceGapsResponseObject, error)
+	// GetStaffPeopleByIdCompetenceProfiles List a person's competence profiles
+	// (GET /api/v1/staff/people/{id}/competence-profiles)
+	GetStaffPeopleByIdCompetenceProfiles(ctx context.Context, request GetStaffPeopleByIdCompetenceProfilesRequestObject) (GetStaffPeopleByIdCompetenceProfilesResponseObject, error)
+	// PutStaffPeopleByIdCompetenceProfiles Replace a person's competence profiles
+	// (PUT /api/v1/staff/people/{id}/competence-profiles)
+	PutStaffPeopleByIdCompetenceProfiles(ctx context.Context, request PutStaffPeopleByIdCompetenceProfilesRequestObject) (PutStaffPeopleByIdCompetenceProfilesResponseObject, error)
 	// GetStaffPeopleByIdCompetenceReviews List a person's competence reviews
 	// (GET /api/v1/staff/people/{id}/competence-reviews)
 	GetStaffPeopleByIdCompetenceReviews(ctx context.Context, request GetStaffPeopleByIdCompetenceReviewsRequestObject) (GetStaffPeopleByIdCompetenceReviewsResponseObject, error)
@@ -22962,6 +24056,145 @@ func (sh *strictHandler) PutStaffCompetenceCategoriesById(w http.ResponseWriter,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutStaffCompetenceCategoriesByIdResponseObject); ok {
 		if err := validResponse.VisitPutStaffCompetenceCategoriesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffCompetenceInterests operation middleware
+func (sh *strictHandler) GetStaffCompetenceInterests(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffCompetenceInterestsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffCompetenceInterests(ctx, request.(GetStaffCompetenceInterestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffCompetenceInterests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffCompetenceInterestsResponseObject); ok {
+		if err := validResponse.VisitGetStaffCompetenceInterestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffCompetenceMatrix operation middleware
+func (sh *strictHandler) GetStaffCompetenceMatrix(w http.ResponseWriter, r *http.Request, params GetStaffCompetenceMatrixParams) {
+	var request GetStaffCompetenceMatrixRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffCompetenceMatrix(ctx, request.(GetStaffCompetenceMatrixRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffCompetenceMatrix")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffCompetenceMatrixResponseObject); ok {
+		if err := validResponse.VisitGetStaffCompetenceMatrixResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffCompetenceProfiles operation middleware
+func (sh *strictHandler) GetStaffCompetenceProfiles(w http.ResponseWriter, r *http.Request) {
+	var request GetStaffCompetenceProfilesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffCompetenceProfiles(ctx, request.(GetStaffCompetenceProfilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffCompetenceProfiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffCompetenceProfilesResponseObject); ok {
+		if err := validResponse.VisitGetStaffCompetenceProfilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostStaffCompetenceProfiles operation middleware
+func (sh *strictHandler) PostStaffCompetenceProfiles(w http.ResponseWriter, r *http.Request) {
+	var request PostStaffCompetenceProfilesRequestObject
+
+	var body PostStaffCompetenceProfilesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostStaffCompetenceProfiles(ctx, request.(PostStaffCompetenceProfilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostStaffCompetenceProfiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostStaffCompetenceProfilesResponseObject); ok {
+		if err := validResponse.VisitPostStaffCompetenceProfilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffCompetenceProfilesById operation middleware
+func (sh *strictHandler) PutStaffCompetenceProfilesById(w http.ResponseWriter, r *http.Request, id int64, params PutStaffCompetenceProfilesByIdParams) {
+	var request PutStaffCompetenceProfilesByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutStaffCompetenceProfilesByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffCompetenceProfilesById(ctx, request.(PutStaffCompetenceProfilesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffCompetenceProfilesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffCompetenceProfilesByIdResponseObject); ok {
+		if err := validResponse.VisitPutStaffCompetenceProfilesByIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -25094,6 +26327,91 @@ func (sh *strictHandler) PostStaffPeopleByIdCarryOver(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostStaffPeopleByIdCarryOverResponseObject); ok {
 		if err := validResponse.VisitPostStaffPeopleByIdCarryOverResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdCompetenceGaps operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdCompetenceGaps(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdCompetenceGapsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdCompetenceGaps(ctx, request.(GetStaffPeopleByIdCompetenceGapsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdCompetenceGaps")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdCompetenceGapsResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdCompetenceGapsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStaffPeopleByIdCompetenceProfiles operation middleware
+func (sh *strictHandler) GetStaffPeopleByIdCompetenceProfiles(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetStaffPeopleByIdCompetenceProfilesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStaffPeopleByIdCompetenceProfiles(ctx, request.(GetStaffPeopleByIdCompetenceProfilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStaffPeopleByIdCompetenceProfiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStaffPeopleByIdCompetenceProfilesResponseObject); ok {
+		if err := validResponse.VisitGetStaffPeopleByIdCompetenceProfilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutStaffPeopleByIdCompetenceProfiles operation middleware
+func (sh *strictHandler) PutStaffPeopleByIdCompetenceProfiles(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutStaffPeopleByIdCompetenceProfilesRequestObject
+
+	request.Id = id
+
+	var body PutStaffPeopleByIdCompetenceProfilesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutStaffPeopleByIdCompetenceProfiles(ctx, request.(PutStaffPeopleByIdCompetenceProfilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutStaffPeopleByIdCompetenceProfiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutStaffPeopleByIdCompetenceProfilesResponseObject); ok {
+		if err := validResponse.VisitPutStaffPeopleByIdCompetenceProfilesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

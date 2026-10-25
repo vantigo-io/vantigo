@@ -244,3 +244,83 @@ func TestCompetenceAttention_ReviewOverdue(t *testing.T) {
 		}
 	}
 }
+
+// gapItems is the competenceGap items among items, by id.
+func gapItems(items []gen.StaffStatsAttentionItem) map[string]gen.StaffStatsAttentionItem {
+	out := map[string]gen.StaffStatsAttentionItem{}
+	for _, it := range items {
+		if it.Type == gen.CompetenceGap {
+			out[it.Id] = it
+		}
+	}
+	return out
+}
+
+// The competenceGap item (staff competence design §4; plan reading 31): one
+// per person whose unarchived profiles — assigned, or their department's
+// default — have items not met, counted, dated today, titled with the
+// person's name; to their manager and to staff:manage, never to the
+// Approver, never to the person; gone when the profiles are met or
+// archived.
+func TestCompetenceAttention_Gap(t *testing.T) {
+	t.Parallel()
+	w := newCompetenceWorld(t)
+	h := w.h
+	fse := catalogueID(t, h, "fse")
+	golang := companySkill(t, h, "golang", "Go")
+	two := int16(2)
+
+	electrician := rawProfile(t, h, "electrician", false,
+		gapItemFor{competence: fse, mustBeValid: true}, gapItemFor{competence: golang, minLevel: int16Ptr(3), mustBeValid: true})
+	rawAssign(t, h, w.kari, electrician)
+	golangRow := rawPersonCompetence(t, h, competenceRow{person: w.kari, competence: golang, level: &two, from: "2026-01-01"})
+	// Bjørn's own profile is not met either; he is never told of his own.
+	rawAssign(t, h, w.boss, electrician)
+
+	hr, _ := signIn(t, h, "staff:manage")
+	approver, _ := signIn(t, h, "staff:approve")
+	kariC, kariUser := signIn(t, h)
+	link(t, h, w.kari, kariUser)
+
+	kariItem := itemID(gen.CompetenceGap, w.kari)
+	got := gapItems(attentionItems(t, w.bossC))
+	if len(got) != 1 {
+		t.Fatalf("the manager's gap items = %+v, want Kari's alone", got)
+	}
+	it := got[kariItem]
+	if it.Count == nil || *it.Count != 2 || it.Title != "Kari Nordmann" || it.EntityId != idText(w.kari) ||
+		it.OccurredAt.Format(time.DateOnly) != today(t, h) || !it.OccurredAt.Equal(time.Date(2026, time.September, 12, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("Kari's item = %+v, want count 2, her name, today", it)
+	}
+	if got := gapItems(attentionItems(t, hr)); len(got) != 2 || got[kariItem].Count == nil || *got[kariItem].Count != 2 {
+		t.Errorf("HR's gap items = %+v, want Kari's and Bjørn's", got)
+	}
+	for name, c := range map[string]*modtest.Client{"the Approver": approver, "Kari": kariC} {
+		if got := gapItems(attentionItems(t, c)); len(got) != 0 {
+			t.Errorf("%s's gap items = %+v, want none", name, got)
+		}
+	}
+
+	// Her manager records the certificate and verifies the skill at 3: met.
+	rawPersonCompetence(t, h, competenceRow{person: w.kari, competence: fse, from: "2026-09-01", to: strPtr("2027-09-01"), verified: true})
+	h.Exec(t, `UPDATE staff.person_competences SET level = 3, verified_at = $2, verified_basis = 'observed', source = 'manager'
+		WHERE id = $1`, golangRow, h.Now())
+	if got := gapItems(attentionItems(t, w.bossC)); len(got) != 0 {
+		t.Errorf("met: the manager's gap items = %+v, want none", got)
+	}
+
+	// A department's default asking what she lacks raises it without an
+	// assignment; archived, it raises nothing — nor does an archived
+	// profile assigned.
+	truck := rawProfile(t, h, "truck-driver", false, gapItemFor{competence: catalogueID(t, h, "truck"), mustBeValid: true})
+	rawDepartmentDefault(t, h, "WH", w.kari, truck)
+	if got := gapItems(attentionItems(t, w.bossC)); got[kariItem].Count == nil || *got[kariItem].Count != 1 {
+		t.Errorf("the department's default: the manager's gap items = %+v, want Kari's with 1", got)
+	}
+	h.Exec(t, `UPDATE staff.competence_profiles SET archived_at = $2 WHERE id = $1`, truck, h.Now())
+	h.Exec(t, `UPDATE staff.person_competences SET level = 2 WHERE id = $1`, golangRow)
+	h.Exec(t, `UPDATE staff.competence_profiles SET archived_at = $2 WHERE id = $1`, electrician, h.Now())
+	if got := gapItems(attentionItems(t, hr)); len(got) != 0 {
+		t.Errorf("archived: HR's gap items = %+v, want none", got)
+	}
+}

@@ -209,7 +209,14 @@ const (
 	invalidInterestsTitle    = "Invalid interests"
 	invalidPreferencesTitle  = "Invalid preferences"
 	invalidAvailabilityTitle = "Invalid availability declaration"
+
+	invalidCompetenceProfileTitle = "Invalid competence profile"
+	invalidPersonProfilesTitle    = "Invalid profile assignment"
 )
+
+// competenceProfileKeyIndex is the unique index on the profiles' keys, as
+// competenceKeyIndex is the catalogue's (delivery C).
+const competenceProfileKeyIndex = "ux_competence_profiles_key"
 
 // withFieldError adds one message to a map another rule may already have put
 // something in. A nil map is the "nothing failed yet" case, so it is grown

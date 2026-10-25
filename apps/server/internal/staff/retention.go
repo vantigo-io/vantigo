@@ -227,6 +227,13 @@ var columnClasses = map[string]string{
 	"competence_reviews.reviewer_user_id": "D", "competence_reviews.reviewer_person_id": "D",
 	"competence_reviews.created_at": "D",
 
+	// The profiles assigned to a person (delivery C, plan reading 34) are
+	// class D whole: every column, so the D erase deletes the rows. The
+	// profiles catalogue, its items and a department's default are about
+	// nobody and are not here.
+	"person_profiles.id": "D", "person_profiles.person_id": "D", "person_profiles.profile_id": "D",
+	"person_profiles.created_at": "D",
+
 	// Entra delivery D (00062): the groups are the installation's, about
 	// nobody, C whole as the structure is; a membership or an ownership says
 	// who was in which group when, C; a group's sections per provider are

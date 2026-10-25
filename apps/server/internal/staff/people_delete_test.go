@@ -231,3 +231,18 @@ func TestDeletePerson_RacesTheWorkersClaim(t *testing.T) {
 		t.Errorf("deadlocks = %d, want %d: the race ended in 40P01", after, before)
 	}
 }
+
+// The delete of a person created in error takes the profiles assigned to
+// them (delivery C): their key to the person has no cascade.
+func TestDeletePerson_TakesTheProfilesAssigned(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	op := addProfile(t, hr, profileBody("operator"))
+	mistake := createPerson(t, hr, newPerson("Feil", "Registrert"))
+	putPersonProfiles(t, hr, mistake.Id, op.Id)
+	do(t, hr, http.MethodDelete, personPath(mistake.Id), nil, http.StatusNoContent, nil)
+	if n := h.Count(t, `SELECT count(*) FROM staff.person_profiles WHERE person_id = $1`, mistake.Id); n != 0 {
+		t.Errorf("%d profiles left after the delete, want none", n)
+	}
+}

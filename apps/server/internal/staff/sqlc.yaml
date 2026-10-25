@@ -15,6 +15,7 @@ sql:
       - ../db/migrations/00062_staff_groups.sql
       - ../db/migrations/00066_staff_competence.sql
       - ../db/migrations/00067_staff_one_to_one.sql
+      - ../db/migrations/00068_staff_competence_profiles.sql
     queries: queries
     gen:
       go:

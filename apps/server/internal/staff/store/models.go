@@ -114,6 +114,26 @@ type StaffCompetenceCategory struct {
 	UpdatedAt  time.Time
 }
 
+type StaffCompetenceProfile struct {
+	ID         int64
+	Key        string
+	NameEn     string
+	NameNb     string
+	ArchivedAt *time.Time
+	Revision   int32
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type StaffCompetenceProfileItem struct {
+	ID           int64
+	ProfileID    int64
+	CompetenceID int64
+	MinLevel     *int16
+	MustBeValid  bool
+	CreatedAt    time.Time
+}
+
 type StaffCompetenceReview struct {
 	ID               int64
 	PersonID         int64
@@ -124,17 +144,18 @@ type StaffCompetenceReview struct {
 }
 
 type StaffDepartment struct {
-	ID              int64
-	Code            string
-	Name            string
-	ManagerPersonID *int64
-	CostCentre      *string
-	Division        *string
-	ParentID        *int64
-	ArchivedAt      *time.Time
-	Revision        int32
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                  int64
+	Code                string
+	Name                string
+	ManagerPersonID     *int64
+	CostCentre          *string
+	Division            *string
+	ParentID            *int64
+	ArchivedAt          *time.Time
+	Revision            int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	CompetenceProfileID *int64
 }
 
 type StaffDocument struct {
@@ -487,6 +508,13 @@ type StaffPersonPreference struct {
 	SeenByUserID *uuid.UUID
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type StaffPersonProfile struct {
+	ID        int64
+	PersonID  int64
+	ProfileID int64
+	CreatedAt time.Time
 }
 
 type StaffPersonRole struct {

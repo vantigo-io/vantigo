@@ -348,3 +348,25 @@ func TestCompetences_Change(t *testing.T) {
 		t.Errorf("an unknown competence = %d, want 404", r.Status)
 	}
 }
+
+// A profile item with a minimum level names the competence's level, so
+// whether it takes one is fixed while the item stands (reading 28):
+// competence_in_use; an item without a level, or none, leaves it free.
+func TestCompetences_AProfileItemsLevelKeepsHasLevel(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	hr, _ := signIn(t, h, "staff:manage")
+	skill := addCompetence(t, hr, skillBody(t, h, "rust"))
+	p := addProfile(t, hr, profileBody("developer", profileItem(skill.Id, "minLevel", 2)))
+	refused(t, hr.Do(http.MethodPut, competencePath(skill.Id), competenceChangeBody(skill, "hasLevel", false), ifMatch(skill.Revision)),
+		http.StatusConflict, "competence_in_use")
+
+	changeProfile(t, hr, p, "items", []any{profileItem(skill.Id)})
+	var changed gen.StaffCompetence
+	do(t, hr, http.MethodPut, competencePath(skill.Id), competenceChangeBody(skill, "hasLevel", false), http.StatusOK, &changed, ifMatch(skill.Revision))
+	if changed.HasLevel {
+		t.Errorf("changed = %+v, want no level: the item names none", changed)
+	}
+	free := addCompetence(t, hr, skillBody(t, h, "zig"))
+	do(t, hr, http.MethodPut, competencePath(free.Id), competenceChangeBody(free, "hasLevel", false), http.StatusOK, nil, ifMatch(free.Revision))
+}

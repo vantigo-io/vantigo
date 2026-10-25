@@ -360,3 +360,26 @@ func TestPersonalData_AFewThousandEventsFit(t *testing.T) {
 		t.Errorf("the file is %d bytes (%v), want every event in it", len(encoded), err)
 	}
 }
+
+// Both files carry the profiles that reach the person (reading 33): the
+// complete file and the person's own copy, each profile with how it reaches
+// them.
+func TestPersonalData_TheProfileAssignments(t *testing.T) {
+	t.Parallel()
+	w := newCompetenceWorldA(t)
+	op := addProfile(t, w.hr, profileBody("operator", profileItem(w.fse)))
+	putPersonProfiles(t, w.hr, w.kari.Id, op.Id)
+	for name, r := range map[string]*modtest.Response{
+		"the complete file": w.pd.Do(http.MethodGet, personalDataPath(w.kari.Id), nil),
+		"the person's copy": w.kariC.Do(http.MethodGet, meExportPath, nil),
+	} {
+		file := exportOf(t, r)
+		if len(file.ProfileAssignments) != 1 || file.ProfileAssignments[0].Profile.Key != "operator" || !file.ProfileAssignments[0].Assigned {
+			t.Errorf("%s: profileAssignments = %+v, want operator, assigned", name, file.ProfileAssignments)
+		}
+	}
+	other := createPerson(t, w.hr, newPerson("Ola", "Uten"))
+	if file := exportOf(t, w.pd.Do(http.MethodGet, personalDataPath(other.Id), nil)); file.ProfileAssignments == nil || len(file.ProfileAssignments) != 0 {
+		t.Errorf("a person without profiles: profileAssignments = %v, want an empty list", file.ProfileAssignments)
+	}
+}

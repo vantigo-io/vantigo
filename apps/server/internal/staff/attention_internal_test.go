@@ -80,8 +80,22 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 		return id
 	}
 	manager := person("M1", nil)
-	person("R1", &manager)
+	report := person("R1", &manager)
 	nobody := person("N1", nil)
+	// R1 is assigned a profile asking FSE, which R1 does not hold: one
+	// competenceGap item (staff competence delivery C).
+	profile := one(`
+		INSERT INTO staff.competence_profiles (key, name_en, name_nb, created_at, updated_at)
+		VALUES ('count-test', 'Count test', 'Telletest', now(), now()) RETURNING id`)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO staff.competence_profile_items (profile_id, competence_id, created_at)
+		SELECT $1, id, now() FROM staff.competences WHERE key = 'fse'`, profile); err != nil {
+		t.Fatalf("seed the profile's item: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO staff.person_profiles (person_id, profile_id, created_at) VALUES ($1, $2, now())`,
+		report, profile); err != nil {
+		t.Fatalf("seed the assignment: %v", err)
+	}
 	reviewEvery12 := store.StaffSetting{CompetenceReviewIntervalMonths: 12}
 
 	for _, tc := range []struct {
@@ -96,9 +110,12 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 		// waits — and the declared and expiring competences (staff
 		// competence delivery A); with a review interval, the latest
 		// competence reviews too, and R1, employed since January 2025 and
-		// never reviewed, is overdue (staff competence delivery B).
-		{"a manager", callerContext{Person: &manager, Today: today, Settings: reviewEvery12}, 9, 2},
-		{"a manager, the review interval 0", callerContext{Person: &manager, Today: today}, 8, 1},
+		// never reviewed, is overdue (staff competence delivery B); the
+		// assignments, the departments' defaults, the profiles, their items
+		// and the reports' current rows, and R1's profile is not met (staff
+		// competence delivery C).
+		{"a manager", callerContext{Person: &manager, Today: today, Settings: reviewEvery12}, 14, 3},
+		{"a manager, the review interval 0", callerContext{Person: &manager, Today: today}, 13, 2},
 		// staff:manage's statements include the self-approved absences, the
 		// ferie affected by sickness, the requests and the milestones
 		// (delivery B), the account items' links and people (delivery C), and
@@ -106,8 +123,12 @@ func TestReadAttention_ReadsOnlyWhatTheCallerNeeds(t *testing.T) {
 		// provider's kind (Entra delivery B), and the failed group sections
 		// (Entra delivery D), and the declared and expiring competences (staff
 		// competence delivery A) and the latest competence reviews (its
-		// delivery B); in October no holiday item is read.
-		{"staff:manage", callerContext{Manage: true, Today: today, Settings: reviewEvery12}, 18, -1},
+		// delivery B) and the five reads of the competenceGap item (its
+		// delivery C); in October no holiday item is read.
+		{"staff:manage", callerContext{Manage: true, Today: today, Settings: reviewEvery12}, 23, -1},
+		// staff:approve alone reads none of the competenceGap item's
+		// (reading 31): an Approver is told of no gap.
+		{"staff:approve", callerContext{Approve: true, Today: today, Settings: reviewEvery12}, 8, -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
