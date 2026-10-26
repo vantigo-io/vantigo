@@ -498,6 +498,9 @@ func mergeCodes(old []string, evaluated func(string) bool, fresh []string) []str
 	return out
 }
 
+// photoJudges are the codes SetPhoto and ClearPhoto judge.
+func photoJudges(c string) bool { return c == contracts.ReportedPhotoNotWritten }
+
 // updateJudges are the codes Prepare's update path and Update judge.
 func updateJudges(c string) bool { return c == contracts.ReportedManagerNotFound }
 

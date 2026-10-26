@@ -23,7 +23,8 @@
 // every write with 400 Request_BadRequest; a member removed without /$ref
 // deletes the user; a Team on a group younger than TeamReadyAfter is 404; a
 // group's members are listed in pages of $top with an @odata.nextLink; a
-// $batch holds at most twenty requests. Every error body is Graph's
+// $batch holds at most twenty requests; a user's photo is a JPEG of at most
+// 4 MB, 413 beyond. Every error body is Graph's
 // { "error": { "code", "message" } }, the token endpoint's OAuth's
 // { "error", "error_description" }.
 package graphtest
@@ -98,6 +99,10 @@ type FakeGraph struct {
 	// the update page says an app-only caller is (research §3.1's
 	// UNCERTAIN): a PATCH carrying it writes nothing.
 	HireDateDenied bool
+	// PhotoDenied refuses a user's photo to the application, 403, as a
+	// tenant whose consent lacks the photo's permission does: a PUT or a
+	// DELETE of /photo/$value changes nothing.
+	PhotoDenied bool
 	// PassPolicyDenied is the tenant's authentication methods policy
 	// leaving the pass off: a pass's create is 400.
 	PassPolicyDenied bool
@@ -202,6 +207,11 @@ type User struct {
 	SessionsRevokedAt *time.Time
 	// Pass is the user's one pass; a new one replaces it.
 	Pass *Pass
+	// Photo is the bytes of the user's photo as the last PUT of
+	// /photo/$value sent them, PhotoContentType their media type; nil when
+	// the user has none.
+	Photo            []byte
+	PhotoContentType string
 	// OnPremisesSyncEnabled is a user synchronised from on-premises Active
 	// Directory: every write is 400.
 	OnPremisesSyncEnabled bool
@@ -431,7 +441,8 @@ func (g *FakeGraph) RoundTrip(req *http.Request) (*http.Response, error) {
 type answer struct {
 	status int
 	header http.Header
-	body   any // nil is no body
+	body   any    // nil is no body
+	raw    []byte // a body sent as it is (a photo), its type in header
 }
 
 func (a answer) response(req *http.Request) *http.Response {
@@ -439,7 +450,7 @@ func (a answer) response(req *http.Request) *http.Response {
 	if h == nil {
 		h = http.Header{}
 	}
-	var b []byte
+	b := a.raw
 	if a.body != nil {
 		b, _ = json.Marshal(a.body)
 		h.Set("Content-Type", "application/json; charset=utf-8")
@@ -577,7 +588,7 @@ func (g *FakeGraph) api(req *http.Request, body []byte) answer {
 	if req.Method == http.MethodPost && path == "/$batch" {
 		return g.batch(body)
 	}
-	return g.route(req.Method, path, req.URL.Query(), body)
+	return g.route(req.Method, path, req.URL.Query(), req.Header.Get("Content-Type"), body)
 }
 
 // failureCode is Graph's code for a status FailNext queued.
@@ -598,8 +609,9 @@ func failureCode(status int) string {
 	}
 }
 
-// route answers one Graph request by its method and path (after /v1.0).
-func (g *FakeGraph) route(method, path string, query url.Values, body []byte) answer {
+// route answers one Graph request by its method and path (after /v1.0),
+// its body of contentType.
+func (g *FakeGraph) route(method, path string, query url.Values, contentType string, body []byte) answer {
 	seg := strings.Split(strings.Trim(path, "/"), "/")
 	switch {
 	case method == http.MethodGet && path == "/organization":
@@ -609,7 +621,7 @@ func (g *FakeGraph) route(method, path string, query url.Values, body []byte) an
 	case method == http.MethodGet && path == "/subscribedSkus":
 		return g.subscribedSkus()
 	case seg[0] == "users":
-		return g.usersRoute(method, seg[1:], query, body)
+		return g.usersRoute(method, seg[1:], query, contentType, body)
 	case seg[0] == "groups":
 		return g.groupsRoute(method, seg[1:], query, body)
 	}
@@ -654,7 +666,7 @@ func (g *FakeGraph) subscribedSkus() answer {
 
 // --- Users -------------------------------------------------------------------
 
-func (g *FakeGraph) usersRoute(method string, seg []string, query url.Values, body []byte) answer {
+func (g *FakeGraph) usersRoute(method string, seg []string, query url.Values, contentType string, body []byte) answer {
 	if len(seg) == 0 {
 		switch method {
 		case http.MethodGet:
@@ -695,8 +707,50 @@ func (g *FakeGraph) usersRoute(method string, seg []string, query url.Values, bo
 		return g.memberOf(u)
 	case rest == "authentication/temporaryAccessPassMethods" && method == http.MethodPost:
 		return g.createPass(u, body)
+	case rest == "photo/$value":
+		return g.photo(u, method, contentType, body)
 	}
 	return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+rest+".")
+}
+
+// photoMaxBytes is the most a photo may weigh: Graph's "limited to 4 MB",
+// read as decimal megabytes.
+const photoMaxBytes = 4_000_000
+
+// photo is /users/{id}/photo/$value: GET answers the bytes (404 when the
+// user has none); PUT keeps the body when it is image/jpeg — 400 for
+// another type or none, 413 over photoMaxBytes, 403 when PhotoDenied —
+// and answers 200; DELETE removes it, 200 (404 when there is none, 403
+// when PhotoDenied).
+func (g *FakeGraph) photo(u *User, method, contentType string, body []byte) answer {
+	switch method {
+	case http.MethodGet:
+		if u.Photo == nil {
+			return graphError(http.StatusNotFound, "ImageNotFound", "Exception of type 'Microsoft.Fast.Profile.Core.Exception.ImageNotFoundException' was thrown.")
+		}
+		return answer{status: http.StatusOK, header: http.Header{"Content-Type": []string{u.PhotoContentType}}, raw: slices.Clone(u.Photo)}
+	case http.MethodPut:
+		switch {
+		case g.PhotoDenied:
+			return graphError(http.StatusForbidden, "Authorization_RequestDenied", "Insufficient privileges to complete the operation.")
+		case len(body) > photoMaxBytes:
+			return graphError(http.StatusRequestEntityTooLarge, "RequestEntityTooLarge", "The photo is larger than 4 MB.")
+		case contentType != "image/jpeg" || len(body) == 0:
+			return graphError(http.StatusBadRequest, "ErrorInvalidImage", "The photo is not an image the service takes.")
+		}
+		u.Photo, u.PhotoContentType = slices.Clone(body), contentType
+		return answer{status: http.StatusOK}
+	case http.MethodDelete:
+		if g.PhotoDenied {
+			return graphError(http.StatusForbidden, "Authorization_RequestDenied", "Insufficient privileges to complete the operation.")
+		}
+		if u.Photo == nil {
+			return graphError(http.StatusNotFound, "ImageNotFound", "Exception of type 'Microsoft.Fast.Profile.Core.Exception.ImageNotFoundException' was thrown.")
+		}
+		u.Photo, u.PhotoContentType = nil, ""
+		return answer{status: http.StatusOK}
+	}
+	return methodNotAllowed()
 }
 
 var (
@@ -1385,7 +1439,7 @@ func (g *FakeGraph) batch(body []byte) answer {
 		if err != nil || !strings.HasPrefix(u.Path, "/") {
 			a = graphError(http.StatusBadRequest, "BadRequest", "Invalid request URL.")
 		} else {
-			a = g.route(strings.ToUpper(r.Method), u.Path, u.Query(), r.Body)
+			a = g.route(strings.ToUpper(r.Method), u.Path, u.Query(), "application/json", r.Body)
 		}
 		g.calls = append(g.calls, Call{Method: strings.ToUpper(r.Method), Host: GraphHost, Path: "/v1.0" + u.Path, Query: u.RawQuery, Status: a.status, Batch: true})
 		item := map[string]any{"id": r.ID, "status": a.status}
@@ -1483,6 +1537,7 @@ func copyUser(u *User) User {
 	c := *u
 	c.BusinessPhones = slices.Clone(u.BusinessPhones)
 	c.Licences = slices.Clone(u.Licences)
+	c.Photo = slices.Clone(u.Photo)
 	if u.EmployeeOrgData != nil {
 		o := *u.EmployeeOrgData
 		c.EmployeeOrgData = &o

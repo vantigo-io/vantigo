@@ -39,8 +39,8 @@ import (
 // Deps.HTTPTransport, never as a base URL.
 //
 // The lifecycle (provisioner) and the connection's endpoints call Graph
-// through get, post, patch, put and del with a credential credentialFor
-// answered; the token is graph_token.go's.
+// through get, post, patch, put, putRaw (a photo's bytes) and del with a
+// credential credentialFor answered; the token is graph_token.go's.
 
 // The hosts, fixed.
 const (
@@ -313,29 +313,49 @@ func (c *graphClient) put(ctx context.Context, cred graphCredential, path string
 	return c.do(ctx, cred, http.MethodPut, path, body, nil)
 }
 
+// putRaw sends data to path as it is, with contentType — a user's photo,
+// image/jpeg — under the same rules as every call; Graph answers 200.
+func (c *graphClient) putRaw(ctx context.Context, cred graphCredential, path, contentType string, data []byte) error {
+	return c.send(ctx, cred, http.MethodPut, path, &payload{data: data, contentType: contentType}, nil)
+}
+
 // del deletes path; Graph answers 204.
 func (c *graphClient) del(ctx context.Context, cred graphCredential, path string) error {
 	return c.do(ctx, cred, http.MethodDelete, path, nil, nil)
 }
 
+// payload is a request's body: the bytes and their media type.
+type payload struct {
+	data        []byte
+	contentType string
+}
+
 // do is one call to Graph with cred: body sent as JSON when not nil, a 2xx
+// answer decoded into into when not nil, under send's rules.
+func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path string, body, into any, opts ...callOption) error {
+	var p *payload
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("entra: encode the body of %s %s: %w", method, path, err)
+		}
+		p = &payload{data: data, contentType: "application/json"}
+	}
+	return c.send(ctx, cred, method, path, p, into, opts...)
+}
+
+// send is one call to Graph with cred: body sent when not nil, a 2xx
 // answer decoded into into when not nil. A 429 waits Retry-After once (at
 // most graphMaxRetryAfter), then fails errThrottled; a 5xx is retried once
 // after graphServerErrorDelay, unless opts holds noRetry; a 401 drops the
 // cached token and is retried once with a fresh one. Any other answer is a
 // *graphError.
-func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path string, body, into any, opts ...callOption) error {
+func (c *graphClient) send(ctx context.Context, cred graphCredential, method, path string, body *payload, into any, opts ...callOption) error {
 	once := slices.Contains(opts, noRetry)
 	words := !once && !slices.Contains(opts, noWords)
 	target, err := graphURL(path)
 	if err != nil {
 		return err
-	}
-	var payload []byte
-	if body != nil {
-		if payload, err = json.Marshal(body); err != nil {
-			return fmt.Errorf("entra: encode the body of %s %s: %w", method, target.Path, err)
-		}
 	}
 	throttled, retried, reauthorised := false, false, false
 	for attempt := 1; ; attempt++ {
@@ -343,7 +363,7 @@ func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path
 		if err != nil {
 			return err
 		}
-		status, header, data, err := c.exchange(ctx, method, target, token, payload)
+		status, header, data, err := c.exchange(ctx, method, target, token, body)
 		if err != nil {
 			return err
 		}
@@ -398,14 +418,14 @@ func graphURL(path string) (*url.URL, error) {
 	return u, nil
 }
 
-// exchange sends one request and answers the status, the headers and the
-// body read through the cap. A request that could not be made, or was not
-// answered in time, is errTenantUnreachable; the caller's own context ending
-// is its error.
-func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, token string, payload []byte) (int, http.Header, []byte, error) {
+// exchange sends one request, body with its media type when not nil, and
+// answers the status, the headers and the body read through the cap. A
+// request that could not be made, or was not answered in time, is
+// errTenantUnreachable; the caller's own context ending is its error.
+func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, token string, body *payload) (int, http.Header, []byte, error) {
 	var reader io.Reader
-	if payload != nil {
-		reader = bytes.NewReader(payload)
+	if body != nil {
+		reader = bytes.NewReader(body.data)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, target.String(), reader)
 	if err != nil {
@@ -413,8 +433,8 @@ func (c *graphClient) exchange(ctx context.Context, method string, target *url.U
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", body.contentType)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

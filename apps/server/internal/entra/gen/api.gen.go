@@ -439,7 +439,7 @@ type EntraCredentialRequestKind string
 
 // EntraEvent One write the module made, in the tenant or to its own connection — the module's own append-only trail. It carries the codes and the UPN the module made, never an address beyond it, a secret or a pass.
 type EntraEvent struct {
-	// Action entra.connection.changed, entra.connection.tested, entra.settings.changed, entra.credential.added, entra.credential.revoked, entra.user.prepared, entra.user.activated, entra.user.deactivated, entra.user.updated, entra.user.deleted, entra.pass.issued, entra.pass.revealed or entra.account.adoption_confirmed.
+	// Action entra.connection.changed, entra.connection.tested, entra.settings.changed, entra.credential.added, entra.credential.revoked, entra.user.prepared, entra.user.activated, entra.user.deactivated, entra.user.updated, entra.user.deleted, entra.user.photo_set, entra.user.photo_cleared, entra.pass.issued, entra.pass.revealed or entra.account.adoption_confirmed.
 	Action string `json:"action"`
 
 	// Actor Who acted — the user's id, or the system's name (system:staff-accounts).
