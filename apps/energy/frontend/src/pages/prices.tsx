@@ -41,6 +41,7 @@ export const PricesPage = ({ canImport = false }: { canImport?: boolean }) => {
   const { t, formatters } = useI18n("energy");
   const coverage = useQuery(spotPriceCoverageQueryOptions());
   const areas = coverage.data?.areas ?? [];
+  const showHistory = coverage.data?.source === "service";
   const [chosenArea, setChosenArea] = useState<string | null>(null);
   const area = areas.some((item) => item.priceArea === chosenArea) ? chosenArea : (areas[0]?.priceArea ?? null);
   const [period, setPeriod] = useState<Period>("day");
@@ -55,6 +56,40 @@ export const PricesPage = ({ canImport = false }: { canImport?: boolean }) => {
       : t("notAvailable");
   // A fetch's day is a civil date: formatted where it is that date.
   const civilDay = (value: string) => formatters.formatDate(value, { dateStyle: "medium", timeZone: "UTC" });
+
+  const history = (item: SpotPriceCoverageArea) => {
+    const { history: copy, followedByService } = item;
+    if (!copy && followedByService !== false) return t("notAvailable");
+    return (
+      <Stack gap={2}>
+        {followedByService === false && (
+          <Badge color="yellow" variant="light">
+            {t("pricesNotFollowed")}
+          </Badge>
+        )}
+        {copy && (
+          <Text size="sm">
+            {copy.complete
+              ? copy.floorDay && t("pricesHistoryComplete", { date: civilDay(copy.floorDay) })
+              : copy.cursorDay && t("pricesHistoryCopying", { date: civilDay(copy.cursorDay) })}
+          </Text>
+        )}
+        {copy && copy.daysSkipped > 0 && (
+          <Text size="xs" c="dimmed">
+            {t("pricesHistorySkipped", { count: copy.daysSkipped })}
+          </Text>
+        )}
+        {copy?.error && (
+          <Text size="xs" c="dimmed">
+            {copy.error}
+          </Text>
+        )}
+      </Stack>
+    );
+  };
+
+  const resolution = (value: string | undefined) =>
+    value === "PT15M" || value === "PT60M" ? t(`pricesResolution_${value}`) : (value ?? t("notAvailable"));
 
   const lastFetch = (item: SpotPriceCoverageArea) => {
     if (!item.lastFetch) return <Text size="sm">{t("pricesNeverFetched")}</Text>;
@@ -96,7 +131,14 @@ export const PricesPage = ({ canImport = false }: { canImport?: boolean }) => {
       {canImport && <ImportPricesModal opened={importOpen} onClose={() => setImportOpen(false)} />}
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
-          <Title order={3}>{t("pricesCoverage")}</Title>
+          <Group gap="sm">
+            <Title order={3}>{t("pricesCoverage")}</Title>
+            {coverage.data && (
+              <Badge variant="light" color={coverage.data.source === "service" ? "teal" : "gray"}>
+                {t(`pricesSource_${coverage.data.source}`)}
+              </Badge>
+            )}
+          </Group>
           {coverage.isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadPriceCoverage")}>
               {coverage.error.message}
@@ -107,15 +149,17 @@ export const PricesPage = ({ canImport = false }: { canImport?: boolean }) => {
             (areas.length === 0 ? (
               <EmptyState size="sm" title={t("noPriceAreas")} description={t("noPriceAreasDescription")} />
             ) : (
-              <Table.ScrollContainer minWidth={860}>
+              <Table.ScrollContainer minWidth={showHistory ? 1100 : 860}>
                 <Table striped>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>{t("priceArea")}</Table.Th>
                       <Table.Th>{t("pricesFirst")}</Table.Th>
                       <Table.Th>{t("pricesLast")}</Table.Th>
+                      <Table.Th>{t("pricesResolution")}</Table.Th>
                       <Table.Th>{t("pricesIntervals")}</Table.Th>
                       <Table.Th>{t("pricesDaysMissing")}</Table.Th>
+                      {showHistory && <Table.Th>{t("pricesHistory")}</Table.Th>}
                       <Table.Th>{t("pricesLastFetch")}</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
@@ -125,6 +169,7 @@ export const PricesPage = ({ canImport = false }: { canImport?: boolean }) => {
                         <Table.Td>{item.priceArea}</Table.Td>
                         <Table.Td>{instant(item.firstStart)}</Table.Td>
                         <Table.Td>{instant(item.lastEnd)}</Table.Td>
+                        <Table.Td>{resolution(item.resolution)}</Table.Td>
                         <Table.Td>{formatters.formatNumber(item.intervalCount)}</Table.Td>
                         <Table.Td>
                           <Badge color={missingColor(item.daysMissingLast30)} variant="light">
@@ -133,6 +178,7 @@ export const PricesPage = ({ canImport = false }: { canImport?: boolean }) => {
                               : t("pricesDaysMissingCount", { count: item.daysMissingLast30 })}
                           </Badge>
                         </Table.Td>
+                        {showHistory && <Table.Td>{history(item)}</Table.Td>}
                         <Table.Td>{lastFetch(item)}</Table.Td>
                       </Table.Tr>
                     ))}
