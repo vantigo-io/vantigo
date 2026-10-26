@@ -20,6 +20,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
+	"github.com/vantigo-io/vantigo/server/internal/imagemeta"
 
 	"github.com/google/uuid"
 )
@@ -86,11 +87,11 @@ func (s *server) GetIdentityAccount(ctx context.Context, _ gen.GetIdentityAccoun
 	if err != nil {
 		return nil, fmt.Errorf("identity: account: %w", err)
 	}
-	hasAvatar, err := s.q.HasProfileAvatar(ctx, p.UserID)
+	avatar, err := s.avatarState(ctx, p.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("identity: account: %w", err)
 	}
-	return gen.GetIdentityAccount200JSONResponse(s.accountResponse(u.ID, u.DisplayName, u.Email, u.PreferredLanguage, u.TimeZone, hasAvatar)), nil
+	return gen.GetIdentityAccount200JSONResponse(s.accountResponse(u.ID, u.DisplayName, u.Email, u.PreferredLanguage, u.TimeZone, avatar)), nil
 }
 
 // PutIdentityAccount, PutIdentityAccountProfile and PatchIdentityAccountProfile
@@ -199,13 +200,13 @@ func (s *server) updateProfile(ctx context.Context, body *gen.AccountProfileRequ
 	if err != nil {
 		return profileUpdateResult{}, fmt.Errorf("identity: update profile: %w", err)
 	}
-	hasAvatar, err := s.q.HasProfileAvatar(ctx, p.UserID)
+	avatar, err := s.avatarState(ctx, p.UserID)
 	if err != nil {
 		return profileUpdateResult{}, fmt.Errorf("identity: update profile: %w", err)
 	}
 	return profileUpdateResult{
 		status:  http.StatusOK,
-		account: s.accountResponse(row.ID, row.DisplayName, row.Email, row.PreferredLanguage, row.TimeZone, hasAvatar),
+		account: s.accountResponse(row.ID, row.DisplayName, row.Email, row.PreferredLanguage, row.TimeZone, avatar),
 	}, nil
 }
 
@@ -287,12 +288,19 @@ func normalizePreferredLanguage(v *string) *string {
 // accountResponse is a user as GET/PUT /account and PUT|PATCH
 // /account/profile show one (EA/AccountSettingsEndpoints.cs:699-701), with
 // the stored time zone choice: nil when the user follows the workspace's.
-// The zone in effect is the session's (effectiveTimeZone).
-func (s *server) accountResponse(id uuid.UUID, displayName, email string, preferredLanguage, timeZone *string, hasAvatar bool) gen.AccountResponse {
+// The zone in effect is the session's (effectiveTimeZone). The avatar URL is
+// the effective avatar's, and avatarManagedBy says Staff keeps it (staff
+// photo sync design §4).
+func (s *server) accountResponse(id uuid.UUID, displayName, email string, preferredLanguage, timeZone *string, avatar accountAvatar) gen.AccountResponse {
 	var avatarURL *string
-	if hasAvatar {
+	if avatar.has {
 		u := s.deps.Config.BasePath + accountAvatarPath
 		avatarURL = &u
+	}
+	var managedBy *gen.AccountResponseAvatarManagedBy
+	if avatar.managed {
+		v := gen.AvatarManagedByStaff
+		managedBy = &v
 	}
 	return gen.AccountResponse{
 		Id:                id,
@@ -300,6 +308,7 @@ func (s *server) accountResponse(id uuid.UUID, displayName, email string, prefer
 		Email:             publicEmail(email),
 		PreferredLanguage: preferredLanguage,
 		AvatarUrl:         avatarURL,
+		AvatarManagedBy:   managedBy,
 		TimeZone:          timeZone,
 	}
 }
@@ -418,7 +427,16 @@ func validateAccountPassword(body *gen.AccountPasswordRequest) map[string][]stri
 // PostIdentityAccountAvatar and PutIdentityAccountAvatar upload the
 // caller's avatar; .NET maps both methods to the same UploadAvatar
 // (EA/AccountSettingsEndpoints.cs:50-55,170-243).
+// While a managed avatar stands, both answer 409 avatar_managed before the
+// body is read.
 func (s *server) PostIdentityAccountAvatar(ctx context.Context, req gen.PostIdentityAccountAvatarRequestObject) (gen.PostIdentityAccountAvatarResponseObject, error) {
+	managed, err := s.callerAvatarManaged(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if managed {
+		return gen.PostIdentityAccountAvatar409JSONResponse(avatarManagedBody), nil
+	}
 	body, ok, err := s.uploadAvatar(ctx, req.Body)
 	if err != nil {
 		return nil, err
@@ -430,6 +448,13 @@ func (s *server) PostIdentityAccountAvatar(ctx context.Context, req gen.PostIden
 }
 
 func (s *server) PutIdentityAccountAvatar(ctx context.Context, req gen.PutIdentityAccountAvatarRequestObject) (gen.PutIdentityAccountAvatarResponseObject, error) {
+	managed, err := s.callerAvatarManaged(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if managed {
+		return gen.PutIdentityAccountAvatar409JSONResponse(avatarManagedBody), nil
+	}
 	body, ok, err := s.uploadAvatar(ctx, req.Body)
 	if err != nil {
 		return nil, err
@@ -460,6 +485,12 @@ func (s *server) uploadAvatar(ctx context.Context, body *multipart.Reader) (gen.
 	}
 	contentType, ok := avatarImageType(declared, data)
 	if !ok {
+		return gen.AvatarResponse{}, false, nil
+	}
+	// Its metadata — where and when it was taken, the device — is stripped
+	// before it is stored: Staff serves the avatar to the person's colleagues.
+	// One that cannot be walked is refused as an invalid image.
+	if data, err = imagemeta.Strip(contentType, data); err != nil {
 		return gen.AvatarResponse{}, false, nil
 	}
 	if err := s.q.UpsertProfileAvatar(ctx, store.UpsertProfileAvatarParams{
@@ -501,19 +532,29 @@ func avatarPart(mr *multipart.Reader) (data []byte, declared string, found bool)
 // decode it as that same format within maxAvatarDimension on each side
 // (EA/AccountSettingsEndpoints.cs:211-216,776-898).
 func avatarImageType(declared string, data []byte) (string, bool) {
+	sniffed, err := judgeAvatarImage(declared, data)
+	return sniffed, err == nil
+}
+
+// judgeAvatarImage is avatarImageType's rule with the reason a refused image
+// fails it, for a caller that reports one (SetManagedAvatar).
+func judgeAvatarImage(declared string, data []byte) (string, error) {
 	sniffed := http.DetectContentType(data)
 	format, known := avatarImageFormats[sniffed]
-	if !known || !strings.EqualFold(declared, sniffed) {
-		return "", false
+	switch {
+	case !known:
+		return "", fmt.Errorf("the bytes are %s, not a PNG or a JPEG", sniffed)
+	case !strings.EqualFold(declared, sniffed):
+		return "", fmt.Errorf("declared %q, the bytes are %s", declared, sniffed)
 	}
 	cfg, gotFormat, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || gotFormat != format {
-		return "", false
+		return "", fmt.Errorf("the %s does not decode", format)
 	}
 	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > maxAvatarDimension || cfg.Height > maxAvatarDimension {
-		return "", false
+		return "", fmt.Errorf("%dx%d px, not 1 to %d a side", cfg.Width, cfg.Height, maxAvatarDimension)
 	}
-	return sniffed, true
+	return sniffed, nil
 }
 
 // avatarResponseHeaders sets the private, unsniffable, inline headers every
@@ -537,14 +578,15 @@ func setAvatarHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Disposition", "inline")
 }
 
-// GetIdentityAccountAvatar serves the caller's stored avatar bytes, or 404
-// when there is none (EA/AccountSettingsEndpoints.cs:245-271).
+// GetIdentityAccountAvatar serves the caller's effective avatar — the
+// managed one while it stands, else their own — or 404 when there is none
+// (EA/AccountSettingsEndpoints.cs:245-271; staff photo sync design §3.1).
 func (s *server) GetIdentityAccountAvatar(ctx context.Context, _ gen.GetIdentityAccountAvatarRequestObject) (gen.GetIdentityAccountAvatarResponseObject, error) {
 	p, err := callerFrom(ctx)
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.q.GetProfileAvatar(ctx, p.UserID)
+	row, err := s.q.GetEffectiveAvatar(ctx, p.UserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.GetIdentityAccountAvatar404Response{}, nil
 	}
@@ -561,11 +603,19 @@ func (s *server) GetIdentityAccountAvatar(ctx context.Context, _ gen.GetIdentity
 }
 
 // DeleteIdentityAccountAvatar hard-deletes the caller's avatar, if any
-// (EA/AccountSettingsEndpoints.cs:273-289): idempotent, always 204.
+// (EA/AccountSettingsEndpoints.cs:273-289): idempotent, 204 — but 409
+// avatar_managed while a managed avatar stands, the own one left as it is.
 func (s *server) DeleteIdentityAccountAvatar(ctx context.Context, _ gen.DeleteIdentityAccountAvatarRequestObject) (gen.DeleteIdentityAccountAvatarResponseObject, error) {
 	p, err := callerFrom(ctx)
 	if err != nil {
 		return nil, err
+	}
+	managed, err := s.q.HasManagedAvatar(ctx, p.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("identity: delete avatar: %w", err)
+	}
+	if managed {
+		return gen.DeleteIdentityAccountAvatar409JSONResponse(avatarManagedBody), nil
 	}
 	if err := s.q.DeleteProfileAvatar(ctx, p.UserID); err != nil {
 		return nil, fmt.Errorf("identity: delete avatar: %w", err)

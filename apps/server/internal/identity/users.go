@@ -840,12 +840,13 @@ func (s *server) PostIdentityOwnerUsersByIdPasswordReset(ctx context.Context, re
 	return gen.PostIdentityOwnerUsersByIdPasswordReset200JSONResponse{Accepted: true}, nil
 }
 
-// GetIdentityOwnerUsersByIdAvatar serves another user's avatar to an Owner
+// GetIdentityOwnerUsersByIdAvatar serves another user's effective avatar
+// (the managed one while it stands, else their own) to an Owner
 // (EA/AuthAccountEndpoints.cs:459-478), with the private, unsniffable,
 // inline headers of the account's own avatar; 404 when the user or their
 // avatar is absent.
 func (s *server) GetIdentityOwnerUsersByIdAvatar(ctx context.Context, req gen.GetIdentityOwnerUsersByIdAvatarRequestObject) (gen.GetIdentityOwnerUsersByIdAvatarResponseObject, error) {
-	row, err := s.q.GetProfileAvatar(ctx, req.Id)
+	row, err := s.q.GetEffectiveAvatar(ctx, req.Id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.GetIdentityOwnerUsersByIdAvatar404Response{}, nil
 	}

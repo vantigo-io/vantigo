@@ -121,6 +121,16 @@ type IdentityLoginTicket struct {
 	ExpiresAt time.Time
 }
 
+type IdentityManagedAvatar struct {
+	UserID      uuid.UUID
+	Data        []byte
+	ContentType string
+	Source      string
+	SourceStamp string
+	Version     int32
+	UpdatedAt   time.Time
+}
+
 type IdentityOidcLink struct {
 	Issuer    string
 	Subject   string

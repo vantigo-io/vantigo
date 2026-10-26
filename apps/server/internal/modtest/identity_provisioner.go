@@ -46,6 +46,12 @@ import (
 // EnsureGroup and SetMembers answer ErrGroupUnconfirmed for it and change
 // nothing, and DeleteGroup forgets it, as a provider leaves a group it did
 // not make to its directory.
+// Its photos are kept per account: SetPhoto stores the picture as given
+// (Photo answers it) and ClearPhoto removes it; an account RefusePhoto marks
+// is one whose directory refuses the photo — SetPhoto and ClearPhoto change
+// nothing, answer nil and the account reports
+// contracts.ReportedPhotoNotWritten until a SetPhoto succeeds or a ClearPhoto
+// is made, as the contract has it.
 // A write names a valid actor (contracts.ErrInvalidActor otherwise), and
 // while the status is not connected every write but Deactivate answers
 // ErrProviderUnavailable — Deactivate runs whatever the status says, as the
@@ -86,7 +92,9 @@ type fakeExternalAccount struct {
 	account     contracts.ExternalAccount
 	spec        *contracts.ExternalSpec // the spec last written, nil before any
 	pass        *fakePass
-	unconfirmed bool // SetUnconfirmed: its writes answer ErrExternalUnconfirmed
+	unconfirmed bool             // SetUnconfirmed: its writes answer ErrExternalUnconfirmed
+	photo       *contracts.Photo // the photo SetPhoto last stored, nil when none
+	refusePhoto bool             // RefusePhoto: SetPhoto and ClearPhoto are refused by the directory
 }
 
 // fakePass is an issued pass: its value, when it expires, and whether it was
@@ -155,8 +163,8 @@ func (f *FakeIdentityProvisioner) SetStatus(status, reason string) {
 
 // FailWith makes every call of method ("Provider", "Prepare", "Activate",
 // "Deactivate", "Update", "Delete", "Account", "RevealPass", "GroupTraits",
-// "EnsureGroup", "SetMembers", "DeleteGroup") answer err, nil to stop. A
-// write is recorded before it answers err.
+// "EnsureGroup", "SetMembers", "DeleteGroup", "SetPhoto", "ClearPhoto")
+// answer err, nil to stop. A write is recorded before it answers err.
 func (f *FakeIdentityProvisioner) FailWith(method string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -175,6 +183,31 @@ func (f *FakeIdentityProvisioner) ReportWith(number string, codes ...string) {
 	for _, a := range f.accounts[contracts.NormalizeEmployeeNumber(number)] {
 		a.account.Reported = slices.Clone(codes)
 	}
+}
+
+// RefusePhoto makes the directory refuse every SetPhoto and ClearPhoto to an
+// account holding number — recorded, nothing changed, nil answered, and the
+// account reports contracts.ReportedPhotoNotWritten — or, with refuse false,
+// accept them again.
+func (f *FakeIdentityProvisioner) RefusePhoto(number string, refuse bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, a := range f.accounts[contracts.NormalizeEmployeeNumber(number)] {
+		a.refusePhoto = refuse
+	}
+}
+
+// Photo is the photo SetPhoto last stored on the account externalID, and
+// whether it holds one (none after a ClearPhoto or a refused SetPhoto on an
+// account that had none).
+func (f *FakeIdentityProvisioner) Photo(externalID string) (contracts.Photo, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	held := f.byID(externalID)
+	if held == nil || held.photo == nil {
+		return contracts.Photo{}, false
+	}
+	return contracts.Photo{ContentType: held.photo.ContentType, Data: slices.Clone(held.photo.Data)}, true
 }
 
 // SetUnconfirmed marks every account holding number as an adoption nobody
@@ -616,6 +649,60 @@ func (f *FakeIdentityProvisioner) DeleteGroup(_ context.Context, actor contracts
 	}
 	delete(f.groups, groupID)
 	delete(f.unconfirmedGroups, groupID)
+	return nil
+}
+
+// SetPhoto stores a copy of photo on the account, and the account no longer
+// reports contracts.ReportedPhotoNotWritten — unless RefusePhoto marked it:
+// then nothing is stored, the account reports the code, and the answer is
+// nil.
+func (f *FakeIdentityProvisioner) SetPhoto(_ context.Context, actor contracts.Actor, externalID string, photo contracts.Photo) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.begin("SetPhoto", actor, externalID, nil, true); err != nil {
+		return err
+	}
+	held := f.byID(externalID)
+	switch {
+	case held == nil:
+		return errFakeNoSuchAccount
+	case held.unconfirmed:
+		return contracts.ErrExternalUnconfirmed
+	case held.refusePhoto:
+		if !slices.Contains(held.account.Reported, contracts.ReportedPhotoNotWritten) {
+			held.account.Reported = append(held.account.Reported, contracts.ReportedPhotoNotWritten)
+		}
+		return nil
+	}
+	held.photo = &contracts.Photo{ContentType: photo.ContentType, Data: slices.Clone(photo.Data)}
+	held.account.Reported = slices.DeleteFunc(held.account.Reported, func(code string) bool { return code == contracts.ReportedPhotoNotWritten })
+	return nil
+}
+
+// ClearPhoto removes the account's photo — one with none is done — and the
+// account no longer reports contracts.ReportedPhotoNotWritten; unless
+// RefusePhoto marked it: then the photo is kept, the account reports the
+// code, and the answer is nil.
+func (f *FakeIdentityProvisioner) ClearPhoto(_ context.Context, actor contracts.Actor, externalID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.begin("ClearPhoto", actor, externalID, nil, true); err != nil {
+		return err
+	}
+	held := f.byID(externalID)
+	switch {
+	case held == nil:
+		return errFakeNoSuchAccount
+	case held.unconfirmed:
+		return contracts.ErrExternalUnconfirmed
+	case held.refusePhoto:
+		if !slices.Contains(held.account.Reported, contracts.ReportedPhotoNotWritten) {
+			held.account.Reported = append(held.account.Reported, contracts.ReportedPhotoNotWritten)
+		}
+		return nil
+	}
+	held.photo = nil
+	held.account.Reported = slices.DeleteFunc(held.account.Reported, func(code string) bool { return code == contracts.ReportedPhotoNotWritten })
 	return nil
 }
 

@@ -21,6 +21,21 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for AccountResponseAvatarManagedBy.
+const (
+	AvatarManagedByStaff AccountResponseAvatarManagedBy = "staff"
+)
+
+// Valid indicates whether the value is a known member of the AccountResponseAvatarManagedBy enum.
+func (e AccountResponseAvatarManagedBy) Valid() bool {
+	switch e {
+	case AvatarManagedByStaff:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthSessionResponseTimeZoneSource.
 const (
 	Business AuthSessionResponseTimeZoneSource = "business"
@@ -222,15 +237,20 @@ type AccountProfileRequest struct {
 
 // AccountResponse defines model for AccountResponse.
 type AccountResponse struct {
-	AvatarUrl         *string            `json:"avatarUrl"`
-	DisplayName       string             `json:"displayName"`
-	Email             *string            `json:"email"`
-	Id                openapi_types.UUID `json:"id"`
-	PreferredLanguage *string            `json:"preferredLanguage"`
+	// AvatarManagedBy staff when Staff's photo is the picture and the avatar cannot be changed here; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
+	AvatarManagedBy   *AccountResponseAvatarManagedBy `json:"avatarManagedBy"`
+	AvatarUrl         *string                         `json:"avatarUrl"`
+	DisplayName       string                          `json:"displayName"`
+	Email             *string                         `json:"email"`
+	Id                openapi_types.UUID              `json:"id"`
+	PreferredLanguage *string                         `json:"preferredLanguage"`
 
 	// TimeZone The user's own time zone (time zones design D5), an IANA name, or null when they follow the workspace's business time zone. The zone in effect, whichever it is, is the session's timeZone. Always answered; optional in the schema only because the recorded exchanges predate it.
 	TimeZone *string `json:"timeZone"`
 }
+
+// AccountResponseAvatarManagedBy staff when Staff's photo is the picture and the avatar cannot be changed here; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
+type AccountResponseAvatarManagedBy string
 
 // AdministrationScopeResponse defines model for AdministrationScopeResponse.
 type AdministrationScopeResponse struct {
@@ -7064,6 +7084,20 @@ func (response DeleteIdentityAccountAvatar403JSONResponse) VisitDeleteIdentityAc
 	return err
 }
 
+type DeleteIdentityAccountAvatar409JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityAccountAvatar409JSONResponse) VisitDeleteIdentityAccountAvatarResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetIdentityAccountAvatarRequestObject struct {
 }
 
@@ -7211,6 +7245,20 @@ func (response PostIdentityAccountAvatar403JSONResponse) VisitPostIdentityAccoun
 	return err
 }
 
+type PostIdentityAccountAvatar409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityAccountAvatar409JSONResponse) VisitPostIdentityAccountAvatarResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutIdentityAccountAvatarRequestObject struct {
 	Body *multipart.Reader
 }
@@ -7271,6 +7319,20 @@ func (response PutIdentityAccountAvatar403JSONResponse) VisitPutIdentityAccountA
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityAccountAvatar409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityAccountAvatar409JSONResponse) VisitPutIdentityAccountAvatarResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

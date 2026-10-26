@@ -12,6 +12,16 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteManagedAvatar = `-- name: DeleteManagedAvatar :exec
+DELETE FROM identity.managed_avatars WHERE user_id = $1
+`
+
+// DeleteManagedAvatar clears the managed avatar: the user's own shows again.
+func (q *Queries) DeleteManagedAvatar(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteManagedAvatar, userID)
+	return err
+}
+
 const deleteProfileAvatar = `-- name: DeleteProfileAvatar :exec
 DELETE FROM identity.profile_avatars WHERE user_id = $1
 `
@@ -32,6 +42,116 @@ func (q *Queries) DeleteUserPasswordResetTokens(ctx context.Context, userID uuid
 	return err
 }
 
+const getEffectiveAvatar = `-- name: GetEffectiveAvatar :one
+SELECT e.data, e.content_type, e.stamp, e.managed_by, e.updated_at
+FROM (
+    SELECT 0 AS priority, m.data, m.content_type, ('managed:' || m.source_stamp)::text AS stamp,
+           m.source AS managed_by, m.updated_at
+    FROM identity.managed_avatars m WHERE m.user_id = $1::uuid
+    UNION ALL
+    SELECT 1 AS priority, a.data, a.content_type,
+           ('own:' || a.version::text || '@' || extract(epoch FROM a.updated_at)::bigint::text)::text AS stamp,
+           ''::text AS managed_by, a.updated_at
+    FROM identity.profile_avatars a WHERE a.user_id = $1::uuid
+) e
+ORDER BY e.priority
+LIMIT 1
+`
+
+type GetEffectiveAvatarRow struct {
+	Data        []byte
+	ContentType string
+	Stamp       string
+	ManagedBy   string
+	UpdatedAt   time.Time
+}
+
+// GetEffectiveAvatar is the user's effective avatar (staff photo sync design
+// §3.1): the managed row when one exists, else the user's own. stamp names
+// the picture standing — "managed:<source_stamp>" or
+// "own:<version>@<unix seconds of updated_at>", so a delete then an upload
+// never repeats a stamp — and managed_by is the managed row's source
+// ("staff"), "" for the user's own.
+func (q *Queries) GetEffectiveAvatar(ctx context.Context, userID uuid.UUID) (GetEffectiveAvatarRow, error) {
+	row := q.db.QueryRow(ctx, getEffectiveAvatar, userID)
+	var i GetEffectiveAvatarRow
+	err := row.Scan(
+		&i.Data,
+		&i.ContentType,
+		&i.Stamp,
+		&i.ManagedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getEffectiveAvatarInfo = `-- name: GetEffectiveAvatarInfo :one
+SELECT e.content_type, e.stamp, e.managed_by, e.updated_at
+FROM (
+    SELECT 0 AS priority, m.content_type, ('managed:' || m.source_stamp)::text AS stamp,
+           m.source AS managed_by, m.updated_at
+    FROM identity.managed_avatars m WHERE m.user_id = $1::uuid
+    UNION ALL
+    SELECT 1 AS priority, a.content_type,
+           ('own:' || a.version::text || '@' || extract(epoch FROM a.updated_at)::bigint::text)::text AS stamp,
+           ''::text AS managed_by, a.updated_at
+    FROM identity.profile_avatars a WHERE a.user_id = $1::uuid
+) e
+ORDER BY e.priority
+LIMIT 1
+`
+
+type GetEffectiveAvatarInfoRow struct {
+	ContentType string
+	Stamp       string
+	ManagedBy   string
+	UpdatedAt   time.Time
+}
+
+// GetEffectiveAvatarInfo is GetEffectiveAvatar without the bytes: the
+// effective avatar's type, stamp, source and time.
+func (q *Queries) GetEffectiveAvatarInfo(ctx context.Context, userID uuid.UUID) (GetEffectiveAvatarInfoRow, error) {
+	row := q.db.QueryRow(ctx, getEffectiveAvatarInfo, userID)
+	var i GetEffectiveAvatarInfoRow
+	err := row.Scan(
+		&i.ContentType,
+		&i.Stamp,
+		&i.ManagedBy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getManagedAvatar = `-- name: GetManagedAvatar :one
+SELECT data, content_type, source, source_stamp, version, updated_at
+FROM identity.managed_avatars WHERE user_id = $1
+`
+
+type GetManagedAvatarRow struct {
+	Data        []byte
+	ContentType string
+	Source      string
+	SourceStamp string
+	Version     int32
+	UpdatedAt   time.Time
+}
+
+// GetManagedAvatar is the user's managed avatar (staff photo sync design S1):
+// Staff's photo as their picture, standing in front of their own.
+func (q *Queries) GetManagedAvatar(ctx context.Context, userID uuid.UUID) (GetManagedAvatarRow, error) {
+	row := q.db.QueryRow(ctx, getManagedAvatar, userID)
+	var i GetManagedAvatarRow
+	err := row.Scan(
+		&i.Data,
+		&i.ContentType,
+		&i.Source,
+		&i.SourceStamp,
+		&i.Version,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getProfileAvatar = `-- name: GetProfileAvatar :one
 SELECT data, content_type FROM identity.profile_avatars WHERE user_id = $1
 `
@@ -46,6 +166,33 @@ func (q *Queries) GetProfileAvatar(ctx context.Context, userID uuid.UUID) (GetPr
 	var i GetProfileAvatarRow
 	err := row.Scan(&i.Data, &i.ContentType)
 	return i, err
+}
+
+const hasEffectiveAvatar = `-- name: HasEffectiveAvatar :one
+SELECT (EXISTS (SELECT 1 FROM identity.managed_avatars m WHERE m.user_id = $1::uuid)
+        OR EXISTS (SELECT 1 FROM identity.profile_avatars a WHERE a.user_id = $1::uuid))::boolean
+`
+
+// HasEffectiveAvatar is whether the user has an effective avatar: a managed
+// one or their own.
+func (q *Queries) HasEffectiveAvatar(ctx context.Context, userID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasEffectiveAvatar, userID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const hasManagedAvatar = `-- name: HasManagedAvatar :one
+SELECT (EXISTS (SELECT 1 FROM identity.managed_avatars m WHERE m.user_id = $1::uuid))::boolean
+`
+
+// HasManagedAvatar is whether a managed avatar stands for the user: while one
+// does, the user's own avatar cannot be changed (staff photo sync design §4).
+func (q *Queries) HasManagedAvatar(ctx context.Context, userID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasManagedAvatar, userID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const hasProfileAvatar = `-- name: HasProfileAvatar :one
@@ -141,6 +288,42 @@ func (q *Queries) UpdateAccountProfile(ctx context.Context, arg UpdateAccountPro
 		&i.TimeZone,
 	)
 	return i, err
+}
+
+const upsertManagedAvatar = `-- name: UpsertManagedAvatar :exec
+INSERT INTO identity.managed_avatars (user_id, data, content_type, source, source_stamp, version, updated_at)
+VALUES ($1, $2, $3, $4, $5, 1, $6::timestamptz)
+ON CONFLICT (user_id) DO UPDATE
+SET data = excluded.data,
+    content_type = excluded.content_type,
+    source = excluded.source,
+    source_stamp = excluded.source_stamp,
+    version = identity.managed_avatars.version + 1,
+    updated_at = excluded.updated_at
+`
+
+type UpsertManagedAvatarParams struct {
+	UserID      uuid.UUID
+	Data        []byte
+	ContentType string
+	Source      string
+	SourceStamp string
+	Now         time.Time
+}
+
+// UpsertManagedAvatar stores the managed avatar, starting version at 1 or
+// incrementing it on a replace, as UpsertProfileAvatar does; the user's own
+// avatar is left as it is.
+func (q *Queries) UpsertManagedAvatar(ctx context.Context, arg UpsertManagedAvatarParams) error {
+	_, err := q.db.Exec(ctx, upsertManagedAvatar,
+		arg.UserID,
+		arg.Data,
+		arg.ContentType,
+		arg.Source,
+		arg.SourceStamp,
+		arg.Now,
+	)
+	return err
 }
 
 const upsertProfileAvatar = `-- name: UpsertProfileAvatar :exec

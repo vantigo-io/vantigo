@@ -13,7 +13,7 @@ func TestIdentityProvisionerConstants(t *testing.T) {
 		{ProviderUnconfigured, "unconfigured"}, {ProviderConnected, "connected"}, {ProviderFailing, "failing"},
 		{ReportedHireDateNotWritten, "hire_date_not_written"}, {ReportedPrivileged, "privileged"},
 		{ReportedPassNotAllowed, "pass_not_allowed"}, {ReportedLicenceUnavailable, "licence_unavailable"},
-		{ReportedManagerNotFound, "manager_not_found"},
+		{ReportedManagerNotFound, "manager_not_found"}, {ReportedPhotoNotWritten, "photo_not_written"},
 	} {
 		if c.got != c.want {
 			t.Errorf("constant = %q, want %q", c.got, c.want)

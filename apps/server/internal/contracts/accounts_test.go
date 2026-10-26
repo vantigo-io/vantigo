@@ -121,7 +121,7 @@ func TestValidAccountKind(t *testing.T) {
 // ErrAccountEmailTaken above all.
 func TestAccountErrors_AreDistinct(t *testing.T) {
 	all := []error{ErrAccountNotManaged, ErrAccountPrivileged, ErrBlockedByOwner, ErrAccountEmailTaken,
-		ErrEmployeeNumberTaken, ErrInvalidActor, ErrEmployeeRoleMissing, ErrEmployeeRoleUnsafe, ErrAccountNotFound, ErrUserGone, ErrModeMismatch, ErrLastOwner, ErrAccountEnabled}
+		ErrEmployeeNumberTaken, ErrInvalidActor, ErrEmployeeRoleMissing, ErrEmployeeRoleUnsafe, ErrAccountNotFound, ErrUserGone, ErrModeMismatch, ErrLastOwner, ErrAccountEnabled, ErrAvatarInvalid}
 	for i, a := range all {
 		for j, b := range all {
 			if i != j && errors.Is(a, b) {

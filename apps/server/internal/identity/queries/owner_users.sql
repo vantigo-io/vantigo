@@ -11,7 +11,8 @@
 -- Staff-managed state (delivery C). The expected_* columns are the user's
 -- announced link, if any (Entra phase 2 design L1): the handler reads its
 -- state against oidc_issuer, since an announcement under another issuer
--- fulfils nothing.
+-- fulfils nothing. has_avatar is the effective avatar's existence: a
+-- managed one (Staff's photo) or the user's own (staff photo sync §3.1).
 SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled,
        u.managed_by, u.employee_number, (u.pending_since IS NOT NULL)::boolean AS pending, u.disabled_by,
        el.issuer AS expected_issuer, el.object_id AS expected_object_id,
@@ -22,7 +23,8 @@ SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabl
            JOIN identity.roles r ON r.id = ur.role_id
            WHERE ur.user_id = u.id AND r.name = 'Owner'
        )::boolean AS is_owner,
-       EXISTS (SELECT 1 FROM identity.profile_avatars a WHERE a.user_id = u.id)::boolean AS has_avatar,
+       (EXISTS (SELECT 1 FROM identity.managed_avatars ma WHERE ma.user_id = u.id)
+        OR EXISTS (SELECT 1 FROM identity.profile_avatars a WHERE a.user_id = u.id))::boolean AS has_avatar,
        (sqlc.narg(oidc_issuer)::text IS NOT NULL AND EXISTS (
            SELECT 1 FROM identity.oidc_links l
            WHERE l.user_id = u.id AND l.issuer = sqlc.narg(oidc_issuer)::text
