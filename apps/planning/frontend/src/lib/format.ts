@@ -1,11 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
+import { competenceName } from "../api/competences";
 import type { PlanningLoadUnit } from "../api/meta";
 import { planningMetaQueryOptions } from "../api/meta";
 import type { PlanningPersonRef } from "../api/people";
 import type { PlanningProjectRef } from "../api/projects";
+import type { PlanningRequestStatus, PlanningRequirement } from "../api/requests";
 import "../i18n";
 import { formatRange, isoWeek, toUtc } from "./weeks";
+
+/** A request status's badge colour. */
+export const requestStatusColor: Record<PlanningRequestStatus, string> = {
+  open: "orange",
+  filled: "teal",
+  withdrawn: "gray",
+};
 
 /** A person as a picker lists them: the name and the employee number. */
 export const personLabel = (person: { displayName: string; employeeNumber: string }) =>
@@ -20,8 +29,19 @@ export const personLabel = (person: { displayName: string; employeeNumber: strin
  * caller simply may not see them.
  */
 export const usePlanningFormat = () => {
-  const { t, formatters } = useI18n("planning");
+  const { t, formatters, locale } = useI18n("planning");
   const meta = useQuery(planningMetaQueryOptions());
+  /** A competence or a requirement by its name, else its key, else its id (rule 4). */
+  const nameOfCompetence = (competence: {
+    nameEn?: string;
+    nameNb?: string;
+    key?: string;
+    id?: number;
+    competenceId?: number;
+  }) =>
+    competenceName(competence, locale) ??
+    competence.key ??
+    t("competenceById", { id: competence.id ?? competence.competenceId });
   const number = (value: number, digits = 1) => formatters.formatNumber(value, { maximumFractionDigits: digits });
   return {
     t,
@@ -41,5 +61,14 @@ export const usePlanningFormat = () => {
       person.displayName ?? (meta.data?.workforceVisible === false ? t("aColleague") : t("erasedPerson")),
     projectName: (project: PlanningProjectRef) =>
       project.code && project.name ? `${project.code} ${project.name}` : t("projectById", { id: project.id }),
+    competenceName: nameOfCompetence,
+    /** A request's requirement: the competence, and the lowest level when it asks for one. */
+    requirement: (requirement: PlanningRequirement) =>
+      requirement.minLevel === undefined
+        ? nameOfCompetence(requirement)
+        : t("requirementWithLevel", {
+            name: nameOfCompetence(requirement),
+            level: t(`level_${requirement.minLevel}`),
+          }),
   };
 };

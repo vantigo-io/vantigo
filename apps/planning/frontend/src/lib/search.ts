@@ -1,3 +1,4 @@
+import { type PlanningRequestStatus, requestStatuses } from "../api/requests";
 import { isIsoDate } from "./weeks";
 
 /**
@@ -29,7 +30,7 @@ export interface BoardSearch {
   /** Left out, people. */
   groupBy?: BoardGrouping;
   departmentId?: number;
-  /** Only the people holding this competence on `from`; there is no control for it, a link may carry it. */
+  /** Only the people holding this competence on `from` (the competence picker, amendment 38). */
   competenceId?: number;
   projectId?: number;
   /** `false`: tentative rows are neither summed nor listed (Show tentative off). */
@@ -81,5 +82,38 @@ export const validateWindowSearch = (search: Record<string, unknown>): WindowSea
   const out: WindowSearch = {};
   if (isIsoDate(search.from)) out.from = search.from;
   if (isIsoDate(search.to) && (out.from === undefined || search.to >= out.from)) out.to = search.to;
+  return out;
+};
+
+/** The requests page's status filter: a status, or `all` for every one. */
+export type RequestsStatusFilter = PlanningRequestStatus | "all";
+
+/** The requests page's URL search: its filters, and the sheet to open on arrival. */
+export interface RequestsSearch {
+  /**
+   * Left out, the open requests — the list answers at most 500, the oldest
+   * first, so an unfiltered list could leave the open ones out; `all`, every
+   * status.
+   */
+  status?: RequestsStatusFilter;
+  projectId?: number;
+  /** `1`: the request sheet opens on arrival — the seam the host's Spotlight "New request" lands on. */
+  new?: 1;
+}
+
+/**
+ * The host route's `validateSearch` for the requests page; an unknown status
+ * falls back to the default (open), any other unknown value to no filter.
+ */
+export const validateRequestsSearch = (search: Record<string, unknown>): RequestsSearch => {
+  const out: RequestsSearch = {};
+  if (
+    typeof search.status === "string" &&
+    (search.status === "all" || (requestStatuses as readonly string[]).includes(search.status))
+  )
+    out.status = search.status as RequestsStatusFilter;
+  const projectId = positiveId(search.projectId);
+  if (projectId !== undefined) out.projectId = projectId;
+  if ([1, "1", true, "true"].includes(search.new as never)) out.new = 1;
   return out;
 };

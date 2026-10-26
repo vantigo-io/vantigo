@@ -96,6 +96,20 @@ describe("BoardPage — the board", () => {
     expect(last?.url).toContain("includePlanned=false");
   });
 
+  it("filters by a competence picked from Staff's catalogue, never offering a hidden one", async () => {
+    const fetchMock = stubPlanningApi({ role: "view" });
+    const { router } = renderRoute("/planning");
+    await screen.findByRole("table", { name: "Plan" });
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Competence" }));
+    expect(await screen.findByRole("option", { name: "Safety card" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "COBOL" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "React" }));
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ competenceId: 40 }));
+    await waitFor(() => expect(sent(fetchMock, "GET", /\/planning\/board/).at(-1)?.url).toContain("competenceId=40"));
+  });
+
   it("opens a row to its allocations as bars", async () => {
     stubPlanningApi({ role: "view" });
     renderRoute("/planning");

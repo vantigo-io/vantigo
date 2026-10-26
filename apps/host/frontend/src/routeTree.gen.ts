@@ -60,7 +60,9 @@ import { Route as InvoicesOverdueRouteImport } from './routes/invoices/overdue'
 import { Route as InvoicesQuickRouteImport } from './routes/invoices/quick'
 import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings'
 import { Route as PlanningIndexRouteImport } from './routes/planning/index'
+import { Route as PlanningIntakeRouteImport } from './routes/planning/intake'
 import { Route as PlanningMeRouteImport } from './routes/planning/me'
+import { Route as PlanningRequestsRouteImport } from './routes/planning/requests'
 import { Route as PlanningSettingsRouteImport } from './routes/planning/settings'
 import { Route as PlanningUnbookedRouteImport } from './routes/planning/unbooked'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
@@ -112,6 +114,7 @@ import { Route as ProjectsProjectIdEconomyRouteImport } from './routes/projects/
 import { Route as ProjectsProjectIdExpensesRouteImport } from './routes/projects/$projectId.expenses'
 import { Route as ProjectsProjectIdInvoicingRouteImport } from './routes/projects/$projectId.invoicing'
 import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$projectId.people'
+import { Route as ProjectsProjectIdPlanningRouteImport } from './routes/projects/$projectId.planning'
 import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$projectId.tasks'
 import { Route as ProjectsProjectIdTimeRouteImport } from './routes/projects/$projectId.time'
 import { Route as StaffGroupsIndexRouteImport } from './routes/staff/groups.index'
@@ -378,9 +381,19 @@ const PlanningIndexRoute = PlanningIndexRouteImport.update({
   path: '/',
   getParentRoute: () => PlanningRoute,
 } as any)
+const PlanningIntakeRoute = PlanningIntakeRouteImport.update({
+  id: '/intake',
+  path: '/intake',
+  getParentRoute: () => PlanningRoute,
+} as any)
 const PlanningMeRoute = PlanningMeRouteImport.update({
   id: '/me',
   path: '/me',
+  getParentRoute: () => PlanningRoute,
+} as any)
+const PlanningRequestsRoute = PlanningRequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
   getParentRoute: () => PlanningRoute,
 } as any)
 const PlanningSettingsRoute = PlanningSettingsRouteImport.update({
@@ -651,6 +664,12 @@ const ProjectsProjectIdPeopleRoute = ProjectsProjectIdPeopleRouteImport.update({
   path: '/people',
   getParentRoute: () => ProjectsProjectIdRoute,
 } as any)
+const ProjectsProjectIdPlanningRoute =
+  ProjectsProjectIdPlanningRouteImport.update({
+    id: '/planning',
+    path: '/planning',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
 const ProjectsProjectIdTasksRoute = ProjectsProjectIdTasksRouteImport.update({
   id: '/tasks',
   path: '/tasks',
@@ -743,7 +762,9 @@ export interface FileRoutesByFullPath {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/planning/intake': typeof PlanningIntakeRoute
   '/planning/me': typeof PlanningMeRoute
+  '/planning/requests': typeof PlanningRequestsRoute
   '/planning/settings': typeof PlanningSettingsRoute
   '/planning/unbooked': typeof PlanningUnbookedRoute
   '/products/$productId': typeof ProductsProductIdRoute
@@ -798,6 +819,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
   '/projects/$projectId/invoicing': typeof ProjectsProjectIdInvoicingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
+  '/projects/$projectId/planning': typeof ProjectsProjectIdPlanningRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
@@ -841,7 +863,9 @@ export interface FileRoutesByTo {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/planning/intake': typeof PlanningIntakeRoute
   '/planning/me': typeof PlanningMeRoute
+  '/planning/requests': typeof PlanningRequestsRoute
   '/planning/settings': typeof PlanningSettingsRoute
   '/planning/unbooked': typeof PlanningUnbookedRoute
   '/products/$productId': typeof ProductsProductIdRoute
@@ -895,6 +919,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
   '/projects/$projectId/invoicing': typeof ProjectsProjectIdInvoicingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
+  '/projects/$projectId/planning': typeof ProjectsProjectIdPlanningRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
@@ -955,7 +980,9 @@ export interface FileRoutesById {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/planning/intake': typeof PlanningIntakeRoute
   '/planning/me': typeof PlanningMeRoute
+  '/planning/requests': typeof PlanningRequestsRoute
   '/planning/settings': typeof PlanningSettingsRoute
   '/planning/unbooked': typeof PlanningUnbookedRoute
   '/products/$productId': typeof ProductsProductIdRoute
@@ -1010,6 +1037,7 @@ export interface FileRoutesById {
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
   '/projects/$projectId/invoicing': typeof ProjectsProjectIdInvoicingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
+  '/projects/$projectId/planning': typeof ProjectsProjectIdPlanningRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
@@ -1071,7 +1099,9 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/planning/intake'
     | '/planning/me'
+    | '/planning/requests'
     | '/planning/settings'
     | '/planning/unbooked'
     | '/products/$productId'
@@ -1126,6 +1156,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/expenses'
     | '/projects/$projectId/invoicing'
     | '/projects/$projectId/people'
+    | '/projects/$projectId/planning'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
     | '/staff/groups/$id'
@@ -1169,7 +1200,9 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/planning/intake'
     | '/planning/me'
+    | '/planning/requests'
     | '/planning/settings'
     | '/planning/unbooked'
     | '/products/$productId'
@@ -1223,6 +1256,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/expenses'
     | '/projects/$projectId/invoicing'
     | '/projects/$projectId/people'
+    | '/projects/$projectId/planning'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
     | '/staff/groups/$id'
@@ -1282,7 +1316,9 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/planning/intake'
     | '/planning/me'
+    | '/planning/requests'
     | '/planning/settings'
     | '/planning/unbooked'
     | '/products/$productId'
@@ -1337,6 +1373,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/expenses'
     | '/projects/$projectId/invoicing'
     | '/projects/$projectId/people'
+    | '/projects/$projectId/planning'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
     | '/staff/groups/$id'
@@ -1743,11 +1780,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlanningIndexRouteImport
       parentRoute: typeof PlanningRoute
     }
+    '/planning/intake': {
+      id: '/planning/intake'
+      path: '/intake'
+      fullPath: '/planning/intake'
+      preLoaderRoute: typeof PlanningIntakeRouteImport
+      parentRoute: typeof PlanningRoute
+    }
     '/planning/me': {
       id: '/planning/me'
       path: '/me'
       fullPath: '/planning/me'
       preLoaderRoute: typeof PlanningMeRouteImport
+      parentRoute: typeof PlanningRoute
+    }
+    '/planning/requests': {
+      id: '/planning/requests'
+      path: '/requests'
+      fullPath: '/planning/requests'
+      preLoaderRoute: typeof PlanningRequestsRouteImport
       parentRoute: typeof PlanningRoute
     }
     '/planning/settings': {
@@ -2107,6 +2158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdPeopleRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/projects/$projectId/planning': {
+      id: '/projects/$projectId/planning'
+      path: '/planning'
+      fullPath: '/projects/$projectId/planning'
+      preLoaderRoute: typeof ProjectsProjectIdPlanningRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
     '/projects/$projectId/tasks': {
       id: '/projects/$projectId/tasks'
       path: '/tasks'
@@ -2342,7 +2400,9 @@ const InvoicesRouteWithChildren = InvoicesRoute._addFileChildren(
 )
 
 interface PlanningRouteChildren {
+  PlanningIntakeRoute: typeof PlanningIntakeRoute
   PlanningMeRoute: typeof PlanningMeRoute
+  PlanningRequestsRoute: typeof PlanningRequestsRoute
   PlanningSettingsRoute: typeof PlanningSettingsRoute
   PlanningUnbookedRoute: typeof PlanningUnbookedRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
@@ -2351,7 +2411,9 @@ interface PlanningRouteChildren {
 }
 
 const PlanningRouteChildren: PlanningRouteChildren = {
+  PlanningIntakeRoute: PlanningIntakeRoute,
   PlanningMeRoute: PlanningMeRoute,
+  PlanningRequestsRoute: PlanningRequestsRoute,
   PlanningSettingsRoute: PlanningSettingsRoute,
   PlanningUnbookedRoute: PlanningUnbookedRoute,
   PlanningIndexRoute: PlanningIndexRoute,
@@ -2387,6 +2449,7 @@ interface ProjectsProjectIdRouteChildren {
   ProjectsProjectIdExpensesRoute: typeof ProjectsProjectIdExpensesRoute
   ProjectsProjectIdInvoicingRoute: typeof ProjectsProjectIdInvoicingRoute
   ProjectsProjectIdPeopleRoute: typeof ProjectsProjectIdPeopleRoute
+  ProjectsProjectIdPlanningRoute: typeof ProjectsProjectIdPlanningRoute
   ProjectsProjectIdTasksRoute: typeof ProjectsProjectIdTasksRoute
   ProjectsProjectIdTimeRoute: typeof ProjectsProjectIdTimeRoute
   ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
@@ -2398,6 +2461,7 @@ const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
   ProjectsProjectIdExpensesRoute: ProjectsProjectIdExpensesRoute,
   ProjectsProjectIdInvoicingRoute: ProjectsProjectIdInvoicingRoute,
   ProjectsProjectIdPeopleRoute: ProjectsProjectIdPeopleRoute,
+  ProjectsProjectIdPlanningRoute: ProjectsProjectIdPlanningRoute,
   ProjectsProjectIdTasksRoute: ProjectsProjectIdTasksRoute,
   ProjectsProjectIdTimeRoute: ProjectsProjectIdTimeRoute,
   ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,

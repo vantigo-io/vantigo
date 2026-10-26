@@ -27,6 +27,7 @@ describe("project detail tab visibility", () => {
       "time",
       "expenses",
       "invoicing",
+      "planning",
     ]);
   });
 
@@ -86,9 +87,9 @@ describe("project detail tab visibility", () => {
     ).toContain("expenses");
   });
 
-  it("puts the three tabs other modules add last: time, expenses, then invoicing", () => {
+  it("puts the four tabs other modules add last: time, expenses, invoicing, then planning", () => {
     const shown = values(moduleKeys, ["*"], canSeeEverything);
-    expect(shown.slice(-3)).toEqual(["time", "expenses", "invoicing"]);
+    expect(shown.slice(-4)).toEqual(["time", "expenses", "invoicing", "planning"]);
   });
 
   // Invoicing is the third tab from another module (invoices work design
@@ -104,6 +105,24 @@ describe("project detail tab visibility", () => {
     expect(values(moduleKeys, ["projects:access", "invoices:create"], canSeeEverything)).not.toContain("invoicing");
     expect(values(["projects", "time", "expenses"], ["*"], canSeeEverything)).not.toContain("invoicing");
     expect(values(undefined, ["*"], canSeeEverything)).not.toContain("invoicing");
+  });
+
+  // Planning is the fourth tab from another module (planning design §7): the
+  // project's plan. Every Planning call needs planning:access and the plan
+  // needs planning:view, which planning:manage does not imply, so the tab
+  // asks both — and the installation has to have mounted planning.
+  it("shows the planning tab only when the module is on and the caller holds planning:access and planning:view", () => {
+    expect(values(moduleKeys, ["projects:access", "planning:access", "planning:view"], canSeeEverything)).toContain(
+      "planning",
+    );
+    expect(values(moduleKeys, ["projects:access", "planning:access"], canSeeEverything)).not.toContain("planning");
+    expect(
+      values(moduleKeys, ["projects:access", "planning:access", "planning:manage"], canSeeEverything),
+    ).not.toContain("planning");
+    // Both are needed: every call asks the app, the plan asks view.
+    expect(values(moduleKeys, ["projects:access", "planning:view"], canSeeEverything)).not.toContain("planning");
+    expect(values(["projects", "time", "expenses", "invoices"], ["*"], canSeeEverything)).not.toContain("planning");
+    expect(values(undefined, ["*"], canSeeEverything)).not.toContain("planning");
   });
 
   // Tasks follow the project's own roles — there is no task permission and no
@@ -137,7 +156,7 @@ describe("project detail tab visibility", () => {
         canManageMilestones: true,
         canSeeCosts: false,
       }),
-    ).toEqual(["overview", "tasks", "people", "economy", "time", "expenses", "invoicing"]);
+    ).toEqual(["overview", "tasks", "people", "economy", "time", "expenses", "invoicing", "planning"]);
   });
 
   it("hides the billing tab while the project is still loading, but keeps economy", () => {
@@ -149,6 +168,7 @@ describe("project detail tab visibility", () => {
       "time",
       "expenses",
       "invoicing",
+      "planning",
     ]);
   });
 

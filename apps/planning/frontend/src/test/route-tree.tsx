@@ -13,24 +13,31 @@ import {
 import { render } from "@testing-library/react";
 import {
   BOARD_ROUTE_PATH,
+  INTAKE_ROUTE_PATH,
   MY_PLANNING_ROUTE_PATH,
   PERSON_TIMELINE_ROUTE_PATH,
   PLANNING_SETTINGS_ROUTE_PATH,
   PROJECT_PLAN_ROUTE_PATH,
+  REQUESTS_ROUTE_PATH,
   UNBOOKED_ROUTE_PATH,
 } from "../lib/routes";
-import { validateBoardSearch, validateWindowSearch } from "../lib/search";
+import { validateBoardSearch, validateRequestsSearch, validateWindowSearch } from "../lib/search";
 import { BoardPage } from "../pages/board";
+import { IntakePage } from "../pages/intake";
 import { MyPlanningPage } from "../pages/me";
 import { PersonTimelinePage } from "../pages/person-timeline";
 import { ProjectPlanPage } from "../pages/project-plan";
+import { RequestsPage } from "../pages/requests";
 import { PlanningSettingsPage } from "../pages/settings";
 import { UnbookedPage } from "../pages/unbooked";
 import "../i18n";
+import { ProjectPlanningTab } from "./project-planning-tab";
 import { StaffPersonSlot } from "./staff-person-slot";
 
 /** Where the host puts `PersonTimeline` on Staff's person page (`StaffPersonSlot`). */
 export const STAFF_PERSON_TEST_PATH = "/staff/people/$id";
+/** Where the host puts `ProjectPlan` on the project page's Planning tab (`ProjectPlanningTab`). */
+export const PROJECT_TAB_TEST_PATH = "/projects/$projectId/planning";
 
 /**
  * Stands in for the host routes this package's pages are mounted by: the same
@@ -62,6 +69,13 @@ export const makeRouteTree = () => {
       component: PersonTimelinePage,
       validateSearch: validateWindowSearch,
     }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: REQUESTS_ROUTE_PATH,
+      component: RequestsPage,
+      validateSearch: validateRequestsSearch,
+    }),
+    createRoute({ getParentRoute: () => rootRoute, path: INTAKE_ROUTE_PATH, component: IntakePage }),
     createRoute({ getParentRoute: () => rootRoute, path: UNBOOKED_ROUTE_PATH, component: UnbookedPage }),
     createRoute({ getParentRoute: () => rootRoute, path: MY_PLANNING_ROUTE_PATH, component: MyPlanningPage }),
     createRoute({
@@ -73,6 +87,11 @@ export const makeRouteTree = () => {
       getParentRoute: () => rootRoute,
       path: STAFF_PERSON_TEST_PATH,
       component: StaffPersonSlot,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: PROJECT_TAB_TEST_PATH,
+      component: ProjectPlanningTab,
     }),
   ]);
 };

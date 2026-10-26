@@ -65,8 +65,9 @@ export const refusalOf = async (response: Response): Promise<Error> => {
 
 /**
  * A write sent past the shared client, so its refusal keeps the code
- * (`refusalOf`). Used by the allocation sheet's create and replace, the two
- * writes whose field errors carry a rule's code.
+ * (`refusalOf`). Used by the allocation and request sheets' create and
+ * replace, whose field errors carry a rule's code, and by a request's fill and
+ * withdrawal.
  */
 export const send = async <T>(url: string, init: RequestInit): Promise<T> => {
   const response = await fetch(appUrl(url), { ...init, credentials: "include" });
@@ -82,13 +83,15 @@ export const refusalCode = (error: unknown): string | undefined => {
 };
 
 /**
- * The refusals a write, a confirm or a delete answers as a rule (409) rather
- * than a field (§4.7), each worded by its code (`refusal.<code>`).
+ * The refusals a write, a confirm, a delete, a fill or a withdrawal answers as
+ * a rule (409) rather than a field (§4.7), each worded by its code
+ * (`refusal.<code>`).
  */
 export const ruleRefusals: readonly string[] = [
   "overbooked",
   "outside_employment",
   "project_closed",
+  "request_not_open",
   "dependency_unavailable",
 ];
 

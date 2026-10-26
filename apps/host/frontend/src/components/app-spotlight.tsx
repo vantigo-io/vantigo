@@ -19,6 +19,7 @@ import {
   IconSearch,
   IconUser,
   IconUserPlus,
+  IconUserSearch,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -27,7 +28,7 @@ import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name";
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
-import { BOARD_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
+import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
 import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/routes";
 import { useState } from "react";
@@ -166,11 +167,11 @@ export const AppSpotlight = ({
           },
         ]
       : []),
-    // New allocation is the planner's: the board opens the allocation sheet on
-    // arrival (the package's `create=allocation` seam). Writing one needs the
-    // app and planning:manage, and the board itself planning:view — without
-    // it the board sends the caller to My planning — so three checks, each
-    // any-of on its own.
+    // New allocation and New request are the planner's: the board opens the
+    // allocation sheet on arrival (the package's `create=allocation` seam),
+    // the requests the request sheet (`new=1`). Writing either needs the app
+    // and planning:manage, and both pages planning:view — without it they
+    // send the caller to My planning — so three checks, each any-of on its own.
     ...(enabledModules?.includes("planning") &&
     hasPermissions(permissions, ["planning:access"]) &&
     hasPermissions(permissions, ["planning:view"]) &&
@@ -182,6 +183,7 @@ export const AppSpotlight = ({
             path: BOARD_ROUTE_PATH,
             search: { create: "allocation" },
           },
+          { label: t("dashboard.newRequest"), icon: IconUserSearch, path: REQUESTS_ROUTE_PATH, search: { new: 1 } },
         ]
       : []),
     // New appointment is everyone's in the app, for themselves: the calendar

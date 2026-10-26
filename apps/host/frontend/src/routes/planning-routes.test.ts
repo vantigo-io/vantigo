@@ -2,13 +2,16 @@ import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, isNotFound, isRedirect } from "@tanstack/react-router";
 import {
   BOARD_ROUTE_PATH,
+  INTAKE_ROUTE_PATH,
   MY_PLANNING_ROUTE_PATH,
   PERSON_TIMELINE_ROUTE_PATH,
   PLANNING_SETTINGS_ROUTE_PATH,
   PROJECT_PLAN_ROUTE_PATH,
   planningNavItems,
+  REQUESTS_ROUTE_PATH,
   UNBOOKED_ROUTE_PATH,
   validateBoardSearch,
+  validateRequestsSearch,
   validateWindowSearch,
 } from "@vantigo/planning-ui";
 import { describe, expect, it, vi } from "vitest";
@@ -16,8 +19,10 @@ import { routeTree } from "../routeTree.gen";
 import { attentionHref } from "./dashboard";
 import { Route as PlanningRoute } from "./planning";
 import { Route as PlanningIndexRoute } from "./planning/index";
+import { Route as PlanningIntakeRoute } from "./planning/intake";
 import { Route as PlanningPersonRoute } from "./planning/people.$personId";
 import { Route as PlanningProjectRoute } from "./planning/projects.$projectId";
+import { Route as PlanningRequestsRoute } from "./planning/requests";
 
 const { getAuthorizationMe } = vi.hoisted(() => ({ getAuthorizationMe: vi.fn() }));
 vi.mock("../api/authorization", async (importOriginal) => ({
@@ -56,6 +61,8 @@ const matchedRouteIds = (pathname: string) => {
 describe("the planning routes", () => {
   it("mounts every path the package links to", () => {
     expect(matchedRouteIds(BOARD_ROUTE_PATH)).toContain(BOARD_ROUTE_PATH);
+    expect(matchedRouteIds(REQUESTS_ROUTE_PATH)).toContain(REQUESTS_ROUTE_PATH);
+    expect(matchedRouteIds(INTAKE_ROUTE_PATH)).toContain(INTAKE_ROUTE_PATH);
     expect(matchedRouteIds(UNBOOKED_ROUTE_PATH)).toContain(UNBOOKED_ROUTE_PATH);
     expect(matchedRouteIds(MY_PLANNING_ROUTE_PATH)).toContain(MY_PLANNING_ROUTE_PATH);
     expect(matchedRouteIds(PLANNING_SETTINGS_ROUTE_PATH)).toContain(PLANNING_SETTINGS_ROUTE_PATH);
@@ -66,14 +73,17 @@ describe("the planning routes", () => {
 
   it("sits under the planning layout, which carries the app and its module gate", () => {
     expect(matchedRouteIds(UNBOOKED_ROUTE_PATH)).toContain("/planning");
+    expect(matchedRouteIds(REQUESTS_ROUTE_PATH)).toContain("/planning");
+    expect(matchedRouteIds(INTAKE_ROUTE_PATH)).toContain("/planning");
     expect(matchedRouteIds("/planning/people/101")).toContain("/planning");
     expect(PlanningRoute.options.staticData).toEqual({ app: "planning" });
   });
 
   // The validators are the package's own, so the route and the package's
   // tests read a URL the same way.
-  it("validates the board's search and the windows' with the package's validators", () => {
+  it("validates the board's search, the windows' and the requests' with the package's validators", () => {
     expect(PlanningIndexRoute.options.validateSearch).toBe(validateBoardSearch);
+    expect(PlanningRequestsRoute.options.validateSearch).toBe(validateRequestsSearch);
     expect(PlanningProjectRoute.options.validateSearch).toBe(validateWindowSearch);
     expect(PlanningPersonRoute.options.validateSearch).toBe(validateWindowSearch);
     // The spotlight's New allocation lands on the board with the sheet open.
@@ -93,30 +103,36 @@ describe("the planning routes", () => {
     }
   });
 
-  // The board and a project's plan are planning:view's; their URLs are under
-  // the prefix the guard asks only planning:access of, so the routes send
-  // anyone else — and anyone whose permissions could not be read — to My
-  // planning. A person's own timeline stays reachable for planning:access.
+  // The board, a project's plan, the requests and the intake are
+  // planning:view's; their URLs are under the prefix the guard asks only
+  // planning:access of, so the routes send anyone else — and anyone whose
+  // permissions could not be read — to My planning. A person's own timeline
+  // stays reachable for planning:access.
   it.each([
     [["planning:access", "planning:view"], undefined],
     [["*"], undefined],
     [["planning:access"], MY_PLANNING_ROUTE_PATH],
     [["planning:access", "planning:manage"], MY_PLANNING_ROUTE_PATH],
-  ])("lets %j onto the board and a project's plan, or sends them to %s", async (permissions, to) => {
-    getAuthorizationMe.mockResolvedValue({ permissions });
-    for (const [route, params] of [
-      [PlanningIndexRoute, {}],
-      [PlanningProjectRoute, { projectId: "31" }],
-    ] as const) {
-      const thrown = await runBeforeLoad(route, params);
-      if (to === undefined) expect(thrown).toBeUndefined();
-      else {
-        expect(isRedirect(thrown)).toBe(true);
-        expect(thrown?.options?.to).toBe(to);
+  ])(
+    "lets %j onto the board, a project's plan, the requests and the intake, or sends them to %s",
+    async (permissions, to) => {
+      getAuthorizationMe.mockResolvedValue({ permissions });
+      for (const [route, params] of [
+        [PlanningIndexRoute, {}],
+        [PlanningProjectRoute, { projectId: "31" }],
+        [PlanningRequestsRoute, {}],
+        [PlanningIntakeRoute, {}],
+      ] as const) {
+        const thrown = await runBeforeLoad(route, params);
+        if (to === undefined) expect(thrown).toBeUndefined();
+        else {
+          expect(isRedirect(thrown)).toBe(true);
+          expect(thrown?.options?.to).toBe(to);
+        }
       }
-    }
-    expect(await runBeforeLoad(PlanningPersonRoute, { personId: "101" })).toBeUndefined();
-  });
+      expect(await runBeforeLoad(PlanningPersonRoute, { personId: "101" })).toBeUndefined();
+    },
+  );
 
   it("sends the board to My planning when the permissions cannot be read", async () => {
     getAuthorizationMe.mockRejectedValue(new Error("offline"));
@@ -134,6 +150,9 @@ describe("the planning routes", () => {
     );
     expect(attentionHref({ module: "planning", type: "endingWithoutFollowOn", entityId: "7001" })).toBe(
       BOARD_ROUTE_PATH,
+    );
+    expect(attentionHref({ module: "planning", type: "requestsOpen", entityId: "41" })).toBe(
+      `${REQUESTS_ROUTE_PATH}?status=open`,
     );
     expect(matchedRouteIds("/planning/people/101")).toContain(PERSON_TIMELINE_ROUTE_PATH);
   });

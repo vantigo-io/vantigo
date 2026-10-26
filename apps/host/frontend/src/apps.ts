@@ -32,9 +32,11 @@ import {
   IconReportMoney,
   IconShieldCheck,
   IconShieldLock,
+  IconTelescope,
   IconUser,
   IconUserPlus,
   IconUserQuestion,
+  IconUserSearch,
   IconUsers,
   IconUsersGroup,
 } from "@tabler/icons-react";
@@ -139,6 +141,8 @@ const staffNavPresentation: Record<StaffNavItem["key"], Pick<NavItem, "label" | 
  */
 const planningNavPresentation: Record<PlanningNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   board: { label: "navigation.planningBoard", icon: IconCalendarStats },
+  requests: { label: "navigation.planningRequests", icon: IconUserSearch },
+  intake: { label: "navigation.planningIntake", icon: IconTelescope },
   unbooked: { label: "navigation.planningUnbooked", icon: IconUserQuestion },
   myPlanning: { label: "navigation.planningMyPlanning", icon: IconCalendarUser },
   settings: { label: "navigation.planningSettings", icon: IconAdjustments },

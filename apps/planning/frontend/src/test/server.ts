@@ -5,11 +5,21 @@ import type {
   PlanningWarning,
 } from "../api/allocations";
 import type { PlanningBoard, PlanningBoardRow, PlanningWeekFigures } from "../api/board";
+import type { PlanningCompetence } from "../api/competences";
+import type { PlanningIntake } from "../api/intake";
 import type { PlanningMe } from "../api/me";
 import type { PlanningMeta } from "../api/meta";
 import type { PlanningDateSpan, PlanningPerson } from "../api/people";
 import type { PlanningProjectPlan } from "../api/plan";
 import type { PlanningProject } from "../api/projects";
+import type {
+  PlanningCandidate,
+  PlanningFillInput,
+  PlanningRequest,
+  PlanningRequestFilled,
+  PlanningRequestInput,
+  PlanningRequestWritten,
+} from "../api/requests";
 import type { PlanningSettings, PlanningSettingsInput } from "../api/settings";
 import type { PlanningTimeline, PlanningTimelineFlag } from "../api/timeline";
 import type { PlanningUnbooked, PlanningUnbookedPerson } from "../api/unbooked";
@@ -18,8 +28,11 @@ import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
 import {
   allocations as defaultAllocations,
+  candidates as defaultCandidates,
+  competences as defaultCompetences,
   people as defaultPeople,
   projects as defaultProjects,
+  requests as defaultRequests,
   settings as defaultSettings,
   MONDAY,
   TODAY,
@@ -46,6 +59,13 @@ export interface PlanningServer {
   unbooked?: PlanningUnbooked;
   /** What every allocation write warns of. */
   warnings?: PlanningWarning[];
+  requests?: PlanningRequest[];
+  competences?: PlanningCompetence[];
+  /** Every request's candidates, the partial ones (with `missing`) left out unless asked for. */
+  candidates?: PlanningCandidate[];
+  /** What every request write warns of. */
+  requestWarnings?: PlanningWarning[];
+  intake?: PlanningIntake;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -53,6 +73,7 @@ export interface PlanningServer {
 export interface PlanningState {
   allocations: PlanningAllocation[];
   settings: PlanningSettings;
+  requests: PlanningRequest[];
 }
 
 export type PlanningStub = StubbedFetch & { state: PlanningState };
@@ -80,7 +101,8 @@ const round = (value: number) => Math.round(value * 100) / 100;
  * the rows (a whole week's hours per row; a day away takes a day off the
  * available), the plan, the timeline (the self audience's confirmed rows and
  * nothing else), the unbooked list, the allocations with revisions and
- * warnings, My planning, the settings.
+ * warnings, My planning, the settings; the requests with their writes, fill
+ * and withdrawal, their candidates, the intake and the competence catalogue.
  */
 export const stubPlanningApi = (server: PlanningServer = {}): PlanningStub => {
   const role = server.role ?? "manage";
@@ -91,7 +113,10 @@ export const stubPlanningApi = (server: PlanningServer = {}): PlanningStub => {
   const state: PlanningState = {
     allocations: server.allocations ?? defaultAllocations(),
     settings: server.settings ?? defaultSettings(),
+    requests: server.requests ?? defaultRequests(),
   };
+  const competences = server.competences ?? defaultCompetences();
+  const candidateList = server.candidates ?? defaultCandidates();
   let nextId = 900;
 
   const canView = role !== "access";
@@ -114,6 +139,19 @@ export const stubPlanningApi = (server: PlanningServer = {}): PlanningStub => {
   };
   // The note is planning:manage's alone (S5).
   const shaped = (row: PlanningAllocation): PlanningAllocation => (canManage ? row : withoutNote(row));
+  const shapedRequest = (row: PlanningRequest): PlanningRequest => {
+    if (canManage) return row;
+    const copy = { ...row };
+    delete copy.note;
+    return copy;
+  };
+  /** An open request's hours in a week: its hours a week × its weekdays inside the week / 5 (S11). */
+  const demandOf = (row: PlanningRequest, monday: string) => {
+    let days = 0;
+    for (let day = monday; day <= addDays(monday, 4); day = addDays(day, 1))
+      if (row.fromDate <= day && row.toDate >= day) days += 1;
+    return (row.hoursPerWeek * days) / 5;
+  };
 
   const figures = (monday: string, rows: PlanningAllocation[], personIds: number[], includeTentative: boolean) => {
     const sunday = addDays(monday, 6);
@@ -196,12 +234,21 @@ export const stubPlanningApi = (server: PlanningServer = {}): PlanningStub => {
     const from = mondayOf(search.get("from") ?? MONDAY);
     const to = search.get("to") ?? addDays(addWeeks(from, 12), -1);
     const own = state.allocations.filter((row) => row.project.id === projectId && covers(row, from, to));
+    const requests = state.requests.filter(
+      (row) =>
+        row.project.id === projectId &&
+        row.status !== "withdrawn" &&
+        overlaps({ from: row.fromDate, to: row.toDate }, from, to),
+    );
+    const open = requests.filter((row) => row.status === "open");
     return {
       project,
       allocations: own.map(shaped),
+      requests: requests.map(shapedRequest),
       weeks: weeksBetween(from, to).map((monday) => {
         const week = figures(monday, own, [], true);
-        return { monday, booked: week.booked, tentative: week.tentative, demand: 0 };
+        const demand = round(open.reduce((sum, row) => sum + demandOf(row, monday), 0));
+        return { monday, booked: week.booked, tentative: week.tentative, demand };
       }),
     };
   };
@@ -276,6 +323,83 @@ export const stubPlanningApi = (server: PlanningServer = {}): PlanningStub => {
     };
   };
 
+  const covering = () => candidateList.filter((one) => one.covers).length;
+  const intake = (): PlanningIntake =>
+    server.intake ?? {
+      projects: projects
+        .filter((project) => project.status === "planned")
+        .map((project) => {
+          const own = state.requests.filter((row) => row.project.id === project.id && row.status !== "withdrawn");
+          const rows = state.allocations.filter((row) => row.project.id === project.id);
+          const sum = (status: string) =>
+            round(rows.filter((row) => row.status === status).reduce((total, row) => total + hoursOf(row), 0));
+          return {
+            project,
+            requestedHoursPerWeek: own
+              .filter((row) => row.status === "open")
+              .reduce((t, row) => t + row.hoursPerWeek, 0),
+            tentativeHoursPerWeek: sum("tentative"),
+            confirmedHoursPerWeek: sum("confirmed"),
+            requests: own.map((row) => {
+              const count = covering();
+              return {
+                request: shapedRequest(row),
+                coverage:
+                  row.status === "filled" || count > 0
+                    ? "covered"
+                    : candidateList.length > 0
+                      ? "partly_covered"
+                      : "uncovered",
+                candidates: count,
+                flags: row.status === "open" && count === 1 ? ["key_person"] : [],
+              };
+            }),
+          };
+        }),
+    };
+
+  const requestFromInput = (
+    input: PlanningRequestInput,
+    base: Partial<PlanningRequest>,
+  ): PlanningRequest | Response => {
+    const project = projectOf(input.projectId);
+    if (!project)
+      return planningProblem(400, undefined, { title: "Invalid request", errors: { projectId: ["No such project"] } });
+    if (project.status === "completed" || project.status === "cancelled")
+      return planningProblem(409, "project_closed", { title: "Project closed", detail: "The project is closed." });
+    return {
+      id: base.id ?? nextId++,
+      revision: base.revision ?? 1,
+      status: base.status ?? "open",
+      createdAt: base.createdAt ?? "2026-10-26T08:00:00Z",
+      updatedAt: "2026-10-26T08:00:00Z",
+      project: { id: project.id, code: project.code, name: project.name, status: project.status },
+      title: input.title,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      hoursPerWeek: input.hoursPerWeek,
+      ...(input.note ? { note: input.note } : {}),
+      requirements: (input.requirements ?? []).map((requirement) => {
+        const competence = competences.find((one) => one.id === requirement.competenceId);
+        return {
+          competenceId: requirement.competenceId,
+          ...(competence
+            ? {
+                key: competence.key,
+                nameEn: competence.nameEn,
+                nameNb: competence.nameNb,
+                kind: competence.kind,
+                hasLevel: competence.hasLevel,
+              }
+            : {}),
+          ...(requirement.minLevel === undefined ? {} : { minLevel: requirement.minLevel }),
+        };
+      }),
+    };
+  };
+  const notOpen = () =>
+    planningProblem(409, "request_not_open", { title: "Request not open", detail: "The request is not open." });
+
   const forbidden = () => jsonResponse(403, { error: { code: "forbidden", message: "Forbidden" } });
 
   const handle = (url: URL, method: string, init?: RequestInit): Response => {
@@ -336,6 +460,25 @@ export const stubPlanningApi = (server: PlanningServer = {}): PlanningStub => {
     if (path === "/stats")
       return jsonResponse(200, { peoplePlannedThisWeek: 2, loadPercentThisWeek: 40, openRequests: 0, unbooked: 2 });
     if (path === "/stats/attention") return jsonResponse(200, []);
+    if (path === "/competences") return jsonResponse(200, { competences });
+    if (path === "/intake") return jsonResponse(200, intake());
+    if (path === "/requests" && method === "GET") {
+      const status = url.searchParams.get("status");
+      const projectId = url.searchParams.get("projectId");
+      return jsonResponse(200, {
+        requests: state.requests
+          .filter(
+            (row) =>
+              (status === null || row.status === status) &&
+              (projectId === null || String(row.project.id) === projectId),
+          )
+          .map(shapedRequest),
+      });
+    }
+    const requestMatch = /^\/requests\/(\d+)(\/candidates|\/fill|\/withdraw)?$/.exec(path);
+    const existingRequest = requestMatch ? state.requests.find((row) => row.id === Number(requestMatch[1])) : undefined;
+    if (requestMatch && !requestMatch[2] && method === "GET")
+      return existingRequest ? jsonResponse(200, shapedRequest(existingRequest)) : new Response(null, { status: 404 });
 
     if (path === "/allocations" && method === "GET")
       return jsonResponse(200, { allocations: state.allocations.map(shaped) });
@@ -349,6 +492,83 @@ export const stubPlanningApi = (server: PlanningServer = {}): PlanningStub => {
     if (path === "/settings" && method === "GET") return canManage ? jsonResponse(200, state.settings) : forbidden();
     if (!canManage) return forbidden();
 
+    if (requestMatch?.[2] === "/candidates" && method === "GET") {
+      if (!existingRequest) return new Response(null, { status: 404 });
+      const includePartial = url.searchParams.get("includePartial") === "true";
+      return jsonResponse(200, {
+        includePartial,
+        candidates: candidateList.filter((one) => includePartial || one.missing.length === 0),
+      });
+    }
+    if (path === "/requests" && method === "POST") {
+      const row = requestFromInput(body as PlanningRequestInput, {});
+      if (row instanceof Response) return row;
+      state.requests.push(row);
+      return jsonResponse(201, {
+        request: row,
+        warnings: server.requestWarnings ?? [],
+      } satisfies PlanningRequestWritten);
+    }
+    if (requestMatch) {
+      if (!existingRequest) return new Response(null, { status: 404 });
+      if (requestMatch[2] === "/withdraw" && method === "POST") {
+        if (existingRequest.status !== "open") return notOpen();
+        const row: PlanningRequest = {
+          ...existingRequest,
+          status: "withdrawn",
+          revision: existingRequest.revision + 1,
+        };
+        state.requests = state.requests.map((one) => (one.id === row.id ? row : one));
+        return jsonResponse(200, row);
+      }
+      if (requestMatch[2] === "/fill" && method === "POST") {
+        if (existingRequest.status !== "open") return notOpen();
+        const input = body as PlanningFillInput;
+        const allocation = fromInput(
+          {
+            personId: input.personId,
+            projectId: existingRequest.project.id,
+            fromDate: existingRequest.fromDate,
+            toDate: existingRequest.toDate,
+            load: existingRequest.hoursPerWeek,
+            loadUnit: "hours_per_week",
+            title: existingRequest.title,
+            ...(input.status ? { status: input.status } : {}),
+          },
+          {},
+        );
+        if (allocation instanceof Response) return allocation;
+        allocation.requestId = existingRequest.id;
+        state.allocations.push(allocation);
+        const row: PlanningRequest = {
+          ...existingRequest,
+          status: "filled",
+          revision: existingRequest.revision + 1,
+          filledBy: { allocationId: allocation.id, person: allocation.person },
+        };
+        state.requests = state.requests.map((one) => (one.id === row.id ? row : one));
+        return jsonResponse(201, {
+          request: row,
+          allocation,
+          warnings: server.warnings ?? [],
+        } satisfies PlanningRequestFilled);
+      }
+      if (!requestMatch[2] && method === "PUT") {
+        if (ifMatch !== existingRequest.revision)
+          return planningProblem(409, "revision_conflict", { title: "Revision conflict" });
+        if (existingRequest.status !== "open") return notOpen();
+        const row = requestFromInput(body as PlanningRequestInput, {
+          ...existingRequest,
+          revision: existingRequest.revision + 1,
+        });
+        if (row instanceof Response) return row;
+        state.requests = state.requests.map((one) => (one.id === row.id ? row : one));
+        return jsonResponse(200, {
+          request: row,
+          warnings: server.requestWarnings ?? [],
+        } satisfies PlanningRequestWritten);
+      }
+    }
     if (path === "/settings" && method === "PUT") {
       if (ifMatch !== state.settings.revision)
         return planningProblem(409, "revision_conflict", { title: "Revision conflict" });
@@ -387,6 +607,10 @@ export const stubPlanningApi = (server: PlanningServer = {}): PlanningStub => {
       }
       if (method === "DELETE") {
         state.allocations = state.allocations.filter((one) => one.id !== existing.id);
+        // A request is filled exactly while a row names it (S16).
+        state.requests = state.requests.map((one) =>
+          one.id === existing.requestId ? { ...one, status: "open", filledBy: undefined } : one,
+        );
         return new Response(null, { status: 204 });
       }
     }

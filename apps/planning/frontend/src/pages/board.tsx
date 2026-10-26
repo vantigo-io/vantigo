@@ -29,6 +29,7 @@ import { boardQueryOptions, type PlanningBoardRow } from "../api/board";
 import { planningMetaQueryOptions } from "../api/meta";
 import { AllocationBars } from "../components/allocation-bars";
 import { type AllocationPreset, AllocationSheet } from "../components/allocation-sheet";
+import { CompetencePicker } from "../components/competence-picker";
 import { LoadCell } from "../components/load-cell";
 import { ProjectPicker } from "../components/project-picker";
 import { WeekHeader } from "../components/week-header";
@@ -228,6 +229,15 @@ export const BoardPage = () => {
                 clearable
                 value={search.projectId ?? null}
                 onChange={(id) => setSearch({ projectId: id ?? undefined })}
+              />
+            </div>
+            <div style={{ width: 240 }}>
+              <CompetencePicker
+                label={t("competence")}
+                placeholder={t("allCompetences")}
+                clearable
+                value={search.competenceId ?? null}
+                onChange={(id) => setSearch({ competenceId: id ?? undefined })}
               />
             </div>
             <Stack gap={6} pb={4}>
