@@ -1294,11 +1294,21 @@ missing row is `(nil, nil)`, never an error.
   `OpenTasksForUser`, `CanLogTime(projectID, userID)`, and `WorkType(id)` /
   `WorkTypes(projectID)` — a project's [work types](#work-types) as `WorkTypeEntry` (id,
   project, name, both multipliers, active; `WorkType` answers an inactive type too,
-  `WorkTypes` lists every type, active first, each half by name). **Cancelled projects and
-  inactive lines still resolve**, so a consumer can read old work. `ProjectEntry`
-  carries `Currency` and `DefaultBillRate`, which are financial fields: only a
-  consumer that gates on a financial-viewer permission of its own should surface
-  them. `TaskEntry` is deliberately thin — id, project, title, status, assignee and
+  `WorkTypes` lists every type, active first, each half by name), and
+  `ProjectsByStatus(statuses)` — every project in any of the statuses, by code then
+  id, at most `contracts.MaxDirectoryProjects` (1000; a consumer that gets exactly that
+  many must assume there are more), unknown statuses matching nothing. **Cancelled
+  projects and inactive lines still resolve**, so a consumer can read old work.
+  `ProjectEntry` carries `Currency` and `DefaultBillRate`, which are financial fields:
+  only a consumer that gates on a financial-viewer permission of its own should surface
+  them; and `StartDate` and `EndDate`, the project's dates as civil dates, nil when it
+  has none. **`ProjectsByStatus` is consumer-gated**, declared so in its doc comment as
+  `ProjectActuals` is: Projects performs no authorization, and the consumer's own
+  permission decides who sees the list — a caller thereby learns of projects, bids in
+  `planned` among them, that the [project list](#roles-and-permissions) shows only to
+  `projects:view-all` or a role. Its consumer is
+  [Planning](/en/reference/planning/#contracts-consumed), whose `planning:view` is
+  sensitive for that reason. `TaskEntry` is deliberately thin — id, project, title, status, assignee and
   due date — enough to name a task on a timesheet row, never enough to manage one.
 - **`contracts.ProjectActuals`** — provided by *time*, **nil when time is disabled**
   (the second optional contract, and the first of the two Projects *consumes*

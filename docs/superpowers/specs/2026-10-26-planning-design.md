@@ -821,3 +821,121 @@ fourteen readings stand, with 6 and 8 amended here.
     it is the owner's "holiday against staffing" case and could be pulled forward.
 3. **Should the personal-data slot (S26) come in C rather than phase 2**, so an erase
     reaches the module's rows from the start?
+
+## 13. Amendments at revision 3 (decided while building delivery A, 2026-10-26)
+
+1. The plan's readings 1–5 (`docs/superpowers/plans/2026-10-26-planning-plan.md`) stand
+   as amendments.
+2. **The person's own timeline is their confirmed rows and nothing else** (S12): the
+   Workforce reads that give employment, days away and held certificates need
+   `staff:view`, which a person holding `planning:access` alone does not have, and the
+   module never restates Staff's rule. The self audience's `employed`, `away` and
+   `flags` are empty; Staff's My page already shows the person their employment and
+   absence. A caller with `planning:view` reads anyone's timeline whole.
+3. **No CHECK constraints in the schema** but the settings' one-row index (plan
+   reading 2): §3's CHECKs are the module's validation, answered as field errors.
+4. **A missing name is `displayName: null`** (§4.4), not an absent field.
+5. **When the person is mailed** (S19): whenever a row of theirs *becomes* confirmed —
+   by a `POST` that creates it confirmed, a `PUT` that sets `status` to `confirmed`, or
+   `confirm` — when a confirmed row's period, load or project changes, when a confirmed
+   row is deleted, and when a confirmed row is set tentative. `confirm` on a confirmed
+   row answers it as it is and mails nobody.
+6. **`confirm` is a change** (S3, S4, S7): it is refused on a closed project
+   (`project_closed`) and judged for overbooking and the non-compete like a `PUT`.
+7. **`revision_conflict` is a 409** in §4.7's table, answered by every `If-Match` write
+   whose revision is stale, as Staff answers it.
+8. **A window outside the bound is a 400** on `from` or `to` (S8, S10, S12), the
+   contract's `window_out_of_bounds`.
+9. **The unbooked list's order** (S13): people with no `rollOff` first — they are free
+   now — then by `rollOff` ascending, then by load ascending, then by display name.
+10. **A week is `away` when any of its days is** (S10's cell), so the board can colour
+    the week; the days themselves are in the timeline's spans.
+11. **Nineteen operations** in A's contract, not eighteen: the plan's table counts
+    `GET /allocations/{id}` beside the list.
+12. **The Staff reference keeps the `PreferenceFit` shape block until B**, when
+    `PreferenceFits` replaces it on the interface (reading 6); the prose already names
+    the batch.
+13. **`People` and `Capacity` answer only people with an employed day inside the window**
+    (S8, built in Staff): a person employed today whose employments miss the window is
+    left out rather than listed with nothing, since nobody can be booked outside their
+    employment and listing fewer reveals nothing more. `Self` answers a linked person
+    whether or not they are employed today, with the department in force today.
+14. **The bound's far end is today plus thirty-six months** by Staff's month rule, and
+    the near end the Monday of the week thirteen weeks before today; the gate is judged
+    before the bound, so a caller without `staff:view` learns nothing from the error.
+15. **A `PUT` that moves a confirmed row to another person** mails the old person
+    "removed" and the new one "planned" (S19, amendment 5 did not name the case).
+16. **Writes judge the Workforce bound by clipping**: Staff is asked about the weeks
+    the period touches cut to the bound, so a long row stays editable; days outside the
+    bound are not checked for `outside_employment`; a period with no day inside the
+    bound is a field error `window_out_of_bounds` on `fromDate` or `toDate`.
+17. **`GET /allocations` is a row filter without a bound**, so a past window lists
+    history; the people named in it are read over the rows' window cut to the bound.
+18. **The status flip is its own event** — `allocation_confirmed` /
+    `allocation_unconfirmed` beside `allocation_changed`, which leaves `status` out — and
+    a `PUT` that changes nothing writes nothing. The note is recorded in an event as its
+    name alone, never its text, since events are `planning:view`'s.
+19. **`project_closed` on a `PUT`** is judged on the old and the new project both, so a
+    row cannot be moved off a closed project; `DELETE` stays allowed.
+20. **Overbooking is judged only when the row is left confirmed**; moving a row off a
+    person is never judged for that person, since removing a row only shrinks.
+21. **`DELETE` and `confirm` carry no `If-Match`** and re-read the row under the lock;
+    a row changed in between starts the operation again, three times at most.
+22. **The 53- and 104-week caps** (S10, S12) are plain field errors on `to`;
+    `window_out_of_bounds` is Staff's bound alone (amendment 8).
+23. **`groupBy=project` on the board** answers a project row (sorted by code) followed
+    by one row per person on it: the person row's capacity and available are the
+    person's, its booked and tentative count that project's rows alone; the project row
+    is the sum. A project the directory does not resolve gets no row; its allocations
+    stay in the list.
+24. **`beyond_employment`'s date is the employment's last day** and the flag fires only
+    when the employment ends before the window's `to`; `certificate_expires`'s date is
+    the certificate's `validTo`.
+25. **Attention item shapes** (S22): `overbooked` is judged on whole weeks from this
+    Monday to the horizon's last Sunday, dated the first such Monday and titled
+    "name, week NN"; `certificatesExpiring` is one item per confirmed row and
+    certificate, held judged on today; `endingWithoutFollowOn`'s follow-on is a
+    confirmed row of the person ending after this one and starting on or before its
+    end plus seven days; `unbooked` is dated the roll-off or today.
+26. **`GET /people` defaults to today and the twelve weeks after**, as the contract says.
+27. **An hour-unit absence is not a day away** (S6, reading 1 corrected by the server
+    review): Staff shows a colleague no hour row at all, so the capacity read carries
+    none and a medical appointment never shows on the board; whole and part days away
+    count the day as away, as before.
+28. **Hours a week are rounded to the quarter hour** in the capacity segments, since
+    Staff answers them with its own hours rule (`expectedHours`): 37.5 × 33 % reads
+    12.5, not 12.375.
+29. **A person Staff does not answer is not mailed** (S19): the recipient comes from
+    `People` as the planner sees it, so a planner without `staff:view` deleting a
+    confirmed row tells nobody, and an erased person's row can still be deleted. The
+    reference says mail needs the person answered.
+30. **Events are filed under the row's current person and project** (S23): a `PUT`
+    that moves a row records its `allocation_changed` against the new person, with the
+    old one in the payload's `from`; `GET /events?personId=<old>` does not list it.
+31. **The project picker's search runs after the directory's cap** (S9): at a thousand
+    projects a search may miss projects past the first thousand by code; the module
+    logs when the cap is reached.
+32. **A missing Projects or Workforce fails the mount** rather than answering 503
+    (S25): both are required at startup by config, so the 503 is a defence that cannot
+    be reached in a composed server.
+33. **The board's competence filter judges holding on the later of `from` and today**
+    (S10), so next month's starter on a board that begins last Monday is kept.
+34. **The unbooked horizon is `unbookedHorizonWeeks × 7` days from today** (S13), not
+    whole calendar weeks.
+35. **A `DELETE` or `confirm` whose row keeps changing** under it three times answers
+    `revision_conflict` (409), not an internal error (amendment 21).
+36. **`planning:manage` does not imply `planning:view`** (§5): the access rule of an
+    operation lists the keys it needs and all must be held, as every module's does, so
+    a planner's role carries both — the way an HR role carries `staff:view` beside
+    `staff:manage` to list people. The §5 audience table reads "manage" as "view and
+    manage".
+37. **The board's cell says the week has days away, not which** (§7): the week figure
+    carries `away` alone; the days are on the person's timeline. The cell reads red
+    only when the week's confirmed `booked` exceeds its `available` (S7's
+    `booked_while_away`), not for any booking in a week with a day away.
+38. **No competence control on the board in A** (§7): Planning lists no competences
+    and may not import Staff's picker (rule 7); the `competenceId` parameter works
+    from a link. The control comes with B, which reads the catalogue for requests.
+39. **My planning is a list in A**, without the strip §7 names.
+40. **`GET /stats/attention` answers a bare array**, as every other module's does, not
+    `{items}`; the host's shared fetch stays one shape.

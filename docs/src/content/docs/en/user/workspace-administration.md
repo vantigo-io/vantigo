@@ -323,7 +323,8 @@ Permissions are additive: a person holds the union of their roles' permissions. 
 each permission unlocks in an app is listed in that app's reference page, for example
 [Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/),
-[Invoices](/en/reference/invoices/) and [Staff](/en/reference/staff/). The descriptions
+[Invoices](/en/reference/invoices/), [Staff](/en/reference/staff/) and
+[Planning](/en/reference/planning/). The descriptions
 in the catalog say what a title does not: in Invoices, **Issue invoices** also sends a document by e-mail or as EHF
 and cancels or resolves its EHF transmissions, records that an invoice was handed
 over, makes or revokes a Vipps pay link and takes a Vipps payment on site — and, with
@@ -336,7 +337,13 @@ policy and marking a day's Vipps payments reconciled. In Staff,
 **Reveal and erase personal data** is the only permission that shows a national identity
 number or a bank account — **Manage staff** does not, though it keeps the competence
 catalogue — and **Decide absence** decides anyone's absence and also verifies people's
-competences and records their competence reviews, never the holder's own. **Manage identity**
+competences and records their competence reviews, never the holder's own. In Planning,
+**Use Planning** gives the app and the holder's own confirmed bookings; **See the plan**,
+marked sensitive, shows the board, every person's timeline and every project's code,
+name, customer, status and dates, bids included; and **Plan**, also sensitive, writes
+the allocations, reads the planners' notes and keeps the Planning settings. A planner
+also needs **View the staff directory** from Staff, since the plan shows only the people
+Staff answers them. **Manage identity**
 (`identity:manage`) is the one permission of the identity module itself.
 
 ### Assignments

@@ -756,11 +756,7 @@ project and task templates with relative dates.
 
 ### Phase 5 — Capacity planning
 
-Allocations (person × project × date range × hours-or-percent,
-tentative/confirmed, placeholders) as a table of their own, compared with
-assignments and actuals; availability and utilisation.
-
-*Unblocks:* "who is free in week 42"; revenue forecasts from planned hours.
+Moved to [Planning](#planning), which owns every booking of a person's time; Projects keeps the demand side (phases, placeholders) once phase 4 lands.
 
 ### Later
 
@@ -1381,7 +1377,7 @@ person hangs on — the employment the a-melding and the written contract descri
 absence, the user account, the documents. Like Expenses it **depends on nobody but
 identity**. Payroll itself (the a-melding, skattekort, feriepenger) stays out: Staff
 keeps the fields payroll needs and exports them. The owner's sequence (research §10.11):
-**this phase → the Entra module → Staff phase 2 → Staffing.**
+**this phase → the Entra module → Staff phase 2 → [Planning](#planning).**
 
 ### Phase 1 — The register, absence and the account flag (A1, A2, B and C done)
 
@@ -1543,7 +1539,7 @@ HR — never by themselves — renewed as new rows that keep the old as history,
 removed; the `staff-competence` worker, which mails the person and their managers once
 when a certificate comes within its lead and once when it has expired; the three
 attention items; the events, the exports' `competences` section and the D erase of the
-rows; `contracts.Workforce`, the sole-provider slot through which Staffing will read the
+rows; `contracts.Workforce`, the sole-provider slot through which [Planning](#planning) reads the
 catalogue and who holds what, valid on a date, under the Colleague rule; and the
 Competence tab on My page and the person page, the two catalogue cards in the Staff
 settings and the search's **Add competence**. One migration, `00066_staff_competence.sql`.
@@ -1582,7 +1578,7 @@ learn* or *wants to use more* by whether they hold it; preferences of seven kind
 (weekdays, time of day, locations, travel, remote work, most consecutive days, most
 hours a week), each weighted *nice to have*, *matters* or *important*, with no free
 text; and an availability declaration of recurring and dated rows, data only until
-Staffing reads it — each list replaced whole and refused per row; the manager's or HR's
+[Planning](#planning) reads it — each list replaced whole and refused per row; the manager's or HR's
 **Seen**, stamped per row on the three lists and on the person's current competence
 rows, so what was added or changed since the one-to-one stands out; the competence
 review the manager and the person record together — a day and the reviewer, no notes —
@@ -1677,7 +1673,7 @@ Decisions taken while building it that change the design:
   department's write records no event, as before.
 - **The profiles catalogue is everyone's to read**, archived ones included, and **no
   `PreferenceFit` method is added yet**: its shape and rule are in the reference, and it
-  joins `contracts.Workforce` with Staffing's first delivery.
+  joins `contracts.Workforce` with [Planning](#planning)'s delivery B.
 
 One migration, `00068_staff_competence_profiles.sql`.
 
@@ -1743,21 +1739,98 @@ Two migrations, `00070_identity_managed_avatars.sql` and `00071_staff_photo_push
 **The Entra module** has [a section of its own](#entra); its phase 1 is done and phase 2 is in
 flight; Staff phase 2 is built.
 
-**Staffing.** One module owning every booking of a person's time — allocations,
-assignments with their notice periods and customer terms, and shifts — with staffing
-requests, move wishes, matching and shift trades, and employee pages beside the
-manager's. It reads Projects through `contracts.ProjectDirectory` and Staff through
-`contracts.Workforce` — the competences held, valid on a date, already answered under
-the Colleague rule, and, added with Staffing's first delivery, the employment on a date
-and a **fit** Staff scores for a proposed booking from the person's preferences, never
-the wishes themselves, its shape already in
-[the reference](docs/src/content/docs/en/reference/staff.md#the-workforce-contract) — the first module to consume two business modules at once; whether
-Projects phase 5's allocations move into it or are read by it is its spec's first
-question. The statutory limits are warnings an installation can mark as hard, never
-built-in refusals.
+**Planning** — one module owning every booking of a person's time, reading Projects and
+Staff — has [a section of its own](#planning); its phase 1, allocations, requests and
+assignments, is in flight. Shifts and their trades are that module's later phase.
 
-*Unblocks:* capacity at intake, the unbooked list, and shifts every employee can see
-and trade.
+## Planning
+
+A new module, researched in
+[`docs/superpowers/research/2026-10-26-planning-module.md`](docs/superpowers/research/2026-10-26-planning-module.md)
+and designed in
+[`docs/superpowers/specs/2026-10-26-planning-design.md`](docs/superpowers/specs/2026-10-26-planning-design.md):
+booking the company's people on its projects and seeing the plan whole — Planning, in
+Norwegian **Bemanning**. One booking table, the allocation — a person on a project over
+a period, in hours a week or a share of their position, tentative or confirmed — read
+against the capacity computed once from Staff's facts: the hours of the position, less
+the days away and the public holidays. A project's need for someone not yet named is a
+request, a placeholder with competence requirements, matched against who holds them,
+has the hours free and whom nothing bars. An allocation that is also a contract with the
+customer carries its terms — the notice, the minimum duration, the handover, the
+non-compete — and the earliest day the person can start elsewhere, which none of the
+products studied models. Like the rest of Vantigo it is **legally agnostic**: the
+statutory and contractual limits are warnings an installation can make hard, never
+built-in refusals, the non-compete the one exception the owner named. Shifts and
+rostering are a later phase. It **depends on Projects and Staff** — the first module to
+consume two business modules at once — reading the projects through
+`contracts.ProjectDirectory` and the people through `contracts.Workforce`, and follows
+[Staff](#staff)'s phase 2, built.
+
+### Phase 1 — Allocations, requests and assignments
+
+Three deliveries, three pull requests, one migration each, each opened against `main`
+after the previous one lands.
+
+**A — The plan, built** on `claude/staffing-module-plan-af8b31`
+([the plan](docs/superpowers/plans/2026-10-26-planning-plan.md);
+[the reference](docs/src/content/docs/en/reference/planning.md)): the `planning`
+module and `@vantigo/planning-ui`, with `planning:access`, `planning:view` and
+`planning:manage`, the last two sensitive, and the settings; allocations, tentative and
+confirmed, in hours a week or percent, with a title and the planners' note, the status
+defaulting by the project's, and the person mailed when a row of theirs is confirmed,
+changed, deleted or set back to tentative; the one capacity calculation — capacity,
+away, available, booked, tentative and free per day and per week, a day away wholly
+away, and absence never shrinking a booking — and overbooking as a warning or, by the
+setting, a refusal of a growing excess; the three reads Staff adds to
+`contracts.Workforce` — `People`, `Capacity` and `Self` — with the Colleague rule
+widened to the people in employment on today or a later day of the window, and the
+window bounded; the listing Projects adds, `ProjectsByStatus`, consumer-gated, with the
+projects' dates; the board, the project's plan, the person's timeline with its
+`beyond_employment` and `certificate_expires` flags, the unbooked list and My planning;
+the events, the four attention items and the dashboard's figures; the tile, the routes,
+the dashboard card, the spotlight and the permission labels in the host; and the
+Planning tab on Staff's person page, through a slot Staff's package opens. The readings
+taken while building it are in the spec's §13. One migration,
+`00072_planning_baseline.sql`.
+
+*Unblocks:* "who is free in week 42", read against the hours each person really has;
+the people nobody has booked, and the ones booked twice over.
+
+**B — Requests and intake**, planned: requests with competence requirements, in hours a
+week; their candidates — competence, availability and the fit Staff scores for the
+booking, `Workforce.PreferenceFits` joining the contract here — and the fill that makes
+the allocation; the intake of the planned projects, each need covered, partly covered
+or uncovered, with the key-person risk; the requests' attention item; and the Planning
+tab on the project page.
+
+*Unblocks:* capacity at intake — whether the company can take the bid — and the project's
+demand on the board before anyone is named.
+
+**C — Assignments and wishes**, planned: an allocation's terms — the notice and when it
+was given, the minimum duration, replacement approval, the handover and the
+non-compete — with the earliest release and the handover start derived; the
+non-compete as the one hard refusal and the release as the matcher's flag; the person's
+wishes off a project or for something new, without a word of free text, seen and
+resolved by the planners, with their mail and their place in the matcher; and the
+calendar source, the person's own confirmed bookings on their calendar.
+
+*Unblocks:* a consultant's release date known before the next bid, and a person heard
+before they resign.
+
+### Later
+
+- **Shifts and trading** — rostering, open shifts and trades every employee can see,
+  the module's next phase.
+- **The revenue forecast** — what the confirmed and tentative hours will bill.
+- **The automatic request** — a request opened from a foreseeable drop in a project's
+  staffing, rather than typed.
+- **The booking contract Staff reads** for holiday approval, so a manager deciding
+  absence sees the bookings it conflicts with.
+- **The personal-data slot** — a many-provider slot through which Staff collects another
+  module's rows about a person for its export and its erase.
+- **A project manager booking on their own project** without `planning:manage`, if a
+  small firm asks for it.
+- **The weekly digest** — the unbooked and the ending, mailed rather than read.
 
 ## Entra
 

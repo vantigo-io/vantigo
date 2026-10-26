@@ -237,12 +237,15 @@ nøkkeltallene for valgt datoperiode (**7d**, **30d**, **90d**, **12m** eller
 **Tilpasset**), listen **Trenger oppfølging** med det som venter på deg — hvert punkt
 åpner der det tas hånd om, som personens side i Ansatte, eller siden **Microsoft Entra
 ID** for en konto i leietakeren der overtakelsen venter på å bli bekreftet — og
-**Hurtighandlinger** for det du gjør oftest. Ansatte har ingen tall ennå, så appen står
-bare under **Moduler** nederst på siden. Et nytt arbeidsområde viser også
+**Hurtighandlinger** for det du gjør oftest. Kortene for Ansatte og Bemanning har tallene
+sine for dem som kan lese dem — `staff:view` eller `staff:manage`, og `planning:view`.
+Et nytt arbeidsområde viser også
 **Fullfør oppsettet**, en kort liste over de første stegene (den første kunden, en
 postkasse, et produkt, et prosjekt …) som forsvinner når alle er gjort.
 
-App-velgeren lister alle appene du kan åpne; en app installasjonen ikke har slått
+App-velgeren lister alle appene du kan åpne — også **Bemanning**, med `planning:access`,
+der planleggerne setter folk på prosjekter og du ser hva du er satt opp på
+([Bemanning](/nb/user/planning/)); en app installasjonen ikke har slått
 på, vises som **Ikke aktivert**. En systemadministrator havner på
 **Systemadministrasjon** i stedet for kontrollpanelet. Hvordan appene, sidemenyen og
 søket henger sammen, er beskrevet i [Finn fram i Vantigo](/nb/user/).

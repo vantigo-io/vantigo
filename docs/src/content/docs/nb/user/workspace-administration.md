@@ -334,7 +334,8 @@ Tillatelser er additive: en person har summen av rollenes tillatelser. Hva hver
 tillatelse låser opp i en app, er listet på appens referanseside, for eksempel
 [Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/),
-[Invoices](/en/reference/invoices/) og [Staff](/en/reference/staff/). Beskrivelsene i katalogen sier det navnet ikke
+[Invoices](/en/reference/invoices/), [Staff](/en/reference/staff/) og
+[Planning](/en/reference/planning/). Beskrivelsene i katalogen sier det navnet ikke
 sier: I Fakturaer sender **Utstede fakturaer** også et dokument på e-post eller som
 EHF, avbryter eller avklarer EHF-sendingene, registrerer at en faktura er levert, lager
 eller trekker tilbake en Vipps-betalingslenke og tar imot en Vipps-betaling på stedet —
@@ -347,7 +348,13 @@ til inkasso, en kundes purreregel og å registrere en dags Vipps-betalinger som 
 personopplysninger** den eneste tillatelsen som viser et fødselsnummer eller en bankkonto
 — **Administrere ansatte** gjør det ikke, men holder kompetansekatalogen — og **Avgjøre
 fravær** avgjør alles fravær og bekrefter også folks kompetanse og registrerer
-kompetansesamtalene deres, aldri innehaverens egne. **Administrer
+kompetansesamtalene deres, aldri innehaverens egne. I Bemanning gir **Bruke Bemanning**
+appen og innehaverens egne bekreftede allokeringer; **Se planen**, merket sensitiv, viser
+planen, hver persons tidslinje og hvert prosjekts kode, navn, kunde, status og datoer,
+tilbud medregnet; og **Planlegge**, også sensitiv, skriver allokeringene, leser
+planleggernes notater og holder Bemanningsinnstillinger. En planlegger trenger også **Se
+ansattoversikten** fra Ansatte, siden planen bare viser personene Ansatte viser dem.
+**Administrer
 identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse.
 
 ### Tildelinger

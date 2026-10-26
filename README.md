@@ -49,6 +49,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Expenses**           | Outlays and mileage, receipts, approval, reimbursement and invoicing. | 🚧 In development |
 | **Invoices**           | Invoices and credit notes, payments, reminders and EHF delivery.      | 🚧 In development |
 | **Staff**              | The company's people, their employments and its structure.            | 🚧 In development |
+| **Planning**           | Who works on what: allocations of people on projects, capacity, the unbooked. | 🚧 In development |
 | **Calendar**           | One calendar per person: appointments and what the other apps hold.   | 🚧 In development |
 | **Microsoft Entra ID** | The accounts of Staff's people in your Entra tenant, kept in step.    | 🚧 In development |
 
@@ -80,7 +81,7 @@ docker compose up -d
 Compose starts PostgreSQL, applies the database migrations as a one-shot `migrate`
 job, and then brings up the single Vantigo application on <http://localhost:8080>.
 Customers, Communications, Products, Energy, Projects, Time, Expenses, Invoices,
-Staff, Calendar and Microsoft Entra ID are modules in that one application.
+Staff, Planning, Calendar and Microsoft Entra ID are modules in that one application.
 
 The stack runs outside development, so `vantigo.env` must carry `APP_SECRET` before
 the first start — at least 32 bytes of key material, generated with
@@ -117,6 +118,7 @@ vantigo/
 │   │       ├── expenses/            # Expenses vertical slice
 │   │       ├── invoices/            # Invoices vertical slice (the sales document)
 │   │       ├── staff/               # Staff vertical slice (the workforce register)
+│   │       ├── planning/            # Planning vertical slice (who works on what)
 │   │       ├── calendar/            # Calendar vertical slice
 │   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
 │   │       ├── module/              # The platform modules mount through
@@ -132,6 +134,7 @@ vantigo/
 │   ├── expenses/frontend/           # @vantigo/expenses-ui
 │   ├── invoices/frontend/           # @vantigo/invoices-ui
 │   ├── staff/frontend/              # @vantigo/staff-ui
+│   ├── planning/frontend/           # @vantigo/planning-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
 │   └── entra/frontend/              # @vantigo/entra-ui
 ├── packages/

@@ -16,13 +16,16 @@ shown.
 ## Apps and the switcher
 
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Calendar,
-Expenses, Staff, Invoices, Communications, Products and Energy — and Microsoft Entra ID,
+Expenses, Staff, Planning, Invoices, Communications, Products and Energy — and Microsoft Entra ID,
 where an administrator connects the company's tenant. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, which opens with Calendar's **Today and
 this week** agenda when you use Calendar ([the dashboard](/en/user/calendar/#the-dashboard)),
 and where every app you use shows its own card with the numbers that need your attention — Staff's, the people employed today
 with the full-time equivalents, who starts and ends soon and who is away today, for
-`staff:view` or `staff:manage` ([the dashboard](/en/user/staff/#the-dashboard)). Its **Needs attention**
+`staff:view` or `staff:manage` ([the dashboard](/en/user/staff/#the-dashboard)); Planning's, the people
+with a confirmed booking this week, their confirmed load with the tentative beside it and
+the people unbooked, for `planning:view`
+([the dashboard](/en/user/planning/#the-dashboard)). Its **Needs attention**
 list gathers the apps' items that wait for someone — Invoices' among them: overdue
 invoices, money owed back on an invoice, and, with `invoices:payments`, bank lines in the
 exception queue, reminders that failed or wait for a rate or a review, print batches
@@ -47,7 +50,11 @@ address another account holds, invitations unanswered or revoked, attempts that 
 failing — which opens the person's Account tab, and the accounts that wait on the
 installation (no roles Staff may give, a role among them that grants administration,
 a sign-in mode the worker disagrees with), which open Staff's settings, and each group
-not in sync with its directory, which opens the group's page.
+not in sync with its directory, which opens the group's page; and Planning's: for
+`planning:view`, people unbooked, which opens the Unbooked list, and people overbooked and
+a certificate expiring during a booking, which open the person's timeline, and, for
+`planning:manage`, a booking ending without follow-on, which opens the plan
+([the dashboard](/en/user/planning/#the-dashboard)).
 
 Inside an app, the sidebar lists its areas. Many of them are only shown to people who
 hold the matching permission — and a few, such as Invoices' **Quick invoice**, only to
@@ -62,6 +69,7 @@ shorter than yours:
 | [Calendar](/en/user/calendar/) | Calendar (your own, and a colleague's with the picker), My calendar (your calendar on your phone, and calendars from elsewhere) |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
 | [Staff](/en/user/staff/) | My page (its **Absence** and **Competence** tabs and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Competence (the matrix and, for HR, the interests), Groups, Staff settings |
+| [Planning](/en/user/planning/) | Plan (the board), a project's plan and a person's timeline, Unbooked, My planning, Planning settings |
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |

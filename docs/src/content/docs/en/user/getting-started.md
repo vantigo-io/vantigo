@@ -231,12 +231,15 @@ with its key numbers for the chosen date range (**7d**, **30d**, **90d**, **12m*
 **Custom**), a **Needs attention** list of things waiting for you — each opens where
 it is dealt with, such as the person's page in Staff, or the **Microsoft Entra ID**
 page for an account in the tenant whose adoption is waiting to be confirmed — and
-**Quick actions** for the things you do most. Staff has no numbers yet, so it is listed only
-under **Modules** at the bottom of the page. A new workspace also shows **Finish your
+**Quick actions** for the things you do most. Staff's and Planning's cards carry their
+numbers for those who may read them — `staff:view` or `staff:manage`, and
+`planning:view`. A new workspace also shows **Finish your
 setup**, a short list of first steps (the first customer, a mailbox, a product, a
 project…) that disappears once they are all done.
 
-The app switcher lists every app you may open; an app the installation has not
+The app switcher lists every app you may open — **Planning** among them, with
+`planning:access`, where planners book people on projects and you see what you are
+booked on ([Planning](/en/user/planning/)); an app the installation has not
 enabled is shown as **Not enabled**. A system administrator lands on **System admin**
 instead of the dashboard. How the apps, the sidebar and search fit together is
 described in [Finding your way around](/en/user/).
