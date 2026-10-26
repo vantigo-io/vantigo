@@ -48,7 +48,10 @@ func ParseSpotFeedDayForTest(body []byte, area, day string) ([]SpotFeedInterval,
 	rows, failure := parseSpotFeedDay(body, area, mustSpotFeedDay(day), mustSpotFeedZone())
 	out := make([]SpotFeedInterval, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, SpotFeedInterval(r))
+		out = append(out, SpotFeedInterval{
+			PriceArea: r.PriceArea, Start: r.Start, End: r.End,
+			NokPerKwh: r.NokPerKwh, EurPerKwh: r.EurPerKwh, ExchangeRate: r.ExchangeRate,
+		})
 	}
 	return out, failure
 }

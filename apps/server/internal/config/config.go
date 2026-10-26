@@ -301,6 +301,22 @@ type Config struct {
 	// each cycle fetches the days that are missing, so the poll only bounds
 	// how soon tomorrow's prices arrive after they are published.
 	EnergySpotPriceFeedPoll time.Duration
+	// EnergySpotPriceServiceURL is the shared spot-price service's base URL
+	// (ENERGY_SPOT_PRICE_SERVICE_URL, spot-price service design S3),
+	// http://vantigo-spotprices:8080 in our hosted environments. Set, it
+	// turns the spot price worker on with the service as its source; it and
+	// ENERGY_SPOT_PRICE_FEED_ENABLED are never both on. Absolute http or
+	// https, no user info, no query or fragment, the path empty or "/". An
+	// http URL is dialled only to a private address (design S7).
+	EnergySpotPriceServiceURL string
+	// EnergySpotPriceServiceKey is the installation's bearer key for the
+	// service (ENERGY_SPOT_PRICE_SERVICE_KEY), required with the URL. A
+	// secret: redacted wherever the configuration is printed.
+	EnergySpotPriceServiceKey string
+	// EnergySpotPriceHistoryFrom is the oldest civil day the service sync
+	// copies (ENERGY_SPOT_PRICE_HISTORY_FROM, YYYY-MM-DD), the zero time when
+	// unset: everything the service holds for an area.
+	EnergySpotPriceHistoryFrom time.Time
 
 	// InvoicesEhfEnabled is the on/off switch for sending invoices as EHF over
 	// Peppol (INVOICES_EHF_ENABLED, EHF and KID design D1). Default ON, like
@@ -589,6 +605,7 @@ func Load(env map[string]string) (*Config, error) {
 	customersImport(&p, env, c)
 	energyImport(&p, env, c)
 	energySpotPrices(&p, env, c)
+	energySpotPriceService(&p, env, c)
 	invoicesEhf(&p, env, c)
 	invoicesVipps(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
@@ -888,6 +905,51 @@ func energySpotPrices(p *problems, env map[string]string, c *Config) {
 	if c.EnergySpotPriceFeedPoll < energySpotPriceFeedMinPoll {
 		p.add("ENERGY_SPOT_PRICE_FEED_POLL", "must be at least 1m")
 		c.EnergySpotPriceFeedPoll = defaultEnergySpotPriceFeedPoll
+	}
+}
+
+// energySpotPriceServiceKeyMax bounds the service key's length; the
+// service's keys are a few dozen bytes.
+const energySpotPriceServiceKeyMax = 200
+
+// energySpotPriceService loads the spot-price service's settings (spot-price
+// service design S3): its URL and key, the oldest day to copy, and the rule
+// that one installation has one spot price source. The problems never echo
+// the key.
+func energySpotPriceService(p *problems, env map[string]string, c *Config) {
+	raw := strings.TrimSpace(env["ENERGY_SPOT_PRICE_SERVICE_URL"])
+	key := strings.TrimSpace(env["ENERGY_SPOT_PRICE_SERVICE_KEY"])
+	if raw != "" {
+		u, err := url.Parse(raw)
+		switch {
+		case err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Opaque != "":
+			p.add("ENERGY_SPOT_PRICE_SERVICE_URL", "must be an absolute http or https URL")
+		case u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/"):
+			p.add("ENERGY_SPOT_PRICE_SERVICE_URL", "must be the service's base URL, with no user, path, query or fragment")
+		default:
+			c.EnergySpotPriceServiceURL = strings.TrimSuffix(raw, "/")
+		}
+		if c.EnergySpotPriceFeedEnabled {
+			p.add("ENERGY_SPOT_PRICE_SERVICE_URL", "set one spot price source: the service or ENERGY_SPOT_PRICE_FEED_ENABLED, not both")
+		}
+		switch {
+		case key == "":
+			p.add("ENERGY_SPOT_PRICE_SERVICE_KEY", "is required with ENERGY_SPOT_PRICE_SERVICE_URL")
+		case len(key) > energySpotPriceServiceKeyMax || strings.ContainsFunc(key, func(r rune) bool { return r <= ' ' || r == 0x7f }):
+			p.add("ENERGY_SPOT_PRICE_SERVICE_KEY", "must be at most 200 bytes of printable characters with no space")
+		default:
+			c.EnergySpotPriceServiceKey = key
+		}
+	} else if key != "" {
+		p.add("ENERGY_SPOT_PRICE_SERVICE_KEY", "is set without ENERGY_SPOT_PRICE_SERVICE_URL")
+	}
+	if v := strings.TrimSpace(env["ENERGY_SPOT_PRICE_HISTORY_FROM"]); v != "" {
+		day, err := time.Parse(time.DateOnly, v)
+		if err != nil {
+			p.add("ENERGY_SPOT_PRICE_HISTORY_FROM", "must be a date such as 2021-12-01")
+		} else {
+			c.EnergySpotPriceHistoryFrom = day
+		}
 	}
 }
 

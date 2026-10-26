@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -1365,6 +1367,57 @@ func TestLoad_EnergySpotPriceFeed(t *testing.T) {
 	} {
 		if msg := loadError(t, with(validEnv(), "ENERGY_SPOT_PRICE_FEED_URL", v)); !strings.Contains(msg, "ENERGY_SPOT_PRICE_FEED_URL: "+want) {
 			t.Errorf("%q: error = %q, want %q", v, msg, want)
+		}
+	}
+}
+
+// TestLoad_EnergySpotPriceService pins the spot-price service's settings
+// (spot-price service design S3): off unless the URL is set, the key
+// required with it, one source at a time, the URL's shape, the oldest day
+// to copy, and the key redacted wherever the configuration is printed.
+func TestLoad_EnergySpotPriceService(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if cfg.EnergySpotPriceServiceURL != "" || cfg.EnergySpotPriceServiceKey != "" || !cfg.EnergySpotPriceHistoryFrom.IsZero() {
+		t.Errorf("unset = %q/%q/%v, want all empty", cfg.EnergySpotPriceServiceURL, cfg.EnergySpotPriceServiceKey, cfg.EnergySpotPriceHistoryFrom)
+	}
+	const key = "sp_0123456789abcdef"
+	set := mustLoad(t, with(validEnv(), "ENERGY_SPOT_PRICE_SERVICE_URL", "http://vantigo-spotprices:8080/",
+		"ENERGY_SPOT_PRICE_SERVICE_KEY", key, "ENERGY_SPOT_PRICE_HISTORY_FROM", "2021-12-01"))
+	if set.EnergySpotPriceServiceURL != "http://vantigo-spotprices:8080" || set.EnergySpotPriceServiceKey != key ||
+		!set.EnergySpotPriceHistoryFrom.Equal(time.Date(2021, 12, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("set = %q/%q/%v", set.EnergySpotPriceServiceURL, set.EnergySpotPriceServiceKey, set.EnergySpotPriceHistoryFrom)
+	}
+	encoded, err := json.Marshal(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, out := range map[string]string{"%+v": fmt.Sprintf("%+v", set), "json": string(encoded)} {
+		if strings.Contains(out, key) {
+			t.Errorf("%s printed the service key", name)
+		}
+	}
+	for name, tc := range map[string]struct {
+		env  []string
+		want string
+	}{
+		"both sources": {[]string{"ENERGY_SPOT_PRICE_SERVICE_URL", "http://svc:8080", "ENERGY_SPOT_PRICE_SERVICE_KEY", key, "ENERGY_SPOT_PRICE_FEED_ENABLED", "1"},
+			"ENERGY_SPOT_PRICE_SERVICE_URL: set one spot price source"},
+		"no key":              {[]string{"ENERGY_SPOT_PRICE_SERVICE_URL", "http://svc:8080"}, "ENERGY_SPOT_PRICE_SERVICE_KEY: is required"},
+		"a key without a URL": {[]string{"ENERGY_SPOT_PRICE_SERVICE_KEY", key}, "ENERGY_SPOT_PRICE_SERVICE_KEY: is set without"},
+		"a key with a space":  {[]string{"ENERGY_SPOT_PRICE_SERVICE_URL", "http://svc:8080", "ENERGY_SPOT_PRICE_SERVICE_KEY", "sp_a b"}, "ENERGY_SPOT_PRICE_SERVICE_KEY: must be"},
+		"ftp":                 {[]string{"ENERGY_SPOT_PRICE_SERVICE_URL", "ftp://svc", "ENERGY_SPOT_PRICE_SERVICE_KEY", key}, "must be an absolute http or https URL"},
+		"relative":            {[]string{"ENERGY_SPOT_PRICE_SERVICE_URL", "svc:8080", "ENERGY_SPOT_PRICE_SERVICE_KEY", key}, "must be an absolute http or https URL"},
+		"a path":              {[]string{"ENERGY_SPOT_PRICE_SERVICE_URL", "http://svc:8080/api/v1", "ENERGY_SPOT_PRICE_SERVICE_KEY", key}, "must be the service's base URL"},
+		"user info":           {[]string{"ENERGY_SPOT_PRICE_SERVICE_URL", "http://u:p@svc:8080", "ENERGY_SPOT_PRICE_SERVICE_KEY", key}, "must be the service's base URL"},
+		"a query":             {[]string{"ENERGY_SPOT_PRICE_SERVICE_URL", "http://svc:8080?key=x", "ENERGY_SPOT_PRICE_SERVICE_KEY", key}, "must be the service's base URL"},
+		"a bad date":          {[]string{"ENERGY_SPOT_PRICE_HISTORY_FROM", "2021-13-01"}, "ENERGY_SPOT_PRICE_HISTORY_FROM: must be a date"},
+	} {
+		msg := loadError(t, with(validEnv(), tc.env...))
+		if !strings.Contains(msg, tc.want) {
+			t.Errorf("%s: error = %q, want %q", name, msg, tc.want)
+		}
+		if strings.Contains(msg, "sp_a b") || strings.Contains(msg, key) {
+			t.Errorf("%s: the error echoes the key", name)
 		}
 	}
 }

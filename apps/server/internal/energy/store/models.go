@@ -97,15 +97,19 @@ type EnergyMeteringPoint struct {
 }
 
 type EnergySpotPrice struct {
-	ID           int64
-	PriceArea    string
-	Start        time.Time
-	End          time.Time
-	NokPerKwh    pgtype.Numeric
-	EurPerKwh    pgtype.Numeric
-	ExchangeRate pgtype.Numeric
-	Source       string
-	ReceivedAt   time.Time
+	ID              int64
+	PriceArea       string
+	Start           time.Time
+	End             time.Time
+	NokPerKwh       pgtype.Numeric
+	EurPerKwh       pgtype.Numeric
+	ExchangeRate    pgtype.Numeric
+	Source          string
+	ReceivedAt      time.Time
+	State           string
+	Upstream        *string
+	RateSource      *string
+	UpstreamVersion *int32
 }
 
 type EnergySpotPriceFetch struct {
@@ -117,6 +121,17 @@ type EnergySpotPriceFetch struct {
 	AttemptedAt   *time.Time
 	FetchedAt     *time.Time
 	NextAttemptAt *time.Time
+}
+
+type EnergySpotPriceHistory struct {
+	PriceArea     string
+	CursorDay     pgtype.Date
+	FloorDay      pgtype.Date
+	DaysSkipped   int32
+	Attempts      int32
+	LastError     *string
+	NextAttemptAt *time.Time
+	UpdatedAt     time.Time
 }
 
 type EnergySupplyPeriod struct {
