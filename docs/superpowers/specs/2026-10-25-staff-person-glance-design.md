@@ -7,6 +7,11 @@ Staff phase 2 closed (PR #174). Code references are against `main` at `b217bd0e`
 `docs/src/content/docs/en/contributing/module-boundaries.md`, and P1 the phase 1 design
 `docs/superpowers/specs/2026-10-11-staff-foundation-design.md`.
 
+A follow-up, [the photo follows the account](2026-10-25-staff-photo-sync-design.md), decided
+the same day, makes HR's photo the user's picture in Vantigo and in Entra ID and gives the
+person's own picture to identity's avatar; it supersedes this design's S1 where the person
+uploads into Staff's slot.
+
 ## 1. Purpose
 
 A manager opening a report's page should see who they are looking at and the handful

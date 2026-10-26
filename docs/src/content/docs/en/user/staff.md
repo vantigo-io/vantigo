@@ -92,18 +92,25 @@ you may not see answers exactly as one who does not exist.
 
 At the top, beside the name, is the person's **photo** — or their initials when there is
 none — with their title and department under the name. Everyone who may open the page
-sees the photo, colleagues included. The person themselves, HR (`staff:manage`) and
-`staff:personal-data` can change it:
+sees the photo, colleagues included. The photo HR sets here becomes the person's picture
+everywhere: in Vantigo — where the person can no longer pick their own while it stands —
+and, when they have a Microsoft Entra ID account, in Entra ID too. When HR has set none,
+the page shows the person's own Vantigo picture, the one they chose themselves. HR
+(`staff:manage`) and `staff:personal-data` can change it:
 
 1. Press the photo (the button **Photo of** and the person's name).
 2. Choose **Change photo** and pick a JPEG or PNG — on a phone, take one with the camera
    or choose one from the library. The new photo shows at once.
-3. Or choose **Remove photo** and confirm: the initials are shown in its place.
+3. Or choose **Remove photo** and confirm: the person's own picture comes back, or
+   their initials when they have none. **Remove photo** is not offered while the
+   picture shown is the person's own: that one is theirs to change.
 
 A photo is at most 5 MiB and 4096 pixels on each side; any other file is refused with
 the reason. Where a phone photo was taken, and with which camera, is removed
-before it is stored. A manager, `staff:approve` and a colleague see the photo and have no menu.
-The person's history says that a photo was set or removed, never the picture.
+before it is stored. The person, a manager, `staff:approve` and a colleague see the
+photo and have no menu. The photo reaches Entra ID at the account's next run, within
+the hour by default. The person's
+history says that a photo was set or removed, never the picture.
 
 ### Profile
 
@@ -661,7 +668,8 @@ account in the directory yet: Staff has not created or found one for this person
   one sentence each, what Entra reported and could not do: the hire date not written,
   no licence left (the licence named in brackets), a pass not allowed or refused, a
   leaver step not finished (the step named — Staff tries it again the next day), the manager's
-  account not found, the person's manager not in Entra. *Failed attempts in a row: 3.
+  account not found, the person's manager not in Entra, the photo not written (*The
+  directory refused the photo.*). *Failed attempts in a row: 3.
   The directory could not be reached; the worker tries again.* says Entra could not be
   reached.
 
@@ -1078,7 +1086,9 @@ form takes the whole screen and the request sheet opens from the bottom.
 
 ### Your photo
 
-Your photo, or your initials when there is none, is beside the page's title.
+Your picture, or your initials when there is none, is beside the page's title. It is
+your Vantigo picture — the same one as under **Settings › Profile** and in the avatar
+menu — so changing it here changes it there too.
 
 1. Press it (the button **Photo of** and your name).
 2. Choose **Change photo** and pick a JPEG or PNG: on a phone, take one with the camera
@@ -1086,11 +1096,15 @@ Your photo, or your initials when there is none, is beside the page's title.
 3. To take it away, choose **Remove photo** and confirm; your initials are shown in its
    place.
 
+When HR has set a photo of you, that photo is your picture everywhere in Vantigo, and
+in Microsoft Entra ID when you have an account there. The menu then shows **Set by HR**,
+greyed out, with *Ask HR to change it*: you cannot change or remove it yourself. Your own
+picture is kept aside, and comes back when HR removes their photo.
+
 A photo is at most 5 MiB and 4096 pixels on each side; any other file is refused with
-the reason. Where a phone photo was taken, and with which camera, is removed
-before it is stored. Everyone who can open your page in Staff sees it, colleagues included, and
-HR can change or remove it too. Your history says that a photo was set or removed,
-never the picture.
+the reason. Everyone who can open your page in Staff sees your picture, colleagues
+included. Your picture reaches Entra ID within the hour. Your history
+says when HR set or removed a photo, never the picture.
 
 ### Your absence
 
@@ -1486,6 +1500,7 @@ type is counted only for `staff:personal-data`:
 | The competence review of … is overdue | Someone in employment has had no competence review recorded within the interval set under [Competence reviews](#competence-reviews) — counted from their last review, or from the start of their current employment when that is later. A manager sees their own people's; HR everyone's. Go through the tab together and press **Reviewed today**. | The person's Competence tab |
 | … does not meet their competence profile (2 items) | A competence profile that applies to someone active today asks for competences they do not meet — missing, below the level, a certificate declared but not verified, or expired — counted. One per person, for their manager and HR, never for the person themselves or for `staff:approve` alone. It goes away when every item is met or expires soon. | The person's Competence tab |
 | The group … is not in sync with its directory | A group could not be kept in the directory — a setting the directory refused, a group there holding its key that Vantigo may not change, or a directory that could not be reached three times in a row; the group's page says why. One per group and directory, for HR. | The group |
+| Microsoft Entra ID refused the photo of … | Entra ID would not take the person's picture — HR's photo, or the person's own when HR has set none. Nothing is needed for sign-in; set another photo to try again. For HR. | The person's Account tab |
 
 An item goes away when what it asks for is done. A threshold's item stays until HR
 acknowledges the threshold — once, for good — under [Thresholds](#thresholds) in the

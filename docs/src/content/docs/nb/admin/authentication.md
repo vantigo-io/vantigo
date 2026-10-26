@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/identity
   - apps/server/internal/config
   - apps/server/cmd/vantigo
+  - apps/server/internal/db/migrations/00070_identity_managed_avatars.sql
 ---
 Vantigo autentiserer nettleser-SPA-en og API-et på samme opprinnelse med en
 applikasjonsinformasjonskapsel utstedt av identitetsmodulen. API-et svarer med
@@ -312,6 +313,7 @@ kontoen til og [kunngjør](#den-kunngjorte-kontoen), med ansattrollene gitt én 
 | Deaktiver | Deaktiverer brukeren som Ansattes (`disabledBy: staff`) — også en katalogen allerede har deaktivert — avslutter øktene og tilbakestillingslenkene, og trekker tilbake de åpne invitasjonene `deactivated` | Det samme | Det samme | `user.staff-deactivated` |
 | Oppdater | Skriver visningsnavnet, språket og ansattnummeret; adressen bare mens brukeren venter og ingen invitasjon som navngir dem, er levert ennå, og da trekkes invitasjonene tilbake `email_changed` og en eiers åpne invitasjoner til den nye adressen `replaced` (navngitt i revisjonsloggen) | Skriver bare språket og ansattnummeret | Det samme som `external` | `user.staff-updated` |
 | Slett (`Erase`) | Sletter den deaktiverte brukeren Ansatte styrer (med øktene, innloggingsmetodene, invitasjonene, SCIM-koblingen, en eventuell ubrukt kunngjøring for ansattnummeret og delegeringene brukeren ga, mens delegeringer til brukeren beholder raden med `delegate_user_id` tømt) og pseudonymiserer `actor_snapshot` og `target_snapshot` i revisjonsradene som navngir dem (`displayName: "Erased user"`, `email` og `employeeNumber` tomme) | Det samme | Det samme | `user.staff-erased` |
+| Styrt profilbilde (`SetManagedAvatar`) | Setter eller fjerner den koblede brukerens [styrte profilbilde](#det-styrte-profilbildet), HRs bilde foran brukerens eget — enten Ansatte styrer brukeren eller ikke | Det samme | Det samme | `user.avatar-managed`, `user.avatar-unmanaged` |
 | Forvent (`Expect`) | — | — | Registrerer eller erstatter [kunngjøringen](#den-kunngjorte-kontoen) for ansattnummeret | `account.expected` |
 | Trekk tilbake (`Unexpect`) | — | — | Trekker tilbake en kunngjøring ingen har oppfylt | `account.unexpected` |
 
@@ -356,6 +358,7 @@ kontoen som deaktivert av katalogen. Dette avviser den:
 | Adressen er tatt | En annen bruker har personens adresse, eller en eier har invitert noen til å bli eier på den og invitasjonen er fortsatt åpen | Gi personen en annen adresse i Ansatte, eller rydd i den andre kontoen eller invitasjonen |
 | Ansattnummeret er tatt | En bruker Ansatte ikke styrer, har nummeret | Ta inn den brukeren, eller rett nummeret i Ansatte |
 | Ikke funnet | `external` eller `entra`: ingen bruker Ansatte styrer, har nummeret ennå | `external`: la identitetsleverandøren opprette kontoen, og ta den inn; `entra`: kontoen kommer med SCIM eller personens første innlogging og tas inn av kunngjøringen sin |
+| Ugyldig profilbilde | `SetManagedAvatar`: bildet er ikke en PNG eller en JPEG, er over 5 MiB eller 4096 piksler på en side, eller kilden er ikke `staff` | Ansattes bilder går alltid gjennom; en avvisning er en feil å melde |
 | Ulik modus | Meldes bare av en worker som fortsatt kjører utgivelsen før kortet Single sign-on, under en rullerende oppgradering (avvist for hvert steg unntatt deaktivering) | Fullfør oppgraderingen |
 
 ### Den kunngjorte kontoen
@@ -658,6 +661,57 @@ godtatt invitasjonen sin, og — så lenge SCIM er konfigurert — en bruker kat
 deaktivert, med mindre det er en Eier, har ingenting. En utestengelse er midlertidig og
 endrer ikke hvem som har en tillatelse. For å gjøre noen til innehaver, gi dem en rolle
 med tillatelsen, eller koble en slik rolle til en gruppe de er med i.
+
+### Det styrte profilbildet
+
+Når HR legger inn et bilde av en person i [Ansatte](/en/reference/staff/#the-photo),
+gjør Ansattes klargjøring det til den koblede brukerens **styrte profilbilde**
+(`SetManagedAvatar`): et bilde nummer to, lagret i `identity.managed_avatars` ved siden av
+brukerens eget profilbilde (`identity.profile_avatars`), aldri over det. Det **gjeldende
+profilbildet** er det styrte så lenge det står, ellers brukerens eget. Det er det
+`GET /api/v1/identity/account/avatar`, en eiers
+`GET /api/v1/identity/owner/users/{id}/avatar`, brukerlistens profilbilde og lesingene
+andre moduler gjør (`UserDirectory.Avatar`, og `AvatarInfo` — stempelet og tiden uten
+bytene) alle svarer. Når HR fjerner bildet, fjerner Ansatte det styrte profilbildet, og
+brukerens eget vises igjen, uten at noen laster det opp på nytt.
+
+- **Hvem som setter det.** Bare Ansatte, gjennom kontrakten — det finnes ikke noe
+  endepunkt for det — med HR-brukeren som lagret bildet, eller `system:staff-accounts`
+  når kontoarbeideren retter det opp. Det gjelder enhver bruker en persons
+  selvbetjeningskobling navngir, enten Ansatte styrer kontoen eller ikke. Kilden må være
+  `staff`, og bildet vurderes som en opplasting — en PNG eller en JPEG der bytene er det
+  den sier, høyst 5 MiB og 4096 piksler på hver side — ellers avvises kallet (*Ugyldig
+  profilbilde*). Det samme bildet igjen (samme stempel, type og byter), eller en
+  fjerning når ingenting står, skriver ingenting og revisjonslogger ingenting.
+- **Aldri satt for en eier eller en SystemAdmin.** Å sette avvises som *Privilegert*:
+  de som driver installasjonen, beholder sitt eget bilde, og Ansatte logger det og melder
+  ingenting. Å fjerne er alltid tillatt, så en bruker som blir forfremmet etter at HR la
+  inn et bilde, slipper det — kontoarbeideren fjerner det ved personens neste kjøring.
+- **Brukerens eget profilbilde så lenge det står.** `POST`, `PUT` og `DELETE
+  /api/v1/identity/account/avatar` svarer **409** `avatar_managed`, *Your photo is kept by
+  Staff and cannot be changed here.*, vurdert før bodyen i en opplasting leses; brukerens
+  eget profilbilde blir stående som det er. `GET /api/v1/identity/account`, og svarene på
+  profilskrivingene, har **`avatarManagedBy`** — `staff` så lenge det styrte profilbildet
+  står, ellers null — og `avatarUrl` peker på det gjeldende profilbildet. **Innstillinger
+  › Profil** stenger da bildekontrollene med *Bildet ditt holdes av Ansatte. Be HR om å
+  bytte det.*
+- **Stempelet.** Kontraktens lesing svarer hvilket bilde som står: `managed:<stempel>`,
+  Ansattes eget stempel for bildet sitt, eller `own:<versjon>@<epoke>` for brukerens
+  eget — profilbildets versjon og når det ble lagret, så et profilbilde som fjernes og
+  lastes opp igjen, aldri gjentar et stempel. Ansatte sammenligner det for å vite når
+  bildet i katalogen skal skrives.
+- **Revisjonsloggen.** Å sette er `user.avatar-managed`, å fjerne `user.avatar-unmanaged`,
+  med aktøren og målbrukeren; før og etter registrerer kilden, stempelet, innholdstypen
+  og størrelsen i byte — aldri bytene.
+- **Borte med brukeren.** Det styrte profilbildet slettes med brukeren
+  (`ON DELETE CASCADE`), ved en eiers sletting eller Ansattes sletting (`Erase`).
+
+Migreringen `00070_identity_managed_avatars.sql` legger til `identity.managed_avatars` —
+én rad per bruker: bytene, typen (`image/jpeg` eller `image/png`, samme CHECK som
+`profile_avatars` har), `source`, `source_stamp`, en `version` som økes ved hver skriving,
+og `updated_at`. Down dropper tabellen: hver brukers eget profilbilde er bildet deres
+igjen, og når utgivelsen er tilbake, legger kontoarbeideren i Ansatte inn HRs bilder på
+nytt ved hver persons neste kjøring.
 
 ## MFA
 

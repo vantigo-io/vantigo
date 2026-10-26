@@ -106,7 +106,8 @@ you may use two if you prefer.
    - `Domain.Read.All`
    - `Organization.Read.All`
 2. Choose **Grant admin consent for** your organisation, and confirm. Each permission's
-   status turns to *Granted*.
+   status turns to *Granted*. `User.ReadWrite.All` also covers the person's photo,
+   which Vantigo writes to the account: no further permission or consent.
 3. **Assign the User Administrator role** to the application. Open **Roles &
    admins** › **User Administrator** › **Add assignments**, and select the
    application by its name (its service principal, listed under enterprise
@@ -466,6 +467,7 @@ tenant reported for them:
 | *The directory refused the Temporary Access Pass; the account is enabled without one.* | The tenant refused the pass with a 403 (`pass_forbidden`) — the application lacks the role or the pass permission, or the user is one it may not touch. | Check the User Administrator role and `UserAuthMethod-TAP.ReadWrite.All`; create the pass in the portal for this person. |
 | *The directory holds an account under the person's employee number that Vantigo did not create …* | `external_unconfirmed`: the module found the user and writes nothing to it. | [Confirm it](#accounts-vantigo-did-not-create) after checking it is the person's; if it is not, correct the employee number where it is wrong. |
 | The manager's account not found | The manager has no account in the tenant. | Give the manager the Microsoft Entra ID kind, or accept it. |
+| The photo not written (*The directory refused the photo.*) | Graph refused the person's picture, or its removal (`photo_not_written`): a 400, 403 or 413 — or a 404, for a user without a mailbox — or the picture could not be converted to a JPEG under 4 MB. Vantigo does not try the same picture again. | Nothing is needed for sign-in. HR may set another photo, or the person another picture, which Vantigo tries at its next run; check the module's recent events (*An account's photo was set*) for the account. |
 | *A leaver step in the directory was not finished: …* | A leaver's step after the disable failed, and the steps after it were not tried; the account is disabled. | Nothing, usually: Staff tries again the next day. If it keeps failing, check the module's recent events and the log, and do the step in the portal. |
 
 On a group's page in Staff, the **Microsoft Entra ID** card says how the group stands

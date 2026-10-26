@@ -8,13 +8,14 @@ sources:
   - apps/server/internal/mail
   - apps/server/internal/payments
   - apps/server/internal/holidays
+  - apps/server/internal/imagemeta
 ---
 
 A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
-clear, when it sends a mail of its own, when it takes a payment, and when it counts days
-around the public holidays.
+clear, when it sends a mail of its own, when it takes a payment, when it counts days
+around the public holidays, and when it stores a picture people will see.
 
 ## The secrets box
 
@@ -264,3 +265,21 @@ midnight is read by the holiday functions as its civil date in its own location 
 
 The calendar is **Norway's only**. A region beyond it would be a later column on a
 module's settings, passed in by the caller; nothing in the package reads a setting.
+
+## The image metadata stripper
+
+`internal/imagemeta` strips a picture's metadata before a module stores or serves it:
+a phone's photo carries where and when it was taken, the device and often a thumbnail
+of the uncropped picture, and none of it is the person's face. Staff strips HR's photo
+of a person before it reaches the object store, and identity strips a user's own avatar
+and the managed one Staff sets, since Staff serves either to the person's colleagues.
+
+| Function | What it does |
+| --- | --- |
+| `Strip(contentType string, data []byte) ([]byte, error)` | for `image/jpeg`, walks the segments from the start-of-image marker and drops APP1 (Exif, XMP) and APP13 (IPTC), copying everything from the start-of-scan marker on as it is; for `image/png`, walks the chunks and drops `eXIf`, `tEXt`, `zTXt` and `iTXt`, stopping after `IEND`; a file without metadata comes back byte for byte. |
+| `ErrStructure` | the segments or chunks do not hold together — a truncated or foreign file — which a caller refuses as it refuses a bad image. |
+
+The pixels are never decoded, so a decompression bomb costs the caller nothing here;
+judging the type and the dimensions is the caller's (`image.DecodeConfig`, which reads
+the header alone). The package imports the standard library only, and any module may
+import it.

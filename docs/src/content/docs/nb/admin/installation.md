@@ -734,5 +734,23 @@ som alt står i kø, fjernes fortsatt av sletteloggen. Vil du ikke la noe bilde 
 får du fjernet alle bildene — eller sletter nøklene `people/*/photo/` under
 `staff`-området for hånd — og lar sletteloggen kjøre før du ruller tilbake.
 
+**Utgivelsen der bildet følger kontoen.** Den har `00070_identity_managed_avatars.sql`,
+en tom tabell i identitetsmodulen for de **styrte profilbildene** — HRs bilde av en
+person, som står som den koblede brukerens bilde foran det brukeren valgte selv — og
+`00071_staff_photo_push.sql`, én tom kolonne på Ansattes leverandørkoblinger, stempelet
+til bildet som sist ble skrevet til Microsoft Entra ID. Ingen innstilling og ingen
+rettighet er ny, og Entra-applikasjonen trenger ikke noe nytt samtykke:
+`User.ReadWrite.All` dekker bildet. Etter oppgraderingen legger bare HR inn bildet til en
+person i Ansatte; en person bytter sitt eget bilde gjennom profilbildet sitt i Vantigo,
+på Min side eller under **Innstillinger › Profil**, som er stengt så lenge HRs bilde
+står. Kontoarbeideren i Ansatte gjør så hvert eksisterende HR-bilde til den koblede
+brukerens bilde ved personens neste kjøring, og skriver bildet til hver aktiverte
+Entra-konto én gang; for en person uten bilde i Vantigo skriver den ingenting, så et
+bilde som alt ligger i leietakeren, blir stående til Vantigo skriver et. Å rulle
+tilbake 00071 dropper stemplene, så hvert bilde skrives til leietakeren én gang til
+etter neste oppgradering; å rulle tilbake 00070 dropper de styrte profilbildene, så
+hver brukers eget profilbilde er bildet deres igjen til Ansatte legger inn HRs bilder
+på nytt. Bildene i Ansattes objektlager berøres ikke i noe tilfelle.
+
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

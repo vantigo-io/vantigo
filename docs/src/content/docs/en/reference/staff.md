@@ -1,6 +1,6 @@
 ---
 title: "Staff module"
-description: "The workforce register: people, their field groups and who reads them, the person's photo, the at-a-glance cards and the hours they read from Time, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, groups — listed or derived by a rule, their owners, the traits a provider declares, the sync with the provider's directory and the licences they give — and My page, the document archive with its categories and retention classes, competence — the catalogue with the Norwegian certificates seeded, a person's competences declared, verified, renewed and removed with their evidence, what the person wants — their interests, preferences and availability declaration, stamped Seen by their manager — the competence review and its overdue item, competence profiles assigned or defaulted by department with the gap list and its item, the matrix and the interests overview, the competence worker and its mails, and the Workforce contract with the matching contract's Staff side — the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
+description: "The workforce register: people, their field groups and who reads them, the person's photo — HR's, made the linked user's picture in Vantigo and pushed to the directory, else the user's own avatar — the at-a-glance cards and the hours they read from Time, their history, employments with dated terms and the dates the a-melding derives from them, the § 14-6 check, managers and the org view, the sealed national identity number and bank account, the self-service link, the account flag, the account kind, the provider link with its directory profile and pass, groups — listed or derived by a rule, their owners, the traits a provider declares, the sync with the provider's directory and the licences they give — and My page, the document archive with its categories and retention classes, competence — the catalogue with the Norwegian certificates seeded, a person's competences declared, verified, renewed and removed with their evidence, what the person wants — their interests, preferences and availability declaration, stamped Seen by their manager — the competence review and its overdue item, competence profiles assigned or defaulted by department with the gap list and its item, the matrix and the interests overview, the competence worker and its mails, and the Workforce contract with the matching contract's Staff side — the personal-data exports, the register's import and export as CSV, the payroll export, the retention run and its deletion ledger, the erased state, the legal hold and the reassessment, the dashboard's figures and attention items and the thresholds, the settings, the absence types with their a-melding mapping and reporting rules, the holiday schemes and their conversion, the care-day fields, absences requested and registered, overlap, the holiday account with its adjustments and carry-over, the absence events and their classes, sick-leave cases with the arbeidsgiverperiode and their follow-up milestones, egenmelding under the policy and its withdrawal, care days, the company's structure, the business time zone, the permissions and the lock rules."
 sources:
   - apps/server/internal/staff
   - apps/staff/frontend
@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00067_staff_one_to_one.sql
   - apps/server/internal/db/migrations/00068_staff_competence_profiles.sql
   - apps/server/internal/db/migrations/00069_staff_person_photo.sql
+  - apps/server/internal/db/migrations/00071_staff_photo_push.sql
 ---
 The Staff module is the company's register of the people who work for it: who they
 are, how to reach them and their next of kin, their employments as Norwegian
@@ -83,6 +84,22 @@ disabled the slot is nil: the card says time tracking is off, never zero, nothin
 and `MODULES=staff` alone stays a valid installation. Nothing else of Time is read, and
 Time's own permissions, screens and rules are untouched — see the consumer-gated
 contracts beside rule 12 in the [module boundaries](/en/contributing/module-boundaries/).
+
+**The person's picture** travels through three contracts Staff already consumes (photo
+sync design S4), one way — Staff → identity → the directory, never back:
+`contracts.AccountProvisioning.SetManagedAvatar` is the write, HR's photo made the
+linked user's managed avatar, or with nil its clear ([the photo](#the-photo));
+`contracts.UserDirectory.Avatar` and `AvatarInfo` are the reads, the user's effective
+avatar — the managed one while it stands, else their own — with its stamp, `AvatarInfo`
+without the bytes for the person response and the push's comparison, `Avatar` with them
+only to stream or push the picture;
+and `contracts.IdentityProvisioner.SetPhoto` and `ClearPhoto` write the account's photo
+in the provider's directory ([the directory's photo](#the-directorys-photo)). Each is
+called through its own accessor in `contractscalls.go` (`accountsSetManagedAvatar`,
+`usersAvatar`, `usersAvatarInfo`, `providerSetPhoto`, `providerClearPhoto`), with the request's or the
+worker's context and never inside one of the module's transactions. With no module
+providing accounts the write is skipped and logged; Staff never reads the directory's
+photo.
 
 ## The schema
 
@@ -241,6 +258,15 @@ no setting. Still no CHECK constraint: the module's validation owns the type, th
 and the dimensions, and reports them on `file`. Nothing about [a glance](#at-a-glance) is
 stored. The Down drops the three columns; the objects they named stay in the store,
 named by nothing.
+
+The photo-sync delivery adds `00071_staff_photo_push.sql` (00070 is identity's, the same
+delivery's): one nullable column on `identity_links`, `photo_pushed_stamp`
+(`varchar(80)`), written on a provider link alone — the stamp of the picture the
+accounts worker last pushed to the directory, `managed:<stamp>`, `own:<version>@<epoch>` or
+`none`, null before the first push ([the directory's photo](#the-directorys-photo)). It
+is class C with the rest of the link ([the classes](#the-classes-column-by-column)). No
+index, no setting, no CHECK constraint: the worker writes it. The Down drops the column,
+so the next claim of each link pushes its picture once more.
 
 ## Permissions
 
@@ -655,23 +681,31 @@ the person and when they were reassessed. It is HR's alone — `erasedAt` and
 ### The photo
 
 A person has at most one **photo** (`GET|PUT|DELETE /people/{id}/photo`, person-glance
-design S1): the register's own, not identity's avatar, which only the user and an Owner
-reach and which a person who never has a user cannot have. Its bytes are in the object
-store under the module's `staff` scope, at `people/<person id>/photo/<uuid>` — a fresh
-key per upload, so a replaced photo is never overwritten in place; the person's row holds
-the key, the type and when it was set (`photo_object_key`, `photo_content_type`,
-`photo_updated_at`, class D).
+design S1), and it is **HR's**: the register's own, set by `staff:manage` and
+`staff:personal-data` alone. The person's own picture is their Vantigo avatar, which
+identity keeps and the user sets through identity's `/api/v1/identity/account/avatar` —
+from My page or **Settings › Profile** — never through Staff (photo sync design S2). The
+one in front is **the effective picture**: HR's photo when set, else the linked user's
+own avatar. HR's photo is made the linked user's **managed avatar** in identity, which
+stands in front of their own avatar and keeps them from changing it while it stands
+([the managed avatar](/en/admin/authentication/#the-managed-avatar)), and the accounts
+worker pushes the effective picture on to the provider's directory
+([the directory's photo](#the-directorys-photo)). Nothing flows back. HR's photo's bytes
+are in the object store under the module's `staff` scope, at
+`people/<person id>/photo/<uuid>` — a fresh key per upload, so a replaced photo is never
+overwritten in place; the person's row holds the key, the type and when it was set
+(`photo_object_key`, `photo_content_type`, `photo_updated_at`, class D).
 
 - **Who sets it.** `PUT` sets the photo or replaces it whole, and `DELETE` removes it:
-  the person themselves through their self-service link (My page calls both with the
-  person's own id), `staff:manage` and `staff:personal-data` — `canSetPhoto` on the
-  person's capabilities. Anyone else who sees the person — a manager, a colleague, the
-  Approver — gets the uniform 403, and anyone who does not the unknown id's 404. The
-  caller is judged in a snapshot first, so a caller who may not see an erased person
-  learns nothing from its 409, and again under the lock. An [erased](#the-erased-state)
-  person is `person_erased` (409). Neither takes `If-Match`: the row's revision moves
-  on, and the last write wins. `PUT` answers 200 with the person as the caller reads
-  them; `DELETE` answers 204, and the 404 when there is no photo.
+  `staff:manage` and `staff:personal-data` — `canSetPhoto` on the person's capabilities,
+  false on an erased person. Anyone else who sees the person — the person themselves, a
+  manager, a colleague, the Approver — gets the uniform 403, and anyone who does not the
+  unknown id's 404. The caller is judged in a snapshot first, so a caller who may not
+  see an erased person learns nothing from its 409, and again under the lock. An
+  [erased](#the-erased-state) person is `person_erased` (409). Neither takes `If-Match`:
+  the row's revision moves on, and the last write wins. `PUT` answers 200 with the
+  person as the caller reads them; `DELETE` answers 204, and the 404 when there is no
+  photo.
 - **The file.** One multipart part, `file` — any other part is skipped — read no
   further than 5 MiB and a byte; the router caps the operation's body at 5 MiB and
   64 KiB of framing. Its own bytes decide what it is: the name and the type it was sent
@@ -698,29 +732,79 @@ the key, the type and when it was set (`photo_object_key`, `photo_content_type`,
   in one attempt. A `DELETE` clears the three columns, queues the object and records
   `photo_removed` the same way. A replaced or removed photo's object is never removed
   inline: the ledger removes it once the transaction has committed.
-- **Reading it.** `GET /people/{id}/photo` streams the bytes to everyone who reads the
-  person's Work group — everyone who sees them — with its type, its length,
-  `Cache-Control: private, max-age=300`, `X-Content-Type-Options: nosniff` and no
-  `Content-Disposition`: it is shown in place. The row is read in a snapshot and the
-  object after it. A person the caller may not see, one with no photo, and one whose
-  object the store no longer has, is the bare 404; a store that cannot be read is
+- **The account's picture, at once** (`person_photo_sync.go`). Once a `PUT` or a
+  `DELETE` has committed, and the person's self-service link names a user, Staff calls
+  identity's `SetManagedAvatar` with the bytes as stored (their metadata already
+  stripped), the source `staff` and the stamp — `photo_updated_at` in UTC as RFC 3339
+  with nanoseconds — or, after a `DELETE`, clears it with nil. The actor is the HR user
+  who made the request; the call is made on no connection, under the call timeout, and
+  is not cut short by the request ending. It **never fails the request**: identity's
+  `ErrAccountPrivileged` (an Owner's or a SystemAdmin's picture is theirs — reading 2,
+  no item) and no module providing accounts are logged at Info, anything else at Warn,
+  and the worker puts it right. A person with no linked user calls nothing. The write
+  also moves the person's identity link's next attempt to now, so the next poll — within
+  the hour by default — pushes the picture on to the directory rather than the next
+  civil midnight.
+- **The account's picture follows the link.** When HR changes or removes the person's
+  [self-service link](#the-self-service-link), the old user's managed avatar is cleared
+  and, when HR has a photo, the new user's set — at once, after the commit and outside
+  the transaction, logged on failure and put right by the worker — and the identity
+  link's next attempt moves to now (`NudgeAccountLink`; a link already due is left as
+  it is).
+- **The account's picture, reconciled** (reading 5). On every claim of a person's
+  identity link — after the link's user is read and before the
+  [provider column](#the-provider-link) — the [accounts worker](#the-accounts-worker)
+  reads the user's effective avatar (`UserDirectory.Avatar`) and compares: HR's photo on
+  the person whose stamp is not the managed stamp identity answers
+  (`managed:<stamp>`) → the photo read from the store and `SetManagedAvatar` again, as
+  `system:staff-accounts`; no photo on the person but a managed avatar Staff set →
+  cleared. For an Owner or a SystemAdmin a managed avatar Staff set before they became
+  one is cleared and none is set (reading 15). It reads the stamp alone
+  (`UserDirectory.AvatarInfo`) and the photo's bytes only when it writes. It is skipped
+  when identity reported no user this claim, and for an erased person, whose erase
+  cleared it. A
+  failure is logged and changes nothing on the link: the next claim tries again. So a
+  person linked after HR set the photo, or an inline write that failed, is right by the
+  next claim, and the provider column of the same claim pushes the picture on.
+- **Reading it.** `GET /people/{id}/photo` streams **the effective picture** to everyone
+  who reads the person's Work group — everyone who sees them — with its type, its
+  length, `Cache-Control: private, max-age=300`, `X-Content-Type-Options: nosniff` and
+  no `Content-Disposition`: it is shown in place. HR's photo when set, its object read
+  after the row's snapshot; else the linked user's effective avatar, read through
+  `UserDirectory.Avatar` after the snapshot — never for an erased person — and streamed
+  as identity holds it — identity
+  strips no metadata from an avatar the user uploads, though My page's downscale of a
+  large picture (over 1 MiB or 1024 px) re-encodes it and drops its metadata. A person the caller may not see, one with
+  neither picture, one whose object the store no longer has, and one whose avatar the
+  directory cannot answer (logged), is the bare 404; a store that cannot be read is
   `storage_unavailable` (503).
-- **The cache key** (reading 7). The person's response and the directory's row carry
-  `photoUpdatedAt`, the Work group's, absent when there is no photo. The apps fetch
-  `GET /people/{id}/photo?v=<photoUpdatedAt>`, so a new photo is a new URL; the server
-  ignores `v`.
+- **The cache key and the source** (reading 7; photo sync reading 9). The person's
+  response carries `photoUpdatedAt`, when the effective picture was set — HR's photo's
+  `photo_updated_at`, else the avatar's `updatedAt` — and `photoSource`: `record` for
+  HR's photo, `account` for the user's own avatar; both are the Work group's and absent
+  when there is no picture, and the avatar's stamp and time (`AvatarInfo`, no bytes) are
+  read only for an audience that reads the Work group, after any transaction, and never
+  for an erased person. The directory's row (`StaffPersonListItem`) carries
+  Staff's own `photoUpdatedAt` alone, with no source: the list reads no avatars. The
+  apps fetch `GET /people/{id}/photo?v=<photoUpdatedAt>`, so a new picture is a new URL;
+  the server ignores `v`.
 - **The events** (reading 8). `photo_set` and `photo_removed` name the field `photo`
   with the content type alone — `{"fields": {"photo": {"from": "image/png", "to":
   "image/jpeg"}}}`, without `from` on a first photo; `photo_removed` carries `from` —
   never the bytes. The field is class D and the Work group's, so everyone who reads the
-  person's [history](#the-history) reads the events whole.
+  person's [history](#the-history) reads the events whole. The managed avatar's own
+  writes are identity's audit (`user.avatar-managed`, `user.avatar-unmanaged`), and the
+  push is the provider link's `account_external_updated`.
 - **The exports and the erase.** Both [personal-data exports](#the-personal-data-exports)
-  carry `photo`, `{contentType, updatedAt}`, or null when there is none; the bytes are
-  `GET /people/{id}/photo`'s. The [D erase](#what-an-erase-does) queues the photo's object
-  in the ledger and nulls the three columns with the other D columns, and the
-  [delete of a person created in error](#deleting-a-person) queues it likewise. The
-  photo is in neither the register's [CSV import and export](#the-registers-import-and-export)
-  nor the payroll export.
+  carry `photo`, `{contentType, updatedAt}` — HR's photo alone, never the user's
+  avatar — or null when there is none; the bytes are `GET /people/{id}/photo`'s. The
+  [D erase](#what-an-erase-does) queues the photo's object in the ledger and nulls the
+  three columns with the other D columns, and the
+  [delete of a person created in error](#deleting-a-person) queues it likewise. The D
+  erase also clears the linked user's managed avatar through identity, once its
+  connection is returned, and an erased person's page and photo never fall back to the
+  account's avatar (reading 21). The photo is in neither the register's
+  [CSV import and export](#the-registers-import-and-export) nor the payroll export.
 
 ### At a glance
 
@@ -1259,7 +1343,9 @@ linked, Owners included.
   linked to another person is `user_linked_elsewhere` (400), and so is the unique
   index's refusal when two links race. Linking to the user already linked writes
   nothing; linking to another replaces the link. A change is a `user_linked` event, an
-  unlink a `user_unlinked` one. It answers the link.
+  unlink a `user_unlinked` one. It answers the link. Once it has committed, the
+  [picture follows the link](#the-photo): the old user's managed avatar is cleared and,
+  when HR has a photo, the new user's set.
 - **`GET /people/{id}/user`** answers `{linked, state, managed, user}` — `linked: false`
   and nothing else for a person linked to nobody. The link is the person's and HR's to
   read (`staff:manage`, `staff:personal-data`); anyone else gets the unknown id's 404.
@@ -1874,7 +1960,9 @@ and has five of its own (00060's): `external_upn` and `external_email`, the prin
 name and the address the provider answered (class D, as the work email); `announced_at`,
 when Staff announced the account to identity; `pass_issued_at`, when the provider issued
 a pass nobody has revealed yet — never the pass; and `reported_codes`, the facts the
-provider reported and could not act on, codes only. Its states are `preparing` (the
+provider reported and could not act on, codes only. 00071 adds a sixth,
+`photo_pushed_stamp`, the stamp of the picture last pushed
+([the directory's photo](#the-directorys-photo)). Its states are `preparing` (the
 worker asked the provider to create or find the account, none named yet), `enabled`,
 `disabled`, `deleted` (soft-deleted in the directory), `failed` and `blocked`.
 
@@ -1963,7 +2051,8 @@ fulfilled ninety days after `announced_at` raises `accountNotArrived`.
 holds the claim's lease: `external_id`, `state`, `external_upn`, `external_email`,
 `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`, `reported_codes` (the
 provider's `Reported` facts, without repeats, and Staff's own `manager_not_in_entra`),
-`pass_issued_at`, `announced_at`, `last_spec_hash`, `last_synced_at`, and the
+`pass_issued_at`, `announced_at`, `last_spec_hash`, `last_synced_at`,
+`photo_pushed_stamp` (kept as it was by a claim that pushed nothing), and the
 `account_external_*` events — a report or a refusal recorded once, when the link's
 state or reason changed. `pass_issued_at` is set when the account comes back with a
 pass and none was recorded, or after a fresh one was asked for (*Run now*); it is
@@ -2006,7 +2095,7 @@ lower-cased). What is dropped is logged by its field's name alone, never its val
 `provider_unavailable` lifts once the provider is connected again. The provider's
 reported codes are `hire_date_not_written`, `privileged`, `pass_not_allowed`,
 `pass_forbidden`, `licence_unavailable:<SKU part number>`, `manager_not_found`,
-`adoption_unconfirmed` and `leaver_step_failed:<step>`; Staff adds its own
+`photo_not_written`, `adoption_unconfirmed` and `leaver_step_failed:<step>`; Staff adds its own
 `manager_not_in_entra` when the person's effective manager has no account in the
 directory.
 
@@ -2097,6 +2186,60 @@ module offering the provider, or any other failure of the provider's (logged), 5
 `accounts_unavailable`, nothing cleared. It is rate-limited with *Run now* and
 *Disable now* (one counter, 120 an hour from one client address). A pass issued and not
 shown for a day raises `passUnrevealed`.
+
+### The directory's photo
+
+The accounts worker pushes the person's [effective picture](#the-photo) — HR's photo as
+identity holds it, else the linked user's own avatar — to their account in the
+provider's directory (`accounts_worker_photo.go`; photo sync design §4, plan reading 10).
+It is one direction: Staff writes the directory's photo and never reads it, so a photo
+an administrator sets in the directory is replaced at the next push.
+
+- **When.** On a claim of the person's identity link, at the end of the
+  [provider column](#the-provider-link), only when its chain ended with nothing more to
+  do (the third column answered nothing) on an account the provider answered
+  `enabled` — and the provider is `connected`, the person's flag is on and they are not
+  erased, no disable is asked for, the kinds are seeded, the link is the one the
+  person's kind names, and the identity link names a user. The push spends the provider
+  chain's three calls: with them spent, the link is claimed again at the next poll. The
+  lease is renewed before the call; a lease found lapsed stops the push and leaves the
+  link as it was.
+- **The stamp.** The worker reads the linked user's effective avatar's stamp without its
+  bytes (`UserDirectory.AvatarInfo`) — `managed:<stamp>` for HR's photo,
+  `own:<version>@<epoch>` for the user's own — or `none` when there is none, and compares
+  it with the link's `photo_pushed_stamp`. Equal: nothing. Different: the bytes are read
+  (`UserDirectory.Avatar`, the stamp taken again from that read) and `SetPhoto` called
+  with them, or `ClearPhoto` for `none`. An avatar the directory cannot read is logged and
+  read again at the next claim. So a changed own avatar, a late link or a failed push is
+  right by the next claim, and the same picture is never pushed twice. **Vantigo removes
+  only what it wrote**: a link with no stamp yet and no picture in Vantigo records `none`
+  without a call, so a photo the tenant already had stays until Vantigo writes one.
+- **The result.** When the provider answered, the stamp is written to
+  `photo_pushed_stamp` with the link's result, the account is read again (`Account`) so
+  `reported_codes` are the directory's at once, and one `account_external_updated` event
+  is recorded, `{step: "photo", state, code, codes}`, its code `photo_pushed` for a
+  picture written, `photo_cleared` for one removed, `photo_refused` when the re-read
+  account reports `photo_not_written`. A re-read that fails is logged: the push stands,
+  the event says `photo_pushed` or `photo_cleared`, and the next claim reads the codes.
+- **A refusal.** A picture, or a removal, the directory refuses — for Entra a 400, 403
+  or 413 from Graph, a 404 on the photo's write (a user without a mailbox), or a picture
+  the provider cannot decode or bring under its limit
+  ([the Entra photo](/en/reference/entra/#setphoto-and-clearphoto)) — is answered as
+  nothing wrong, and the account reports `photo_not_written`
+  (`contracts.ReportedPhotoNotWritten`) until a push is taken or a clear runs: the
+  link's `reported_codes` carry it and it raises `photoNotWritten` for `staff:manage`
+  ([attention items](#attention-items)). The stamp is written all the same, so the same
+  picture is not pushed again; another photo from HR, or another avatar from the user,
+  changes the stamp and the next claim tries that one. The call's own refusals —
+  `ErrExternalUnconfirmed` and the rest — are recorded as the
+  [provider link](#the-provider-link) records them.
+- **A failure.** Anything else is the link's failure, as any provider call's: `last_error`
+  `accounts_unavailable`, `attempts` counted, the first of a run recorded as
+  `account_external_failed` with the step `photo`, tried again at the next claim; three
+  failed attempts raise `accountFailing`. When the push is the claim's only call, the
+  failure the link carries from the last claim counts on rather than starting over.
+- **No permission anywhere.** Nothing for HR to grant or press, and nothing new in the
+  tenant: Entra's photo is written under the already consented `User.ReadWrite.All`.
 
 ## Groups
 
@@ -2436,9 +2579,13 @@ caller about themselves.
   person's id — the only caller who may replace them — and reads their
   [reviews](#the-review) through `/people/{id}/competence-reviews`, recording none.
   `GET /me` carries `lastCompetenceReview`, as the person reads the Reviews group.
-- **The photo and the glance** have no `/me` path either: My page sets and removes the
-  person's [photo](#the-photo) through `/people/{id}/photo` with the linked person's id,
-  as Self, and its Profile tab opens on [at a glance](#at-a-glance), read through
+- **The photo and the glance** have no `/me` path either: My page shows the person's
+  [effective picture](#the-photo) through `/people/{id}/photo` with the linked person's
+  id; its menu sets and removes the person's own Vantigo avatar through identity's
+  `/api/v1/identity/account/avatar` — calling identity directly, the same origin (photo
+  sync reading 11) — and says **Set by HR**, disabled, while HR's photo stands, which
+  identity would refuse 409 `avatar_managed`. The person never sets Staff's photo. Its
+  Profile tab opens on [at a glance](#at-a-glance), read through
   `/people/{id}/glance` with the same id — Self reads every section but the contract.
 - **`GET /me/export`** is the person's own copy of their data — see
   [the personal-data exports](#the-personal-data-exports).
@@ -4783,7 +4930,7 @@ holds every payload field to its column's class, and a third holds this table to
 | `employment_terms` | C | `id`, `employment_id`, `valid_from`, `employment_type`, `temporary_ground`, `expected_end_date`, `appointment_form`, `hired_out_to`, `fte_percent`, `working_hours_scheme`, `full_time_hours_per_week`, `occupation_code`, `title`, `employee_type`, `department_id`, `location_id`, `manager_person_id`, `cost_centre`, `division`, `working_time_text`, `break_minutes`, `special_hours_text`, `overtime_rule_text`, `probation_end_date`, `probation_extension_agreed`, `probation_extended_to`, `probation_extension_reason`, `notice_employee`, `notice_employer`, `notice_unit`, `tariff_reference`, `holiday_terms_text`, `competence_development_text`, `social_security_text`, `revision`, `created_at`, `updated_at` |
 | `employment_terms` | A | `remuneration_type`, `pay_components`, `pay_method`, `payday_text`, `seniority_date`, `pay_grade` |
 | `employment_terms` | D | `note` |
-| `identity_links` | C | every column but a provider link's two addresses: `id`, `person_id`, `provider`, `external_id`, `state`, `managed`, `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`, `lease_id`, `lease_until`, `last_synced_at`, `last_spec_hash`, `synced_employee_number`, `disable_requested_at`, `announced_at`, `pass_issued_at`, `reported_codes`, `created_at`, `updated_at` |
+| `identity_links` | C | every column but a provider link's two addresses: `id`, `person_id`, `provider`, `external_id`, `state`, `managed`, `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`, `lease_id`, `lease_until`, `last_synced_at`, `last_spec_hash`, `synced_employee_number`, `disable_requested_at`, `announced_at`, `pass_issued_at`, `reported_codes`, `photo_pushed_stamp`, `created_at`, `updated_at` |
 | `identity_links` | D | `external_upn`, `external_email` — the principal name and the address a provider answered, addresses as the work email is |
 | `documents` | the category's | every column: `id`, `person_id`, `category_id`, `employment_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `valid_to`, `signed_at`, `uploaded_by_user_id`, `case_id`, `revision`, `created_at`, `updated_at` — a document is erased whole, by its [category's](#categories-and-classes) class |
 | `absences` | C | `id`, `person_id`, `type_id`, `first_day`, `last_day`, `hours`, `percent`, `status`, `case_id`, `requested_by_user_id`, `decided_by_user_id`, `decided_at`, `self_approved`, `revision`, `created_at`, `updated_at` — the type is C on the column; the health erase writes the reserved `absent` in place of a sick or child-sick one |
@@ -4891,7 +5038,9 @@ since the cycle chose the person is seen there:
   of kin and their [competence rows](#the-exports-and-the-erase) — the evidence among
   their documents — deletes their documents of class D, queues their
   [photo](#the-photo)'s object in the ledger (its three columns are class D and nulled
-  with the rest), replaces every value of class D in their
+  with the rest) — and, once the cycle's connection is returned, clears the managed
+  avatar of the user their self-service link names (`SetManagedAvatar` with nil, as
+  `system:staff-retention`, a failure logged) — replaces every value of class D in their
   history's payloads, and sets `erased_at` — the person is then
   [read-only](#the-erased-state).
 - **health** deletes their documents in restricted categories filed under no case and
@@ -5324,6 +5473,7 @@ person, as above, unless said:
 | `licenceUnavailable` | the reported `licence_unavailable:<SKU>` | A licence could not be assigned, none being left — one per person whatever the licences; no title names the licence. |
 | `passUnrevealed` | `pass_issued_at` | A pass issued a day ago or more that nobody has shown; `occurredAt` when it was issued. |
 | `managerNotInEntra` | Staff's code `manager_not_in_entra`, or the reported `manager_not_found` | The person's manager has no account in the directory, or the directory could not find it, so the account carries no manager. |
+| `photoNotWritten` | the reported `photo_not_written` | The directory refused the photo: the provider could not write the [picture](#the-directorys-photo) it was given, and the account keeps whatever photo it had. |
 | `entraNotConnected` | the status `unconfigured` | Installation item: the provider has no connection yet — or, the reason `provider_missing`, no enabled module offers the provider a person's kind names. |
 | `entraFailing` | the status `failing`, with any reason but `secret_expired` | Installation item: the provider's last check failed — a credential refused (`credential_invalid`), consent withdrawn — or Staff could not ask it (`unreachable`). |
 | `secretExpiring` | the reason `secret_expiring` on a status neither `unconfigured` nor `failing` | Installation item: the newest valid client secret ends within thirty days. |
@@ -5666,8 +5816,8 @@ All under `/api/v1/staff`.
 | `GET /people/{id}`, `/next-of-kin`, `/roles`, `/events` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
 | `POST /people`, `PUT /people/{id}`, `DELETE /people/{id}`, `PUT /people/{id}/next-of-kin`, `PUT /people/{id}/roles` | `staff:manage` |
 | `GET /people/{id}/user` | `staff:access`, then the [audience](#field-groups-and-audiences) (otherwise 404) |
-| `GET /people/{id}/photo` | `staff:access`, then the Work group — everyone who sees the person (otherwise, or without a photo, 404) |
-| `PUT /people/{id}/photo`, `DELETE /people/{id}/photo` | `staff:access`, then the person, `staff:manage` or `staff:personal-data` (otherwise 403; a person the caller may not see 404); the `PUT` rate-limited (`StaffDocumentUpload`) |
+| `GET /people/{id}/photo` | `staff:access`, then the Work group — everyone who sees the person (otherwise, or with neither HR's photo nor the linked user's avatar, 404) |
+| `PUT /people/{id}/photo`, `DELETE /people/{id}/photo` | `staff:access`, then `staff:manage` or `staff:personal-data` — never the person themselves, whose own picture is their Vantigo avatar (otherwise 403; a person the caller may not see 404); the `PUT` rate-limited (`StaffDocumentUpload`) |
 | `GET /people/{id}/glance` | `staff:access`, then the [audience](#field-groups-and-audiences) — each section by its group, the contract `staff:manage`'s (otherwise 404) |
 | `GET /people/{id}/account` | `staff:access`, then the person, `staff:manage` or `staff:personal-data` (otherwise 404) |
 | `PUT /people/{id}/account`, `POST /people/{id}/account/run`, `POST /people/{id}/account/disable`, `POST /people/{id}/account/pass`, `POST /accounts/run` | `staff:manage` |

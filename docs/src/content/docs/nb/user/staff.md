@@ -93,17 +93,23 @@ referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
 
 Øverst, ved siden av navnet, står personens **bilde** — eller initialene når det ikke
 finnes noe — med tittelen og avdelingen under navnet. Alle som kan åpne siden, ser
-bildet, kolleger også. Personen selv, HR (`staff:manage`) og `staff:personal-data` kan
-endre det:
+bildet, kolleger også. Bildet HR legger inn her, blir personens bilde overalt: i
+Vantigo — der personen ikke kan velge sitt eget så lenge det står — og, når personen har
+en konto i Microsoft Entra ID, i Entra ID også. Når HR ikke har lagt inn noe, viser siden
+personens eget bilde i Vantigo, det de valgte selv. HR (`staff:manage`) og
+`staff:personal-data` kan endre det:
 
 1. Trykk på bildet (knappen **Bilde av** og personens navn).
 2. Velg **Bytt bilde** og velg en JPEG eller PNG — på mobilen tar du et med kameraet
    eller velger et fra biblioteket. Det nye bildet vises med en gang.
-3. Eller velg **Fjern bilde** og bekreft: initialene vises i stedet.
+3. Eller velg **Fjern bilde** og bekreft: personens eget bilde kommer tilbake, eller
+   initialene når de ikke har noe. **Fjern bilde** tilbys ikke mens bildet som vises,
+   er personens eget: det er deres å endre.
 
 Et bilde er på høyst 5 MiB og 4096 piksler på hver side; en annen fil avvises med
 grunnen. Hvor et mobilbilde ble tatt, og med hvilket kamera, fjernes før det
-lagres. En leder, `staff:approve` og en kollega ser bildet og har ingen meny.
+lagres. Personen selv, en leder, `staff:approve` og en kollega ser bildet og har ingen
+meny. Bildet kommer til Entra ID ved kontoens neste kjøring, innen en time som standard.
 Personens historikk sier at et bilde ble lagt inn eller fjernet, aldri selve bildet.
 
 ### Profil
@@ -665,7 +671,8 @@ katalogen ennå: Ansatte har ikke opprettet eller funnet en for denne personen.*
   hver, hva Entra meldte og ikke fikk gjort: ansettelsesdatoen ikke skrevet, ingen
   lisens igjen (lisensen navngitt i parentes), et pass ikke tillatt eller avvist, et
   avslutningssteg ikke fullført (steget navngitt — Ansatte prøver igjen neste dag), lederens konto ikke
-  funnet, personens leder ikke i Entra. *Mislykkede forsøk på rad: 3. Katalogen kunne
+  funnet, personens leder ikke i Entra, bildet ikke skrevet (*Katalogen avviste
+  bildet.*). *Mislykkede forsøk på rad: 3. Katalogen kunne
   ikke nås; arbeideren prøver igjen.* sier at Entra ikke kunne nås.
 
 Under den er **Katalogprofil** en skrivebeskyttet tabell, **Felt**, **Skrives** og
@@ -1081,7 +1088,8 @@ fyller hele skjermen, og søknadsarket åpnes nedenfra.
 ### Bildet ditt
 
 Bildet ditt, eller initialene dine når det ikke finnes noe, står ved siden av sidens
-tittel.
+tittel. Det er bildet ditt i Vantigo — det samme som under **Innstillinger › Profil** og
+i avatar-menyen — så bytter du det her, byttes det der også.
 
 1. Trykk på det (knappen **Bilde av** og navnet ditt).
 2. Velg **Bytt bilde** og velg en JPEG eller PNG: på mobilen tar du et med kameraet
@@ -1089,11 +1097,15 @@ tittel.
 3. For å ta det bort velger du **Fjern bilde** og bekrefter; initialene dine vises i
    stedet.
 
+Når HR har lagt inn et bilde av deg, er det bildet ditt overalt i Vantigo, og i
+Microsoft Entra ID når du har en konto der. Menyen viser da **Satt av HR**, nedtonet, med
+*Be HR om å bytte det*: du kan ikke bytte eller fjerne det selv. Ditt eget bilde
+legges til side og kommer tilbake når HR fjerner sitt.
+
 Et bilde er på høyst 5 MiB og 4096 piksler på hver side; en annen fil avvises med
-grunnen. Hvor et mobilbilde ble tatt, og med hvilket kamera, fjernes før det
-lagres. Alle som kan åpne siden din i Ansatte, ser det, kolleger også, og HR kan også
-bytte eller fjerne det. Historikken din sier at et bilde ble lagt inn eller fjernet,
-aldri selve bildet.
+grunnen. Alle som kan åpne siden din i Ansatte, ser bildet ditt, kolleger også. Bildet
+ditt kommer til Entra ID innen en time. Historikken din sier når HR la inn eller fjernet
+et bilde, aldri selve bildet.
 
 ### Fraværet ditt
 
@@ -1492,6 +1504,7 @@ bare for `staff:personal-data`:
 | Kompetansesamtalen med … er forfalt | En som er i arbeid, har ingen kompetansesamtale registrert innen intervallet som er satt under [Kompetansesamtaler](#kompetansesamtaler) — regnet fra siste gjennomgang, eller fra starten på det nåværende arbeidsforholdet når det er senere. En leder ser sine egne folks; HR alles. Gå gjennom fanen sammen og trykk **Gjennomgått i dag**. | Personens kompetansefane |
 | … oppfyller ikke kompetanseprofilen sin (2 punkter) | En kompetanseprofil som gjelder for en som er aktiv i dag, krever kompetanse hen ikke oppfyller — den mangler, er under nivået, er et sertifikat som er egenerklært, men ikke bekreftet, eller er utløpt — talt opp. Ett per person, for lederen og HR, aldri for personen selv eller for bare `staff:approve`. Det forsvinner når hvert punkt er oppfylt eller utløper snart. | Personens kompetansefane |
 | Gruppen … er ikke synkronisert med katalogen | En gruppe kunne ikke holdes i katalogen — en innstilling katalogen avviste, en gruppe der med nøkkelen som Vantigo ikke får endre, eller en katalog som ikke kunne nås tre ganger på rad; gruppesiden forteller hvorfor. Én per gruppe og katalog, for HR. | Gruppen |
+| Microsoft Entra ID avviste bildet av … | Entra ID ville ikke ta imot personens bilde — HRs bilde, eller personens eget når HR ikke har lagt inn noe. Ingenting trengs for innloggingen; legg inn et annet bilde for å prøve igjen. For HR. | Personens kontofane |
 
 Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
 bekrefter terskelen — én gang, for godt — under [Terskler](#terskler) i

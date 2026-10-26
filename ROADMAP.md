@@ -1713,6 +1713,31 @@ while building it:
 
 One migration, `00069_staff_person_photo.sql`.
 
+**The photo follows the account, built** on `claude/staff-photo-sync`
+([the spec](docs/superpowers/specs/2026-10-25-staff-photo-sync-design.md);
+[the plan](docs/superpowers/plans/2026-10-25-staff-photo-sync.md);
+[the reference](docs/src/content/docs/en/reference/staff.md#the-photo)): one picture of a
+person everywhere. HR's photo in Staff becomes the linked user's managed avatar in
+identity — a second row in front of the user's own, which they cannot change while it
+stands and which comes back when HR removes the photo — and the accounts worker pushes the
+effective picture, HR's or else the user's own, to Microsoft Entra ID, converted there to
+a JPEG under 4 MB; nothing flows back. The person's self-write of Staff's photo is gone:
+My page changes their Vantigo avatar through identity, or says **Set by HR**. Decisions
+taken while building it:
+
+- **Reconciled by stamp, not by event**: identity answers which picture stands
+  (`managed:<stamp>` or `own:<version>@<epoch>`), Staff writes identity at once and
+  repairs it on every claim, and the push compares the stamp with the one last written,
+  so a failed write, a late link or a changed avatar is right by the next poll.
+- **A refusal is a fact, not a failure**: a picture the tenant will not take is reported
+  `photo_not_written` (the item `photoNotWritten`) and not tried again until the picture
+  changes; Vantigo never removes a tenant photo it did not write.
+- **An Owner's or a SystemAdmin's picture is never managed**, and an erase clears the
+  managed avatar with the account.
+- **No new permission and no new Graph consent**: `User.ReadWrite.All` covers the photo.
+
+Two migrations, `00070_identity_managed_avatars.sql` and `00071_staff_photo_push.sql`.
+
 ### Later
 
 **The Entra module** has [a section of its own](#entra); its phase 1 is done and phase 2 is in

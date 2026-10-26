@@ -106,7 +106,8 @@ kan bruke to om du vil.
    - `Domain.Read.All`
    - `Organization.Read.All`
 2. Velg **Grant admin consent for** organisasjonen deres, og bekreft. Statusen til hver
-   tillatelse blir *Granted*.
+   tillatelse blir *Granted*. `User.ReadWrite.All` dekker også personens bilde, som
+   Vantigo skriver til kontoen: ingen ytterligere tillatelse eller samtykke.
 3. **Tildel rollen User Administrator** til applikasjonen. Åpne **Roles & admins** ›
    **User Administrator** › **Add assignments**, og velg applikasjonen etter navnet
    (tjenestekontohaveren, listet under bedriftsapplikasjoner). Uten rollen avviser Graph
@@ -473,6 +474,7 @@ meldte for dem:
 | *Katalogen avviste det midlertidige tilgangspasset; kontoen er aktivert uten et.* | Leietakeren avviste passet med 403 (`pass_forbidden`) — applikasjonen mangler rollen eller tillatelsen for passet, eller brukeren er en den ikke får røre. | Sjekk rollen User Administrator og `UserAuthMethod-TAP.ReadWrite.All`; lag passet i portalen for denne personen. |
 | *Katalogen har en konto under personens ansattnummer som Vantigo ikke opprettet …* | `external_unconfirmed`: modulen fant brukeren og skriver ingenting til den. | [Bekreft den](#kontoer-vantigo-ikke-opprettet) når du har sjekket at den er personens; er den ikke det, rett ansattnummeret der det er feil. |
 | Lederens konto ikke funnet | Lederen har ingen konto i leietakeren. | Gi lederen kontotypen Microsoft Entra ID, eller godta det. |
+| Bildet ikke skrevet (*Katalogen avviste bildet.*) | Graph avviste personens bilde, eller fjerningen av det (`photo_not_written`): en 400, 403 eller 413 — eller en 404, for en bruker uten postboks — eller bildet kunne ikke gjøres om til en JPEG under 4 MB. Vantigo prøver ikke det samme bildet igjen. | Ingenting trengs for innloggingen. HR kan legge inn et annet bilde, eller personen velge et annet, som Vantigo prøver ved neste kjøring; se modulens siste hendelser (*Bildet til en konto ble satt*) for kontoen. |
 | *Et avslutningssteg i katalogen ble ikke fullført: …* | Et steg for en som slutter feilet etter deaktiveringen, og stegene etter det ble ikke prøvd; kontoen er deaktivert. | Vanligvis ingenting: Ansatte prøver igjen neste dag. Feiler det fortsatt, se modulens siste hendelser og loggen, og gjør steget i portalen. |
 
 På en gruppes side i Ansatte sier kortet **Microsoft Entra ID** hvordan gruppen står i

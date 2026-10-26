@@ -711,5 +711,22 @@ removed by the ledger. To leave no photo behind, have every photo removed — or
 the `people/*/photo/` keys under the `staff` scope by hand — and let the ledger run
 before rolling back.
 
+**The release where the photo follows the account.** It brings
+`00070_identity_managed_avatars.sql`, an empty table in identity for the **managed
+avatars** — HR's photo of a person, standing as the linked user's picture in front of the
+one they chose — and `00071_staff_photo_push.sql`, one empty column on Staff's provider
+links, the stamp of the picture last written to Microsoft Entra ID. No setting and no
+permission is new, and the Entra application needs no further consent:
+`User.ReadWrite.All` covers the photo. After the upgrade HR alone sets a person's photo
+in Staff; a person changes their own picture through their Vantigo avatar, on My page or
+under **Settings › Profile**, which is disabled while HR's photo stands. Staff's accounts
+worker then makes each existing HR photo the linked user's picture at the person's next
+run, and writes each enabled Entra account's picture to the tenant once; for a person
+with no picture in Vantigo it writes nothing, so a photo already in the tenant stays
+until Vantigo writes one. Rolling back 00071 drops the stamps, so every picture is
+written to the tenant once more after the next upgrade; rolling back 00070 drops the
+managed avatars, so every user's own avatar is their picture again until Staff sets
+HR's photos anew. The photos in Staff's object store are untouched either way.
+
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).
