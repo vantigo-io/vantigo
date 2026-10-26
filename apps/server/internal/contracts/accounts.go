@@ -316,6 +316,9 @@ var (
 	ErrLastOwner = errors.New("contracts: the account is the last active Owner")
 	// ErrAccountEnabled: Erase was called for a user who is not disabled.
 	ErrAccountEnabled = errors.New("contracts: the account is not disabled")
+	// ErrAvatarInvalid: SetManagedAvatar's image is not one identity admits —
+	// not a JPEG or a PNG, over 5 MiB, or over 4096 px a side.
+	ErrAvatarInvalid = errors.New("contracts: the avatar is not an image identity admits")
 )
 
 // AccountProvisioning is the one sanctioned way a module writes identity's
@@ -328,7 +331,7 @@ var (
 // provides one, which a caller answers as "accounts are unavailable".
 //
 // It is a write direction, staff → identity, unlike every other contract,
-// which reads. Five rules hold:
+// which reads. Six rules hold:
 //
 //   - The lock rule. A caller never calls it inside one of its own
 //     transactions or read-only snapshots, and holds no connection or lease
@@ -352,6 +355,10 @@ var (
 //   - The employee number decides whose account it is. Prepare finds a
 //     managed user by number; a caller acts on a user only when the number
 //     identity reports is the same as its record's, by SameEmployeeNumber.
+//   - The managed avatar is Staff's photo as the user's picture
+//     (SetManagedAvatar): it stands in front of the user's own avatar, which
+//     is kept aside and shows again once nil clears it; an Owner's or a
+//     SystemAdmin's picture is never managed — ErrAccountPrivileged.
 //
 // Every write is idempotent: called again with the same arguments it changes
 // nothing more and answers the same AccountRef — but for Created, which only
@@ -419,6 +426,30 @@ type AccountProvisioning interface {
 	// ErrUserGone, ErrAccountNotManaged, ErrAccountPrivileged, ErrLastOwner,
 	// ErrAccountEnabled.
 	Erase(ctx context.Context, actor Actor, userID uuid.UUID) error
+	// SetManagedAvatar sets the user's managed avatar — Staff's photo as
+	// their picture, shown in front of their own avatar, which they cannot
+	// change while it stands — or, with a nil avatar, clears it, and the
+	// user's own avatar shows again. It applies to a linked user whether or
+	// not Staff manages the account. Identity judges the image as it judges
+	// an upload. ErrInvalidActor, ErrUserGone, ErrAccountPrivileged (an
+	// Owner's or a SystemAdmin's picture is theirs), ErrAvatarInvalid.
+	SetManagedAvatar(ctx context.Context, actor Actor, userID uuid.UUID, avatar *ManagedAvatar) error
+}
+
+// ManagedAvatar is the picture SetManagedAvatar sets for a user: the bytes as
+// the caller stored them (metadata already stripped), where they come from,
+// and the caller's stamp for them, which identity keeps and answers in
+// AvatarEntry.Stamp so the caller can tell whether its write is the one
+// standing.
+type ManagedAvatar struct {
+	// ContentType is "image/jpeg" or "image/png".
+	ContentType string
+	Data        []byte
+	// Source names who manages the picture: "staff".
+	Source string
+	// Stamp is the caller's reconciliation key for the picture — Staff's
+	// photo_updated_at in RFC 3339.
+	Stamp string
 }
 
 // NormalizeEmployeeNumber is the one key two employee numbers are compared

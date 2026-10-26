@@ -112,6 +112,9 @@ func TestAccountAvatar_UploadPNGAndJPEGServeAndDelete(t *testing.T) {
 	if acc := getAccount(t, c); acc.AvatarUrl == nil || *acc.AvatarUrl != avatarPath {
 		t.Errorf("account avatarUrl = %v, want %q", acc.AvatarUrl, avatarPath)
 	}
+	if by := avatarManagedBy(t, c); by != nil {
+		t.Errorf("account avatarManagedBy = %q for the user's own avatar, want null", *by)
+	}
 
 	get := c.do(http.MethodGet, avatarPath, nil)
 	if get.status != http.StatusOK || !bytes.Equal(get.body, png) {

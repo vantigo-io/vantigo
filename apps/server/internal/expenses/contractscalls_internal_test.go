@@ -88,6 +88,14 @@ func (silentUsers) PermissionHolders(context.Context, string) ([]contracts.Holde
 
 func (silentUsers) Notify(context.Context, uuid.UUID, contracts.Notice) error { return nil }
 
+func (silentUsers) Avatar(context.Context, uuid.UUID) (*contracts.AvatarEntry, error) {
+	return nil, nil
+}
+
+func (silentUsers) AvatarInfo(context.Context, uuid.UUID) (*contracts.AvatarInfo, error) {
+	return nil, nil
+}
+
 // The whole point of routing every cross-module call through contractscalls.go
 // is that the suite can prove none is made while a transaction holds locks.
 // That check is only worth having if it actually fires, so this drives every

@@ -103,6 +103,35 @@ type IdentityProvisioner interface {
 	// did not create to its directory, forgetting it. Idempotent: a group
 	// already gone, or never made, answers nil.
 	DeleteGroup(ctx context.Context, actor Actor, groupID string) error
+
+	// The photo (Staff photo sync).
+	//
+	// SetPhoto writes the account's photo. It converts the picture to what
+	// the directory takes (Entra: JPEG under 4 MB, the longer side at most
+	// 1024 px). When the directory refuses it (400, 403, 413; Entra's 404 on
+	// the photo, the user just read, too) — or the provider cannot decode
+	// it — SetPhoto answers nil and the account
+	// reports ReportedPhotoNotWritten (ExternalAccount.Reported, in Account's
+	// answer and every later one) until a SetPhoto succeeds or a ClearPhoto
+	// is made: a refusal is a fact about the account, not a failure to
+	// retry. Idempotent. ErrExternalUnconfirmed: an adopted account not yet
+	// confirmed; ErrProviderUnavailable.
+	SetPhoto(ctx context.Context, actor Actor, externalID string, photo Photo) error
+	// ClearPhoto removes the account's photo, and the account no longer
+	// reports ReportedPhotoNotWritten. Idempotent: an account with no photo
+	// (404) is done. A clear the directory refuses (400, 403, 413) answers
+	// nil and the account reports ReportedPhotoNotWritten, as SetPhoto's
+	// refusal does. ErrExternalUnconfirmed: an adopted account not yet
+	// confirmed; ErrProviderUnavailable.
+	ClearPhoto(ctx context.Context, actor Actor, externalID string) error
+}
+
+// Photo is a picture SetPhoto writes: the bytes as Vantigo holds them, a JPEG
+// or a PNG, which the provider converts to what its directory takes.
+type Photo struct {
+	// ContentType is "image/jpeg" or "image/png".
+	ContentType string
+	Data        []byte
 }
 
 // The statuses of ProviderInfo.Status.
@@ -189,6 +218,9 @@ const (
 	// ReportedManagerNotFound: the manager the spec names has no account in
 	// the directory.
 	ReportedManagerNotFound = "manager_not_found"
+	// ReportedPhotoNotWritten: the directory refused the photo SetPhoto
+	// converted (400, 403, 413) — or the provider could not decode it.
+	ReportedPhotoNotWritten = "photo_not_written"
 )
 
 // Pass is a Temporary Access Pass as RevealPass answers it, once.

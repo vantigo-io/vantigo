@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -64,6 +65,40 @@ type UserDirectory interface {
 	// stays there: Notify is how a module mails a colleague without ever
 	// being handed it (calendar invitations design D4).
 	Notify(ctx context.Context, userID uuid.UUID, n Notice) error
+	// Avatar reads the user's effective avatar: the managed one (Staff's
+	// photo, AccountProvisioning.SetManagedAvatar) when it exists, else the
+	// user's own. It returns (nil, nil) when the user has none, or does not
+	// exist.
+	Avatar(ctx context.Context, userID uuid.UUID) (*AvatarEntry, error)
+	// AvatarInfo reads what Avatar would answer without the bytes: the
+	// effective avatar's type, stamp, source and time, for a caller that
+	// only compares or shows when it changed. It returns (nil, nil) when the
+	// user has none, or does not exist.
+	AvatarInfo(ctx context.Context, userID uuid.UUID) (*AvatarInfo, error)
+}
+
+// AvatarInfo is a user's effective avatar as AvatarInfo answers it: an
+// AvatarEntry without its Data.
+type AvatarInfo struct {
+	ContentType string
+	Stamp       string
+	ManagedBy   string
+	UpdatedAt   time.Time
+}
+
+// AvatarEntry is a user's effective avatar as Avatar answers it.
+type AvatarEntry struct {
+	// ContentType is "image/jpeg" or "image/png".
+	ContentType string
+	Data        []byte
+	// Stamp names the picture standing, so a caller can tell whether it
+	// changed: "managed:<source_stamp>" for a managed avatar (the caller's
+	// ManagedAvatar.Stamp), "own:<version>@<unix seconds of its write>" for
+	// the user's own, so a delete then an upload never repeats a stamp.
+	Stamp string
+	// ManagedBy is "staff" for a managed avatar, "" for the user's own.
+	ManagedBy string
+	UpdatedAt time.Time
 }
 
 // Notice is a plain mail to one user, composed by a module in the languages it

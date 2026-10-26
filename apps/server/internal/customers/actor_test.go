@@ -49,6 +49,14 @@ func (d stubUserDirectory) Notify(context.Context, uuid.UUID, contracts.Notice) 
 	panic("actorFor never calls Notify")
 }
 
+func (d stubUserDirectory) Avatar(context.Context, uuid.UUID) (*contracts.AvatarEntry, error) {
+	panic("actorFor never calls Avatar")
+}
+
+func (d stubUserDirectory) AvatarInfo(context.Context, uuid.UUID) (*contracts.AvatarInfo, error) {
+	panic("actorFor never calls AvatarInfo")
+}
+
 // serverWithUsers builds a *server whose only wired dependency is the given
 // UserDirectory — everything actorFor touches.
 func serverWithUsers(d contracts.UserDirectory) *server {

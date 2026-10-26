@@ -1446,6 +1446,11 @@ export interface components {
             timeZone?: string | null;
         };
         AccountResponse: {
+            /**
+             * @description staff when Staff's photo is the picture and the avatar cannot be changed here; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
+             * @enum {string|null}
+             */
+            avatarManagedBy?: "staff" | null;
             avatarUrl: string | null;
             displayName: string;
             email: string | null;
@@ -3924,6 +3929,15 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
+            /** @description Conflict: avatar_managed — Staff's photo is the picture (a managed avatar), and the avatar cannot be changed here while it stands. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
         };
     };
     postIdentityAccountAvatar: {
@@ -3978,6 +3992,15 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
+            /** @description Conflict: avatar_managed — Staff's photo is the picture (a managed avatar), and the avatar cannot be changed here while it stands. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
         };
     };
     deleteIdentityAccountAvatar: {
@@ -4007,6 +4030,15 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict: avatar_managed — Staff's photo is the picture (a managed avatar), and the avatar cannot be changed here while it stands. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

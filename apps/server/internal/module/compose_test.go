@@ -844,6 +844,14 @@ func (*fakeUserDirectory) PermissionHolders(context.Context, string) ([]contract
 
 func (*fakeUserDirectory) Notify(context.Context, uuid.UUID, contracts.Notice) error { return nil }
 
+func (*fakeUserDirectory) Avatar(context.Context, uuid.UUID) (*contracts.AvatarEntry, error) {
+	return nil, nil
+}
+
+func (*fakeUserDirectory) AvatarInfo(context.Context, uuid.UUID) (*contracts.AvatarInfo, error) {
+	return nil, nil
+}
+
 // fakeAccounts is a minimal contracts.AccountProvisioning: the slot's tests
 // only need a distinct, comparable value to inject and assert on.
 type fakeAccounts struct{ name string }
@@ -881,6 +889,10 @@ func (*fakeAccounts) Expect(context.Context, contracts.Actor, contracts.Expected
 func (*fakeAccounts) Unexpect(context.Context, contracts.Actor, string) error { return nil }
 
 func (*fakeAccounts) Erase(context.Context, contracts.Actor, uuid.UUID) error { return nil }
+
+func (*fakeAccounts) SetManagedAvatar(context.Context, contracts.Actor, uuid.UUID, *contracts.ManagedAvatar) error {
+	return nil
+}
 
 type fakeProductCatalog struct{}
 

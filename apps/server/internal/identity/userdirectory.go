@@ -207,3 +207,31 @@ var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 func escapeLike(query string) string {
 	return likeEscaper.Replace(query)
 }
+
+// Avatar answers the user's effective avatar: the managed one while it
+// stands, else the user's own; nil when they have none or do not exist.
+func (d *userDirectory) Avatar(ctx context.Context, userID uuid.UUID) (*contracts.AvatarEntry, error) {
+	row, err := d.q.GetEffectiveAvatar(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("identity: user directory avatar: %w", err)
+	}
+	return &contracts.AvatarEntry{
+		ContentType: row.ContentType, Data: row.Data, Stamp: row.Stamp, ManagedBy: row.ManagedBy, UpdatedAt: row.UpdatedAt,
+	}, nil
+}
+
+// AvatarInfo answers Avatar's entry without the bytes; nil when the user has
+// none or does not exist.
+func (d *userDirectory) AvatarInfo(ctx context.Context, userID uuid.UUID) (*contracts.AvatarInfo, error) {
+	row, err := d.q.GetEffectiveAvatarInfo(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("identity: user directory avatar info: %w", err)
+	}
+	return &contracts.AvatarInfo{ContentType: row.ContentType, Stamp: row.Stamp, ManagedBy: row.ManagedBy, UpdatedAt: row.UpdatedAt}, nil
+}
