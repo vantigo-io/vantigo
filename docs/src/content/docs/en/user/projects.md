@@ -78,6 +78,7 @@ tab; a manager also finds **Edit** and **Change status** there.
 | **Time** | the hours logged on the project, from the Time app | `time:access`, when Time is enabled |
 | **Expenses** | the expenses recorded on the project, from the Expenses app | `expenses:access`, when Expenses is enabled |
 | **Invoicing** | the project's work not yet invoiced — approved hours, expenses and milestones ready to invoice — and the way to make an invoice draft of it, from the Invoices app ([invoicing work](/en/user/invoices/#invoicing-work)) | `invoices:access` and `invoices:create`, when Invoices is enabled |
+| **Planning** | the project's plan — who is booked on it week by week, what its open requests still ask for, and its requests — from the Planning app ([on the project page](/en/user/planning/#on-the-project-page)) | `planning:access` and `planning:view`, when Planning is enabled |
 
 ## Edit a project
 
@@ -317,3 +318,4 @@ can see appear here* (see [The portfolio](/en/reference/projects/#the-portfolio)
 | **Time** tab | `time:access`, Time enabled |
 | **Expenses** tab | `expenses:access`, Expenses enabled |
 | **Invoicing** tab, and **Invoice the work** on the invoice plan | `invoices:access` and `invoices:create`, Invoices enabled |
+| **Planning** tab | `planning:access` and `planning:view`, Planning enabled |

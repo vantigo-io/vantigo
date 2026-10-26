@@ -351,7 +351,8 @@ fravær** avgjør alles fravær og bekrefter også folks kompetanse og registrer
 kompetansesamtalene deres, aldri innehaverens egne. I Bemanning gir **Bruke Bemanning**
 appen og innehaverens egne bekreftede allokeringer; **Se planen**, merket sensitiv, viser
 planen, hver persons tidslinje og hvert prosjekts kode, navn, kunde, status og datoer,
-tilbud medregnet; og **Planlegge**, også sensitiv, skriver allokeringene, leser
+tilbud medregnet, med behovene og inntaket; og **Planlegge**, også sensitiv, skriver
+allokeringene og behovene, finner kandidatene til et behov og fyller det, leser
 planleggernes notater og holder Bemanningsinnstillinger. En planlegger trenger også **Se
 ansattoversikten** fra Ansatte, siden planen bare viser personene Ansatte viser dem.
 **Administrer

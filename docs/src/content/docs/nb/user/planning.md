@@ -1,6 +1,6 @@
 ---
 title: Bemanning
-description: Hvem som jobber med hva — Planen med personer mot uker, fargene, grupperingene og filtrene, allokeringsskjemaet med varslene og avvisningene, prosjektplanen, en persons tidslinje med merknadene, listen Ubemannet, Min bemanning og e-posten personen får, Bemanningsinnstillinger, kortet på dashbordet og punktene i Trenger oppfølging, og bemanningsfanen på personsiden i Ansatte.
+description: Hvem som jobber med hva — Planen med personer mot uker, fargene, grupperingene og filtrene, allokeringsskjemaet med varslene og avvisningene, Behov og behovsskjemaet, å fylle et behov fra kandidatene, Inntak med de planlagte prosjektene, prosjektplanen med etterspørselen, en persons tidslinje med merknadene, listen Ubemannet, Min bemanning og e-posten personen får, Bemanningsinnstillinger, kortet på dashbordet og punktene i Trenger oppfølging, og bemanningsfanene på personsiden i Ansatte og prosjektsiden i Prosjekter.
 sidebar:
   order: 46
 sources:
@@ -19,9 +19,10 @@ hvert skjermbilde — kapasitetsberegningen, varslene, avvisningene og rettighet
 forespørsel sjekkes mot — står i [referansen for Bemanning-modulen](/en/reference/planning/);
 denne siden handler om hva du gjør i hvert skjermbilde.
 
-Dette er Bemannings første levering: allokeringene, planen, listene og personens egen
-visning. Forespørsler etter folk et prosjekt trenger, oppdrag med kontraktsvilkårene og
-personens ønsker kommer i senere leveringer.
+Bemanning har allokeringene, planen, listene og personens egen visning, og **behov** —
+det et prosjekt trenger før noen er navngitt — med dem som kunne fylt dem, og inntaket av
+planlagte prosjekter. Oppdrag med kontraktsvilkårene, og personens ønsker, kommer i en
+senere levering.
 
 ## Appen og sidemenyen
 
@@ -31,23 +32,26 @@ rettighetene dine gir deg:
 | Område i sidemenyen | Hvem ser det |
 | --- | --- |
 | **Plan** (planen) | `planning:view` |
+| **Behov** | `planning:view` |
+| **Inntak** | `planning:view` |
 | **Ubemannet** | `planning:view` |
 | **Min bemanning** | alle med `planning:access` |
 | **Bemanningsinnstillinger** | `planning:manage` |
 
 Appen åpner på **Plan** for dem som kan se den, og på **Min bemanning** for alle andre.
 Prosjektplanen og en persons tidslinje har ingen egen oppføring i sidemenyen: du åpner
-dem fra planen, fra listen Ubemannet, fra dashbordet eller fra en persons side i
-Ansatte.
+prosjektplanen fra planen, Behov eller Inntak, eller som
+[Bemanning-fanen](#på-prosjektsiden) på prosjektets side i Prosjekter, og en persons
+tidslinje fra planen, listen Ubemannet, dashbordet eller personens side i Ansatte.
 
 Planen bygger på personene Ansatte viser deg, så en planlegger trenger også **Se
 ansattoversikten** (`staff:view`) fra Ansatte. Uten den later ikke planen som om den er
 tom: den sier **Ansatte viser deg ingen** og ber deg få en administrator til å gi deg
 rettigheten.
 
-Søket i toppfeltet kjenner skjermbildene over, og tilbyr **Ny allokering** til en
-planlegger som har `planning:view` og `planning:manage`: det åpner planen med
-allokeringsskjemaet.
+Søket i toppfeltet kjenner skjermbildene over, og tilbyr **Ny allokering** og **Nytt
+behov** til en planlegger som har `planning:view` og `planning:manage`: det første
+åpner planen med allokeringsskjemaet, det andre Behov med behovsskjemaet.
 
 ## Planen
 
@@ -85,7 +89,10 @@ Over rutenettet:
   ukene som vises, med timene summert, fulgt av en rad for hver person som er satt opp
   på det, der timene er dem på det prosjektet.
 - **Avdeling** snevrer planen inn til personene i én avdeling; **Prosjekt** til
-  personene som er satt opp på ett prosjekt.
+  personene som er satt opp på ett prosjekt; **Kompetanse** til personene som har én
+  kompetanse fra katalogen i Ansatte — en ferdighet på hvilket som helst nivå, eller et
+  sertifikat bekreftet og gyldig — på den første dagen som vises, eller i dag når planen
+  begynner i fortiden.
 - **Vis tentative** (på) tegner de tentative timene; slå den av for å se bare den
   bekreftede planen.
 - **Ta med planlagte prosjekter** (på) teller allokeringene på prosjekter med statusen
@@ -185,19 +192,165 @@ notatet. Flytter du en bekreftet allokering til en annen person, får den først
 om at hen ikke lenger er satt opp, og den andre at hen er det. Det sendes aldri e-post om
 en tentativ allokering, og en person uten bruker får aldri e-post.
 
+## Behov
+
+Et **behov** er det et prosjekt trenger før noen er navngitt: en tittel som
+*Backendutvikler*, en periode, timene per uke og kompetansen personen må ha. Det er
+**Åpent** til noen fyller det, **Fylt** mens en allokering fyller det, eller **Trukket
+tilbake**. Et åpent behov er prosjektets etterspørsel: det vises i prosjektplanen som
+raden **Etterspurt** og i [inntaket](#inntak).
+
+**Behov** (`planning:view`) lister dem etter første dag: tittelen med kravene under,
+prosjektet — trykk det for å åpne prosjektets [plan](#prosjektplanen) — perioden, timene
+per uke og statusen, med *Fylt av* og personens navn på et fylt behov. Listen åpner på de
+**åpne** behovene; **Status** bytter til de fylte eller de tilbaketrukne, eller til
+**Alle statuser**, og **Prosjekt** snevrer inn til ett prosjekt. Begge ligger i sidens
+adresse, så en lenke viser den samme listen. En liste er høyst 500 behov, de eldste
+først — siden sier fra når den er kuttet.
+
+En planlegger (`planning:manage`) trykker tittelen på et behov for å åpne det,
+**Kandidater** for å [fylle det](#fyll-et-behov), og **Trekk tilbake** på et åpent
+behov, og registrerer et nytt med **Nytt behov** øverst på siden.
+
+### Behovsskjemaet
+
+Behovsskjemaet åpnes på siden — nedenfra på mobilen — med **Nytt behov** eller **Endre
+behov** øverst. Det er `planning:manage` sitt.
+
+1. **Prosjekt** — skriv en kode eller et navn. Prosjekter som er **Planlagt**,
+   **Aktivt** eller **På vent**, tilbys.
+2. **Tittel** — hva prosjektet trenger, høyst 100 tegn.
+3. **Periode** — første og siste dag, begge medregnet, høyst tre år.
+4. **Timer per uke** — mer enn 0 og høyst 80. Et behov føres alltid i timer per uke: det
+   har ingen person med en stilling en prosent kunne regnes mot.
+5. **Krav** (valgfritt, høyst 10) — trykk **Legg til krav** og velg en kompetanse fra
+   katalogen i Ansatte, med ferdigheter og sertifikater hver for seg. Hver kompetanse
+   kan bare nevnes én gang. På en kompetanse med nivåer ber **Laveste nivå** om minst
+   *kjenner til*, *grunnleggende*, *selvstendig*, *erfaren* eller *ekspert*; står det
+   på **Hvilket som helst nivå**, er det nok å ha den. En person oppfyller et krav når
+   Ansatte har personen med kompetansen på behovets første dag — en ferdighet på eller
+   over nivået, et sertifikat bekreftet og gyldig. Fjern et krav med søppelbøtta.
+6. **Notat** (valgfritt, høyst 500 tegn) — bare for planleggerne.
+
+Trykk **Lagre**. Når ingenting trenger å sies, lukkes skjemaet med *Behovet er lagret*;
+går perioden utenfor prosjektets start- eller sluttdato, lagres det, og skjemaet sier det
+under **Lagret — men se på dette**.
+
+Skjemaet avviser det allokeringsskjemaet avviser for et prosjekt: et prosjekt som er
+fullført eller kansellert, tar ingen nye behov og ingen endringer, og *Noen andre lagret
+dette først; det er lastet inn på nytt* betyr at en annen planlegger endret behovet
+først.
+
+Et fylt eller tilbaketrukket behov åpnes i skjemaet for å leses, ikke endres: *Et fylt
+eller tilbaketrukket behov kan ikke endres.* Endre allokeringen som fyller det i stedet,
+eller registrer et nytt behov.
+
+### Trekk tilbake et behov
+
+**Trekk tilbake** på et åpent behov spør *Trekke tilbake dette behovet?* og lukker det:
+det slutter å telle som etterspørsel, og det åpnes aldri igjen. Et fylt behov kan ikke
+trekkes tilbake; for å angre en fylling sletter du allokeringen som fyller det, og
+behovet er åpent igjen.
+
+## Fyll et behov
+
+**Kandidater**, på et behov i Behov, i Inntak eller i prosjektplanen, åpner personene som
+kunne fylt det, på siden (`planning:manage`). Øverste linje gjentar behovets prosjekt,
+periode og timer per uke.
+
+En kandidat er en person Ansatte viser deg, som er ansatt gjennom hele perioden og har
+alle kravene. Hvert kort viser:
+
+- navnet, med ansattnummeret og avdelingen;
+- **Har tid** når personens ledige timer i perioden dekker det behovet ville satt opp,
+  eller **Delvis ledig** når de ikke gjør det — og under, *28 t ledig av 74 t som
+  trengs*. Ledige timer er personens kapasitet i perioden minus fraværsdagene og de
+  bekreftede allokeringene; tentative teller ikke, som på planen. Det behovet trenger,
+  er timene per uke fordelt på personens arbeidsdager, så en helligdag trenger ingenting;
+- **Passer ønskene**, et tall av 100 for hvor godt allokeringen passer preferansene
+  personen har i Ansatte ([Det jeg ønsker](/nb/user/staff/#det-jeg-ønsker)). Hver
+  preferanse behovet går imot, trekker det ned, mer jo mer den betyr for personen, og
+  *Trukket ned av* oppgir typene — aldri hva personen skrev. Et behov oppgir bare timene
+  per uke, så i dag er det **Flest timer i uken** som kan trekke det ned;
+- **Dekker behovet** når personen har tid, har alle kravene og ingen merknad;
+- *Sertifikatet utløper* med dagen og sertifikatet, når et sertifikat som kreves, går ut
+  før behovets siste dag;
+- *På PROSJEKT i N dager* — prosjektet personen har en bekreftet allokering på i dag, og
+  hvor lenge hen har vært på det.
+
+De som har tid, kommer først, så etter hvor godt det passer ønskene, så etter ledige
+timer, og blant like den som har vært lengst på sitt nåværende prosjekt først, så
+planleggeren kan la noen gå videre.
+
+**Vis delvise treff** viser også dem som mangler et krav, med *Mangler* og kompetansene
+i rødt. Når ingen passer, sier panelet **Ingen passer til dette behovet**.
+
+Slik fyller du behovet:
+
+1. Velg **Fyll som** — **Tentativ** eller **Bekreftet**. Det starter tentativt på et
+   prosjekt med statusen **Planlagt**, bekreftet på alle andre.
+2. Trykk **Fyll** på personens kort.
+
+Å fylle setter personen opp på prosjektet i behovets periode med timene per uke, med
+behovets tittel som rolle, og merker behovet **Fylt**. Allokeringen er som alle andre:
+den vurderes slik allokeringsskjemaet vurderer den, gir varsel — *Fylt — men se på
+dette* — eller avvises under **Kunne ikke fylle behovet** av de samme grunnene, og er den
+bekreftet, får personen e-post. Endre allokeringen som enhver annen, og behovet forblir
+fylt. **Slett** allokeringen, og behovet er åpent igjen.
+
+Et fylt eller tilbaketrukket behov viser fortsatt kandidatene — hvem andre som kunne ha
+fylt det — men tilbyr ingen **Fyll**.
+
+## Inntak
+
+**Inntak** (`planning:view`) er pipelinen: hvert prosjekt med statusen **Planlagt**,
+hvert med kunden og datoene — trykk navnet for å åpne prosjektplanen — og tre tall i
+timer per uke: **Etterspurt** av de åpne behovene, **Tentativt** og **Bekreftet** av
+allokeringene.
+Under dem står de åpne og fylte behovene, hvert med perioden, timene per uke og
+**Dekning**:
+
+- **Dekket** — behovet er fylt, eller minst én person dekker det: har tid, har alle
+  kravene og ingen merknad.
+- **Delvis dekket** — det finnes folk som har alle kravene, men ingen dekker det: de har
+  for lite tid, eller et sertifikat som kreves, går ut i perioden.
+- **Udekket** — ingen som er ansatt gjennom hele perioden, har alle kravene.
+
+**Nøkkelperson** markerer et åpent behov nøyaktig én person dekker: blir den personen
+tatt, kan ingen andre. På et åpent behov oppgir *Kandidater som dekker det* hvor mange.
+En planlegger trykker **Kandidater** for å fylle det herfra.
+
+Et prosjekt **På vent** er ikke i pipelinen, og et tilbaketrukket behov vises ikke. Når
+ingen prosjekter er planlagt, sier siden **Ingen planlagte prosjekter**.
+
 ## Prosjektplanen
 
 Prosjektplanen (`planning:view`) åpnes fra prosjektets navn på planen gruppert etter
-**Prosjekter**. Overskriften viser prosjektet med statusen, kunden og datoene.
+**Prosjekter**, i Behov eller i Inntak. Overskriften viser prosjektet med statusen,
+kunden og datoene.
 
 - **Timer per uke** — prosjektets **Bekreftet**- og **Tentativt**-timer hver uke i tolv
-  uker fra denne uken, med allokeringene som stolper under, med personens navn.
+  uker fra denne uken, og **Etterspurt**: timene de åpne behovene fortsatt ber om. Et
+  behov teller timene per uke i hver uke det dekker, og en uke det dekker delvis etter
+  arbeidsdagene — et behov fra en onsdag teller tre femtedeler av timene den første
+  uken, og en helligdag teller ingenting, akkurat som en allokering i timer per uke
+  ikke booker noe på en.
+  Under tallene står allokeringene som stolper med personens navn, og de åpne behovene
+  som oransje stolper med tittelen.
 - **Allokeringer** — hver allokering på prosjektet i de ukene: personen (med
   planleggernes notat under navnet, for en planlegger), rollen, perioden, belastningen
   og statusen. En planleggers handlingsmeny på hver rad har **Endre**, **Bekreft** (på en
   tentativ) og **Slett**.
+- **Behov** — prosjektets åpne og fylte behov i de ukene: tittelen med kravene (og
+  planleggernes notat, for en planlegger), perioden, timene per uke og statusen, med hvem
+  som fyller et fylt behov. En planlegger trykker **Kandidater** for å
+  [fylle et](#fyll-et-behov), og handlingsmenyen har **Endre** på et åpent behov — **Åpne** på
+  et fylt eller tilbaketrukket, som viser det uten å kunne endre — og **Trekk tilbake** på
+  et åpent.
 
-En planlegger setter noen på prosjektet med **Ny allokering** i overskriften.
+En planlegger setter noen på prosjektet med **Ny allokering**, og registrerer hva det
+trenger med **Nytt behov**, som åpner [behovsskjemaet](#behovsskjemaet) med prosjektet
+og ukene som vises som periode.
 
 ## En persons tidslinje
 
@@ -268,19 +421,19 @@ nytt, og du gjør endringen din igjen.
   listen Ubemannet og dashbordets punkter for ubemannet, overbooket og sertifikater ser.
 - **Slutter uten oppfølging (uker)** — 1 til 26, 4 som standard: en bekreftet allokering
   som slutter så snart, uten noe bekreftet etter, er et punkt på dashbordet.
-- **Varsel for åpne forespørsler (dager)** — 0 til 365, 14 som standard: for
-  forespørslene som kommer i en senere levering. Den gjør ingenting ennå.
+- **Varsel for åpne behov (dager)** — 0 til 365, 14 som standard: et åpent behov som
+  starter så snart, eller alt har startet, er et punkt på dashbordet for planleggerne.
 
 ## Dashbordet
 
 **Hjem**, dashbordet, har et **Bemanning**-kort for alle med `planning:access`; trykk det
 for å åpne Bemanning. Med `planning:view` har det tallene:
 hvor mange personer som har en bekreftet allokering denne uken, den bekreftede
-belastningen deres denne uken med den tentative ved siden av, og hvor mange som er
-ubemannet.
+belastningen deres denne uken med den tentative ved siden av, hvor mange behov som er
+åpne, og hvor mange som er ubemannet.
 
 Punktene fra Bemanning kommer sammen med de andre appenes i **Trenger oppfølging**. De
-tre første er for `planning:view`, det siste for `planning:manage`:
+tre første er for `planning:view`, de to siste for `planning:manage`:
 
 | Punkt | Det betyr | Åpner |
 | --- | --- | --- |
@@ -288,9 +441,11 @@ tre første er for `planning:view`, det siste for `planning:manage`:
 | Overbooket | En persons bekreftede allokeringer er større enn kapasiteten i en uke fra denne uken til slutten av horisonten, med den første slike uken i navnet. | Personens tidslinje |
 | Sertifikat utløper under en allokering | Et sertifikat personen har, går ut under en av de bekreftede allokeringene deres i horisonten — ett punkt per allokering og sertifikat, datert dagen det går ut. | Personens tidslinje |
 | Slutter uten oppfølging | En bekreftet allokering slutter innen ukene innstillingene oppgir, og personen har ingen bekreftet allokering som fortsetter innen sju dager etter slutten. Med personen og prosjektets kode i navnet. | Plan |
+| Åpent behov | Et åpent behov starter innen dagene innstillingene oppgir, eller har alt startet — ett punkt per behov, med prosjektets kode og behovets tittel i navnet, datert første dag. | Behov, filtrert til de åpne |
 
 Et punkt forsvinner når det det teller, gjør det: en allokering satt opp, en
-overbelastning rettet, et sertifikat fornyet i Ansatte.
+overbelastning rettet, et sertifikat fornyet i Ansatte, et behov fylt eller trukket
+tilbake.
 
 ## På personsiden i Ansatte
 
@@ -300,19 +455,28 @@ selv. Den viser personens [tidslinje](#en-persons-tidslinje): med `planning:view
 og på din egen side med bare `planning:access` de bekreftede allokeringene dine. En
 planlegger endrer en allokering derfra som fra tidslinjen.
 
+## På prosjektsiden
+
+Når Bemanning-modulen er på, har et prosjekts side i Prosjekter en **Bemanning**-fane
+etter **Fakturagrunnlag**, for dem som har `planning:access` og `planning:view`. Den
+viser prosjektets [plan](#prosjektplanen) — timene per uke med etterspørselen,
+allokeringene og behovene — under prosjektsidens egen overskrift, og en planlegger
+arbeider derfra som fra prosjektplanen: **Ny allokering**, **Nytt behov**,
+**Kandidater**, **Trekk tilbake**. Har du bare `planning:manage`, vises ikke fanen.
+
 ## Hvem ser hva
 
 | Hva | `planning:access` | `planning:view` | `planning:manage` |
 | --- | --- | --- | --- |
 | Appen, **Min bemanning**, dine egne bekreftede allokeringer og e-posten om dem | ✓ | ✓ | ✓ |
-| **Plan**, hvert prosjekts plan, hver persons tidslinje med tentative allokeringer, **Ubemannet**, tallene og punktene på dashbordet | – | ✓ | ✓ |
-| Allokeringsskjemaet, planleggernes notater, **Bemanningsinnstillinger**, punktet *Slutter uten oppfølging* | – | – | ✓ |
+| **Plan**, hvert prosjekts plan og **Bemanning**-fanen på prosjektsiden, hver persons tidslinje med tentative allokeringer, **Behov**, **Inntak**, **Ubemannet**, tallene og punktene på dashbordet | – | ✓ | ✓ |
+| Allokeringsskjemaet, behovsskjemaet, **Kandidater** og **Fyll**, **Trekk tilbake**, planleggernes notater, **Bemanningsinnstillinger**, punktene *Slutter uten oppfølging* og *Åpent behov* | – | – | ✓ |
 
 **Se planen** (`planning:view`) og **Planlegge** (`planning:manage`) er sensitive: planen
 viser hvert prosjekts kode, navn, kunde, status og datoer — tilbud medregnet, som
 Prosjekter ellers bare viser til dem som kan se alle prosjekter. Har du
-`planning:manage` uten `planning:view`, får du skjemaet, men ikke planen, så en
-planleggerrolle har begge. Hele tabellen står under
+`planning:manage` uten `planning:view`, får du skjemaene, men ikke planen, Behov eller
+Inntak, så en planleggerrolle har begge. Hele tabellen står under
 [rettighetene](/en/reference/planning/#permissions) i referansen.
 
 En person Ansatte ikke lenger viser deg — slettet, eller en du ikke kan se — vises som

@@ -23,8 +23,8 @@ this week** agenda when you use Calendar ([the dashboard](/en/user/calendar/#the
 and where every app you use shows its own card with the numbers that need your attention — Staff's, the people employed today
 with the full-time equivalents, who starts and ends soon and who is away today, for
 `staff:view` or `staff:manage` ([the dashboard](/en/user/staff/#the-dashboard)); Planning's, the people
-with a confirmed booking this week, their confirmed load with the tentative beside it and
-the people unbooked, for `planning:view`
+with a confirmed booking this week, their confirmed load with the tentative beside it,
+the open requests and the people unbooked, for `planning:view`
 ([the dashboard](/en/user/planning/#the-dashboard)). Its **Needs attention**
 list gathers the apps' items that wait for someone — Invoices' among them: overdue
 invoices, money owed back on an invoice, and, with `invoices:payments`, bank lines in the
@@ -53,7 +53,8 @@ a sign-in mode the worker disagrees with), which open Staff's settings, and each
 not in sync with its directory, which opens the group's page; and Planning's: for
 `planning:view`, people unbooked, which opens the Unbooked list, and people overbooked and
 a certificate expiring during a booking, which open the person's timeline, and, for
-`planning:manage`, a booking ending without follow-on, which opens the plan
+`planning:manage`, a booking ending without follow-on, which opens the plan, and an open
+request starting soon or already started, which opens Requests
 ([the dashboard](/en/user/planning/#the-dashboard)).
 
 Inside an app, the sidebar lists its areas. Many of them are only shown to people who
@@ -69,7 +70,7 @@ shorter than yours:
 | [Calendar](/en/user/calendar/) | Calendar (your own, and a colleague's with the picker), My calendar (your calendar on your phone, and calendars from elsewhere) |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
 | [Staff](/en/user/staff/) | My page (its **Absence** and **Competence** tabs and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Competence (the matrix and, for HR, the interests), Groups, Staff settings |
-| [Planning](/en/user/planning/) | Plan (the board), a project's plan and a person's timeline, Unbooked, My planning, Planning settings |
+| [Planning](/en/user/planning/) | Plan (the board), a project's plan and a person's timeline, Requests, Intake, Unbooked, My planning, Planning settings |
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |

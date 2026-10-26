@@ -340,10 +340,11 @@ catalogue — and **Decide absence** decides anyone's absence and also verifies 
 competences and records their competence reviews, never the holder's own. In Planning,
 **Use Planning** gives the app and the holder's own confirmed bookings; **See the plan**,
 marked sensitive, shows the board, every person's timeline and every project's code,
-name, customer, status and dates, bids included; and **Plan**, also sensitive, writes
-the allocations, reads the planners' notes and keeps the Planning settings. A planner
-also needs **View the staff directory** from Staff, since the plan shows only the people
-Staff answers them. **Manage identity**
+name, customer, status and dates, bids included, with the requests and the intake; and
+**Plan**, also sensitive, writes the allocations and the requests, finds a request's
+candidates and fills it, reads the planners' notes and keeps the Planning settings. A
+planner also needs **View the staff directory** from Staff, since the plan shows only
+the people Staff answers them. **Manage identity**
 (`identity:manage`) is the one permission of the identity module itself.
 
 ### Assignments

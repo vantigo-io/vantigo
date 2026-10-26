@@ -939,3 +939,78 @@ fourteen readings stand, with 6 and 8 amended here.
 39. **My planning is a list in A**, without the strip §7 names.
 40. **`GET /stats/attention` answers a bare array**, as every other module's does, not
     `{items}`; the host's shared fetch stays one shape.
+
+## Amendments at revision 4 (decided while building delivery B, 2026-10-26)
+
+41. The plan's readings 1–9 (`docs/superpowers/plans/2026-10-26-planning-requests.md`)
+    stand as amendments.
+42. **Staff's contradiction rule, per kind** (S17.6, reading 6): `weekdays` — a weekday
+    of the booking not among the preferred; `time_of_day` — a part not among the
+    preferred; `location` — the booking's location not among the preferred; `travel` —
+    the booking's extent beyond the preferred (none < regional < national <
+    international); `remote` — the booking's share other than the preferred;
+    `max_consecutive_days` and `max_hours_per_week` — the booking's figure above the
+    preferred. A facet left nil or empty contradicts nothing, nor does a stored value
+    that does not decode; the score is floored at 0 and `Lowered` is in the catalogue's
+    order. B's booking carries the period and the hours a week alone, so only
+    `max_hours_per_week` can lower a candidate's score.
+43. **Candidates are judged over the period cut to the bound** (amendment 16): the people
+    of the clipped window, kept when employed on every day of it; `requiredHours`,
+    `freeHours` and the fit's booking over the same days. A period with no day inside
+    the bound is the 400 `window_out_of_bounds`, as a write answers it.
+44. **A requirement is judged on the later of the request's first day and today**
+    (S16 said the first day): Staff answers holding on today or later only, as the
+    board's filter reads it (amendment 33).
+45. **`certificate_expires` on a candidate fires when every holding that meets the
+    requirement is a certificate valid to a day before the request's last**; one that
+    lasts the period raises nothing. The date is the latest `validTo` among them.
+46. **The fill judges no requirement**: the candidates are advice, and a person missing
+    one may be booked under S4–S7.
+47. **An out-of-bound request in the intake is judged with no candidates** — `uncovered`
+    unless filled — rather than refusing the whole intake, which has no 400.
+48. **A percent row in the intake is read on its first day inside the bound** (reading
+    4): the bound's first day for a row that started before it; 0 when Staff answers no
+    capacity there or no day of the row is inside the bound.
+49. **Demand counts business days** (S11, reading 5): Monday to Friday less the public
+    holidays of the platform calendar, exactly as an hours row books nothing on one, so
+    a week with a holiday shows 4/5 of a request's hours. A candidate's
+    `requiredHours`, being the person's, counts their days with capacity.
+50. **`withdraw` is allowed on a closed project**: it only removes demand. A create, a
+    `PUT` and a fill there are `project_closed`; a `PUT` judges the old project and the
+    new, as amendment 19 does for a row.
+51. **`fill` and `withdraw` retry as `DELETE` does** (amendments 21, 35): no `If-Match`,
+    the request re-read `FOR UPDATE` under the lock, a moved revision starting the
+    operation again, three times at most, then `revision_conflict`.
+52. **Every status change moves the request's revision on** — fill, reopen, withdraw —
+    so a `PUT` read before it is `revision_conflict`; a `PUT` judges the revision before
+    the status.
+53. **The request's note is recorded in an event by its name alone** (amendment 18), as
+    an allocation's is.
+54. **The intake lists filled requests too** (S18 said open): a filled request reads
+    `covered`; `requestedHoursPerWeek` sums the open ones alone; a withdrawn request is
+    not listed.
+55. **`key_person` flags an open request only**: a filled request has its person.
+56. **No demand on the board in B** (S16 named the board): the plan's `demand` row and
+    the intake carry it; the board's cells stay the people's capacity.
+57. **The Requests page opens on the open requests**, with *All statuses* in the status
+    filter (`status=all` in the URL).
+58. **`GET /requests` answers at most 500, oldest first** — by from date then id;
+    without a window it lists every request, and its window has no bound, as
+    `GET /allocations` (amendment 17).
+59. **The Norwegian word for a request is *behov*** (not *forespørsel*), and its open
+    status *Åpent*, agreeing with the neuter noun.
+60. **The project page's Planning tab comes after Invoicing** (§7), gated on the module
+    and on `planning:access` with `planning:view`, rendering the package's own
+    `ProjectPlan`.
+61. **A filling row deleted on a closed project still reopens its request** (S16 taken
+    literally): the request is open on a `completed` or `cancelled` project, takes no
+    change and no fill, can only be withdrawn, and until then counts in the plan's
+    `demand`, in `requestsOpen` and in `openRequests`.
+62. **`requestsOpen` lists an open request whose period has already ended** (S22's
+    "already started"), until it is withdrawn.
+63. **A fill whose request's project the directory no longer resolves** is a field
+    error on `projectId` — the request's project, not a body field; the request writes'
+    and the candidates' 400s carry the title "Invalid request".
+64. **The `requestsOpen` item and a candidate's current project name a project's code to
+    `planning:manage`**, as A's write answers do, under amendment 36's assumption that a
+    planner's role carries both keys.

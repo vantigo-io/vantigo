@@ -1490,6 +1490,7 @@ like every other module package; module packages never import each other.
 | `/projects/$projectId/billing` | Billing tab (financial summary, billing lines, work types), gated on `capabilities.canSeeFinancials` |
 | `/projects/$projectId/economy` | Economy tab (invoice plan and budget vs. logged), between Billing and Time; shown to everyone who sees the project — unlike Billing, it carries no capability gate, because it has an hours-only half for a caller without financial rights |
 | `/projects/$projectId/expenses` | **Expenses** tab, from `@vantigo/expenses-ui`; last, after Time, and only when the expenses module is mounted and the caller holds `expenses:access`. It carries no project capability: a plain member sees their own expenses on the project, and the expenses API decides who reads the totals above the list |
+| `/projects/$projectId/planning` | **Planning** tab (nb **Bemanning**), the project's plan from `@vantigo/planning-ui` — its bookings week by week, its demand and its requests; after Invoicing, and only when the planning module is mounted and the caller holds `planning:access` and `planning:view`. It carries no project capability: the plan is `planning:view`'s ([the project's plan](/en/reference/planning/#the-projects-plan)) |
 | `/projects/economy` | The economy portfolio, one row per project the caller has financial rights on; sidebar entry "Project economy" behind `projects:access` (the page's own empty state covers a caller with nothing to see) |
 | `/customers/$customerId/projects` | Projects tab on the customer page |
 
@@ -1499,9 +1500,11 @@ every tab of the detail page rather than on the Overview tab alone.
 
 The app is registered in `apps/host/frontend/src/apps.ts` and shows in the switcher
 for anyone with `projects:access`, greying out with "Not enabled" when the module is
-off. The host also owns the detail tab list, which is how Time and Expenses each add
-a tab exactly as Energy does on the customer page — the Tasks and Economy tabs are
-two entries in that same list, gated on nothing but seeing the project.
+off. The host also owns the detail tab list, which is how Time, Expenses, Invoices and
+Planning each add a tab exactly as Energy does on the customer page — the Tasks and
+Economy tabs are two entries in that same list, gated on nothing but seeing the project.
+Planning's tab renders the Planning package's own `ProjectPlan` component, gated on the
+module being mounted and on `planning:access` with `planning:view`.
 
 **What the Economy tab shows of the expenses.** Under the budget, a **Costs**
 section: the project's recorded expenses in three labelled rows — approved,
