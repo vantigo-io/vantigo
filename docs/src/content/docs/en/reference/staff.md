@@ -3516,8 +3516,8 @@ gatekeeper ([rule 12](/en/contributing/module-boundaries/)): the principal is th
 request's caller, or the user `contracts.AsUser` names; a context with neither answers
 nothing.
 
-**The Colleague rule, widened.** `HeldCompetences`, `People` and `Capacity` need
-**`staff:view`** — `staff:manage` alone answers nothing — and answer the people **in
+**The Colleague rule, widened.** `HeldCompetences`, `People`, `Capacity` and
+`PreferenceFits` need **`staff:view`** — `staff:manage` alone answers nothing — and answer the people **in
 employment on today or on a later day of the window asked**: next month's starter is
 answered, yesterday's leaver is not, whatever window is asked. For `HeldCompetences`
 the window is its one date `on`: the people in employment on `on` when it is today or
@@ -3570,39 +3570,56 @@ starts next month; it never reaches a person who has left.
   declared skill is held, with `Verified` false. An expired certificate is absent on a
   date after its end, though the dashboard still shows it.
 - The consumer calls with the request's context, never inside a transaction of its
-  own. What a person **wants** is never a method: it reaches Planning only as a fit
-  Staff scores (below).
+  own. What a person **wants** is never read as such: it reaches Planning only as the
+  fit Staff scores (`PreferenceFits`, below).
 
-**The matching contract's Staff side** (S15, reading 36). What a person wants reaches a
-planner as a **fit** for a proposed booking — a number and the kinds that lowered it —
-never the wishes themselves, so Planning weighs preferences nobody but the person's
-manager and HR read. The method is not on the interface yet: an interface method
-without a consumer is dead code, so it is added with the Planning delivery that matches
-(B), in this shape:
+**The matching contract's Staff side** (S15, reading 36; planning design S17.6 and
+reading 6). What a person wants reaches a planner as a **fit** for a proposed booking —
+a number and the kinds that lowered it — never the wishes themselves, so Planning
+weighs preferences nobody but the person's manager and HR read. The method joined the
+interface with Planning's delivery B, which matches candidates to a request, as a
+**batch** over every candidate at once:
 
 ```go
-PreferenceFit(ctx context.Context, personID int64, b Booking) (Fit, error)
+PreferenceFits(ctx context.Context, personIDs []int64, b Booking) (map[int64]Fit, error)
 
 type Booking struct {
-    From, To        civil.Date
-    Weekdays        []int    // ISO 1 (Monday) to 7 (Sunday)
-    Parts           []string // morning, day, evening, night
+    From, To        time.Time // civil dates at midnight UTC, as every contract carries them
+    Weekdays        []int     // ISO 1 (Monday) to 7 (Sunday)
+    Parts           []string  // morning, day, evening, night
     LocationID      *int64
-    HoursPerWeek    *int
+    HoursPerWeek    *float64
     ConsecutiveDays *int
-    Travel          string   // none, regional, national, international
-    Remote          string   // never, some, mostly, only
+    Travel          string    // none, regional, national, international
+    Remote          string    // never, some, mostly, only
 }
 
 type Fit struct {
     Score   int      // 0 to 100
-    Lowered []string // the preference kinds the booking contradicts
+    Lowered []string // the preference kinds the booking contradicts, in the catalogue's order
 }
 ```
 
+- **The gate** is the Colleague rule widened, as for `People`: `staff:view`, and the
+  person in employment on today or a later day of `From`..`To`; a person the caller may
+  not see is absent from the map, and a period outside [the bound](#the-workforce-contract)
+  answers `contracts.ErrWindowOutOfBounds`. Anyone else gets nothing, never an error.
 - **The rule.** The score starts at 100; each of the person's
   [preferences](#preferences) the booking contradicts lowers it by its weight × 10 — 10,
-  20 or 30 — and names its kind in `Lowered`, never its value.
+  20 or 30 — floored at 0, and names its kind in `Lowered`, never its value. A person
+  with no preference scores 100.
+- **What contradicts**, per kind. `weekdays`: a weekday of the booking the person does
+  not prefer. `time_of_day`: a part of the day the booking has that the person does not
+  prefer. `location`: the booking's location not among the person's. `travel`: the
+  booking's extent beyond the person's (`none` < `regional` < `national` <
+  `international`). `remote`: the booking's share other than the person's.
+  `max_consecutive_days` and `max_hours_per_week`: the booking's figure above the
+  person's. **A facet of the booking left nil or empty contradicts nothing**, so a
+  Planning request, which carries only its dates and its hours a week, is judged on
+  `max_hours_per_week` alone — and on **this booking's hours alone**, never on the
+  person's total: the total is Planning's figure (its capacity calculation), not
+  Staff's. A stored value that does not decode contradicts nothing either; the fit
+  never fails on a row.
 - **The availability declaration is not scored**: whether a row is hard or soft, and
   how it meets the booking, is Planning's to enforce (S10).
 
@@ -3683,8 +3700,9 @@ The phase is built: A — the catalogue, a person's competences, the worker and 
 Workforce contract; B — what the person wants and the review; C — profiles and gaps,
 the matrix and the interests overview. Planning is the consumer: its delivery A reads
 who holds what, the people in employment, their capacity and the caller's own person
-through `contracts.Workforce`, and its delivery B adds `PreferenceFits`, the fit Staff
-scores for a booking ([the matching contract's Staff side](#the-workforce-contract)).
+through `contracts.Workforce`, and its delivery B the catalogue, for a request's
+requirements, and `PreferenceFits`, the fit Staff scores for a booking
+([the matching contract's Staff side](#the-workforce-contract)).
 
 ## Absence
 

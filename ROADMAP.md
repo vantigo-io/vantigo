@@ -1672,8 +1672,9 @@ Decisions taken while building it that change the design:
 - **A department's default is a full-replace field**: left out, it is cleared; the
   department's write records no event, as before.
 - **The profiles catalogue is everyone's to read**, archived ones included, and **no
-  `PreferenceFit` method is added yet**: its shape and rule are in the reference, and it
-  joins `contracts.Workforce` with [Planning](#planning)'s delivery B.
+  `PreferenceFit` method was added then**: its shape and rule went into the reference,
+  and it joined `contracts.Workforce` as the batch `PreferenceFits` with
+  [Planning](#planning)'s delivery B.
 
 One migration, `00068_staff_competence_profiles.sql`.
 
@@ -1796,12 +1797,20 @@ taken while building it are in the spec's §13. One migration,
 *Unblocks:* "who is free in week 42", read against the hours each person really has;
 the people nobody has booked, and the ones booked twice over.
 
-**B — Requests and intake**, planned: requests with competence requirements, in hours a
-week; their candidates — competence, availability and the fit Staff scores for the
-booking, `Workforce.PreferenceFits` joining the contract here — and the fill that makes
-the allocation; the intake of the planned projects, each need covered, partly covered
-or uncovered, with the key-person risk; the requests' attention item; and the Planning
-tab on the project page.
+**B — Requests and intake, built** on `claude/dreamy-ptolemy-9ff41d`
+([the plan](docs/superpowers/plans/2026-10-26-planning-requests.md)): requests with
+competence requirements, in hours a week, open until filled or withdrawn; their
+candidates — competence through what Staff answers as held, availability through the
+capacity calculation, and the fit Staff scores for the booking, `Workforce.PreferenceFits`
+joining the contract as a batch — sorted fits first, then by fit, free hours and the
+time on their current project; the fill that makes the allocation and names the request
+on it, reopened when that row is deleted; the intake of the planned projects, each need
+covered, partly covered or uncovered, with the key-person risk; the project's demand on
+its plan; the requests' attention item and the open-requests figure; the competence
+catalogue read for the request sheet and the board's filter; the Requests and Intake
+pages; and the Planning tab on the project page, composed by the host in its own tab
+list. The readings taken while building it are in the spec's §13. One migration,
+`00073_planning_requests.sql`.
 
 *Unblocks:* capacity at intake — whether the company can take the bid — and the project's
 demand on the board before anyone is named.

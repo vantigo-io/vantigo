@@ -97,8 +97,9 @@ Communications' outbox is the working example.
    invoice is built from — `BillableHours` (`contracts.BillableHours`, time),
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
    `BillableMilestones` (`contracts.BillableMilestones`, projects) — and `Workforce`
-   (`contracts.Workforce`, staff — who holds which competence valid on a date, the
-   people in employment and their capacity over a window, the caller's own person; rule
+   (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
+   valid on a date, the people in employment and their capacity over a window, the
+   caller's own person, and how a proposed booking fits what each person wants; rule
    12). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`
@@ -400,10 +401,10 @@ Communications' outbox is the working example.
     under Staff's Self rule instead, for `staff:access`. The window of `People` and
     `Capacity` is bounded — from the Monday thirteen weeks before today to three years
     after it — and their figures are derived: hours a week and whole days away, **never
-    a share**, a type or a terms row. The fit for a proposed booking — a score and the
-    kinds of preference that lowered it, never a preference's value — is written into
-    the reference ahead of its consumer and added to the interface with Planning's
-    delivery B. Planning, its consumer, never re-states the rule
+    a share**, a type or a terms row. The fit for a proposed booking —
+    `PreferenceFits`, a score and the kinds of preference that lowered it, never a
+    preference's value — is a batch over the candidates under the same rule, judged on
+    the booking's own facets alone. Planning, its consumer, never re-states the rule
     ([Staff](/en/reference/staff/#the-workforce-contract)).
 
     Three single-provider reads are the other class, **consumer-gated**:
@@ -890,9 +891,9 @@ from the configuration, in the API and a worker alike, with a construction error
 for the calls that need a store rather than failing the process) for the bytes of
 people's documents and photos. It counts the working days an absence takes by the platform
 calendar (`internal/holidays`), never a holiday list of its own. It reads no business module but Time's hours, optionally. It provides one contract,
-`contracts.Workforce` — the competences people hold, valid on a date, the people in
-employment and their capacity over a window, and the caller's own person, for Planning,
-its consumer — as that slot's sole provider, and fills
+`contracts.Workforce` — the catalogue, the competences people hold, valid on a date, the
+people in employment and their capacity over a window, the caller's own person, and the
+fit of a booking against what a person wants, for Planning, its consumer — as that slot's sole provider, and fills
 the many-provider `CalendarSources` slot with the caller's own absences; with Staff
 switched off `Deps.Workforce` is nil, which a consumer must handle, and nothing else in
 another module is stranded — but it does strand its
@@ -921,17 +922,18 @@ pass over `staff.object_deletions` takes no lease and holds no connection across
 business modules at once: it reads `contracts.ProjectDirectory` for the projects a
 person is booked on — `ProjectsByStatus`, consumer-gated, for the plannable list —
 `contracts.Workforce` for the people in employment, their capacity, the caller's own
-person and the competences held, and `contracts.CustomerDirectory` for the customers'
-names; identity's `Deps.Users` gives it the actors' names and `Notify`, the one mail it
+person, the competence catalogue and the competences held, and the fit Staff scores for
+a request's booking, and `contracts.CustomerDirectory` for the customers' names; identity's `Deps.Users` gives it the actors' names and `Notify`, the one mail it
 sends, to the person whose row was confirmed, changed or deleted. `MODULES` refuses it
 without `projects` or `staff`, so `Deps.Projects`, `Deps.Workforce` and `Deps.Directory`
 are never nil in a running `planning`; it still answers `dependency_unavailable` (503)
 rather than panic if one is. Every contract call goes through its accessor in
 `internal/planning/contractscalls.go`, with the request's context, **before** a
 transaction opens, never inside one, and the harness fails a test that makes one under
-an open transaction. It provides nothing yet: no other module reads it, and the host
+an open transaction. It provides nothing yet: no other module reads it; the host
 composes its Planning tab on Staff's person page through the slot `@vantigo/staff-ui`
-opens (rule 7). From delivery C it fills the many-provider `CalendarSources` slot with
+opens (rule 7) and its Planning tab on the project page in the host's own tab list, as
+Time's and Expenses' tabs are. From delivery C it fills the many-provider `CalendarSources` slot with
 the caller's own confirmed bookings. It has no background worker. With `planning` off
 nothing else changes. See [Planning](/en/reference/planning/#contracts-consumed).
 

@@ -1,6 +1,6 @@
 ---
 title: Planning
-description: Who works on what — the Plan board of people against weeks with its colours, groupings and filters, the allocation sheet with its warnings and refusals, a project's plan, a person's timeline with its flags, the Unbooked list, My planning and the mail a person gets, the Planning settings, the dashboard card and its attention items, and the Planning tab on a person's page in Staff.
+description: Who works on what — the Plan board of people against weeks with its colours, groupings and filters, the allocation sheet with its warnings and refusals, Requests and the request sheet, filling a request from its candidates, the Intake of planned projects, a project's plan with its demand, a person's timeline with its flags, the Unbooked list, My planning and the mail a person gets, the Planning settings, the dashboard card and its attention items, and the Planning tabs on a person's page in Staff and a project's page in Projects.
 sidebar:
   order: 46
 sources:
@@ -20,9 +20,10 @@ and the permission each request is checked against — are in the
 [Planning module reference](/en/reference/planning/); this page is about what you do on
 each screen.
 
-This is Planning's first delivery: allocations, the board, the lists and the person's
-own view. Requests for people a project needs, assignments with their contract terms
-and the person's wishes come in later deliveries.
+Planning has allocations, the board, the lists and the person's own view, and
+**requests** — what a project needs before anybody is named — with the people who could
+fill them and the intake of planned projects. Assignments with their contract terms, and
+the person's wishes, come in a later delivery.
 
 ## The app and its sidebar
 
@@ -32,22 +33,26 @@ areas your permissions give you:
 | Area in the sidebar | Who sees it |
 | --- | --- |
 | **Plan** (the board) | `planning:view` |
+| **Requests** | `planning:view` |
+| **Intake** | `planning:view` |
 | **Unbooked** | `planning:view` |
 | **My planning** | everyone with `planning:access` |
 | **Planning settings** | `planning:manage` |
 
 The app opens on **Plan** for those who may see it and on **My planning** for everyone
-else. A project's plan and a person's timeline have no sidebar entry: you open them
-from the board, the Unbooked list, the dashboard or a person's page in Staff.
+else. A project's plan and a person's timeline have no sidebar entry: you open a
+project's plan from the board, Requests or Intake, or as the
+[Planning tab](#on-the-project-page) on the project's page in Projects, and a person's
+timeline from the board, the Unbooked list, the dashboard or the person's page in Staff.
 
 The plan is built on the people Staff answers you, so a planner also needs **View the
 staff directory** (`staff:view`) from Staff. Without it the board does not pretend the
 plan is empty: it says **Staff shows you nobody** and asks you to have an administrator
 give you the permission.
 
-The search in the top bar knows the screens above, and offers **New allocation** to a
-planner holding `planning:view` and `planning:manage`: it opens the board with the
-allocation sheet.
+The search in the top bar knows the screens above, and offers **New allocation** and
+**New request** to a planner holding `planning:view` and `planning:manage`: the first
+opens the board with the allocation sheet, the second Requests with the request sheet.
 
 ## The plan
 
@@ -86,7 +91,9 @@ Above the grid:
   shown, with its hours summed, followed by a row for each person booked on it, whose
   booked hours are those on that project.
 - **Department** narrows the board to the people of one department; **Project** to the
-  people booked on one project.
+  people booked on one project; **Competence** to the people who hold one competence
+  from Staff's catalogue — a skill at any level, or a certificate verified and valid —
+  on the first day shown, or today when the board starts in the past.
 - **Show tentative** (on) draws the tentative hours; turn it off to see the confirmed
   plan alone.
 - **Include pipeline** (on) counts the bookings on projects in the status **Planned** —
@@ -184,20 +191,165 @@ note. Moving a confirmed booking to another person
 tells the first that they are no longer planned on it, and the second that they are. A
 tentative booking is never mailed about, and a person without a user is never mailed.
 
+## Requests
+
+A **request** is what a project needs before anybody is named: a title such as *Backend
+developer*, a period, the hours a week, and the competences the person must hold. It is
+**Open** until somebody fills it, **Filled** while a booking fills it, or **Withdrawn**.
+An open request is the project's demand: it shows on the project's plan as the
+**Demand** row and in the [intake](#intake).
+
+**Requests** (`planning:view`) lists them, by first day: the title with its
+requirements under it, the project — press it to open the project's
+[plan](#a-projects-plan) — the period, the hours per week and the status, with
+*Filled by* and the person's name on a filled one. The list opens on the **Open** requests;
+**Status** switches to the filled or the withdrawn ones, or to **All statuses**, and
+**Project** narrows it to one project. Both are in the page's address, so a link shows
+the same list. A list is at most 500 requests, the oldest first — the page says so when
+it is cut.
+
+A planner (`planning:manage`) presses a request's title to open it, **Candidates** to
+[fill it](#filling-a-request), and **Withdraw** on an open one, and files a new one
+with **New request** at the top of the page.
+
+### The request sheet
+
+The request sheet opens at the side — from the bottom on a phone — with **New request**
+or **Change request** at the top. It is `planning:manage`'s.
+
+1. **Project** — type a code or a name. Projects that are **Planned**, **Active** or
+   **On hold** are offered.
+2. **Title** — what the project needs, at most 100 characters.
+3. **Period** — the first and the last day, both included, at most three years.
+4. **Hours per week** — more than 0 and at most 80. A request is always in hours a week:
+   it has no person whose position a percentage could be read against.
+5. **Requirements** (optional, at most 10) — press **Add requirement** and pick a
+   competence from Staff's catalogue, skills and certificates apart. Each competence
+   can be named once. On a competence with levels, **Lowest level** asks for at least
+   *aware*, *basic*, *independent*, *experienced* or *expert*; left at **Any level**,
+   holding it is enough. A person meets a requirement when Staff has them holding the
+   competence on the request's first day — a skill at or above the level, a certificate
+   verified and valid. Remove one with its bin.
+6. **Note** (optional, at most 500 characters) — for the planners alone.
+
+Press **Save**. When nothing needs saying, the sheet closes with *The request is saved*;
+when the period goes beyond the project's start or end date, it is saved and the sheet
+says so under **Saved — but look at this**.
+
+The sheet refuses what the allocation sheet refuses for a project: a project completed
+or cancelled takes no new request and no change, and *Somebody else saved this; it has
+been reloaded* means another planner changed the request first.
+
+A filled or withdrawn request opens in the sheet to be read, not changed: *A filled or
+withdrawn request takes no change.* Change the allocation that fills it instead, or file
+a new request.
+
+### Withdraw a request
+
+**Withdraw** on an open request asks *Withdraw this request?* and closes it: it stops
+counting as demand, and it is never reopened. A filled request cannot be withdrawn; to
+undo a fill, delete the booking that fills it, and the request opens again.
+
+## Filling a request
+
+**Candidates**, on a request in Requests, in Intake or on the project's plan, opens
+the people who could fill it at the side (`planning:manage`). The top line repeats the
+request's project, period and hours a week.
+
+A candidate is a person Staff answers you who is employed through the whole period and
+holds every requirement. Each card shows:
+
+- the name, with the employee number and the department;
+- **Has the time** when the person's free hours over the period cover what the request
+  would book, or **Partly free** when they do not — and under it, *28 h free of 74 h
+  needed*. Free hours are the person's capacity over the period less their days away
+  and their confirmed bookings; tentative ones count for nothing, as on the board. What
+  the request needs is its hours a week spread over the person's working days, so a
+  public holiday needs nothing;
+- **Fit**, a score out of 100 for how well the booking matches the preferences the
+  person keeps in Staff ([What I want](/en/user/staff/#what-i-want)). Each preference
+  the request goes against lowers it, the more so the more it matters to the person,
+  and *Lowered by* names the kinds — never what the person wrote. A request names only
+  its hours a week, so today it is **Most hours a week** that can lower it;
+- **Covers it** when the person has the time, holds every requirement and carries no
+  flag;
+- *Certificate expires* with the day and the certificate, when a required certificate
+  runs out before the request's last day;
+- *On PROJECT for N days* — the project of the person's confirmed booking today, and
+  how long they have been on it.
+
+The people with the time come first, then by fit, then by free hours, and between equals
+the one longest on their current project first, so the planner can let someone move on.
+
+**Show partial matches** also lists the people who miss a requirement, with *Missing*
+and the competences in red. When nobody fits, the panel says **Nobody fits this
+request**.
+
+To fill the request:
+
+1. Choose **Fill as** — **Tentative** or **Confirmed**. It starts tentative on a project
+   in the status **Planned**, confirmed on any other.
+2. Press **Fill** on the person's card.
+
+Filling books the person on the project for the request's period at its hours a week,
+with the request's title as the role, and marks the request **Filled**. The booking is
+an allocation like any other: it is weighed as the allocation sheet weighs it, warns —
+*Filled — but look at this* — or is refused under **Could not fill the request** for the
+same reasons, and when it is confirmed the person is mailed. Change the booking as any
+allocation, and the request stays filled. **Delete** the booking and the request is open
+again.
+
+A filled or withdrawn request still shows its candidates — who else could have filled
+it — but offers no **Fill**.
+
+## Intake
+
+**Intake** (`planning:view`) is the pipeline: every project in the status **Planned**,
+each with its customer and dates — press its name to open the project's plan — and
+three figures in hours a week: **Requested** by its open requests, **Tentative** and
+**Booked** (confirmed) by its allocations. Under them are its open and filled requests,
+each with its period, its hours a week and its **Coverage**:
+
+- **Covered** — the request is filled, or at least one person covers it: has the time,
+  holds every requirement and carries no flag.
+- **Partly covered** — people who hold every requirement exist, but none covers it: they
+  are short of time, or a required certificate runs out during the period.
+- **Uncovered** — nobody employed through the whole period holds every requirement.
+
+**Key person** marks an open request exactly one person covers: if that person is taken,
+nobody else can. On an open request, *Candidates who cover it* gives their number. A
+planner presses **Candidates** to fill it from here.
+
+A project **On hold** is not in the pipeline, and a withdrawn request is not listed.
+When no project is planned, the page says **No planned project**.
+
 ## A project's plan
 
 A project's plan (`planning:view`) opens from a project's name on the board grouped by
-**Projects**. Its header names the project with its status, its customer and its dates.
+**Projects**, in Requests or in Intake. Its header names the project with its status,
+its customer and its dates.
 
 - **Hours per week** — the project's **Booked** (confirmed) and **Tentative** hours each
-  week for twelve weeks from this week, with its allocations as bars under them, named
-  by the person.
+  week for twelve weeks from this week, and its **Demand**: the hours its open requests
+  still ask for. A request counts its hours a week in every week it covers, and a week
+  it covers in part by its working days — a request from a Wednesday counts three
+  fifths of its hours in its first week, and a public holiday counts nothing, exactly
+  as a booking in hours a week books nothing on one. Under the figures, the allocations are bars named by the
+  person, and the open requests orange bars named by their title.
 - **Allocations** — each booking on the project in those weeks: the person (with the
   planners' note under the name, for a planner), the role, the period, the load and the
   status. A planner's actions menu on each row offers **Edit**, **Confirm** (on a
   tentative one) and **Delete**.
+- **Requests** — the project's open and filled requests in those weeks: the title with
+  its requirements (and the planners' note, for a planner), the period, the hours per
+  week and the status, with who fills a filled one. A planner presses **Candidates** to
+  [fill one](#filling-a-request), and the actions menu offers **Edit** on an open one —
+  **Open** on a filled or withdrawn one, which shows it read-only — and **Withdraw** on
+  an open one.
 
-A planner books someone on the project with **New allocation** in the header.
+A planner books someone on the project with **New allocation**, and files what it needs
+with **New request**, which opens the [request sheet](#the-request-sheet) with the
+project and the weeks shown as its period.
 
 ## A person's timeline
 
@@ -267,18 +419,19 @@ again.
   Unbooked list and the dashboard's unbooked, overbooked and certificate items look.
 - **Ending without follow-on (weeks)** — 1 to 26, by default 4: a confirmed booking
   ending this soon, with nothing confirmed after it, is a dashboard item.
-- **Open request lead (days)** — 0 to 365, by default 14: for the requests that come in
-  a later delivery. It does nothing yet.
+- **Open request lead (days)** — 0 to 365, by default 14: an open request starting this
+  soon, or already started, is a dashboard item for the planners.
 
 ## The dashboard
 
 **Home**, the dashboard, has a **Planning** card for everyone with `planning:access`;
 press it to open Planning. With `planning:view` it carries the
 figures: the number of people with a confirmed booking this week, their confirmed
-load this week with the tentative load beside it, and how many people are unbooked.
+load this week with the tentative load beside it, how many requests are open, and how
+many people are unbooked.
 
 Planning's items join the other apps' in **Needs attention**. The first three are for
-`planning:view`, the last for `planning:manage`:
+`planning:view`, the last two for `planning:manage`:
 
 | Item | It means | Opens |
 | --- | --- | --- |
@@ -286,9 +439,10 @@ Planning's items join the other apps' in **Needs attention**. The first three ar
 | Overbooked | A person's confirmed bookings exceed their capacity in a week from this week to the end of the horizon, named with the first such week. | The person's timeline |
 | Certificate expiring during a booking | A certificate of the person runs out inside one of their confirmed bookings within the horizon — one item per booking and certificate, dated the day it runs out. | The person's timeline |
 | Ending without follow-on | A confirmed booking ends within the weeks the settings name, and the person has no confirmed booking that carries on within seven days of its end. Named with the person and the project's code. | Plan |
+| Open request | An open request starts within the days the settings name, or has already started — one item per request, named with the project's code and the request's title, dated its first day. | Requests, filtered to the open ones |
 
 An item goes away when what it counts does: a booking made, an overbooking mended, a
-certificate renewed in Staff.
+certificate renewed in Staff, a request filled or withdrawn.
 
 ## On the Staff person page
 
@@ -298,19 +452,28 @@ the person themselves. It shows the person's [timeline](#a-persons-timeline): wi
 `planning:view` all of it, and on your own page with `planning:access` alone, your
 confirmed bookings. A planner changes an allocation from it as from the timeline.
 
+## On the project page
+
+When the Planning module is on, a project's page in Projects has a **Planning** tab
+after **Invoicing**, for those who hold `planning:access` and `planning:view`. It shows
+the project's [plan](#a-projects-plan) — the hours per week with the demand, the
+allocations and the requests — under the project page's own header, and a planner
+works from it as from the plan: **New allocation**, **New request**, **Candidates**,
+**Withdraw**. Holding `planning:manage` alone does not show the tab.
+
 ## Who sees what
 
 | What | `planning:access` | `planning:view` | `planning:manage` |
 | --- | --- | --- | --- |
 | The app, **My planning**, your own confirmed bookings and the mail about them | ✓ | ✓ | ✓ |
-| **Plan**, every project's plan, every person's timeline with tentative bookings, **Unbooked**, the dashboard figures and items | – | ✓ | ✓ |
-| The allocation sheet, the planners' notes, **Planning settings**, the *Ending without follow-on* item | – | – | ✓ |
+| **Plan**, every project's plan and the project page's **Planning** tab, every person's timeline with tentative bookings, **Requests**, **Intake**, **Unbooked**, the dashboard figures and items | – | ✓ | ✓ |
+| The allocation sheet, the request sheet, **Candidates** and **Fill**, **Withdraw**, the planners' notes, **Planning settings**, the *Ending without follow-on* and *Open request* items | – | – | ✓ |
 
 **See the plan** (`planning:view`) and **Plan** (`planning:manage`) are sensitive: the
 plan shows every project's code, name, customer, status and dates — bids included,
 which Projects otherwise shows only to those who may see every project. Holding
-`planning:manage` without `planning:view` gives the sheet but not the board, so a
-planner's role carries both. The full table is under
+`planning:manage` without `planning:view` gives the sheets but not the board, Requests
+or Intake, so a planner's role carries both. The full table is under
 [Permissions](/en/reference/planning/#permissions).
 
 A person Staff no longer shows you — erased, or not someone you may see — appears as

@@ -78,6 +78,7 @@ fanene; en prosjektleder finner også **Rediger** og **Endre status** der.
 | **Timer** | timene som er ført på prosjektet, fra Timer-appen | `time:access`, når Timer er aktivert |
 | **Utlegg** | utleggene som er ført på prosjektet, fra Utlegg-appen | `expenses:access`, når Utlegg er aktivert |
 | **Fakturagrunnlag** | prosjektets arbeid som ikke er fakturert ennå — godkjente timer, utlegg og milepæler klare til fakturering — og veien til et fakturautkast av det, fra Fakturaer-appen ([fakturere arbeid](/nb/user/invoices/#fakturere-arbeid)) | `invoices:access` og `invoices:create`, når Fakturaer er aktivert |
+| **Bemanning** | prosjektets plan — hvem som er satt opp på det uke for uke, hva de åpne behovene fortsatt etterspør, og behovene — fra Bemanning-appen ([på prosjektsiden](/nb/user/planning/#på-prosjektsiden)) | `planning:access` og `planning:view`, når Bemanning er aktivert |
 
 ## Rediger et prosjekt
 
@@ -317,3 +318,4 @@ klare i en annen valuta sier **Mer klart i en annen valuta**; prosjektets egen
 | Fanen **Timer** | `time:access`, Timer aktivert |
 | Fanen **Utlegg** | `expenses:access`, Utlegg aktivert |
 | Fanen **Fakturagrunnlag**, og **Fakturer arbeidet** i faktureringsplanen | `invoices:access` og `invoices:create`, Fakturaer aktivert |
+| Fanen **Bemanning** | `planning:access` og `planning:view`, Bemanning aktivert |
