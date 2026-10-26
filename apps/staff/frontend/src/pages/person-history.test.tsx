@@ -328,6 +328,51 @@ describe("History — the provider link's events", () => {
   });
 });
 
+describe("History — the photo pushed to the directory", () => {
+  it("says the photo step and whether the photo was written, removed or refused, in words", async () => {
+    stubStaffApi({
+      role: "manage",
+      events: {
+        101: [
+          {
+            id: 803,
+            kind: "account_external_updated",
+            at: "2026-10-13T08:00:00Z",
+            actor: { kind: "system", displayName: "Staff accounts" },
+            payload: { step: "photo", state: "enabled", code: "photo_refused" },
+          },
+          {
+            id: 802,
+            kind: "account_external_updated",
+            at: "2026-10-12T08:00:00Z",
+            actor: { kind: "system", displayName: "Staff accounts" },
+            payload: { step: "photo", state: "enabled", code: "photo_cleared" },
+          },
+          {
+            id: 801,
+            kind: "account_external_updated",
+            at: "2026-10-11T08:00:00Z",
+            actor: { kind: "system", displayName: "Staff accounts" },
+            payload: { step: "photo", state: "enabled", code: "photo_pushed" },
+          },
+        ],
+      },
+    });
+    renderRoute("/staff/people/101?tab=history");
+
+    const [refused, cleared, pushed] = await events();
+    expect(within(pushed).getByText("Directory account brought in line")).toBeInTheDocument();
+    expect(within(pushed).getByText("Step: Push the photo to the directory")).toBeInTheDocument();
+    expect(within(pushed).getByText("Photo written")).toBeInTheDocument();
+    expect(within(cleared).getByText("Step: Push the photo to the directory")).toBeInTheDocument();
+    expect(within(cleared).getByText("Photo removed")).toBeInTheDocument();
+    expect(within(refused).getByText("Step: Push the photo to the directory")).toBeInTheDocument();
+    expect(within(refused).getByText("Photo refused by the directory")).toBeInTheDocument();
+    for (const raw of ["photo", "photo_pushed", "photo_cleared", "photo_refused"])
+      expect(screen.queryByText(raw)).not.toBeInTheDocument();
+  });
+});
+
 describe("History — the account events' readers", () => {
   it("lists a manager none of the account events, which are the links group's", async () => {
     stubStaffApi({

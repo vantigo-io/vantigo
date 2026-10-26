@@ -97,6 +97,7 @@ const en = {
   "dashboard.staffAccountPrivilegedInEntra":
     "{{name}}'s account holds an administrative role in Microsoft Entra ID, which an administrator handles",
   "dashboard.staffHireDateNotWritten": "Microsoft Entra ID refused {{name}}'s hire date",
+  "dashboard.staffPhotoNotWritten": "Microsoft Entra ID refused the photo of {{name}}",
   "dashboard.staffLicenceUnavailable": "A licence for {{name}} could not be assigned: none is left",
   "dashboard.staffPassUnrevealed": "{{name}}'s pass has waited a day or more without being shown",
   "dashboard.staffManagerNotInEntra": "{{name}}'s manager has no account in Microsoft Entra ID",
@@ -324,6 +325,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.staffAccountPrivilegedInEntra":
     "Kontoen til {{name}} har en administratorrolle i Microsoft Entra ID, som en administrator tar seg av",
   "dashboard.staffHireDateNotWritten": "Microsoft Entra ID avviste ansettelsesdatoen til {{name}}",
+  "dashboard.staffPhotoNotWritten": "Microsoft Entra ID avviste bildet av {{name}}",
   "dashboard.staffLicenceUnavailable": "En lisens til {{name}} kunne ikke tildeles: det er ingen igjen",
   "dashboard.staffPassUnrevealed": "Passet til {{name}} har ventet en dag eller mer uten å bli vist",
   "dashboard.staffManagerNotInEntra": "Lederen til {{name}} har ingen konto i Microsoft Entra ID",

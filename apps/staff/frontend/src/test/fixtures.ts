@@ -821,6 +821,22 @@ export const photos = (): Record<number, StoredPhoto> => ({
   101: { contentType: "image/png", updatedAt: "2026-09-01T08:00:00Z" },
 });
 
+/** A user's own Vantigo avatar as the fake keeps it (photo sync design S1): its type, when it was set, its version. */
+export interface StoredAvatar {
+  contentType: "image/jpeg" | "image/png";
+  updatedAt: string;
+  version: number;
+}
+
+/**
+ * Grace's user has an avatar of her own; nobody else's has one. Grace is not
+ * linked to her user by default — a test that links her (`record.user`) sees
+ * it as her picture (`photoSource: "account"`).
+ */
+export const avatars = (): Record<string, StoredAvatar> => ({
+  "8d5c6a3e-0000-4000-8000-000000000102": { contentType: "image/jpeg", updatedAt: "2026-08-15T07:30:00Z", version: 1 },
+});
+
 /**
  * What a person's glance reads that no other fixture holds: Grace's
  * probation, which her terms do not record, and the week's hours Time would

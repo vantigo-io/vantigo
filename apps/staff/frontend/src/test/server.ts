@@ -74,6 +74,7 @@ import { type StubbedFetch, stubFetch } from "./fetch";
 import {
   capabilitiesOf,
   assignableUsers as defaultAssignableUsers,
+  avatars as defaultAvatars,
   businessUnits as defaultBusinessUnits,
   departments as defaultDepartments,
   defaultDirectoryFields,
@@ -98,6 +99,7 @@ import {
   type PersonRecord,
   type Role,
   readsDirectory,
+  type StoredAvatar,
   type StoredPerson,
   type StoredPhoto,
   TODAY,
@@ -172,6 +174,11 @@ export interface StaffServer {
   personProfiles?: StoredPersonProfile[];
   /** Each person's photo (person-glance design S1); Ada's alone by default. Read the writes back from the stub's `state`. */
   photos?: Record<number, StoredPhoto>;
+  /**
+   * Each user's own Vantigo avatar, by user id (photo sync design S1); Grace's
+   * user's alone by default. Read the writes back from the stub's `state`.
+   */
+  avatars?: Record<string, StoredAvatar>;
   /**
    * A person's glance as the caller reads it, section by section, over what
    * the fake works out from the fixtures — the hours with time tracking off,
@@ -254,6 +261,7 @@ export interface StaffState {
   competenceProfiles: StaffCompetenceProfile[];
   personProfiles: StoredPersonProfile[];
   photos: Record<number, StoredPhoto>;
+  avatars: Record<string, StoredAvatar>;
 }
 
 export type StaffStub = StubbedFetch & { state: StaffState };
@@ -367,6 +375,7 @@ const groupOf: Record<string, Group> = {
       "businessUnit",
       "location",
       "photoUpdatedAt",
+      "photoSource",
     ].map((field) => [field, "work" as Group]),
   ),
   ...Object.fromEntries(
@@ -664,6 +673,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     competenceProfiles: server.competenceProfiles ?? defaultCompetenceProfiles(),
     personProfiles: server.personProfiles ?? defaultPersonProfiles(),
     photos: server.photos ?? defaultPhotos(),
+    avatars: server.avatars ?? defaultAvatars(),
   };
   const users = server.users ?? defaultAssignableUsers();
   let nextId = 900;
@@ -867,14 +877,23 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     const fields: Partial<PersonRecord> = { ...rest };
     delete fields.nextOfKin;
     delete fields.roles;
+    // The effective picture (photo sync design §4): HR's photo, else the linked user's own avatar.
+    const avatar = state.photos[stored.id] ? undefined : avatarOf(stored);
     const whole: StaffPerson = {
       ...placed(stored, colleagueOnly(audience)),
+      ...(avatar ? { photoUpdatedAt: avatar.updatedAt } : {}),
       ...fields,
       nationalId: sealed?.nationalId ? { kind: sealed.nationalId.kind, onFile: true } : { onFile: false },
       ...(sealed?.bankAccount
         ? { bankAccount: { kind: sealed.bankAccount.kind, last4: sealed.bankAccount.value.slice(-4) } }
         : {}),
       ...(user ? { user } : {}),
+      // Whose picture it is (photo sync design §4): HR's, else the user's own.
+      ...(state.photos[stored.id]
+        ? { photoSource: "record" as const }
+        : avatar
+          ? { photoSource: "account" as const }
+          : {}),
       // `{held: false}` when there is none — the hold group's readers always get it.
       legalHold: legalHold ?? { held: false },
       revision,
@@ -897,9 +916,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
         canStampWishesSeen: (audience.manager || audience.hr) && !audience.self,
         // Who assigns the person's competence profiles: HR alone (plan reading 32).
         canAssignProfiles: audience.hr,
-        // Who sets and removes the person's photo: the person and HR
-        // (person-glance design S1).
-        canSetPhoto: audience.self || audience.hr || audience.personalData,
+        // Who sets and removes HR's photo of the person: HR alone — the
+        // person's own picture is their Vantigo avatar (photo sync design S2)
+        // — and never on an erased record, whose PUT and DELETE are refused.
+        canSetPhoto: (audience.hr || audience.personalData) && !stored.erasedAt,
         // Who the caller is to the person: themselves, or their manager today.
         self: audience.self,
         isManager: audience.manager && !audience.self,
@@ -1225,6 +1245,12 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     return jsonResponse(200, page(rows, Math.max(1, Number(params.get("page")) || 1), pageSize));
   };
 
+  /** The linked user's own avatar, if the person has a user and the user one. */
+  const avatarOf = (stored: StoredPerson): StoredAvatar | undefined => {
+    const userId = stored.record?.user?.id;
+    return userId === undefined ? undefined : state.avatars[userId];
+  };
+
   /** A PNG of one pixel: what the fake streams for any photo. */
   const PIXEL = Uint8Array.from(
     atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="),
@@ -1234,9 +1260,10 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
 
   /**
    * The person's photo (person-glance design S1): read by everyone who sees
-   * the person, set and removed by the person, staff:manage and
-   * staff:personal-data. The fake cannot read the bytes, so a file's type
-   * is the one it was sent under.
+   * the person — HR's photo, else the linked user's own avatar (photo sync
+   * design §4) — set and removed by staff:manage and staff:personal-data
+   * alone. The fake cannot read the bytes, so a file's type is the one it
+   * was sent under.
    */
   const photoRoutes = (method: string, path: string, init: RequestInit | undefined): Response | undefined => {
     const match = /^\/api\/v1\/staff\/people\/(\d+)\/photo$/.exec(path);
@@ -1245,14 +1272,16 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     if (!found) return notFound();
     const { stored, audience } = found;
     const photo = state.photos[stored.id];
-    if (method === "GET")
-      return photo
+    if (method === "GET") {
+      const shown = photo ?? avatarOf(stored);
+      return shown
         ? new Response(PIXEL, {
             status: 200,
-            headers: { "Content-Type": photo.contentType, "Cache-Control": "private, max-age=300" },
+            headers: { "Content-Type": shown.contentType, "Cache-Control": "private, max-age=300" },
           })
         : notFound();
-    if (!(audience.self || audience.hr || audience.personalData)) return forbidden();
+    }
+    if (!(audience.hr || audience.personalData)) return forbidden();
     if (method === "PUT") {
       // As the server: the file is judged before the erasure.
       const file = (init?.body as FormData | undefined)?.get("file");
@@ -1278,6 +1307,50 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
       if (!photo) return notFound();
       delete state.photos[stored.id];
       bumpRevision(stored);
+      return new Response(null, { status: 204 });
+    }
+    return undefined;
+  };
+
+  let avatarWrites = 0;
+
+  /**
+   * Identity's account avatar (photo sync design §4), the caller's own, as
+   * identity serves it to any signed-in user: the user the `me` person is
+   * linked to, else one of the caller's own that no person names. Upload and
+   * remove answer 409 `avatar_managed`, in identity's error shape, while HR's
+   * photo of the linked person stands — before the body is read, as identity
+   * does. The part is `avatar`, identity's name; a missing, empty or
+   * non-JPEG/PNG one is identity's 400 `invalid_avatar`.
+   */
+  const avatarRoutes = (method: string, path: string, init: RequestInit | undefined): Response | undefined => {
+    if (path !== "/api/v1/identity/account/avatar" || method === "GET") return undefined;
+    const caller = server.me === undefined ? undefined : findPerson(server.me);
+    const linked = caller?.record?.user?.id;
+    const userId = linked ?? "caller-without-a-person";
+    if (caller && linked !== undefined && state.photos[caller.id])
+      return jsonResponse(409, {
+        error: { code: "avatar_managed", message: "Your photo is kept by Staff and cannot be changed here." },
+      });
+    if (method === "POST" || method === "PUT") {
+      const file = (init?.body as FormData | undefined)?.get("avatar");
+      if (!(file instanceof File) || file.size === 0 || (file.type !== "image/jpeg" && file.type !== "image/png"))
+        return jsonResponse(400, {
+          error: {
+            code: "invalid_avatar",
+            message: "The avatar must be a correctly detected PNG or JPEG image of at most 5 MB and 4096x4096 pixels.",
+          },
+        });
+      avatarWrites += 1;
+      state.avatars[userId] = {
+        contentType: file.type,
+        updatedAt: `2026-10-11T10:00:${String(avatarWrites).padStart(2, "0")}Z`,
+        version: (state.avatars[userId]?.version ?? 0) + 1,
+      };
+      return jsonResponse(200, { uploaded: true, url: "/api/v1/identity/account/avatar" });
+    }
+    if (method === "DELETE") {
+      delete state.avatars[userId];
       return new Response(null, { status: 204 });
     }
     return undefined;
@@ -4470,7 +4543,7 @@ export const stubStaffApi = (server: StaffServer = {}): StaffStub => {
     if (employments && method === "POST")
       return Promise.resolve(manages(role) ? createEmployment(Number(employments[1]), body) : forbidden());
 
-    const photoAnswer = photoRoutes(method, path, init);
+    const photoAnswer = photoRoutes(method, path, init) ?? avatarRoutes(method, path, init);
     if (photoAnswer) return Promise.resolve(photoAnswer);
 
     const glanceAnswer = glanceRoutes(method, path);
