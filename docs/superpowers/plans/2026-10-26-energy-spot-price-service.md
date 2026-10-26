@@ -97,8 +97,8 @@ no slot, nothing of Invoices.
    `Feed` or `Service`, the plan lists them in `deletes` and the day's rows as inserts.
    A conflict with any `Import` row stays a conflict (S6, Q2). `applySpotPriceWrite`
    deletes before it inserts, inside the area lock already taken.
-8. Followed areas with the service: `ListSpotPriceAreasInUse` ∪ the `active` codes from
-   `/api/v1/areas`. Codes outside `^(NO[1-5]|SE[1-4]|DK[12]|FI)$` are ignored, and the
+8. Followed areas with the service: the `active` codes from `/api/v1/areas`; only when
+   that request fails, `ListSpotPriceAreasInUse` instead (design S4 as amended). Codes outside `^(NO[1-5]|SE[1-4]|DK[12]|FI)$` are ignored, and the
    column is `varchar(4)`.
 9. Live window: days `today−14 … today+1` in Europe/Oslo. Due when any day lacks an
    `ok` row whose time has come (delivery A's planner on the wider window), or when
@@ -121,9 +121,10 @@ no slot, nothing of Invoices.
     `Retry-After` (seconds or HTTP date) sets `next_attempt_at` when it is later than the
     backoff. The service's problem `detail` is logged at debug level, never stored.
 13. Coverage read: `source` is `service` | `feed` | `none` from the config. Per area,
-    `followedByService` comes from the last `/areas` answer, kept in memory on the
-    worker and absent before the first cycle or in a split deployment (the API process
-    has no worker). The plan accepts that absence: the column shows "—".
+    `followedByService` is whether the sync keeps a `spot_price_history` row for the
+    area — it writes one for every area answered `active` —, absent before the sync has
+    run once; read from the database, it holds in a split deployment too (as built: the
+    first reading kept it in the worker's memory, which the API process does not have).
     `resolution` comes from the latest stored day's first interval, and `history` from
     `spot_price_history`.
 14. Summary read (delivery 2): one query

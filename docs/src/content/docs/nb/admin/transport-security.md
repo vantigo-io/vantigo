@@ -1,6 +1,6 @@
 ---
 title: "Transportsikkerhet og herding av nettleseren"
-description: "Operatørens valg av https, PostgreSQL-TLS eller Unix-socket og SMTP-TLS, HSTS, vertsfiltrering og innholdssikkerhetspolicyen."
+description: "Operatørens valg av https, PostgreSQL-TLS eller Unix-socket og SMTP-TLS, unntaket for private nettverk i vakten for utgående adresser, HSTS, vertsfiltrering og innholdssikkerhetspolicyen."
 sidebar:
   order: 30
 sources:
@@ -114,6 +114,40 @@ rebinding. Dette gjelder uansett hva `SMTP_TLS` sier. Den samme vakten, med den 
 tabellen, gjelder for Peppol-oppslaget og for hentingen i Kalender av kalenderne folk
 abonnerer på, som heller ikke følger noen videresending eller bruker noen proxy
 ([Kalender](/nb/admin/calendar/#hva-vantigo-henter-fra-internett)).
+
+## Unntaket for private nettverk
+
+Vakten har ett unntak, og én kaller kan bruke det: energimodulens klient for den delte
+spotpristjenesten, som på våre verter kjører som en container på et internt
+Docker-nettverk ved siden av leietakerne og nås på en privat adresse
+(`http://vantigo-spotprices:8080`). Ingenting annet åpnes av det.
+
+- **Innstillingen som åpner det** er `ENERGY_SPOT_PRICE_SERVICE_URL`
+  ([Konfigurasjon](/nb/admin/authentication/)). Ikke satt — standardverdien — bruker
+  ingen klient unntaket, og vakten avviser hver private adresse som før.
+- **Områdene** det tillater, er de private nettverkene en operatør driver: RFC 1918 for
+  IPv4 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) og RFC 4193 unik-lokal IPv6
+  (`fc00::/7`), der en IPv4-mappet IPv6-form leses som IPv4-adressen den bærer.
+  Ingenting annet: loopback, link-local og skyplattformenes metadata-adresse
+  `169.254.169.254`, carrier-grade NAT (`100.64.0.0/10`), uspesifiserte adresser,
+  multicast og reserverte adresser avvises fortsatt også for denne klienten. En privat
+  adresse bakt inn i en NAT64- (`64:ff9b::/96`), 6to4- eller IPv4-kompatibel
+  IPv6-adresse ses **ikke** gjennom: en privat adresse nådd gjennom en oversetter er
+  ikke ditt nettverk.
+- **Bare verten.** Klienten sender forespørsler til den konfigurerte verten og avviser
+  enhver annen før den kobler til, så unntaket kan ikke nås gjennom en videresending —
+  ingen følges — eller av noe annet i prosessen. Verten slås fortsatt opp og hver
+  adresse kontrolleres før tilkoblingen gjøres til adressen som ble kontrollert, så DNS
+  rebinding slås som for alle andre klienter bak vakten. Ingen proxy brukes.
+- **`http` bare til en privat adresse.** Klienten sender installasjonens nøkkel som et
+  bærertoken (bearer) i hver forespørsel. En `http`-URL godtas derfor bare når **hver**
+  adresse verten slås opp til er privat, så nøkkelen aldri sendes i klartekst til en
+  offentlig adresse; en forespørsel til en slik vert avvises før noe sendes, og
+  registreres som «the spot-price service's address is public; use https» (i
+  **Dekning**-kortets **Siste henting** og **Historikk**). Over `https` tillates en offentlig eller en privat adresse, og
+  sertifikatet beskytter nøkkelen. En `http`-URL på et nettverk du ikke kontrollerer
+  fra ende til ende koster det en `http`-`APP_URL` koster: hvem som helst på veien
+  leser nøkkelen.
 
 ## Oppgradering fra de lukkede reglene
 

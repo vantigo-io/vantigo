@@ -126,6 +126,8 @@ the caller can show why a point is not billed instead of silently skipping it.
 
 ### D2 — Spot prices: intervals per price area, fetched or imported
 
+*Amended by the spot-price service design, S10.*
+
 **The model.** `energy.spot_prices` (`mig/00065_energy_spot_prices.sql`): `id bigint`,
 `price_area varchar(4)`, `start`/`end timestamptz` (half-open, `end > start`),
 `nok_per_kwh numeric(12,6)`, `eur_per_kwh numeric(12,6) NULL`, `exchange_rate
@@ -237,6 +239,8 @@ year, clipped to the supply period's own `[start, end)`. A period is **closed** 
 end is on or before `Through` and, for an open supply period, before now.
 
 ### D5 — Settlements: the row, the computation, the correction
+
+*Amended by the spot-price service design, S10.*
 
 **The model** (`mig/00066_energy_settlements.sql`). `energy.settlements`: `id bigint`,
 `supply_period_id`, `metering_point_id`, `customer_id` (opaque, copied from the supply
@@ -418,6 +422,8 @@ phase 5 names as a follow-up. **`module.Workers`** learns the slots the run need
   their modules' permissions.
 
 ### D12 — Out of scope, named
+
+*Amended by the spot-price service design, S10.*
 
 Advance invoicing and à-konto for energy (§ 7-1b (3)–(6)) · gjennomfakturering's exchange
 (Ediel/NBS, the guarantee, forwarding payments, the grid company's original invoice on the

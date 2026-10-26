@@ -278,7 +278,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert modul
 (utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber,
 kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, energimodulens spotprisjobb
-`energy-spot-prices` når `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
+`energy-spot-prices` når `ENERGY_SPOT_PRICE_SERVICE_URL` er satt eller `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
 `INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid,
 fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på, og
 kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
@@ -342,19 +342,74 @@ kunder gjennom kundemodulen, så kjør den med `customers` blant `MODULES` når 
 navngir kunder. Se
 [Importing metering points](/en/reference/energy/#importing-metering-points).
 
-Energimodulens spotprisjobb `energy-spot-prices` henter døgnmarkedets priser for hvert
-prisområde i bruk — det til et målepunkt med en ikke-kansellert leveranseperiode, eller
-et som allerede har priser — fra sju dager tilbake til i morgen, fra
-`ENERGY_SPOT_PRICE_FEED_URL` — som standard den offentlige priskilden på
-`www.hvakosterstrommen.no`. Det er et utgående kall installasjonen selv velger, så den
-er **av** med mindre `ENERGY_SPOT_PRICE_FEED_ENABLED=1`; uten den importeres prisene fra
-en fil på Priser-siden, som også er måten å fylle inn en dag eldre enn en uke.
+Energimodulens spotprisjobb `energy-spot-prices` fyller døgnmarkedets priser for hvert
+prisområde fra **én** kilde: den delte spotpristjenesten, eller en offentlig priskilde.
+Det er et utgående kall installasjonen selv velger, så den er **av** med mindre én av
+dem er satt; uten noen av dem importeres prisene fra en fil på Priser-siden. Å sette
+både `ENERGY_SPOT_PRICE_SERVICE_URL` og `ENERGY_SPOT_PRICE_FEED_ENABLED=1` stopper
+oppstarten («set one spot price source»). `ENERGY_SPOT_PRICE_FEED_POLL` (15 minutter
+som standard, minst `1m`) styrer takten uansett kilde, og begge kjører under den samme
+rådgivende låsen, så én instans henter, med høyst tjue forespørsler per runde.
+
+**Med spotpristjenesten** (`ENERGY_SPOT_PRICE_SERVICE_URL` og
+`ENERGY_SPOT_PRICE_SERVICE_KEY`, installasjonens bærernøkkel — på våre verter
+`http://vantigo-spotprices:8080` og nøkkelen vertens verktøy skriver) kopierer jobben
+prisene for hvert område tjenesten følger (NO1–NO5 på våre verter) inn i
+installasjonens egen database, så Priser-siden fylles før det første målepunktet
+finnes; et område i bruk som tjenesten ikke følger, spørres det ikke etter (se
+nedenfor). Hver runde spør først tjenesten hvilke områder den følger, leser deretter
+hvert områdes løpende vindu — fjorten dager tilbake til i morgen — med én
+forespørsel, når en av dagene er forfalt eller vinduet sist ble lest for mer enn et
+døgn siden, og går så bakover gjennom hvert områdes historikk, 35 dager per
+forespørsel (34 over høstens klokkeskifte), ned til den eldste dagen tjenesten har,
+eller til `ENERGY_SPOT_PRICE_HISTORY_FROM` når den er senere. De tjue forespørslene
+omfatter den om områdene. **Mens historikken kopieres, kjører jobben en runde hvert
+minutt** i stedet for ved hvert poll; fem områder fra 2015 tar omtrent en halvtime, og
+deretter styrer pollen takten igjen. Priser tjenesten merker som foreløpige
+(morgendagens NOK-pris til valutakursen er endelig) lagres som foreløpige, spørres
+etter igjen hver time og erstattes når de blir endelige. Tjenesten overskriver aldri
+en pris importert fra en fil. Tjenesten nås på en privat adresse gjennom det ene
+unntaket i vakten for utgående adresser
+([Transportsikkerhet](/nb/admin/transport-security/#unntaket-for-private-nettverk)):
+en `http`-URL bare til en privat adresse, `https` til enhver rutbar adresse, og aldri en
+videresending, en proxy eller en annen vert.
+
+For å kontrollere, åpne Priser-siden: tittelen på **Dekning**-kortet sier
+**Spotpristjenesten**, hvert område viser oppløsningen sin, og **Historikk**-kolonnen
+sier hvor langt tilbake den har kopiert («Kopierer… tilbake til …», deretter «Komplett
+fra …»). Eller spør `GET /api/v1/energy/spot-prices/coverage` med en økt som har
+`energy:prices-view`: den svarer `"source": "service"`, og per område
+`followedByService` og `history` når den første runden har kjørt.
+
+Hva som kan gå galt — feilen i det løpende vinduet vises i **Dekning**-kortets kolonne
+**Siste henting**, historikkens under **Historikk**, og begge logges som advarsel:
+
+- **«the spot-price service refused the key»** — en `401`: nøkkelen er feil, trukket
+  tilbake eller rotert uten at Vantigo er startet på nytt. Sett den gjeldende nøkkelen
+  og start på nytt.
+- **«the spot-price service's address is public; use https»** — URL-en er `http`, og
+  verten slås opp til en offentlig adresse. Bruk den interne adressen, eller `https`.
+- **«the spot-price service is rate limiting this installation»** — en `429`: runden
+  gjør ingen flere forespørsler, og neste forsøk venter den vanlige ventetiden etter en
+  feil eller til tjenestens `Retry-After`, det som er senest.
+- **Et område i bruk som tjenesten ikke følger** — et målepunkt i for eksempel `SE3` på
+  en vert der tjenesten bare følger NO1–NO5. **Historikk**-kolonnen sier «Følges ikke av
+  spotpristjenesten», og jobben spør ikke etter noe for det: be tjenestens operatør
+  følge området, eller importer områdets priser fra en fil.
+- **Dager hoppet over** — en dag tjenesten har ufullstendig eller uten NOK-pris, eller
+  en som ligger over en dag importert fra en fil med en annen oppløsning, telles i
+  **Historikk**-kolonnen og overlates til en fil; jobben overskriver aldri en importert
+  pris.
+
+**Med den offentlige priskilden** (`ENERGY_SPOT_PRICE_FEED_ENABLED=1`) henter jobben
+prisene for hvert prisområde i bruk — det til et målepunkt med en ikke-kansellert
+leveranseperiode, eller et som allerede har priser — fra sju dager tilbake til i
+morgen, fra `ENERGY_SPOT_PRICE_FEED_URL` — som standard den offentlige priskilden på
+`www.hvakosterstrommen.no`. En dag eldre enn en uke fylles inn fra en fil på
+Priser-siden.
 Standardkilden har bare de norske områdene NO1–NO5: et målepunkt i et annet område (et
 svensk `SE3`, for eksempel) får jobben til å spørre etter dager kilden aldri har, så gi
-den en kilde som har dem, eller importer områdets priser fra en fil. Den
-kjører hvert `ENERGY_SPOT_PRICE_FEED_POLL` (15 minutter som standard, minst `1m`) under
-en egen rådgivende lås, så én instans henter, og gjør høyst tjue forespørsler per
-runde. Priskilden hentes gjennom vakten for utgående adresser, slik
+den en kilde som har dem, eller importer områdets priser fra en fil. Priskilden hentes gjennom vakten for utgående adresser, slik
 kalenderabonnementene gjør: bare `https`, ingen proxy, ingen videresending, høyst
 1 MiB, og aldri en vert som slås opp til en privat adresse, loopback, link-local,
 carrier-grade NAT, en skyplattforms metadata-adresse eller en annen ikke-rutbar
