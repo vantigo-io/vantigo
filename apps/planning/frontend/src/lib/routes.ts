@@ -11,6 +11,8 @@ export const PROJECT_PLAN_ROUTE_PATH = "/planning/projects/$projectId";
 export const PERSON_TIMELINE_ROUTE_PATH = "/planning/people/$personId";
 export const REQUESTS_ROUTE_PATH = "/planning/requests";
 export const INTAKE_ROUTE_PATH = "/planning/intake";
+/** The planners' list of open wishes (design S21), `planning:manage`'s. */
+export const WISHES_ROUTE_PATH = "/planning/wishes";
 export const UNBOOKED_ROUTE_PATH = "/planning/unbooked";
 export const MY_PLANNING_ROUTE_PATH = "/planning/me";
 export const PLANNING_SETTINGS_ROUTE_PATH = "/planning/settings";

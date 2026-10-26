@@ -31,6 +31,7 @@ export const calendarCatalog = {
     kind_projects_task: "Tasks",
     kind_time_entry: "Hours",
     kind_expenses_claim: "Travel",
+    kind_planning_allocation: "Bookings",
     kind_calendar_subscription: "Subscriptions",
 
     newAppointment: "New appointment",
@@ -319,6 +320,7 @@ export const calendarCatalog = {
     kind_projects_task: "Oppgaver",
     kind_time_entry: "Timer",
     kind_expenses_claim: "Reiser",
+    kind_planning_allocation: "Allokeringer",
     kind_calendar_subscription: "Abonnementer",
 
     newAppointment: "Ny avtale",

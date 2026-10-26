@@ -20,6 +20,7 @@ import {
   IconFileInvoice,
   IconFilePlus,
   IconFlag,
+  IconHeartHandshake,
   IconId,
   IconInbox,
   IconLayoutDashboard,
@@ -144,6 +145,7 @@ const planningNavPresentation: Record<PlanningNavItem["key"], Pick<NavItem, "lab
   requests: { label: "navigation.planningRequests", icon: IconUserSearch },
   intake: { label: "navigation.planningIntake", icon: IconTelescope },
   unbooked: { label: "navigation.planningUnbooked", icon: IconUserQuestion },
+  wishes: { label: "navigation.planningWishes", icon: IconHeartHandshake },
   myPlanning: { label: "navigation.planningMyPlanning", icon: IconCalendarUser },
   settings: { label: "navigation.planningSettings", icon: IconAdjustments },
 };

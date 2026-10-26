@@ -4,6 +4,8 @@ import type { PlanningPerson } from "../api/people";
 import type { PlanningProject } from "../api/projects";
 import type { PlanningCandidate, PlanningRequest } from "../api/requests";
 import type { PlanningSettings } from "../api/settings";
+import type { PlanningTerms } from "../api/terms";
+import type { PlanningWish } from "../api/wishes";
 import { addDays, addWeeks, mondayOf, today } from "../lib/weeks";
 
 /** The business day the suite runs on, and its week: every fixture is placed relative to them. */
@@ -41,7 +43,11 @@ export const projects = (): PlanningProject[] => [
 
 const stamp = "2026-10-01T08:00:00Z";
 
-/** A row as the server answers it, the person and the project named from the fixtures. */
+/**
+ * A row as the server answers it, the person and the project named from the
+ * fixtures; its earliest release is its last day unless the fields say
+ * otherwise (S15: no term binds).
+ */
 export const allocation = (
   fields: Partial<PlanningAllocation> & { id: number; personId: number; projectId: number },
 ): PlanningAllocation => {
@@ -51,6 +57,7 @@ export const allocation = (
   return {
     fromDate: week(0),
     toDate: weekEnd(11),
+    earliestRelease: rest.earliestRelease ?? rest.toDate ?? weekEnd(11),
     load: 50,
     loadUnit: "percent",
     status: "confirmed",
@@ -85,6 +92,86 @@ export const allocations = (): PlanningAllocation[] => [
     toDate: weekEnd(3),
   }),
   allocation({ id: 503, personId: 3, projectId: 100, load: 20, loadUnit: "hours_per_week", toDate: weekEnd(5) }),
+];
+
+/** An allocation's terms as the server answers them to `planning:manage` (S14): nothing set but the revision. */
+export const terms = (fields: Partial<PlanningTerms> = {}): PlanningTerms => ({
+  replacementNeedsApproval: false,
+  nonCompeteCustomers: [],
+  revision: 1,
+  createdAt: stamp,
+  updatedAt: stamp,
+  ...fields,
+});
+
+/** Where Ada's assignment with terms ends, and what its terms derive (S15). */
+export const RELEASE = addDays(weekEnd(11), 21);
+export const HANDOVER = addDays(RELEASE, -10);
+
+/**
+ * Ada's harbour app row with terms: a month's notice given, ten handover
+ * days, a non-compete toward Fjord AS, a reference; released three weeks
+ * after its end.
+ */
+export const allocationWithTerms = (fields: Partial<PlanningTerms> = {}): PlanningAllocation =>
+  allocation({
+    id: 501,
+    personId: 1,
+    projectId: 100,
+    title: "Frontend developer",
+    earliestRelease: RELEASE,
+    handoverStart: HANDOVER,
+    terms: terms({
+      revision: 3,
+      noticeCount: 1,
+      noticeUnit: "months",
+      noticeGivenOn: addDays(weekEnd(11), -10),
+      handoverDays: 10,
+      nonCompeteUntil: addDays(TODAY, 365),
+      nonCompeteCustomers: [{ id: 7, name: "Fjord AS" }],
+      reference: "PO-77",
+      ...fields,
+    }),
+  });
+
+/** A wish as the server answers it, the person and the project named from the fixtures. */
+export const wish = (
+  fields: Partial<PlanningWish> & { id: number; personId: number; projectId?: number },
+): PlanningWish => {
+  const { personId, projectId, ...rest } = fields;
+  const person = people().find((one) => one.id === personId);
+  const project = projects().find((one) => one.id === projectId);
+  return {
+    kind: projectId === undefined ? "new" : "off",
+    fromDate: addDays(TODAY, 14),
+    createdAt: stamp,
+    person: person
+      ? { id: person.id, displayName: person.displayName, employeeNumber: person.employeeNumber }
+      : { id: personId, displayName: null },
+    ...(projectId === undefined
+      ? {}
+      : {
+          project: project
+            ? { id: project.id, code: project.code, name: project.name, status: project.status }
+            : { id: projectId },
+        }),
+    ...rest,
+  };
+};
+
+/**
+ * The open wishes, oldest first: Ada wishes off the harbour app in two weeks,
+ * not yet seen; Linus wishes for something new in a month, seen.
+ */
+export const wishes = (): PlanningWish[] => [
+  wish({ id: 901, personId: 1, projectId: 100, createdAt: "2026-10-20T08:00:00Z" }),
+  wish({
+    id: 902,
+    personId: 3,
+    fromDate: addDays(TODAY, 30),
+    createdAt: "2026-10-21T08:00:00Z",
+    seenAt: "2026-10-22T09:00:00Z",
+  }),
 ];
 
 export const settings = (fields: Partial<PlanningSettings> = {}): PlanningSettings => ({
@@ -194,8 +281,10 @@ export const requests = (): PlanningRequest[] => [
 
 /**
  * The candidates for request 801, as the server sorts them: Ada has the time
- * and covers it; Linus is partly free with a certificate expiring and his
- * wishes lowering the fit; Grace misses React (listed with includePartial).
+ * and covers it; Linus is partly free with a certificate expiring, his
+ * preferences lowering the fit, an assignment releasing him late whose
+ * replacement the customer must approve, and a wish for something new;
+ * Grace misses React (listed with includePartial).
  */
 export const candidates = (): PlanningCandidate[] => {
   const [ada, grace, linus] = people();
@@ -216,7 +305,17 @@ export const candidates = (): PlanningCandidate[] => {
       freeHours: 120,
       requiredHours: 222,
       fit: { score: 70, lowered: ["weekdays", "location"] },
-      flags: [{ code: "certificate_expires", competenceKey: "safety-card", date: addDays(MONDAY, 30) }],
+      flags: [
+        { code: "certificate_expires", competenceKey: "safety-card", date: addDays(MONDAY, 30) },
+        {
+          code: "release_after_start",
+          allocationId: 503,
+          date: addDays(MONDAY, 20),
+          handoverFrom: addDays(MONDAY, 13),
+        },
+        { code: "needs_customer_approval", allocationId: 503 },
+        { code: "wishes", wishKind: "new", date: addDays(MONDAY, 1) },
+      ],
       missing: [],
       covers: false,
       currentProject: {

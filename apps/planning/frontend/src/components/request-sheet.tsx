@@ -400,12 +400,16 @@ export const WarningList = ({
   warnings: readonly PlanningWarning[];
   week: (monday: string) => string;
 }) => {
-  const { t } = usePlanningFormat();
+  const { t, date } = usePlanningFormat();
   return (
     <List size="sm" spacing={4}>
       {warnings.map((warning) => (
-        <List.Item key={`${warning.code}/${warning.weeks?.join(",") ?? ""}`}>
-          {t(`warning_${warning.code}`, { weeks: (warning.weeks ?? []).map(week).join(", ") })}
+        <List.Item key={`${warning.code}/${warning.weeks?.join(",") ?? ""}/${warning.allocationId ?? ""}`}>
+          {t(`warning_${warning.code}`, {
+            weeks: (warning.weeks ?? []).map(week).join(", "),
+            date: warning.date ? date(warning.date) : "",
+            allocationId: warning.allocationId ?? "",
+          })}
         </List.Item>
       ))}
     </List>

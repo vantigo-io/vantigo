@@ -1081,6 +1081,8 @@ describe("the dashboard's planning card", () => {
  * allocation's — the board, an open request the requests. The server's title
  * is the person's name with the week, the certificate or the project after it
  * (a request's is the project's code and its title), so the sentence is the host's.
+ * The unseen wishes are one item with a count, which opens the wishes; its
+ * sentence names the count, not the oldest wisher the title carries.
  */
 describe("the dashboard's planning attention items", () => {
   it("opens the screen that answers each, and words it in the reader's language", () => {
@@ -1105,21 +1107,42 @@ describe("the dashboard's planning attention items", () => {
     const types = [
       ...block.slice(0, block.indexOf("                    type: string")).matchAll(/^ {24}- (\w+)$/gm),
     ].map((match) => match[1]);
-    expect(types).toEqual(["unbooked", "overbooked", "endingWithoutFollowOn", "certificatesExpiring", "requestsOpen"]);
+    expect(types).toEqual([
+      "unbooked",
+      "overbooked",
+      "endingWithoutFollowOn",
+      "certificatesExpiring",
+      "requestsOpen",
+      "wishesUnseen",
+    ]);
     const hrefs = {
       unbooked: "/planning/unbooked",
       overbooked: "/planning/people/101",
       endingWithoutFollowOn: "/planning",
       certificatesExpiring: "/planning/people/101",
       requestsOpen: "/planning/requests?status=open",
+      wishesUnseen: "/planning/wishes",
     } as Record<string, string>;
     for (const type of types) {
       const entityId = type === "endingWithoutFollowOn" ? "7001" : "101";
       expect(attentionHref({ module: "planning", type, entityId }), type).toBe(hrefs[type]);
       const key = attentionTitleKey({ module: "planning", type, entityId }) as string;
       expect(key, type).toBeDefined();
+      const expected = type === "wishesUnseen" ? "7" : "Ada Lovelace";
       for (const lng of ["en", "nb"])
-        expect(i18n.t(key, { ns: "host", lng, name: "Ada Lovelace" }), `${type} ${lng}`).toContain("Ada Lovelace");
+        expect(i18n.t(key, { ns: "host", lng, name: "Ada Lovelace", count: 7 }), `${type} ${lng}`).toContain(expected);
+    }
+  });
+
+  it("words the unseen wishes by their count", () => {
+    const item = { module: "planning" as const, type: "wishesUnseen", entityId: "9", title: "Ada Lovelace", count: 3 };
+    expect(attentionTitleKey(item)).toBe("dashboard.planningWishesUnseen");
+    for (const [lng, sentence] of [
+      ["en", "Unseen wishes: 3"],
+      ["nb", "Usette ønsker: 3"],
+    ] as const) {
+      const t = (key: string, values?: Record<string, unknown>) => i18n.t(key, { ns: "host", lng, ...values });
+      expect(attentionTitle(item, t, () => "")).toBe(sentence);
     }
   });
 });

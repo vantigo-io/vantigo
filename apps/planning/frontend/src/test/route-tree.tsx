@@ -20,6 +20,7 @@ import {
   PROJECT_PLAN_ROUTE_PATH,
   REQUESTS_ROUTE_PATH,
   UNBOOKED_ROUTE_PATH,
+  WISHES_ROUTE_PATH,
 } from "../lib/routes";
 import { validateBoardSearch, validateRequestsSearch, validateWindowSearch } from "../lib/search";
 import { BoardPage } from "../pages/board";
@@ -30,6 +31,7 @@ import { ProjectPlanPage } from "../pages/project-plan";
 import { RequestsPage } from "../pages/requests";
 import { PlanningSettingsPage } from "../pages/settings";
 import { UnbookedPage } from "../pages/unbooked";
+import { WishesPage } from "../pages/wishes";
 import "../i18n";
 import { ProjectPlanningTab } from "./project-planning-tab";
 import { StaffPersonSlot } from "./staff-person-slot";
@@ -77,6 +79,7 @@ export const makeRouteTree = () => {
     }),
     createRoute({ getParentRoute: () => rootRoute, path: INTAKE_ROUTE_PATH, component: IntakePage }),
     createRoute({ getParentRoute: () => rootRoute, path: UNBOOKED_ROUTE_PATH, component: UnbookedPage }),
+    createRoute({ getParentRoute: () => rootRoute, path: WISHES_ROUTE_PATH, component: WishesPage }),
     createRoute({ getParentRoute: () => rootRoute, path: MY_PLANNING_ROUTE_PATH, component: MyPlanningPage }),
     createRoute({
       getParentRoute: () => rootRoute,

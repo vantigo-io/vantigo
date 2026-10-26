@@ -244,6 +244,26 @@ describe("ModuleAccessGuard", () => {
     expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
   });
 
+  // Planning's wishes and settings are planning:manage's (planning design S21);
+  // the module access guard gates their URLs by the sidebar entry's permission.
+  it.each([
+    ["/planning/wishes", ["planning:manage"]],
+    ["/planning/settings", ["planning:manage"]],
+  ])("guards %s behind %s", (pathname, permissions) => {
+    renderGuardFor(pathname, []);
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+
+    cleanup();
+    renderGuardFor(pathname, permissions);
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
+  it("refuses the wishes to a caller holding only planning:access and planning:view", () => {
+    renderGuardFor("/planning/wishes", ["planning:access", "planning:view"]);
+
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+  });
+
   // Expenses' approval queue is Time's own seam again: the sidebar entry is
   // for expenses:approve holders, but a project manager approves their own
   // project's expenses through their role alone and reaches the queue from the

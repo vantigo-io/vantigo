@@ -4,7 +4,6 @@ import {
   Drawer,
   em,
   Group,
-  List,
   NumberInput,
   SegmentedControl,
   Stack,
@@ -29,7 +28,6 @@ import {
   type PlanningAllocationInput,
   type PlanningAllocationStatus,
   type PlanningAllocationWritten,
-  type PlanningWarning,
   updateAllocation,
 } from "../api/allocations";
 import { type PlanningLoadUnit, planningMetaQueryOptions } from "../api/meta";
@@ -38,6 +36,8 @@ import { ApiValidationError, isRevisionConflict, PLANNING_QUERY_KEY, refusalCode
 import { usePlanningFormat } from "../lib/format";
 import { PersonPicker, type PickedPerson } from "./person-picker";
 import { type PickedProject, ProjectPicker } from "./project-picker";
+import { WarningList } from "./request-sheet";
+import { TermsSection } from "./terms-section";
 
 /** What the sheet opens with when it creates: the board's cell, the project's plan, a person's timeline. */
 export interface AllocationPreset {
@@ -65,7 +65,8 @@ const statusFor = (project?: PlanningProjectStatus): PlanningAllocationStatus =>
 /**
  * The allocation sheet (design §7): who, on what, when, how much, how sure,
  * the role and the planners' note. A drawer at the side, a bottom sheet on a
- * phone; its form opens fresh each time it is shown. It is `planning:manage`'s
+ * phone; its form opens fresh each time it is shown. A row being changed
+ * shows its terms under the form (S14, delivery C). It is `planning:manage`'s
  * — nothing offers it to anyone else.
  */
 export const AllocationSheet = ({ opened, onClose, allocation, preset }: AllocationSheetProps) => {
@@ -223,18 +224,11 @@ const AllocationForm = ({
     onError: refused,
   });
 
-  const warningText = (warning: PlanningWarning) =>
-    t(`warning_${warning.code}`, { weeks: (warning.weeks ?? []).map(week).join(", ") });
-
   if (written)
     return (
       <Stack>
         <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={t("savedWithWarnings")}>
-          <List size="sm" spacing={4}>
-            {written.warnings.map((warning) => (
-              <List.Item key={`${warning.code}/${warning.weeks?.join(",") ?? ""}`}>{warningText(warning)}</List.Item>
-            ))}
-          </List>
+          <WarningList warnings={written.warnings} week={week} />
         </Alert>
         <Group justify="flex-end">
           <Button onClick={onDone}>{t("close")}</Button>
@@ -244,116 +238,120 @@ const AllocationForm = ({
 
   const unit = form.values.loadUnit;
   return (
-    <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
-      <Stack>
-        <PersonPicker
-          label={t("person")}
-          value={form.values.personId}
-          selected={person}
-          onChange={(id) => form.setFieldValue("personId", id)}
-          error={form.errors.personId as string | undefined}
-        />
-        <ProjectPicker
-          label={t("project")}
-          value={form.values.projectId}
-          selected={project}
-          onChange={(id, picked) => {
-            form.setFieldValue("projectId", id);
-            if (!statusTouched && picked) form.setFieldValue("status", statusFor(picked.status));
-          }}
-          error={form.errors.projectId as string | undefined}
-        />
-        <DatePickerInput
-          type="range"
-          label={t("period")}
-          description={t("periodDescription")}
-          withAsterisk
-          allowSingleDateInRange
-          valueFormat={t("dateInputFormat")}
-          {...form.getInputProps("period")}
-        />
-        <Stack gap={4}>
-          <Text size="sm" fw={500}>
-            {t("load")}
-          </Text>
-          <SegmentedControl
-            aria-label={t("loadUnit")}
-            value={unit}
-            onChange={(value) => form.setFieldValue("loadUnit", value as PlanningLoadUnit)}
-            data={(meta.data?.loadUnits ?? ["percent", "hours_per_week"]).map((value) => ({
-              value,
-              label: t(`loadUnit_${value}`),
-            }))}
+    <Stack gap="xl">
+      <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
+        <Stack>
+          <PersonPicker
+            label={t("person")}
+            value={form.values.personId}
+            selected={person}
+            onChange={(id) => form.setFieldValue("personId", id)}
+            error={form.errors.personId as string | undefined}
           />
-          <NumberInput
-            aria-label={unit === "percent" ? t("loadPercentField") : t("loadHoursField")}
-            min={0}
-            max={MAX_LOAD[unit]}
-            decimalScale={2}
-            allowNegative={false}
-            suffix={unit === "percent" ? " %" : undefined}
-            {...form.getInputProps("load")}
-          />
-        </Stack>
-        <Stack gap={4}>
-          <Text size="sm" fw={500}>
-            {t("status")}
-          </Text>
-          <SegmentedControl
-            aria-label={t("status")}
-            value={form.values.status}
-            onChange={(value) => {
-              setStatusTouched(true);
-              form.setFieldValue("status", value as PlanningAllocationStatus);
+          <ProjectPicker
+            label={t("project")}
+            value={form.values.projectId}
+            selected={project}
+            onChange={(id, picked) => {
+              form.setFieldValue("projectId", id);
+              if (!statusTouched && picked) form.setFieldValue("status", statusFor(picked.status));
             }}
-            data={allocationStatuses.map((value) => ({ value, label: t(`status_${value}`) }))}
+            error={form.errors.projectId as string | undefined}
           />
-          <Text size="xs" c="dimmed">
-            {t(`statusDescription_${form.values.status}`)}
-          </Text>
-        </Stack>
-        <TextInput
-          label={t("allocationTitle")}
-          description={t("allocationTitleDescription")}
-          {...form.getInputProps("title")}
-        />
-        <Textarea label={t("note")} description={t("noteDescription")} rows={3} {...form.getInputProps("note")} />
-        {refusal && (
-          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotSave")}>
-            {refusal}
-          </Alert>
-        )}
-        <Group justify="space-between">
-          <Group gap="xs">
-            {allocation && (
-              <Button
-                variant="subtle"
-                color="red"
-                loading={remove.isPending}
-                onClick={() =>
-                  modals.openConfirmModal({
-                    title: t("deleteAllocationTitle"),
-                    children: <Text size="sm">{t("deleteAllocationExplained")}</Text>,
-                    labels: { confirm: t("delete"), cancel: t("cancel") },
-                    confirmProps: { color: "red" },
-                    onConfirm: () => remove.mutate(),
-                  })
-                }
-              >
-                {t("delete")}
-              </Button>
-            )}
-            {allocation?.status === "tentative" && (
-              <Button variant="light" loading={confirm.isPending} onClick={() => confirm.mutate()}>
-                {t("confirm")}
-              </Button>
-            )}
+          <DatePickerInput
+            type="range"
+            label={t("period")}
+            description={t("periodDescription")}
+            withAsterisk
+            allowSingleDateInRange
+            valueFormat={t("dateInputFormat")}
+            {...form.getInputProps("period")}
+          />
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              {t("load")}
+            </Text>
+            <SegmentedControl
+              aria-label={t("loadUnit")}
+              value={unit}
+              onChange={(value) => form.setFieldValue("loadUnit", value as PlanningLoadUnit)}
+              data={(meta.data?.loadUnits ?? ["percent", "hours_per_week"]).map((value) => ({
+                value,
+                label: t(`loadUnit_${value}`),
+              }))}
+            />
+            <NumberInput
+              aria-label={unit === "percent" ? t("loadPercentField") : t("loadHoursField")}
+              min={0}
+              max={MAX_LOAD[unit]}
+              decimalScale={2}
+              allowNegative={false}
+              suffix={unit === "percent" ? " %" : undefined}
+              {...form.getInputProps("load")}
+            />
+          </Stack>
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              {t("status")}
+            </Text>
+            <SegmentedControl
+              aria-label={t("status")}
+              value={form.values.status}
+              onChange={(value) => {
+                setStatusTouched(true);
+                form.setFieldValue("status", value as PlanningAllocationStatus);
+              }}
+              data={allocationStatuses.map((value) => ({ value, label: t(`status_${value}`) }))}
+            />
+            <Text size="xs" c="dimmed">
+              {t(`statusDescription_${form.values.status}`)}
+            </Text>
+          </Stack>
+          <TextInput
+            label={t("allocationTitle")}
+            description={t("allocationTitleDescription")}
+            {...form.getInputProps("title")}
+          />
+          <Textarea label={t("note")} description={t("noteDescription")} rows={3} {...form.getInputProps("note")} />
+          {refusal && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotSave")}>
+              {refusal}
+            </Alert>
+          )}
+          <Group justify="space-between">
+            <Group gap="xs">
+              {allocation && (
+                <Button
+                  variant="subtle"
+                  color="red"
+                  loading={remove.isPending}
+                  onClick={() =>
+                    modals.openConfirmModal({
+                      title: t("deleteAllocationTitle"),
+                      children: <Text size="sm">{t("deleteAllocationExplained")}</Text>,
+                      labels: { confirm: t("delete"), cancel: t("cancel") },
+                      confirmProps: { color: "red" },
+                      onConfirm: () => remove.mutate(),
+                    })
+                  }
+                >
+                  {t("delete")}
+                </Button>
+              )}
+              {allocation?.status === "tentative" && (
+                <Button variant="light" loading={confirm.isPending} onClick={() => confirm.mutate()}>
+                  {t("confirm")}
+                </Button>
+              )}
+            </Group>
+            <Button type="submit" loading={save.isPending}>
+              {t("save")}
+            </Button>
           </Group>
-          <Button type="submit" loading={save.isPending}>
-            {t("save")}
-          </Button>
-        </Group>
-      </Stack>
-    </form>
+        </Stack>
+      </form>
+      {/* The terms are their own resource, with their own revision (S14): a form of their own, beside this one. */}
+      {allocation && <TermsSection allocation={allocation} onDone={onDone} />}
+    </Stack>
   );
 };

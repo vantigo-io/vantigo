@@ -1,7 +1,8 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import "../i18n";
+import { calendarCatalog } from "../i18n";
+import { colourForKind, kindLabelKey } from "../lib/colours";
 import { HIDDEN_KINDS_STORAGE_KEY, readHiddenKinds, writeHiddenKinds } from "../lib/filter";
 import { renderWithProviders } from "../test/render";
 import { SourceLegend } from "./source-legend";
@@ -50,5 +51,14 @@ describe("the filter's memory", () => {
     expect(appointments.style.background).toBe("var(--vantigo-calendar-primary)");
     await userEvent.click(screen.getByText("Subscriptions"));
     expect(toggled).toEqual(["calendar.subscription"]);
+  });
+
+  it("names Planning's bookings in both languages and draws them in Planning's colour", () => {
+    const key = kindLabelKey("planning.allocation") as keyof typeof calendarCatalog.en;
+    expect(calendarCatalog.en[key]).toBe("Bookings");
+    expect(calendarCatalog.nb[key]).toBe("Allokeringer");
+    expect(colourForKind("planning.allocation")).toBe("var(--vantigo-calendar-indigo)");
+    renderWithProviders(<SourceLegend kinds={["planning.allocation"]} hidden={new Set()} onToggle={() => {}} />);
+    expect(screen.getByRole("checkbox", { name: "Bookings" })).toBeChecked();
   });
 });

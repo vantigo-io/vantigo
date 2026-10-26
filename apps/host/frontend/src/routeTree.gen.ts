@@ -65,6 +65,7 @@ import { Route as PlanningMeRouteImport } from './routes/planning/me'
 import { Route as PlanningRequestsRouteImport } from './routes/planning/requests'
 import { Route as PlanningSettingsRouteImport } from './routes/planning/settings'
 import { Route as PlanningUnbookedRouteImport } from './routes/planning/unbooked'
+import { Route as PlanningWishesRouteImport } from './routes/planning/wishes'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
 import { Route as ProductsCategoriesRouteImport } from './routes/products/categories'
@@ -404,6 +405,11 @@ const PlanningSettingsRoute = PlanningSettingsRouteImport.update({
 const PlanningUnbookedRoute = PlanningUnbookedRouteImport.update({
   id: '/unbooked',
   path: '/unbooked',
+  getParentRoute: () => PlanningRoute,
+} as any)
+const PlanningWishesRoute = PlanningWishesRouteImport.update({
+  id: '/wishes',
+  path: '/wishes',
   getParentRoute: () => PlanningRoute,
 } as any)
 const ProductsIndexRoute = ProductsIndexRouteImport.update({
@@ -767,6 +773,7 @@ export interface FileRoutesByFullPath {
   '/planning/requests': typeof PlanningRequestsRoute
   '/planning/settings': typeof PlanningSettingsRoute
   '/planning/unbooked': typeof PlanningUnbookedRoute
+  '/planning/wishes': typeof PlanningWishesRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -868,6 +875,7 @@ export interface FileRoutesByTo {
   '/planning/requests': typeof PlanningRequestsRoute
   '/planning/settings': typeof PlanningSettingsRoute
   '/planning/unbooked': typeof PlanningUnbookedRoute
+  '/planning/wishes': typeof PlanningWishesRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -985,6 +993,7 @@ export interface FileRoutesById {
   '/planning/requests': typeof PlanningRequestsRoute
   '/planning/settings': typeof PlanningSettingsRoute
   '/planning/unbooked': typeof PlanningUnbookedRoute
+  '/planning/wishes': typeof PlanningWishesRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -1104,6 +1113,7 @@ export interface FileRouteTypes {
     | '/planning/requests'
     | '/planning/settings'
     | '/planning/unbooked'
+    | '/planning/wishes'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -1205,6 +1215,7 @@ export interface FileRouteTypes {
     | '/planning/requests'
     | '/planning/settings'
     | '/planning/unbooked'
+    | '/planning/wishes'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -1321,6 +1332,7 @@ export interface FileRouteTypes {
     | '/planning/requests'
     | '/planning/settings'
     | '/planning/unbooked'
+    | '/planning/wishes'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -1813,6 +1825,13 @@ declare module '@tanstack/react-router' {
       path: '/unbooked'
       fullPath: '/planning/unbooked'
       preLoaderRoute: typeof PlanningUnbookedRouteImport
+      parentRoute: typeof PlanningRoute
+    }
+    '/planning/wishes': {
+      id: '/planning/wishes'
+      path: '/wishes'
+      fullPath: '/planning/wishes'
+      preLoaderRoute: typeof PlanningWishesRouteImport
       parentRoute: typeof PlanningRoute
     }
     '/products/': {
@@ -2405,6 +2424,7 @@ interface PlanningRouteChildren {
   PlanningRequestsRoute: typeof PlanningRequestsRoute
   PlanningSettingsRoute: typeof PlanningSettingsRoute
   PlanningUnbookedRoute: typeof PlanningUnbookedRoute
+  PlanningWishesRoute: typeof PlanningWishesRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
   PlanningPeoplePersonIdRoute: typeof PlanningPeoplePersonIdRoute
   PlanningProjectsProjectIdRoute: typeof PlanningProjectsProjectIdRoute
@@ -2416,6 +2436,7 @@ const PlanningRouteChildren: PlanningRouteChildren = {
   PlanningRequestsRoute: PlanningRequestsRoute,
   PlanningSettingsRoute: PlanningSettingsRoute,
   PlanningUnbookedRoute: PlanningUnbookedRoute,
+  PlanningWishesRoute: PlanningWishesRoute,
   PlanningIndexRoute: PlanningIndexRoute,
   PlanningPeoplePersonIdRoute: PlanningPeoplePersonIdRoute,
   PlanningProjectsProjectIdRoute: PlanningProjectsProjectIdRoute,

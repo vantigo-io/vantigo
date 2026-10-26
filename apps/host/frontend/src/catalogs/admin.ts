@@ -815,13 +815,14 @@ const en = {
   "admin.permission.staffPersonalDataDescription":
     "Reveal and change national identity numbers and bank accounts, read health documents and sick-leave notes, see HR-only absence types, export anyone's personal data, set legal holds, and erase and re-assess people.",
   "admin.permission.planningAccess": "Use Planning",
-  "admin.permission.planningAccessDescription": "Use the Planning app: My planning, your own confirmed bookings.",
+  "admin.permission.planningAccessDescription":
+    "Use the Planning app: My planning, your own confirmed bookings and wishes, and your bookings on the Calendar.",
   "admin.permission.planningView": "See the plan",
   "admin.permission.planningViewDescription":
     "See the board, every project's plan, every person's timeline with tentative bookings, the unbooked list, the events and the stats — and with them every project's code, name, customer, status and dates, bids included.",
   "admin.permission.planningManage": "Plan",
   "admin.permission.planningManageDescription":
-    "Create, change, confirm and delete allocations, read the planners' notes, and change the Planning settings.",
+    "Create, change, confirm and delete allocations and their terms, create, change, fill and withdraw requests, read the planners' notes, the candidates and the wishes, and change the Planning settings.",
   "admin.permission.calendarAccess": "Use Calendar",
   "admin.permission.calendarAccessDescription":
     "Use the Calendar app: your own calendar, your appointments and your answers to them, and the dashboard's agenda.",
@@ -1408,13 +1409,13 @@ const nb: { [Key in keyof typeof en]: string } = {
     "Vise og endre fødselsnumre og bankkontoer, lese helsedokumenter og sykmeldinger, se fraværstyper bare HR ser, eksportere hvem som helst sine personopplysninger, sette rettslig hold, og slette og vurdere personer på nytt.",
   "admin.permission.planningAccess": "Bruke Bemanning",
   "admin.permission.planningAccessDescription":
-    "Bruke Bemanning-appen: Min bemanning, dine egne bekreftede allokeringer.",
+    "Bruke Bemanning-appen: Min bemanning, dine egne bekreftede allokeringer og ønsker, og allokeringene dine i Kalender.",
   "admin.permission.planningView": "Se planen",
   "admin.permission.planningViewDescription":
     "Se planen, hvert prosjekts plan, hver persons tidslinje med tentative allokeringer, listen over ubemannede, hendelsene og nøkkeltallene — og med dem hvert prosjekts kode, navn, kunde, status og datoer, tilbud medregnet.",
   "admin.permission.planningManage": "Planlegge",
   "admin.permission.planningManageDescription":
-    "Opprette, endre, bekrefte og slette allokeringer, lese planleggernes notater og endre innstillingene for Bemanning.",
+    "Opprette, endre, bekrefte og slette allokeringer og vilkårene deres, opprette, endre, fylle og trekke tilbake behov, lese planleggernes notater, kandidatene og ønskene, og endre innstillingene for Bemanning.",
   "admin.permission.calendarAccess": "Bruk Kalender",
   "admin.permission.calendarAccessDescription":
     "Bruk Kalender-appen: din egen kalender, avtalene dine og svarene dine på dem, og agendaen på kontrollpanelet.",

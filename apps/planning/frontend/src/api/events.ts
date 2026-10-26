@@ -9,7 +9,7 @@ export type PlanningEventKind = PlanningEvent["kind"];
 
 export type PlanningEventEntityKind = PlanningEvent["entityKind"];
 
-export const eventEntityKinds: readonly PlanningEventEntityKind[] = ["allocation", "request"];
+export const eventEntityKinds: readonly PlanningEventEntityKind[] = ["allocation", "request", "wish"];
 
 export const eventKinds: readonly PlanningEventKind[] = [
   "allocation_created",
@@ -22,6 +22,12 @@ export const eventKinds: readonly PlanningEventKind[] = [
   "request_filled",
   "request_reopened",
   "request_withdrawn",
+  "terms_set",
+  "terms_cleared",
+  "wish_created",
+  "wish_seen",
+  "wish_resolved",
+  "wish_withdrawn",
 ];
 
 export interface PlanningEventsFilter {

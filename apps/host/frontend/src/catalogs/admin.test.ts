@@ -174,7 +174,7 @@ describe("the admin permission catalog", () => {
     expect(en["admin.permission.category.planning"]).toBe("Planning");
     expect(en["admin.permission.planningAccess"]).toBe("Use Planning");
     expect(en["admin.permission.planningAccessDescription"]).toBe(
-      "Use the Planning app: My planning, your own confirmed bookings.",
+      "Use the Planning app: My planning, your own confirmed bookings and wishes, and your bookings on the Calendar.",
     );
     expect(en["admin.permission.planningView"]).toBe("See the plan");
     expect(en["admin.permission.planningViewDescription"]).toBe(
@@ -182,7 +182,7 @@ describe("the admin permission catalog", () => {
     );
     expect(en["admin.permission.planningManage"]).toBe("Plan");
     expect(en["admin.permission.planningManageDescription"]).toBe(
-      "Create, change, confirm and delete allocations, read the planners' notes, and change the Planning settings.",
+      "Create, change, confirm and delete allocations and their terms, create, change, fill and withdraw requests, read the planners' notes, the candidates and the wishes, and change the Planning settings.",
     );
   });
 
