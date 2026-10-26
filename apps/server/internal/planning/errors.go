@@ -27,6 +27,9 @@ const (
 	codeDependencyUnavailable = "dependency_unavailable"
 )
 
+// The refusal codes of delivery B (§4.7, S16).
+const codeRequestNotOpen = "request_not_open"
+
 // The warning codes a write answers beside its row (rule 6, §4.6). overbooked
 // is both: a warning under the setting warn, a refusal under refuse (S7).
 const (
@@ -41,6 +44,7 @@ const (
 const (
 	invalidSettingsTitle   = "Invalid Planning settings"
 	invalidAllocationTitle = "Invalid allocation"
+	invalidRequestTitle    = "Invalid request"
 )
 
 // errDependencyUnavailable is every accessor's answer when the contract it

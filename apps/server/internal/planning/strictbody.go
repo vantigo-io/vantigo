@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"slices"
 
@@ -54,50 +55,98 @@ type failingReader struct{ err error }
 
 func (f *failingReader) Read([]byte) (int, error) { return 0, f.err }
 
-// unknownProperties is the request body's top-level properties that the
-// contract's schema does not name, sorted, each as a field error — nothing
-// when the body is not a JSON object (the decoder has judged it already) or
-// the schema admits any property.
+// unknownProperties is the request body's properties that the contract's
+// schema does not name, sorted, each as a field error — nothing when the
+// body is not a JSON object (the decoder has judged it already) or the
+// schema admits any property. The top level is judged first, then each
+// array property closedItems names for the schema, item by item against its
+// item schema, as requirements[i].<name>: a key the generated decoder would
+// drop inside an item is refused as one at the top level is.
 func (s *server) unknownProperties(ctx context.Context, schema string) fieldErrors {
 	var f fieldErrors
 	body, _ := ctx.Value(rawBodyKey{}).([]byte)
 	if len(body) == 0 || s.deps.Doc == nil {
 		return f
 	}
-	ref := s.deps.Doc.Components.Schemas[schema]
-	if ref == nil || ref.Value == nil {
-		return f
-	}
-	if admits := ref.Value.AdditionalProperties.Has; admits == nil || *admits {
+	closed := s.closedSchema(schema)
+	if closed == nil {
 		return f
 	}
 	var properties map[string]json.RawMessage
 	if json.Unmarshal(body, &properties) != nil {
 		return f
 	}
-	names := make([]string, 0, len(properties))
-	for name := range properties {
-		if _, ok := ref.Value.Properties[name]; !ok {
-			names = append(names, name)
-		}
+	for _, name := range unknownNames(closed, properties) {
+		f.add(name, unknownPropertyMessage)
 	}
-	slices.Sort(names)
-	for _, name := range names {
-		f.add(name, "This property is not one this request takes; the request was not applied")
+	for _, array := range slices.Sorted(maps.Keys(closedItems[schema])) {
+		item := s.closedSchema(closedItems[schema][array])
+		var items []map[string]json.RawMessage
+		if item == nil || json.Unmarshal(properties[array], &items) != nil {
+			continue
+		}
+		for i, properties := range items {
+			for _, name := range unknownNames(item, properties) {
+				f.add(fmt.Sprintf("%s[%d].%s", array, i, name), unknownPropertyMessage)
+			}
+		}
 	}
 	return f
 }
 
+// unknownPropertyMessage is the field error of a property a closed schema
+// does not name.
+const unknownPropertyMessage = "This property is not one this request takes; the request was not applied"
+
+// closedSchema is the contract's schema named name when it closes itself
+// (additionalProperties false), nil when the contract has no such schema or
+// it admits any property.
+func (s *server) closedSchema(name string) *openapi3.Schema {
+	ref := s.deps.Doc.Components.Schemas[name]
+	if ref == nil || ref.Value == nil {
+		return nil
+	}
+	if admits := ref.Value.AdditionalProperties.Has; admits == nil || *admits {
+		return nil
+	}
+	return ref.Value
+}
+
+// unknownNames is the names of properties schema does not name, sorted.
+func unknownNames(schema *openapi3.Schema, properties map[string]json.RawMessage) []string {
+	names := make([]string, 0, len(properties))
+	for name := range properties {
+		if _, ok := schema.Properties[name]; !ok {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
 // The contract's names for the request schemas this module closes: the
-// settings' change (S20) and an allocation's fields (S1–S5).
+// settings' change (S20), an allocation's fields (S1–S5), a request's fields,
+// each of its requirements and a fill (S16).
 const (
 	settingsRequestSchema   = "PlanningSettingsRequest"
 	allocationRequestSchema = "PlanningAllocationInput"
+	requestRequestSchema    = "PlanningRequestInput"
+	fillRequestSchema       = "PlanningFillInput"
+	requirementInputSchema  = "PlanningRequirementInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
-// contract does not name.
-var closedSchemas = []string{settingsRequestSchema, allocationRequestSchema}
+// contract does not name, and the item schemas closedItems judges inside
+// them.
+var closedSchemas = []string{settingsRequestSchema, allocationRequestSchema, requestRequestSchema, fillRequestSchema, requirementInputSchema}
+
+// closedItems is, per closed request schema, its array properties whose
+// items are closed schemas of their own, each with that schema's name: a
+// request's requirements are each a PlanningRequirementInput, so a key the
+// contract does not name inside one is refused on requirements[i].<key>.
+var closedItems = map[string]map[string]string{
+	requestRequestSchema: {"requirements": requirementInputSchema},
+}
 
 // checkClosedSchemas fails the mount unless the contract has every schema of
 // closedSchemas and closes each (additionalProperties false): the refusal

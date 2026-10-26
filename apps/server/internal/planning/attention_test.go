@@ -69,3 +69,48 @@ func TestAttention_Audiences(t *testing.T) {
 		}
 	}
 }
+
+// TestAttention_RequestsOpen is S22's requestsOpen, planning:manage's: one
+// item per open request starting within requestLeadDays (14) of today,
+// Saturday 12 September, or already started, dated on its first day and
+// titled with the project's code — its id when the directory does not
+// resolve it. A request starting after the lead, a filled one and a
+// withdrawn one are none; planning:view alone sees none.
+func TestAttention_RequestsOpen(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	within := seedRequest(t, h, seedReq{project: projectActive, from: "2026-09-21", to: "2026-10-30", title: "Utvikler"})
+	last := seedRequest(t, h, seedReq{project: projectUnknown, from: "2026-09-26", to: "2026-10-30", title: "Arkitekt"})
+	started := seedRequest(t, h, seedReq{project: projectPlanned, from: "2026-08-03", to: "2026-10-30", title: "Tester"})
+	seedRequest(t, h, seedReq{project: projectActive, from: "2026-09-27", to: "2026-10-30"})
+	seedRequest(t, h, seedReq{project: projectActive, from: "2026-09-14", to: "2026-10-30", status: "filled"})
+	seedRequest(t, h, seedReq{project: projectActive, from: "2026-09-14", to: "2026-10-30", status: "withdrawn"})
+
+	var got []gen.PlanningStatsAttentionItem
+	getJSON(t, h.SignIn(t, "planning:access", "planning:manage"), attentionPath, http.StatusOK, &got)
+	want := []gen.PlanningStatsAttentionItem{
+		{Id: fmt.Sprintf("requestsOpen/%d", started), Type: gen.PlanningStatsAttentionItemTypeRequestsOpen, Title: "KVEM2000 — Tester",
+			EntityId: fmt.Sprint(started), OccurredAt: date("2026-08-03")},
+		{Id: fmt.Sprintf("requestsOpen/%d", within), Type: gen.PlanningStatsAttentionItemTypeRequestsOpen, Title: "KVEM1000 — Utvikler",
+			EntityId: fmt.Sprint(within), OccurredAt: date("2026-09-21")},
+		{Id: fmt.Sprintf("requestsOpen/%d", last), Type: gen.PlanningStatsAttentionItemTypeRequestsOpen, Title: "2999 — Arkitekt",
+			EntityId: fmt.Sprint(last), OccurredAt: date("2026-09-26")},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("items = %+v, want %+v", got, want)
+	}
+	for i, item := range got {
+		w := want[i]
+		if item.Id != w.Id || item.Type != w.Type || item.Title != w.Title || item.EntityId != w.EntityId || !item.OccurredAt.Equal(w.OccurredAt) {
+			t.Errorf("item %d = %+v, want %+v", i, item, w)
+		}
+	}
+
+	got = nil
+	getJSON(t, h.SignIn(t, "planning:access", "planning:view"), attentionPath, http.StatusOK, &got)
+	for _, item := range got {
+		if item.Type == gen.PlanningStatsAttentionItemTypeRequestsOpen {
+			t.Errorf("planning:view alone sees %+v, want no requestsOpen item", item)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package planning
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/vantigo-io/vantigo/server/internal/planning/gen"
@@ -10,8 +11,8 @@ import (
 
 // The dashboard card's figures (design S22): this week's people planned and
 // load, confirmed and tentative apart, over the people Staff answers to the
-// caller, and the unbooked list's count (S13). Open requests are delivery
-// B's, 0 until then.
+// caller, the unbooked list's count (S13), and how many requests are open
+// (S16) — every open request, since a request names nobody Staff could hide.
 
 // GetPlanningStats Planning stats
 // (GET /api/v1/planning/stats)
@@ -66,10 +67,14 @@ func (s *server) stats(ctx context.Context) (gen.PlanningStats, error) {
 			tentative += week.Tentative
 		}
 	}
+	open, err := store.New(s.deps.Pool).CountOpenRequests(ctx)
+	if err != nil {
+		return gen.PlanningStats{}, fmt.Errorf("planning: count the open requests: %w", err)
+	}
 	out := gen.PlanningStats{
 		PeoplePlannedThisWeek: int32(len(planned)),
 		Unbooked:              int32(len(unbookedIn(w, horizonFrom, horizonTo, row.UnbookedThresholdPercent))),
-		OpenRequests:          0,
+		OpenRequests:          int32(open),
 	}
 	if hundredths(capacity) > 0 {
 		out.LoadPercentThisWeek = ptrTo(roundHours(booked / capacity * 100))

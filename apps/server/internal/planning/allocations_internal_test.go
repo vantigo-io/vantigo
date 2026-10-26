@@ -182,8 +182,8 @@ func TestRetryMoved(t *testing.T) {
 
 // TestOutOfStaffBound is Staff's bound refusal on a write — Staff's today a
 // day on from this module's — as the field error window_out_of_bounds, on
-// fromDate when the window starts on the near end, else on toDate; any other
-// error passes as it is.
+// fromDate when the window starts on the near end, else on toDate, under the
+// title it is given; any other error passes as it is.
 func TestOutOfStaffBound(t *testing.T) {
 	today := day("2026-09-12")
 	near, _ := workforceBound(today)
@@ -191,13 +191,17 @@ func TestOutOfStaffBound(t *testing.T) {
 		lo    time.Time
 		field string
 	}{{near, "fromDate"}, {day("2026-10-05"), "toDate"}} {
-		r, ok := asRefusal(outOfStaffBound(contracts.ErrWindowOutOfBounds, tc.lo, today))
+		r, ok := asRefusal(outOfStaffBound(contracts.ErrWindowOutOfBounds, tc.lo, today, invalidAllocationTitle))
 		if !ok || r.status != http.StatusBadRequest || r.problem.Code == nil || *r.problem.Code != codeWindowOutOfBounds || len((*r.problem.Errors)[tc.field]) != 1 {
 			t.Errorf("refused from %s = %+v, want window_out_of_bounds on %s", tc.lo.Format(time.DateOnly), r, tc.field)
 		}
 	}
+	if r, ok := asRefusal(outOfStaffBound(contracts.ErrWindowOutOfBounds, near, today, invalidRequestTitle)); !ok ||
+		r.problem.Title == nil || *r.problem.Title != invalidRequestTitle {
+		t.Errorf("refused for a request = %+v, want the title %q", r, invalidRequestTitle)
+	}
 	other := errors.New("boom")
-	if err := outOfStaffBound(other, near, today); !errors.Is(err, other) {
+	if err := outOfStaffBound(other, near, today, invalidAllocationTitle); !errors.Is(err, other) {
 		t.Errorf("another error = %v, want it as it is", err)
 	}
 }

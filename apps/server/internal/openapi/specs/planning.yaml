@@ -47,6 +47,10 @@ components:
                     $ref: '#/components/schemas/PlanningPersonRef'
                 project:
                     $ref: '#/components/schemas/PlanningProjectRef'
+                requestId:
+                    description: The request this row fills (S16); absent otherwise.
+                    format: int64
+                    type: integer
                 revision:
                     description: Send it back as If-Match on PUT /allocations/{id}.
                     format: int32
@@ -192,6 +196,151 @@ components:
             required:
                 - cells
             type: object
+        PlanningCandidate:
+            additionalProperties: false
+            description: 'One person judged for a request (S17): their competence against the requirements, their free hours against the request''s, and the fit Staff scores — each with its figures, its flags and its reasons, so the planner sees why.'
+            properties:
+                availability:
+                    description: 'fits: the person''s free hours over the period are at or above the hours the request would book; partial: fewer.'
+                    enum:
+                        - fits
+                        - partial
+                    type: string
+                covers:
+                    description: 'True when the person covers the request outright: every requirement met, availability fits and no flag (S18''s covered).'
+                    type: boolean
+                currentProject:
+                    $ref: '#/components/schemas/PlanningCurrentProject'
+                fit:
+                    $ref: '#/components/schemas/PlanningFit'
+                flags:
+                    items:
+                        $ref: '#/components/schemas/PlanningCandidateFlag'
+                    type: array
+                freeHours:
+                    description: The person's free hours over the request's period, confirmed rows alone (S6).
+                    format: double
+                    type: number
+                missing:
+                    description: The keys of the requirements the person does not meet; listed only with includePartial, empty otherwise.
+                    items:
+                        type: string
+                    type: array
+                person:
+                    $ref: '#/components/schemas/PlanningPerson'
+                requiredHours:
+                    description: The hours the request would book over its period, hoursPerWeek / 5 on each day with capacity.
+                    format: double
+                    type: number
+            required:
+                - person
+                - availability
+                - freeHours
+                - requiredHours
+                - fit
+                - flags
+                - missing
+                - covers
+            type: object
+        PlanningCandidateFlag:
+            additionalProperties: false
+            description: 'Something the planner should know about a candidate (S17): certificate_expires — a certificate a requirement needs, held, but expiring before the request''s last day; date is its validTo and competenceKey the competence.'
+            properties:
+                code:
+                    enum:
+                        - certificate_expires
+                    type: string
+                competenceKey:
+                    type: string
+                date:
+                    format: date
+                    type: string
+            required:
+                - code
+            type: object
+        PlanningCandidateList:
+            additionalProperties: false
+            description: 'The candidates, sorted: fits first, then fit score descending, then free hours descending, then the longest on their current project first, then by name.'
+            properties:
+                candidates:
+                    items:
+                        $ref: '#/components/schemas/PlanningCandidate'
+                    type: array
+                includePartial:
+                    type: boolean
+            required:
+                - candidates
+                - includePartial
+            type: object
+        PlanningCompetence:
+            additionalProperties: false
+            description: 'One competence of Staff''s catalogue as Workforce.Competences answers it: for a request''s requirements and the board''s filter. A hidden one is offered for no new requirement.'
+            properties:
+                categoryKey:
+                    type: string
+                hasLevel:
+                    type: boolean
+                hidden:
+                    type: boolean
+                id:
+                    format: int64
+                    type: integer
+                key:
+                    type: string
+                kind:
+                    enum:
+                        - skill
+                        - certificate
+                    type: string
+                nameEn:
+                    type: string
+                nameNb:
+                    type: string
+            required:
+                - id
+                - key
+                - nameEn
+                - nameNb
+                - categoryKey
+                - kind
+                - hasLevel
+                - hidden
+            type: object
+        PlanningCompetenceList:
+            additionalProperties: false
+            description: Empty when Staff answers the caller nothing (no staff:view).
+            properties:
+                competences:
+                    items:
+                        $ref: '#/components/schemas/PlanningCompetence'
+                    type: array
+            required:
+                - competences
+            type: object
+        PlanningCoverage:
+            description: 'Whether a request is covered (S18): filled, or at least one candidate covers it; partly_covered when every candidate is partial, flagged or missing something; uncovered when nobody is a candidate.'
+            enum:
+                - covered
+                - partly_covered
+                - uncovered
+            type: string
+        PlanningCurrentProject:
+            additionalProperties: false
+            description: 'The project of the person''s confirmed row covering today with the earliest from date, and the days since that date — the fairness signal (S17).'
+            properties:
+                days:
+                    format: int32
+                    type: integer
+                project:
+                    $ref: '#/components/schemas/PlanningProjectRef'
+                since:
+                    format: date
+                    type: string
+            required:
+                - project
+                - since
+                - days
+            type: object
         PlanningCustomerRef:
             additionalProperties: false
             description: A project's customer, an opaque link named through the customer directory.
@@ -245,6 +394,7 @@ components:
                 entityKind:
                     enum:
                         - allocation
+                        - request
                     type: string
                 id:
                     format: int64
@@ -256,6 +406,11 @@ components:
                         - allocation_confirmed
                         - allocation_unconfirmed
                         - allocation_deleted
+                        - request_created
+                        - request_changed
+                        - request_filled
+                        - request_reopened
+                        - request_withdrawn
                     type: string
                 occurredAt:
                     format: date-time
@@ -289,6 +444,93 @@ components:
                     type: array
             required:
                 - events
+            type: object
+        PlanningFillInput:
+            additionalProperties: false
+            description: 'Who fills the request (S16). status defaults by the project''s status, as on POST /allocations.'
+            properties:
+                personId:
+                    format: int64
+                    type: integer
+                status:
+                    $ref: '#/components/schemas/PlanningAllocationStatus'
+            required:
+                - personId
+            type: object
+        PlanningFit:
+            additionalProperties: false
+            description: 'How the booking fits what the person wants, as Staff scores it (S17.6): 100 less weight × 10 per preference the booking contradicts, and the kinds lowered — never a value.'
+            properties:
+                lowered:
+                    items:
+                        type: string
+                    type: array
+                score:
+                    format: int32
+                    type: integer
+            required:
+                - score
+                - lowered
+            type: object
+        PlanningIntake:
+            additionalProperties: false
+            description: 'The pipeline (S18): every project in status planned, by code, with its open and filled requests judged for coverage.'
+            properties:
+                projects:
+                    items:
+                        $ref: '#/components/schemas/PlanningIntakeProject'
+                    type: array
+            required:
+                - projects
+            type: object
+        PlanningIntakeProject:
+            additionalProperties: false
+            description: 'One planned project: its requests and its hours a week — requested over its open requests, tentative and confirmed over its rows, a percent row counted as its share of the person''s hours a week in force on its first day.'
+            properties:
+                confirmedHoursPerWeek:
+                    format: double
+                    type: number
+                project:
+                    $ref: '#/components/schemas/PlanningProject'
+                requestedHoursPerWeek:
+                    format: double
+                    type: number
+                requests:
+                    items:
+                        $ref: '#/components/schemas/PlanningIntakeRequest'
+                    type: array
+                tentativeHoursPerWeek:
+                    format: double
+                    type: number
+            required:
+                - project
+                - requestedHoursPerWeek
+                - tentativeHoursPerWeek
+                - confirmedHoursPerWeek
+                - requests
+            type: object
+        PlanningIntakeRequest:
+            additionalProperties: false
+            description: 'One request of the pipeline with its coverage; candidates is how many cover it outright, and key_person flags exactly one (S18).'
+            properties:
+                candidates:
+                    format: int32
+                    type: integer
+                coverage:
+                    $ref: '#/components/schemas/PlanningCoverage'
+                flags:
+                    items:
+                        enum:
+                            - key_person
+                        type: string
+                    type: array
+                request:
+                    $ref: '#/components/schemas/PlanningRequest'
+            required:
+                - request
+                - coverage
+                - candidates
+                - flags
             type: object
         PlanningLoadUnit:
             description: 'How an allocation''s load is typed (planning design S2): percent of the person''s position (more than 0, at most 100), or hours_per_week (more than 0, at most 80). Two decimals.'
@@ -400,7 +642,7 @@ components:
                 - id
             type: object
         PlanningProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code (planning design §4.7). code names the rule that refused and is what a client keys off, never the words: outside_employment (409: a day of the period lies outside the person''s employment as Staff answers it), project_closed (409: the project is completed or cancelled and takes no new row and no change but deletion), overbooked (409: under the setting overbooking refuse, the write would make a week''s confirmed excess over capacity grow; weeks are named in detail), period_too_long (400, a field error on toDate: more than 1096 days), window_out_of_bounds (400, a field error on from, to, fromDate or toDate: the window lies outside Staff''s bound, the Monday thirteen weeks before today to three years after it), revision_conflict (409: the If-Match revision has moved on, or the row kept changing under a DELETE or a confirm), no_person (404: the caller is nobody''s person in Staff) and dependency_unavailable (503: a module Planning reads is not composed). errors carries the field errors of a 400, keyed by the request''s camelCase field; a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code (planning design §4.7). code names the rule that refused and is what a client keys off, never the words: outside_employment (409: a day of the period lies outside the person''s employment as Staff answers it), project_closed (409: the project is completed or cancelled and takes no new row and no change but deletion), overbooked (409: under the setting overbooking refuse, the write would make a week''s confirmed excess over capacity grow; weeks are named in detail), period_too_long (400, a field error on toDate: more than 1096 days), window_out_of_bounds (400, a field error on from, to, fromDate or toDate: the window lies outside Staff''s bound, the Monday thirteen weeks before today to three years after it), request_not_open (409: the request is filled or withdrawn and takes no fill, no change and no withdrawal), revision_conflict (409: the If-Match revision has moved on, or the row kept changing under a DELETE or a confirm), no_person (404: the caller is nobody''s person in Staff) and dependency_unavailable (503: a module Planning reads is not composed). errors carries the field errors of a 400, keyed by the request''s camelCase field; a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -478,6 +720,11 @@ components:
                     type: array
                 project:
                     $ref: '#/components/schemas/PlanningProject'
+                requests:
+                    description: The project's open and filled requests touching the window; withdrawn ones are not shown.
+                    items:
+                        $ref: '#/components/schemas/PlanningRequest'
+                    type: array
                 weeks:
                     items:
                         $ref: '#/components/schemas/PlanningProjectPlanWeek'
@@ -485,6 +732,7 @@ components:
             required:
                 - project
                 - allocations
+                - requests
                 - weeks
             type: object
         PlanningProjectPlanWeek:
@@ -495,7 +743,7 @@ components:
                     format: double
                     type: number
                 demand:
-                    description: The open requests' hours a week; 0 until delivery B.
+                    description: 'The open demand (S16): over the project''s open requests covering the week, hoursPerWeek × the weekdays of the week inside the request''s period / 5.'
                     format: double
                     type: number
                 monday:
@@ -535,6 +783,200 @@ components:
                 - completed
                 - cancelled
             type: string
+        PlanningRequest:
+            additionalProperties: false
+            description: 'A project''s need for a person not yet named (S16): a period, hours a week, competence requirements, and a status — open, filled while an allocation names it, or withdrawn.'
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                filledBy:
+                    $ref: '#/components/schemas/PlanningRequestFilledBy'
+                fromDate:
+                    format: date
+                    type: string
+                hoursPerWeek:
+                    format: double
+                    type: number
+                id:
+                    format: int64
+                    type: integer
+                note:
+                    description: 'The planners'' note, at most 500 characters: present to planning:manage alone (S5).'
+                    type: string
+                project:
+                    $ref: '#/components/schemas/PlanningProjectRef'
+                requirements:
+                    items:
+                        $ref: '#/components/schemas/PlanningRequirement'
+                    type: array
+                revision:
+                    description: Send it back as If-Match on PUT /requests/{id}.
+                    format: int32
+                    type: integer
+                status:
+                    $ref: '#/components/schemas/PlanningRequestStatus'
+                title:
+                    type: string
+                toDate:
+                    description: Inclusive.
+                    format: date
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - project
+                - title
+                - fromDate
+                - toDate
+                - hoursPerWeek
+                - status
+                - requirements
+                - revision
+                - createdAt
+                - updatedAt
+            type: object
+        PlanningRequestFilled:
+            additionalProperties: false
+            description: 'A fill''s answer: the request now filled, the allocation that fills it, and the allocation''s warnings.'
+            properties:
+                allocation:
+                    $ref: '#/components/schemas/PlanningAllocation'
+                request:
+                    $ref: '#/components/schemas/PlanningRequest'
+                warnings:
+                    items:
+                        $ref: '#/components/schemas/PlanningWarning'
+                    type: array
+            required:
+                - request
+                - allocation
+                - warnings
+            type: object
+        PlanningRequestFilledBy:
+            additionalProperties: false
+            description: The allocation that fills the request and its person; present on a filled request alone.
+            properties:
+                allocationId:
+                    format: int64
+                    type: integer
+                person:
+                    $ref: '#/components/schemas/PlanningPersonRef'
+            required:
+                - allocationId
+                - person
+            type: object
+        PlanningRequestInput:
+            additionalProperties: false
+            description: 'A request''s fields, on create and on a whole replace (S16). requirements left out means none.'
+            properties:
+                fromDate:
+                    format: date
+                    type: string
+                hoursPerWeek:
+                    description: More than 0, at most 80; two decimals.
+                    format: double
+                    type: number
+                note:
+                    maxLength: 500
+                    type: string
+                projectId:
+                    format: int32
+                    type: integer
+                requirements:
+                    description: At most 10, each competence once.
+                    items:
+                        $ref: '#/components/schemas/PlanningRequirementInput'
+                    type: array
+                title:
+                    maxLength: 100
+                    minLength: 1
+                    type: string
+                toDate:
+                    description: On or after fromDate, at most 1096 days after it.
+                    format: date
+                    type: string
+            required:
+                - projectId
+                - title
+                - fromDate
+                - toDate
+                - hoursPerWeek
+            type: object
+        PlanningRequestList:
+            additionalProperties: false
+            description: At most 500 requests, by from date then id.
+            properties:
+                requests:
+                    items:
+                        $ref: '#/components/schemas/PlanningRequest'
+                    type: array
+            required:
+                - requests
+            type: object
+        PlanningRequestStatus:
+            description: 'open is demand; filled, exactly while an allocation names the request; withdrawn is final (S16).'
+            enum:
+                - open
+                - filled
+                - withdrawn
+            type: string
+        PlanningRequestWritten:
+            additionalProperties: false
+            description: 'A request write''s answer: the row and what it caused (outside_project_dates).'
+            properties:
+                request:
+                    $ref: '#/components/schemas/PlanningRequest'
+                warnings:
+                    items:
+                        $ref: '#/components/schemas/PlanningWarning'
+                    type: array
+            required:
+                - request
+                - warnings
+            type: object
+        PlanningRequirement:
+            additionalProperties: false
+            description: 'A competence the person who fills the request must hold on its first day (S16), named from the catalogue when it still answers it (rule 4).'
+            properties:
+                competenceId:
+                    format: int64
+                    type: integer
+                hasLevel:
+                    type: boolean
+                key:
+                    type: string
+                kind:
+                    enum:
+                        - skill
+                        - certificate
+                    type: string
+                minLevel:
+                    description: 0 to 4, on a competence with a level alone.
+                    format: int32
+                    type: integer
+                nameEn:
+                    type: string
+                nameNb:
+                    type: string
+            required:
+                - competenceId
+            type: object
+        PlanningRequirementInput:
+            additionalProperties: false
+            properties:
+                competenceId:
+                    format: int64
+                    type: integer
+                minLevel:
+                    description: 0 to 4, on a competence with a level alone; a field error otherwise.
+                    format: int32
+                    type: integer
+            required:
+                - competenceId
+            type: object
         PlanningSettings:
             additionalProperties: false
             description: The installation's Planning settings (S20).
@@ -548,7 +990,7 @@ components:
                 overbooking:
                     $ref: '#/components/schemas/PlanningOverbooking'
                 requestLeadDays:
-                    description: '0 to 365: an open request starting within it is an attention item (delivery B).'
+                    description: '0 to 365: an open request starting within it is an attention item (requestsOpen).'
                     format: int32
                     type: integer
                 revision:
@@ -606,7 +1048,7 @@ components:
                     format: double
                     type: number
                 openRequests:
-                    description: Open requests; 0 until delivery B.
+                    description: Requests in status open.
                     format: int32
                     type: integer
                 peoplePlannedThisWeek:
@@ -628,14 +1070,14 @@ components:
             type: object
         PlanningStatsAttentionItem:
             additionalProperties: false
-            description: 'One thing the dashboard wants a human to look at, in the shape every module''s /stats/attention shares (S22). unbooked (planning:view): a person under the threshold within the horizon. overbooked (planning:view): a person with a week in the horizon whose confirmed booked exceeds capacity. endingWithoutFollowOn (planning:manage): a confirmed row ending within endingLeadWeeks where the person has no confirmed row starting on or before that end plus seven days. certificatesExpiring (planning:view): a held certificate expiring inside a confirmed row within the horizon. A caller with neither role gets an empty list.'
+            description: 'One thing the dashboard wants a human to look at, in the shape every module''s /stats/attention shares (S22). unbooked (planning:view): a person under the threshold within the horizon. overbooked (planning:view): a person with a week in the horizon whose confirmed booked exceeds capacity. endingWithoutFollowOn (planning:manage): a confirmed row ending within endingLeadWeeks where the person has no confirmed row starting on or before that end plus seven days. certificatesExpiring (planning:view): a held certificate expiring inside a confirmed row within the horizon. requestsOpen (planning:manage): an open request starting within requestLeadDays, or already started. A caller with neither role gets an empty list.'
             properties:
                 count:
                     description: How many the item stands for, when it stands for more than one.
                     format: int32
                     type: integer
                 entityId:
-                    description: The person's id, or the allocation's for endingWithoutFollowOn.
+                    description: The person's id, the allocation's for endingWithoutFollowOn, or the request's for requestsOpen.
                     type: string
                 id:
                     type: string
@@ -650,6 +1092,7 @@ components:
                         - overbooked
                         - endingWithoutFollowOn
                         - certificatesExpiring
+                        - requestsOpen
                     type: string
             required:
                 - id
@@ -1253,6 +1696,39 @@ paths:
             tags:
                 - Planning
             x-vantigo-access: permission:planning:access+planning:view
+    /api/v1/planning/competences:
+        get:
+            description: 'Staff''s competence catalogue as Workforce.Competences answers the caller — every competence not archived, hidden ones included — for a request''s requirements and the board''s filter. Empty, not an error, when Staff answers the caller nothing.'
+            operationId: listPlanningCompetences
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningCompetenceList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: The competence catalogue
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:view
     /api/v1/planning/events:
         get:
             description: The record of writes (S23), newest first, at most 500, filtered by person, project or allocation.
@@ -1299,6 +1775,39 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: List events
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:view
+    /api/v1/planning/intake:
+        get:
+            description: 'The pipeline (S18): every project in status planned with its open and filled requests, each covered, partly covered or uncovered, key_person when exactly one candidate covers it, and the project''s requested, tentative and confirmed hours a week. The candidates themselves are planning:manage''s.'
+            operationId: getPlanningIntake
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningIntake'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: Intake
             tags:
                 - Planning
             x-vantigo-access: permission:planning:access+planning:view
@@ -1617,6 +2126,392 @@ paths:
             tags:
                 - Planning
             x-vantigo-access: permission:planning:access+planning:view
+    /api/v1/planning/requests:
+        get:
+            description: 'Requests touching the window, at most 500, by from date then id; every status unless one is asked. Without a window every request is listed.'
+            operationId: listPlanningRequests
+            parameters:
+                - description: Only this project's.
+                  in: query
+                  name: projectId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: Only requests in this status.
+                  in: query
+                  name: status
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/PlanningRequestStatus'
+                - description: The window's first day, a civil date.
+                  in: query
+                  name: from
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - description: The window's last day, inclusive.
+                  in: query
+                  name: to
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningRequestList'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Bad Request — a date that does not parse, or to before from.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: List requests
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:view
+        post:
+            description: 'Files a request on a project (S16): the project''s lock taken, the requirements judged against the catalogue, the period against the project''s dates (the warning outside_project_dates).'
+            operationId: createPlanningRequest
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PlanningRequestInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningRequestWritten'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Bad Request — field errors on the body, a requirement's competenceId or minLevel included.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Conflict — project_closed.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: Create a request
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
+    /api/v1/planning/requests/{id}:
+        get:
+            description: The request, its requirements named from the catalogue, and who fills it.
+            operationId: getPlanningRequest
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningRequest'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such request. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: A request
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:view
+        put:
+            description: 'Replaces an open request whole, guarded by If-Match; its requirements with it. A filled or withdrawn request takes no change (request_not_open).'
+            operationId: putPlanningRequest
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The revision the row was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PlanningRequestInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningRequestWritten'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Bad Request — field errors on the body, or an If-Match that is not a revision.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such request. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Conflict — revision_conflict, request_not_open or project_closed.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: Change a request
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
+    /api/v1/planning/requests/{id}/candidates:
+        get:
+            description: 'The people who could fill the request (S17): in employment through the whole period, every requirement met — or, with includePartial, listed with the keys they miss — judged for availability against their free hours and for fit by Staff, sorted fits first, then fit score, then free hours, then the longest on their current project.'
+            operationId: listPlanningRequestCandidates
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Also list people who miss a requirement, with missing naming the keys. Defaults to false.
+                  in: query
+                  name: includePartial
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningCandidateList'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Bad Request — window_out_of_bounds on fromDate or toDate when the request's period has no day inside Staff's bound.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such request. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: A request's candidates
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
+    /api/v1/planning/requests/{id}/fill:
+        post:
+            description: 'Fills an open request with a person (S16): creates the allocation from the request''s project, period, hours a week and title under the allocation rules (S4–S7), names the request on the row, and sets the request filled — the project''s lock first, then the person''s.'
+            operationId: fillPlanningRequest
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PlanningFillInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningRequestFilled'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Bad Request — field errors on personId, or window_out_of_bounds on the period.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such request. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Conflict — request_not_open, outside_employment, project_closed, or overbooked under refuse.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: Fill a request
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
+    /api/v1/planning/requests/{id}/withdraw:
+        post:
+            description: Closes an open request for good; a withdrawn request is never reopened. A request not open is request_not_open.
+            operationId: withdrawPlanningRequest
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningRequest'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such request. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Conflict — request_not_open.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: Withdraw a request
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
     /api/v1/planning/settings:
         get:
             description: The installation's settings (S20).

@@ -16,8 +16,7 @@ import (
 var recorder = contracttest.NewForModule("planning")
 
 // pending is the operations not built yet, which the gate lets go
-// uncovered. Every operation of delivery A is built, so it is empty; the gate
-// fails an id that is covered and still listed.
+// uncovered; the gate fails an id that is covered and still listed.
 var pending = []string{}
 
 func TestMain(m *testing.M) {

@@ -40,6 +40,14 @@ func (silentWorkforce) HeldCompetences(context.Context, time.Time, []int64) (map
 	return nil, nil
 }
 
+func (silentWorkforce) Competences(context.Context) ([]contracts.CompetenceEntry, error) {
+	return nil, nil
+}
+
+func (silentWorkforce) PreferenceFits(context.Context, []int64, contracts.Booking) (map[int64]contracts.Fit, error) {
+	return nil, nil
+}
+
 func (silentProjects) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
 	return nil, nil
 }
@@ -110,11 +118,14 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		e10 := s.usersNotify(ctx, user, contracts.Notice{})
 		_, e11 := s.usersPermissionHolders(ctx, permManage)
 		_, e12 := s.businessZone(ctx)
-		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12}
+		_, e13 := s.workforceCompetences(ctx)
+		_, e14 := s.workforceFits(ctx, []int64{1001}, contracts.Booking{From: today, To: today})
+		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14}
 	}
 	want := []string{"Workforce.People", "Workforce.Capacity", "Workforce.Self", "Workforce.HeldCompetences",
 		"Projects.ProjectsByStatus", "Projects.Project", "Projects.Projects", "Directory.Customers",
-		"Users.User", "Users.Notify", "Users.PermissionHolders", "Calendar.Zone"}
+		"Users.User", "Users.Notify", "Users.PermissionHolders", "Calendar.Zone",
+		"Workforce.Competences", "Workforce.PreferenceFits"}
 
 	for _, err := range call(ctx) {
 		if err != nil {
@@ -170,11 +181,12 @@ func TestContractCalls_AnEmptyBatchAsksNobody(t *testing.T) {
 	projects, e3 := s.projectsByStatus(ctx, nil)
 	entries, e4 := s.projectEntries(ctx, nil)
 	names, e5 := s.customerNames(ctx, nil)
-	if err := errors.Join(e1, e2, e3, e4, e5); err != nil {
+	fits, e6 := s.workforceFits(ctx, nil, contracts.Booking{})
+	if err := errors.Join(e1, e2, e3, e4, e5, e6); err != nil {
 		t.Fatalf("an empty batch failed: %v", err)
 	}
-	if len(capacity) != 0 || len(held) != 0 || len(projects) != 0 || len(entries) != 0 || len(names) != 0 {
-		t.Errorf("an empty batch answered something: %v %v %v %v %v", capacity, held, projects, entries, names)
+	if len(capacity) != 0 || len(held) != 0 || len(projects) != 0 || len(entries) != 0 || len(names) != 0 || len(fits) != 0 {
+		t.Errorf("an empty batch answered something: %v %v %v %v %v %v", capacity, held, projects, entries, names, fits)
 	}
 }
 
@@ -193,7 +205,9 @@ func TestContractCalls_AContractNotComposedIsUnavailable(t *testing.T) {
 	_, e6 := s.projectEntry(ctx, 2001)
 	_, e7 := s.projectEntries(ctx, []int32{2001})
 	_, e8 := s.customerNames(ctx, []int32{3001})
-	for i, err := range []error{e1, e2, e3, e4, e5, e6, e7, e8} {
+	_, e9 := s.workforceCompetences(ctx)
+	_, e10 := s.workforceFits(ctx, []int64{1001}, contracts.Booking{From: today, To: today})
+	for i, err := range []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10} {
 		if !errors.Is(err, errDependencyUnavailable) {
 			t.Errorf("accessor %d answered %v, want errDependencyUnavailable", i+1, err)
 		}

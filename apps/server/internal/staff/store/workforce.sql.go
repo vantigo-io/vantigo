@@ -70,3 +70,44 @@ func (q *Queries) WorkforceEmployments(ctx context.Context, arg WorkforceEmploym
 	}
 	return items, nil
 }
+
+const workforcePreferences = `-- name: WorkforcePreferences :many
+SELECT person_id, kind, value, weight
+FROM staff.person_preferences
+WHERE person_id = ANY($1::bigint[])
+ORDER BY person_id, kind
+`
+
+type WorkforcePreferencesRow struct {
+	PersonID int64
+	Kind     string
+	Value    []byte
+	Weight   int16
+}
+
+// WorkforcePreferences is the preferences of the people named, by person and
+// kind, for the fit the Workforce contract scores (planning design S17.6).
+func (q *Queries) WorkforcePreferences(ctx context.Context, personIds []int64) ([]WorkforcePreferencesRow, error) {
+	rows, err := q.db.Query(ctx, workforcePreferences, personIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkforcePreferencesRow
+	for rows.Next() {
+		var i WorkforcePreferencesRow
+		if err := rows.Scan(
+			&i.PersonID,
+			&i.Kind,
+			&i.Value,
+			&i.Weight,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

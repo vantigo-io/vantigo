@@ -11,9 +11,11 @@ import (
 // The module's locks (design S23). Every write of an allocation takes a
 // transaction advisory lock on its person, so two planners booking one person
 // queue and the second's overbooking is judged on the first's committed rows;
-// a write of a request (delivery B) takes its project's. A write that needs
-// both — a fill, a PUT that moves a row to another project — takes the
-// project's first, then the person's; a PUT that moves a row to another
+// a write of a request (delivery B) takes its project's — the old and the
+// new project's when a PUT moves it. A write that needs both — a fill, the
+// delete of a row that fills a request (which reopens it), a PUT that moves
+// a row to another project — takes the project's first, then the person's;
+// a PUT that moves a row to another
 // person takes both persons' in ascending id. One order everywhere is what
 // keeps two such writes from deadlocking: neither ever holds a lock the other
 // takes before one it holds.
@@ -42,7 +44,7 @@ func (s *server) withPersonLock(ctx context.Context, personID int64, fn func(ctx
 }
 
 // withProjectLock runs fn in one locked transaction that has first taken
-// projectID's lock: a request's write (delivery B).
+// projectID's lock: a request's create and withdrawal (delivery B).
 func (s *server) withProjectLock(ctx context.Context, projectID int32, fn func(ctx context.Context, txq *store.Queries) error) error {
 	return s.withLocks(ctx, lockSet{projects: []int32{projectID}}, fn)
 }

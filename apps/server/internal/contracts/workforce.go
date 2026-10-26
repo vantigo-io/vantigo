@@ -59,6 +59,15 @@ type Workforce interface {
 	// names the caller in a state that gives them Self, under Staff's own
 	// rule — or (nil, nil). It needs staff:access and nothing more.
 	Self(ctx context.Context) (*PersonEntry, error)
+	// PreferenceFits answers, for each person id, how the booking fits what
+	// they want (the Staff reference "The matching contract's Staff side"):
+	// the score starts at 100 and each of the person's preferences the
+	// booking contradicts lowers it by its weight × 10 and names its kind in
+	// Lowered, never its value. A booking field left nil or empty contradicts
+	// nothing; max_hours_per_week is judged on this booking's hours alone. A
+	// person with no preference scores 100. It needs staff:view; a person the
+	// caller may not see is absent from the map.
+	PreferenceFits(ctx context.Context, personIDs []int64, b Booking) (map[int64]Fit, error)
 }
 
 // ErrWindowOutOfBounds is answered by People and Capacity for a window that
@@ -130,4 +139,26 @@ type HeldCompetence struct {
 	Verified     bool   // false for a declared skill; a held certificate is always verified
 	ValidFrom    time.Time
 	ValidTo      *time.Time // nil without end; both civil dates at midnight UTC
+}
+
+// Booking is a proposed booking as Planning shapes it for PreferenceFits
+// (planning design S17.6, reading 6): civil dates at midnight UTC and, each
+// optional, the facets a preference can contradict. A field left at its zero
+// value — nil, empty or "" — contradicts nothing.
+type Booking struct {
+	From, To        time.Time
+	Weekdays        []int    // ISO 1 (Monday) to 7 (Sunday)
+	Parts           []string // morning, day, evening, night
+	LocationID      *int64
+	HoursPerWeek    *float64
+	ConsecutiveDays *int
+	Travel          string // none, regional, national, international
+	Remote          string // never, some, mostly, only
+}
+
+// Fit is how a booking fits what one person wants: a score and the kinds of
+// preference the booking contradicts — never a value.
+type Fit struct {
+	Score   int      // 0 to 100
+	Lowered []string // the preference kinds the booking contradicts, in the catalogue's order
 }

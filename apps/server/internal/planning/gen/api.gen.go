@@ -55,15 +55,90 @@ func (e PlanningAllocationStatus) Valid() bool {
 	}
 }
 
+// Defines values for PlanningCandidateAvailability.
+const (
+	Fits    PlanningCandidateAvailability = "fits"
+	Partial PlanningCandidateAvailability = "partial"
+)
+
+// Valid indicates whether the value is a known member of the PlanningCandidateAvailability enum.
+func (e PlanningCandidateAvailability) Valid() bool {
+	switch e {
+	case Fits:
+		return true
+	case Partial:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanningCandidateFlagCode.
+const (
+	PlanningCandidateFlagCodeCertificateExpires PlanningCandidateFlagCode = "certificate_expires"
+)
+
+// Valid indicates whether the value is a known member of the PlanningCandidateFlagCode enum.
+func (e PlanningCandidateFlagCode) Valid() bool {
+	switch e {
+	case PlanningCandidateFlagCodeCertificateExpires:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanningCompetenceKind.
+const (
+	PlanningCompetenceKindCertificate PlanningCompetenceKind = "certificate"
+	PlanningCompetenceKindSkill       PlanningCompetenceKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the PlanningCompetenceKind enum.
+func (e PlanningCompetenceKind) Valid() bool {
+	switch e {
+	case PlanningCompetenceKindCertificate:
+		return true
+	case PlanningCompetenceKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanningCoverage.
+const (
+	Covered       PlanningCoverage = "covered"
+	PartlyCovered PlanningCoverage = "partly_covered"
+	Uncovered     PlanningCoverage = "uncovered"
+)
+
+// Valid indicates whether the value is a known member of the PlanningCoverage enum.
+func (e PlanningCoverage) Valid() bool {
+	switch e {
+	case Covered:
+		return true
+	case PartlyCovered:
+		return true
+	case Uncovered:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlanningEventEntityKind.
 const (
 	Allocation PlanningEventEntityKind = "allocation"
+	Request    PlanningEventEntityKind = "request"
 )
 
 // Valid indicates whether the value is a known member of the PlanningEventEntityKind enum.
 func (e PlanningEventEntityKind) Valid() bool {
 	switch e {
 	case Allocation:
+		return true
+	case Request:
 		return true
 	default:
 		return false
@@ -77,6 +152,11 @@ const (
 	AllocationCreated     PlanningEventKind = "allocation_created"
 	AllocationDeleted     PlanningEventKind = "allocation_deleted"
 	AllocationUnconfirmed PlanningEventKind = "allocation_unconfirmed"
+	RequestChanged        PlanningEventKind = "request_changed"
+	RequestCreated        PlanningEventKind = "request_created"
+	RequestFilled         PlanningEventKind = "request_filled"
+	RequestReopened       PlanningEventKind = "request_reopened"
+	RequestWithdrawn      PlanningEventKind = "request_withdrawn"
 )
 
 // Valid indicates whether the value is a known member of the PlanningEventKind enum.
@@ -91,6 +171,31 @@ func (e PlanningEventKind) Valid() bool {
 	case AllocationDeleted:
 		return true
 	case AllocationUnconfirmed:
+		return true
+	case RequestChanged:
+		return true
+	case RequestCreated:
+		return true
+	case RequestFilled:
+		return true
+	case RequestReopened:
+		return true
+	case RequestWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanningIntakeRequestFlags.
+const (
+	KeyPerson PlanningIntakeRequestFlags = "key_person"
+)
+
+// Valid indicates whether the value is a known member of the PlanningIntakeRequestFlags enum.
+func (e PlanningIntakeRequestFlags) Valid() bool {
+	switch e {
+	case KeyPerson:
 		return true
 	default:
 		return false
@@ -160,11 +265,51 @@ func (e PlanningProjectStatus) Valid() bool {
 	}
 }
 
+// Defines values for PlanningRequestStatus.
+const (
+	Filled    PlanningRequestStatus = "filled"
+	Open      PlanningRequestStatus = "open"
+	Withdrawn PlanningRequestStatus = "withdrawn"
+)
+
+// Valid indicates whether the value is a known member of the PlanningRequestStatus enum.
+func (e PlanningRequestStatus) Valid() bool {
+	switch e {
+	case Filled:
+		return true
+	case Open:
+		return true
+	case Withdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanningRequirementKind.
+const (
+	PlanningRequirementKindCertificate PlanningRequirementKind = "certificate"
+	PlanningRequirementKindSkill       PlanningRequirementKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the PlanningRequirementKind enum.
+func (e PlanningRequirementKind) Valid() bool {
+	switch e {
+	case PlanningRequirementKindCertificate:
+		return true
+	case PlanningRequirementKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlanningStatsAttentionItemType.
 const (
 	PlanningStatsAttentionItemTypeCertificatesExpiring  PlanningStatsAttentionItemType = "certificatesExpiring"
 	PlanningStatsAttentionItemTypeEndingWithoutFollowOn PlanningStatsAttentionItemType = "endingWithoutFollowOn"
 	PlanningStatsAttentionItemTypeOverbooked            PlanningStatsAttentionItemType = "overbooked"
+	PlanningStatsAttentionItemTypeRequestsOpen          PlanningStatsAttentionItemType = "requestsOpen"
 	PlanningStatsAttentionItemTypeUnbooked              PlanningStatsAttentionItemType = "unbooked"
 )
 
@@ -177,6 +322,8 @@ func (e PlanningStatsAttentionItemType) Valid() bool {
 		return true
 	case PlanningStatsAttentionItemTypeOverbooked:
 		return true
+	case PlanningStatsAttentionItemTypeRequestsOpen:
+		return true
 	case PlanningStatsAttentionItemTypeUnbooked:
 		return true
 	default:
@@ -186,16 +333,16 @@ func (e PlanningStatsAttentionItemType) Valid() bool {
 
 // Defines values for PlanningTimelineFlagCode.
 const (
-	BeyondEmployment   PlanningTimelineFlagCode = "beyond_employment"
-	CertificateExpires PlanningTimelineFlagCode = "certificate_expires"
+	PlanningTimelineFlagCodeBeyondEmployment   PlanningTimelineFlagCode = "beyond_employment"
+	PlanningTimelineFlagCodeCertificateExpires PlanningTimelineFlagCode = "certificate_expires"
 )
 
 // Valid indicates whether the value is a known member of the PlanningTimelineFlagCode enum.
 func (e PlanningTimelineFlagCode) Valid() bool {
 	switch e {
-	case BeyondEmployment:
+	case PlanningTimelineFlagCodeBeyondEmployment:
 		return true
-	case CertificateExpires:
+	case PlanningTimelineFlagCodeCertificateExpires:
 		return true
 	default:
 		return false
@@ -272,6 +419,9 @@ type PlanningAllocation struct {
 	// Project The project of an allocation: an opaque id, named when the directory resolves it (rule 4).
 	Project PlanningProjectRef `json:"project"`
 
+	// RequestId The request this row fills (S16); absent otherwise.
+	RequestId *int64 `json:"requestId,omitempty"`
+
 	// Revision Send it back as If-Match on PUT /allocations/{id}.
 	Revision int32 `json:"revision"`
 
@@ -344,6 +494,85 @@ type PlanningBoardRow struct {
 	Project *PlanningProject `json:"project,omitempty"`
 }
 
+// PlanningCandidate One person judged for a request (S17): their competence against the requirements, their free hours against the request's, and the fit Staff scores — each with its figures, its flags and its reasons, so the planner sees why.
+type PlanningCandidate struct {
+	// Availability fits: the person's free hours over the period are at or above the hours the request would book; partial: fewer.
+	Availability PlanningCandidateAvailability `json:"availability"`
+
+	// Covers True when the person covers the request outright: every requirement met, availability fits and no flag (S18's covered).
+	Covers bool `json:"covers"`
+
+	// CurrentProject The project of the person's confirmed row covering today with the earliest from date, and the days since that date — the fairness signal (S17).
+	CurrentProject *PlanningCurrentProject `json:"currentProject,omitempty"`
+
+	// Fit How the booking fits what the person wants, as Staff scores it (S17.6): 100 less weight × 10 per preference the booking contradicts, and the kinds lowered — never a value.
+	Fit   PlanningFit             `json:"fit"`
+	Flags []PlanningCandidateFlag `json:"flags"`
+
+	// FreeHours The person's free hours over the request's period, confirmed rows alone (S6).
+	FreeHours float64 `json:"freeHours"`
+
+	// Missing The keys of the requirements the person does not meet; listed only with includePartial, empty otherwise.
+	Missing []string `json:"missing"`
+
+	// Person A person as Staff answers them to the caller (Workforce.People): the work group, never a private field.
+	Person PlanningPerson `json:"person"`
+
+	// RequiredHours The hours the request would book over its period, hoursPerWeek / 5 on each day with capacity.
+	RequiredHours float64 `json:"requiredHours"`
+}
+
+// PlanningCandidateAvailability fits: the person's free hours over the period are at or above the hours the request would book; partial: fewer.
+type PlanningCandidateAvailability string
+
+// PlanningCandidateFlag Something the planner should know about a candidate (S17): certificate_expires — a certificate a requirement needs, held, but expiring before the request's last day; date is its validTo and competenceKey the competence.
+type PlanningCandidateFlag struct {
+	Code          PlanningCandidateFlagCode `json:"code"`
+	CompetenceKey *string                   `json:"competenceKey,omitempty"`
+	Date          *openapi_types.Date       `json:"date,omitempty"`
+}
+
+// PlanningCandidateFlagCode defines model for PlanningCandidateFlag.Code.
+type PlanningCandidateFlagCode string
+
+// PlanningCandidateList The candidates, sorted: fits first, then fit score descending, then free hours descending, then the longest on their current project first, then by name.
+type PlanningCandidateList struct {
+	Candidates     []PlanningCandidate `json:"candidates"`
+	IncludePartial bool                `json:"includePartial"`
+}
+
+// PlanningCompetence One competence of Staff's catalogue as Workforce.Competences answers it: for a request's requirements and the board's filter. A hidden one is offered for no new requirement.
+type PlanningCompetence struct {
+	CategoryKey string                 `json:"categoryKey"`
+	HasLevel    bool                   `json:"hasLevel"`
+	Hidden      bool                   `json:"hidden"`
+	Id          int64                  `json:"id"`
+	Key         string                 `json:"key"`
+	Kind        PlanningCompetenceKind `json:"kind"`
+	NameEn      string                 `json:"nameEn"`
+	NameNb      string                 `json:"nameNb"`
+}
+
+// PlanningCompetenceKind defines model for PlanningCompetence.Kind.
+type PlanningCompetenceKind string
+
+// PlanningCompetenceList Empty when Staff answers the caller nothing (no staff:view).
+type PlanningCompetenceList struct {
+	Competences []PlanningCompetence `json:"competences"`
+}
+
+// PlanningCoverage Whether a request is covered (S18): filled, or at least one candidate covers it; partly_covered when every candidate is partial, flagged or missing something; uncovered when nobody is a candidate.
+type PlanningCoverage string
+
+// PlanningCurrentProject The project of the person's confirmed row covering today with the earliest from date, and the days since that date — the fairness signal (S17).
+type PlanningCurrentProject struct {
+	Days int32 `json:"days"`
+
+	// Project The project of an allocation: an opaque id, named when the directory resolves it (rule 4).
+	Project PlanningProjectRef `json:"project"`
+	Since   openapi_types.Date `json:"since"`
+}
+
 // PlanningCustomerRef A project's customer, an opaque link named through the customer directory.
 type PlanningCustomerRef struct {
 	Id int32 `json:"id"`
@@ -392,6 +621,51 @@ type PlanningEventKind string
 type PlanningEventList struct {
 	Events []PlanningEvent `json:"events"`
 }
+
+// PlanningFillInput Who fills the request (S16). status defaults by the project's status, as on POST /allocations.
+type PlanningFillInput struct {
+	PersonId int64 `json:"personId"`
+
+	// Status tentative is the planner's draft — shown apart, weighing nothing in the headline figures, never shown to the person; confirmed is the plan (S3).
+	Status *PlanningAllocationStatus `json:"status,omitempty"`
+}
+
+// PlanningFit How the booking fits what the person wants, as Staff scores it (S17.6): 100 less weight × 10 per preference the booking contradicts, and the kinds lowered — never a value.
+type PlanningFit struct {
+	Lowered []string `json:"lowered"`
+	Score   int32    `json:"score"`
+}
+
+// PlanningIntake The pipeline (S18): every project in status planned, by code, with its open and filled requests judged for coverage.
+type PlanningIntake struct {
+	Projects []PlanningIntakeProject `json:"projects"`
+}
+
+// PlanningIntakeProject One planned project: its requests and its hours a week — requested over its open requests, tentative and confirmed over its rows, a percent row counted as its share of the person's hours a week in force on its first day.
+type PlanningIntakeProject struct {
+	ConfirmedHoursPerWeek float64 `json:"confirmedHoursPerWeek"`
+
+	// Project A project as the directory answers it (S9): never its currency or bill rate.
+	Project               PlanningProject         `json:"project"`
+	RequestedHoursPerWeek float64                 `json:"requestedHoursPerWeek"`
+	Requests              []PlanningIntakeRequest `json:"requests"`
+	TentativeHoursPerWeek float64                 `json:"tentativeHoursPerWeek"`
+}
+
+// PlanningIntakeRequest One request of the pipeline with its coverage; candidates is how many cover it outright, and key_person flags exactly one (S18).
+type PlanningIntakeRequest struct {
+	Candidates int32 `json:"candidates"`
+
+	// Coverage Whether a request is covered (S18): filled, or at least one candidate covers it; partly_covered when every candidate is partial, flagged or missing something; uncovered when nobody is a candidate.
+	Coverage PlanningCoverage             `json:"coverage"`
+	Flags    []PlanningIntakeRequestFlags `json:"flags"`
+
+	// Request A project's need for a person not yet named (S16): a period, hours a week, competence requirements, and a status — open, filled while an allocation names it, or withdrawn.
+	Request PlanningRequest `json:"request"`
+}
+
+// PlanningIntakeRequestFlags defines model for PlanningIntakeRequest.Flags.
+type PlanningIntakeRequestFlags string
 
 // PlanningLoadUnit How an allocation's load is typed (planning design S2): percent of the person's position (more than 0, at most 100), or hours_per_week (more than 0, at most 80). Two decimals.
 type PlanningLoadUnit string
@@ -454,7 +728,7 @@ type PlanningPersonRef struct {
 	Id             int64   `json:"id"`
 }
 
-// PlanningProblem An RFC 9457 problem with this module's refusal code (planning design §4.7). code names the rule that refused and is what a client keys off, never the words: outside_employment (409: a day of the period lies outside the person's employment as Staff answers it), project_closed (409: the project is completed or cancelled and takes no new row and no change but deletion), overbooked (409: under the setting overbooking refuse, the write would make a week's confirmed excess over capacity grow; weeks are named in detail), period_too_long (400, a field error on toDate: more than 1096 days), window_out_of_bounds (400, a field error on from, to, fromDate or toDate: the window lies outside Staff's bound, the Monday thirteen weeks before today to three years after it), revision_conflict (409: the If-Match revision has moved on, or the row kept changing under a DELETE or a confirm), no_person (404: the caller is nobody's person in Staff) and dependency_unavailable (503: a module Planning reads is not composed). errors carries the field errors of a 400, keyed by the request's camelCase field; a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
+// PlanningProblem An RFC 9457 problem with this module's refusal code (planning design §4.7). code names the rule that refused and is what a client keys off, never the words: outside_employment (409: a day of the period lies outside the person's employment as Staff answers it), project_closed (409: the project is completed or cancelled and takes no new row and no change but deletion), overbooked (409: under the setting overbooking refuse, the write would make a week's confirmed excess over capacity grow; weeks are named in detail), period_too_long (400, a field error on toDate: more than 1096 days), window_out_of_bounds (400, a field error on from, to, fromDate or toDate: the window lies outside Staff's bound, the Monday thirteen weeks before today to three years after it), request_not_open (409: the request is filled or withdrawn and takes no fill, no change and no withdrawal), revision_conflict (409: the If-Match revision has moved on, or the row kept changing under a DELETE or a confirm), no_person (404: the caller is nobody's person in Staff) and dependency_unavailable (503: a module Planning reads is not composed). errors carries the field errors of a 400, keyed by the request's camelCase field; a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.
 type PlanningProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -494,15 +768,18 @@ type PlanningProjectPlan struct {
 	Allocations []PlanningAllocation `json:"allocations"`
 
 	// Project A project as the directory answers it (S9): never its currency or bill rate.
-	Project PlanningProject           `json:"project"`
-	Weeks   []PlanningProjectPlanWeek `json:"weeks"`
+	Project PlanningProject `json:"project"`
+
+	// Requests The project's open and filled requests touching the window; withdrawn ones are not shown.
+	Requests []PlanningRequest         `json:"requests"`
+	Weeks    []PlanningProjectPlanWeek `json:"weeks"`
 }
 
 // PlanningProjectPlanWeek One week of a project's plan.
 type PlanningProjectPlanWeek struct {
 	Booked float64 `json:"booked"`
 
-	// Demand The open requests' hours a week; 0 until delivery B.
+	// Demand The open demand (S16): over the project's open requests covering the week, hoursPerWeek × the weekdays of the week inside the request's period / 5.
 	Demand    float64            `json:"demand"`
 	Monday    openapi_types.Date `json:"monday"`
 	Tentative float64            `json:"tentative"`
@@ -521,6 +798,109 @@ type PlanningProjectRef struct {
 // PlanningProjectStatus The project's status as Projects answers it.
 type PlanningProjectStatus string
 
+// PlanningRequest A project's need for a person not yet named (S16): a period, hours a week, competence requirements, and a status — open, filled while an allocation names it, or withdrawn.
+type PlanningRequest struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// FilledBy The allocation that fills the request and its person; present on a filled request alone.
+	FilledBy     *PlanningRequestFilledBy `json:"filledBy,omitempty"`
+	FromDate     openapi_types.Date       `json:"fromDate"`
+	HoursPerWeek float64                  `json:"hoursPerWeek"`
+	Id           int64                    `json:"id"`
+
+	// Note The planners' note, at most 500 characters: present to planning:manage alone (S5).
+	Note *string `json:"note,omitempty"`
+
+	// Project The project of an allocation: an opaque id, named when the directory resolves it (rule 4).
+	Project      PlanningProjectRef    `json:"project"`
+	Requirements []PlanningRequirement `json:"requirements"`
+
+	// Revision Send it back as If-Match on PUT /requests/{id}.
+	Revision int32 `json:"revision"`
+
+	// Status open is demand; filled, exactly while an allocation names the request; withdrawn is final (S16).
+	Status PlanningRequestStatus `json:"status"`
+	Title  string                `json:"title"`
+
+	// ToDate Inclusive.
+	ToDate    openapi_types.Date `json:"toDate"`
+	UpdatedAt time.Time          `json:"updatedAt"`
+}
+
+// PlanningRequestFilled A fill's answer: the request now filled, the allocation that fills it, and the allocation's warnings.
+type PlanningRequestFilled struct {
+	// Allocation A person booked on a project over a period (S1).
+	Allocation PlanningAllocation `json:"allocation"`
+
+	// Request A project's need for a person not yet named (S16): a period, hours a week, competence requirements, and a status — open, filled while an allocation names it, or withdrawn.
+	Request  PlanningRequest   `json:"request"`
+	Warnings []PlanningWarning `json:"warnings"`
+}
+
+// PlanningRequestFilledBy The allocation that fills the request and its person; present on a filled request alone.
+type PlanningRequestFilledBy struct {
+	AllocationId int64 `json:"allocationId"`
+
+	// Person The person of an allocation: an opaque id, named when Staff answers them.
+	Person PlanningPersonRef `json:"person"`
+}
+
+// PlanningRequestInput A request's fields, on create and on a whole replace (S16). requirements left out means none.
+type PlanningRequestInput struct {
+	FromDate openapi_types.Date `json:"fromDate"`
+
+	// HoursPerWeek More than 0, at most 80; two decimals.
+	HoursPerWeek float64 `json:"hoursPerWeek"`
+	Note         *string `json:"note,omitempty"`
+	ProjectId    int32   `json:"projectId"`
+
+	// Requirements At most 10, each competence once.
+	Requirements *[]PlanningRequirementInput `json:"requirements,omitempty"`
+	Title        string                      `json:"title"`
+
+	// ToDate On or after fromDate, at most 1096 days after it.
+	ToDate openapi_types.Date `json:"toDate"`
+}
+
+// PlanningRequestList At most 500 requests, by from date then id.
+type PlanningRequestList struct {
+	Requests []PlanningRequest `json:"requests"`
+}
+
+// PlanningRequestStatus open is demand; filled, exactly while an allocation names the request; withdrawn is final (S16).
+type PlanningRequestStatus string
+
+// PlanningRequestWritten A request write's answer: the row and what it caused (outside_project_dates).
+type PlanningRequestWritten struct {
+	// Request A project's need for a person not yet named (S16): a period, hours a week, competence requirements, and a status — open, filled while an allocation names it, or withdrawn.
+	Request  PlanningRequest   `json:"request"`
+	Warnings []PlanningWarning `json:"warnings"`
+}
+
+// PlanningRequirement A competence the person who fills the request must hold on its first day (S16), named from the catalogue when it still answers it (rule 4).
+type PlanningRequirement struct {
+	CompetenceId int64                    `json:"competenceId"`
+	HasLevel     *bool                    `json:"hasLevel,omitempty"`
+	Key          *string                  `json:"key,omitempty"`
+	Kind         *PlanningRequirementKind `json:"kind,omitempty"`
+
+	// MinLevel 0 to 4, on a competence with a level alone.
+	MinLevel *int32  `json:"minLevel,omitempty"`
+	NameEn   *string `json:"nameEn,omitempty"`
+	NameNb   *string `json:"nameNb,omitempty"`
+}
+
+// PlanningRequirementKind defines model for PlanningRequirement.Kind.
+type PlanningRequirementKind string
+
+// PlanningRequirementInput defines model for PlanningRequirementInput.
+type PlanningRequirementInput struct {
+	CompetenceId int64 `json:"competenceId"`
+
+	// MinLevel 0 to 4, on a competence with a level alone; a field error otherwise.
+	MinLevel *int32 `json:"minLevel,omitempty"`
+}
+
 // PlanningSettings The installation's Planning settings (S20).
 type PlanningSettings struct {
 	// DefaultLoadUnit How an allocation's load is typed (planning design S2): percent of the person's position (more than 0, at most 100), or hours_per_week (more than 0, at most 80). Two decimals.
@@ -532,7 +912,7 @@ type PlanningSettings struct {
 	// Overbooking warn: a write that overbooks a week is written with the warning overbooked. refuse: a write that makes a week's excess grow is the 409 overbooked (S7).
 	Overbooking PlanningOverbooking `json:"overbooking"`
 
-	// RequestLeadDays 0 to 365: an open request starting within it is an attention item (delivery B).
+	// RequestLeadDays 0 to 365: an open request starting within it is an attention item (requestsOpen).
 	RequestLeadDays int32 `json:"requestLeadDays"`
 
 	// Revision Send it back as If-Match on PUT /settings.
@@ -564,7 +944,7 @@ type PlanningStats struct {
 	// LoadPercentThisWeek Confirmed booked / capacity this week × 100; absent when the capacity is 0.
 	LoadPercentThisWeek *float64 `json:"loadPercentThisWeek,omitempty"`
 
-	// OpenRequests Open requests; 0 until delivery B.
+	// OpenRequests Requests in status open.
 	OpenRequests int32 `json:"openRequests"`
 
 	// PeoplePlannedThisWeek People with a confirmed booking this week.
@@ -577,12 +957,12 @@ type PlanningStats struct {
 	Unbooked int32 `json:"unbooked"`
 }
 
-// PlanningStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares (S22). unbooked (planning:view): a person under the threshold within the horizon. overbooked (planning:view): a person with a week in the horizon whose confirmed booked exceeds capacity. endingWithoutFollowOn (planning:manage): a confirmed row ending within endingLeadWeeks where the person has no confirmed row starting on or before that end plus seven days. certificatesExpiring (planning:view): a held certificate expiring inside a confirmed row within the horizon. A caller with neither role gets an empty list.
+// PlanningStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares (S22). unbooked (planning:view): a person under the threshold within the horizon. overbooked (planning:view): a person with a week in the horizon whose confirmed booked exceeds capacity. endingWithoutFollowOn (planning:manage): a confirmed row ending within endingLeadWeeks where the person has no confirmed row starting on or before that end plus seven days. certificatesExpiring (planning:view): a held certificate expiring inside a confirmed row within the horizon. requestsOpen (planning:manage): an open request starting within requestLeadDays, or already started. A caller with neither role gets an empty list.
 type PlanningStatsAttentionItem struct {
 	// Count How many the item stands for, when it stands for more than one.
 	Count *int32 `json:"count,omitempty"`
 
-	// EntityId The person's id, or the allocation's for endingWithoutFollowOn.
+	// EntityId The person's id, the allocation's for endingWithoutFollowOn, or the request's for requestsOpen.
 	EntityId   string                         `json:"entityId"`
 	Id         string                         `json:"id"`
 	OccurredAt time.Time                      `json:"occurredAt"`
@@ -789,6 +1169,33 @@ type GetPlanningProjectPlanParams struct {
 	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// ListPlanningRequestsParams defines parameters for ListPlanningRequests.
+type ListPlanningRequestsParams struct {
+	// ProjectId Only this project's.
+	ProjectId *int32 `form:"projectId,omitempty" json:"projectId,omitempty"`
+
+	// Status Only requests in this status.
+	Status *PlanningRequestStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// From The window's first day, a civil date.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The window's last day, inclusive.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// PutPlanningRequestParams defines parameters for PutPlanningRequest.
+type PutPlanningRequestParams struct {
+	// IfMatch The revision the row was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// ListPlanningRequestCandidatesParams defines parameters for ListPlanningRequestCandidates.
+type ListPlanningRequestCandidatesParams struct {
+	// IncludePartial Also list people who miss a requirement, with missing naming the keys. Defaults to false.
+	IncludePartial *bool `form:"includePartial,omitempty" json:"includePartial,omitempty"`
+}
+
 // PutPlanningSettingsParams defines parameters for PutPlanningSettings.
 type PutPlanningSettingsParams struct {
 	// IfMatch The revision the row was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
@@ -800,6 +1207,15 @@ type CreatePlanningAllocationJSONRequestBody = PlanningAllocationInput
 
 // PutPlanningAllocationJSONRequestBody defines body for PutPlanningAllocation for application/json ContentType.
 type PutPlanningAllocationJSONRequestBody = PlanningAllocationInput
+
+// CreatePlanningRequestJSONRequestBody defines body for CreatePlanningRequest for application/json ContentType.
+type CreatePlanningRequestJSONRequestBody = PlanningRequestInput
+
+// PutPlanningRequestJSONRequestBody defines body for PutPlanningRequest for application/json ContentType.
+type PutPlanningRequestJSONRequestBody = PlanningRequestInput
+
+// FillPlanningRequestJSONRequestBody defines body for FillPlanningRequest for application/json ContentType.
+type FillPlanningRequestJSONRequestBody = PlanningFillInput
 
 // PutPlanningSettingsJSONRequestBody defines body for PutPlanningSettings for application/json ContentType.
 type PutPlanningSettingsJSONRequestBody = PlanningSettingsRequest
@@ -827,9 +1243,15 @@ type ServerInterface interface {
 	// GetPlanningBoard The board
 	// (GET /api/v1/planning/board)
 	GetPlanningBoard(w http.ResponseWriter, r *http.Request, params GetPlanningBoardParams)
+	// ListPlanningCompetences The competence catalogue
+	// (GET /api/v1/planning/competences)
+	ListPlanningCompetences(w http.ResponseWriter, r *http.Request)
 	// ListPlanningEvents List events
 	// (GET /api/v1/planning/events)
 	ListPlanningEvents(w http.ResponseWriter, r *http.Request, params ListPlanningEventsParams)
+	// GetPlanningIntake Intake
+	// (GET /api/v1/planning/intake)
+	GetPlanningIntake(w http.ResponseWriter, r *http.Request)
 	// GetPlanningMe My planning
 	// (GET /api/v1/planning/me)
 	GetPlanningMe(w http.ResponseWriter, r *http.Request)
@@ -848,6 +1270,27 @@ type ServerInterface interface {
 	// GetPlanningProjectPlan A project's plan
 	// (GET /api/v1/planning/projects/{projectId}/plan)
 	GetPlanningProjectPlan(w http.ResponseWriter, r *http.Request, projectId int32, params GetPlanningProjectPlanParams)
+	// ListPlanningRequests List requests
+	// (GET /api/v1/planning/requests)
+	ListPlanningRequests(w http.ResponseWriter, r *http.Request, params ListPlanningRequestsParams)
+	// CreatePlanningRequest Create a request
+	// (POST /api/v1/planning/requests)
+	CreatePlanningRequest(w http.ResponseWriter, r *http.Request)
+	// GetPlanningRequest A request
+	// (GET /api/v1/planning/requests/{id})
+	GetPlanningRequest(w http.ResponseWriter, r *http.Request, id int64)
+	// PutPlanningRequest Change a request
+	// (PUT /api/v1/planning/requests/{id})
+	PutPlanningRequest(w http.ResponseWriter, r *http.Request, id int64, params PutPlanningRequestParams)
+	// ListPlanningRequestCandidates A request's candidates
+	// (GET /api/v1/planning/requests/{id}/candidates)
+	ListPlanningRequestCandidates(w http.ResponseWriter, r *http.Request, id int64, params ListPlanningRequestCandidatesParams)
+	// FillPlanningRequest Fill a request
+	// (POST /api/v1/planning/requests/{id}/fill)
+	FillPlanningRequest(w http.ResponseWriter, r *http.Request, id int64)
+	// WithdrawPlanningRequest Withdraw a request
+	// (POST /api/v1/planning/requests/{id}/withdraw)
+	WithdrawPlanningRequest(w http.ResponseWriter, r *http.Request, id int64)
 	// GetPlanningSettings Get the Planning settings
 	// (GET /api/v1/planning/settings)
 	GetPlanningSettings(w http.ResponseWriter, r *http.Request)
@@ -1229,6 +1672,20 @@ func (siw *ServerInterfaceWrapper) GetPlanningBoard(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListPlanningCompetences operation middleware
+func (siw *ServerInterfaceWrapper) ListPlanningCompetences(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlanningCompetences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPlanningEvents operation middleware
 func (siw *ServerInterfaceWrapper) ListPlanningEvents(w http.ResponseWriter, r *http.Request) {
 
@@ -1279,6 +1736,20 @@ func (siw *ServerInterfaceWrapper) ListPlanningEvents(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListPlanningEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlanningIntake operation middleware
+func (siw *ServerInterfaceWrapper) GetPlanningIntake(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlanningIntake(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1544,6 +2015,266 @@ func (siw *ServerInterfaceWrapper) GetPlanningProjectPlan(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// ListPlanningRequests operation middleware
+func (siw *ServerInterfaceWrapper) ListPlanningRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlanningRequestsParams
+
+	// ------------- Optional query parameter "projectId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "projectId", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "projectId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlanningRequests(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePlanningRequest operation middleware
+func (siw *ServerInterfaceWrapper) CreatePlanningRequest(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePlanningRequest(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlanningRequest operation middleware
+func (siw *ServerInterfaceWrapper) GetPlanningRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlanningRequest(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutPlanningRequest operation middleware
+func (siw *ServerInterfaceWrapper) PutPlanningRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutPlanningRequestParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutPlanningRequest(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPlanningRequestCandidates operation middleware
+func (siw *ServerInterfaceWrapper) ListPlanningRequestCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlanningRequestCandidatesParams
+
+	// ------------- Optional query parameter "includePartial" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includePartial", r.URL.Query(), &params.IncludePartial, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includePartial"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includePartial", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlanningRequestCandidates(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FillPlanningRequest operation middleware
+func (siw *ServerInterfaceWrapper) FillPlanningRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FillPlanningRequest(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// WithdrawPlanningRequest operation middleware
+func (siw *ServerInterfaceWrapper) WithdrawPlanningRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.WithdrawPlanningRequest(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPlanningSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetPlanningSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -1772,13 +2503,22 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/planning/allocations/{id}", wrapper.PutPlanningAllocation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/planning/allocations/{id}/confirm", wrapper.ConfirmPlanningAllocation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/board", wrapper.GetPlanningBoard)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/competences", wrapper.ListPlanningCompetences)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/events", wrapper.ListPlanningEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/intake", wrapper.GetPlanningIntake)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/me", wrapper.GetPlanningMe)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/meta", wrapper.GetPlanningMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/people", wrapper.ListPlanningPeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/people/{personId}/timeline", wrapper.GetPlanningPersonTimeline)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/projects", wrapper.ListPlanningProjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/projects/{projectId}/plan", wrapper.GetPlanningProjectPlan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/requests", wrapper.ListPlanningRequests)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/planning/requests", wrapper.CreatePlanningRequest)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/requests/{id}", wrapper.GetPlanningRequest)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/planning/requests/{id}", wrapper.PutPlanningRequest)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/requests/{id}/candidates", wrapper.ListPlanningRequestCandidates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/planning/requests/{id}/fill", wrapper.FillPlanningRequest)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/planning/requests/{id}/withdraw", wrapper.WithdrawPlanningRequest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/settings", wrapper.GetPlanningSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/planning/settings", wrapper.PutPlanningSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/planning/stats", wrapper.GetPlanningStats)
@@ -2404,6 +3144,69 @@ func (response GetPlanningBoard503ApplicationProblemPlusJSONResponse) VisitGetPl
 	return err
 }
 
+type ListPlanningCompetencesRequestObject struct {
+}
+
+type ListPlanningCompetencesResponseObject interface {
+	VisitListPlanningCompetencesResponse(w http.ResponseWriter) error
+}
+
+type ListPlanningCompetences200JSONResponse PlanningCompetenceList
+
+func (response ListPlanningCompetences200JSONResponse) VisitListPlanningCompetencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningCompetences401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPlanningCompetences401JSONResponse) VisitListPlanningCompetencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningCompetences403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPlanningCompetences403JSONResponse) VisitListPlanningCompetencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningCompetences503ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response ListPlanningCompetences503ApplicationProblemPlusJSONResponse) VisitListPlanningCompetencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPlanningEventsRequestObject struct {
 	Params ListPlanningEventsParams
 }
@@ -2450,6 +3253,69 @@ func (response ListPlanningEvents403JSONResponse) VisitListPlanningEventsRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlanningIntakeRequestObject struct {
+}
+
+type GetPlanningIntakeResponseObject interface {
+	VisitGetPlanningIntakeResponse(w http.ResponseWriter) error
+}
+
+type GetPlanningIntake200JSONResponse PlanningIntake
+
+func (response GetPlanningIntake200JSONResponse) VisitGetPlanningIntakeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlanningIntake401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPlanningIntake401JSONResponse) VisitGetPlanningIntakeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlanningIntake403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPlanningIntake403JSONResponse) VisitGetPlanningIntakeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlanningIntake503ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response GetPlanningIntake503ApplicationProblemPlusJSONResponse) VisitGetPlanningIntakeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2924,6 +3790,624 @@ func (response GetPlanningProjectPlan503ApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type ListPlanningRequestsRequestObject struct {
+	Params ListPlanningRequestsParams
+}
+
+type ListPlanningRequestsResponseObject interface {
+	VisitListPlanningRequestsResponse(w http.ResponseWriter) error
+}
+
+type ListPlanningRequests200JSONResponse PlanningRequestList
+
+func (response ListPlanningRequests200JSONResponse) VisitListPlanningRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningRequests400ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response ListPlanningRequests400ApplicationProblemPlusJSONResponse) VisitListPlanningRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningRequests401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPlanningRequests401JSONResponse) VisitListPlanningRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningRequests403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPlanningRequests403JSONResponse) VisitListPlanningRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningRequests503ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response ListPlanningRequests503ApplicationProblemPlusJSONResponse) VisitListPlanningRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePlanningRequestRequestObject struct {
+	Body *CreatePlanningRequestJSONRequestBody
+}
+
+type CreatePlanningRequestResponseObject interface {
+	VisitCreatePlanningRequestResponse(w http.ResponseWriter) error
+}
+
+type CreatePlanningRequest201JSONResponse PlanningRequestWritten
+
+func (response CreatePlanningRequest201JSONResponse) VisitCreatePlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePlanningRequest400ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response CreatePlanningRequest400ApplicationProblemPlusJSONResponse) VisitCreatePlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePlanningRequest401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreatePlanningRequest401JSONResponse) VisitCreatePlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePlanningRequest403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreatePlanningRequest403JSONResponse) VisitCreatePlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePlanningRequest409ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response CreatePlanningRequest409ApplicationProblemPlusJSONResponse) VisitCreatePlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePlanningRequest503ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response CreatePlanningRequest503ApplicationProblemPlusJSONResponse) VisitCreatePlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlanningRequestRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetPlanningRequestResponseObject interface {
+	VisitGetPlanningRequestResponse(w http.ResponseWriter) error
+}
+
+type GetPlanningRequest200JSONResponse PlanningRequest
+
+func (response GetPlanningRequest200JSONResponse) VisitGetPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlanningRequest401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPlanningRequest401JSONResponse) VisitGetPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlanningRequest403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPlanningRequest403JSONResponse) VisitGetPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlanningRequest404Response struct {
+}
+
+func (response GetPlanningRequest404Response) VisitGetPlanningRequestResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetPlanningRequest503ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response GetPlanningRequest503ApplicationProblemPlusJSONResponse) VisitGetPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPlanningRequestRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutPlanningRequestParams
+	Body   *PutPlanningRequestJSONRequestBody
+}
+
+type PutPlanningRequestResponseObject interface {
+	VisitPutPlanningRequestResponse(w http.ResponseWriter) error
+}
+
+type PutPlanningRequest200JSONResponse PlanningRequestWritten
+
+func (response PutPlanningRequest200JSONResponse) VisitPutPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPlanningRequest400ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response PutPlanningRequest400ApplicationProblemPlusJSONResponse) VisitPutPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPlanningRequest401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutPlanningRequest401JSONResponse) VisitPutPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPlanningRequest403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutPlanningRequest403JSONResponse) VisitPutPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPlanningRequest404Response struct {
+}
+
+func (response PutPlanningRequest404Response) VisitPutPlanningRequestResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutPlanningRequest409ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response PutPlanningRequest409ApplicationProblemPlusJSONResponse) VisitPutPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPlanningRequest503ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response PutPlanningRequest503ApplicationProblemPlusJSONResponse) VisitPutPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningRequestCandidatesRequestObject struct {
+	Id     int64 `json:"id"`
+	Params ListPlanningRequestCandidatesParams
+}
+
+type ListPlanningRequestCandidatesResponseObject interface {
+	VisitListPlanningRequestCandidatesResponse(w http.ResponseWriter) error
+}
+
+type ListPlanningRequestCandidates200JSONResponse PlanningCandidateList
+
+func (response ListPlanningRequestCandidates200JSONResponse) VisitListPlanningRequestCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningRequestCandidates400ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response ListPlanningRequestCandidates400ApplicationProblemPlusJSONResponse) VisitListPlanningRequestCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningRequestCandidates401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPlanningRequestCandidates401JSONResponse) VisitListPlanningRequestCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningRequestCandidates403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPlanningRequestCandidates403JSONResponse) VisitListPlanningRequestCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlanningRequestCandidates404Response struct {
+}
+
+func (response ListPlanningRequestCandidates404Response) VisitListPlanningRequestCandidatesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ListPlanningRequestCandidates503ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response ListPlanningRequestCandidates503ApplicationProblemPlusJSONResponse) VisitListPlanningRequestCandidatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FillPlanningRequestRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *FillPlanningRequestJSONRequestBody
+}
+
+type FillPlanningRequestResponseObject interface {
+	VisitFillPlanningRequestResponse(w http.ResponseWriter) error
+}
+
+type FillPlanningRequest201JSONResponse PlanningRequestFilled
+
+func (response FillPlanningRequest201JSONResponse) VisitFillPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FillPlanningRequest400ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response FillPlanningRequest400ApplicationProblemPlusJSONResponse) VisitFillPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FillPlanningRequest401JSONResponse externalRef0.AuthErrorResponse
+
+func (response FillPlanningRequest401JSONResponse) VisitFillPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FillPlanningRequest403JSONResponse externalRef0.AuthErrorResponse
+
+func (response FillPlanningRequest403JSONResponse) VisitFillPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FillPlanningRequest404Response struct {
+}
+
+func (response FillPlanningRequest404Response) VisitFillPlanningRequestResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type FillPlanningRequest409ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response FillPlanningRequest409ApplicationProblemPlusJSONResponse) VisitFillPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FillPlanningRequest503ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response FillPlanningRequest503ApplicationProblemPlusJSONResponse) VisitFillPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawPlanningRequestRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type WithdrawPlanningRequestResponseObject interface {
+	VisitWithdrawPlanningRequestResponse(w http.ResponseWriter) error
+}
+
+type WithdrawPlanningRequest200JSONResponse PlanningRequest
+
+func (response WithdrawPlanningRequest200JSONResponse) VisitWithdrawPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawPlanningRequest401JSONResponse externalRef0.AuthErrorResponse
+
+func (response WithdrawPlanningRequest401JSONResponse) VisitWithdrawPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawPlanningRequest403JSONResponse externalRef0.AuthErrorResponse
+
+func (response WithdrawPlanningRequest403JSONResponse) VisitWithdrawPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawPlanningRequest404Response struct {
+}
+
+func (response WithdrawPlanningRequest404Response) VisitWithdrawPlanningRequestResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type WithdrawPlanningRequest409ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response WithdrawPlanningRequest409ApplicationProblemPlusJSONResponse) VisitWithdrawPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawPlanningRequest503ApplicationProblemPlusJSONResponse PlanningProblem
+
+func (response WithdrawPlanningRequest503ApplicationProblemPlusJSONResponse) VisitWithdrawPlanningRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPlanningSettingsRequestObject struct {
 }
 
@@ -3264,9 +4748,15 @@ type StrictServerInterface interface {
 	// GetPlanningBoard The board
 	// (GET /api/v1/planning/board)
 	GetPlanningBoard(ctx context.Context, request GetPlanningBoardRequestObject) (GetPlanningBoardResponseObject, error)
+	// ListPlanningCompetences The competence catalogue
+	// (GET /api/v1/planning/competences)
+	ListPlanningCompetences(ctx context.Context, request ListPlanningCompetencesRequestObject) (ListPlanningCompetencesResponseObject, error)
 	// ListPlanningEvents List events
 	// (GET /api/v1/planning/events)
 	ListPlanningEvents(ctx context.Context, request ListPlanningEventsRequestObject) (ListPlanningEventsResponseObject, error)
+	// GetPlanningIntake Intake
+	// (GET /api/v1/planning/intake)
+	GetPlanningIntake(ctx context.Context, request GetPlanningIntakeRequestObject) (GetPlanningIntakeResponseObject, error)
 	// GetPlanningMe My planning
 	// (GET /api/v1/planning/me)
 	GetPlanningMe(ctx context.Context, request GetPlanningMeRequestObject) (GetPlanningMeResponseObject, error)
@@ -3285,6 +4775,27 @@ type StrictServerInterface interface {
 	// GetPlanningProjectPlan A project's plan
 	// (GET /api/v1/planning/projects/{projectId}/plan)
 	GetPlanningProjectPlan(ctx context.Context, request GetPlanningProjectPlanRequestObject) (GetPlanningProjectPlanResponseObject, error)
+	// ListPlanningRequests List requests
+	// (GET /api/v1/planning/requests)
+	ListPlanningRequests(ctx context.Context, request ListPlanningRequestsRequestObject) (ListPlanningRequestsResponseObject, error)
+	// CreatePlanningRequest Create a request
+	// (POST /api/v1/planning/requests)
+	CreatePlanningRequest(ctx context.Context, request CreatePlanningRequestRequestObject) (CreatePlanningRequestResponseObject, error)
+	// GetPlanningRequest A request
+	// (GET /api/v1/planning/requests/{id})
+	GetPlanningRequest(ctx context.Context, request GetPlanningRequestRequestObject) (GetPlanningRequestResponseObject, error)
+	// PutPlanningRequest Change a request
+	// (PUT /api/v1/planning/requests/{id})
+	PutPlanningRequest(ctx context.Context, request PutPlanningRequestRequestObject) (PutPlanningRequestResponseObject, error)
+	// ListPlanningRequestCandidates A request's candidates
+	// (GET /api/v1/planning/requests/{id}/candidates)
+	ListPlanningRequestCandidates(ctx context.Context, request ListPlanningRequestCandidatesRequestObject) (ListPlanningRequestCandidatesResponseObject, error)
+	// FillPlanningRequest Fill a request
+	// (POST /api/v1/planning/requests/{id}/fill)
+	FillPlanningRequest(ctx context.Context, request FillPlanningRequestRequestObject) (FillPlanningRequestResponseObject, error)
+	// WithdrawPlanningRequest Withdraw a request
+	// (POST /api/v1/planning/requests/{id}/withdraw)
+	WithdrawPlanningRequest(ctx context.Context, request WithdrawPlanningRequestRequestObject) (WithdrawPlanningRequestResponseObject, error)
 	// GetPlanningSettings Get the Planning settings
 	// (GET /api/v1/planning/settings)
 	GetPlanningSettings(ctx context.Context, request GetPlanningSettingsRequestObject) (GetPlanningSettingsResponseObject, error)
@@ -3536,6 +5047,30 @@ func (sh *strictHandler) GetPlanningBoard(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// ListPlanningCompetences operation middleware
+func (sh *strictHandler) ListPlanningCompetences(w http.ResponseWriter, r *http.Request) {
+	var request ListPlanningCompetencesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPlanningCompetences(ctx, request.(ListPlanningCompetencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPlanningCompetences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPlanningCompetencesResponseObject); ok {
+		if err := validResponse.VisitListPlanningCompetencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListPlanningEvents operation middleware
 func (sh *strictHandler) ListPlanningEvents(w http.ResponseWriter, r *http.Request, params ListPlanningEventsParams) {
 	var request ListPlanningEventsRequestObject
@@ -3555,6 +5090,30 @@ func (sh *strictHandler) ListPlanningEvents(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListPlanningEventsResponseObject); ok {
 		if err := validResponse.VisitListPlanningEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPlanningIntake operation middleware
+func (sh *strictHandler) GetPlanningIntake(w http.ResponseWriter, r *http.Request) {
+	var request GetPlanningIntakeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPlanningIntake(ctx, request.(GetPlanningIntakeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPlanningIntake")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPlanningIntakeResponseObject); ok {
+		if err := validResponse.VisitGetPlanningIntakeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3709,6 +5268,209 @@ func (sh *strictHandler) GetPlanningProjectPlan(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetPlanningProjectPlanResponseObject); ok {
 		if err := validResponse.VisitGetPlanningProjectPlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPlanningRequests operation middleware
+func (sh *strictHandler) ListPlanningRequests(w http.ResponseWriter, r *http.Request, params ListPlanningRequestsParams) {
+	var request ListPlanningRequestsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPlanningRequests(ctx, request.(ListPlanningRequestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPlanningRequests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPlanningRequestsResponseObject); ok {
+		if err := validResponse.VisitListPlanningRequestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreatePlanningRequest operation middleware
+func (sh *strictHandler) CreatePlanningRequest(w http.ResponseWriter, r *http.Request) {
+	var request CreatePlanningRequestRequestObject
+
+	var body CreatePlanningRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePlanningRequest(ctx, request.(CreatePlanningRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePlanningRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreatePlanningRequestResponseObject); ok {
+		if err := validResponse.VisitCreatePlanningRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPlanningRequest operation middleware
+func (sh *strictHandler) GetPlanningRequest(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetPlanningRequestRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPlanningRequest(ctx, request.(GetPlanningRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPlanningRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPlanningRequestResponseObject); ok {
+		if err := validResponse.VisitGetPlanningRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutPlanningRequest operation middleware
+func (sh *strictHandler) PutPlanningRequest(w http.ResponseWriter, r *http.Request, id int64, params PutPlanningRequestParams) {
+	var request PutPlanningRequestRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutPlanningRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutPlanningRequest(ctx, request.(PutPlanningRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutPlanningRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutPlanningRequestResponseObject); ok {
+		if err := validResponse.VisitPutPlanningRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPlanningRequestCandidates operation middleware
+func (sh *strictHandler) ListPlanningRequestCandidates(w http.ResponseWriter, r *http.Request, id int64, params ListPlanningRequestCandidatesParams) {
+	var request ListPlanningRequestCandidatesRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPlanningRequestCandidates(ctx, request.(ListPlanningRequestCandidatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPlanningRequestCandidates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPlanningRequestCandidatesResponseObject); ok {
+		if err := validResponse.VisitListPlanningRequestCandidatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// FillPlanningRequest operation middleware
+func (sh *strictHandler) FillPlanningRequest(w http.ResponseWriter, r *http.Request, id int64) {
+	var request FillPlanningRequestRequestObject
+
+	request.Id = id
+
+	var body FillPlanningRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.FillPlanningRequest(ctx, request.(FillPlanningRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FillPlanningRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(FillPlanningRequestResponseObject); ok {
+		if err := validResponse.VisitFillPlanningRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// WithdrawPlanningRequest operation middleware
+func (sh *strictHandler) WithdrawPlanningRequest(w http.ResponseWriter, r *http.Request, id int64) {
+	var request WithdrawPlanningRequestRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.WithdrawPlanningRequest(ctx, request.(WithdrawPlanningRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "WithdrawPlanningRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(WithdrawPlanningRequestResponseObject); ok {
+		if err := validResponse.VisitWithdrawPlanningRequestResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

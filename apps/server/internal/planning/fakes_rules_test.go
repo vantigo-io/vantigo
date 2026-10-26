@@ -79,6 +79,43 @@ func TestFakeWorkforce_AnswersAsStaffDoes(t *testing.T) {
 	}
 }
 
+// TestFakeWorkforce_PreferenceFits pins the fake's fit: a person with no fit
+// set scores 100 with nothing lowered, as Staff answers a person with no
+// preference; setFit is answered for any booking; an unknown id is absent;
+// a caller without staff:view gets nothing; and the booking asked about is
+// kept in lastBooking.
+func TestFakeWorkforce_PreferenceFits(t *testing.T) {
+	t.Parallel()
+	w := newFakeWorkforce()
+	ctx := context.Background()
+	hours := 20.0
+	b := contracts.Booking{From: date("2026-11-02"), To: date("2026-11-29"), HoursPerWeek: &hours}
+
+	w.setFit(personOla, contracts.Fit{Score: 70, Lowered: []string{"weekdays", "max_hours_per_week"}})
+	fits, err := w.PreferenceFits(ctx, []int64{personKari, personOla, 1999}, b)
+	if err != nil || len(fits) != 2 {
+		t.Fatalf("PreferenceFits = %+v, %v; want Kari and Ola, not the unknown id", fits, err)
+	}
+	if f := fits[personKari]; f.Score != 100 || f.Lowered != nil {
+		t.Errorf("Kari = %+v, want 100 and nothing lowered", f)
+	}
+	if f := fits[personOla]; f.Score != 70 || len(f.Lowered) != 2 || f.Lowered[0] != "weekdays" || f.Lowered[1] != "max_hours_per_week" {
+		t.Errorf("Ola = %+v, want the fit set", f)
+	}
+	if got := w.lastBooking; got == nil || !got.From.Equal(b.From) || !got.To.Equal(b.To) || got.HoursPerWeek == nil || *got.HoursPerWeek != 20 {
+		t.Errorf("lastBooking = %+v, want the booking asked about", got)
+	}
+
+	w.setVisible(false)
+	later := contracts.Booking{From: date("2026-12-07"), To: date("2026-12-13")}
+	if fits, err := w.PreferenceFits(ctx, []int64{personKari, personOla}, later); err != nil || fits != nil {
+		t.Errorf("without staff:view = %+v, %v; want nil, nil", fits, err)
+	}
+	if got := w.lastBooking; got == nil || !got.From.Equal(later.From) {
+		t.Errorf("lastBooking without staff:view = %+v, want the later booking", got)
+	}
+}
+
 // TestFakeProjects_AnswersAsProjectsDoes pins the fake directory's rules: the
 // listing by status by code then id, an unknown id answering nothing, and a
 // project a test adds.

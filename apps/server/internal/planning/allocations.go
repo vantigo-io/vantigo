@@ -38,6 +38,7 @@ func allocationResponse(a store.PlanningAllocation, person *contracts.PersonEntr
 		Status:      gen.PlanningAllocationStatus(a.Status),
 		Title:       a.Title,
 		ConfirmedAt: a.ConfirmedAt,
+		RequestId:   a.RequestID,
 		Revision:    a.Revision,
 		CreatedAt:   a.CreatedAt,
 		UpdatedAt:   a.UpdatedAt,
@@ -91,20 +92,14 @@ func (s *server) namesOf(ctx context.Context, c *callerContext, rows []store.Pla
 	if len(rows) == 0 {
 		return names, nil
 	}
-	from, to := civil(rows[0].FromDate), civil(rows[0].ToDate)
+	people, err := s.peopleOfRows(ctx, c, rows)
+	if err != nil {
+		return allocationNames{}, err
+	}
+	names.people = people
 	var projectIDs []int32
 	for _, r := range rows {
-		from, to = earliestOf(from, civil(r.FromDate)), latestOf(to, civil(r.ToDate))
 		projectIDs = append(projectIDs, r.ProjectID)
-	}
-	if lo, hi, ok := clipToBound(from, to, c.Today); ok {
-		people, err := s.workforcePeople(ctx, lo, hi)
-		if err != nil {
-			return allocationNames{}, err
-		}
-		for _, p := range people {
-			names.people[p.ID] = p
-		}
 	}
 	projects, err := s.projectEntries(ctx, slices.Compact(slices.Sorted(slices.Values(projectIDs))))
 	if err != nil {

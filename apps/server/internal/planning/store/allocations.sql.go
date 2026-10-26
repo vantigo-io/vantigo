@@ -12,7 +12,7 @@ import (
 )
 
 const allocationsInWindow = `-- name: AllocationsInWindow :many
-SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id FROM planning.allocations
+SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id, request_id FROM planning.allocations
 WHERE from_date <= $1::date AND to_date >= $2::date
   AND ($3::bigint[] IS NULL OR person_id = ANY($3::bigint[]))
 ORDER BY person_id, from_date, id
@@ -54,6 +54,7 @@ func (q *Queries) AllocationsInWindow(ctx context.Context, arg AllocationsInWind
 			&i.CreatedByUserID,
 			&i.UpdatedAt,
 			&i.UpdatedByUserID,
+			&i.RequestID,
 		); err != nil {
 			return nil, err
 		}
@@ -67,7 +68,7 @@ func (q *Queries) AllocationsInWindow(ctx context.Context, arg AllocationsInWind
 
 const getAllocation = `-- name: GetAllocation :one
 
-SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id FROM planning.allocations WHERE id = $1
+SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id, request_id FROM planning.allocations WHERE id = $1
 `
 
 // The allocations (design S1–S5, §3.2): the reads every view and the write
@@ -95,12 +96,13 @@ func (q *Queries) GetAllocation(ctx context.Context, id int64) (PlanningAllocati
 		&i.CreatedByUserID,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.RequestID,
 	)
 	return i, err
 }
 
 const lockAllocation = `-- name: LockAllocation :one
-SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id FROM planning.allocations WHERE id = $1 FOR UPDATE
+SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id, request_id FROM planning.allocations WHERE id = $1 FOR UPDATE
 `
 
 // LockAllocation reads one allocation and holds it for the rest of the
@@ -126,12 +128,13 @@ func (q *Queries) LockAllocation(ctx context.Context, id int64) (PlanningAllocat
 		&i.CreatedByUserID,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.RequestID,
 	)
 	return i, err
 }
 
 const personConfirmedAllocationsInWindow = `-- name: PersonConfirmedAllocationsInWindow :many
-SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id FROM planning.allocations
+SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id, request_id FROM planning.allocations
 WHERE person_id = $1 AND status = 'confirmed'
   AND from_date <= $2::date AND to_date >= $3::date
 ORDER BY from_date, id
@@ -172,6 +175,7 @@ func (q *Queries) PersonConfirmedAllocationsInWindow(ctx context.Context, arg Pe
 			&i.CreatedByUserID,
 			&i.UpdatedAt,
 			&i.UpdatedByUserID,
+			&i.RequestID,
 		); err != nil {
 			return nil, err
 		}
@@ -184,7 +188,7 @@ func (q *Queries) PersonConfirmedAllocationsInWindow(ctx context.Context, arg Pe
 }
 
 const projectAllocationsInWindow = `-- name: ProjectAllocationsInWindow :many
-SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id FROM planning.allocations
+SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id, request_id FROM planning.allocations
 WHERE project_id = $1
   AND from_date <= $2::date AND to_date >= $3::date
 ORDER BY from_date, person_id, id
@@ -224,6 +228,7 @@ func (q *Queries) ProjectAllocationsInWindow(ctx context.Context, arg ProjectAll
 			&i.CreatedByUserID,
 			&i.UpdatedAt,
 			&i.UpdatedByUserID,
+			&i.RequestID,
 		); err != nil {
 			return nil, err
 		}
