@@ -5,6 +5,7 @@ import {
   PLANNING_SETTINGS_ROUTE_PATH,
   REQUESTS_ROUTE_PATH,
   UNBOOKED_ROUTE_PATH,
+  WISHES_ROUTE_PATH,
 } from "./routes";
 
 /**
@@ -17,7 +18,7 @@ import {
  * requests and the intake lead to them.
  */
 export interface PlanningNavItem {
-  key: "board" | "requests" | "intake" | "unbooked" | "myPlanning" | "settings";
+  key: "board" | "requests" | "intake" | "unbooked" | "wishes" | "myPlanning" | "settings";
   /** A key in the `planning` catalog. */
   label: string;
   to: string;
@@ -30,6 +31,7 @@ export const planningNavItems: readonly PlanningNavItem[] = [
   { key: "requests", label: "navRequests", to: REQUESTS_ROUTE_PATH, requiredPermissions: ["planning:view"] },
   { key: "intake", label: "navIntake", to: INTAKE_ROUTE_PATH, requiredPermissions: ["planning:view"] },
   { key: "unbooked", label: "navUnbooked", to: UNBOOKED_ROUTE_PATH, requiredPermissions: ["planning:view"] },
+  { key: "wishes", label: "navWishes", to: WISHES_ROUTE_PATH, requiredPermissions: ["planning:manage"] },
   { key: "myPlanning", label: "navMyPlanning", to: MY_PLANNING_ROUTE_PATH, requiredPermissions: ["planning:access"] },
   { key: "settings", label: "navSettings", to: PLANNING_SETTINGS_ROUTE_PATH, requiredPermissions: ["planning:manage"] },
 ];

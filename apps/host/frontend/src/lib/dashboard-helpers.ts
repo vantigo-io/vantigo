@@ -366,9 +366,11 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     // The person's items carry their id and open their timeline; an ending
     // row carries the allocation's id, which no page is addressed by, so it
     // opens the board, where the row is seen beside what follows it. An open
-    // request opens the open requests, where it is filled.
+    // request opens the open requests, where it is filled; the unseen wishes
+    // open the wishes, where they are stamped seen.
     if (item.type === "unbooked") return "/planning/unbooked";
     if (item.type === "requestsOpen") return "/planning/requests?status=open";
+    if (item.type === "wishesUnseen") return "/planning/wishes";
     if (item.type === "overbooked" || item.type === "certificatesExpiring")
       return `/planning/people/${encodeURIComponent(item.entityId)}`;
     return "/planning";
@@ -380,7 +382,8 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
  * Planning's sentences (planning design S22): the server's title is the
  * person's name with the week, the certificate or the project's code after
  * it — an open request's is the project's code and the request's title — so
- * the sentence around it is worded here, in the reader's language.
+ * the sentence around it is worded here, in the reader's language. The unseen
+ * wishes are one item with a count, the sentence naming the count alone.
  */
 const planningAttentionTitleKeys: Record<string, string> = {
   unbooked: "dashboard.planningUnbooked",
@@ -388,6 +391,7 @@ const planningAttentionTitleKeys: Record<string, string> = {
   endingWithoutFollowOn: "dashboard.planningEndingWithoutFollowOn",
   certificatesExpiring: "dashboard.planningCertificateExpiring",
   requestsOpen: "dashboard.planningRequestOpen",
+  wishesUnseen: "dashboard.planningWishesUnseen",
 };
 
 /**

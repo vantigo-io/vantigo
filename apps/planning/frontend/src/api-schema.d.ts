@@ -74,6 +74,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/planning/allocations/{id}/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set an allocation's terms
+         * @description Sets the allocation's terms whole (S14), guarded by If-Match: the terms' revision when the row has terms, left out to set terms on a row that has none; either way a mismatch is revision_conflict. Terms on a tentative row bind once it is confirmed. Answers the allocation with its terms and the derived dates.
+         */
+        put: operations["putPlanningAllocationTerms"];
+        post?: never;
+        /**
+         * Clear an allocation's terms
+         * @description Clears the allocation's terms (S14); a row with none is left as it is. The derived dates fall back to the row's toDate.
+         */
+        delete: operations["deletePlanningAllocationTerms"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/planning/board": {
         parameters: {
             query?: never;
@@ -123,7 +147,7 @@ export interface paths {
         };
         /**
          * List events
-         * @description The record of writes (S23), newest first, at most 500, filtered by person, project or allocation.
+         * @description The record of writes (S23), newest first, at most 500, filtered by person, project or allocation. A wish's events and the terms' (terms_set, terms_cleared) are answered to planning:manage alone, whatever the filter.
          */
         get: operations["listPlanningEvents"];
         put?: never;
@@ -163,12 +187,52 @@ export interface paths {
         };
         /**
          * My planning
-         * @description The caller's person and their confirmed allocations from today on (S19). A caller who is nobody's person is the 404 no_person.
+         * @description The caller's person, their confirmed allocations from today on (S19) and their open wishes (S21). A caller who is nobody's person is the 404 no_person.
          */
         get: operations["getPlanningMe"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/me/wishes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * File a wish
+         * @description Files a wish of the caller's own (S21): off a project the caller has a confirmed row on today or later (else wish_no_booking), or new. At most five open wishes (wish_limit); one off wish a project (wish_exists). Every planning:manage holder is mailed once. No free text.
+         */
+        post: operations["createPlanningMyWish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/me/wishes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw a wish
+         * @description Withdraws a wish of the caller's own (S21); the row is deleted and the event keeps the kind, the project id and the date.
+         */
+        delete: operations["deletePlanningMyWish"];
         options?: never;
         head?: never;
         patch?: never;
@@ -466,6 +530,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/planning/wishes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the open wishes
+         * @description Every open wish, oldest first (S21), for the planners; an open wish of a person Staff no longer answers is deleted on this read (S26). personId narrows to one person.
+         */
+        get: operations["listPlanningWishes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/wishes/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a wish
+         * @description Resolves a wish (S21); the row is deleted and the event keeps the kind, the project id and the date.
+         */
+        post: operations["resolvePlanningWish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/wishes/{id}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stamp a wish seen
+         * @description Stamps a wish seen by the caller (S21); a wish already stamped is answered as it is.
+         */
+        post: operations["markPlanningWishSeen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -487,8 +611,18 @@ export interface components {
             confirmedAt?: string;
             /** Format: date-time */
             createdAt: string;
+            /**
+             * Format: date
+             * @description The earliest day the person can be released (S15), derived on read: the latest of toDate, the terms' minimumUntil, and noticeGivenOn plus the notice period when notice is given — toDate alone when no term binds.
+             */
+            earliestRelease: string;
             /** Format: date */
             fromDate: string;
+            /**
+             * Format: date
+             * @description The earliest release less the terms' handoverDays, the day a successor should begin so the two overlap (S15); absent when no handover is set.
+             */
+            handoverStart?: string;
             /** Format: int64 */
             id: number;
             /** Format: double */
@@ -509,6 +643,7 @@ export interface components {
              */
             revision: number;
             status: components["schemas"]["PlanningAllocationStatus"];
+            terms?: components["schemas"]["PlanningTerms"];
             /** @description The role as the project names it, at most 100 characters. */
             title?: string;
             /**
@@ -600,15 +735,20 @@ export interface components {
              */
             requiredHours: number;
         };
-        /** @description Something the planner should know about a candidate (S17): certificate_expires — a certificate a requirement needs, held, but expiring before the request's last day; date is its validTo and competenceKey the competence. */
+        /** @description Something the planner should know about a candidate (S17): certificate_expires — a certificate a requirement needs, held, but expiring before the request's last day; date is its validTo and competenceKey the competence. release_after_start — a confirmed row of the person with terms (an assignment) whose earliest release (S15) is after the request's first day; date is that release, handoverFrom its handover start when the terms set one, allocationId the row. needs_customer_approval — that row's terms say a replacement needs the customer's approval; allocationId the row. wishes — an open wish of the person, new or off their current project, from on or before the request's first day; wishKind and date are the kind and the date, nothing more. */
         PlanningCandidateFlag: {
+            /** Format: int64 */
+            allocationId?: number;
             /** @enum {string} */
-            code: "certificate_expires";
+            code: "certificate_expires" | "release_after_start" | "needs_customer_approval" | "wishes";
             competenceKey?: string;
             /** Format: date */
             date?: string;
+            /** Format: date */
+            handoverFrom?: string;
+            wishKind?: components["schemas"]["PlanningWishKind"];
         };
-        /** @description The candidates, sorted: fits first, then fit score descending, then free hours descending, then the longest on their current project first, then by name. */
+        /** @description The candidates, sorted: fits first, then those who wish — a wishes flag — first, then fit score descending, then free hours descending, then the longest on their current project first, then by name. A person under a non-compete in force toward the request's project's customer is not listed (S17.3). */
         PlanningCandidateList: {
             candidates: components["schemas"]["PlanningCandidate"][];
             includePartial: boolean;
@@ -672,11 +812,11 @@ export interface components {
             /** Format: int64 */
             entityId: number;
             /** @enum {string} */
-            entityKind: "allocation" | "request";
+            entityKind: "allocation" | "request" | "wish";
             /** Format: int64 */
             id: number;
             /** @enum {string} */
-            kind: "allocation_created" | "allocation_changed" | "allocation_confirmed" | "allocation_unconfirmed" | "allocation_deleted" | "request_created" | "request_changed" | "request_filled" | "request_reopened" | "request_withdrawn";
+            kind: "allocation_created" | "allocation_changed" | "allocation_confirmed" | "allocation_unconfirmed" | "allocation_deleted" | "request_created" | "request_changed" | "request_filled" | "request_reopened" | "request_withdrawn" | "terms_set" | "terms_cleared" | "wish_created" | "wish_seen" | "wish_resolved" | "wish_withdrawn";
             /** Format: date-time */
             occurredAt: string;
             /** @description The changed fields before and after, by the contract's field names. */
@@ -737,6 +877,8 @@ export interface components {
             /** @description Confirmed, from today on. */
             allocations: components["schemas"]["PlanningAllocation"][];
             person: components["schemas"]["PlanningPerson"];
+            /** @description The caller's open wishes, oldest first (S21). */
+            wishes: components["schemas"]["PlanningWish"][];
         };
         /** @description What the app needs to start (§5). settings is present for planning:manage alone. */
         PlanningMeta: {
@@ -752,6 +894,11 @@ export interface components {
             /** @description False when the caller may see the plan but Staff answered nobody for them — they lack staff:view — so an empty board is never mistaken for an empty plan. */
             workforceVisible: boolean;
         };
+        /**
+         * @description The unit of a notice period (S14), as Staff's terms carry notice.
+         * @enum {string}
+         */
+        PlanningNoticeUnit: "days" | "weeks" | "months";
         /**
          * @description warn: a write that overbooks a week is written with the warning overbooked. refuse: a write that makes a week's excess grow is the 409 overbooked (S7).
          * @enum {string}
@@ -779,7 +926,7 @@ export interface components {
             /** Format: int64 */
             id: number;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (planning design §4.7). code names the rule that refused and is what a client keys off, never the words: outside_employment (409: a day of the period lies outside the person's employment as Staff answers it), project_closed (409: the project is completed or cancelled and takes no new row and no change but deletion), overbooked (409: under the setting overbooking refuse, the write would make a week's confirmed excess over capacity grow; weeks are named in detail), period_too_long (400, a field error on toDate: more than 1096 days), window_out_of_bounds (400, a field error on from, to, fromDate or toDate: the window lies outside Staff's bound, the Monday thirteen weeks before today to three years after it), request_not_open (409: the request is filled or withdrawn and takes no fill, no change and no withdrawal), revision_conflict (409: the If-Match revision has moved on, or the row kept changing under a DELETE or a confirm), no_person (404: the caller is nobody's person in Staff) and dependency_unavailable (503: a module Planning reads is not composed). errors carries the field errors of a 400, keyed by the request's camelCase field; a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (planning design §4.7). code names the rule that refused and is what a client keys off, never the words: outside_employment (409: a day of the period lies outside the person's employment as Staff answers it), project_closed (409: the project is completed or cancelled and takes no new row and no change but deletion), overbooked (409: under the setting overbooking refuse, the write would make a week's confirmed excess over capacity grow; weeks are named in detail), period_too_long (400, a field error on toDate: more than 1096 days), window_out_of_bounds (400, a field error on from, to, fromDate or toDate: the window lies outside Staff's bound, the Monday thirteen weeks before today to three years after it), request_not_open (409: the request is filled or withdrawn and takes no fill, no change and no withdrawal), non_compete (409: the write would place a confirmed row of the person on a project of a customer their non-compete in force names, S17.3), wish_exists (409: the person already wishes off that project), wish_limit (409: the person has five open wishes), wish_no_booking (409: an off wish names a project the person has no confirmed row on today or later), revision_conflict (409: the If-Match revision has moved on, or the row kept changing under a DELETE or a confirm), no_person (404: the caller is nobody's person in Staff) and dependency_unavailable (503: a module Planning reads is not composed). errors carries the field errors of a 400, keyed by the request's camelCase field; a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither. */
         PlanningProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1025,21 +1172,73 @@ export interface components {
              */
             unbooked: number;
         };
-        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares (S22). unbooked (planning:view): a person under the threshold within the horizon. overbooked (planning:view): a person with a week in the horizon whose confirmed booked exceeds capacity. endingWithoutFollowOn (planning:manage): a confirmed row ending within endingLeadWeeks where the person has no confirmed row starting on or before that end plus seven days. certificatesExpiring (planning:view): a held certificate expiring inside a confirmed row within the horizon. requestsOpen (planning:manage): an open request starting within requestLeadDays, or already started. A caller with neither role gets an empty list. */
+        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares (S22). unbooked (planning:view): a person under the threshold within the horizon. overbooked (planning:view): a person with a week in the horizon whose confirmed booked exceeds capacity. endingWithoutFollowOn (planning:manage): a confirmed row ending within endingLeadWeeks where the person has no confirmed row starting on or before that end plus seven days. certificatesExpiring (planning:view): a held certificate expiring inside a confirmed row within the horizon. requestsOpen (planning:manage): an open request starting within requestLeadDays, or already started. wishesUnseen (planning:manage): one item standing for every open wish no planner has stamped seen, count how many. A caller with neither role gets an empty list. */
         PlanningStatsAttentionItem: {
             /**
              * Format: int32
              * @description How many the item stands for, when it stands for more than one.
              */
             count?: number;
-            /** @description The person's id, the allocation's for endingWithoutFollowOn, or the request's for requestsOpen. */
+            /** @description The person's id, the allocation's for endingWithoutFollowOn, the request's for requestsOpen, or the oldest unseen wish's for wishesUnseen. */
             entityId: string;
             id: string;
             /** Format: date-time */
             occurredAt: string;
             title: string;
             /** @enum {string} */
-            type: "unbooked" | "overbooked" | "endingWithoutFollowOn" | "certificatesExpiring" | "requestsOpen";
+            type: "unbooked" | "overbooked" | "endingWithoutFollowOn" | "certificatesExpiring" | "requestsOpen" | "wishesUnseen";
+        };
+        /** @description The terms of an allocation that is also a contract with the customer (S14), planning:manage's alone: the notice as a count and a unit, when notice was given, the day before which the customer need not release, whether a replacement needs the customer's approval, the handover overlap in days, the non-compete toward named customers until a date, and the contract's reference. Set on a tentative row they bind once the row is confirmed (reading 8). The dates derived from them are on the allocation (earliestRelease, handoverStart). */
+        PlanningTerms: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            handoverDays?: number;
+            /** Format: date */
+            minimumUntil?: string;
+            /** @description The customers the non-compete names, each read through the customer directory; empty when there is no non-compete. */
+            nonCompeteCustomers: components["schemas"]["PlanningCustomerRef"][];
+            /** Format: date */
+            nonCompeteUntil?: string;
+            /** Format: int32 */
+            noticeCount?: number;
+            /** Format: date */
+            noticeGivenOn?: string;
+            noticeUnit?: components["schemas"]["PlanningNoticeUnit"];
+            reference?: string;
+            replacementNeedsApproval: boolean;
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on PUT /allocations/{id}/terms.
+             */
+            revision: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description The terms whole, on set and on replace (S14): a field left out is cleared. noticeCount and noticeUnit both or neither; nonCompeteUntil required when any customer id is given; each id read from the customer directory, an unknown one a field error on nonCompeteCustomerIds. */
+        PlanningTermsInput: {
+            /**
+             * Format: int32
+             * @description 0 to 90.
+             */
+            handoverDays?: number;
+            /** Format: date */
+            minimumUntil?: string;
+            /** @description At most 20, Customers' ids. */
+            nonCompeteCustomerIds?: number[];
+            /** Format: date */
+            nonCompeteUntil?: string;
+            /**
+             * Format: int32
+             * @description 1 to 365.
+             */
+            noticeCount?: number;
+            /** Format: date */
+            noticeGivenOn?: string;
+            noticeUnit?: components["schemas"]["PlanningNoticeUnit"];
+            reference?: string;
+            /** @description Defaults to false. */
+            replacementNeedsApproval?: boolean;
         };
         /** @description One person's forward view (S12). */
         PlanningTimeline: {
@@ -1049,6 +1248,8 @@ export interface components {
             employed: components["schemas"]["PlanningDateSpan"][];
             flags: components["schemas"]["PlanningTimelineFlag"][];
             person: components["schemas"]["PlanningPerson"];
+            /** @description The person's open wishes, to planning:manage and to the person themself; empty to anyone else (S21). */
+            wishes: components["schemas"]["PlanningWish"][];
         };
         /** @description A flag on one allocation of the timeline (S12). */
         PlanningTimelineFlag: {
@@ -1083,10 +1284,14 @@ export interface components {
              */
             rollOff?: string;
         };
-        /** @description A consequence of a write that did not stop it (rule 6). */
+        /** @description A consequence of a write that did not stop it (rule 6). non_compete, on a tentative row alone: the person's non-compete in force names the project's customer; allocationId is the confirmed row whose terms bind and date its nonCompeteUntil — the same case refuses a confirmed row (S17.3). */
         PlanningWarning: {
+            /** Format: int64 */
+            allocationId?: number;
             /** @enum {string} */
-            code: "overbooked" | "booked_while_away" | "outside_project_dates";
+            code: "overbooked" | "booked_while_away" | "outside_project_dates" | "non_compete";
+            /** Format: date */
+            date?: string;
             detail?: string;
             /** @description The Mondays of the weeks the warning is about. */
             weeks?: string[];
@@ -1132,6 +1337,40 @@ export interface components {
              * @description Hours booked by tentative allocations, apart.
              */
             tentative: number;
+        };
+        /** @description A person's wish (S21): off a named project from a date, or for something new from a date — no free text. Open wishes only; a resolved or withdrawn wish is deleted and its event keeps the kind, the project id and the date. */
+        PlanningWish: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date */
+            fromDate: string;
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["PlanningWishKind"];
+            person: components["schemas"]["PlanningPersonRef"];
+            project?: components["schemas"]["PlanningProjectRef"];
+            /**
+             * Format: date-time
+             * @description When a planner stamped it seen; absent until then.
+             */
+            seenAt?: string;
+        };
+        /** @description A new wish of the caller's (S21): off needs projectId, a project the caller has a confirmed row on today or later; new takes none. fromDate on or after today. */
+        PlanningWishInput: {
+            /** Format: date */
+            fromDate: string;
+            kind: components["schemas"]["PlanningWishKind"];
+            /** Format: int32 */
+            projectId?: number;
+        };
+        /**
+         * @description off: the person wants off the named project from the date. new: the person wants something new from the date.
+         * @enum {string}
+         */
+        PlanningWishKind: "off" | "new";
+        /** @description Open wishes, oldest first. */
+        PlanningWishList: {
+            wishes: components["schemas"]["PlanningWish"][];
         };
         AuthErrorResponse: {
             error: {
@@ -1267,7 +1506,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — outside_employment, project_closed, or overbooked under refuse. */
+            /** @description Conflict — outside_employment, project_closed, non_compete (a confirmed row on a project of a customer the person's non-compete names), or overbooked under refuse. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1404,7 +1643,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict, outside_employment, project_closed, or overbooked under refuse. */
+            /** @description Conflict — revision_conflict, outside_employment, project_closed, non_compete (a confirmed row on a project of a customer the person's non-compete names), or overbooked under refuse. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1550,7 +1789,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict (the row kept changing while it was being confirmed), outside_employment, project_closed, or overbooked under refuse. */
+            /** @description Conflict — revision_conflict (the row kept changing while it was being confirmed), outside_employment, project_closed, non_compete (a confirmed row on a project of a customer the person's non-compete names), or overbooked under refuse. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1567,6 +1806,132 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["PlanningProblem"];
                 };
+            };
+        };
+    };
+    putPlanningAllocationTerms: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The terms' revision the row was read at, bare (3) or quoted ("3"); left out when the row has no terms yet. A revision that has moved on, a header on a row with no terms, or no header on a row with terms is a 409 revision_conflict. */
+                "If-Match"?: string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanningTermsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningAllocation"];
+                };
+            };
+            /** @description Bad Request — field errors on the body, or an If-Match that is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such allocation. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict or project_closed (the row's project is completed or cancelled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+        };
+    };
+    deletePlanningAllocationTerms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such allocation. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -1819,6 +2184,140 @@ export interface operations {
                 };
             };
             /** @description Not Found — no_person: Staff answers no person for the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+        };
+    };
+    createPlanningMyWish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanningWishInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningWish"];
+                };
+            };
+            /** @description Bad Request — field errors on kind, projectId or fromDate. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no_person: Staff answers no person for the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+            /** @description Conflict — wish_no_booking, wish_limit or wish_exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+        };
+    };
+    deletePlanningMyWish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such wish of the caller's, or no_person: Staff answers no person for the caller. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2548,7 +3047,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — request_not_open, outside_employment, project_closed, or overbooked under refuse. */
+            /** @description Conflict — request_not_open, outside_employment, project_closed, non_compete (a confirmed row on a project of a customer the person's non-compete names), or overbooked under refuse. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2863,6 +3362,165 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+            /** @description Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+        };
+    };
+    listPlanningWishes: {
+        parameters: {
+            query?: {
+                personId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningWishList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+        };
+    };
+    resolvePlanningWish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such wish. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PlanningProblem"];
+                };
+            };
+        };
+    };
+    markPlanningWishSeen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningWish"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such wish. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed. */
             503: {

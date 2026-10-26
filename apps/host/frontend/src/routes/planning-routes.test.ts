@@ -13,6 +13,7 @@ import {
   validateBoardSearch,
   validateRequestsSearch,
   validateWindowSearch,
+  WISHES_ROUTE_PATH,
 } from "@vantigo/planning-ui";
 import { describe, expect, it, vi } from "vitest";
 import { routeTree } from "../routeTree.gen";
@@ -66,6 +67,7 @@ describe("the planning routes", () => {
     expect(matchedRouteIds(UNBOOKED_ROUTE_PATH)).toContain(UNBOOKED_ROUTE_PATH);
     expect(matchedRouteIds(MY_PLANNING_ROUTE_PATH)).toContain(MY_PLANNING_ROUTE_PATH);
     expect(matchedRouteIds(PLANNING_SETTINGS_ROUTE_PATH)).toContain(PLANNING_SETTINGS_ROUTE_PATH);
+    expect(matchedRouteIds(WISHES_ROUTE_PATH)).toContain(WISHES_ROUTE_PATH);
     expect(matchedRouteIds("/planning/projects/31")).toContain(PROJECT_PLAN_ROUTE_PATH);
     expect(matchedRouteIds("/planning/people/101")).toContain(PERSON_TIMELINE_ROUTE_PATH);
     for (const item of planningNavItems) expect(matchedRouteIds(item.to)).toContain(item.to);
@@ -154,6 +156,8 @@ describe("the planning routes", () => {
     expect(attentionHref({ module: "planning", type: "requestsOpen", entityId: "41" })).toBe(
       `${REQUESTS_ROUTE_PATH}?status=open`,
     );
+    expect(attentionHref({ module: "planning", type: "wishesUnseen", entityId: "9" })).toBe(WISHES_ROUTE_PATH);
+    expect(matchedRouteIds(WISHES_ROUTE_PATH)).toContain(WISHES_ROUTE_PATH);
     expect(matchedRouteIds("/planning/people/101")).toContain(PERSON_TIMELINE_ROUTE_PATH);
   });
 });

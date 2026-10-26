@@ -1,5 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { formatDate } from "@vantigo/frontend-shell";
+import { toUtc } from "../lib/weeks";
 import type { PlanningStub } from "./server";
 
 /** The requests the fake received, matching a method and a path, with their bodies and If-Match. */
@@ -23,3 +25,11 @@ export const retype = async (field: HTMLElement, text: string) => {
   await userEvent.clear(field);
   if (text) await userEvent.type(field, text);
 };
+
+/** A day as the package shows it (`usePlanningFormat().date`). */
+export const shownDate = (iso: string) =>
+  formatDate(toUtc(iso), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+/** The day of an instant as the package shows it (`usePlanningFormat().stamp`). */
+export const shownStamp = (instant: string) =>
+  formatDate(new Date(instant), { day: "numeric", month: "short", year: "numeric" });

@@ -64,7 +64,10 @@ describe("the sidebar", () => {
       "unbooked",
       "myPlanning",
     ]);
-    expect(visiblePlanningNavItems(["*"])).toHaveLength(6);
+    expect(
+      visiblePlanningNavItems(["planning:access", "planning:view", "planning:manage"]).map((item) => item.key),
+    ).toEqual(["board", "requests", "intake", "unbooked", "wishes", "myPlanning", "settings"]);
+    expect(visiblePlanningNavItems(["*"])).toHaveLength(7);
     expect(visiblePlanningNavItems(undefined)).toEqual([]);
   });
 });

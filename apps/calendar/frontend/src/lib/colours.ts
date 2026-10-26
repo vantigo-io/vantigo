@@ -16,6 +16,7 @@ const moduleColours: Record<string, string> = {
   projects: "grape",
   time: "green",
   expenses: "orange",
+  planning: "indigo",
   holidays: "gray",
 };
 

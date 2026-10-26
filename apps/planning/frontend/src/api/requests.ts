@@ -21,8 +21,13 @@ export type PlanningCandidateAvailability = PlanningCandidate["availability"];
 /** A request's statuses (S16): open is demand, filled while a row names it, withdrawn for good. */
 export const requestStatuses: readonly PlanningRequestStatus[] = ["open", "filled", "withdrawn"];
 
-/** What a candidate may be flagged with (S17; delivery B). */
-export const candidateFlagCodes: readonly PlanningCandidateFlagCode[] = ["certificate_expires"];
+/** What a candidate may be flagged with (S17; delivery B's certificate, C's release, approval and wishes). */
+export const candidateFlagCodes: readonly PlanningCandidateFlagCode[] = [
+  "certificate_expires",
+  "release_after_start",
+  "needs_customer_approval",
+  "wishes",
+];
 
 export const candidateAvailabilities: readonly PlanningCandidateAvailability[] = ["fits", "partial"];
 

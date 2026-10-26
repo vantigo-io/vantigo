@@ -1,8 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { request, week } from "../test/fixtures";
-import { choose, retype, sent } from "../test/helpers";
+import { addDays } from "../lib/weeks";
+import { candidates, MONDAY, request, TODAY, week } from "../test/fixtures";
+import { choose, retype, sent, shownDate } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { type PlanningStub, planningProblem, stubPlanningApi } from "../test/server";
 
@@ -272,6 +273,73 @@ describe("CandidatesPanel — filling a request", () => {
     expect(fill.body).toEqual({ personId: 1, status: "confirmed" });
     expect(fetchMock.state.requests.find((row) => row.id === 801)?.status).toBe("filled");
     expect(fetchMock.state.allocations.at(-1)).toMatchObject({ requestId: 801, load: 30, loadUnit: "hours_per_week" });
+  });
+
+  it("flags a late release with its handover, a replacement the customer must approve, and a wish", async () => {
+    stubPlanningApi();
+    renderRoute("/planning/requests");
+    await userEvent.click(await screen.findByRole("button", { name: "Candidates for Backend developer" }));
+    const panel = await screen.findByRole("dialog", { name: "Candidates — Backend developer" });
+
+    const linus = await within(panel).findByRole("listitem", { name: "Linus Torvalds" });
+    expect(within(linus).getByText(`Released ${shownDate(addDays(MONDAY, 20))} at the earliest`)).toBeInTheDocument();
+    expect(within(linus).getByText(`Handover from ${shownDate(addDays(MONDAY, 13))}`)).toBeInTheDocument();
+    expect(within(linus).getByText("Replacement needs the customer's approval")).toBeInTheDocument();
+    expect(within(linus).getByText(`Wishes something new from ${shownDate(addDays(MONDAY, 1))}`)).toBeInTheDocument();
+  });
+
+  it("words a wish off a project, and a replacement needing approval without a late release", async () => {
+    const [ada] = candidates();
+    stubPlanningApi({
+      candidates: [
+        {
+          ...ada,
+          flags: [
+            { code: "needs_customer_approval", allocationId: 501 },
+            { code: "wishes", wishKind: "off", date: addDays(MONDAY, 9) },
+          ],
+        },
+      ],
+    });
+    renderRoute("/planning/requests");
+    await userEvent.click(await screen.findByRole("button", { name: "Candidates for Backend developer" }));
+    const panel = await screen.findByRole("dialog", { name: "Candidates — Backend developer" });
+
+    const row = await within(panel).findByRole("listitem", { name: "Ada Lovelace" });
+    expect(within(row).getByText("Replacement needs the customer's approval")).toBeInTheDocument();
+    expect(within(row).queryByText(/at the earliest/)).not.toBeInTheDocument();
+    expect(within(row).queryByText(/^Handover from/)).not.toBeInTheDocument();
+    expect(within(row).getByText(`Wishes off their project from ${shownDate(addDays(MONDAY, 9))}`)).toBeInTheDocument();
+  });
+
+  it("says the non-compete a tentative fill was written under", async () => {
+    const until = addDays(TODAY, 200);
+    stubPlanningApi({ warnings: [{ code: "non_compete", allocationId: 777, date: until }] });
+    renderRoute("/planning/requests");
+    await userEvent.click(await screen.findByRole("button", { name: "Candidates for Backend developer" }));
+    const panel = await screen.findByRole("dialog", { name: "Candidates — Backend developer" });
+    await userEvent.click(await within(panel).findByRole("button", { name: "Fill with Ada Lovelace" }));
+
+    expect(await within(panel).findByText("Filled — but look at this")).toBeInTheDocument();
+    expect(
+      within(panel).getByText(`The person is under a non-compete toward this customer until ${shownDate(until)}.`),
+    ).toBeInTheDocument();
+  });
+
+  it("says a confirmed fill refused under a non-compete", async () => {
+    stubPlanningApi({
+      write: (method, path) =>
+        method === "POST" && path === "/requests/801/fill"
+          ? planningProblem(409, "non_compete", { title: "Non-compete" })
+          : undefined,
+    });
+    renderRoute("/planning/requests");
+    await userEvent.click(await screen.findByRole("button", { name: "Candidates for Backend developer" }));
+    const panel = await screen.findByRole("dialog", { name: "Candidates — Backend developer" });
+    await userEvent.click(await within(panel).findByRole("button", { name: "Fill with Ada Lovelace" }));
+    expect(
+      await within(panel).findByText("The person is under a non-compete toward this customer."),
+    ).toBeInTheDocument();
   });
 
   it("takes the Fill buttons away once a fill is refused as no longer open", async () => {

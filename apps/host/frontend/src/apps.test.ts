@@ -93,6 +93,7 @@ describe("the app registry", () => {
       "/planning/requests",
       "/planning/intake",
       "/planning/unbooked",
+      "/planning/wishes",
       "/planning/me",
       "/planning/settings",
       "/invoices",
@@ -451,7 +452,7 @@ describe("the app registry", () => {
   // guarded by the app alone: its URL is the prefix a person's own timeline
   // lives under, and the board's route sends a caller without planning:view
   // to My planning.
-  it("gives Planning the board, Requests, Intake, Unbooked, My planning and the settings, from the package's destinations", () => {
+  it("gives Planning the board, Requests, Intake, Unbooked, Wishes, My planning and the settings, from the package's destinations", () => {
     const planning = appForKey("planning");
     expect(planning).toMatchObject({ module: "planning", label: "navigation.planning", home: "/planning" });
     expect(planning.icon).toBe(IconCalendarStats);
@@ -462,6 +463,7 @@ describe("the app registry", () => {
       ["navigation.planningRequests", "/planning/requests", ["planning:view"], undefined],
       ["navigation.planningIntake", "/planning/intake", ["planning:view"], undefined],
       ["navigation.planningUnbooked", "/planning/unbooked", ["planning:view"], undefined],
+      ["navigation.planningWishes", "/planning/wishes", ["planning:manage"], undefined],
       ["navigation.planningMyPlanning", "/planning/me", ["planning:access"], undefined],
       ["navigation.planningSettings", "/planning/settings", ["planning:manage"], undefined],
     ]);
@@ -500,6 +502,7 @@ describe("the app registry", () => {
       "/planning/requests",
       "/planning/intake",
       "/planning/unbooked",
+      "/planning/wishes",
       "/planning/me",
       "/planning/settings",
     ]);

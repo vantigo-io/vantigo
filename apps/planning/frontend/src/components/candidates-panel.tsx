@@ -4,7 +4,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { allocationStatuses, type PlanningAllocationStatus } from "../api/allocations";
 import { PLANNING_QUERY_KEY, refusalCode, ruleRefusals } from "../api/request";
 import {
@@ -34,7 +34,9 @@ export interface CandidatesPanelProps {
  * the server sorts them — those with the time first, then the fit to what
  * they want, the free hours, and the longest on their current project — each
  * with the figures, the flags and the competences they miss, so the planner
- * sees why. *Show partial matches* lists those who miss a requirement too;
+ * sees why — from delivery C also a binding assignment's earliest release and
+ * handover, a replacement the customer must approve, and the person's wishes
+ * (S17.4–5); a non-compete leaves the person out altogether (S17.3). *Show partial matches* lists those who miss a requirement too;
  * *Fill* books the person on the request, tentative or confirmed. A drawer
  * at the side, a bottom sheet on a phone. `planning:manage`'s.
  */
@@ -203,19 +205,25 @@ const Candidates = ({ request, onDone }: { request: PlanningRequest; onDone: () 
                           {t("coversRequest")}
                         </Badge>
                       )}
-                      {candidate.flags.map((flag) => (
-                        <Badge
-                          key={`${flag.code}/${flag.competenceKey ?? ""}/${flag.date ?? ""}`}
-                          variant="light"
-                          size="sm"
-                          color="orange"
-                        >
-                          {t(`candidateFlag_${flag.code}`, {
-                            date: flag.date ? format.date(flag.date) : "",
-                            competence: flag.competenceKey ? nameOfKey(flag.competenceKey) : "",
-                          })}
-                        </Badge>
-                      ))}
+                      {candidate.flags.map((flag) => {
+                        const key = `${flag.code}/${flag.competenceKey ?? ""}/${flag.allocationId ?? ""}/${flag.wishKind ?? ""}/${flag.date ?? ""}`;
+                        return (
+                          <Fragment key={key}>
+                            <Badge variant="light" size="sm" color="orange">
+                              {t(`candidateFlag_${flag.code}`, {
+                                date: flag.date ? format.date(flag.date) : "",
+                                competence: flag.competenceKey ? nameOfKey(flag.competenceKey) : "",
+                                kind: flag.wishKind ? t(`wishKind_${flag.wishKind}`) : "",
+                              })}
+                            </Badge>
+                            {flag.code === "release_after_start" && flag.handoverFrom && (
+                              <Badge variant="light" size="sm" color="orange">
+                                {t("candidateFlag_handover_from", { date: format.date(flag.handoverFrom) })}
+                              </Badge>
+                            )}
+                          </Fragment>
+                        );
+                      })}
                     </Group>
                     <Text size="xs">
                       {t("freeOfRequired", {

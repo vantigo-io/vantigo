@@ -13,11 +13,12 @@ export type PlanningWarningCode = PlanningWarning["code"];
 
 export const allocationStatuses: readonly PlanningAllocationStatus[] = ["tentative", "confirmed"];
 
-/** What a write may warn of (rule 6). */
+/** What a write may warn of (rule 6; delivery C's non-compete on a tentative row, S17.3). */
 export const warningCodes: readonly PlanningWarningCode[] = [
   "overbooked",
   "booked_while_away",
   "outside_project_dates",
+  "non_compete",
 ];
 
 export interface PlanningAllocationsFilter {

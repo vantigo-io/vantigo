@@ -7,7 +7,9 @@ import { coverages, intakeFlags } from "./api/intake";
 import { projectStatuses } from "./api/projects";
 import { candidateAvailabilities, candidateFlagCodes, preferenceKinds, requestStatuses } from "./api/requests";
 import { attentionTypes } from "./api/stats";
+import { noticeUnits } from "./api/terms";
 import { timelineFlagCodes } from "./api/timeline";
+import { wishKinds } from "./api/wishes";
 import { planningCatalog } from "./i18n";
 import { planningNavItems } from "./lib/navigation";
 
@@ -28,7 +30,7 @@ const enumOf = (schema: string, property?: string): string[] => {
   return values;
 };
 
-/** The refusal codes the module answers (§4.7 and amendments 7–8; delivery B's request_not_open). */
+/** The refusal codes the module answers (§4.7 and amendments 7–8; delivery B's request_not_open; C's non-compete and wishes). */
 const refusalCodes = [
   "overbooked",
   "outside_employment",
@@ -39,6 +41,10 @@ const refusalCodes = [
   "no_person",
   "dependency_unavailable",
   "window_out_of_bounds",
+  "non_compete",
+  "wish_exists",
+  "wish_limit",
+  "wish_no_booking",
 ];
 
 describe("the planning catalog", () => {
@@ -81,6 +87,9 @@ describe("the planning catalog", () => {
       ...intakeFlags.map((value) => `intakeFlag_${value}`),
       ...competenceKinds.map((value) => `competenceKind_${value}`),
       ...competenceLevels.map((value) => `level_${value}`),
+      ...noticeUnits.map((value) => `noticeUnit_${value}`),
+      ...wishKinds.map((value) => `wishKind_${value}`),
+      ...wishKinds.map((value) => `wishKindLabel_${value}`),
       ...planningNavItems.map((item) => item.label),
     ];
     for (const [language, catalog] of Object.entries(planningCatalog))
@@ -104,6 +113,8 @@ describe("the planning catalog", () => {
     expect([...coverages].sort()).toEqual(enumOf("PlanningCoverage").sort());
     expect([...intakeFlags].sort()).toEqual(enumOf("PlanningIntakeRequest", "flags").sort());
     expect([...competenceKinds].sort()).toEqual(enumOf("PlanningCompetence", "kind").sort());
+    expect([...noticeUnits].sort()).toEqual(enumOf("PlanningNoticeUnit").sort());
+    expect([...wishKinds].sort()).toEqual(enumOf("PlanningWishKind").sort());
   });
 
   it("words every refusal the contract names", () => {

@@ -9,6 +9,9 @@ import type { PlanningRequestStatus, PlanningRequirement } from "../api/requests
 import "../i18n";
 import { formatRange, isoWeek, toUtc } from "./weeks";
 
+/** What an empty cell or an absent value reads. */
+export const NONE = "—";
+
 /** A request status's badge colour. */
 export const requestStatusColor: Record<PlanningRequestStatus, string> = {
   open: "orange",
@@ -55,6 +58,9 @@ export const usePlanningFormat = () => {
         : t("loadHoursValue", { value: number(value, 2) }),
     date: (value: string) =>
       formatters.formatDate(toUtc(value), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }),
+    /** The day of an instant (a wish filed or seen), in the reader's time zone. */
+    stamp: (instant: string) =>
+      formatters.formatDate(new Date(instant), { day: "numeric", month: "short", year: "numeric" }),
     range: (from: string, to: string) => formatRange(from, to, formatters.formatDate),
     week: (monday: string) => t("weekNumber", { week: isoWeek(monday) }),
     personName: (person: Pick<PlanningPersonRef, "displayName">) =>
